@@ -1019,3 +1019,341 @@ test "EvalEngine compare seq? list" {
 test "EvalEngine compare seq? non-seq" {
     try makePredicateCompareTest("seq?", .{ .integer = 1 }, false).runTest();
 }
+
+// --- Collection operation compare tests (T4.3) ---
+
+test "EvalEngine compare rest on vector" {
+    // (rest [10 20 30]) => (20 30) — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "rest", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // rest returns a list
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.list.items.len);
+}
+
+test "EvalEngine compare cons" {
+    // (cons 0 [1 2]) => (0 1 2) — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "cons", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 0 } };
+    var a2 = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.list.items.len);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?.list.items[0]);
+}
+
+test "EvalEngine compare conj vector" {
+    // (conj [1 2] 3) => [1 2 3] — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "conj", .source = .{} } };
+    var a1 = Node{ .constant = .{ .vector = &vec } };
+    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.vector.items.len);
+}
+
+test "EvalEngine compare get on map" {
+    // (get {:a 1} :a) => 1 — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } },
+        .{ .integer = 1 },
+    };
+    var m = collections_mod.PersistentArrayMap{ .entries = &entries };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "get", .source = .{} } };
+    var a1 = Node{ .constant = .{ .map = &m } };
+    var a2 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.tw_value.?);
+}
+
+test "EvalEngine compare nth on vector" {
+    // (nth [10 20 30] 1) => 20 — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "nth", .source = .{} } };
+    var a1 = Node{ .constant = .{ .vector = &vec } };
+    var a2 = Node{ .constant = .{ .integer = 1 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 20 }, result.tw_value.?);
+}
+
+test "EvalEngine compare assoc on map" {
+    // (assoc {:a 1} :b 2) => {:a 1 :b 2} — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } },
+        .{ .integer = 1 },
+    };
+    var m = collections_mod.PersistentArrayMap{ .entries = &entries };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "assoc", .source = .{} } };
+    var a1 = Node{ .constant = .{ .map = &m } };
+    var a2 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "b" } } };
+    var a3 = Node{ .constant = .{ .integer = 2 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .map);
+    // Map should have 4 entries (2 key-value pairs)
+    try std.testing.expectEqual(@as(usize, 4), result.tw_value.?.map.entries.len);
+}
+
+test "EvalEngine compare list constructor" {
+    // (list 1 2 3) => (1 2 3) — both backends
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "list", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.list.items.len);
+}
+
+test "EvalEngine compare vector constructor" {
+    // (vector 1 2 3) => [1 2 3] — both backends
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "vector", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.vector.items.len);
+}
+
+test "EvalEngine compare hash-map constructor" {
+    // (hash-map :a 1 :b 2) => {:a 1 :b 2} — both backends
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "hash-map", .source = .{} } };
+    var a1 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
+    var a2 = Node{ .constant = .{ .integer = 1 } };
+    var a3 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "b" } } };
+    var a4 = Node{ .constant = .{ .integer = 2 } };
+    var args = [_]*Node{ &a1, &a2, &a3, &a4 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .map);
+}
+
+test "EvalEngine compare seq on vector" {
+    // (seq [1 2]) => (1 2) — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "seq", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // seq on non-empty vector returns the vector as-is
+    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.vector.items.len);
+}
+
+test "EvalEngine compare seq on empty vector" {
+    // (seq []) => nil — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{};
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "seq", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+}
+
+test "EvalEngine compare reverse on vector" {
+    // (reverse [1 2 3]) => (3 2 1) — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "reverse", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.tw_value.?.list.items[0]);
+}
+
+test "EvalEngine compare count on empty list" {
+    // (count (list)) => 0 — both backends
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Build (count (list))
+    var list_callee = Node{ .var_ref = .{ .ns = null, .name = "list", .source = .{} } };
+    var list_args = [_]*Node{};
+    var list_call = node_mod.CallNode{ .callee = &list_callee, .args = &list_args, .source = .{} };
+    var list_node = Node{ .call_node = &list_call };
+
+    var count_callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
+    var count_args = [_]*Node{&list_node};
+    var count_call = node_mod.CallNode{ .callee = &count_callee, .args = &count_args, .source = .{} };
+    const n = Node{ .call_node = &count_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?);
+}
