@@ -3,7 +3,7 @@
 ## Current State
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Comparison intrinsics (Task 3.2)
+- Current task: VM var/def opcodes (Task 3.2)
 - Task file:
 - Blockers: none
 

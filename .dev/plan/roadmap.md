@@ -75,35 +75,37 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ## Phase 3: Builtins + core.clj AOT
 
-### Phase 3a: VM intrinsics + runtime functions
+### Phase 3a: VM parity + intrinsics + runtime functions
 
-| #   | Task                                                                                  | Archive | Notes                                                                                    |
-|-----|---------------------------------------------------------------------------------------|---------|------------------------------------------------------------------------------------------|
-| 3.1 | Arithmetic intrinsics (+, -, *, /, mod, rem)                                          | task_0022_arithmetic_intrinsics.md | VM opcodes for fast path. Compiler emits direct opcodes for intrinsics. |
-| 3.2 | Comparison intrinsics (=, <, >, <=, >=, not=)                                         | --      | Value.eql for =, numeric comparison for rest                                             |
-| 3.3 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | --      | Core sequence operations                                                                 |
-| 3.4 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | --      | Simple type checks on Value tag                                                          |
-| 3.5 | Runtime functions: str, pr-str, println, prn                                          | --      | String conversion + I/O                                                                  |
-| 3.6 | Runtime functions: atom, deref, swap!, reset!                                         | --      | Atom state management                                                                    |
-| 3.7 | BuiltinDef registry with metadata                                                     | --      | SS10: doc, arglists, added, kind, since-cw. comptime table. registerCore() populates Env |
+| #   | Task                                                                                  | Archive                            | Notes                                                                                    |
+|-----|---------------------------------------------------------------------------------------|-------------------------------------|------------------------------------------------------------------------------------------|
+| 3.1 | Arithmetic intrinsics (+, -, *, /, mod, rem)                                          | task_0022_arithmetic_intrinsics.md | VM opcodes for fast path. Compiler emits direct opcodes for intrinsics. Also includes =,not=,<,>,<=,>= |
+| 3.2 | VM var/def opcodes (var_load, var_load_dynamic, def)                                  | --                                  | Enable Var resolution in VM. Required for non-intrinsic builtin calls               |
+| 3.3 | VM recur + tail_call opcodes                                                          | --                                  | Loop/recursion support in VM                                                         |
+| 3.4 | VM collection + exception opcodes                                                     | --                                  | list/vec/map/set_new, try_begin..throw_ex                                            |
+| 3.5 | BuiltinDef registry with metadata                                                     | --                                  | SS10: VarKind, BuiltinDef, registerCore(). Moved before builtins (was T3.7). Dep: T3.2 |
+| 3.6 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | --                                  | Core sequence operations. Dep: T3.4, T3.5                                            |
+| 3.7 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | --                                  | Simple type checks on Value tag. Dep: T3.5                                           |
+| 3.8 | Runtime functions: str, pr-str, println, prn                                          | --                                  | String conversion + I/O. Dep: T3.5                                                   |
+| 3.9 | Runtime functions: atom, deref, swap!, reset!                                         | --                                  | Atom state management. Dep: T3.5                                                     |
 
 ### Phase 3b: core.clj AOT pipeline
 
-| #    | Task                                                                | Archive | Notes                                                                          |
-|------|---------------------------------------------------------------------|---------|--------------------------------------------------------------------------------|
-| 3.8  | Create clj/core.clj bootstrap (defmacro, defn, when, cond, ->, ->>) | --      | SS9.6: defmacro is special form in Zig. defn and 40+ macros defined in Clojure |
-| 3.9  | Build-time AOT: core.clj -> bytecode -> @embedFile                  | --      | build.zig step: compile host tool, use it to compile core.clj, embed result    |
-| 3.10 | Startup: VM loads embedded bytecode, registers Vars                 | --      | Fast startup, no parse needed                                                  |
-| 3.11 | Higher-order functions in core.clj: map, filter, reduce, take, drop | --      | Pure Clojure definitions, AOT compiled                                         |
-| 3.12 | Remaining core macros: if-let, when-let, condp, case, doto, ..      | --      | Form->Form transformations                                                     |
+| #    | Task                                                                 | Archive | Notes                                                                          |
+|------|----------------------------------------------------------------------|---------|--------------------------------------------------------------------------------|
+| 3.10 | Create clj/core.clj bootstrap (defmacro, defn, when, cond, ->, ->>) | --      | SS9.6: defmacro is special form in Zig. defn and 40+ macros defined in Clojure |
+| 3.11 | Build-time AOT: core.clj -> bytecode -> @embedFile                   | --      | build.zig step: compile host tool, use it to compile core.clj, embed result    |
+| 3.12 | Startup: VM loads embedded bytecode, registers Vars                  | --      | Fast startup, no parse needed                                                  |
+| 3.13 | Higher-order functions in core.clj: map, filter, reduce, take, drop  | --      | Pure Clojure definitions, AOT compiled                                         |
+| 3.14 | Remaining core macros: if-let, when-let, condp, case, doto, ..       | --      | Form->Form transformations                                                     |
 
 ### Phase 3c: Integration + validation
 
 | #    | Task                                               | Archive | Notes                                                                          |
 |------|----------------------------------------------------|---------|--------------------------------------------------------------------------------|
-| 3.13 | CLI entry point: -e, file.clj, REPL stub           | --      | src/native/main.zig. Basic eval pipeline: read -> analyze -> compile -> vm.run |
-| 3.14 | Import SCI Tier 1 tests (5 files)                  | --      | SS10: deterministic rule transformation                                        |
-| 3.15 | Benchmark: startup time, fib(30), basic operations | --      | Establish baseline numbers                                                     |
+| 3.15 | CLI entry point: -e, file.clj, REPL stub           | --      | src/native/main.zig. Basic eval pipeline: read -> analyze -> compile -> vm.run |
+| 3.16 | Import SCI Tier 1 tests (5 files)                  | --      | SS10: deterministic rule transformation                                        |
+| 3.17 | Benchmark: startup time, fib(30), basic operations | --      | Establish baseline numbers                                                     |
 
 ## Milestone Criteria
 
@@ -138,14 +140,14 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ## Task Count Summary
 
-| Phase     | Tasks  | Scope                  |
-|-----------|--------|------------------------|
-| 1a        | 4      | Value type foundation  |
-| 1b        | 4      | Reader                 |
-| 1c        | 4      | Analyzer               |
-| 2a        | 4      | Runtime infrastructure |
-| 2b        | 6      | Compiler + VM          |
-| 3a        | 7      | Builtins               |
-| 3b        | 5      | core.clj AOT           |
-| 3c        | 3      | Integration            |
-| **Total** | **37** |                        |
+| Phase     | Tasks  | Scope                          |
+|-----------|--------|--------------------------------|
+| 1a        | 4      | Value type foundation          |
+| 1b        | 4      | Reader                         |
+| 1c        | 4      | Analyzer                       |
+| 2a        | 4      | Runtime infrastructure         |
+| 2b        | 6      | Compiler + VM                  |
+| 3a        | 9      | VM parity + builtins           |
+| 3b        | 5      | core.clj AOT                   |
+| 3c        | 3      | Integration                    |
+| **Total** | **39** |                                |

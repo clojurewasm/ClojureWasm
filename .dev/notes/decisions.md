@@ -473,3 +473,40 @@ This is simpler and avoids the signed/unsigned confusion.
 - `jump_back`: unsigned operand, always backward (VM subtracts from ip)
 - `jump_back` exists as a separate opcode so the VM can distinguish loop
   back-edges for future profiling/JIT hints, not for encoding reasons
+
+---
+
+## D14: Phase 3a Roadmap Revision — VM Parity Block
+
+**Decision**: Restructure Phase 3a to address VM implementation gaps before
+adding builtins. Delete redundant T3.2 (comparison intrinsics), add VM parity
+tasks, and reorder BuiltinDef registry earlier.
+
+**Problem** (discovered after T3.1 completion):
+1. T3.2 (comparison intrinsics) was redundant — =, not=, <, >, <=, >= were
+   all implemented as part of T3.1 alongside arithmetic intrinsics.
+2. VM coverage was only 55% (21/38 opcodes). The Compiler can emit bytecode
+   for all 13 Node types, but the VM cannot execute many of them.
+3. Non-intrinsic builtins (first, rest, nil?, etc.) rely on `var_load` + `call`,
+   but `var_load` was not implemented in the VM — D6 rule violation risk.
+4. BuiltinDef registry (T3.7) was positioned after builtin implementations,
+   but it is the registration infrastructure they depend on.
+
+**Changes**:
+
+| Action  | Task                | Detail                                              |
+|---------|---------------------|-----------------------------------------------------|
+| DELETE  | T3.2 (old)          | Comparison intrinsics — already done in T3.1        |
+| ADD     | T3.2 (new)          | VM var/def opcodes: var_load, var_load_dynamic, def |
+| ADD     | T3.3 (new)          | VM recur + tail_call opcodes                        |
+| ADD     | T3.4 (new)          | VM collection + exception opcodes                   |
+| REORDER | T3.7 -> T3.5        | BuiltinDef registry moved before builtins           |
+| RENUM   | T3.3-T3.6 -> T3.6-T3.9 | Remaining builtins renumbered                   |
+| RENUM   | T3.8-T3.15 -> T3.10-T3.17 | Phases 3b, 3c shifted by +2                 |
+
+**upvalue_load/upvalue_store note**: These opcodes exist in opcodes.zig but
+are unused — the VM uses closure_bindings (stack injection) instead, and
+captured variables are accessed via local_load. Removal is out of scope for
+this revision but noted as future cleanup.
+
+**Total task count**: 37 -> 39 (added 3, deleted 1)
