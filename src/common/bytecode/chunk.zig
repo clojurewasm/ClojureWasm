@@ -74,6 +74,32 @@ pub const Chunk = struct {
         const dist = self.code.items.len - loop_start + 1;
         try self.emit(.jump_back, @intCast(dist));
     }
+
+    /// Dump bytecode to writer for debugging.
+    pub fn dump(self: *const Chunk, w: *std.Io.Writer) !void {
+        try w.writeAll("=== Bytecode Dump ===\n");
+
+        if (self.constants.items.len > 0) {
+            try w.writeAll("\n--- Constants ---\n");
+            for (self.constants.items, 0..) |c, ci| {
+                try w.print("  [{d:>3}] ", .{ci});
+                try dumpValue(c, w);
+                try w.writeByte('\n');
+            }
+        }
+
+        try w.writeAll("\n--- Instructions ---\n");
+        for (self.code.items, 0..) |instr, ip| {
+            try w.print("  {d:>4}: ", .{ip});
+            try dumpInstruction(instr, self.constants.items, w);
+            try w.writeByte('\n');
+        }
+
+        try w.print("\n({d} instructions, {d} constants)\n", .{
+            self.code.items.len,
+            self.constants.items.len,
+        });
+    }
 };
 
 /// Compiled function prototype.
@@ -89,7 +115,107 @@ pub const FnProto = struct {
     code: []const Instruction,
     /// Constant pool.
     constants: []const Value,
+
+    /// Dump function prototype to writer for debugging.
+    pub fn dump(self: *const FnProto, w: *std.Io.Writer) !void {
+        try w.print("\n--- fn {s} (arity={d}{s}) ---\n", .{
+            self.name orelse "<anonymous>",
+            self.arity,
+            if (self.variadic) @as([]const u8, " variadic") else "",
+        });
+
+        if (self.constants.len > 0) {
+            try w.writeAll("  Constants:\n");
+            for (self.constants, 0..) |c, ci| {
+                try w.print("    [{d:>3}] ", .{ci});
+                try dumpValue(c, w);
+                try w.writeByte('\n');
+            }
+        }
+
+        for (self.code, 0..) |instr, ip| {
+            try w.print("    {d:>4}: ", .{ip});
+            try dumpInstruction(instr, self.constants, w);
+            try w.writeByte('\n');
+        }
+    }
 };
+
+/// Dump a single instruction with context-aware operand formatting.
+fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writer) !void {
+    const op_name = @tagName(instr.op);
+    try w.print("{s:<20}", .{op_name});
+
+    switch (instr.op) {
+        .const_load => {
+            try w.print(" #{d}", .{instr.operand});
+            if (instr.operand < constants.len) {
+                try w.writeAll("  ; ");
+                try dumpValue(constants[instr.operand], w);
+            }
+        },
+        .local_load, .local_store => {
+            try w.print(" slot={d}", .{instr.operand});
+        },
+        .upvalue_load, .upvalue_store => {
+            try w.print(" upval={d}", .{instr.operand});
+        },
+        .var_load, .var_load_dynamic, .def => {
+            try w.print(" #{d}", .{instr.operand});
+            if (instr.operand < constants.len) {
+                try w.writeAll("  ; ");
+                try dumpValue(constants[instr.operand], w);
+            }
+        },
+        .jump, .jump_if_false, .jump_back => {
+            try w.print(" {d}", .{instr.operand});
+        },
+        .call, .tail_call, .recur => {
+            try w.print(" {d}", .{instr.operand});
+        },
+        .list_new, .vec_new, .set_new => {
+            try w.print(" n={d}", .{instr.operand});
+        },
+        .map_new => {
+            try w.print(" pairs={d}", .{instr.operand});
+        },
+        .closure => {
+            try w.print(" #{d}", .{instr.operand});
+            if (instr.operand < constants.len) {
+                try w.writeAll("  ; ");
+                try dumpValue(constants[instr.operand], w);
+            }
+        },
+        else => {},
+    }
+}
+
+/// Dump a value in a compact readable form.
+fn dumpValue(val: Value, w: *std.Io.Writer) !void {
+    switch (val) {
+        .nil => try w.writeAll("nil"),
+        .boolean => |b| try w.writeAll(if (b) "true" else "false"),
+        .integer => |n| try w.print("{d}", .{n}),
+        .float => |f| try w.print("{d}", .{f}),
+        .char => |c| try w.print("\\{u}", .{c}),
+        .string => |s| try w.print("\"{s}\"", .{s}),
+        .symbol => |s| {
+            if (s.ns) |ns| {
+                try w.print("{s}/{s}", .{ ns, s.name });
+            } else {
+                try w.writeAll(s.name);
+            }
+        },
+        .keyword => |k| {
+            try w.writeByte(':');
+            if (k.ns) |ns| {
+                try w.print("{s}/", .{ns});
+            }
+            try w.writeAll(k.name);
+        },
+        else => try w.print("<{s}>", .{@tagName(val)}),
+    }
+}
 
 // === Tests ===
 
@@ -152,6 +278,124 @@ test "Chunk emitLoop backward jump" {
     try std.testing.expectEqual(OpCode.jump_back, jump_instr.op);
     // Operand is positive distance (VM subtracts it from ip)
     try std.testing.expect(jump_instr.operand > 0);
+}
+
+test "Chunk.dump basic output" {
+    const allocator = std.testing.allocator;
+    var chunk = Chunk.init(allocator);
+    defer chunk.deinit();
+
+    const idx = try chunk.addConstant(.{ .integer = 42 });
+    try chunk.emit(.const_load, idx);
+    try chunk.emitOp(.pop);
+    try chunk.emitOp(.ret);
+
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try chunk.dump(&w);
+    const output = w.buffered();
+
+    // Header
+    try std.testing.expect(std.mem.indexOf(u8, output, "=== Bytecode Dump ===") != null);
+    // Constants section
+    try std.testing.expect(std.mem.indexOf(u8, output, "Constants") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "42") != null);
+    // Instructions section
+    try std.testing.expect(std.mem.indexOf(u8, output, "Instructions") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "const_load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "pop") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "ret") != null);
+    // Footer
+    try std.testing.expect(std.mem.indexOf(u8, output, "3 instructions") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "1 constants") != null);
+}
+
+test "Chunk.dump const_load shows constant value comment" {
+    const allocator = std.testing.allocator;
+    var chunk = Chunk.init(allocator);
+    defer chunk.deinit();
+
+    _ = try chunk.addConstant(.{ .symbol = .{ .name = "foo", .ns = null } });
+    try chunk.emit(.const_load, 0);
+    try chunk.emitOp(.ret);
+
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try chunk.dump(&w);
+    const output = w.buffered();
+
+    // const_load should show "; foo" as comment
+    try std.testing.expect(std.mem.indexOf(u8, output, "; foo") != null);
+}
+
+test "Chunk.dump jump instructions show offset" {
+    const allocator = std.testing.allocator;
+    var chunk = Chunk.init(allocator);
+    defer chunk.deinit();
+
+    const jmp = try chunk.emitJump(.jump_if_false);
+    try chunk.emitOp(.nil);
+    chunk.patchJump(jmp);
+    try chunk.emitOp(.ret);
+
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try chunk.dump(&w);
+    const output = w.buffered();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "jump_if_false") != null);
+}
+
+test "FnProto.dump output" {
+    const code = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const constants = [_]Value{.{ .integer = 10 }};
+
+    const proto = FnProto{
+        .name = "my-fn",
+        .arity = 1,
+        .variadic = false,
+        .local_count = 1,
+        .code = &code,
+        .constants = &constants,
+    };
+
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try proto.dump(&w);
+    const output = w.buffered();
+
+    // Header with fn name and arity
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn my-fn") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "arity=1") != null);
+    // Instructions
+    try std.testing.expect(std.mem.indexOf(u8, output, "local_load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "slot=0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "ret") != null);
+}
+
+test "FnProto.dump variadic" {
+    const code = [_]Instruction{.{ .op = .ret }};
+    const constants = [_]Value{};
+
+    const proto = FnProto{
+        .name = null,
+        .arity = 0,
+        .variadic = true,
+        .local_count = 0,
+        .code = &code,
+        .constants = &constants,
+    };
+
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try proto.dump(&w);
+    const output = w.buffered();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "<anonymous>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "variadic") != null);
 }
 
 test "FnProto creation" {
