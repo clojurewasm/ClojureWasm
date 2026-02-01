@@ -13,6 +13,7 @@ pub const env = @import("common/env.zig");
 pub const var_mod = @import("common/var.zig");
 pub const namespace = @import("common/namespace.zig");
 pub const gc = @import("common/gc.zig");
+pub const opcodes = @import("common/bytecode/opcodes.zig");
 
 test {
     _ = value;
@@ -27,4 +28,5 @@ test {
     _ = var_mod;
     _ = namespace;
     _ = gc;
+    _ = opcodes;
 }

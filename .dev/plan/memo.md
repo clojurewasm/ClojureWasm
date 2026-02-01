@@ -3,7 +3,7 @@
 ## Current State
 - Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Define OpCode enum (Task 2.5)
+- Current task: Create Compiler (Node -> Bytecode) (Task 2.6)
 - Task file:
 - Blockers: none
 
@@ -18,3 +18,4 @@
 | T2.2    | .dev/plan/archive/task_0013_namespace.md     | 2026-02-01 |
 | T2.3    | .dev/plan/archive/task_0014_var_kind_builtindef.md | 2026-02-01 |
 | T2.4    | .dev/plan/archive/task_0015_gc_strategy.md         | 2026-02-01 |
+| T2.5    | .dev/plan/archive/task_0016_opcodes.md             | 2026-02-01 |

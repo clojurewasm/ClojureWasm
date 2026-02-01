@@ -66,7 +66,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 | #    | Task                                                             | Archive | Notes                                                                                                                                |
 |------|------------------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------|
-| 2.5  | Define OpCode enum in src/common/bytecode/opcodes.zig            | --      | Beta: bytecode.zig 543L. Fixed 3-byte instructions (u8 opcode + u16 operand). Start with ~30 essential opcodes                       |
+| 2.5  | Define OpCode enum in src/common/bytecode/opcodes.zig            | task_0016_opcodes.md | Beta: bytecode.zig 543L. Fixed 3-byte instructions (u8 opcode + u16 operand). Start with ~30 essential opcodes                       |
 | 2.6  | Create Compiler (Node -> Bytecode) in src/native/vm/compiler.zig | --      | Beta: emit.zig 897L. Emit bytecode from Node AST. Compiler-VM contract expressed in types (SS9.1)                                    |
 | 2.7  | Create VM execution loop in src/native/vm/vm.zig                 | --      | Beta: vm.zig 1858L. Stack-based VM. Yield points for GC (SS5). Start with: const_load, call, ret, jump, local_load/store, arithmetic |
 | 2.8  | Implement closures and upvalues in VM                            | --      | capture_count/slot contract. Critical for fn/let                                                                                     |
