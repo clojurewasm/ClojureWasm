@@ -4,7 +4,7 @@
 - Phase: 1c (Analyzer)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: Analyzer: loop/recur, try/catch/throw
-- Task file:
+- Task file: .dev/plan/active/task_0011_loop_recur_try.md
 - Blockers: none
 
 ## Completed Phases
