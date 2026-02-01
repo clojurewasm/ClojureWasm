@@ -6,6 +6,7 @@
 // Started as tagged union (ADR-0001). NaN boxing deferred to Phase 4.
 
 const std = @import("std");
+const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
 
 pub const PersistentList = collections.PersistentList;
@@ -49,16 +50,16 @@ pub const Value = union(enum) {
     set: *const PersistentHashSet,
 
     /// Clojure pr-str semantics: format value for printing.
-    pub fn format(self: Value, writer: anytype) !void {
+    pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
-            .nil => try writer.writeAll("nil"),
-            .boolean => |b| try writer.writeAll(if (b) "true" else "false"),
-            .integer => |n| try writer.print("{d}", .{n}),
+            .nil => try w.writeAll("nil"),
+            .boolean => |b| try w.writeAll(if (b) "true" else "false"),
+            .integer => |n| try w.print("{d}", .{n}),
             .float => |n| {
                 // Clojure always prints a decimal point for floats.
                 var buf: [32]u8 = undefined;
                 const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch "0";
-                try writer.writeAll(s);
+                try w.writeAll(s);
                 var has_dot = false;
                 for (s) |ch| {
                     if (ch == '.' or ch == 'e' or ch == 'E') {
@@ -66,71 +67,71 @@ pub const Value = union(enum) {
                         break;
                     }
                 }
-                if (!has_dot) try writer.writeAll(".0");
+                if (!has_dot) try w.writeAll(".0");
             },
             .char => |c| switch (c) {
-                '\n' => try writer.writeAll("\\newline"),
-                '\r' => try writer.writeAll("\\return"),
-                ' ' => try writer.writeAll("\\space"),
-                '\t' => try writer.writeAll("\\tab"),
+                '\n' => try w.writeAll("\\newline"),
+                '\r' => try w.writeAll("\\return"),
+                ' ' => try w.writeAll("\\space"),
+                '\t' => try w.writeAll("\\tab"),
                 else => {
-                    try writer.writeAll("\\");
+                    try w.writeAll("\\");
                     var buf: [4]u8 = undefined;
                     const len = std.unicode.utf8Encode(c, &buf) catch 0;
-                    try writer.writeAll(buf[0..len]);
+                    try w.writeAll(buf[0..len]);
                 },
             },
-            .string => |s| try writer.print("\"{s}\"", .{s}),
+            .string => |s| try w.print("\"{s}\"", .{s}),
             .symbol => |sym| {
                 if (sym.ns) |ns| {
-                    try writer.print("{s}/{s}", .{ ns, sym.name });
+                    try w.print("{s}/{s}", .{ ns, sym.name });
                 } else {
-                    try writer.writeAll(sym.name);
+                    try w.writeAll(sym.name);
                 }
             },
             .keyword => |k| {
                 if (k.ns) |ns| {
-                    try writer.print(":{s}/{s}", .{ ns, k.name });
+                    try w.print(":{s}/{s}", .{ ns, k.name });
                 } else {
-                    try writer.print(":{s}", .{k.name});
+                    try w.print(":{s}", .{k.name});
                 }
             },
             .list => |lst| {
-                try writer.writeAll("(");
+                try w.writeAll("(");
                 for (lst.items, 0..) |item, i| {
-                    if (i > 0) try writer.writeAll(" ");
-                    try item.format(writer);
+                    if (i > 0) try w.writeAll(" ");
+                    try item.formatPrStr(w);
                 }
-                try writer.writeAll(")");
+                try w.writeAll(")");
             },
             .vector => |vec| {
-                try writer.writeAll("[");
+                try w.writeAll("[");
                 for (vec.items, 0..) |item, i| {
-                    if (i > 0) try writer.writeAll(" ");
-                    try item.format(writer);
+                    if (i > 0) try w.writeAll(" ");
+                    try item.formatPrStr(w);
                 }
-                try writer.writeAll("]");
+                try w.writeAll("]");
             },
             .map => |m| {
-                try writer.writeAll("{");
+                try w.writeAll("{");
                 var i: usize = 0;
                 var is_first = true;
                 while (i < m.entries.len) : (i += 2) {
-                    if (!is_first) try writer.writeAll(", ");
+                    if (!is_first) try w.writeAll(", ");
                     is_first = false;
-                    try m.entries[i].format(writer);
-                    try writer.writeAll(" ");
-                    try m.entries[i + 1].format(writer);
+                    try m.entries[i].formatPrStr(w);
+                    try w.writeAll(" ");
+                    try m.entries[i + 1].formatPrStr(w);
                 }
-                try writer.writeAll("}");
+                try w.writeAll("}");
             },
             .set => |s| {
-                try writer.writeAll("#{");
+                try w.writeAll("#{");
                 for (s.items, 0..) |item, i| {
-                    if (i > 0) try writer.writeAll(" ");
-                    try item.format(writer);
+                    if (i > 0) try w.writeAll(" ");
+                    try item.formatPrStr(w);
                 }
-                try writer.writeAll("}");
+                try w.writeAll("}");
             },
         }
     }
@@ -294,78 +295,79 @@ test "Value - namespaced keyword" {
 }
 
 fn expectFormat(expected: []const u8, v: Value) !void {
-    const result = try std.fmt.allocPrint(testing.allocator, "{f}", .{v});
-    defer testing.allocator.free(result);
-    try testing.expectEqualStrings(expected, result);
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try v.formatPrStr(&w);
+    try testing.expectEqualStrings(expected, w.buffered());
 }
 
-test "Value.format - nil" {
+test "Value.formatPrStr - nil" {
     try expectFormat("nil", .nil);
 }
 
-test "Value.format - boolean" {
+test "Value.formatPrStr - boolean" {
     try expectFormat("true", .{ .boolean = true });
     try expectFormat("false", .{ .boolean = false });
 }
 
-test "Value.format - integer" {
+test "Value.formatPrStr - integer" {
     try expectFormat("42", .{ .integer = 42 });
     try expectFormat("-1", .{ .integer = -1 });
     try expectFormat("0", .{ .integer = 0 });
 }
 
-test "Value.format - float" {
+test "Value.formatPrStr - float" {
     try expectFormat("3.14", .{ .float = 3.14 });
     try expectFormat("0.0", .{ .float = 0.0 });
     try expectFormat("-1.5", .{ .float = -1.5 });
     try expectFormat("1.0", .{ .float = 1.0 });
 }
 
-test "Value.format - char" {
+test "Value.formatPrStr - char" {
     try expectFormat("\\A", .{ .char = 'A' });
     try expectFormat("\\newline", .{ .char = '\n' });
     try expectFormat("\\space", .{ .char = ' ' });
     try expectFormat("\\tab", .{ .char = '\t' });
 }
 
-test "Value.format - string" {
+test "Value.formatPrStr - string" {
     try expectFormat("\"hello\"", .{ .string = "hello" });
     try expectFormat("\"\"", .{ .string = "" });
 }
 
-test "Value.format - symbol" {
+test "Value.formatPrStr - symbol" {
     try expectFormat("foo", .{ .symbol = .{ .name = "foo", .ns = null } });
     try expectFormat("clojure.core/inc", .{ .symbol = .{ .name = "inc", .ns = "clojure.core" } });
 }
 
-test "Value.format - keyword" {
+test "Value.formatPrStr - keyword" {
     try expectFormat(":bar", .{ .keyword = .{ .name = "bar", .ns = null } });
     try expectFormat(":clojure.core/keys", .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } });
 }
 
-test "Value.format - list" {
+test "Value.formatPrStr - list" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
     const list = PersistentList{ .items = &items };
     try expectFormat("(1 2 3)", .{ .list = &list });
 }
 
-test "Value.format - empty list" {
+test "Value.formatPrStr - empty list" {
     const list = PersistentList{ .items = &.{} };
     try expectFormat("()", .{ .list = &list });
 }
 
-test "Value.format - vector" {
+test "Value.formatPrStr - vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const vec = PersistentVector{ .items = &items };
     try expectFormat("[1 2]", .{ .vector = &vec });
 }
 
-test "Value.format - empty vector" {
+test "Value.formatPrStr - empty vector" {
     const vec = PersistentVector{ .items = &.{} };
     try expectFormat("[]", .{ .vector = &vec });
 }
 
-test "Value.format - map" {
+test "Value.formatPrStr - map" {
     const entries = [_]Value{
         .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
         .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
@@ -374,18 +376,18 @@ test "Value.format - map" {
     try expectFormat("{:a 1, :b 2}", .{ .map = &m });
 }
 
-test "Value.format - empty map" {
+test "Value.formatPrStr - empty map" {
     const m = PersistentArrayMap{ .entries = &.{} };
     try expectFormat("{}", .{ .map = &m });
 }
 
-test "Value.format - set" {
+test "Value.formatPrStr - set" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const s = PersistentHashSet{ .items = &items };
     try expectFormat("#{1 2}", .{ .set = &s });
 }
 
-test "Value.format - empty set" {
+test "Value.formatPrStr - empty set" {
     const s = PersistentHashSet{ .items = &.{} };
     try expectFormat("#{}", .{ .set = &s });
 }
