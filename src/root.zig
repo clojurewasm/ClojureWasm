@@ -16,6 +16,7 @@ pub const gc = @import("common/gc.zig");
 pub const opcodes = @import("common/bytecode/opcodes.zig");
 pub const chunk = @import("common/bytecode/chunk.zig");
 pub const compiler = @import("common/bytecode/compiler.zig");
+pub const vm = @import("native/vm/vm.zig");
 
 test {
     _ = value;
@@ -33,4 +34,5 @@ test {
     _ = opcodes;
     _ = chunk;
     _ = compiler;
+    _ = vm;
 }
