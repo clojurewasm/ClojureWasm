@@ -186,9 +186,14 @@ pub const TreeWalk = struct {
     fn runCall(self: *TreeWalk, call_n: *const node_mod.CallNode) TreeWalkError!Value {
         const callee = try self.run(call_n.callee);
 
-        // Builtin dispatch
+        // Builtin dispatch (sentinel keyword for intrinsics)
         if (isBuiltin(callee)) {
             return self.callBuiltin(callee.keyword.name, call_n.args);
+        }
+
+        // Builtin function dispatch (runtime_fn via BuiltinFn pointer)
+        if (callee == .builtin_fn) {
+            return self.callBuiltinFn(callee.builtin_fn, call_n.args);
         }
 
         // Closure call
@@ -386,6 +391,19 @@ pub const TreeWalk = struct {
             _ = self.run(finally) catch {};
         }
         return result;
+    }
+
+    // --- Builtin function dispatch (runtime_fn) ---
+
+    const var_mod = @import("../../common/var.zig");
+
+    fn callBuiltinFn(self: *TreeWalk, func: var_mod.BuiltinFn, arg_nodes: []const *Node) TreeWalkError!Value {
+        // Evaluate all arguments
+        var arg_vals: [MAX_LOCALS]Value = undefined;
+        for (arg_nodes, 0..) |arg, i| {
+            arg_vals[i] = try self.run(arg);
+        }
+        return @errorCast(func(self.allocator, arg_vals[0..arg_nodes.len]));
     }
 
     // --- Builtin arithmetic/comparison ---
@@ -938,6 +956,56 @@ test "TreeWalk throw without catch propagates" {
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     const n = Node{ .throw_node = &throw_data };
     try std.testing.expectError(error.UserException, tw.run(&n));
+}
+
+test "TreeWalk collection intrinsic via registry" {
+    // (first [10 20 30]) => 10
+    const registry = @import("../../common/builtin/registry.zig");
+    const collections_mod = @import("../../common/collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "first", .source = .{} } };
+    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = try tw.run(&n);
+    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+}
+
+test "TreeWalk count via registry" {
+    // (count [1 2 3]) => 3
+    const registry = @import("../../common/builtin/registry.zig");
+    const collections_mod = @import("../../common/collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
+    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = try tw.run(&n);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result);
 }
 
 test "TreeWalk arithmetic via registry-registered Env" {

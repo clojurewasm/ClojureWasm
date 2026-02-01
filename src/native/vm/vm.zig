@@ -440,6 +440,18 @@ pub const VM = struct {
         // Stack: [..., fn_val, arg0, arg1, ...]
         const fn_idx = self.sp - arg_count - 1;
         const callee = self.stack[fn_idx];
+
+        // Builtin function dispatch
+        if (callee == .builtin_fn) {
+            const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+            const result = callee.builtin_fn(self.allocator, args) catch |e| {
+                return @as(VMError, @errorCast(e));
+            };
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
+        }
+
         if (callee != .fn_val) return error.TypeError;
 
         const fn_obj = callee.fn_val;

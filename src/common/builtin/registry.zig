@@ -13,19 +13,21 @@ const Env = env_mod.Env;
 // Domain modules
 const arithmetic = @import("arithmetic.zig");
 const special_forms = @import("special_forms.zig");
+const collections_mod = @import("collections.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
 
 // Comptime validation: no duplicate names
 comptime {
+    @setEvalBranchQuota(all_builtins.len * all_builtins.len * 10);
     for (all_builtins, 0..) |a, i| {
         for (all_builtins[i + 1 ..]) |b| {
             if (std.mem.eql(u8, a.name, b.name)) {
@@ -68,6 +70,10 @@ pub fn registerBuiltins(env: *Env) !void {
     for (all_builtins) |b| {
         const v = try core_ns.intern(b.name);
         v.applyBuiltinDef(b);
+        // Bind runtime function as root value
+        if (b.func) |f| {
+            v.bindRoot(.{ .builtin_fn = f });
+        }
     }
 
     // Create user namespace and refer all core builtins
@@ -84,8 +90,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 12 arithmetic + 13 special forms = 25
-    try std.testing.expectEqual(25, builtin_count);
+    // 12 arithmetic + 13 special forms + 8 collections = 33
+    try std.testing.expectEqual(33, builtin_count);
 }
 
 test "comptime lookup finds +" {

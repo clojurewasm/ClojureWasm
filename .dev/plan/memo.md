@@ -4,7 +4,7 @@
 
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Collection intrinsics (Task 3.6)
+- Current task: Type predicates (Task 3.7)
 - Task file:
 - Blockers: none
 
@@ -31,3 +31,4 @@
 | T3.3    | .dev/plan/archive/task_0024_recur_tail_call.md              | 2026-02-01 |
 | T3.4    | .dev/plan/archive/task_0025_collection_exception_opcodes.md | 2026-02-01 |
 | T3.5    | .dev/plan/archive/task_0026_builtin_registry.md             | 2026-02-01 |
+| T3.6    | .dev/plan/archive/task_0027_collection_intrinsics.md        | 2026-02-02 |

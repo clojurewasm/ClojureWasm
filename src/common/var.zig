@@ -29,14 +29,17 @@ pub const VarKind = enum(u8) {
     user_macro,
 };
 
+/// Builtin function signature: allocator + args -> Value.
+pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
+
 /// Metadata definition for builtin functions/macros (SS10).
-/// The `func` field (BuiltinFn) is deferred to Phase 3 when actual
-/// builtin function implementations exist.
 pub const BuiltinDef = struct {
     /// Function/macro name (e.g. "+", "map", "if").
     name: []const u8,
     /// Dependency-layer classification.
     kind: VarKind,
+    /// Runtime function pointer (null for special forms and vm_intrinsics).
+    func: ?BuiltinFn = null,
     /// Docstring (Clojure :doc metadata).
     doc: ?[]const u8 = null,
     /// Argument list display string (e.g. "([] [x] [x y & more])").

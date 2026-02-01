@@ -58,6 +58,7 @@ pub const Value = union(enum) {
 
     // Functions
     fn_val: *const Fn,
+    builtin_fn: @import("var.zig").BuiltinFn,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -144,6 +145,7 @@ pub const Value = union(enum) {
                 try w.writeAll("}");
             },
             .fn_val => try w.writeAll("#<fn>"),
+            .builtin_fn => try w.writeAll("#<builtin-fn>"),
         }
     }
 
@@ -185,6 +187,7 @@ pub const Value = union(enum) {
             .keyword => |a| eqlOptionalStr(a.ns, other.keyword.ns) and std.mem.eql(u8, a.name, other.keyword.name),
             .list, .vector => unreachable, // handled by sequential equality above
             .fn_val => |a| a == other.fn_val,
+            .builtin_fn => |a| a == other.builtin_fn,
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;

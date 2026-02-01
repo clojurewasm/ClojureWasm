@@ -22,6 +22,7 @@ pub const eval_engine = @import("common/eval_engine.zig");
 pub const builtin_arithmetic = @import("common/builtin/arithmetic.zig");
 pub const builtin_special_forms = @import("common/builtin/special_forms.zig");
 pub const builtin_registry = @import("common/builtin/registry.zig");
+pub const builtin_collections = @import("common/builtin/collections.zig");
 
 test {
     _ = value;
@@ -45,4 +46,5 @@ test {
     _ = builtin_arithmetic;
     _ = builtin_special_forms;
     _ = builtin_registry;
+    _ = builtin_collections;
 }

@@ -389,3 +389,57 @@ test "EvalEngine compare loop/recur" {
     try std.testing.expectEqual(Value{ .integer = 5 }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .integer = 5 }, result.vm_value.?);
 }
+
+test "EvalEngine compare collection intrinsic (count)" {
+    // (count [1 2 3]) => 3 — both backends via registry
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
+    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.vm_value.?);
+}
+
+test "EvalEngine compare first on vector" {
+    // (first [10 20 30]) => 10 — both backends
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "first", .source = .{} } };
+    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 10 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 10 }, result.vm_value.?);
+}
