@@ -1,11 +1,12 @@
 # ClojureWasm Development Memo
 
 ## Current State
-- Phase: 1c (Analyzer)
+- Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Analyzer: var resolution, namespace lookup
-- Task file:
-- Blockers: Requires Env/Namespace/Var from Phase 2 runtime
+- Current task: Create Env (environment) in src/common/value/env.zig
+- Task file: .dev/plan/active/task_0012_env.md
+- Blockers: none
+- Note: Task 1.12 (var resolution) deferred — requires Env/Namespace/Var from Phase 2a
 
 ## Completed Phases
 | Phase   | Archive                                      | Date       |
