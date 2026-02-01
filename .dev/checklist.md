@@ -26,11 +26,11 @@ Last updated: 2026-02-02 (after T4.10)
 
 ## Phase 4 task priorities
 
-| ID  | Item                                | Phase | Depends on | Notes                                                            |
-| --- | ----------------------------------- | ----- | ---------- | ---------------------------------------------------------------- |
-| P1  | VM parity with Phase 3 features     | 4b    | —          | variadic arith, predicates, inc/dec not in VM                    |
-| P2  | core.clj AOT pipeline (T3.11/T3.12) | 4c    | P1         | build.zig custom step, @embedFile                                |
-| P3  | Missing language features           | 4d    | —          | protocols (multi-arity T4.8, destructuring T4.9, for T4.10 done) |
-| P4  | REPL                                | 4e    | —          | Currently stub (version print only)                              |
-| P5  | Wasm target                         | 4e    | P1         | wasm32-wasi build, test on wasmtime                              |
-| P6  | Directory restructuring             | 4f    | —          | Create src/repl/, src/wasm/ stubs per README                     |
+| ID  | Item                                | Phase | Depends on | Notes                                                                  |
+| --- | ----------------------------------- | ----- | ---------- | ---------------------------------------------------------------------- |
+| P1  | VM parity with Phase 3 features     | 4b    | —          | variadic arith, predicates, inc/dec not in VM                          |
+| P2  | core.clj AOT pipeline (T3.11/T3.12) | 4c    | P1         | build.zig custom step, @embedFile                                      |
+| P3  | Missing language features           | 4d    | —          | Done: multi-arity T4.8, destructuring T4.9, for T4.10, protocols T4.11 |
+| P4  | REPL                                | 4e    | —          | Currently stub (version print only)                                    |
+| P5  | Wasm target                         | 4e    | P1         | wasm32-wasi build, test on wasmtime                                    |
+| P6  | Directory restructuring             | 4f    | —          | Create src/repl/, src/wasm/ stubs per README                           |

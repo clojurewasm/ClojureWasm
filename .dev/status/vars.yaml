@@ -244,8 +244,8 @@ vars:
     defn: {type: macro, status: done, impl: clj}
     "defn-": {type: macro, status: done, impl: clj}
     defonce: {type: macro, status: todo, impl: none}
-    defprotocol: {type: macro, status: todo, impl: none}
-    defrecord: {type: macro, status: todo, impl: none}
+    defprotocol: {type: macro, status: done, impl: special_form}
+    defrecord: {type: macro, status: done, impl: special_form}
     defstruct: {type: macro, status: todo, impl: none}
     deftype: {type: macro, status: todo, impl: none}
     delay: {type: macro, status: todo, impl: none}
@@ -293,7 +293,7 @@ vars:
     "ex-message": {type: function, status: todo, impl: none}
     extend: {type: function, status: todo, impl: none}
     "extend-protocol": {type: macro, status: todo, impl: none}
-    "extend-type": {type: macro, status: todo, impl: none}
+    "extend-type": {type: macro, status: done, impl: special_form}
     extenders: {type: function, status: todo, impl: none}
     "extends?": {type: function, status: todo, impl: none}
     "false?": {type: function, status: todo, impl: none}
@@ -574,7 +574,7 @@ vars:
     rseq: {type: function, status: todo, impl: none}
     rsubseq: {type: function, status: todo, impl: none}
     "run!": {type: function, status: todo, impl: none}
-    "satisfies?": {type: function, status: todo, impl: none}
+    "satisfies?": {type: function, status: done, impl: host}
     second: {type: function, status: todo, impl: none}
     "select-keys": {type: function, status: todo, impl: none}
     send: {type: function, status: todo, impl: none}

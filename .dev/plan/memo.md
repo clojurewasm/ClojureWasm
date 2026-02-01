@@ -4,7 +4,7 @@
 
 - Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T4.11 — Protocols + defrecord
+- Current task: T4.12 — Interactive REPL
 - Task file: (not yet created)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
@@ -52,6 +52,7 @@
 | T4.8    | .dev/plan/archive/task_0044_multi_arity_fn.md               | 2026-02-02 |
 | T4.9    | .dev/plan/archive/task_0045_destructuring.md                | 2026-02-02 |
 | T4.10   | .dev/plan/archive/task_0046_for_macro.md                    | 2026-02-02 |
+| T4.11   | .dev/plan/archive/task_0047_protocols_defrecord.md          | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

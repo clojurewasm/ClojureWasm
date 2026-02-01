@@ -91,6 +91,8 @@ pub const Compiler = struct {
             .throw_node => |node| try self.emitThrow(node),
             .try_node => |node| try self.emitTry(node),
             .var_ref => |ref| try self.emitVarRef(ref),
+            // Protocol nodes not yet supported in VM compiler
+            .defprotocol_node, .extend_type_node => return error.InvalidNode,
         }
     }
 

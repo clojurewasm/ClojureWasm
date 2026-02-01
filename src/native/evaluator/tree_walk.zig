@@ -125,6 +125,8 @@ pub const TreeWalk = struct {
             .quote_node => |q| q.value,
             .throw_node => |throw_n| self.runThrow(throw_n),
             .try_node => |try_n| self.runTry(try_n),
+            .defprotocol_node => |dp_n| self.runDefprotocol(dp_n),
+            .extend_type_node => |et_n| self.runExtendType(et_n),
         };
     }
 
@@ -207,6 +209,22 @@ pub const TreeWalk = struct {
         // Builtin function dispatch (runtime_fn via BuiltinFn pointer)
         if (callee == .builtin_fn) {
             return self.callBuiltinFn(callee.builtin_fn, call_n.args);
+        }
+
+        // Protocol function dispatch
+        if (callee == .protocol_fn) {
+            return self.callProtocolFn(callee.protocol_fn, call_n.args);
+        }
+
+        // Keyword-as-function: (:key map) => (get map :key)
+        if (callee == .keyword) {
+            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            const target = try self.run(call_n.args[0]);
+            if (target == .map) {
+                return target.map.get(callee) orelse
+                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            }
+            return if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
         // Closure call
@@ -367,6 +385,145 @@ pub const TreeWalk = struct {
         if (def_n.is_private) v.private = true;
 
         return Value{ .symbol = .{ .ns = ns.name, .name = v.sym.name } };
+    }
+
+    fn callProtocolFn(self: *TreeWalk, pf: *const value_mod.ProtocolFn, arg_nodes: []const *Node) TreeWalkError!Value {
+        // Evaluate all arguments
+        const args = self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory;
+        for (arg_nodes, 0..) |arg_node, i| {
+            args[i] = try self.run(arg_node);
+        }
+
+        // Dispatch on first arg's type
+        if (args.len == 0) return error.ArityError;
+        const type_key = valueTypeKey(args[0]);
+
+        // Lookup in protocol impls
+        const protocol = pf.protocol;
+        const method_map_val = protocol.impls.get(.{ .string = type_key }) orelse return error.TypeError;
+        if (method_map_val != .map) return error.TypeError;
+        const method_map = method_map_val.map;
+
+        // Lookup method in method map
+        const fn_val = method_map.get(.{ .string = pf.method_name }) orelse return error.TypeError;
+
+        // Call the impl function
+        return self.callValue(fn_val, args);
+    }
+
+    // --- Protocols ---
+
+    fn runDefprotocol(self: *TreeWalk, dp_n: *const node_mod.DefProtocolNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+
+        // Create Protocol
+        const protocol = self.allocator.create(value_mod.Protocol) catch return error.OutOfMemory;
+        const method_sigs = self.allocator.alloc(value_mod.MethodSig, dp_n.method_sigs.len) catch return error.OutOfMemory;
+        for (dp_n.method_sigs, 0..) |sig, i| {
+            method_sigs[i] = .{ .name = sig.name, .arity = sig.arity };
+        }
+        // Empty impls map
+        const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        empty_map.* = .{ .entries = &.{} };
+        protocol.* = .{
+            .name = dp_n.name,
+            .method_sigs = method_sigs,
+            .impls = empty_map,
+        };
+
+        // Bind protocol name
+        const proto_var = ns.intern(dp_n.name) catch return error.OutOfMemory;
+        proto_var.bindRoot(.{ .protocol = protocol });
+
+        // Bind each method as a ProtocolFn var
+        for (dp_n.method_sigs) |sig| {
+            const pf = self.allocator.create(value_mod.ProtocolFn) catch return error.OutOfMemory;
+            pf.* = .{
+                .protocol = protocol,
+                .method_name = sig.name,
+            };
+            const method_var = ns.intern(sig.name) catch return error.OutOfMemory;
+            method_var.bindRoot(.{ .protocol_fn = pf });
+        }
+
+        return Value{ .protocol = protocol };
+    }
+
+    fn runExtendType(self: *TreeWalk, et_n: *const node_mod.ExtendTypeNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+
+        // Resolve protocol
+        const proto_var = ns.resolve(et_n.protocol_name) orelse return error.UndefinedVar;
+        const proto_val = proto_var.deref();
+        if (proto_val != .protocol) return error.TypeError;
+        const protocol = proto_val.protocol;
+
+        // Map type name to type key
+        const type_key = mapTypeKey(et_n.type_name);
+
+        // Build method map: {method_name -> fn_val}
+        const method_count = et_n.methods.len;
+        const entries = self.allocator.alloc(Value, method_count * 2) catch return error.OutOfMemory;
+        for (et_n.methods, 0..) |method, i| {
+            entries[i * 2] = .{ .string = method.name };
+            entries[i * 2 + 1] = try self.makeClosure(method.fn_node);
+        }
+        const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        method_map.* = .{ .entries = entries };
+
+        // Add to protocol impls: assoc type_key -> method_map
+        const old_impls = protocol.impls;
+        const new_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
+        @memcpy(new_entries[0..old_impls.entries.len], old_impls.entries);
+        new_entries[old_impls.entries.len] = .{ .string = type_key };
+        new_entries[old_impls.entries.len + 1] = .{ .map = method_map };
+        const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        new_impls.* = .{ .entries = new_entries };
+        protocol.impls = new_impls;
+
+        return .nil;
+    }
+
+    /// Map user-facing type name to internal type key.
+    fn mapTypeKey(type_name: []const u8) []const u8 {
+        if (std.mem.eql(u8, type_name, "String")) return "string";
+        if (std.mem.eql(u8, type_name, "Integer") or std.mem.eql(u8, type_name, "Long")) return "integer";
+        if (std.mem.eql(u8, type_name, "Double") or std.mem.eql(u8, type_name, "Float")) return "float";
+        if (std.mem.eql(u8, type_name, "Boolean")) return "boolean";
+        if (std.mem.eql(u8, type_name, "nil")) return "nil";
+        if (std.mem.eql(u8, type_name, "Keyword")) return "keyword";
+        if (std.mem.eql(u8, type_name, "Symbol")) return "symbol";
+        if (std.mem.eql(u8, type_name, "PersistentList") or std.mem.eql(u8, type_name, "List")) return "list";
+        if (std.mem.eql(u8, type_name, "PersistentVector") or std.mem.eql(u8, type_name, "Vector")) return "vector";
+        if (std.mem.eql(u8, type_name, "PersistentArrayMap") or std.mem.eql(u8, type_name, "Map")) return "map";
+        if (std.mem.eql(u8, type_name, "PersistentHashSet") or std.mem.eql(u8, type_name, "Set")) return "set";
+        if (std.mem.eql(u8, type_name, "Atom")) return "atom";
+        // Default: use as-is (for custom record types)
+        return type_name;
+    }
+
+    /// Get type key string for a runtime value.
+    fn valueTypeKey(val: Value) []const u8 {
+        return switch (val) {
+            .nil => "nil",
+            .boolean => "boolean",
+            .integer => "integer",
+            .float => "float",
+            .char => "char",
+            .string => "string",
+            .symbol => "symbol",
+            .keyword => "keyword",
+            .list => "list",
+            .vector => "vector",
+            .map => "map",
+            .set => "set",
+            .fn_val, .builtin_fn => "function",
+            .atom => "atom",
+            .protocol => "protocol",
+            .protocol_fn => "protocol_fn",
+        };
     }
 
     // --- Loop / Recur ---

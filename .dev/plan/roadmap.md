@@ -160,12 +160,12 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4d: Missing Language Features
 
-| #    | Task                             | Archive                     | Notes                                        |
-| ---- | -------------------------------- | --------------------------- | -------------------------------------------- |
-| 4.8  | Multi-arity fn                   | task_0044_multi_arity_fn.md | Fixed-arity dispatch; variadic rest deferred |
-| 4.9  | Destructuring (sequential + map) | task_0045_destructuring.md  | let, fn, loop binding forms                  |
-| 4.10 | for macro (list comprehension)   | task_0046_for_macro.md      | :let, :when, :while modifiers                |
-| 4.11 | Protocols + defrecord            | --                          | Polymorphic dispatch                         |
+| #    | Task                             | Archive                          | Notes                                        |
+| ---- | -------------------------------- | -------------------------------- | -------------------------------------------- |
+| 4.8  | Multi-arity fn                   | task_0044_multi_arity_fn.md      | Fixed-arity dispatch; variadic rest deferred |
+| 4.9  | Destructuring (sequential + map) | task_0045_destructuring.md       | let, fn, loop binding forms                  |
+| 4.10 | for macro (list comprehension)   | task_0046_for_macro.md           | :let, :when, :while modifiers                |
+| 4.11 | Protocols + defrecord            | task_0047_protocols_defrecord.md | Polymorphic dispatch                         |
 
 ### Phase 4e: REPL + Wasm
 

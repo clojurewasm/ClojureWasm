@@ -147,6 +147,33 @@ pub const TryNode = struct {
     source: SourceInfo,
 };
 
+/// defprotocol: (defprotocol Name (method [args]) ...)
+pub const DefProtocolNode = struct {
+    name: []const u8,
+    method_sigs: []const MethodSigNode,
+    source: SourceInfo,
+};
+
+/// Method signature in defprotocol.
+pub const MethodSigNode = struct {
+    name: []const u8,
+    arity: u8, // including 'this'
+};
+
+/// extend-type: (extend-type TypeName Protocol (method [args] body) ...)
+pub const ExtendTypeNode = struct {
+    type_name: []const u8,
+    protocol_name: []const u8,
+    methods: []const ExtendMethodNode,
+    source: SourceInfo,
+};
+
+/// Method implementation in extend-type.
+pub const ExtendMethodNode = struct {
+    name: []const u8,
+    fn_node: *FnNode,
+};
+
 // === Node tagged union ===
 
 /// Executable AST node — output of the Analyzer.
@@ -179,6 +206,10 @@ pub const Node = union(enum) {
     throw_node: *ThrowNode,
     try_node: *TryNode,
 
+    // Protocols
+    defprotocol_node: *DefProtocolNode,
+    extend_type_node: *ExtendTypeNode,
+
     /// Get source location info for error reporting.
     pub fn source(self: Node) SourceInfo {
         return switch (self) {
@@ -196,6 +227,8 @@ pub const Node = union(enum) {
             .quote_node => |n| n.source,
             .throw_node => |n| n.source,
             .try_node => |n| n.source,
+            .defprotocol_node => |n| n.source,
+            .extend_type_node => |n| n.source,
         };
     }
 
@@ -216,6 +249,8 @@ pub const Node = union(enum) {
             .quote_node => "quote",
             .throw_node => "throw",
             .try_node => "try",
+            .defprotocol_node => "defprotocol",
+            .extend_type_node => "extend-type",
         };
     }
 };

@@ -174,5 +174,7 @@ fn writeValue(w: anytype, val: Value) void {
             _ = w.write("\\") catch {};
             _ = w.write(buf[0..len]) catch {};
         },
+        .protocol => |p| w.print("#<protocol {s}>", .{p.name}) catch {},
+        .protocol_fn => |pf| w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {},
     }
 }

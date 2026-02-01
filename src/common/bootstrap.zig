@@ -1289,6 +1289,67 @@ test "core.clj - for comprehension" {
     try expectEvalInt(alloc, &env, "(first (for [x [1 2 3] :let [y (* x 10)]] y))", 10);
 }
 
+test "defprotocol - basic definition" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // defprotocol should define the protocol and its method vars
+    _ = try evalString(alloc, &env, "(defprotocol IGreet (greet [this]))");
+    // The method var 'greet' should be resolvable (test by evaluating it)
+    // If not defined, this will error
+    const greet_val = try evalString(alloc, &env, "greet");
+    // It should be a protocol_fn value
+    try testing.expect(greet_val == .protocol_fn);
+
+    // extend-type and protocol dispatch
+    _ = try evalString(alloc, &env,
+        \\(extend-type String IGreet
+        \\  (greet [this] (str "Hello, " this "!")))
+    );
+    try expectEvalStr(alloc, &env,
+        \\(greet "World")
+    , "Hello, World!");
+
+    // Multiple type implementations
+    _ = try evalString(alloc, &env,
+        \\(extend-type Integer IGreet
+        \\  (greet [this] (str "Number " this)))
+    );
+    try expectEvalStr(alloc, &env, "(greet 42)", "Number 42");
+
+    // Multi-arity method
+    _ = try evalString(alloc, &env, "(defprotocol IAdd (add-to [this x]))");
+    _ = try evalString(alloc, &env,
+        \\(extend-type Integer IAdd
+        \\  (add-to [this x] (+ this x)))
+    );
+    try expectEvalInt(alloc, &env, "(add-to 10 20)", 30);
+
+    // satisfies?
+    try expectEvalBool(alloc, &env, "(satisfies? IGreet \"hello\")", true);
+    try expectEvalBool(alloc, &env, "(satisfies? IGreet 42)", true);
+    try expectEvalBool(alloc, &env, "(satisfies? IGreet [1 2])", false);
+}
+
+test "defrecord - basic constructor" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defrecord Point [x y])");
+    try expectEvalInt(alloc, &env, "(:x (->Point 1 2))", 1);
+    try expectEvalInt(alloc, &env, "(:y (->Point 1 2))", 2);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

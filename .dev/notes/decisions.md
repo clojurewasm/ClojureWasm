@@ -846,3 +846,23 @@ and the entire `recur_args` array, same as it already did for `locals`.
 
 **Impact**: This was blocking nested `map`, `reduce`, and any higher-order
 fn that uses loop/recur internally when called from within another such fn.
+
+## D23: Protocol dispatch via type-keyed PersistentArrayMap
+
+**Decision**: Protocols use PersistentArrayMap for implementation dispatch.
+`Protocol.impls` maps type-key strings ("string", "integer", etc.) to
+method maps (PersistentArrayMap of method-name → fn_val).
+
+**Type keys**: Runtime Value tags map to fixed strings via `valueTypeKey()`.
+User-facing type names (String, Integer) map via `mapTypeKey()` in
+extend-type. This follows Beta's pattern.
+
+**Keyword-as-function**: Added (:key map) → (get map :key) dispatch in
+TreeWalk.runCall. Keywords with 1-2 args perform map lookup on the first
+arg. This was needed for defrecord field access.
+
+## D24: defrecord as Form expansion
+
+**Decision**: `defrecord` expands into Forms (not Nodes) and re-analyzes
+through the normal pipeline: `(def ->Name (fn ->Name [fields] (hash-map ...)))`.
+This ensures proper local tracking via the Analyzer.

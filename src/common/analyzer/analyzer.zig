@@ -159,6 +159,9 @@ pub const Analyzer = struct {
         .{ "throw", analyzeThrow },
         .{ "try", analyzeTry },
         .{ "for", analyzeFor },
+        .{ "defprotocol", analyzeDefprotocol },
+        .{ "extend-type", analyzeExtendType },
+        .{ "defrecord", analyzeDefrecord },
     });
 
     // === Main entry point ===
@@ -883,6 +886,165 @@ pub const Analyzer = struct {
         apply_args[0] = concat_ref;
         apply_args[1] = map_call;
         return self.makeBuiltinCall("apply", apply_args);
+    }
+
+    fn analyzeDefprotocol(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (defprotocol Name (method1 [this]) (method2 [this arg]) ...)
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "defprotocol requires a name", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "defprotocol name must be a symbol", items[1]);
+        }
+
+        const name = items[1].data.symbol.name;
+        const method_forms = items[2..];
+
+        var sigs: std.ArrayList(node_mod.MethodSigNode) = .empty;
+        for (method_forms) |mf| {
+            if (mf.data != .list) {
+                return self.analysisError(.value_error, "defprotocol method must be a list", mf);
+            }
+            const m_items = mf.data.list;
+            if (m_items.len < 2) {
+                return self.analysisError(.arity_error, "method requires name and arglist", mf);
+            }
+            if (m_items[0].data != .symbol) {
+                return self.analysisError(.value_error, "method name must be a symbol", m_items[0]);
+            }
+            if (m_items[1].data != .vector) {
+                return self.analysisError(.value_error, "method arglist must be a vector", m_items[1]);
+            }
+            sigs.append(self.allocator, .{
+                .name = m_items[0].data.symbol.name,
+                .arity = @intCast(m_items[1].data.vector.len),
+            }) catch return error.OutOfMemory;
+        }
+
+        const dp = self.allocator.create(node_mod.DefProtocolNode) catch return error.OutOfMemory;
+        dp.* = .{
+            .name = name,
+            .method_sigs = sigs.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .defprotocol_node = dp };
+        return n;
+    }
+
+    fn analyzeExtendType(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (extend-type TypeName Protocol (method [args] body) ...)
+        if (items.len < 3) {
+            return self.analysisError(.arity_error, "extend-type requires type, protocol, and methods", form);
+        }
+
+        // Type name (symbol, e.g. String, Integer, nil)
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "extend-type type must be a symbol", items[1]);
+        }
+        const type_name = items[1].data.symbol.name;
+
+        // Protocol name
+        if (items[2].data != .symbol) {
+            return self.analysisError(.value_error, "extend-type protocol must be a symbol", items[2]);
+        }
+        const protocol_name = items[2].data.symbol.name;
+
+        // Methods
+        const method_forms = items[3..];
+        var methods: std.ArrayList(node_mod.ExtendMethodNode) = .empty;
+
+        for (method_forms) |mf| {
+            if (mf.data != .list) {
+                return self.analysisError(.value_error, "extend-type method must be a list", mf);
+            }
+            const m_items = mf.data.list;
+            if (m_items.len < 3) {
+                return self.analysisError(.arity_error, "method requires name, arglist, body", mf);
+            }
+            if (m_items[0].data != .symbol) {
+                return self.analysisError(.value_error, "method name must be a symbol", m_items[0]);
+            }
+            const method_name = m_items[0].data.symbol.name;
+
+            // Build fn node from method: (fn [args] body)
+            // Reuse analyzeFnInner logic: construct items as if (fn [args] body)
+            const fn_items = self.allocator.alloc(Form, m_items.len) catch return error.OutOfMemory;
+            fn_items[0] = m_items[0]; // name (used as fn name is optional, use method name)
+            @memcpy(fn_items[1..], m_items[1..]);
+
+            // Analyze as (fn method-name [args] body)
+            const fn_node = try self.analyzeFn(fn_items, mf);
+            // fn_node should be .fn_node
+            methods.append(self.allocator, .{
+                .name = method_name,
+                .fn_node = fn_node.fn_node,
+            }) catch return error.OutOfMemory;
+        }
+
+        const et = self.allocator.create(node_mod.ExtendTypeNode) catch return error.OutOfMemory;
+        et.* = .{
+            .type_name = type_name,
+            .protocol_name = protocol_name,
+            .methods = methods.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .extend_type_node = et };
+        return n;
+    }
+
+    fn analyzeDefrecord(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (defrecord Name [fields])
+        // Expand to Form: (def ->Name (fn ->Name [field1 field2] (hash-map :field1 field1 ...)))
+        // Then re-analyze the constructed Form.
+        if (items.len < 3) {
+            return self.analysisError(.arity_error, "defrecord requires name and fields", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "defrecord name must be a symbol", items[1]);
+        }
+        if (items[2].data != .vector) {
+            return self.analysisError(.value_error, "defrecord fields must be a vector", items[2]);
+        }
+
+        const rec_name = items[1].data.symbol.name;
+        const fields = items[2].data.vector;
+
+        for (fields) |field| {
+            if (field.data != .symbol) {
+                return self.analysisError(.value_error, "defrecord field must be a symbol", field);
+            }
+        }
+
+        const ctor_name = std.fmt.allocPrint(self.allocator, "->{s}", .{rec_name}) catch return error.OutOfMemory;
+
+        // Build (hash-map :field1 field1 :field2 field2 ...) as Forms
+        const hm_form_count = 1 + fields.len * 2; // hash-map + pairs
+        const hm_forms = self.allocator.alloc(Form, hm_form_count) catch return error.OutOfMemory;
+        hm_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "hash-map" } } };
+        for (fields, 0..) |field, i| {
+            hm_forms[1 + i * 2] = .{ .data = .{ .keyword = .{ .ns = null, .name = field.data.symbol.name } } };
+            hm_forms[1 + i * 2 + 1] = field; // symbol ref
+        }
+
+        // Build (fn ->Name [fields...] (hash-map ...))
+        const fn_forms = self.allocator.alloc(Form, 4) catch return error.OutOfMemory;
+        fn_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
+        fn_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
+        fn_forms[2] = items[2]; // [fields] vector
+        fn_forms[3] = .{ .data = .{ .list = hm_forms } };
+
+        // Build (def ->Name (fn ...))
+        const def_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        def_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "def" } } };
+        def_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
+        def_forms[2] = .{ .data = .{ .list = fn_forms } };
+
+        const def_form = Form{ .data = .{ .list = def_forms } };
+        return self.analyze(def_form);
     }
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

@@ -170,6 +170,32 @@ pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .boolean = !args[0].isTruthy() };
 }
 
+/// (satisfies? protocol x) — true if x's type has an impl for the protocol.
+pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .protocol) return error.TypeError;
+    const protocol = args[0].protocol;
+    const type_key: Value = .{ .string = switch (args[1]) {
+        .nil => "nil",
+        .boolean => "boolean",
+        .integer => "integer",
+        .float => "float",
+        .char => "char",
+        .string => "string",
+        .symbol => "symbol",
+        .keyword => "keyword",
+        .list => "list",
+        .vector => "vector",
+        .map => "map",
+        .set => "set",
+        .fn_val, .builtin_fn => "function",
+        .atom => "atom",
+        .protocol => "protocol",
+        .protocol_fn => "protocol_fn",
+    } };
+    return Value{ .boolean = protocol.impls.get(type_key) != null };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -196,6 +222,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "even?", .kind = .runtime_fn, .func = &evenPred, .doc = "Returns true if n is even, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "odd?", .kind = .runtime_fn, .func = &oddPred, .doc = "Returns true if n is odd, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "not", .kind = .runtime_fn, .func = &notFn, .doc = "Returns true if x is logical false, false otherwise.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "satisfies?", .kind = .runtime_fn, .func = &satisfiesPred, .doc = "Returns true if x satisfies the protocol.", .arglists = "([protocol x])", .added = "1.2" },
 };
 
 // === Tests ===
@@ -281,8 +308,8 @@ test "odd? predicate" {
     try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 2 }}));
 }
 
-test "builtins table has 21 entries" {
-    try testing.expectEqual(21, builtins.len);
+test "builtins table has 22 entries" {
+    try testing.expectEqual(22, builtins.len);
 }
 
 test "builtins all have func" {

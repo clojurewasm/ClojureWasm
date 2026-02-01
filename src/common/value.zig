@@ -42,6 +42,26 @@ pub const FnKind = enum {
     treewalk, // proto points to TreeWalk.Closure
 };
 
+/// Protocol method signature.
+pub const MethodSig = struct {
+    name: []const u8,
+    arity: u8, // including 'this'
+};
+
+/// Protocol — polymorphic dispatch via type-keyed implementation map.
+pub const Protocol = struct {
+    name: []const u8,
+    method_sigs: []const MethodSig,
+    /// Maps type_key (string) -> method_map (PersistentArrayMap of method_name -> fn)
+    impls: *PersistentArrayMap,
+};
+
+/// Protocol method reference — dispatches on first arg type.
+pub const ProtocolFn = struct {
+    protocol: *Protocol,
+    method_name: []const u8,
+};
+
 /// Runtime function (closure). Proto is stored as opaque pointer
 /// to avoid circular dependency with bytecode/chunk.zig.
 pub const Fn = struct {
@@ -81,6 +101,10 @@ pub const Value = union(enum) {
 
     // Reference types
     atom: *Atom,
+
+    // Protocol types
+    protocol: *Protocol,
+    protocol_fn: *const ProtocolFn,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -173,6 +197,18 @@ pub const Value = union(enum) {
                 try a.value.formatPrStr(w);
                 try w.writeAll(">");
             },
+            .protocol => |p| {
+                try w.writeAll("#<protocol ");
+                try w.writeAll(p.name);
+                try w.writeAll(">");
+            },
+            .protocol_fn => |pf| {
+                try w.writeAll("#<protocol-fn ");
+                try w.writeAll(pf.protocol.name);
+                try w.writeAll("/");
+                try w.writeAll(pf.method_name);
+                try w.writeAll(">");
+            },
         }
     }
 
@@ -231,6 +267,8 @@ pub const Value = union(enum) {
             .fn_val => |a| a == other.fn_val,
             .builtin_fn => |a| a == other.builtin_fn,
             .atom => |a| a == other.atom, // identity equality
+            .protocol => |a| a == other.protocol, // identity equality
+            .protocol_fn => |a| a == other.protocol_fn, // identity equality
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;
