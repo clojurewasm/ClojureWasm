@@ -1,5 +1,12 @@
 # log_0000_kickoff
 
+## Task 7: Create docs/adr/0001-nan-boxing.md scaffold — DONE
+
+Created ADR-0001 documenting the "tagged union first, NaN boxing later" decision.
+Follows standard ADR format: Status, Context, Decision, Rationale, Consequences,
+Alternatives Considered, References. Based on D1 from decisions.md and future.md
+SS3/SS5/SS7.
+
 ## Task 6: Create src/ directory structure per future.md SS17 — DONE
 
 Created full directory tree per §17.2 of future.md:
