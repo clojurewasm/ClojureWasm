@@ -210,6 +210,67 @@ pub fn countFn(_: Allocator, args: []const Value) anyerror!Value {
     }) };
 }
 
+/// (list & items) — returns a new list containing the items.
+pub fn listFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const items = try allocator.alloc(Value, args.len);
+    @memcpy(items, args);
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = items };
+    return Value{ .list = lst };
+}
+
+/// (seq coll) — returns a seq on the collection. Returns nil if empty.
+pub fn seqFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .nil => .nil,
+        .list => |lst| if (lst.items.len == 0) .nil else args[0],
+        .vector => |vec| {
+            if (vec.items.len == 0) return .nil;
+            // Return as-is (vector is sequential)
+            return args[0];
+        },
+        else => error.TypeError,
+    };
+}
+
+/// (concat) / (concat x) / (concat x y ...) — concatenate sequences.
+pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        return Value{ .list = lst };
+    }
+
+    // Collect all items from all sequences
+    var total: usize = 0;
+    for (args) |arg| {
+        total += switch (arg) {
+            .nil => @as(usize, 0),
+            .list => |lst| lst.items.len,
+            .vector => |vec| vec.items.len,
+            else => return error.TypeError,
+        };
+    }
+
+    const items = try allocator.alloc(Value, total);
+    var idx: usize = 0;
+    for (args) |arg| {
+        const src = switch (arg) {
+            .nil => &[_]Value{},
+            .list => |lst| lst.items,
+            .vector => |vec| vec.items,
+            else => unreachable,
+        };
+        @memcpy(items[idx .. idx + src.len], src);
+        idx += src.len;
+    }
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = items };
+    return Value{ .list = lst };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -277,6 +338,30 @@ pub const builtins = [_]BuiltinDef{
         .func = &countFn,
         .doc = "Returns the number of items in the collection.",
         .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "list",
+        .kind = .runtime_fn,
+        .func = &listFn,
+        .doc = "Creates a new list containing the items.",
+        .arglists = "([& items])",
+        .added = "1.0",
+    },
+    .{
+        .name = "seq",
+        .kind = .runtime_fn,
+        .func = &seqFn,
+        .doc = "Returns a seq on the collection. If the collection is empty, returns nil.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "concat",
+        .kind = .runtime_fn,
+        .func = &concatFn,
+        .doc = "Returns a lazy seq representing the concatenation of the elements in the supplied colls.",
+        .arglists = "([] [x] [x y] [x y & zs])",
         .added = "1.0",
     },
 };
@@ -488,8 +573,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 8 entries" {
-    try testing.expectEqual(8, builtins.len);
+test "builtins table has 11 entries" {
+    try testing.expectEqual(11, builtins.len);
 }
 
 test "builtins all have func" {

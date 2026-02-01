@@ -27,6 +27,8 @@ pub const builtin_predicates = @import("common/builtin/predicates.zig");
 pub const builtin_strings = @import("common/builtin/strings.zig");
 pub const builtin_io = @import("common/builtin/io.zig");
 pub const builtin_atom = @import("common/builtin/atom.zig");
+pub const macro_utils = @import("common/macro.zig");
+pub const bootstrap = @import("common/bootstrap.zig");
 
 test {
     _ = value;
@@ -55,4 +57,6 @@ test {
     _ = builtin_strings;
     _ = builtin_io;
     _ = builtin_atom;
+    _ = macro_utils;
+    _ = bootstrap;
 }

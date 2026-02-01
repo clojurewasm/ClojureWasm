@@ -183,6 +183,19 @@ pub const TreeWalk = struct {
 
     // --- Function call ---
 
+    /// Call a function Value with pre-evaluated arguments.
+    /// Used for macro expansion: Analyzer calls macro fn_val with Value args.
+    pub fn callValue(self: *TreeWalk, callee: Value, args: []const Value) TreeWalkError!Value {
+        return switch (callee) {
+            .builtin_fn => |f| @errorCast(f(self.allocator, args)),
+            .fn_val => |fn_ptr| {
+                const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
+                return self.callClosure(closure, args);
+            },
+            else => error.TypeError,
+        };
+    }
+
     fn runCall(self: *TreeWalk, call_n: *const node_mod.CallNode) TreeWalkError!Value {
         const callee = try self.run(call_n.callee);
 
@@ -230,11 +243,46 @@ pub const TreeWalk = struct {
             self.local_count += 1;
         }
 
-        // Bind params after captured locals
-        for (args) |val| {
+        // Bind fn name for self-recursion (Analyzer allocates a local slot for it)
+        if (fn_n.name != null) {
             if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
-            self.locals[self.local_count] = val;
+            // Reconstruct fn_val pointing back to this closure
+            const fn_obj = self.allocator.create(value_mod.Fn) catch return error.OutOfMemory;
+            fn_obj.* = .{ .proto = @ptrCast(@constCast(closure)) };
+            self.locals[self.local_count] = Value{ .fn_val = fn_obj };
             self.local_count += 1;
+        }
+
+        // Bind params after captured locals (and fn name)
+        if (arity.variadic) {
+            // Variadic: bind fixed params, collect rest into a list
+            const fixed_count = arity.params.len - 1; // last param is rest
+            for (args[0..fixed_count]) |val| {
+                if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
+                self.locals[self.local_count] = val;
+                self.local_count += 1;
+            }
+            // Collect remaining args into a PersistentList
+            const rest_args = args[fixed_count..];
+            const rest_val: Value = if (rest_args.len == 0)
+                .nil
+            else blk: {
+                const collections = @import("../../common/collections.zig");
+                const items = self.allocator.alloc(Value, rest_args.len) catch return error.OutOfMemory;
+                @memcpy(items, rest_args);
+                const lst = self.allocator.create(collections.PersistentList) catch return error.OutOfMemory;
+                lst.* = .{ .items = items };
+                break :blk Value{ .list = lst };
+            };
+            if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
+            self.locals[self.local_count] = rest_val;
+            self.local_count += 1;
+        } else {
+            for (args) |val| {
+                if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
+                self.locals[self.local_count] = val;
+                self.local_count += 1;
+            }
         }
 
         const result = try self.run(arity.body);

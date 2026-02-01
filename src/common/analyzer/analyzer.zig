@@ -16,11 +16,24 @@ const Node = node_mod.Node;
 const SourceInfo = node_mod.SourceInfo;
 const Value = @import("../value.zig").Value;
 const err = @import("../error.zig");
+const env_mod = @import("../env.zig");
+const Env = env_mod.Env;
+const var_mod = @import("../var.zig");
+const Var = var_mod.Var;
+const macro = @import("../macro.zig");
+const collections = @import("../collections.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
     allocator: Allocator,
     error_ctx: *err.ErrorContext,
+
+    /// Optional runtime environment for macro expansion and var resolution.
+    env: ?*Env = null,
+
+    /// Callback to evaluate a fn_val macro call (set by the host evaluator).
+    /// Signature: fn(allocator, fn_value, args) -> result_value
+    macro_eval_fn: ?*const fn (Allocator, Value, []const Value) anyerror!Value = null,
 
     /// Local variable bindings stack (let, fn parameters).
     locals: std.ArrayList(LocalBinding) = .empty,
@@ -37,6 +50,24 @@ pub const Analyzer = struct {
 
     pub fn init(allocator: Allocator, error_ctx: *err.ErrorContext) Analyzer {
         return .{ .allocator = allocator, .error_ctx = error_ctx };
+    }
+
+    pub fn initWithEnv(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env) Analyzer {
+        return .{ .allocator = allocator, .error_ctx = error_ctx, .env = env };
+    }
+
+    pub fn initWithMacroEval(
+        allocator: Allocator,
+        error_ctx: *err.ErrorContext,
+        env: *Env,
+        macro_eval_fn: *const fn (Allocator, Value, []const Value) anyerror!Value,
+    ) Analyzer {
+        return .{
+            .allocator = allocator,
+            .error_ctx = error_ctx,
+            .env = env,
+            .macro_eval_fn = macro_eval_fn,
+        };
     }
 
     pub fn deinit(self: *Analyzer) void {
@@ -182,8 +213,64 @@ pub const Analyzer = struct {
             }
         }
 
+        // Check for macro call (requires env)
+        if (self.env != null and items[0].data == .symbol) {
+            if (self.resolveMacroVar(items[0].data.symbol)) |v| {
+                if (v.isMacro()) {
+                    return self.expandMacro(v, items[1..], form);
+                }
+            }
+        }
+
         // Function call
         return self.analyzeCall(items, form);
+    }
+
+    /// Resolve a symbol to a Var if possible (via env).
+    fn resolveMacroVar(self: *const Analyzer, sym: SymbolRef) ?*Var {
+        const env = self.env orelse return null;
+        const ns = env.current_ns orelse return null;
+        if (sym.ns) |ns_name| {
+            return ns.resolveQualified(ns_name, sym.name);
+        }
+        return ns.resolve(sym.name);
+    }
+
+    /// Expand a macro call: execute macro function with raw Form args, re-analyze result.
+    fn expandMacro(self: *Analyzer, v: *Var, arg_forms: []const Form, form: Form) AnalyzeError!*Node {
+        const root = v.deref();
+
+        // Convert arg Forms to Values for the macro function
+        var arg_vals: [256]Value = undefined;
+        if (arg_forms.len > arg_vals.len) {
+            return self.analysisError(.arity_error, "too many macro arguments", form);
+        }
+        for (arg_forms, 0..) |af, i| {
+            arg_vals[i] = macro.formToValue(self.allocator, af) catch return error.OutOfMemory;
+        }
+
+        // Call the macro function
+        const result_val: Value = switch (root) {
+            .builtin_fn => |f| f(self.allocator, arg_vals[0..arg_forms.len]) catch {
+                return self.analysisError(.value_error, "macro expansion failed", form);
+            },
+            .fn_val => blk: {
+                // fn_val macros require evaluator callback for execution
+                const eval_fn = self.macro_eval_fn orelse {
+                    return self.analysisError(.value_error, "fn_val macro expansion requires macro evaluator", form);
+                };
+                break :blk eval_fn(self.allocator, root, arg_vals[0..arg_forms.len]) catch {
+                    return self.analysisError(.value_error, "macro expansion failed", form);
+                };
+            },
+            else => return self.analysisError(.value_error, "macro var has no function value", form),
+        };
+
+        // Convert result Value back to Form
+        const expanded_form = macro.valueToForm(self.allocator, result_val) catch return error.OutOfMemory;
+
+        // Re-analyze the expanded form
+        return self.analyze(expanded_form);
     }
 
     // === Special form implementations ===
@@ -1431,6 +1518,49 @@ test "analyze loop scoping - x not visible after loop" {
     // After loop, x should be var_ref
     const x_after = try a.analyze(.{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } });
     try std.testing.expectEqualStrings("var-ref", x_after.kindName());
+}
+
+test "macro expansion - builtin_fn macro" {
+    // Create a simple macro that transforms (my-macro x) -> (do x)
+    // by wrapping the arg in a (do ...) list
+    const TestMacro = struct {
+        fn expandFn(allocator: Allocator, args: []const Value) anyerror!Value {
+            // Build (do arg0): list with symbol "do" + first arg
+            const items = try allocator.alloc(Value, 1 + args.len);
+            items[0] = Value{ .symbol = .{ .ns = null, .name = "do" } };
+            for (args, 0..) |arg, i| {
+                items[1 + i] = arg;
+            }
+            const lst = try allocator.create(collections.PersistentList);
+            lst.* = .{ .items = items };
+            return Value{ .list = lst };
+        }
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Set up env with a macro var
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+    const v = try ns.intern("my-macro");
+    v.setMacro(true);
+    v.bindRoot(.{ .builtin_fn = &TestMacro.expandFn });
+
+    var a = Analyzer.initWithEnv(alloc, &test_error_ctx, &env);
+    defer a.deinit();
+
+    // (my-macro 42) should expand to (do 42), which analyzes as constant 42
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "my-macro" } } },
+        .{ .data = .{ .integer = 42 } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    // (do 42) -> DoNode with single expr -> constant 42
+    try std.testing.expect(result.* == .do_node);
 }
 
 test "analyze empty list -> nil" {

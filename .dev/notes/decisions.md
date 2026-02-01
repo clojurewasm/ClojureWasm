@@ -551,3 +551,36 @@ Calling user-defined `fn_val` (closures) returns TypeError.
   (a) Add EvaluatorContext parameter to BuiltinFn (breaking change)
   (b) Compile swap! as a special form (compiler handles the call)
   (c) Implement swap! in core.clj using lower-level atom primitives
+
+---
+
+## D15: Macro Expansion Architecture (T3.10)
+
+**Decision**: Macro expansion happens in the Analyzer via Env lookup + TreeWalk
+execution bridge. fn_val macros are executed through a `macro_eval_fn` callback.
+
+**Key design choices**:
+
+1. **Analyzer holds `env: ?*Env`**: Optional to preserve backward compat with
+   env-less analysis (Phase 1c tests). When present, enables macro resolution.
+
+2. **macro_eval_fn callback**: Analyzer cannot depend on TreeWalk directly
+   (would create circular dependency common/ -> native/). Instead, the host
+   provides a callback `fn(Allocator, Value, []const Value) anyerror!Value`.
+
+3. **Module-level macro_eval_env**: The macroEvalBridge function needs an Env
+   to create a TreeWalk instance for fn_val execution. Since the bridge has
+   a fixed signature, Env is passed via module-level variable (set/restored
+   in evalString). This is acceptable for single-threaded execution.
+
+4. **core.clj via @embedFile**: Source is compiled into the binary. No runtime
+   file I/O needed for bootstrap.
+
+5. **loadCore namespace switching**: core.clj is evaluated with current_ns set
+   to clojure.core, then new bindings are re-referred into user namespace.
+
+**Deferred**:
+
+- cond, ->, ->> macros require loop/let/seq?/next (implement when available)
+- loadCore macro_names list is hardcoded (generalize when more macros added)
+- VM-side macro expansion not needed (macros expand at Analyzer level)
