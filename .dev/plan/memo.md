@@ -4,7 +4,7 @@
 
 - Current phase: Phase 1a (Value type foundation)
 - Active plan: .dev/plan/active/plan_0001_bootstrap.md
-- Next task: Task 1.1 -- Define Value tagged union in src/common/value.zig
+- Next task: Task 1.2 -- Implement Value.format (print representation)
 - Blockers: none
 
 ## Completed Phases

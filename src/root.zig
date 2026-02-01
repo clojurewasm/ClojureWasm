@@ -1,7 +1,8 @@
 // ClojureWasm - Clojure implementation in Zig
 // This is the library root module.
 
+pub const value = @import("common/value.zig");
+
 test {
-    // Import all test modules here as they are added.
-    // Example: _ = @import("reader/tokenizer.zig");
+    _ = value;
 }
