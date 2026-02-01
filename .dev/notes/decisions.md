@@ -320,3 +320,28 @@ and documentation are in English.
 - OSS readiness from day one
 - Beta used Japanese comments/commits, which limited accessibility
 - Agent response language is personal preference (configured in ~/.claude/CLAUDE.md)
+
+---
+
+## D11: Dynamic Binding — Global Frame Stack (Not Per-Var)
+
+**Decision**: Dynamic bindings (`binding` macro) use a global frame stack,
+not per-Var binding stacks.
+
+**Alternatives considered**:
+1. **Per-Var stack** (Clojure JVM style): Each Var holds its own ThreadLocal
+   binding stack. Thread-safe by design.
+2. **Global frame stack** (Beta style, chosen): A single stack of BindingFrame,
+   each frame holding a map of Var -> Value overrides. push/pop per `binding` block.
+
+**Rationale** (Task 2.2):
+- Single-thread target (Wasm) makes per-Var ThreadLocal unnecessary overhead
+- Global frame stack is simpler: one push/pop per `binding`, O(n) lookup on
+  frame depth (typically shallow)
+- Beta proved this works for all SCI tests and builtin functions
+
+**Consequence**: Multi-thread support (future native mode) will require
+redesigning this to either per-Var stacks or a concurrent frame structure.
+This is acceptable since Wasm is the primary target.
+
+**References**: future.md SS15.5, D3
