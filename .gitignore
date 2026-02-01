@@ -1,6 +1,11 @@
+# Zig
 .zig-cache/
 zig-out/
 *.o
+
+# Clojure
+.clj-kondo/.cache/
+.lsp/.cache/
 
 # Claude Code local settings
 .claude/settings.local.json
