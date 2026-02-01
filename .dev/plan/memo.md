@@ -4,7 +4,7 @@
 
 - Current phase: Phase 0 (Bootstrap / Kickoff Planning)
 - Active plan: .dev/plan/active/plan_0000_kickoff.md
-- Next task: Task 6 -- Create src/ directory structure per future.md SS17
+- Next task: Task 7 -- Create docs/adr/0001-nan-boxing.md scaffold
 - Blockers: none
 
 ## Completed Phases

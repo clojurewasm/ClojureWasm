@@ -1,5 +1,20 @@
 # log_0000_kickoff
 
+## Task 6: Create src/ directory structure per future.md SS17 — DONE
+
+Created full directory tree per §17.2 of future.md:
+- src/api/ — public API (eval, repl, plugin)
+- src/common/ — shared modules (reader/, analyzer/, bytecode/, value/, builtin/)
+- src/native/ — native track (vm/, gc/, optimizer/)
+- src/wasm_rt/ — wasm runtime track (vm/, gc_bridge/, wasm_backend/)
+- src/wasm/ — wasm interop (shared)
+- clj/ — Clojure source for AOT
+- test/unit/, test/e2e/, test/upstream/{sci,cljs,clojure}/
+- docs/adr/, docs/developer/
+- bench/, scripts/
+
+All directories have .gitkeep for git tracking. Build still passes.
+
 ## Task 5: Create build.zig scaffold — DONE
 
 Created build.zig, build.zig.zon, src/root.zig (library root with empty test block),
