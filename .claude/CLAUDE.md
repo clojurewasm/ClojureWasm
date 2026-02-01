@@ -94,6 +94,24 @@ Production version is a full redesign from Beta. Key changes:
 - core.clj AOT compilation -> future.md SS9.6
 - Design decisions recorded as ADRs in docs/adr/
 
+## Dual Backend Development (D6, SS9.2)
+
+Two evaluation backends exist and **must be kept in sync**:
+
+| Component   | Path                                     | Role                          |
+|-------------|------------------------------------------|-------------------------------|
+| VM          | `src/native/vm/vm.zig`                   | Bytecode compiler + VM (fast) |
+| TreeWalk    | `src/native/evaluator/tree_walk.zig`     | Direct Node -> Value (correct)|
+| EvalEngine  | `src/common/eval_engine.zig`             | Runs both, compares results   |
+
+**Rules when adding new features** (builtins, special forms, operators, etc.):
+1. Implement in **both** VM and TreeWalk
+2. Add `EvalEngine.compare()` test to verify both backends produce the same result
+3. If the Compiler emits a direct opcode (e.g. `+` -> `add`), TreeWalk must
+   handle the equivalent via its builtin dispatch
+
+Design rationale: `.dev/notes/decisions.md` D6
+
 ## IDE Integration (ZLS / Emacs MCP)
 
 Use IDE tools actively when exploring/modifying Zig code to reduce context consumption.

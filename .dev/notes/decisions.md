@@ -246,6 +246,20 @@ Wire --compare mode immediately.
 beyond reference correctness. If maintenance cost is too high, can be replaced
 with a test oracle approach.
 
+**Development rule** (enforced from Phase 3 onward):
+When adding any new feature (builtin, special form, operator), implement it
+in **both** backends and add an `EvalEngine.compare()` test verifying they
+produce the same result. The Compiler may emit direct opcodes for performance
+(e.g. `+` -> `add`); TreeWalk handles the same operations via builtin dispatch.
+
+**File locations** (established in T2.9 / T2.10):
+
+| Component  | Path                                   |
+|------------|----------------------------------------|
+| VM         | `src/native/vm/vm.zig`                 |
+| TreeWalk   | `src/native/evaluator/tree_walk.zig`   |
+| EvalEngine | `src/common/eval_engine.zig`           |
+
 ---
 
 ## D7: Directory Structure — future.md SS17
