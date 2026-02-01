@@ -6,6 +6,12 @@
 // Started as tagged union (ADR-0001). NaN boxing deferred to Phase 4.
 
 const std = @import("std");
+const collections = @import("collections.zig");
+
+pub const PersistentList = collections.PersistentList;
+pub const PersistentVector = collections.PersistentVector;
+pub const PersistentArrayMap = collections.PersistentArrayMap;
+pub const PersistentHashSet = collections.PersistentHashSet;
 
 const testing = std.testing;
 
@@ -36,11 +42,11 @@ pub const Value = union(enum) {
     symbol: Symbol,
     keyword: Keyword,
 
-    // Collections (Task 1.4 will expand these)
-    // list: ...
-    // vector: ...
-    // map: ...
-    // set: ...
+    // Collections
+    list: *const PersistentList,
+    vector: *const PersistentVector,
+    map: *const PersistentArrayMap,
+    set: *const PersistentHashSet,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn format(self: Value, writer: anytype) !void {
@@ -89,6 +95,43 @@ pub const Value = union(enum) {
                     try writer.print(":{s}", .{k.name});
                 }
             },
+            .list => |lst| {
+                try writer.writeAll("(");
+                for (lst.items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try item.format(writer);
+                }
+                try writer.writeAll(")");
+            },
+            .vector => |vec| {
+                try writer.writeAll("[");
+                for (vec.items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try item.format(writer);
+                }
+                try writer.writeAll("]");
+            },
+            .map => |m| {
+                try writer.writeAll("{");
+                var i: usize = 0;
+                var is_first = true;
+                while (i < m.entries.len) : (i += 2) {
+                    if (!is_first) try writer.writeAll(", ");
+                    is_first = false;
+                    try m.entries[i].format(writer);
+                    try writer.writeAll(" ");
+                    try m.entries[i + 1].format(writer);
+                }
+                try writer.writeAll("}");
+            },
+            .set => |s| {
+                try writer.writeAll("#{");
+                for (s.items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try item.format(writer);
+                }
+                try writer.writeAll("}");
+            },
         }
     }
 
@@ -106,6 +149,17 @@ pub const Value = union(enum) {
             return a == b;
         }
 
+        // Sequential equality: (= '(1 2) [1 2]) => true
+        if (isSequential(self_tag) and isSequential(other_tag)) {
+            const a_items = sequentialItems(self);
+            const b_items = sequentialItems(other);
+            if (a_items.len != b_items.len) return false;
+            for (a_items, b_items) |ai, bi| {
+                if (!ai.eql(bi)) return false;
+            }
+            return true;
+        }
+
         if (self_tag != other_tag) return false;
 
         return switch (self) {
@@ -117,6 +171,30 @@ pub const Value = union(enum) {
             .string => |a| std.mem.eql(u8, a, other.string),
             .symbol => |a| eqlOptionalStr(a.ns, other.symbol.ns) and std.mem.eql(u8, a.name, other.symbol.name),
             .keyword => |a| eqlOptionalStr(a.ns, other.keyword.ns) and std.mem.eql(u8, a.name, other.keyword.name),
+            .list, .vector => unreachable, // handled by sequential equality above
+            .map => |a| {
+                const b = other.map;
+                if (a.count() != b.count()) return false;
+                var i: usize = 0;
+                while (i < a.entries.len) : (i += 2) {
+                    const key = a.entries[i];
+                    const val = a.entries[i + 1];
+                    if (b.get(key)) |bval| {
+                        if (!val.eql(bval)) return false;
+                    } else {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            .set => |a| {
+                const b = other.set;
+                if (a.count() != b.count()) return false;
+                for (a.items) |item| {
+                    if (!b.contains(item)) return false;
+                }
+                return true;
+            },
         };
     }
 
@@ -137,6 +215,20 @@ pub const Value = union(enum) {
         };
     }
 };
+
+const Tag = std.meta.Tag(Value);
+
+fn isSequential(tag: Tag) bool {
+    return tag == .list or tag == .vector;
+}
+
+fn sequentialItems(v: Value) []const Value {
+    return switch (v) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        else => unreachable,
+    };
+}
 
 fn eqlOptionalStr(a: ?[]const u8, b: ?[]const u8) bool {
     if (a) |av| {
@@ -251,6 +343,53 @@ test "Value.format - keyword" {
     try expectFormat(":clojure.core/keys", .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } });
 }
 
+test "Value.format - list" {
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const list = PersistentList{ .items = &items };
+    try expectFormat("(1 2 3)", .{ .list = &list });
+}
+
+test "Value.format - empty list" {
+    const list = PersistentList{ .items = &.{} };
+    try expectFormat("()", .{ .list = &list });
+}
+
+test "Value.format - vector" {
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = PersistentVector{ .items = &items };
+    try expectFormat("[1 2]", .{ .vector = &vec });
+}
+
+test "Value.format - empty vector" {
+    const vec = PersistentVector{ .items = &.{} };
+    try expectFormat("[]", .{ .vector = &vec });
+}
+
+test "Value.format - map" {
+    const entries = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    const m = PersistentArrayMap{ .entries = &entries };
+    try expectFormat("{:a 1, :b 2}", .{ .map = &m });
+}
+
+test "Value.format - empty map" {
+    const m = PersistentArrayMap{ .entries = &.{} };
+    try expectFormat("{}", .{ .map = &m });
+}
+
+test "Value.format - set" {
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const s = PersistentHashSet{ .items = &items };
+    try expectFormat("#{1 2}", .{ .set = &s });
+}
+
+test "Value.format - empty set" {
+    const s = PersistentHashSet{ .items = &.{} };
+    try expectFormat("#{}", .{ .set = &s });
+}
+
 test "Value.eql - nil" {
     try testing.expect((Value{ .nil = {} }).eql(.nil));
 }
@@ -310,6 +449,59 @@ test "Value.eql - keyword" {
     try testing.expect(a.eql(.{ .keyword = .{ .name = "k", .ns = "ns" } }));
     try testing.expect(!a.eql(.{ .keyword = .{ .name = "k", .ns = null } }));
     try testing.expect(!a.eql(.{ .keyword = .{ .name = "other", .ns = "ns" } }));
+}
+
+test "Value.eql - list" {
+    const items_a = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items_b = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items_c = [_]Value{ .{ .integer = 1 }, .{ .integer = 3 } };
+    const la = PersistentList{ .items = &items_a };
+    const lb = PersistentList{ .items = &items_b };
+    const lc = PersistentList{ .items = &items_c };
+    try testing.expect((Value{ .list = &la }).eql(.{ .list = &lb }));
+    try testing.expect(!(Value{ .list = &la }).eql(.{ .list = &lc }));
+}
+
+test "Value.eql - list/vector sequential equality" {
+    // Clojure: (= '(1 2) [1 2]) => true
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const lst = PersistentList{ .items = &items };
+    const vec = PersistentVector{ .items = &items };
+    try testing.expect((Value{ .list = &lst }).eql(.{ .vector = &vec }));
+    try testing.expect((Value{ .vector = &vec }).eql(.{ .list = &lst }));
+}
+
+test "Value.eql - vector" {
+    const items_a = [_]Value{ .{ .integer = 1 } };
+    const items_b = [_]Value{ .{ .integer = 1 } };
+    const empty = [_]Value{};
+    const va = PersistentVector{ .items = &items_a };
+    const vb = PersistentVector{ .items = &items_b };
+    const ve = PersistentVector{ .items = &empty };
+    try testing.expect((Value{ .vector = &va }).eql(.{ .vector = &vb }));
+    try testing.expect(!(Value{ .vector = &va }).eql(.{ .vector = &ve }));
+}
+
+test "Value.eql - map" {
+    const entries_a = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 } };
+    const entries_b = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 } };
+    const entries_c = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 2 } };
+    const ma = PersistentArrayMap{ .entries = &entries_a };
+    const mb = PersistentArrayMap{ .entries = &entries_b };
+    const mc = PersistentArrayMap{ .entries = &entries_c };
+    try testing.expect((Value{ .map = &ma }).eql(.{ .map = &mb }));
+    try testing.expect(!(Value{ .map = &ma }).eql(.{ .map = &mc }));
+}
+
+test "Value.eql - set" {
+    const items_a = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items_b = [_]Value{ .{ .integer = 2 }, .{ .integer = 1 } };
+    const items_c = [_]Value{ .{ .integer = 1 }, .{ .integer = 3 } };
+    const sa = PersistentHashSet{ .items = &items_a };
+    const sb = PersistentHashSet{ .items = &items_b };
+    const sc = PersistentHashSet{ .items = &items_c };
+    try testing.expect((Value{ .set = &sa }).eql(.{ .set = &sb }));
+    try testing.expect(!(Value{ .set = &sa }).eql(.{ .set = &sc }));
 }
 
 test "Value.eql - different types" {

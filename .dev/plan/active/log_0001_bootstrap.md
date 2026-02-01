@@ -39,3 +39,26 @@ Added Value.eql() with Clojure = semantics:
 Helper: eqlOptionalStr for ?[]const u8 comparison.
 11 new eql tests (31 total). All passing via TDD.
 Collection equality deferred to Task 1.4.
+
+## Task 1.4: Implement basic collection types (ArrayList-based) — DONE
+
+Created src/common/collections.zig with four persistent collection types:
+
+- PersistentList: `[]const Value` slice, count/first/rest methods
+- PersistentVector: `[]const Value` slice, count/nth methods
+- PersistentArrayMap: flat `[k1,v1,k2,v2,...]` entries, count/get (linear scan)
+- PersistentHashSet: `[]const Value` slice, count/contains (linear scan)
+
+All types include optional `meta: ?*const Value` for future metadata support.
+
+Added collection variants to Value tagged union (as `*const PersistentXxx` pointers).
+Extended Value.format for Clojure print semantics: (), [], {k v, ...}, #{}.
+Extended Value.eql with:
+- Sequential equality: (= '(1 2) [1 2]) => true (Clojure spec)
+- Map equality: bidirectional key-value comparison
+- Set equality: mutual containment check (order-independent)
+
+Helper functions: isSequential(), sequentialItems() for list/vector abstraction.
+
+10 new collection tests in collections.zig, 13 new tests in value.zig.
+Total: ~54 tests. All passing via TDD.

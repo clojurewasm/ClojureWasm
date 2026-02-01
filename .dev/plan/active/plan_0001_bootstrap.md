@@ -33,7 +33,7 @@ Before reader/analyzer, we need the Value type that Form will reference.
 | 1.1 | Define Value tagged union in src/common/value.zig  | done    | Start with minimal variants: nil, bool, int, float, string, symbol, keyword, list, vector, map, set. NaN boxing deferred (ADR-0001) — use tagged union first for correctness, optimize later |
 | 1.2 | Implement Value.format (print representation)      | done    | "{f}" format spec (Zig 0.15). Clojure pr-str semantics. Special char names, float decimal guarantee                                                                                          |
 | 1.3 | Implement Value.eql (equality)                     | done    | Clojure = semantics. Cross-type int/float equality. Structural comparison for all primitive types                                                                                            |
-| 1.4 | Implement basic collection types (ArrayList-based) | pending | PersistentList, PersistentVector, PersistentArrayMap, PersistentHashSet — array-based like Beta initially                                                                                    |
+| 1.4 | Implement basic collection types (ArrayList-based) | done    | PersistentList, PersistentVector, PersistentArrayMap, PersistentHashSet — array-based like Beta initially                                                                                    |
 
 ### Phase 1b: Reader (Source -> Form)
 
