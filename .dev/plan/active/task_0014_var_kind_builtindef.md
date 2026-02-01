@@ -87,3 +87,10 @@ const test_builtins = [_]BuiltinDef{
 TDD: test comptime iteration, lookup by name.
 
 ## Log
+
+- Step 1: Added VarKind enum (7 variants) — Red/Green done
+- Step 2: Added BuiltinDef struct (name, kind, doc, arglists, added, since_cw) — Red/Green done
+- Step 3: Added metadata fields to Var (kind, doc, arglists, added, since_cw) — Red/Green done
+- Step 4: Added Var.applyBuiltinDef helper — Red/Green done
+- Step 5: Comptime table proof-of-concept — comptime iteration and lookup work
+- All tests pass (zig build test)
