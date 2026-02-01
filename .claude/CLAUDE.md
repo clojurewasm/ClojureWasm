@@ -55,12 +55,17 @@ This matches Zig standard library conventions and keeps files readable.
 1. TDD cycle: Red -> Green -> Refactor
 2. Append progress to task file `## Log`
 3. Do NOT commit intermediate steps — all changes go into one commit per task
+4. Design decisions / deferred items → record in `.dev/notes/decisions.md`
 
 ### On Task Completion
+
+**CRITICAL: Always commit before moving to the next task.**
+
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
 3. Advance memo.md to next task (clear Task file path)
-4. **Single git commit** covering plan + implementation + status update
+4. `git add` + `git commit` — **single commit covering plan + impl + status**
+5. Verify commit succeeded before proceeding to the next task
 
 ## Build & Test
 

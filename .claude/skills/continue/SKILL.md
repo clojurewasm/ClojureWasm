@@ -60,10 +60,20 @@ Read with Read tool:
 
 ## 4. Complete (per task)
 
+**CRITICAL: Always commit before moving to the next task.**
+
+### 4a. Finalize bookkeeping
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
 3. Advance `memo.md` to next task (clear Task file path)
-4. **Single git commit** covering plan + implementation + status update
+
+### 4b. Git commit (gate)
+4. `git add` all changed files (plan + implementation + status)
+5. `git commit` — **single commit covering everything for this task**
+6. Verify commit succeeded before proceeding
+
+> Do NOT start the next task until the commit is done.
+> If design decisions were made, verify they are recorded in `.dev/notes/decisions.md`.
 
 ## 5. Phase Completion
 
