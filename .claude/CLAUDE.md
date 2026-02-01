@@ -73,8 +73,6 @@ This matches Zig standard library conventions and keeps files readable.
 
 ## Build & Test
 
-> Available after build.zig is created (Phase 0, Task 5).
-
 ```bash
 # Enter dev shell (all tools on PATH)
 nix develop
@@ -94,20 +92,25 @@ zig build test -- "Reader basics"
 Production version is a full redesign from Beta. Key changes:
 
 - Instantiated VM (no threadlocal) -> future.md SS15.5
-- GcStrategy trait for GC abstraction -> future.md SS5
+- GcStrategy trait for GC abstraction -> future.md SS5 (currently arena stub; real GC deferred)
 - BuiltinDef with metadata (doc, arglists, added) -> future.md SS10
-- core.clj AOT compilation -> future.md SS9.6
-- Design decisions recorded as ADRs in docs/adr/
+- core.clj loaded at startup via read+eval (AOT @embedFile pipeline deferred to Phase 4)
+- Design decisions recorded in `.dev/notes/decisions.md` (ADR in docs/adr/ has one entry)
 
 ## Dual Backend Development (D6, SS9.2)
 
-Two evaluation backends exist and **must be kept in sync**:
+Two evaluation backends exist and **should be kept in sync**:
 
 | Component  | Path                                 | Role                           |
 | ---------- | ------------------------------------ | ------------------------------ |
 | VM         | `src/native/vm/vm.zig`               | Bytecode compiler + VM (fast)  |
 | TreeWalk   | `src/native/evaluator/tree_walk.zig` | Direct Node -> Value (correct) |
 | EvalEngine | `src/common/eval_engine.zig`         | Runs both, compares results    |
+
+**Current status**: TreeWalk is the primary backend (used by CLI).
+VM has basic opcodes (arithmetic, var, closures, recur) but lacks Phase 3
+builtins (variadic arith, predicates, collection ops). VM parity is P1 in
+`.dev/checklist.md`.
 
 **Rules when adding new features** (builtins, special forms, operators, etc.):
 
@@ -133,14 +136,14 @@ Use IDE tools actively when exploring/modifying Zig code to reduce context consu
 **File structure overview (before Read):**
 
 ```
-imenu-list-symbols(file_path: "src/lib/core.zig")
+imenu-list-symbols(file_path: "src/common/builtin/registry.zig")
 -> Returns all function names and line numbers -> Read only needed functions
 ```
 
 **Impact analysis before refactoring:**
 
 ```
-xref-find-references(identifier: "Value", file_path: "src/runtime/value.zig")
+xref-find-references(identifier: "Value", file_path: "src/common/value.zig")
 -> Returns all files/lines using Value -> Understand change scope
 ```
 
@@ -159,8 +162,7 @@ getDiagnostics(uri: "file:///path/to/edited.zig")
 ## Debugging Bytecode
 
 `Chunk.dump(writer)` and `FnProto.dump(writer)` in `src/common/bytecode/chunk.zig`
-produce human-readable bytecode disassembly. No CLI entry point yet (comes in T3.13),
-so use these within tests:
+produce human-readable bytecode disassembly. Use within tests:
 
 ```zig
 // In any test — dump to stderr for quick visual inspection
