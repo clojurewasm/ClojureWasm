@@ -33,29 +33,14 @@ pub const FormData = union(enum) {
     // Regex literal
     regex: []const u8,
 
-    // Reader macro wrappers (quote, deref, meta, etc.)
-    // The inner form is a single-element slice for pointer stability.
-    quote: *const Form, // 'x
-    deref: *const Form, // @x
-    syntax_quote: *const Form, // `x
-    unquote: *const Form, // ~x
-    unquote_splicing: *const Form, // ~@x
-    var_quote: *const Form, // #'x
-    meta: MetaPair, // ^meta form
-    discard, // #_ (reader discards next form; placeholder)
-    tag: TaggedLiteral, // #inst "..." etc.
+    // Tagged literal: #inst "..." etc. (needed by Analyzer)
+    tag: TaggedLiteral,
 };
 
 /// Namespace-qualified name reference (for symbols and keywords).
 pub const SymbolRef = struct {
     ns: ?[]const u8,
     name: []const u8,
-};
-
-/// Metadata annotation: ^meta form
-pub const MetaPair = struct {
-    meta: *const Form,
-    form: *const Form,
 };
 
 /// Tagged literal: #tag form
@@ -86,14 +71,6 @@ pub const Form = struct {
             .map => "map",
             .set => "set",
             .regex => "regex",
-            .quote => "quote",
-            .deref => "deref",
-            .syntax_quote => "syntax_quote",
-            .unquote => "unquote",
-            .unquote_splicing => "unquote_splicing",
-            .var_quote => "var_quote",
-            .meta => "meta",
-            .discard => "discard",
             .tag => "tag",
         };
     }
@@ -150,37 +127,6 @@ pub const Form = struct {
                 try w.writeAll(pattern);
                 try w.writeByte('"');
             },
-            .quote => |inner| {
-                try w.writeByte('\'');
-                try inner.formatPrStr(w);
-            },
-            .deref => |inner| {
-                try w.writeByte('@');
-                try inner.formatPrStr(w);
-            },
-            .syntax_quote => |inner| {
-                try w.writeByte('`');
-                try inner.formatPrStr(w);
-            },
-            .unquote => |inner| {
-                try w.writeByte('~');
-                try inner.formatPrStr(w);
-            },
-            .unquote_splicing => |inner| {
-                try w.writeAll("~@");
-                try inner.formatPrStr(w);
-            },
-            .var_quote => |inner| {
-                try w.writeAll("#'");
-                try inner.formatPrStr(w);
-            },
-            .meta => |m| {
-                try w.writeByte('^');
-                try m.meta.formatPrStr(w);
-                try w.writeByte(' ');
-                try m.form.formatPrStr(w);
-            },
-            .discard => try w.writeAll("#_"),
             .tag => |t| {
                 try w.writeByte('#');
                 try w.writeAll(t.tag);
@@ -437,24 +383,6 @@ test "format - regex" {
     const re = Form{ .data = .{ .regex = "\\d+" } };
     try re.formatPrStr(&w);
     try std.testing.expectEqualStrings("#\"\\d+\"", w.buffered());
-}
-
-test "format - quote" {
-    const inner = Form{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } };
-    var buf: [256]u8 = undefined;
-    var w: Writer = .fixed(&buf);
-    const quoted = Form{ .data = .{ .quote = &inner } };
-    try quoted.formatPrStr(&w);
-    try std.testing.expectEqualStrings("'foo", w.buffered());
-}
-
-test "format - deref" {
-    const inner = Form{ .data = .{ .symbol = .{ .ns = null, .name = "a" } } };
-    var buf: [256]u8 = undefined;
-    var w: Writer = .fixed(&buf);
-    const form = Form{ .data = .{ .deref = &inner } };
-    try form.formatPrStr(&w);
-    try std.testing.expectEqualStrings("@a", w.buffered());
 }
 
 test "format - char literal" {
