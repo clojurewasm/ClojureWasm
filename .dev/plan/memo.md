@@ -4,7 +4,7 @@
 
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: BuiltinDef registry with metadata (Task 3.5)
+- Current task: Collection intrinsics (Task 3.6)
 - Task file:
 - Blockers: none
 
@@ -30,3 +30,4 @@
 | T3.2    | .dev/plan/archive/task_0023_var_def_opcodes.md              | 2026-02-01 |
 | T3.3    | .dev/plan/archive/task_0024_recur_tail_call.md              | 2026-02-01 |
 | T3.4    | .dev/plan/archive/task_0025_collection_exception_opcodes.md | 2026-02-01 |
+| T3.5    | .dev/plan/archive/task_0026_builtin_registry.md             | 2026-02-01 |

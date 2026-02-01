@@ -131,21 +131,33 @@ pub const TreeWalk = struct {
     // --- Var resolution ---
 
     fn resolveVar(self: *TreeWalk, ns: ?[]const u8, name: []const u8) TreeWalkError!Value {
-        // Check builtin arithmetic/comparison
+        // Resolve via Env first (registry-registered builtins live here)
+        if (self.env) |env| {
+            if (env.current_ns) |cur_ns| {
+                if (ns) |ns_name| {
+                    if (cur_ns.resolveQualified(ns_name, name)) |v| {
+                        // vm_intrinsic Vars have no func yet — use sentinel for dispatch
+                        if (v.kind == .vm_intrinsic or v.kind == .special_form) {
+                            return Value{ .keyword = .{ .ns = "__builtin__", .name = v.sym.name } };
+                        }
+                        return v.deref();
+                    }
+                } else {
+                    if (cur_ns.resolve(name)) |v| {
+                        if (v.kind == .vm_intrinsic or v.kind == .special_form) {
+                            return Value{ .keyword = .{ .ns = "__builtin__", .name = v.sym.name } };
+                        }
+                        return v.deref();
+                    }
+                }
+            }
+        }
+
+        // Fallback: hardcoded builtin lookup (when no Env is configured)
         if (ns == null) {
             if (builtinLookup(name)) |val| return val;
         }
 
-        // Resolve via Env
-        if (self.env) |env| {
-            if (env.current_ns) |cur_ns| {
-                if (ns) |ns_name| {
-                    if (cur_ns.resolveQualified(ns_name, name)) |v| return v.deref();
-                } else {
-                    if (cur_ns.resolve(name)) |v| return v.deref();
-                }
-            }
-        }
         return error.UndefinedVar;
     }
 
@@ -926,4 +938,27 @@ test "TreeWalk throw without catch propagates" {
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     const n = Node{ .throw_node = &throw_data };
     try std.testing.expectError(error.UserException, tw.run(&n));
+}
+
+test "TreeWalk arithmetic via registry-registered Env" {
+    // (+ 3 4) => 7, resolved through Env with registered builtins
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var tw = TreeWalk.initWithEnv(std.testing.allocator, &env);
+    defer tw.deinit();
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 3 } };
+    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = try tw.run(&n);
+    try std.testing.expectEqual(Value{ .integer = 7 }, result);
 }

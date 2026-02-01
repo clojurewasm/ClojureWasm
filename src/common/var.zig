@@ -121,7 +121,7 @@ pub const Var = struct {
     }
 
     /// Apply metadata from a BuiltinDef to this Var.
-    pub fn applyBuiltinDef(self: *Var, def: *const BuiltinDef) void {
+    pub fn applyBuiltinDef(self: *Var, def: BuiltinDef) void {
         self.kind = def.kind;
         self.doc = def.doc;
         self.arglists = def.arglists;
@@ -380,7 +380,7 @@ test "Var applyBuiltinDef transfers metadata" {
     try std.testing.expect(v.kind == .user_fn);
     try std.testing.expect(v.doc == null);
 
-    v.applyBuiltinDef(&def);
+    v.applyBuiltinDef(def);
 
     // After: metadata transferred
     try std.testing.expect(v.kind == .vm_intrinsic);

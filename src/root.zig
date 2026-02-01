@@ -19,6 +19,9 @@ pub const compiler = @import("common/bytecode/compiler.zig");
 pub const vm = @import("native/vm/vm.zig");
 pub const tree_walk = @import("native/evaluator/tree_walk.zig");
 pub const eval_engine = @import("common/eval_engine.zig");
+pub const builtin_arithmetic = @import("common/builtin/arithmetic.zig");
+pub const builtin_special_forms = @import("common/builtin/special_forms.zig");
+pub const builtin_registry = @import("common/builtin/registry.zig");
 
 test {
     _ = value;
@@ -39,4 +42,7 @@ test {
     _ = vm;
     _ = tree_walk;
     _ = eval_engine;
+    _ = builtin_arithmetic;
+    _ = builtin_special_forms;
+    _ = builtin_registry;
 }

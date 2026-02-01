@@ -281,6 +281,31 @@ test "EvalEngine compare fn+call matches" {
     try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
 }
 
+test "EvalEngine compare arithmetic with registry Env" {
+    // (+ 3 4) => 7 — builtins registered via registry
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 3 } };
+    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 7 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 7 }, result.vm_value.?);
+}
+
 test "EvalEngine compare def+var_ref" {
     // (do (def x 42) x) => 42 in both backends
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
