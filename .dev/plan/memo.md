@@ -2,11 +2,13 @@
 
 ## Current State
 
-- Current phase: Phase 0 (Bootstrap / Kickoff Planning)
-- Active plan: .dev/plan/active/plan_0000_kickoff.md
-- Next task: Task 9 -- Update memo.md to point to plan_0001 / Phase 1
+- Current phase: Phase 1a (Value type foundation)
+- Active plan: .dev/plan/active/plan_0001_bootstrap.md
+- Next task: Task 1.1 -- Define Value tagged union in src/common/value.zig
 - Blockers: none
 
 ## Completed Phases
 
-(none yet)
+| Phase   | Plan file                          | Description              | Date       |
+|---------|------------------------------------|--------------------------|------------|
+| Phase 0 | .dev/plan/archive/plan_0000_kickoff.md | Bootstrap / Kickoff Planning | 2026-02-01 |

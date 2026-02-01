@@ -1,5 +1,11 @@
 # log_0000_kickoff
 
+## Task 9: Update memo.md to point to plan_0001 / Phase 1 — DONE
+
+Transitioned from Phase 0 to Phase 1a. Updated memo.md to reference
+plan_0001_bootstrap.md. Moved plan_0000 + log_0000 to archive/.
+Phase 0 complete: all 9 tasks done.
+
 ## Task 8: Update settings.json with PostToolUse hook — DONE
 
 Added PostToolUse hook to .claude/settings.json:
