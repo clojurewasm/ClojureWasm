@@ -4,7 +4,7 @@
 - Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: Create Var in src/common/value/var.zig (SS10: VarKind, BuiltinDef metadata)
-- Task file:
+- Task file: .dev/plan/active/task_0014_var_kind_builtindef.md
 - Blockers: none
 
 ## Completed Phases
