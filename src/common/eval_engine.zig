@@ -581,3 +581,153 @@ test "EvalEngine compare reset!" {
     try std.testing.expectEqual(Value{ .integer = 99 }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .integer = 99 }, result.vm_value.?);
 }
+
+test "EvalEngine compare variadic add 3 args" {
+    // (+ 1 2 3) => 6 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 6 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 6 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic add 0 args" {
+    // (+) => 0 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var args = [_]*Node{};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic mul 0 args" {
+    // (*) => 1 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
+    var args = [_]*Node{};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic add 1 arg" {
+    // (+ 5) => 5 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 5 } };
+    var args = [_]*Node{&a1};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic sub 1 arg (negation)" {
+    // (- 5) => -5 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 5 } };
+    var args = [_]*Node{&a1};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = -5 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = -5 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic div 1 arg (reciprocal)" {
+    // (/ 4) => 0.25 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{&a1};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .float = 0.25 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .float = 0.25 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic mul 3 args" {
+    // (* 2 3 4) => 24 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 2 } };
+    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var a3 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 24 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 24 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic sub 3 args" {
+    // (- 10 3 2) => 5 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 10 } };
+    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var a3 = Node{ .constant = .{ .integer = 2 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic div 3 args" {
+    // (/ 120 6 4) => 5.0 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 120 } };
+    var a2 = Node{ .constant = .{ .integer = 6 } };
+    var a3 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .float = 5.0 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .float = 5.0 }, result.vm_value.?);
+}
+
+test "EvalEngine compare variadic add 5 args" {
+    // (+ 1 2 3 4 5) => 15 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var a4 = Node{ .constant = .{ .integer = 4 } };
+    var a5 = Node{ .constant = .{ .integer = 5 } };
+    var args = [_]*Node{ &a1, &a2, &a3, &a4, &a5 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 15 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 15 }, result.vm_value.?);
+}

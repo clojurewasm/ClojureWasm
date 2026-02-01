@@ -4,7 +4,7 @@
 
 - Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T4.1 — VM: variadic arithmetic (+, -, \*, /)
+- Current task: T4.2 — VM: type predicates + numeric predicates
 - Task file: (to be created)
 - Blockers: none
 
@@ -42,6 +42,7 @@
 | T3.16   | .dev/plan/archive/task_0035_sci_tests.md                    | 2026-02-02 |
 | T3.17   | .dev/plan/archive/task_0036_benchmark.md                    | 2026-02-02 |
 | T4.0    | .dev/plan/archive/task_0037_phase4_planning.md              | 2026-02-02 |
+| T4.1    | .dev/plan/archive/task_0038_vm_variadic_arith.md            | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

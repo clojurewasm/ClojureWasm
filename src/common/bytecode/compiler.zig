@@ -22,6 +22,7 @@ pub const CompileError = error{
     TooManyLocals,
     InvalidNode,
     Overflow,
+    ArityError,
 };
 
 /// Local variable tracking.
@@ -305,15 +306,23 @@ pub const Compiler = struct {
     }
 
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
-        // Check for intrinsic call: (op arg1 arg2) where op is a known var_ref
-        if (node.callee.* == .var_ref and node.args.len == 2) {
+        if (node.callee.* == .var_ref) {
             const name = node.callee.var_ref.name;
-            if (intrinsicOpCode(name)) |op| {
-                // Compile both args, then emit the intrinsic opcode
-                try self.compile(node.args[0]);
-                try self.compile(node.args[1]);
-                try self.chunk.emitOp(op);
+
+            // Variadic arithmetic: +, -, *, /
+            if (variadicArithOp(name)) |op| {
+                try self.emitVariadicArith(op, name, node.args);
                 return;
+            }
+
+            // 2-arg intrinsics: mod, rem, comparison ops
+            if (node.args.len == 2) {
+                if (binaryOnlyIntrinsic(name)) |op| {
+                    try self.compile(node.args[0]);
+                    try self.compile(node.args[1]);
+                    try self.chunk.emitOp(op);
+                    return;
+                }
             }
         }
 
@@ -325,13 +334,73 @@ pub const Compiler = struct {
         try self.chunk.emit(.call, @intCast(node.args.len));
     }
 
-    /// Map known builtin names to VM opcodes for 2-arg calls.
-    fn intrinsicOpCode(name: []const u8) ?chunk_mod.OpCode {
+    /// Emit variadic arithmetic (+, -, *, /) as sequences of binary opcodes.
+    fn emitVariadicArith(self: *Compiler, op: chunk_mod.OpCode, name: []const u8, args: []const *Node) CompileError!void {
+        const is_add = std.mem.eql(u8, name, "+");
+        const is_mul = std.mem.eql(u8, name, "*");
+        const is_sub = std.mem.eql(u8, name, "-");
+
+        switch (args.len) {
+            0 => {
+                // (+) => 0, (*) => 1, (-) and (/) are arity errors
+                if (is_add) {
+                    const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
+                    try self.chunk.emit(.const_load, idx);
+                } else if (is_mul) {
+                    const idx = self.chunk.addConstant(.{ .integer = 1 }) catch return error.TooManyConstants;
+                    try self.chunk.emit(.const_load, idx);
+                } else {
+                    return error.ArityError;
+                }
+            },
+            1 => {
+                if (is_sub) {
+                    // (- x) => (0 - x)
+                    const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
+                    try self.chunk.emit(.const_load, idx);
+                    try self.compile(args[0]);
+                    try self.chunk.emitOp(.sub);
+                } else if (std.mem.eql(u8, name, "/")) {
+                    // (/ x) => (1.0 / x)
+                    const idx = self.chunk.addConstant(.{ .float = 1.0 }) catch return error.TooManyConstants;
+                    try self.chunk.emit(.const_load, idx);
+                    try self.compile(args[0]);
+                    try self.chunk.emitOp(.div);
+                } else {
+                    // (+ x) => x, (* x) => x
+                    try self.compile(args[0]);
+                }
+            },
+            else => {
+                // 2+ args: compile first two, emit op, then fold remaining
+                try self.compile(args[0]);
+                try self.compile(args[1]);
+                try self.chunk.emitOp(op);
+                for (args[2..]) |arg| {
+                    try self.compile(arg);
+                    try self.chunk.emitOp(op);
+                }
+            },
+        }
+    }
+
+    /// Map variadic arithmetic names to their binary opcodes.
+    fn variadicArithOp(name: []const u8) ?chunk_mod.OpCode {
         const map = .{
             .{ "+", .add },
             .{ "-", .sub },
             .{ "*", .mul },
             .{ "/", .div },
+        };
+        inline for (map) |entry| {
+            if (std.mem.eql(u8, name, entry[0])) return entry[1];
+        }
+        return null;
+    }
+
+    /// Map binary-only intrinsic names (mod, rem, comparisons) to opcodes.
+    fn binaryOnlyIntrinsic(name: []const u8) ?chunk_mod.OpCode {
+        const map = .{
             .{ "mod", .mod },
             .{ "rem", .rem_ },
             .{ "<", .lt },
