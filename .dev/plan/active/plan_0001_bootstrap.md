@@ -48,7 +48,7 @@ Before reader/analyzer, we need the Value type that Form will reference.
 
 | #    | Task                                             | Status  | Notes                                                                                                                                       |
 |------|--------------------------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.9  | Define Node type in src/common/analyzer/node.zig | pending | Beta: 605L. AST node types for each special form + generic call/literal                                                                     |
+| 1.9  | Define Node type in src/common/analyzer/node.zig | done    | Core 14 variants: constant, var_ref, local_ref, if, do, let, loop, recur, fn, call, def, quote, throw, try. Advanced variants (defmulti, defprotocol, etc.) deferred to later tasks |
 | 1.10 | Create Analyzer with special form comptime table | pending | Beta: 5355L (to be redesigned). SS10: special_forms as comptime table, not if-else chain. Start with: if, do, let, fn, def, quote, defmacro |
 | 1.11 | Analyzer: loop/recur, try/catch/throw            | pending | Essential control flow                                                                                                                      |
 | 1.12 | Analyzer: var resolution, namespace lookup       | pending | Requires Env/Namespace/Var from Phase 2 runtime                                                                                             |

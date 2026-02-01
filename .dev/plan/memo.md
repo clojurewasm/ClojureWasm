@@ -4,7 +4,7 @@
 
 - Current phase: Phase 1a (Value type foundation)
 - Active plan: .dev/plan/active/plan_0001_bootstrap.md
-- Next task: Task 1.9 -- Define Node type in src/common/analyzer/node.zig
+- Next task: Task 1.10 -- Create Analyzer with special form comptime table
 - Blockers: none
 
 ## Completed Phases
