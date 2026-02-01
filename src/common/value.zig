@@ -28,6 +28,13 @@ pub const Keyword = struct {
     name: []const u8,
 };
 
+/// Runtime function (closure). Proto is stored as opaque pointer
+/// to avoid circular dependency with bytecode/chunk.zig.
+pub const Fn = struct {
+    proto: *const anyopaque,
+    closure_bindings: ?[]const Value = null,
+};
+
 /// Runtime value — tagged union representation.
 /// Minimal variants for Phase 1a. More added incrementally.
 pub const Value = union(enum) {
@@ -48,6 +55,9 @@ pub const Value = union(enum) {
     vector: *const PersistentVector,
     map: *const PersistentArrayMap,
     set: *const PersistentHashSet,
+
+    // Functions
+    fn_val: *const Fn,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -133,6 +143,7 @@ pub const Value = union(enum) {
                 }
                 try w.writeAll("}");
             },
+            .fn_val => try w.writeAll("#<fn>"),
         }
     }
 
@@ -173,6 +184,7 @@ pub const Value = union(enum) {
             .symbol => |a| eqlOptionalStr(a.ns, other.symbol.ns) and std.mem.eql(u8, a.name, other.symbol.name),
             .keyword => |a| eqlOptionalStr(a.ns, other.keyword.ns) and std.mem.eql(u8, a.name, other.keyword.name),
             .list, .vector => unreachable, // handled by sequential equality above
+            .fn_val => |a| a == other.fn_val,
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;
@@ -516,6 +528,28 @@ test "Value.eql - different types" {
     try testing.expect(!nil_v.eql(bool_v));
     try testing.expect(!nil_v.eql(str_v));
     try testing.expect(!int_v.eql(bool_v));
+}
+
+test "Value - fn_val creation" {
+    const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
+    const v: Value = .{ .fn_val = &fn_obj };
+    try testing.expect(!v.isNil());
+    try testing.expect(v.isTruthy());
+}
+
+test "Value.formatPrStr - fn_val" {
+    const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
+    try expectFormat("#<fn>", .{ .fn_val = &fn_obj });
+}
+
+test "Value.eql - fn_val identity" {
+    const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
+    const v: Value = .{ .fn_val = &fn_obj };
+    // fn values use identity equality (same pointer)
+    try testing.expect(v.eql(v));
+    // Different fn_val is not equal (distinct allocation)
+    var fn_obj2 = Fn{ .proto = undefined, .closure_bindings = null };
+    try testing.expect(!v.eql(.{ .fn_val = &fn_obj2 }));
 }
 
 test "Value - isTruthy" {

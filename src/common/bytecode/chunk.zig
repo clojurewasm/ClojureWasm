@@ -213,6 +213,7 @@ fn dumpValue(val: Value, w: *std.Io.Writer) !void {
             }
             try w.writeAll(k.name);
         },
+        .fn_val => try w.writeAll("#<fn>"),
         else => try w.print("<{s}>", .{@tagName(val)}),
     }
 }

@@ -13,6 +13,8 @@ const OpCode = chunk_mod.OpCode;
 const Instruction = chunk_mod.Instruction;
 const FnProto = chunk_mod.FnProto;
 const Value = chunk_mod.Value;
+const value_mod = @import("../../common/value.zig");
+const Fn = value_mod.Fn;
 
 /// VM execution errors.
 pub const VMError = error{
@@ -45,6 +47,8 @@ pub const VM = struct {
     sp: usize,
     frames: [FRAMES_MAX]CallFrame,
     frame_count: usize,
+    /// Allocated closures (for cleanup).
+    allocated_fns: std.ArrayListUnmanaged(*const Fn),
 
     pub fn init(allocator: std.mem.Allocator) VM {
         return .{
@@ -53,7 +57,20 @@ pub const VM = struct {
             .sp = 0,
             .frames = undefined,
             .frame_count = 0,
+            .allocated_fns = .empty,
         };
+    }
+
+    pub fn deinit(self: *VM) void {
+        for (self.allocated_fns.items) |fn_ptr| {
+            if (fn_ptr.closure_bindings) |cb| {
+                self.allocator.free(cb);
+            }
+            // const-cast to free
+            const mutable: *Fn = @constCast(fn_ptr);
+            self.allocator.destroy(mutable);
+        }
+        self.allocated_fns.deinit(self.allocator);
     }
 
     /// Execute a compiled Chunk and return the result.
@@ -124,19 +141,85 @@ pub const VM = struct {
 
                 // [G] Functions
                 .call => {
-                    // Placeholder: not yet implemented
-                    return error.InvalidInstruction;
+                    const arg_count = instr.operand;
+                    // Stack: [..., fn_val, arg0, arg1, ...]
+                    // fn_val is at sp - arg_count - 1
+                    const fn_idx = self.sp - arg_count - 1;
+                    const callee = self.stack[fn_idx];
+                    if (callee != .fn_val) return error.TypeError;
+
+                    const fn_obj = callee.fn_val;
+                    const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+
+                    // Arity check
+                    if (!proto.variadic and arg_count != proto.arity)
+                        return error.ArityError;
+
+                    // Inject closure_bindings before args if present
+                    const closure_count: u16 = if (fn_obj.closure_bindings) |cb| @intCast(cb.len) else 0;
+                    if (closure_count > 0) {
+                        const cb = fn_obj.closure_bindings.?;
+                        // Shift args right by closure_count
+                        const args_start = fn_idx + 1;
+                        if (arg_count > 0) {
+                            var i: u16 = arg_count;
+                            while (i > 0) {
+                                i -= 1;
+                                self.stack[args_start + closure_count + i] = self.stack[args_start + i];
+                            }
+                        }
+                        // Insert closure bindings
+                        for (0..closure_count) |i| {
+                            self.stack[args_start + i] = cb[i];
+                        }
+                        self.sp += closure_count;
+                    }
+
+                    // Push new call frame
+                    if (self.frame_count >= FRAMES_MAX) return error.StackOverflow;
+                    self.frames[self.frame_count] = .{
+                        .ip = 0,
+                        .base = fn_idx + 1, // points to closure_bindings[0] or arg0
+                        .code = proto.code,
+                        .constants = proto.constants,
+                    };
+                    self.frame_count += 1;
                 },
                 .tail_call => return error.InvalidInstruction,
                 .ret => {
                     const result = self.pop();
+                    const base = frame.base;
                     self.frame_count -= 1;
                     if (self.frame_count == 0) return result;
-                    // Restore caller's stack
-                    self.sp = frame.base;
+                    // Restore caller's stack: base-1 removes the fn_val slot
+                    self.sp = base - 1;
                     try self.push(result);
                 },
-                .closure => return error.InvalidInstruction,
+                .closure => {
+                    // Load the fn_val template from constants and push it.
+                    // Runtime capture (closure_bindings) is handled by
+                    // copying values from the current frame's stack.
+                    const template = frame.constants[instr.operand];
+                    if (template != .fn_val) return error.TypeError;
+                    const fn_obj = template.fn_val;
+                    const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+
+                    if (proto.capture_count > 0) {
+                        // Capture values from current frame's stack
+                        const bindings = self.allocator.alloc(Value, proto.capture_count) catch
+                            return error.OutOfMemory;
+                        for (0..proto.capture_count) |i| {
+                            bindings[i] = self.stack[frame.base + i];
+                        }
+                        const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
+                        new_fn.* = .{ .proto = fn_obj.proto, .closure_bindings = bindings };
+                        self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
+                        try self.push(.{ .fn_val = new_fn });
+                    } else {
+                        // No capture needed, push the template directly
+                        try self.push(template);
+                    }
+                },
 
                 // [H] Loop/recur
                 .recur => return error.InvalidInstruction,
@@ -504,6 +587,269 @@ test "VM mixed int/float arithmetic" {
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value{ .float = 3.5 }, result);
+}
+
+test "VM closure creates fn_val" {
+    // Create a simple FnProto: just returns nil
+    const fn_code = [_]Instruction{
+        .{ .op = .nil },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{};
+    const proto = FnProto{
+        .name = null,
+        .arity = 0,
+        .variadic = false,
+        .local_count = 0,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    // Store FnProto pointer as fn_val constant (VM reads proto from Fn)
+    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const idx = try chunk.addConstant(fn_obj);
+    try chunk.emit(.closure, idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .fn_val);
+}
+
+test "VM call simple function" {
+    // (fn [] 42) called with 0 args
+    const fn_code = [_]Instruction{
+        .{ .op = .const_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{.{ .integer = 42 }};
+    const proto = FnProto{
+        .name = null,
+        .arity = 0,
+        .variadic = false,
+        .local_count = 0,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const idx = try chunk.addConstant(fn_obj);
+    try chunk.emit(.closure, idx);
+    try chunk.emit(.call, 0);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+}
+
+test "VM call function with args" {
+    // (fn [x y] (+ x y)) called with (3 4)
+    const fn_code = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 }, // x
+        .{ .op = .local_load, .operand = 1 }, // y
+        .{ .op = .add },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{};
+    const proto = FnProto{
+        .name = null,
+        .arity = 2,
+        .variadic = false,
+        .local_count = 2,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const fn_idx = try chunk.addConstant(fn_obj);
+    const c3 = try chunk.addConstant(.{ .integer = 3 });
+    const c4 = try chunk.addConstant(.{ .integer = 4 });
+
+    try chunk.emit(.closure, fn_idx);
+    try chunk.emit(.const_load, c3);
+    try chunk.emit(.const_load, c4);
+    try chunk.emit(.call, 2);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+}
+
+test "VM closure with capture" {
+    // Simulates: (let [x 10] (fn [y] (+ x y)))
+    // The outer fn creates a closure that captures x.
+    //
+    // Inner fn: params=[y] at slot 1 (slot 0 = captured x)
+    //   local_load 0 (x, from closure_bindings)
+    //   local_load 1 (y, the argument)
+    //   add
+    //   ret
+    const inner_code = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 }, // captured x
+        .{ .op = .local_load, .operand = 1 }, // arg y
+        .{ .op = .add },
+        .{ .op = .ret },
+    };
+    const inner_constants = [_]Value{};
+    const inner_proto = FnProto{
+        .name = null,
+        .arity = 1,
+        .variadic = false,
+        .local_count = 2,
+        .capture_count = 1, // captures 1 value from parent
+        .code = &inner_code,
+        .constants = &inner_constants,
+    };
+
+    // Top-level chunk:
+    //   const_load 10      -> stack: [10]        (x = 10)
+    //   closure inner_proto -> stack: [10, fn]    (captures slot 0 = x)
+    //   const_load 5       -> stack: [10, fn, 5] (arg y = 5)
+    //   call 1             -> calls fn(5), closure_bindings=[10]
+    //   ret
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const c10 = try chunk.addConstant(.{ .integer = 10 });
+    const fn_template = Value{ .fn_val = &.{ .proto = &inner_proto, .closure_bindings = null } };
+    const fn_idx = try chunk.addConstant(fn_template);
+    const c5 = try chunk.addConstant(.{ .integer = 5 });
+
+    try chunk.emit(.const_load, c10); // push 10
+    try chunk.emit(.closure, fn_idx); // create closure capturing [10]
+    try chunk.emit(.const_load, c5); // push 5
+    try chunk.emit(.call, 1); // call with 1 arg
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 15 }, result);
+}
+
+test "VM compiler+vm integration: (fn [x] x) called" {
+    // Compile (fn [x] x) and call it with 42
+    const allocator = std.testing.allocator;
+    const node_mod = @import("../../common/analyzer/node.zig");
+    const Node = node_mod.Node;
+    const compiler_mod = @import("../../common/bytecode/compiler.zig");
+
+    var compiler = compiler_mod.Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Build AST: (do ((fn [x] x) 42))
+    var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    const params = [_][]const u8{"x"};
+    const arities = [_]node_mod.FnArity{
+        .{ .params = &params, .variadic = false, .body = &body },
+    };
+    var fn_data = node_mod.FnNode{
+        .name = null,
+        .arities = &arities,
+        .source = .{},
+    };
+    var fn_node = Node{ .fn_node = &fn_data };
+    var arg = Node{ .constant = .{ .integer = 42 } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{
+        .callee = &fn_node,
+        .args = &args,
+        .source = .{},
+    };
+    const call_node = Node{ .call_node = &call_data };
+
+    try compiler.compile(&call_node);
+    try compiler.chunk.emitOp(.ret);
+
+    var vm = VM.init(allocator);
+    defer vm.deinit();
+    const result = try vm.run(&compiler.chunk);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+}
+
+test "VM compiler+vm integration: closure capture via let" {
+    // (let [x 10] ((fn [y] (+ x y)) 5)) => 15
+    // x is a local in let, fn captures it
+    const allocator = std.testing.allocator;
+    const node_mod = @import("../../common/analyzer/node.zig");
+    const Node = node_mod.Node;
+    const compiler_mod = @import("../../common/bytecode/compiler.zig");
+
+    var compiler = compiler_mod.Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Build AST
+    // fn body: (+ x y) where x is local_ref idx=0 (captured), y is local_ref idx=1 (param)
+    var x_ref = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    var y_ref = Node{ .local_ref = .{ .name = "y", .idx = 1, .source = .{} } };
+    var add_args = [_]*Node{ &x_ref, &y_ref };
+    var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var add_call_data = node_mod.CallNode{
+        .callee = &add_callee,
+        .args = &add_args,
+        .source = .{},
+    };
+    var fn_body = Node{ .call_node = &add_call_data };
+
+    const params = [_][]const u8{"y"};
+    const arities = [_]node_mod.FnArity{
+        .{ .params = &params, .variadic = false, .body = &fn_body },
+    };
+    var fn_data = node_mod.FnNode{
+        .name = null,
+        .arities = &arities,
+        .source = .{},
+    };
+    var fn_node = Node{ .fn_node = &fn_data };
+
+    // Call: ((fn [y] (+ x y)) 5)
+    var arg_5 = Node{ .constant = .{ .integer = 5 } };
+    var call_args = [_]*Node{&arg_5};
+    var call_data = node_mod.CallNode{
+        .callee = &fn_node,
+        .args = &call_args,
+        .source = .{},
+    };
+    var call_node = Node{ .call_node = &call_data };
+
+    // let: (let [x 10] ...)
+    var init_10 = Node{ .constant = .{ .integer = 10 } };
+    const bindings = [_]node_mod.LetBinding{
+        .{ .name = "x", .init = &init_10 },
+    };
+    var let_data = node_mod.LetNode{
+        .bindings = &bindings,
+        .body = &call_node,
+        .source = .{},
+    };
+    const let_node = Node{ .let_node = &let_data };
+
+    try compiler.compile(&let_node);
+    try compiler.chunk.emitOp(.ret);
+
+    // This test requires var_load for "+" which is not yet implemented,
+    // so we skip the VM execution for now and just verify compilation succeeds.
+    // The bytecode should contain: const_load(10), closure, const_load(5), call, pop, ret
+    const code = compiler.chunk.code.items;
+    try std.testing.expect(code.len > 0);
+
+    // Verify closure opcode is present
+    var has_closure = false;
+    for (code) |instr| {
+        if (instr.op == .closure) has_closure = true;
+    }
+    try std.testing.expect(has_closure);
 }
 
 test "VM nop does nothing" {

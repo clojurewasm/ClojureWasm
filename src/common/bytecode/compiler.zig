@@ -10,6 +10,8 @@ const OpCode = chunk_mod.OpCode;
 const Instruction = chunk_mod.Instruction;
 const FnProto = chunk_mod.FnProto;
 const Value = chunk_mod.Value;
+const value_mod = @import("../value.zig");
+const Fn = value_mod.Fn;
 const node_mod = @import("../analyzer/node.zig");
 const Node = node_mod.Node;
 
@@ -37,6 +39,9 @@ pub const Compiler = struct {
     scope_depth: u32,
     loop_start: ?usize,
     loop_binding_count: u16,
+    /// Heap-allocated FnProtos and Fns (for cleanup).
+    fn_protos: std.ArrayListUnmanaged(*const FnProto),
+    fn_objects: std.ArrayListUnmanaged(*const Fn),
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -46,10 +51,22 @@ pub const Compiler = struct {
             .scope_depth = 0,
             .loop_start = null,
             .loop_binding_count = 0,
+            .fn_protos = .empty,
+            .fn_objects = .empty,
         };
     }
 
     pub fn deinit(self: *Compiler) void {
+        for (self.fn_protos.items) |proto| {
+            self.allocator.free(proto.code);
+            self.allocator.free(proto.constants);
+            self.allocator.destroy(@constCast(proto));
+        }
+        self.fn_protos.deinit(self.allocator);
+        for (self.fn_objects.items) |fn_obj| {
+            self.allocator.destroy(@constCast(fn_obj));
+        }
+        self.fn_objects.deinit(self.allocator);
         self.chunk.deinit();
         self.locals.deinit(self.allocator);
     }
@@ -226,9 +243,17 @@ pub const Compiler = struct {
 
         const arity = node.arities[0];
 
+        // Calculate capture_count: number of parent locals at this point
+        const capture_count: u16 = @intCast(self.locals.items.len);
+
         // Create a child compiler for the function body
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
+
+        // Reserve slots for captured variables (they appear before params)
+        for (self.locals.items) |local| {
+            try fn_compiler.addLocal(local.name);
+        }
 
         // Add parameters as locals
         for (arity.params) |param| {
@@ -239,19 +264,34 @@ pub const Compiler = struct {
         try fn_compiler.compile(arity.body);
         try fn_compiler.chunk.emitOp(.ret);
 
-        // Create FnProto and store as constant
-        const proto = FnProto{
+        // Allocate owned copies of code and constants so they outlive fn_compiler
+        const code_copy = self.allocator.dupe(Instruction, fn_compiler.chunk.code.items) catch
+            return error.OutOfMemory;
+        const const_copy = self.allocator.dupe(Value, fn_compiler.chunk.constants.items) catch
+            return error.OutOfMemory;
+
+        // Allocate FnProto on the heap so it outlives this function
+        const proto = self.allocator.create(FnProto) catch return error.OutOfMemory;
+        proto.* = .{
             .name = node.name,
             .arity = @intCast(arity.params.len),
             .variadic = arity.variadic,
             .local_count = @intCast(fn_compiler.locals.items.len),
-            .code = fn_compiler.chunk.code.items,
-            .constants = fn_compiler.chunk.constants.items,
+            .capture_count = capture_count,
+            .code = code_copy,
+            .constants = const_copy,
         };
-        _ = proto;
 
-        // For now, emit a nil placeholder (full closure creation deferred to VM task)
-        try self.chunk.emitOp(.nil);
+        self.fn_protos.append(self.allocator, proto) catch return error.OutOfMemory;
+
+        // Create Fn template and store as constant
+        const fn_obj = self.allocator.create(Fn) catch return error.OutOfMemory;
+        fn_obj.* = .{ .proto = proto, .closure_bindings = null };
+        self.fn_objects.append(self.allocator, fn_obj) catch return error.OutOfMemory;
+
+        const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
+            return error.TooManyConstants;
+        try self.chunk.emit(.closure, idx);
     }
 
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
@@ -609,6 +649,35 @@ test "compile let_node" {
     try std.testing.expectEqual(OpCode.local_load, code[1].op); // body: ref x
     try std.testing.expectEqual(@as(u16, 0), code[1].operand); // slot 0
     try std.testing.expectEqual(OpCode.pop, code[2].op); // cleanup
+}
+
+test "compile fn_node emits closure" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // (fn [x] x)
+    var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    const params = [_][]const u8{"x"};
+    const arities = [_]node_mod.FnArity{
+        .{ .params = &params, .variadic = false, .body = &body },
+    };
+    var fn_data = node_mod.FnNode{
+        .name = null,
+        .arities = &arities,
+        .source = .{},
+    };
+    const node = Node{ .fn_node = &fn_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    // Should emit: closure <idx>
+    try std.testing.expectEqual(OpCode.closure, code[0].op);
+    try std.testing.expectEqual(@as(usize, 1), code.len);
+
+    // The constant should be a fn_val
+    const fn_const = compiler.chunk.constants.items[code[0].operand];
+    try std.testing.expect(fn_const == .fn_val);
 }
 
 test "compile var_ref" {

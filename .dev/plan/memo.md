@@ -3,7 +3,7 @@
 ## Current State
 - Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Implement closures and upvalues in VM (Task 2.8)
+- Current task: Create TreeWalk evaluator (Task 2.9)
 - Task file:
 - Blockers: none
 
@@ -21,3 +21,4 @@
 | T2.5    | .dev/plan/archive/task_0016_opcodes.md             | 2026-02-01 |
 | T2.6    | .dev/plan/archive/task_0017_compiler.md            | 2026-02-01 |
 | T2.7    | .dev/plan/archive/task_0018_vm.md                  | 2026-02-01 |
+| T2.8    | .dev/plan/archive/task_0019_closures.md             | 2026-02-01 |
