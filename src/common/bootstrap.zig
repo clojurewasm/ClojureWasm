@@ -1065,3 +1065,186 @@ test "evalStringVM - multi-arity fn" {
     try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 5)", 5);
     try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 3 4)", 7);
 }
+
+// =========================================================================
+// Destructuring tests (T4.9)
+// =========================================================================
+
+test "destructuring - sequential basic" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Basic sequential destructuring in let
+    try expectEvalInt(alloc, &env, "(let [[a b] [1 2]] (+ a b))", 3);
+    try expectEvalInt(alloc, &env, "(let [[a b c] [10 20 30]] (+ a c))", 40);
+}
+
+test "destructuring - sequential rest" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // & rest binding
+    try expectEvalInt(alloc, &env, "(let [[a & r] [1 2 3]] a)", 1);
+    try expectEvalInt(alloc, &env, "(let [[a & r] [1 2 3]] (count r))", 2);
+    try expectEvalInt(alloc, &env, "(let [[a b & r] [1 2 3 4 5]] (first r))", 3);
+}
+
+test "destructuring - sequential :as" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // :as whole-collection binding
+    try expectEvalInt(alloc, &env, "(let [[a b :as all] [1 2 3]] (count all))", 3);
+    try expectEvalInt(alloc, &env, "(let [[a :as all] [10 20]] (+ a (count all)))", 12);
+}
+
+test "destructuring - map :keys" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // :keys destructuring
+    try expectEvalInt(alloc, &env, "(let [{:keys [a b]} {:a 1 :b 2}] (+ a b))", 3);
+    try expectEvalInt(alloc, &env, "(let [{:keys [x]} {:x 42}] x)", 42);
+}
+
+test "destructuring - map :or defaults" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // :or default values
+    try expectEvalInt(alloc, &env, "(let [{:keys [a] :or {a 99}} {}] a)", 99);
+    try expectEvalInt(alloc, &env, "(let [{:keys [a] :or {a 99}} {:a 1}] a)", 1);
+}
+
+test "destructuring - map :as" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // :as whole-map binding
+    try expectEvalInt(alloc, &env, "(let [{:keys [a] :as m} {:a 1 :b 2}] (+ a (count m)))", 3);
+}
+
+test "destructuring - map symbol keys" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // {x :x} style
+    try expectEvalInt(alloc, &env, "(let [{x :x y :y} {:x 10 :y 20}] (+ x y))", 30);
+}
+
+test "destructuring - fn params" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Sequential destructuring in fn params
+    try expectEvalInt(alloc, &env, "((fn [[a b]] (+ a b)) [1 2])", 3);
+    // Map destructuring in fn params
+    try expectEvalInt(alloc, &env, "((fn [{:keys [x y]}] (+ x y)) {:x 3 :y 4})", 7);
+}
+
+test "destructuring - loop" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Sequential destructuring in loop
+    try expectEvalInt(alloc, &env, "(loop [[a b] [1 2]] (+ a b))", 3);
+}
+
+test "destructuring - nested" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Nested sequential destructuring
+    try expectEvalInt(alloc, &env, "(let [[[a b] c] [[1 2] 3]] (+ a b c))", 6);
+    // Map inside sequential
+    try expectEvalInt(alloc, &env, "(let [[{:keys [x]} y] [{:x 10} 20]] (+ x y))", 30);
+}
+
+test "destructuring - VM sequential" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectVMEvalInt(alloc, &env, "(let [[a b] [1 2]] (+ a b))", 3);
+    try expectVMEvalInt(alloc, &env, "(let [[a & r] [1 2 3]] a)", 1);
+    try expectVMEvalInt(alloc, &env, "(let [[a b :as all] [1 2 3]] (count all))", 3);
+}
+
+test "destructuring - VM map" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectVMEvalInt(alloc, &env, "(let [{:keys [a b]} {:a 1 :b 2}] (+ a b))", 3);
+    try expectVMEvalInt(alloc, &env, "(let [{:keys [a] :or {a 99}} {}] a)", 99);
+}
+
+test "destructuring - VM fn params" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectVMEvalInt(alloc, &env, "((fn [[a b]] (+ a b)) [1 2])", 3);
+}

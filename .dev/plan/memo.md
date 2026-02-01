@@ -4,7 +4,7 @@
 
 - Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T4.9 — Destructuring (sequential + map)
+- Current task: T4.10 — for macro (list comprehension)
 - Task file:
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
@@ -50,6 +50,7 @@
 | T4.5    | .dev/plan/archive/task_0042_vm_compare_validation.md        | 2026-02-02 |
 | T4.6    | .dev/plan/archive/task_0043_aot_pipeline.md                 | 2026-02-02 |
 | T4.8    | .dev/plan/archive/task_0044_multi_arity_fn.md               | 2026-02-02 |
+| T4.9    | .dev/plan/archive/task_0045_destructuring.md                | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

@@ -340,23 +340,12 @@ pub const Analyzer = struct {
 
         const start_locals = self.locals.items.len;
 
-        // Process bindings (simple symbols only in Phase 1c)
-        var bindings = self.allocator.alloc(node_mod.LetBinding, binding_pairs.len / 2) catch return error.OutOfMemory;
-        var bi: usize = 0;
+        // Process bindings with destructuring support
+        var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
         var i: usize = 0;
         while (i < binding_pairs.len) : (i += 2) {
-            if (binding_pairs[i].data != .symbol) {
-                return self.analysisError(.value_error, "let binding name must be a symbol", binding_pairs[i]);
-            }
-            const name = binding_pairs[i].data.symbol.name;
             const init_node = try self.analyze(binding_pairs[i + 1]);
-
-            bindings[bi] = .{ .name = name, .init = init_node };
-            bi += 1;
-
-            // Register local
-            const idx: u32 = @intCast(self.locals.items.len);
-            self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;
+            try self.expandBindingPattern(binding_pairs[i], init_node, &bindings_list, form);
         }
 
         // Analyze body (wrap multiple exprs in do)
@@ -367,7 +356,7 @@ pub const Analyzer = struct {
 
         const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
         let_data.* = .{
-            .bindings = bindings,
+            .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
             .body = body,
             .source = self.sourceFromForm(form),
         };
@@ -464,23 +453,73 @@ pub const Analyzer = struct {
         var params: std.ArrayList([]const u8) = .empty;
         var variadic = false;
 
+        // Track which params need destructuring (pattern_index -> synthetic_name)
+        var destructure_patterns: std.ArrayList(DestructureEntry) = .empty;
+        var has_destructuring = false;
+
         const start_locals = self.locals.items.len;
 
+        var param_idx: usize = 0;
         for (params_form) |p| {
-            if (p.data != .symbol) {
-                return self.analysisError(.value_error, "fn parameter must be a symbol", p);
+            if (p.data == .symbol) {
+                const param_name = p.data.symbol.name;
+
+                if (std.mem.eql(u8, param_name, "&")) {
+                    variadic = true;
+                    continue;
+                }
+
+                params.append(self.allocator, param_name) catch return error.OutOfMemory;
+
+                const idx: u32 = @intCast(self.locals.items.len);
+                self.locals.append(self.allocator, .{ .name = param_name, .idx = idx }) catch return error.OutOfMemory;
+            } else if (p.data == .vector or p.data == .map) {
+                // Destructuring param: generate synthetic name __p0__, __p1__, etc.
+                const syn_name = try self.makeSyntheticParamName(param_idx);
+                params.append(self.allocator, syn_name) catch return error.OutOfMemory;
+
+                const idx: u32 = @intCast(self.locals.items.len);
+                self.locals.append(self.allocator, .{ .name = syn_name, .idx = idx }) catch return error.OutOfMemory;
+
+                destructure_patterns.append(self.allocator, .{
+                    .pattern = p,
+                    .syn_name = syn_name,
+                    .syn_idx = idx,
+                }) catch return error.OutOfMemory;
+                has_destructuring = true;
+            } else {
+                return self.analysisError(.value_error, "fn parameter must be a symbol, vector, or map", p);
             }
-            const param_name = p.data.symbol.name;
+            param_idx += 1;
+        }
 
-            if (std.mem.eql(u8, param_name, "&")) {
-                variadic = true;
-                continue;
+        if (has_destructuring) {
+            // Expand destructuring patterns into let bindings that wrap the body
+            var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
+            for (destructure_patterns.items) |entry| {
+                const ref_node = try self.makeTempLocalRef(entry.syn_name, entry.syn_idx);
+                try self.expandBindingPattern(entry.pattern, ref_node, &bindings_list, form);
             }
 
-            params.append(self.allocator, param_name) catch return error.OutOfMemory;
+            const inner_body = try self.analyzeBody(body_forms, form);
 
-            const idx: u32 = @intCast(self.locals.items.len);
-            self.locals.append(self.allocator, .{ .name = param_name, .idx = idx }) catch return error.OutOfMemory;
+            // Wrap body in let node with destructuring bindings
+            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
+            let_data.* = .{
+                .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = inner_body,
+                .source = self.sourceFromForm(form),
+            };
+            const body = self.allocator.create(Node) catch return error.OutOfMemory;
+            body.* = .{ .let_node = let_data };
+
+            self.locals.shrinkRetainingCapacity(start_locals);
+
+            return .{
+                .params = params.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .variadic = variadic,
+                .body = body,
+            };
         }
 
         const body = try self.analyzeBody(body_forms, form);
@@ -492,6 +531,20 @@ pub const Analyzer = struct {
             .variadic = variadic,
             .body = body,
         };
+    }
+
+    const DestructureEntry = struct {
+        pattern: Form,
+        syn_name: []const u8,
+        syn_idx: u32,
+    };
+
+    fn makeSyntheticParamName(self: *Analyzer, idx: usize) AnalyzeError![]const u8 {
+        // Generate __p0__, __p1__, etc.
+        var buf: [16]u8 = undefined;
+        const name = std.fmt.bufPrint(&buf, "__p{d}__", .{idx}) catch return error.OutOfMemory;
+        const owned = self.allocator.dupe(u8, name) catch return error.OutOfMemory;
+        return owned;
     }
 
     fn analyzeDef(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
@@ -587,21 +640,12 @@ pub const Analyzer = struct {
 
         const start_locals = self.locals.items.len;
 
-        var bindings = self.allocator.alloc(node_mod.LetBinding, binding_pairs.len / 2) catch return error.OutOfMemory;
-        var bi: usize = 0;
+        // Process bindings with destructuring support
+        var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
         var i: usize = 0;
         while (i < binding_pairs.len) : (i += 2) {
-            if (binding_pairs[i].data != .symbol) {
-                return self.analysisError(.value_error, "loop binding name must be a symbol", binding_pairs[i]);
-            }
-            const name = binding_pairs[i].data.symbol.name;
             const init_node = try self.analyze(binding_pairs[i + 1]);
-
-            bindings[bi] = .{ .name = name, .init = init_node };
-            bi += 1;
-
-            const idx: u32 = @intCast(self.locals.items.len);
-            self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;
+            try self.expandBindingPattern(binding_pairs[i], init_node, &bindings_list, form);
         }
 
         const body = try self.analyzeBody(items[2..], form);
@@ -610,7 +654,7 @@ pub const Analyzer = struct {
 
         const loop_data = self.allocator.create(node_mod.LoopNode) catch return error.OutOfMemory;
         loop_data.* = .{
-            .bindings = bindings,
+            .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
             .body = body,
             .source = self.sourceFromForm(form),
         };
@@ -855,10 +899,284 @@ pub const Analyzer = struct {
     }
 
     /// Build a call to a builtin function by name (name-based var_ref in Phase 1c).
+    // === Destructuring expansion ===
+
+    /// Expand a binding pattern into simple name=init bindings.
+    /// Dispatches on pattern form type: symbol (simple), vector (sequential), map (associative).
+    fn expandBindingPattern(
+        self: *Analyzer,
+        pattern: Form,
+        init_node: *Node,
+        bindings: *std.ArrayList(node_mod.LetBinding),
+        form: Form,
+    ) AnalyzeError!void {
+        switch (pattern.data) {
+            .symbol => |sym| {
+                // Simple binding: name = init
+                const name = sym.name;
+                const idx: u32 = @intCast(self.locals.items.len);
+                self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;
+                bindings.append(self.allocator, .{ .name = name, .init = init_node }) catch return error.OutOfMemory;
+            },
+            .vector => |elems| {
+                // Sequential destructuring: [a b c] = coll
+                try self.expandSequentialPattern(elems, init_node, bindings, form);
+            },
+            .map => |entries| {
+                // Map destructuring: {:keys [a b]} = map
+                try self.expandMapPattern(entries, init_node, bindings, form);
+            },
+            else => {
+                return self.analysisError(.value_error, "binding pattern must be a symbol, vector, or map", pattern);
+            },
+        }
+    }
+
+    /// Expand sequential destructuring pattern.
+    /// [a b c]       -> a = (nth coll 0), b = (nth coll 1), c = (nth coll 2)
+    /// [a b & rest]  -> a = (nth coll 0), b = (nth coll 1), rest = (rest (rest coll))
+    /// [a b :as all] -> a = (nth coll 0), b = (nth coll 1), all = coll
+    fn expandSequentialPattern(
+        self: *Analyzer,
+        elems: []const Form,
+        init_node: *Node,
+        bindings: *std.ArrayList(node_mod.LetBinding),
+        form: Form,
+    ) AnalyzeError!void {
+        // Bind whole collection to temp var (avoid multiple evaluation)
+        const temp_name = "__destructure_seq__";
+        const temp_idx: u32 = @intCast(self.locals.items.len);
+        self.locals.append(self.allocator, .{ .name = temp_name, .idx = temp_idx }) catch return error.OutOfMemory;
+        bindings.append(self.allocator, .{ .name = temp_name, .init = init_node }) catch return error.OutOfMemory;
+
+        // Create reference node for the temp var
+        const temp_ref = try self.makeTempLocalRef(temp_name, temp_idx);
+
+        var pos: usize = 0;
+        var i: usize = 0;
+        while (i < elems.len) : (i += 1) {
+            const elem = elems[i];
+
+            // & rest check
+            if (elem.data == .symbol and std.mem.eql(u8, elem.data.symbol.name, "&")) {
+                if (i + 1 >= elems.len) {
+                    return self.analysisError(.value_error, "& must be followed by a binding", form);
+                }
+                const rest_pattern = elems[i + 1];
+
+                // rest = chained rest calls (pos times)
+                const rest_init = try self.makeNthRest(temp_ref, pos);
+                try self.expandBindingPattern(rest_pattern, rest_init, bindings, form);
+
+                i += 1; // skip rest pattern
+
+                // Check for :as after & rest
+                if (i + 1 < elems.len) {
+                    if (elems[i + 1].data == .keyword and std.mem.eql(u8, elems[i + 1].data.keyword.name, "as")) {
+                        if (i + 2 >= elems.len) {
+                            return self.analysisError(.value_error, ":as must be followed by a symbol", form);
+                        }
+                        try self.expandBindingPattern(elems[i + 2], temp_ref, bindings, form);
+                        i += 2;
+                    }
+                }
+                continue;
+            }
+
+            // :as check
+            if (elem.data == .keyword and std.mem.eql(u8, elem.data.keyword.name, "as")) {
+                if (i + 1 >= elems.len) {
+                    return self.analysisError(.value_error, ":as must be followed by a symbol", form);
+                }
+                try self.expandBindingPattern(elems[i + 1], temp_ref, bindings, form);
+                i += 1;
+                continue;
+            }
+
+            // Normal element: elem = (nth coll pos)
+            const nth_init = try self.makeNthCall(temp_ref, pos);
+            try self.expandBindingPattern(elem, nth_init, bindings, form);
+            pos += 1;
+        }
+    }
+
+    /// Expand map destructuring pattern.
+    /// {:keys [a b]}        -> a = (get coll :a), b = (get coll :b)
+    /// {:strs [a b]}        -> a = (get coll "a"), b = (get coll "b")
+    /// {a :a, b :b}         -> a = (get coll :a), b = (get coll :b)
+    /// {:keys [a] :or {a 0}} -> a = (get coll :a) with default 0
+    /// {:keys [a] :as m}    -> a = (get coll :a), m = coll
+    fn expandMapPattern(
+        self: *Analyzer,
+        entries: []const Form,
+        init_node: *Node,
+        bindings: *std.ArrayList(node_mod.LetBinding),
+        form: Form,
+    ) AnalyzeError!void {
+        // Bind whole collection to temp var
+        const temp_name = "__destructure_map__";
+        const temp_idx: u32 = @intCast(self.locals.items.len);
+        self.locals.append(self.allocator, .{ .name = temp_name, .idx = temp_idx }) catch return error.OutOfMemory;
+        bindings.append(self.allocator, .{ .name = temp_name, .init = init_node }) catch return error.OutOfMemory;
+
+        const temp_ref = try self.makeTempLocalRef(temp_name, temp_idx);
+
+        // First pass: find :or defaults
+        var defaults: ?[]const Form = null;
+        {
+            var i: usize = 0;
+            while (i + 1 < entries.len) : (i += 2) {
+                if (entries[i].data == .keyword and std.mem.eql(u8, entries[i].data.keyword.name, "or")) {
+                    if (entries[i + 1].data == .map) {
+                        defaults = entries[i + 1].data.map;
+                    }
+                }
+            }
+        }
+
+        // Second pass: process entries
+        var i: usize = 0;
+        while (i + 1 < entries.len) : (i += 2) {
+            const key = entries[i];
+            const val = entries[i + 1];
+
+            if (key.data == .keyword) {
+                const kw_name = key.data.keyword.name;
+
+                if (std.mem.eql(u8, kw_name, "keys")) {
+                    // :keys [a b c] -> each symbol becomes a keyword-keyed get
+                    if (val.data != .vector) {
+                        return self.analysisError(.value_error, ":keys must be followed by a vector", val);
+                    }
+                    for (val.data.vector) |sym_form| {
+                        if (sym_form.data != .symbol) {
+                            return self.analysisError(.value_error, ":keys elements must be symbols", sym_form);
+                        }
+                        const sym_name = sym_form.data.symbol.name;
+                        const get_init = try self.makeGetKeywordCall(temp_ref, sym_name, defaults);
+                        const bind_idx: u32 = @intCast(self.locals.items.len);
+                        self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                        bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+                    }
+                } else if (std.mem.eql(u8, kw_name, "strs")) {
+                    // :strs [a b] -> each symbol becomes a string-keyed get
+                    if (val.data != .vector) {
+                        return self.analysisError(.value_error, ":strs must be followed by a vector", val);
+                    }
+                    for (val.data.vector) |sym_form| {
+                        if (sym_form.data != .symbol) {
+                            return self.analysisError(.value_error, ":strs elements must be symbols", sym_form);
+                        }
+                        const sym_name = sym_form.data.symbol.name;
+                        const get_init = try self.makeGetStringCall(temp_ref, sym_name, defaults);
+                        const bind_idx: u32 = @intCast(self.locals.items.len);
+                        self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                        bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+                    }
+                } else if (std.mem.eql(u8, kw_name, "as")) {
+                    // :as all -> all = coll
+                    try self.expandBindingPattern(val, temp_ref, bindings, form);
+                } else if (std.mem.eql(u8, kw_name, "or")) {
+                    // :or already processed, skip
+                    continue;
+                } else {
+                    return self.analysisError(.value_error, "unknown map destructuring keyword", key);
+                }
+            } else if (key.data == .symbol) {
+                // {x :x, y :y} -> x = (get coll :x)
+                const sym_name = key.data.symbol.name;
+                if (val.data != .keyword) {
+                    return self.analysisError(.value_error, "map destructuring: value must be a keyword", val);
+                }
+                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, null);
+                const bind_idx: u32 = @intCast(self.locals.items.len);
+                self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+            } else {
+                return self.analysisError(.value_error, "map destructuring: key must be keyword or symbol", key);
+            }
+        }
+    }
+
+    /// Create a local_ref node for a temp var (no source info).
+    fn makeTempLocalRef(self: *Analyzer, name: []const u8, idx: u32) AnalyzeError!*Node {
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .local_ref = .{
+            .name = name,
+            .idx = idx,
+            .source = .{},
+        } };
+        return n;
+    }
+
+    /// Generate (nth coll idx) call node.
+    fn makeNthCall(self: *Analyzer, coll_node: *Node, idx: usize) AnalyzeError!*Node {
+        const idx_node = try self.makeConstant(.{ .integer = @intCast(idx) });
+        const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        args[0] = coll_node;
+        args[1] = idx_node;
+        return self.makeBuiltinCall("nth", args);
+    }
+
+    /// Generate chained rest calls: (rest (rest ... (rest coll))) pos times.
+    fn makeNthRest(self: *Analyzer, coll_node: *Node, pos: usize) AnalyzeError!*Node {
+        if (pos == 0) return coll_node;
+
+        var current = coll_node;
+        for (0..pos) |_| {
+            const args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+            args[0] = current;
+            current = try self.makeBuiltinCall("rest", args);
+        }
+        return current;
+    }
+
+    /// Generate (get coll :keyword) or (get coll :keyword default) call node.
+    fn makeGetKeywordCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
+        const key_node = try self.makeConstant(.{ .keyword = .{ .ns = null, .name = key_name } });
+        const default_node = try self.findDefault(key_name, defaults);
+        return self.makeGetCallNode(coll_node, key_node, default_node);
+    }
+
+    /// Generate (get coll "string") or (get coll "string" default) call node.
+    fn makeGetStringCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
+        const key_node = try self.makeConstant(.{ .string = key_name });
+        const default_node = try self.findDefault(key_name, defaults);
+        return self.makeGetCallNode(coll_node, key_node, default_node);
+    }
+
+    /// Generate (get coll key) or (get coll key default) call node.
+    fn makeGetCallNode(self: *Analyzer, coll_node: *Node, key_node: *Node, default_node: ?*Node) AnalyzeError!*Node {
+        if (default_node) |def| {
+            const args = self.allocator.alloc(*Node, 3) catch return error.OutOfMemory;
+            args[0] = coll_node;
+            args[1] = key_node;
+            args[2] = def;
+            return self.makeBuiltinCall("get", args);
+        } else {
+            const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+            args[0] = coll_node;
+            args[1] = key_node;
+            return self.makeBuiltinCall("get", args);
+        }
+    }
+
+    /// Find default value for a key in :or map.
+    fn findDefault(self: *Analyzer, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!?*Node {
+        const defs = defaults orelse return null;
+        var j: usize = 0;
+        while (j + 1 < defs.len) : (j += 2) {
+            if (defs[j].data == .symbol and std.mem.eql(u8, defs[j].data.symbol.name, key_name)) {
+                return try self.analyze(defs[j + 1]);
+            }
+        }
+        return null;
+    }
+
     fn makeBuiltinCall(self: *Analyzer, name: []const u8, args: []*Node) AnalyzeError!*Node {
         const callee = self.allocator.create(Node) catch return error.OutOfMemory;
         callee.* = .{ .var_ref = .{
-            .ns = "clojure.core",
+            .ns = null,
             .name = name,
             .source = .{},
         } };
