@@ -178,6 +178,16 @@ pub const VM = struct {
                     const val = self.peek(0);
                     try self.push(val);
                 },
+                .pop_under => {
+                    // Keep top, remove N values below it
+                    const count = instr.operand;
+                    const top = self.pop();
+                    var i: u16 = 0;
+                    while (i < count) : (i += 1) {
+                        _ = self.pop();
+                    }
+                    try self.push(top);
+                },
 
                 // [C] Locals
                 .local_load => {

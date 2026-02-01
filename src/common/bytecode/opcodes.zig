@@ -41,6 +41,8 @@ pub const OpCode = enum(u8) {
     pop = 0x10,
     /// Duplicate top of stack
     dup = 0x11,
+    /// Keep top, remove operand values below it (for let/do cleanup)
+    pop_under = 0x12,
 
     // === [C] Local variables (0x20-0x2F) ===
 

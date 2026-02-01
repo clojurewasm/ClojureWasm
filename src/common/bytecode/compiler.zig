@@ -177,13 +177,10 @@ pub const Compiler = struct {
         // Compile body
         try self.compile(node.body);
 
-        // Clean up: pop locals, keeping body result on top
+        // Clean up: keep body result, remove binding slots below it
         const locals_to_pop = self.locals.items.len - base_locals;
         if (locals_to_pop > 0) {
-            // Swap result past locals, then pop them
-            for (0..locals_to_pop) |_| {
-                try self.chunk.emitOp(.pop);
-            }
+            try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
         }
 
         self.locals.shrinkRetainingCapacity(base_locals);
@@ -740,7 +737,7 @@ test "compile throw_node" {
 }
 
 test "compile let_node" {
-    // (let [x 1] x) -> const_load(1), local_load(0), pop (cleanup)
+    // (let [x 1] x) -> const_load(1), local_load(0), pop_under(1)
     const allocator = std.testing.allocator;
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
@@ -760,11 +757,12 @@ test "compile let_node" {
     try compiler.compile(&node);
 
     const code = compiler.chunk.code.items;
-    // const_load(1) -> local_load(0) -> pop (cleanup of 1 local)
+    // const_load(1) -> local_load(0) -> pop_under(1) (keep result, remove binding)
     try std.testing.expectEqual(OpCode.const_load, code[0].op); // init x=1
     try std.testing.expectEqual(OpCode.local_load, code[1].op); // body: ref x
     try std.testing.expectEqual(@as(u16, 0), code[1].operand); // slot 0
-    try std.testing.expectEqual(OpCode.pop, code[2].op); // cleanup
+    try std.testing.expectEqual(OpCode.pop_under, code[2].op); // cleanup
+    try std.testing.expectEqual(@as(u16, 1), code[2].operand); // 1 binding
 }
 
 test "compile fn_node emits closure" {
