@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (after Phase 3 completion)
+Last updated: 2026-02-02 (Phase 4 planning — T4.0)
 
 ## Invariants (always enforce)
 
@@ -22,17 +22,13 @@ Last updated: 2026-02-02 (after Phase 3 completion)
 | F5  | swap! with fn_val                           | User reports or SCI tests require it                 | D8 (swap!) |
 | F6  | Multi-thread dynamic bindings               | Native multi-thread target                           | D11        |
 
-## Phase 4 candidates (not yet planned)
+## Phase 4 task priorities
 
-| ID  | Item                                | Depends on | Notes                                                    |
-| --- | ----------------------------------- | ---------- | -------------------------------------------------------- |
-| P1  | VM parity with Phase 3 features     | —          | variadic arith, predicates, inc/dec not in VM            |
-| P2  | core.clj AOT pipeline (T3.11/T3.12) | P1         | build.zig custom step, @embedFile                        |
-| P3  | Missing language features           | —          | multi-arity fn, destructuring, try/catch, for, protocols |
-| P4  | REPL                                | —          | Currently stub (version print only)                      |
-| P5  | Wasm target                         | P1         | wasm32-wasi build, test on wasmtime                      |
-
-## Recently resolved (remove after confirmation)
-
-- [x] D15 deferred: cond/->/->>/and/or macros — done in T3.14
-- [x] D15 deferred: loadCore macro_names hardcoded — generalized (re-refer all)
+| ID  | Item                                | Phase | Depends on | Notes                                                    |
+| --- | ----------------------------------- | ----- | ---------- | -------------------------------------------------------- |
+| P1  | VM parity with Phase 3 features     | 4b    | —          | variadic arith, predicates, inc/dec not in VM            |
+| P2  | core.clj AOT pipeline (T3.11/T3.12) | 4c    | P1         | build.zig custom step, @embedFile                        |
+| P3  | Missing language features           | 4d    | —          | multi-arity fn, destructuring, try/catch, for, protocols |
+| P4  | REPL                                | 4e    | —          | Currently stub (version print only)                      |
+| P5  | Wasm target                         | 4e    | P1         | wasm32-wasi build, test on wasmtime                      |
+| P6  | Directory restructuring             | 4f    | —          | Create src/repl/, src/wasm/ stubs per README             |

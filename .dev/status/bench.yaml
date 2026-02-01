@@ -1,0 +1,39 @@
+# ClojureWasm Benchmark Results
+#
+# Measurement: hyperfine --warmup 2 --runs 5 (mean)
+# Date: 2026-02-02
+
+env:
+  cpu: Apple M1 Pro
+  ram: 16 GB
+  os: Darwin 25.2.0 (arm64)
+  build: Debug (zig build)
+  backend: TreeWalk
+
+benchmarks:
+  startup:
+    description: "Startup time — bootstrap overhead (core.clj parse + eval)"
+    command: 'clj-wasm -e "nil"'
+    expected_result: nil
+  fib30:
+    description: "Recursive fibonacci fib(30) — function call overhead"
+    command: '(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 30)'
+    expected_result: 832040
+  arith_loop:
+    description: "Arithmetic loop (1M iterations) — numeric ops + loop/recur"
+    command: '(loop [i 0 s 0] (if (< i 1000000) (recur (inc i) (+ s i)) s))'
+    expected_result: 499999500000
+  higher_order:
+    description: "Higher-order functions — map + reduce (10 elements)"
+    command: '(reduce + 0 (map inc (list 1 2 3 4 5 6 7 8 9 10)))'
+    expected_result: 65
+
+# Phase 3 baseline results (TreeWalk, Debug, Apple M1 Pro)
+history:
+  - date: 2026-02-02
+    version: "Phase 3 complete (TreeWalk, Debug)"
+    results:
+      startup: {time_ms: 2.6, stddev_ms: 0.2}
+      fib30: {time_ms: 3240, stddev_ms: 30}
+      arith_loop: {time_ms: 1300, note: "approximate (time command)"}
+      higher_order: {time_ms: 3, note: "dominated by startup"}

@@ -2,10 +2,10 @@
 
 ## Current State
 
-- Phase: 3b (core.clj AOT pipeline)
+- Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 3 complete. Next: Phase 4 planning (T3.11/T3.12 deferred)
-- Task file: none
+- Current task: T4.1 — VM: variadic arithmetic (+, -, \*, /)
+- Task file: (to be created)
 - Blockers: none
 
 ## Completed Phases
@@ -41,6 +41,7 @@
 | T3.15   | .dev/plan/archive/task_0034_cli.md                          | 2026-02-02 |
 | T3.16   | .dev/plan/archive/task_0035_sci_tests.md                    | 2026-02-02 |
 | T3.17   | .dev/plan/archive/task_0036_benchmark.md                    | 2026-02-02 |
+| T4.0    | .dev/plan/archive/task_0037_phase4_planning.md              | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
-**Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4.)
+**Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

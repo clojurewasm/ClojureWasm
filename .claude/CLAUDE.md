@@ -50,8 +50,9 @@ This matches Zig standard library conventions and keeps files readable.
 
 1. Read `.dev/plan/memo.md` (current task + task file path)
 2. Read `.dev/checklist.md` (deferred work + invariants — scan for newly relevant items)
-3. If task file exists: read it, resume from `## Log`
-4. If task file missing: create it (read roadmap + Beta refs, write plan)
+3. Quick status check: `yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml`
+4. If task file exists: read it, resume from `## Log`
+5. If task file missing: create it (read roadmap + Beta refs, write plan)
 
 ### During Development
 
@@ -67,9 +68,10 @@ This matches Zig standard library conventions and keeps files readable.
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
 3. Advance memo.md to next task (clear Task file path)
-4. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
-5. `git add` + `git commit` — **single commit covering plan + impl + status**
-6. Verify commit succeeded before proceeding to the next task
+4. If new Vars were implemented, update `.dev/status/vars.yaml` (status/impl)
+5. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
+6. `git add` + `git commit` — **single commit covering plan + impl + status**
+7. Verify commit succeeded before proceeding to the next task
 
 ## Build & Test
 
@@ -120,6 +122,42 @@ builtins (variadic arith, predicates, collection ops). VM parity is P1 in
    handle the equivalent via its builtin dispatch
 
 Design rationale: `.dev/notes/decisions.md` D6
+
+## Status Tracking (.dev/status/)
+
+YAML-based progress tracking for Clojure compatibility. See `.dev/status/README.md`
+for full schema documentation.
+
+| File         | Content                                    |
+| ------------ | ------------------------------------------ |
+| `vars.yaml`  | Var implementation status (29 namespaces)  |
+| `bench.yaml` | Benchmark results and optimization history |
+
+### Quick Queries (yq)
+
+```bash
+# Implementation coverage (clojure.core)
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+
+# All namespaces
+yq '.vars | keys' .dev/status/vars.yaml
+
+# Unimplemented functions
+yq '.vars.clojure_core | to_entries[] | select(.value.status == "todo" and .value.type == "function") | .key' .dev/status/vars.yaml
+
+# impl distribution
+yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.impl] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
+
+# Provisional special forms
+yq '.vars.clojure_core | to_entries[] | select(.value.type == "function" and .value.impl == "special_form") | .key' .dev/status/vars.yaml
+```
+
+### When to Update
+
+- **vars.yaml**: After implementing new Vars (builtins, core.clj fns/macros)
+- **bench.yaml**: After performance optimizations (append to history)
+- **Generation**: `clj scripts/generate_vars_yaml.clj` regenerates from upstream
+  (status fields reset to todo — use only for adding new namespaces)
 
 ## IDE Integration (ZLS / Emacs MCP)
 

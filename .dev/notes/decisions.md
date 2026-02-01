@@ -584,3 +584,92 @@ execution bridge. fn_val macros are executed through a `macro_eval_fn` callback.
 - cond, ->, ->> macros require loop/let/seq?/next (implement when available)
 - loadCore macro_names list is hardcoded (generalize when more macros added)
 - VM-side macro expansion not needed (macros expand at Analyzer level)
+
+---
+
+## D16: Directory Structure Revision (T4.0)
+
+**Decision**: Revise the project directory structure to match the dual-track
+architecture described in future.md SS8/SS17.
+
+**Key changes from Phase 1-3 layout**:
+
+1. `src/wasm_rt/gc/` — Unified GC directory (bridge + backend) instead of
+   separate gc/ under native/ only
+2. `src/repl/` — New top-level directory for REPL + nREPL subsystem
+   (not a subdirectory of native/ since REPL is shared)
+3. `src/api/` — Public embedding API (eval, plugin), clearly separated from
+   internal modules
+4. `src/wasm/` — FFI for external .wasm modules, distinct from `wasm_rt/`
+   which is the internal Wasm runtime track
+
+**Rationale**: README.md was rewritten to show the target directory structure.
+Physical directory creation is deferred to Phase 4f (T4.14/T4.15) to avoid
+touching working code. The structure is documented first, implemented later.
+
+**Note**: Some `common/` modules may need track-specific variants as the Wasm
+track matures (value, bytecode, builtins), due to different Value representations
+(externref/i31ref) and GC strategies.
+
+---
+
+## D17: YAML Status Management (T4.0)
+
+**Decision**: Introduce structured YAML files in `.dev/status/` for tracking
+implementation progress and benchmarks.
+
+**Files**:
+
+| File         | Content                                    |
+| ------------ | ------------------------------------------ |
+| `vars.yaml`  | Var implementation status (29 namespaces)  |
+| `bench.yaml` | Benchmark results and optimization history |
+| `README.md`  | Schema definitions, yq query examples      |
+
+**Schema** (vars.yaml):
+
+```yaml
+vars:
+  clojure_core:
+    "+":
+      type: function # upstream Clojure classification
+      status: done # todo | wip | partial | done | skip
+      impl: intrinsic # special_form | intrinsic | host | bridge | clj | none
+      note: "optional"
+```
+
+**`impl` field** (unified from former `impl_type` + `layer`):
+
+| impl           | Meaning                                        |
+| -------------- | ---------------------------------------------- |
+| `special_form` | Analyzer direct dispatch                       |
+| `intrinsic`    | VM opcode fast path                            |
+| `host`         | Zig BuiltinFn — Zig required (Value internals) |
+| `bridge`       | Zig BuiltinFn — .clj migration candidate       |
+| `clj`          | Defined in .clj source                         |
+| `none`         | Not yet implemented                            |
+
+The former `impl_type` + `layer` two-field system was consolidated because
+most combinations were fixed (intrinsic→host, special_form→host, clj→pure).
+Only `builtin` had a meaningful host/bridge split, now expressed directly.
+
+**Differences from Beta's status/vars.yaml**:
+
+- `impl: intrinsic` — new (VM opcode direct execution; Beta lumped into builtin)
+- `impl: clj` — new (Clojure source definitions; Beta was all-Zig)
+- `impl: bridge` — explicit .clj migration candidates (Beta had no such distinction)
+- 29 namespaces (Beta had ~15), including JVM-specific ones marked as skip
+- All comments and notes in English (D10 compliance)
+
+**Workflow integration** (CLAUDE.md):
+
+- Session start: check vars.yaml for coverage stats
+- Task completion: update vars.yaml if new Vars were implemented
+- Performance tasks: append to bench.yaml history
+
+**Generation**: `scripts/generate_vars_yaml.clj` generates the initial YAML
+from Clojure JVM's `ns-publics`. Status is then manually updated based on
+registry.zig, core.clj, and analyzer cross-reference.
+
+**Query tool**: `yq` (available in nix develop). See `.dev/status/README.md`
+for query examples.

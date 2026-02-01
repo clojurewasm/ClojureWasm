@@ -133,6 +133,62 @@ can evaluate basic Clojure expressions with `--compare` mode.
 - SCI Tier 1 tests pass (5 files, ~4000 lines)
 - Startup time < 10ms
 
+## Phase 4: Production Readiness
+
+### Phase 4a: Infrastructure
+
+| #   | Task                                                       | Archive                      | Notes                                         |
+| --- | ---------------------------------------------------------- | ---------------------------- | --------------------------------------------- |
+| 4.0 | Phase 4 planning + document update + status tracking setup | task_0037_phase4_planning.md | YAML status, roadmap update, CLAUDE.md update |
+
+### Phase 4b: VM Parity
+
+| #   | Task                                          | Archive | Notes                                                 |
+| --- | --------------------------------------------- | ------- | ----------------------------------------------------- |
+| 4.1 | VM: variadic arithmetic (+, -, \*, /)         | --      | Currently only 2-arg intrinsics. Need n-arg dispatch  |
+| 4.2 | VM: type predicates + numeric predicates      | --      | nil?, number?, zero?, etc. via builtin dispatch       |
+| 4.3 | VM: collection ops (first, rest, conj, etc.)  | --      | 16 collection builtins                                |
+| 4.4 | VM: string/IO + atom builtins                 | --      | str, pr-str, println, prn, atom, deref, swap!, reset! |
+| 4.5 | VM: EvalEngine compare-mode parity validation | --      | Run all SCI tests with --compare                      |
+
+### Phase 4c: core.clj AOT Pipeline
+
+| #   | Task                                                | Archive | Notes                                           |
+| --- | --------------------------------------------------- | ------- | ----------------------------------------------- |
+| 4.6 | Build-time AOT: core.clj -> bytecode -> @embedFile  | --      | build.zig custom step, host compile tool        |
+| 4.7 | Startup: VM loads embedded bytecode, registers Vars | --      | Fast startup, no parse/eval needed for core.clj |
+
+### Phase 4d: Missing Language Features
+
+| #    | Task                             | Archive | Notes                         |
+| ---- | -------------------------------- | ------- | ----------------------------- |
+| 4.8  | Multi-arity fn                   | --      | (fn ([x] x) ([x y] (+ x y)))  |
+| 4.9  | Destructuring (sequential + map) | --      | let, fn, loop binding forms   |
+| 4.10 | for macro (list comprehension)   | --      | :let, :when, :while modifiers |
+| 4.11 | Protocols + defrecord            | --      | Polymorphic dispatch          |
+
+### Phase 4e: REPL + Wasm
+
+| #    | Task                      | Archive | Notes                             |
+| ---- | ------------------------- | ------- | --------------------------------- |
+| 4.12 | Interactive REPL          | --      | Line editing, history, completion |
+| 4.13 | Wasm target (wasm32-wasi) | --      | Build + test on wasmtime          |
+
+### Phase 4f: Directory Restructuring
+
+| #    | Task                                 | Archive | Notes                                      |
+| ---- | ------------------------------------ | ------- | ------------------------------------------ |
+| 4.14 | Create src/repl/, src/wasm/ stubs    | --      | Physical directories matching README       |
+| 4.15 | Reorganize src/wasm_rt/gc/ structure | --      | Unify gc bridge + backend under wasm_rt/gc |
+
+### Phase 4 Milestone Criteria
+
+- VM passes all SCI Tier 1 tests with --compare mode
+- core.clj AOT pipeline works (build -> embed -> startup)
+- Multi-arity fn and destructuring supported
+- Startup time < 5ms (AOT, release build)
+- At least one Wasm target builds and runs basic tests
+
 ## Risk Mitigations
 
 | Risk                          | Mitigation                                                       |
