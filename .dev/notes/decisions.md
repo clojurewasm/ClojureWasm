@@ -71,7 +71,7 @@ or threadlocal state anywhere.
 This was carried over from Beta's pattern for expediency during Phase 1.
 
 **Why it exists**: Zig error unions carry no payload. When Reader returns
-`error.InvalidNumber`, the caller needs to know *which* number and *where*.
+`error.NumberError`, the caller needs to know *which* number and *where*.
 Threadlocal storage is the simplest bridge.
 
 **When to fix**: Phase 2a, Task 2.1 (Create Env). When VM/Env becomes an
@@ -80,7 +80,7 @@ explicit instance, error context should move into it:
 ```zig
 // Current (threadlocal — violates D3):
 threadlocal var last_error: ?Info = null;
-pub fn parseError(...) Error { last_error = ...; return ...; }
+pub fn setError(...) Error { last_error = ...; return ...; }
 
 // Target (instance-based — satisfies D3):
 pub const ErrorContext = struct {
@@ -90,7 +90,7 @@ pub const ErrorContext = struct {
 // Reader, Analyzer, VM each hold *ErrorContext (or own one)
 ```
 
-**Migration difficulty**: Low. `setError`/`getLastError`/`parseError` call sites
+**Migration difficulty**: Low. `setError`/`getLastError` call sites
 just add a context parameter. The refactoring is mechanical.
 
 **Why not fix now**: Reader and Analyzer (Phase 1) don't have an instance
@@ -101,7 +101,7 @@ standalone struct with no clear owner. Better to unify when Env is built.
 
 ## D3b: Error Kind Redesign — Python-Style Categories
 
-**Status**: Planned. Execute together with D3a in Phase 2a (Task 2.1).
+**Status**: Done (Phase 1c). Implemented as standalone cleanup task.
 
 **Problem**: Current `Kind` enum has 18 entries at inconsistent granularity.
 Some are too fine (`invalid_string`, `invalid_character`, `invalid_regex` are
@@ -195,6 +195,13 @@ Context:
 **Why Python-style**: Familiar to most developers. Categories are coarse
 enough to stay stable (no need to add new Kinds for every new error message),
 fine enough that programmatic handling (`catch SyntaxError`) is meaningful.
+
+**Implementation summary** (Phase 1c):
+- Kind: 18 -> 12 entries, 1:1 with Error tags (no lossy collapse)
+- Removed: ReadError, AnalysisError type aliases
+- Removed: parseError, parseErrorFmt, analysisError, analysisErrorFmt helpers
+- Added: setErrorFmt (phase, kind, location, fmt, args) as single formatted helper
+- Reader/Analyzer: simplified makeError/analysisError to call setError directly
 
 ---
 
