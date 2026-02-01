@@ -443,3 +443,27 @@ test "EvalEngine compare first on vector" {
     try std.testing.expectEqual(Value{ .integer = 10 }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .integer = 10 }, result.vm_value.?);
 }
+
+test "EvalEngine compare nil? predicate" {
+    // (nil? nil) => true — both backends via registry
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "nil?", .source = .{} } };
+    var arg = Node{ .constant = .nil };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.vm_value.?);
+}

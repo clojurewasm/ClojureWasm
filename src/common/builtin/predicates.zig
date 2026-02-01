@@ -1,0 +1,201 @@
+// Type predicate functions — nil?, number?, string?, etc.
+//
+// Simple type checks on Value tag. All take exactly 1 argument
+// and return a boolean.
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const value_mod = @import("../value.zig");
+const Value = value_mod.Value;
+const var_mod = @import("../var.zig");
+const BuiltinDef = var_mod.BuiltinDef;
+
+// ============================================================
+// Implementations
+// ============================================================
+
+fn predicate(args: []const Value, comptime check: fn (Value) bool) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = check(args[0]) };
+}
+
+fn isNil(v: Value) bool {
+    return v == .nil;
+}
+fn isBoolean(v: Value) bool {
+    return v == .boolean;
+}
+fn isNumber(v: Value) bool {
+    return v == .integer or v == .float;
+}
+fn isInteger(v: Value) bool {
+    return v == .integer;
+}
+fn isFloat(v: Value) bool {
+    return v == .float;
+}
+fn isString(v: Value) bool {
+    return v == .string;
+}
+fn isKeyword(v: Value) bool {
+    return v == .keyword;
+}
+fn isSymbol(v: Value) bool {
+    return v == .symbol;
+}
+fn isMap(v: Value) bool {
+    return v == .map;
+}
+fn isVector(v: Value) bool {
+    return v == .vector;
+}
+fn isSeq(v: Value) bool {
+    return v == .list;
+}
+fn isFn(v: Value) bool {
+    return v == .fn_val or v == .builtin_fn;
+}
+fn isSet(v: Value) bool {
+    return v == .set;
+}
+fn isColl(v: Value) bool {
+    return v == .list or v == .vector or v == .map or v == .set;
+}
+fn isChar(v: Value) bool {
+    return v == .char;
+}
+
+// Builtin wrappers (matching BuiltinFn signature)
+
+pub fn nilPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isNil);
+}
+pub fn booleanPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isBoolean);
+}
+pub fn numberPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isNumber);
+}
+pub fn integerPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isInteger);
+}
+pub fn floatPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isFloat);
+}
+pub fn stringPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isString);
+}
+pub fn keywordPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isKeyword);
+}
+pub fn symbolPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isSymbol);
+}
+pub fn mapPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isMap);
+}
+pub fn vectorPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isVector);
+}
+pub fn seqPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isSeq);
+}
+pub fn fnPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isFn);
+}
+pub fn setPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isSet);
+}
+pub fn collPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isColl);
+}
+pub fn charPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isChar);
+}
+
+// not is not a type predicate but a core function
+pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = !args[0].isTruthy() };
+}
+
+// ============================================================
+// BuiltinDef table
+// ============================================================
+
+pub const builtins = [_]BuiltinDef{
+    .{ .name = "nil?", .kind = .runtime_fn, .func = &nilPred, .doc = "Returns true if x is nil, false otherwise.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "boolean?", .kind = .runtime_fn, .func = &booleanPred, .doc = "Return true if x is a Boolean.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "number?", .kind = .runtime_fn, .func = &numberPred, .doc = "Returns true if x is a Number.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "integer?", .kind = .runtime_fn, .func = &integerPred, .doc = "Return true if n is an integer.", .arglists = "([n])", .added = "1.9" },
+    .{ .name = "float?", .kind = .runtime_fn, .func = &floatPred, .doc = "Returns true if n is a floating point number.", .arglists = "([n])", .added = "1.9" },
+    .{ .name = "string?", .kind = .runtime_fn, .func = &stringPred, .doc = "Return true if x is a String.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "keyword?", .kind = .runtime_fn, .func = &keywordPred, .doc = "Return true if x is a Keyword.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "symbol?", .kind = .runtime_fn, .func = &symbolPred, .doc = "Return true if x is a Symbol.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "map?", .kind = .runtime_fn, .func = &mapPred, .doc = "Return true if x implements IPersistentMap.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "vector?", .kind = .runtime_fn, .func = &vectorPred, .doc = "Return true if x implements IPersistentVector.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "seq?", .kind = .runtime_fn, .func = &seqPred, .doc = "Return true if x implements ISeq.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "fn?", .kind = .runtime_fn, .func = &fnPred, .doc = "Return true if x is a function.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "set?", .kind = .runtime_fn, .func = &setPred, .doc = "Returns true if x implements IPersistentSet.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "coll?", .kind = .runtime_fn, .func = &collPred, .doc = "Returns true if x implements IPersistentCollection.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "char?", .kind = .runtime_fn, .func = &charPred, .doc = "Return true if x is a Character.", .arglists = "([x])", .added = "1.5" },
+    .{ .name = "not", .kind = .runtime_fn, .func = &notFn, .doc = "Returns true if x is logical false, false otherwise.", .arglists = "([x])", .added = "1.0" },
+};
+
+// === Tests ===
+
+const testing = std.testing;
+const test_alloc = testing.allocator;
+
+test "nil? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try nilPred(test_alloc, &.{Value.nil}));
+    try testing.expectEqual(Value{ .boolean = false }, try nilPred(test_alloc, &.{Value{ .integer = 1 }}));
+}
+
+test "number? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try numberPred(test_alloc, &.{Value{ .integer = 42 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try numberPred(test_alloc, &.{Value{ .float = 3.14 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try numberPred(test_alloc, &.{Value{ .string = "hello" }}));
+}
+
+test "string? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try stringPred(test_alloc, &.{Value{ .string = "hi" }}));
+    try testing.expectEqual(Value{ .boolean = false }, try stringPred(test_alloc, &.{Value{ .integer = 1 }}));
+}
+
+test "keyword? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try keywordPred(test_alloc, &.{Value{ .keyword = .{ .name = "a", .ns = null } }}));
+    try testing.expectEqual(Value{ .boolean = false }, try keywordPred(test_alloc, &.{Value{ .string = "a" }}));
+}
+
+test "coll? predicate" {
+    const items = [_]Value{};
+    var lst = value_mod.PersistentList{ .items = &items };
+    var vec = value_mod.PersistentVector{ .items = &items };
+    try testing.expectEqual(Value{ .boolean = true }, try collPred(test_alloc, &.{Value{ .list = &lst }}));
+    try testing.expectEqual(Value{ .boolean = true }, try collPred(test_alloc, &.{Value{ .vector = &vec }}));
+    try testing.expectEqual(Value{ .boolean = false }, try collPred(test_alloc, &.{Value{ .integer = 1 }}));
+}
+
+test "not function" {
+    try testing.expectEqual(Value{ .boolean = true }, try notFn(test_alloc, &.{Value.nil}));
+    try testing.expectEqual(Value{ .boolean = true }, try notFn(test_alloc, &.{Value{ .boolean = false }}));
+    try testing.expectEqual(Value{ .boolean = false }, try notFn(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try notFn(test_alloc, &.{Value{ .boolean = true }}));
+}
+
+test "fn? predicate" {
+    const f = value_mod.Fn{ .proto = @as(*const anyopaque, @ptrFromInt(1)), .closure_bindings = null };
+    try testing.expectEqual(Value{ .boolean = true }, try fnPred(test_alloc, &.{Value{ .fn_val = &f }}));
+    try testing.expectEqual(Value{ .boolean = false }, try fnPred(test_alloc, &.{Value{ .integer = 1 }}));
+}
+
+test "builtins table has 16 entries" {
+    try testing.expectEqual(16, builtins.len);
+}
+
+test "builtins all have func" {
+    for (builtins) |b| {
+        try testing.expect(b.func != null);
+    }
+}

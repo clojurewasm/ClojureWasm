@@ -4,7 +4,7 @@
 
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Type predicates (Task 3.7)
+- Current task: Runtime functions: str, pr-str, println, prn (Task 3.8)
 - Task file:
 - Blockers: none
 
@@ -32,3 +32,4 @@
 | T3.4    | .dev/plan/archive/task_0025_collection_exception_opcodes.md | 2026-02-01 |
 | T3.5    | .dev/plan/archive/task_0026_builtin_registry.md             | 2026-02-01 |
 | T3.6    | .dev/plan/archive/task_0027_collection_intrinsics.md        | 2026-02-02 |
+| T3.7    | .dev/plan/archive/task_0028_type_predicates.md              | 2026-02-02 |
