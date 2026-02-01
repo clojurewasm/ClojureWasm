@@ -37,7 +37,7 @@ Read with Read tool:
   1. Read `.dev/plan/roadmap.md` for context + Notes
   2. Read Beta reference code as needed
   3. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  4. Git commit the plan
+  4. Do NOT commit yet — plan goes into the single task commit
 
 ## 3. Execute
 
@@ -45,13 +45,12 @@ Read with Read tool:
 1. **TDD cycle**: Red -> Green -> Refactor (per CLAUDE.md)
 2. **Run tests**: `zig build test`
 3. Append progress to task file `## Log`
-4. Git commit at meaningful boundaries
+4. Do NOT commit intermediate steps
 
 ### Planning Tasks (no code)
 1. Read references, analyze, produce required document
 2. Write output to specified path
 3. Append progress to task file `## Log`
-4. Git commit
 
 ### Continuation
 - After completing a task, proceed to the next pending task
@@ -64,7 +63,7 @@ Read with Read tool:
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
 3. Advance `memo.md` to next task (clear Task file path)
-4. Git commit
+4. **Single git commit** covering plan + implementation + status update
 
 ## 5. Phase Completion
 

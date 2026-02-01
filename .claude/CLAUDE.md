@@ -54,13 +54,13 @@ This matches Zig standard library conventions and keeps files readable.
 ### During Development
 1. TDD cycle: Red -> Green -> Refactor
 2. Append progress to task file `## Log`
-3. Commit frequently when tests pass
+3. Do NOT commit intermediate steps — all changes go into one commit per task
 
 ### On Task Completion
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
 3. Advance memo.md to next task (clear Task file path)
-4. Git commit
+4. **Single git commit** covering plan + implementation + status update
 
 ## Build & Test
 
