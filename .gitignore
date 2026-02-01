@@ -7,5 +7,8 @@ zig-out/
 .clj-kondo/.cache/
 .lsp/.cache/
 
+# direnv cache
+.direnv/
+
 # Claude Code local settings
 .claude/settings.local.json
