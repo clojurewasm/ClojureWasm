@@ -1,0 +1,627 @@
+//! Compiler: Node AST -> Bytecode.
+//!
+//! Transforms the Analyzer's AST (Node) into a sequence of bytecode instructions.
+//! Each Node variant has a corresponding emit method.
+
+const std = @import("std");
+const chunk_mod = @import("chunk.zig");
+const Chunk = chunk_mod.Chunk;
+const OpCode = chunk_mod.OpCode;
+const Instruction = chunk_mod.Instruction;
+const FnProto = chunk_mod.FnProto;
+const Value = chunk_mod.Value;
+const node_mod = @import("../analyzer/node.zig");
+const Node = node_mod.Node;
+
+/// Compilation errors.
+pub const CompileError = error{
+    OutOfMemory,
+    TooManyConstants,
+    TooManyLocals,
+    InvalidNode,
+    Overflow,
+};
+
+/// Local variable tracking.
+const Local = struct {
+    name: []const u8,
+    depth: u32,
+    slot: u16,
+};
+
+/// Bytecode compiler: transforms Node AST into instructions.
+pub const Compiler = struct {
+    allocator: std.mem.Allocator,
+    chunk: Chunk,
+    locals: std.ArrayListUnmanaged(Local),
+    scope_depth: u32,
+    loop_start: ?usize,
+    loop_binding_count: u16,
+
+    pub fn init(allocator: std.mem.Allocator) Compiler {
+        return .{
+            .allocator = allocator,
+            .chunk = Chunk.init(allocator),
+            .locals = .empty,
+            .scope_depth = 0,
+            .loop_start = null,
+            .loop_binding_count = 0,
+        };
+    }
+
+    pub fn deinit(self: *Compiler) void {
+        self.chunk.deinit();
+        self.locals.deinit(self.allocator);
+    }
+
+    /// Compile a single Node to bytecode.
+    pub fn compile(self: *Compiler, n: *const Node) CompileError!void {
+        switch (n.*) {
+            .constant => |val| try self.emitConstant(val),
+            .local_ref => |ref| try self.emitLocalRef(ref),
+            .if_node => |node| try self.emitIf(node),
+            .do_node => |node| try self.emitDo(node),
+            .let_node => |node| try self.emitLet(node),
+            .loop_node => |node| try self.emitLoop(node),
+            .recur_node => |node| try self.emitRecur(node),
+            .fn_node => |node| try self.emitFn(node),
+            .call_node => |node| try self.emitCall(node),
+            .def_node => |node| try self.emitDef(node),
+            .quote_node => |node| try self.emitQuote(node),
+            .throw_node => |node| try self.emitThrow(node),
+            .try_node => |node| try self.emitTry(node),
+            .var_ref => |ref| try self.emitVarRef(ref),
+        }
+    }
+
+    // --- Emit methods ---
+
+    fn emitConstant(self: *Compiler, val: Value) CompileError!void {
+        switch (val) {
+            .nil => try self.chunk.emitOp(.nil),
+            .boolean => |b| {
+                if (b) {
+                    try self.chunk.emitOp(.true_val);
+                } else {
+                    try self.chunk.emitOp(.false_val);
+                }
+            },
+            else => {
+                const idx = self.chunk.addConstant(val) catch return error.TooManyConstants;
+                try self.chunk.emit(.const_load, idx);
+            },
+        }
+    }
+
+    fn emitLocalRef(self: *Compiler, ref: node_mod.LocalRefNode) CompileError!void {
+        // Find the local by index to get the actual stack slot
+        if (ref.idx < self.locals.items.len) {
+            try self.chunk.emit(.local_load, self.locals.items[ref.idx].slot);
+        } else {
+            try self.chunk.emit(.local_load, @intCast(ref.idx));
+        }
+    }
+
+    fn emitIf(self: *Compiler, node: *const node_mod.IfNode) CompileError!void {
+        // Compile test expression
+        try self.compile(node.test_node);
+
+        // Jump over then-branch if false
+        const jump_if_false = self.chunk.emitJump(.jump_if_false) catch return error.OutOfMemory;
+
+        // Compile then-branch
+        try self.compile(node.then_node);
+
+        // Jump over else-branch
+        const jump_over_else = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
+
+        // Patch false jump to else-branch
+        self.chunk.patchJump(jump_if_false);
+
+        // Compile else-branch (or nil if absent)
+        if (node.else_node) |else_n| {
+            try self.compile(else_n);
+        } else {
+            try self.chunk.emitOp(.nil);
+        }
+
+        // Patch jump over else
+        self.chunk.patchJump(jump_over_else);
+    }
+
+    fn emitDo(self: *Compiler, node: *const node_mod.DoNode) CompileError!void {
+        if (node.statements.len == 0) {
+            try self.chunk.emitOp(.nil);
+            return;
+        }
+
+        for (node.statements, 0..) |stmt, i| {
+            try self.compile(stmt);
+            // Pop intermediate results, keep the last
+            if (i < node.statements.len - 1) {
+                try self.chunk.emitOp(.pop);
+            }
+        }
+    }
+
+    fn emitLet(self: *Compiler, node: *const node_mod.LetNode) CompileError!void {
+        self.scope_depth += 1;
+        const base_locals = self.locals.items.len;
+
+        // Compile bindings
+        for (node.bindings) |binding| {
+            try self.compile(binding.init);
+            try self.addLocal(binding.name);
+        }
+
+        // Compile body
+        try self.compile(node.body);
+
+        // Clean up: pop locals, keeping body result on top
+        const locals_to_pop = self.locals.items.len - base_locals;
+        if (locals_to_pop > 0) {
+            // Swap result past locals, then pop them
+            for (0..locals_to_pop) |_| {
+                try self.chunk.emitOp(.pop);
+            }
+        }
+
+        self.locals.shrinkRetainingCapacity(base_locals);
+        self.scope_depth -= 1;
+    }
+
+    fn emitLoop(self: *Compiler, node: *const node_mod.LoopNode) CompileError!void {
+        self.scope_depth += 1;
+        const base_locals = self.locals.items.len;
+
+        // Compile initial bindings
+        for (node.bindings) |binding| {
+            try self.compile(binding.init);
+            try self.addLocal(binding.name);
+        }
+
+        // Save loop context
+        const prev_loop_start = self.loop_start;
+        const prev_binding_count = self.loop_binding_count;
+        self.loop_start = self.chunk.currentOffset();
+        self.loop_binding_count = @intCast(node.bindings.len);
+
+        // Compile body
+        try self.compile(node.body);
+
+        // Restore loop context
+        self.loop_start = prev_loop_start;
+        self.loop_binding_count = prev_binding_count;
+
+        // Clean up locals
+        const locals_to_pop = self.locals.items.len - base_locals;
+        if (locals_to_pop > 0) {
+            for (0..locals_to_pop) |_| {
+                try self.chunk.emitOp(.pop);
+            }
+        }
+
+        self.locals.shrinkRetainingCapacity(base_locals);
+        self.scope_depth -= 1;
+    }
+
+    fn emitRecur(self: *Compiler, node: *const node_mod.RecurNode) CompileError!void {
+        // Compile new values for loop bindings
+        for (node.args) |arg| {
+            try self.compile(arg);
+        }
+
+        // Emit recur with arg count
+        try self.chunk.emit(.recur, @intCast(node.args.len));
+
+        // Jump back to loop start
+        if (self.loop_start) |ls| {
+            try self.chunk.emitLoop(ls);
+        }
+    }
+
+    fn emitFn(self: *Compiler, node: *const node_mod.FnNode) CompileError!void {
+        // For now, compile only the first arity
+        if (node.arities.len == 0) return error.InvalidNode;
+
+        const arity = node.arities[0];
+
+        // Create a child compiler for the function body
+        var fn_compiler = Compiler.init(self.allocator);
+        defer fn_compiler.deinit();
+
+        // Add parameters as locals
+        for (arity.params) |param| {
+            try fn_compiler.addLocal(param);
+        }
+
+        // Compile body
+        try fn_compiler.compile(arity.body);
+        try fn_compiler.chunk.emitOp(.ret);
+
+        // Create FnProto and store as constant
+        const proto = FnProto{
+            .name = node.name,
+            .arity = @intCast(arity.params.len),
+            .variadic = arity.variadic,
+            .local_count = @intCast(fn_compiler.locals.items.len),
+            .code = fn_compiler.chunk.code.items,
+            .constants = fn_compiler.chunk.constants.items,
+        };
+        _ = proto;
+
+        // For now, emit a nil placeholder (full closure creation deferred to VM task)
+        try self.chunk.emitOp(.nil);
+    }
+
+    fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
+        // Compile callee
+        try self.compile(node.callee);
+
+        // Compile arguments
+        for (node.args) |arg| {
+            try self.compile(arg);
+        }
+
+        // Emit call with argument count
+        try self.chunk.emit(.call, @intCast(node.args.len));
+    }
+
+    fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
+        // Push symbol name as constant
+        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.sym_name } };
+        const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+
+        // Compile init expression if present
+        if (node.init) |init_node| {
+            try self.compile(init_node);
+        } else {
+            try self.chunk.emitOp(.nil);
+        }
+
+        // Emit def
+        try self.chunk.emit(.def, idx);
+    }
+
+    fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {
+        const idx = self.chunk.addConstant(node.value) catch return error.TooManyConstants;
+        try self.chunk.emit(.const_load, idx);
+    }
+
+    fn emitThrow(self: *Compiler, node: *const node_mod.ThrowNode) CompileError!void {
+        try self.compile(node.expr);
+        try self.chunk.emitOp(.throw_ex);
+    }
+
+    fn emitTry(self: *Compiler, node: *const node_mod.TryNode) CompileError!void {
+        // Emit try_begin with placeholder offset to catch
+        const try_begin_offset = self.chunk.emitJump(.try_begin) catch return error.OutOfMemory;
+
+        // Compile body
+        try self.compile(node.body);
+
+        // Jump over catch to try_end
+        const jump_to_end = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
+
+        // Patch try_begin to point to catch
+        self.chunk.patchJump(try_begin_offset);
+
+        // Compile catch clause if present
+        if (node.catch_clause) |catch_clause| {
+            try self.chunk.emitOp(.catch_begin);
+
+            // Add catch binding as local
+            self.scope_depth += 1;
+            const base = self.locals.items.len;
+            try self.addLocal(catch_clause.binding_name);
+
+            try self.compile(catch_clause.body);
+
+            // Clean up catch local
+            const to_pop = self.locals.items.len - base;
+            for (0..to_pop) |_| {
+                try self.chunk.emitOp(.pop);
+            }
+            self.locals.shrinkRetainingCapacity(base);
+            self.scope_depth -= 1;
+        }
+
+        // Patch jump to end
+        self.chunk.patchJump(jump_to_end);
+
+        // Compile finally if present
+        if (node.finally_body) |finally_body| {
+            try self.compile(finally_body);
+            try self.chunk.emitOp(.pop); // finally result is discarded
+        }
+
+        try self.chunk.emitOp(.try_end);
+    }
+
+    fn emitVarRef(self: *Compiler, ref: node_mod.VarRefNode) CompileError!void {
+        // Store the var reference symbol as a constant
+        const sym_val = Value{ .symbol = .{ .ns = ref.ns, .name = ref.name } };
+        const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+        try self.chunk.emit(.var_load, idx);
+    }
+
+    // --- Helpers ---
+
+    fn addLocal(self: *Compiler, name: []const u8) CompileError!void {
+        const slot: u16 = @intCast(self.locals.items.len);
+        self.locals.append(self.allocator, .{
+            .name = name,
+            .depth = self.scope_depth,
+            .slot = slot,
+        }) catch return error.OutOfMemory;
+    }
+};
+
+// === Tests ===
+
+test "compile constant nil" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    const node = Node{ .constant = .nil };
+    try compiler.compile(&node);
+
+    try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
+    try std.testing.expectEqual(OpCode.nil, compiler.chunk.code.items[0].op);
+}
+
+test "compile constant true/false" {
+    const allocator = std.testing.allocator;
+
+    {
+        var compiler = Compiler.init(allocator);
+        defer compiler.deinit();
+        const node = Node{ .constant = .{ .boolean = true } };
+        try compiler.compile(&node);
+        try std.testing.expectEqual(OpCode.true_val, compiler.chunk.code.items[0].op);
+    }
+
+    {
+        var compiler = Compiler.init(allocator);
+        defer compiler.deinit();
+        const node = Node{ .constant = .{ .boolean = false } };
+        try compiler.compile(&node);
+        try std.testing.expectEqual(OpCode.false_val, compiler.chunk.code.items[0].op);
+    }
+}
+
+test "compile constant integer" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    const node = Node{ .constant = .{ .integer = 42 } };
+    try compiler.compile(&node);
+
+    try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
+    try std.testing.expectEqual(OpCode.const_load, compiler.chunk.code.items[0].op);
+    try std.testing.expectEqual(@as(u16, 0), compiler.chunk.code.items[0].operand);
+    try std.testing.expectEqual(@as(usize, 1), compiler.chunk.constants.items.len);
+}
+
+test "compile if_node" {
+    // (if true 1 2) -> true_val, jump_if_false, const_load(1), jump, const_load(2)
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var test_n = Node{ .constant = .{ .boolean = true } };
+    var then_n = Node{ .constant = .{ .integer = 1 } };
+    var else_n = Node{ .constant = .{ .integer = 2 } };
+
+    var if_data = node_mod.IfNode{
+        .test_node = &test_n,
+        .then_node = &then_n,
+        .else_node = &else_n,
+        .source = .{},
+    };
+    const node = Node{ .if_node = &if_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.true_val, code[0].op);
+    try std.testing.expectEqual(OpCode.jump_if_false, code[1].op);
+    try std.testing.expectEqual(OpCode.const_load, code[2].op);
+    try std.testing.expectEqual(OpCode.jump, code[3].op);
+    try std.testing.expectEqual(OpCode.const_load, code[4].op);
+    try std.testing.expectEqual(@as(usize, 5), code.len);
+}
+
+test "compile if_node without else" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var test_n = Node{ .constant = .{ .boolean = true } };
+    var then_n = Node{ .constant = .{ .integer = 1 } };
+
+    var if_data = node_mod.IfNode{
+        .test_node = &test_n,
+        .then_node = &then_n,
+        .else_node = null,
+        .source = .{},
+    };
+    const node = Node{ .if_node = &if_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.true_val, code[0].op);
+    try std.testing.expectEqual(OpCode.jump_if_false, code[1].op);
+    try std.testing.expectEqual(OpCode.const_load, code[2].op);
+    try std.testing.expectEqual(OpCode.jump, code[3].op);
+    try std.testing.expectEqual(OpCode.nil, code[4].op);
+}
+
+test "compile do_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var stmt1 = Node{ .constant = .{ .integer = 1 } };
+    var stmt2 = Node{ .constant = .{ .integer = 2 } };
+    var stmts = [_]*Node{ &stmt1, &stmt2 };
+
+    var do_data = node_mod.DoNode{
+        .statements = &stmts,
+        .source = .{},
+    };
+    const node = Node{ .do_node = &do_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.const_load, code[0].op);
+    try std.testing.expectEqual(OpCode.pop, code[1].op);
+    try std.testing.expectEqual(OpCode.const_load, code[2].op);
+    try std.testing.expectEqual(@as(usize, 3), code.len);
+}
+
+test "compile empty do_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var stmts = [_]*Node{};
+    var do_data = node_mod.DoNode{
+        .statements = &stmts,
+        .source = .{},
+    };
+    const node = Node{ .do_node = &do_data };
+    try compiler.compile(&node);
+
+    try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
+    try std.testing.expectEqual(OpCode.nil, compiler.chunk.code.items[0].op);
+}
+
+test "compile call_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "f", .source = .{} } };
+    var arg1 = Node{ .constant = .{ .integer = 1 } };
+    var arg2 = Node{ .constant = .{ .integer = 2 } };
+    var args = [_]*Node{ &arg1, &arg2 };
+
+    var call_data = node_mod.CallNode{
+        .callee = &callee,
+        .args = &args,
+        .source = .{},
+    };
+    const node = Node{ .call_node = &call_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.var_load, code[0].op);
+    try std.testing.expectEqual(OpCode.const_load, code[1].op);
+    try std.testing.expectEqual(OpCode.const_load, code[2].op);
+    try std.testing.expectEqual(OpCode.call, code[3].op);
+    try std.testing.expectEqual(@as(u16, 2), code[3].operand);
+}
+
+test "compile def_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var init_expr = Node{ .constant = .{ .integer = 42 } };
+    var def_data = node_mod.DefNode{
+        .sym_name = "x",
+        .init = &init_expr,
+        .is_macro = false,
+        .is_dynamic = false,
+        .is_private = false,
+        .is_const = false,
+        .doc = null,
+        .source = .{},
+    };
+    const node = Node{ .def_node = &def_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.const_load, code[0].op);
+    try std.testing.expectEqual(OpCode.def, code[1].op);
+}
+
+test "compile quote_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var quote_data = node_mod.QuoteNode{
+        .value = .{ .integer = 99 },
+        .source = .{},
+    };
+    const node = Node{ .quote_node = &quote_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.const_load, code[0].op);
+    try std.testing.expectEqual(@as(usize, 1), code.len);
+}
+
+test "compile throw_node" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var expr = Node{ .constant = .{ .string = "error!" } };
+    var throw_data = node_mod.ThrowNode{
+        .expr = &expr,
+        .source = .{},
+    };
+    const node = Node{ .throw_node = &throw_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.const_load, code[0].op);
+    try std.testing.expectEqual(OpCode.throw_ex, code[1].op);
+}
+
+test "compile let_node" {
+    // (let [x 1] x) -> const_load(1), local_load(0), pop (cleanup)
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    var init_val = Node{ .constant = .{ .integer = 1 } };
+    const bindings = [_]node_mod.LetBinding{
+        .{ .name = "x", .init = &init_val },
+    };
+    var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+
+    var let_data = node_mod.LetNode{
+        .bindings = &bindings,
+        .body = &body,
+        .source = .{},
+    };
+    const node = Node{ .let_node = &let_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    // const_load(1) -> local_load(0) -> pop (cleanup of 1 local)
+    try std.testing.expectEqual(OpCode.const_load, code[0].op); // init x=1
+    try std.testing.expectEqual(OpCode.local_load, code[1].op); // body: ref x
+    try std.testing.expectEqual(@as(u16, 0), code[1].operand); // slot 0
+    try std.testing.expectEqual(OpCode.pop, code[2].op); // cleanup
+}
+
+test "compile var_ref" {
+    const allocator = std.testing.allocator;
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+
+    const node = Node{ .var_ref = .{ .ns = "clojure.core", .name = "+", .source = .{} } };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    try std.testing.expectEqual(OpCode.var_load, code[0].op);
+    try std.testing.expectEqual(@as(usize, 1), code.len);
+    // Constant pool should have the symbol
+    try std.testing.expectEqual(@as(usize, 1), compiler.chunk.constants.items.len);
+}

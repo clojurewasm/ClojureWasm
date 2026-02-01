@@ -14,6 +14,8 @@ pub const var_mod = @import("common/var.zig");
 pub const namespace = @import("common/namespace.zig");
 pub const gc = @import("common/gc.zig");
 pub const opcodes = @import("common/bytecode/opcodes.zig");
+pub const chunk = @import("common/bytecode/chunk.zig");
+pub const compiler = @import("common/bytecode/compiler.zig");
 
 test {
     _ = value;
@@ -29,4 +31,6 @@ test {
     _ = namespace;
     _ = gc;
     _ = opcodes;
+    _ = chunk;
+    _ = compiler;
 }
