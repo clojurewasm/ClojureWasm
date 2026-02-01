@@ -31,27 +31,23 @@ const core_clj_source = @embedFile("../clj/core.clj");
 /// Temporarily switches to clojure.core namespace so macros are defined there,
 /// then re-refers them into user namespace.
 pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+
     // Save current namespace and switch to clojure.core
     const saved_ns = env.current_ns;
-    env.current_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    env.current_ns = core_ns;
 
-    // Evaluate core.clj (defines macros in clojure.core)
+    // Evaluate core.clj (defines macros/functions in clojure.core)
     _ = try evalString(allocator, env, core_clj_source);
 
-    // Re-refer new core bindings into user namespace
+    // Restore user namespace and re-refer all core bindings
+    env.current_ns = saved_ns;
     if (saved_ns) |user_ns| {
-        const core_ns = env.current_ns.?;
-        // Refer any macro Vars defined by core.clj
-        const macro_names = [_][]const u8{ "defn", "when" };
-        for (macro_names) |name| {
-            if (core_ns.resolve(name)) |v| {
-                user_ns.refer(name, v) catch {};
-            }
+        var iter = core_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
     }
-
-    // Restore user namespace
-    env.current_ns = saved_ns;
 }
 
 /// Evaluate a source string in the given Env.
@@ -70,8 +66,10 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // Create a TreeWalk instance for:
     //   1. Evaluating each top-level form
     //   2. Providing macro_eval_fn for fn_val macros during analysis
+    // Note: tw is intentionally not deinit'd here because closures created
+    // during evaluation may be def'd into Vars and must outlive this scope.
+    // Memory is owned by the arena allocator passed in.
     var tw = TreeWalk.initWithEnv(allocator, env);
-    defer tw.deinit();
 
     // Set env for macro expansion bridge
     const prev_env = macro_eval_env;
@@ -271,4 +269,151 @@ test "loadCore - core.clj defines defn and when" {
         \\(double 21)
     );
     try testing.expectEqual(Value{ .integer = 42 }, result);
+}
+
+test "evalString - higher-order function call" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Pass fn as argument and call it
+    const result = try evalString(alloc, &env,
+        \\(defn apply1 [f x] (f x))
+        \\(defn inc [x] (+ x 1))
+        \\(apply1 inc 41)
+    );
+    try testing.expectEqual(Value{ .integer = 42 }, result);
+}
+
+test "evalString - loop/recur" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Sum 1..10 using loop/recur
+    const result = try evalString(alloc, &env,
+        \\(loop [i 0 sum 0]
+        \\  (if (= i 10)
+        \\    sum
+        \\    (recur (+ i 1) (+ sum i))))
+    );
+    try testing.expectEqual(Value{ .integer = 45 }, result);
+}
+
+test "core.clj - next returns nil for empty" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // next of single-element list should be nil
+    const r1 = try evalString(alloc, &env, "(next (list 1))");
+    try testing.expectEqual(Value.nil, r1);
+
+    // next of multi-element list should be non-nil
+    const r2 = try evalString(alloc, &env, "(next (list 1 2))");
+    try testing.expect(r2 == .list);
+}
+
+test "core.clj - map" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
+    const result = try evalString(alloc, &env, "(map inc (list 1 2 3))");
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[1]);
+    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[2]);
+}
+
+test "core.clj - filter" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
+    const result = try evalString(alloc, &env, "(filter even? (list 1 2 3 4 5 6))");
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[1]);
+    try testing.expectEqual(Value{ .integer = 6 }, result.list.items[2]);
+}
+
+test "core.clj - reduce" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // reduce using core.clj definition
+    _ = try evalString(alloc, &env, "(defn add [a b] (+ a b))");
+    const result = try evalString(alloc, &env, "(reduce add 0 (list 1 2 3))");
+    try testing.expectEqual(Value{ .integer = 6 }, result);
+}
+
+test "core.clj - take" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(take 2 (list 1 2 3 4 5))");
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[1]);
+}
+
+test "core.clj - drop" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(drop 2 (list 1 2 3 4 5))");
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[1]);
+    try testing.expectEqual(Value{ .integer = 5 }, result.list.items[2]);
 }

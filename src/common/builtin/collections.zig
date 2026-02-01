@@ -271,6 +271,78 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .list = lst };
 }
 
+/// (reverse coll) — returns a list of items in reverse order.
+pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const items = switch (args[0]) {
+        .nil => return .nil,
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        else => return error.TypeError,
+    };
+    if (items.len == 0) return .nil;
+
+    const new_items = try allocator.alloc(Value, items.len);
+    for (items, 0..) |item, i| {
+        new_items[items.len - 1 - i] = item;
+    }
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = new_items };
+    return Value{ .list = lst };
+}
+
+/// (into to from) — returns a new coll with items from `from` conj'd onto `to`.
+pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const from_items = switch (args[1]) {
+        .nil => return args[0],
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        else => return error.TypeError,
+    };
+    if (from_items.len == 0) return args[0];
+
+    var current = args[0];
+    for (from_items) |item| {
+        current = try conjFn(allocator, &.{ current, item });
+    }
+    return current;
+}
+
+/// (apply f args) / (apply f x y args) — calls f with args from final collection.
+pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return error.ArityError;
+
+    const f = args[0];
+    const last_arg = args[args.len - 1];
+
+    // Collect spread args from last collection
+    const spread_items = switch (last_arg) {
+        .nil => @as([]const Value, &.{}),
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        else => return error.TypeError,
+    };
+
+    // Build final args: middle args + spread items
+    const middle_count = args.len - 2; // exclude f and last_arg
+    const total = middle_count + spread_items.len;
+    const call_args = try allocator.alloc(Value, total);
+    if (middle_count > 0) {
+        @memcpy(call_args[0..middle_count], args[1 .. args.len - 1]);
+    }
+    if (spread_items.len > 0) {
+        @memcpy(call_args[middle_count..], spread_items);
+    }
+
+    // Call the function
+    return switch (f) {
+        .builtin_fn => |func| func(allocator, call_args),
+        else => error.TypeError,
+    };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -362,6 +434,30 @@ pub const builtins = [_]BuiltinDef{
         .func = &concatFn,
         .doc = "Returns a lazy seq representing the concatenation of the elements in the supplied colls.",
         .arglists = "([] [x] [x y] [x y & zs])",
+        .added = "1.0",
+    },
+    .{
+        .name = "reverse",
+        .kind = .runtime_fn,
+        .func = &reverseFn,
+        .doc = "Returns a seq of the items in coll in reverse order.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "into",
+        .kind = .runtime_fn,
+        .func = &intoFn,
+        .doc = "Returns a new coll consisting of to-coll with all of the items of from-coll conjoined.",
+        .arglists = "([to from])",
+        .added = "1.0",
+    },
+    .{
+        .name = "apply",
+        .kind = .runtime_fn,
+        .func = &applyFn,
+        .doc = "Applies fn f to the argument list formed by prepending intervening arguments to args.",
+        .arglists = "([f args] [f x args] [f x y args] [f x y z args])",
         .added = "1.0",
     },
 };
@@ -573,8 +669,44 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 11 entries" {
-    try testing.expectEqual(11, builtins.len);
+test "builtins table has 14 entries" {
+    try testing.expectEqual(14, builtins.len);
+}
+
+test "reverse list" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var lst = PersistentList{ .items = &items };
+    const result = try reverseFn(alloc, &.{Value{ .list = &lst }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 1 }, result.list.items[2]);
+}
+
+test "reverse nil" {
+    const result = try reverseFn(test_alloc, &.{Value.nil});
+    try testing.expect(result == .nil);
+}
+
+test "apply with builtin_fn" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (apply count [[1 2 3]]) -> 3
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var inner_vec = PersistentVector{ .items = &items };
+    const arg_items = [_]Value{Value{ .vector = &inner_vec }};
+    var arg_list = PersistentList{ .items = &arg_items };
+    const result = try applyFn(alloc, &.{
+        Value{ .builtin_fn = &countFn },
+        Value{ .list = &arg_list },
+    });
+    try testing.expectEqual(Value{ .integer = 3 }, result);
 }
 
 test "builtins all have func" {

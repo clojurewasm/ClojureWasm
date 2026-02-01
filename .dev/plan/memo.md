@@ -4,8 +4,8 @@
 
 - Phase: 3b (core.clj AOT pipeline)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Build-time AOT: core.clj -> bytecode -> @embedFile (Task 3.11)
-- Task file: (to be created)
+- Current task: Remaining core macros (Task 3.14, T3.11/T3.12 deferred)
+- Task file:
 - Blockers: none
 
 ## Completed Phases
@@ -36,5 +36,6 @@
 | T3.8    | .dev/plan/archive/task_0029_str_print_fns.md                | 2026-02-02 |
 | T3.9    | .dev/plan/archive/task_0030_atom.md                         | 2026-02-02 |
 | T3.10   | .dev/plan/archive/task_0031_core_bootstrap.md               | 2026-02-02 |
+| T3.13   | .dev/plan/archive/task_0032_higher_order_fns.md             | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.

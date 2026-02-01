@@ -192,7 +192,7 @@ pub const TreeWalk = struct {
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, args);
             },
-            else => error.TypeError,
+            else => return error.TypeError,
         };
     }
 
@@ -231,7 +231,10 @@ pub const TreeWalk = struct {
         // Find matching arity
         const arity = findArity(fn_n.arities, args.len) orelse return error.ArityError;
 
-        const saved = self.local_count;
+        // Save caller's local frame (nested closure calls must not clobber it)
+        const saved_count = self.local_count;
+        var saved_locals: [MAX_LOCALS]Value = undefined;
+        @memcpy(saved_locals[0..saved_count], self.locals[0..saved_count]);
 
         // Reset locals to captured state (fn body uses idx from 0)
         self.local_count = 0;
@@ -286,7 +289,10 @@ pub const TreeWalk = struct {
         }
 
         const result = try self.run(arity.body);
-        self.local_count = saved;
+
+        // Restore caller's local frame
+        @memcpy(self.locals[0..saved_count], saved_locals[0..saved_count]);
+        self.local_count = saved_count;
         return result;
     }
 
@@ -451,7 +457,12 @@ pub const TreeWalk = struct {
         for (arg_nodes, 0..) |arg, i| {
             arg_vals[i] = try self.run(arg);
         }
-        return @errorCast(func(self.allocator, arg_vals[0..arg_nodes.len]));
+        const result = func(self.allocator, arg_vals[0..arg_nodes.len]);
+        if (result) |v| {
+            return v;
+        } else |e| {
+            return @errorCast(e);
+        }
     }
 
     // --- Builtin arithmetic/comparison ---
