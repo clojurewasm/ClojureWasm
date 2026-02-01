@@ -731,3 +731,291 @@ test "EvalEngine compare variadic add 5 args" {
     try std.testing.expectEqual(Value{ .integer = 15 }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .integer = 15 }, result.vm_value.?);
 }
+
+// --- Predicate compare tests (T4.2) ---
+
+fn makePredicateCompareTest(pred_name: []const u8, arg_val: Value, expected: bool) type {
+    return struct {
+        fn runTest() !void {
+            const registry = @import("builtin/registry.zig");
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            const alloc = arena.allocator();
+
+            var env = Env.init(alloc);
+            defer env.deinit();
+            try registry.registerBuiltins(&env);
+
+            var engine = EvalEngine.init(alloc, &env);
+
+            var callee = Node{ .var_ref = .{ .ns = null, .name = pred_name, .source = .{} } };
+            var arg = Node{ .constant = arg_val };
+            var args = [_]*Node{&arg};
+            var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+            const n = Node{ .call_node = &call_data };
+            const result = engine.compare(&n);
+            try std.testing.expect(result.match);
+            try std.testing.expectEqual(Value{ .boolean = expected }, result.tw_value.?);
+            try std.testing.expectEqual(Value{ .boolean = expected }, result.vm_value.?);
+        }
+    };
+}
+
+test "EvalEngine compare boolean? true" {
+    try makePredicateCompareTest("boolean?", .{ .boolean = true }, true).runTest();
+}
+
+test "EvalEngine compare boolean? non-bool" {
+    try makePredicateCompareTest("boolean?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare number? integer" {
+    try makePredicateCompareTest("number?", .{ .integer = 42 }, true).runTest();
+}
+
+test "EvalEngine compare number? float" {
+    try makePredicateCompareTest("number?", .{ .float = 3.14 }, true).runTest();
+}
+
+test "EvalEngine compare number? string" {
+    try makePredicateCompareTest("number?", .{ .string = "hi" }, false).runTest();
+}
+
+test "EvalEngine compare integer? true" {
+    try makePredicateCompareTest("integer?", .{ .integer = 5 }, true).runTest();
+}
+
+test "EvalEngine compare integer? float" {
+    try makePredicateCompareTest("integer?", .{ .float = 5.0 }, false).runTest();
+}
+
+test "EvalEngine compare float? true" {
+    try makePredicateCompareTest("float?", .{ .float = 1.5 }, true).runTest();
+}
+
+test "EvalEngine compare float? int" {
+    try makePredicateCompareTest("float?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare string? true" {
+    try makePredicateCompareTest("string?", .{ .string = "hello" }, true).runTest();
+}
+
+test "EvalEngine compare string? non-string" {
+    try makePredicateCompareTest("string?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare keyword? true" {
+    try makePredicateCompareTest("keyword?", .{ .keyword = .{ .ns = null, .name = "foo" } }, true).runTest();
+}
+
+test "EvalEngine compare keyword? non-keyword" {
+    try makePredicateCompareTest("keyword?", .{ .string = "foo" }, false).runTest();
+}
+
+test "EvalEngine compare symbol? true" {
+    try makePredicateCompareTest("symbol?", .{ .symbol = .{ .ns = null, .name = "foo" } }, true).runTest();
+}
+
+test "EvalEngine compare symbol? non-symbol" {
+    try makePredicateCompareTest("symbol?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare nil? false case" {
+    try makePredicateCompareTest("nil?", .{ .integer = 0 }, false).runTest();
+}
+
+test "EvalEngine compare fn? non-fn" {
+    try makePredicateCompareTest("fn?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare zero? true" {
+    try makePredicateCompareTest("zero?", .{ .integer = 0 }, true).runTest();
+}
+
+test "EvalEngine compare zero? false" {
+    try makePredicateCompareTest("zero?", .{ .integer = 5 }, false).runTest();
+}
+
+test "EvalEngine compare zero? float" {
+    try makePredicateCompareTest("zero?", .{ .float = 0.0 }, true).runTest();
+}
+
+test "EvalEngine compare pos? true" {
+    try makePredicateCompareTest("pos?", .{ .integer = 3 }, true).runTest();
+}
+
+test "EvalEngine compare pos? false" {
+    try makePredicateCompareTest("pos?", .{ .integer = -1 }, false).runTest();
+}
+
+test "EvalEngine compare neg? true" {
+    try makePredicateCompareTest("neg?", .{ .integer = -5 }, true).runTest();
+}
+
+test "EvalEngine compare neg? false" {
+    try makePredicateCompareTest("neg?", .{ .integer = 3 }, false).runTest();
+}
+
+test "EvalEngine compare even? true" {
+    try makePredicateCompareTest("even?", .{ .integer = 4 }, true).runTest();
+}
+
+test "EvalEngine compare even? false" {
+    try makePredicateCompareTest("even?", .{ .integer = 3 }, false).runTest();
+}
+
+test "EvalEngine compare odd? true" {
+    try makePredicateCompareTest("odd?", .{ .integer = 7 }, true).runTest();
+}
+
+test "EvalEngine compare odd? false" {
+    try makePredicateCompareTest("odd?", .{ .integer = 4 }, false).runTest();
+}
+
+test "EvalEngine compare not true" {
+    try makePredicateCompareTest("not", .{ .boolean = false }, true).runTest();
+}
+
+test "EvalEngine compare not false" {
+    try makePredicateCompareTest("not", .{ .boolean = true }, false).runTest();
+}
+
+test "EvalEngine compare not nil" {
+    try makePredicateCompareTest("not", .nil, true).runTest();
+}
+
+test "EvalEngine compare vector? true" {
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "vector?", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+}
+
+test "EvalEngine compare vector? false" {
+    try makePredicateCompareTest("vector?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare map? true" {
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const entries = [_]Value{ .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 } };
+    var m = collections_mod.PersistentArrayMap{ .entries = &entries };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "map?", .source = .{} } };
+    var arg = Node{ .constant = .{ .map = &m } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+}
+
+test "EvalEngine compare map? false" {
+    try makePredicateCompareTest("map?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare set? true" {
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{.{ .integer = 1 }};
+    var s = collections_mod.PersistentHashSet{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "set?", .source = .{} } };
+    var arg = Node{ .constant = .{ .set = &s } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+}
+
+test "EvalEngine compare set? false" {
+    try makePredicateCompareTest("set?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare coll? vector" {
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{.{ .integer = 1 }};
+    var vec = collections_mod.PersistentVector{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "coll?", .source = .{} } };
+    var arg = Node{ .constant = .{ .vector = &vec } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+}
+
+test "EvalEngine compare coll? non-coll" {
+    try makePredicateCompareTest("coll?", .{ .integer = 1 }, false).runTest();
+}
+
+test "EvalEngine compare seq? list" {
+    const registry = @import("builtin/registry.zig");
+    const collections_mod = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    const items = [_]Value{.{ .integer = 1 }};
+    var lst = collections_mod.PersistentList{ .items = &items };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "seq?", .source = .{} } };
+    var arg = Node{ .constant = .{ .list = &lst } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
+}
+
+test "EvalEngine compare seq? non-seq" {
+    try makePredicateCompareTest("seq?", .{ .integer = 1 }, false).runTest();
+}

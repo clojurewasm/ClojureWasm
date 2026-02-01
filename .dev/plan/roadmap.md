@@ -146,7 +146,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | #   | Task                                          | Archive                        | Notes                                                 |
 | --- | --------------------------------------------- | ------------------------------ | ----------------------------------------------------- |
 | 4.1 | VM: variadic arithmetic (+, -, \*, /)         | task_0038_vm_variadic_arith.md | Compiler-level expansion to binary opcodes            |
-| 4.2 | VM: type predicates + numeric predicates      | --                             | nil?, number?, zero?, etc. via builtin dispatch       |
+| 4.2 | VM: type predicates + numeric predicates      | task_0039_vm_predicates.md     | Already functional; 41 compare tests added            |
 | 4.3 | VM: collection ops (first, rest, conj, etc.)  | --                             | 16 collection builtins                                |
 | 4.4 | VM: string/IO + atom builtins                 | --                             | str, pr-str, println, prn, atom, deref, swap!, reset! |
 | 4.5 | VM: EvalEngine compare-mode parity validation | --                             | Run all SCI tests with --compare                      |
