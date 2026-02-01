@@ -4,7 +4,7 @@
 - Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: Create Namespace in src/common/value/namespace.zig
-- Task file:
+- Task file: .dev/plan/active/task_0013_namespace.md
 - Blockers: none
 
 ## Completed Phases
