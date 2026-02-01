@@ -69,10 +69,10 @@ pub const Chunk = struct {
     }
 
     /// Emit a backward jump (for loops) to the given target offset.
+    /// Operand is the positive distance; VM subtracts it from ip.
     pub fn emitLoop(self: *Chunk, loop_start: usize) !void {
         const dist = self.code.items.len - loop_start + 1;
-        const operand: u16 = @bitCast(-@as(i16, @intCast(dist)));
-        try self.emit(.jump_back, operand);
+        try self.emit(.jump_back, @intCast(dist));
     }
 };
 
@@ -150,8 +150,8 @@ test "Chunk emitLoop backward jump" {
 
     const jump_instr = chunk.code.items[chunk.code.items.len - 1];
     try std.testing.expectEqual(OpCode.jump_back, jump_instr.op);
-    const signed = jump_instr.signedOperand();
-    try std.testing.expect(signed < 0);
+    // Operand is positive distance (VM subtracts it from ip)
+    try std.testing.expect(jump_instr.operand > 0);
 }
 
 test "FnProto creation" {

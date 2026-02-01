@@ -345,3 +345,117 @@ redesigning this to either per-Var stacks or a concurrent frame structure.
 This is acceptable since Wasm is the primary target.
 
 **References**: future.md SS15.5, D3
+
+---
+
+## D12: Division Semantics — Float Now, Ratio Later
+
+**Decision**: The `/` operator always returns float, even for `int / int`.
+This is a deliberate simplification; Ratio type is deferred.
+
+**Clojure JVM behavior** (reference):
+
+| Expression    | Result       | Type     |
+|---------------|--------------|----------|
+| `(/ 6 3)`     | `2`          | Long     |
+| `(/ 1 3)`     | `1/3`        | Ratio    |
+| `(/ 1.0 3)`   | `0.333...`   | Double   |
+| `(/ 1 0)`     | throws       | ArithmeticException |
+
+Clojure JVM's `Numbers.divide()` computes GCD, returns Long if denominator
+becomes 1, otherwise constructs `clojure.lang.Ratio` (BigInteger numerator +
+BigInteger denominator, always in lowest terms).
+
+**Our behavior** (simplified):
+
+| Expression    | Result       | Type     |
+|---------------|--------------|----------|
+| `(/ 6 3)`     | `2.0`        | float    |
+| `(/ 1 3)`     | `0.333...`   | float    |
+| `(/ 1.0 3)`   | `0.333...`   | float    |
+| `(/ 1 0)`     | error        | DivisionByZero |
+
+**Beta behavior**: Same as ours — always float. Comment in Beta's vm.zig says:
+"Clojure の / は常に有理数/浮動小数点を返すが、簡略化".
+
+**Why not divTrunc**: The initial production VM used `@divTrunc` for `int / int`,
+which made `(/ 1 3)` return `0`. This is incorrect for any Clojure semantics.
+Always-float is a strictly better approximation than truncated integer division.
+
+**Ratio type implications** (future):
+- Requires BigInteger (or at least i128) for numerator/denominator
+- GCD algorithm for automatic reduction to lowest terms
+- Ratio participates in numeric promotion: `Ratio + int → Ratio`, `Ratio + float → float`
+- Significant implementation effort; deferred until SCI test suite requires it
+
+**VM fast-path concern**: The `div` opcode cannot use the same integer fast
+path as `add`/`sub`/`mul`. Division always promotes to float first, making it
+inherently slower. If Ratio is implemented, div becomes even more complex
+(GCD computation per division). The bytecode compiler could potentially
+strength-reduce known constant divisions, but error propagation (zero divisor)
+makes this tricky — the error must surface at the right point in evaluation.
+
+**When to implement Ratio**: When SCI Tier 1 tests (Phase 3.14) fail due to
+precision loss from float approximation. Specifically, tests involving
+`(= (/ 1 3) 1/3)` or ratio arithmetic.
+
+---
+
+## D13: OpCode Values — Beta-Compatible Layout
+
+**Decision**: Production OpCode enum uses the same u8 values as Beta for all
+shared opcodes. Category ranges are preserved identically.
+
+**Layout** (both Beta and production):
+
+```
+0x00-0x0F  Constants    const_load=0x00, nil=0x01, true=0x02, false=0x03
+0x10-0x1F  Stack        pop=0x10, dup=0x11
+0x20-0x2F  Locals       local_load=0x20, local_store=0x21
+0x30-0x3F  Upvalues     upvalue_load=0x30, upvalue_store=0x31
+0x40-0x4F  Vars         var_load=0x40, var_load_dynamic=0x41, def=0x42
+0x50-0x5F  Control      jump=0x50, jump_if_false=0x51, jump_back=0x54
+0x60-0x6F  Functions    call=0x60, tail_call=0x65, ret=0x67, closure=0x68
+0x70-0x7F  Loop/recur   recur=0x71
+0x80-0x8F  Collections  list_new=0x80..set_new=0x83
+0xA0-0xAF  Exceptions   try_begin=0xA0..throw_ex=0xA4
+0xB0-0xBF  Arithmetic   add=0xB0..ge=0xB7
+0xF0-0xFF  Debug        nop=0xF0, debug_print=0xF1
+```
+
+**Why keep Beta's values**:
+- No technical reason to renumber. The category ranges are logical and have
+  room for expansion (each category has 16 slots, we use 2-8).
+- Preserves mental model when cross-referencing Beta's bytecode dumps.
+- The gaps within categories (e.g., 0x52-0x53 reserved for jump_if_true/nil,
+  0x61-0x64 for call_0..call_3) mark exactly where Beta's optimized variants
+  live, making it clear what we intentionally deferred.
+
+**Considered alternative — contiguous numbering**:
+Could pack all 30 opcodes into 0x00-0x1D for a smaller switch jump table.
+Rejected because: (a) Zig's switch on enum(u8) is already efficient regardless
+of value distribution, (b) loses the category grouping which aids debugging,
+(c) every future opcode addition would shift values and break any serialized
+bytecode (not a concern yet, but free to avoid).
+
+**Bug found during review**: `Chunk.emitLoop()` originally stored a negative
+i16 bitcast to u16 for `jump_back`, but the VM interpreted `jump_back`'s operand
+as unsigned (`frame.ip -= instr.operand`). This meant a distance of 3 became
+65533 after bitcast, causing ip underflow. Beta avoids this because `emitLoop`
+emits `.jump` (which uses `signedOperand()`), not `.jump_back`.
+
+**Fix applied**: `emitLoop` now stores the positive distance directly.
+`jump_back`'s contract is: operand = unsigned forward distance, VM subtracts it.
+This is simpler and avoids the signed/unsigned confusion.
+
+```zig
+// Before (buggy): operand = @bitCast(-@as(i16, dist))  → 65533 for dist=3
+// After (fixed):  operand = @intCast(dist)              → 3 for dist=3
+// VM:             frame.ip -= instr.operand             → works correctly
+```
+
+**`jump` vs `jump_back` role clarification**:
+- `jump`: signed operand via `signedOperand()`, can go forward or backward
+- `jump_back`: unsigned operand, always backward (VM subtracts from ip)
+- `jump_back` exists as a separate opcode so the VM can distinguish loop
+  back-edges for future profiling/JIT hints, not for encoding reasons

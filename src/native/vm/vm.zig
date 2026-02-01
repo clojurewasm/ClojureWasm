@@ -199,22 +199,30 @@ pub const VM = struct {
         const b = self.pop();
         const a = self.pop();
 
-        // Both integers
+        // Division always promotes to float (Clojure semantics: / returns Ratio,
+        // but we use float as approximation until Ratio type is implemented).
+        // See decisions.md D12.
+        if (op == .div) {
+            const fa = numToFloat(a) orelse return error.TypeError;
+            const fb = numToFloat(b) orelse return error.TypeError;
+            if (fb == 0.0) return error.DivisionByZero;
+            try self.push(.{ .float = fa / fb });
+            return;
+        }
+
+        // Both integers: stay in integer domain (add, sub, mul)
         if (a == .integer and b == .integer) {
             const result: Value = switch (op) {
                 .add => .{ .integer = a.integer + b.integer },
                 .sub => .{ .integer = a.integer - b.integer },
                 .mul => .{ .integer = a.integer * b.integer },
-                .div => blk: {
-                    if (b.integer == 0) return error.DivisionByZero;
-                    break :blk .{ .integer = @divTrunc(a.integer, b.integer) };
-                },
+                .div => unreachable, // handled above
             };
             try self.push(result);
             return;
         }
 
-        // Promote to float
+        // Mixed int/float: promote to float
         const fa = numToFloat(a) orelse return error.TypeError;
         const fb = numToFloat(b) orelse return error.TypeError;
 
@@ -222,10 +230,7 @@ pub const VM = struct {
             .add => fa + fb,
             .sub => fa - fb,
             .mul => fa * fb,
-            .div => blk: {
-                if (fb == 0.0) return error.DivisionByZero;
-                break :blk fa / fb;
-            },
+            .div => unreachable, // handled above
         };
         try self.push(.{ .float = result });
     }
