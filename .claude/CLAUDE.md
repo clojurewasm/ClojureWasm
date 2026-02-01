@@ -57,6 +57,7 @@ This matches Zig standard library conventions and keeps files readable.
 2. Reference Beta code, but redesign from understanding — no copy-paste
 3. Commit frequently when tests pass
 4. Append discoveries, completions, and plan changes to .dev/plan/active/ log file
+5. When you discover a new Zig pitfall or workaround, append it to `.claude/references/zig-tips.md`
 
 ### On Task Completion
 
@@ -139,28 +140,7 @@ getDiagnostics(uri: "file:///path/to/edited.zig")
 ## Zig 0.15.2 Quick Reference
 
 Full guide: Beta's docs/reference/zig_guide.md
-
-```zig
-// ArrayList (init with .empty)
-var list: std.ArrayList(u8) = .empty;
-defer list.deinit(allocator);
-try list.append(allocator, 42);
-
-// HashMap (Unmanaged form)
-var map: std.AutoHashMapUnmanaged(u32, []const u8) = .empty;
-defer map.deinit(allocator);
-try map.put(allocator, key, value);
-
-// stdout (buffer required)
-var buf: [4096]u8 = undefined;
-var writer = std.fs.File.stdout().writer(&buf);
-const stdout = &writer.interface;
-try stdout.flush();  // don't forget
-
-// tagged union comparison uses switch
-return switch (self) { .nil => true, else => false };
-// NOT self == .nil (unreliable)
-```
+Tips & pitfalls: @.claude/references/zig-tips.md
 
 ## Design Principles
 
