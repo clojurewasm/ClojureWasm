@@ -105,7 +105,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | ---- | -------------------------------------------------- | ---------------------- | ------------------------------------------------------------- |
 | 3.15 | CLI entry point: -e, file.clj, REPL stub           | task_0034_cli.md       | src/main.zig. TreeWalk eval pipeline: read -> analyze -> eval |
 | 3.16 | Import SCI Tier 1 tests (5 files)                  | task_0035_sci_tests.md | 17 SCI-style tests + numeric predicates + variadic arith/cmp  |
-| 3.17 | Benchmark: startup time, fib(30), basic operations | --                     | Establish baseline numbers                                    |
+| 3.17 | Benchmark: startup time, fib(30), basic operations | task_0036_benchmark.md | Startup 2.6ms, fib(30) 3.2s (TreeWalk, Debug)                 |
 
 ## Milestone Criteria
 

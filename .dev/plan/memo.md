@@ -4,8 +4,8 @@
 
 - Phase: 3b (core.clj AOT pipeline)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Benchmark (Task 3.17, T3.11/T3.12 deferred)
-- Task file: (to be created)
+- Current task: Phase 3 complete. Next: Phase 4 planning (T3.11/T3.12 deferred)
+- Task file: none
 - Blockers: none
 
 ## Completed Phases
@@ -40,5 +40,7 @@
 | T3.14   | .dev/plan/archive/task_0033_core_macros.md                  | 2026-02-02 |
 | T3.15   | .dev/plan/archive/task_0034_cli.md                          | 2026-02-02 |
 | T3.16   | .dev/plan/archive/task_0035_sci_tests.md                    | 2026-02-02 |
+| T3.17   | .dev/plan/archive/task_0036_benchmark.md                    | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
+**Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4.)
