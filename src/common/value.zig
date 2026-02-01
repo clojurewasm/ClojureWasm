@@ -48,6 +48,10 @@ pub const Fn = struct {
     proto: *const anyopaque,
     kind: FnKind = .bytecode,
     closure_bindings: ?[]const Value = null,
+    /// Additional arity protos for multi-arity functions.
+    /// Each entry is a *const FnProto (opaque to avoid circular import).
+    /// Null for single-arity functions (common case — no overhead).
+    extra_arities: ?[]const *const anyopaque = null,
 };
 
 /// Runtime value — tagged union representation.

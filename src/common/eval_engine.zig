@@ -281,6 +281,47 @@ test "EvalEngine compare fn+call matches" {
     try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
 }
 
+test "EvalEngine compare multi-arity fn" {
+    // ((fn ([x] x) ([x y] x)) 42) => 42 (selects 1-arg arity)
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var engine = EvalEngine.init(arena.allocator(), null);
+
+    // Arity 1: (fn [x] x)
+    var body1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    const params1 = [_][]const u8{"x"};
+
+    // Arity 2: (fn [x y] x)
+    var body2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    const params2 = [_][]const u8{ "x", "y" };
+
+    const arities = [_]node_mod.FnArity{
+        .{ .params = &params1, .variadic = false, .body = &body1 },
+        .{ .params = &params2, .variadic = false, .body = &body2 },
+    };
+    var fn_data = node_mod.FnNode{ .name = null, .arities = &arities, .source = .{} };
+    var fn_node = Node{ .fn_node = &fn_data };
+
+    // Call with 1 arg
+    var arg1 = Node{ .constant = .{ .integer = 42 } };
+    var args1 = [_]*Node{&arg1};
+    var call1 = node_mod.CallNode{ .callee = &fn_node, .args = &args1, .source = .{} };
+    const n1 = Node{ .call_node = &call1 };
+    const r1 = engine.compare(&n1);
+    try std.testing.expect(r1.match);
+    try std.testing.expectEqual(Value{ .integer = 42 }, r1.tw_value.?);
+
+    // Call with 2 args
+    var arg2a = Node{ .constant = .{ .integer = 10 } };
+    var arg2b = Node{ .constant = .{ .integer = 20 } };
+    var args2 = [_]*Node{ &arg2a, &arg2b };
+    var call2 = node_mod.CallNode{ .callee = &fn_node, .args = &args2, .source = .{} };
+    const n2 = Node{ .call_node = &call2 };
+    const r2 = engine.compare(&n2);
+    try std.testing.expect(r2.match);
+    try std.testing.expectEqual(Value{ .integer = 10 }, r2.tw_value.?);
+}
+
 test "EvalEngine compare arithmetic with registry Env" {
     // (+ 3 4) => 7 — builtins registered via registry
     const registry = @import("builtin/registry.zig");

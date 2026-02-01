@@ -246,15 +246,42 @@ pub const Compiler = struct {
     }
 
     fn emitFn(self: *Compiler, node: *const node_mod.FnNode) CompileError!void {
-        // For now, compile only the first arity
         if (node.arities.len == 0) return error.InvalidNode;
 
-        const arity = node.arities[0];
-
-        // Calculate capture_count: number of parent locals at this point
+        const has_self_ref = node.name != null;
         const capture_count: u16 = @intCast(self.locals.items.len);
 
-        // Create a child compiler for the function body
+        // Compile the primary arity (first one)
+        const primary_proto = try self.compileArity(node, node.arities[0], capture_count, has_self_ref);
+
+        // Compile additional arities (if multi-arity)
+        var extra_arities: ?[]const *const anyopaque = null;
+        if (node.arities.len > 1) {
+            const extras = self.allocator.alloc(*const anyopaque, node.arities.len - 1) catch
+                return error.OutOfMemory;
+            for (node.arities[1..], 0..) |arity, i| {
+                extras[i] = try self.compileArity(node, arity, capture_count, has_self_ref);
+            }
+            extra_arities = extras;
+        }
+
+        // Create Fn template and store as constant
+        const fn_obj = self.allocator.create(Fn) catch return error.OutOfMemory;
+        fn_obj.* = .{ .proto = primary_proto, .closure_bindings = null, .extra_arities = extra_arities };
+        self.fn_objects.append(self.allocator, fn_obj) catch return error.OutOfMemory;
+
+        const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
+            return error.TooManyConstants;
+        try self.chunk.emit(.closure, idx);
+    }
+
+    fn compileArity(
+        self: *Compiler,
+        node: *const node_mod.FnNode,
+        arity: node_mod.FnArity,
+        capture_count: u16,
+        has_self_ref: bool,
+    ) CompileError!*const anyopaque {
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
 
@@ -264,7 +291,6 @@ pub const Compiler = struct {
         }
 
         // Named fn: reserve self-reference slot (matches Analyzer's local layout)
-        const has_self_ref = node.name != null;
         if (has_self_ref) {
             try fn_compiler.addLocal(node.name.?);
         }
@@ -278,13 +304,12 @@ pub const Compiler = struct {
         try fn_compiler.compile(arity.body);
         try fn_compiler.chunk.emitOp(.ret);
 
-        // Allocate owned copies of code and constants so they outlive fn_compiler
+        // Allocate owned copies of code and constants
         const code_copy = self.allocator.dupe(Instruction, fn_compiler.chunk.code.items) catch
             return error.OutOfMemory;
         const const_copy = self.allocator.dupe(Value, fn_compiler.chunk.constants.items) catch
             return error.OutOfMemory;
 
-        // Allocate FnProto on the heap so it outlives this function
         const proto = self.allocator.create(FnProto) catch return error.OutOfMemory;
         proto.* = .{
             .name = node.name,
@@ -298,15 +323,7 @@ pub const Compiler = struct {
         };
 
         self.fn_protos.append(self.allocator, proto) catch return error.OutOfMemory;
-
-        // Create Fn template and store as constant
-        const fn_obj = self.allocator.create(Fn) catch return error.OutOfMemory;
-        fn_obj.* = .{ .proto = proto, .closure_bindings = null };
-        self.fn_objects.append(self.allocator, fn_obj) catch return error.OutOfMemory;
-
-        const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
-            return error.TooManyConstants;
-        try self.chunk.emit(.closure, idx);
+        return proto;
     }
 
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {

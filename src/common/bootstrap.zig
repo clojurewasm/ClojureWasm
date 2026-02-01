@@ -1051,3 +1051,17 @@ test "evalStringVM - higher-order fn (map via dispatcher)" {
     // VM should dispatch both through fn_val_dispatcher
     try expectVMEvalInt(alloc, &env, "(count (map inc [1 2 3]))", 3);
 }
+
+test "evalStringVM - multi-arity fn" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Multi-arity: select by argument count
+    try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 5)", 5);
+    try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 3 4)", 7);
+}

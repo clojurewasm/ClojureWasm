@@ -19,7 +19,7 @@ Last updated: 2026-02-02 (Phase 4 planning — T4.0)
 | F2  | Real GC (replace arena)                     | Long-running REPL or memory benchmarks exceed bounds | D2         |
 | F3  | Ratio type (`1/3`)                          | SCI tests fail on float precision loss               | D12        |
 | F4  | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                | D9         |
-| F5  | swap! with fn_val                           | User reports or SCI tests require it                 | D8 (swap!) |
+| F5  | swap!/apply/reduce with fn_val in builtins  | User reports or SCI tests require it                 | D8 (swap!) |
 | F6  | Multi-thread dynamic bindings               | Native multi-thread target                           | D11        |
 
 ## Phase 4 task priorities

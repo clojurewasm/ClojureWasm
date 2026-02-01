@@ -247,7 +247,11 @@ pub const VM = struct {
                             bindings[i] = self.stack[frame.base + i];
                         }
                         const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
-                        new_fn.* = .{ .proto = fn_obj.proto, .closure_bindings = bindings };
+                        new_fn.* = .{
+                            .proto = fn_obj.proto,
+                            .closure_bindings = bindings,
+                            .extra_arities = fn_obj.extra_arities,
+                        };
                         self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
                         try self.push(.{ .fn_val = new_fn });
                     } else {
@@ -483,11 +487,8 @@ pub const VM = struct {
             return error.TypeError; // No dispatcher available
         }
 
-        const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
-
-        // Arity check
-        if (!proto.variadic and arg_count != proto.arity)
-            return error.ArityError;
+        // Arity dispatch: find matching proto
+        const proto: *const FnProto = try findProtoByArity(fn_obj, arg_count);
 
         // Inject closure_bindings before args if present
         const closure_count: u16 = if (fn_obj.closure_bindings) |cb| @intCast(cb.len) else 0;
@@ -531,6 +532,32 @@ pub const VM = struct {
             .constants = proto.constants,
         };
         self.frame_count += 1;
+    }
+
+    // --- Arity dispatch ---
+
+    fn findProtoByArity(fn_obj: *const Fn, arg_count: u16) VMError!*const FnProto {
+        const primary: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+
+        // Exact match on primary arity
+        if (!primary.variadic and primary.arity == arg_count) return primary;
+        if (primary.variadic and arg_count >= primary.arity -| 1) return primary;
+
+        // Search extra arities
+        if (fn_obj.extra_arities) |extras| {
+            // Exact match first
+            for (extras) |extra| {
+                const p: *const FnProto = @ptrCast(@alignCast(extra));
+                if (!p.variadic and p.arity == arg_count) return p;
+            }
+            // Variadic fallback
+            for (extras) |extra| {
+                const p: *const FnProto = @ptrCast(@alignCast(extra));
+                if (p.variadic and arg_count >= p.arity -| 1) return p;
+            }
+        }
+
+        return error.ArityError;
     }
 
     // --- Arithmetic helpers ---
