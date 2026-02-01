@@ -4,8 +4,8 @@
 
 - Phase: 3b (core.clj AOT pipeline)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: CLI entry point (Task 3.15, T3.11/T3.12 deferred)
-- Task file:
+- Current task: SCI Tier 1 tests (Task 3.16, T3.11/T3.12 deferred)
+- Task file: (to be created)
 - Blockers: none
 
 ## Completed Phases
@@ -38,5 +38,6 @@
 | T3.10   | .dev/plan/archive/task_0031_core_bootstrap.md               | 2026-02-02 |
 | T3.13   | .dev/plan/archive/task_0032_higher_order_fns.md             | 2026-02-02 |
 | T3.14   | .dev/plan/archive/task_0033_core_macros.md                  | 2026-02-02 |
+| T3.15   | .dev/plan/archive/task_0034_cli.md                          | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.

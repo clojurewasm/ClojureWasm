@@ -16,6 +16,9 @@ pub const PersistentHashSet = collections.PersistentHashSet;
 
 const testing = std.testing;
 
+/// Builtin function signature: allocator + args -> Value.
+pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
+
 /// Interned symbol reference.
 pub const Symbol = struct {
     ns: ?[]const u8,
@@ -63,7 +66,7 @@ pub const Value = union(enum) {
 
     // Functions
     fn_val: *const Fn,
-    builtin_fn: @import("var.zig").BuiltinFn,
+    builtin_fn: *const fn (std.mem.Allocator, []const Value) anyerror!Value,
 
     // Reference types
     atom: *Atom,

@@ -10,16 +10,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // Executable
+    // Executable (same source tree, no module boundary — avoids self-referential type loop)
     const exe = b.addExecutable(.{
         .name = "clj-wasm",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                .{ .name = "ClojureWasm", .module = mod },
-            },
         }),
     });
     b.installArtifact(exe);

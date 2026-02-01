@@ -101,11 +101,11 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 3c: Integration + validation
 
-| #    | Task                                               | Archive | Notes                                                                          |
-| ---- | -------------------------------------------------- | ------- | ------------------------------------------------------------------------------ |
-| 3.15 | CLI entry point: -e, file.clj, REPL stub           | --      | src/native/main.zig. Basic eval pipeline: read -> analyze -> compile -> vm.run |
-| 3.16 | Import SCI Tier 1 tests (5 files)                  | --      | SS10: deterministic rule transformation                                        |
-| 3.17 | Benchmark: startup time, fib(30), basic operations | --      | Establish baseline numbers                                                     |
+| #    | Task                                               | Archive          | Notes                                                         |
+| ---- | -------------------------------------------------- | ---------------- | ------------------------------------------------------------- |
+| 3.15 | CLI entry point: -e, file.clj, REPL stub           | task_0034_cli.md | src/main.zig. TreeWalk eval pipeline: read -> analyze -> eval |
+| 3.16 | Import SCI Tier 1 tests (5 files)                  | --               | SS10: deterministic rule transformation                       |
+| 3.17 | Benchmark: startup time, fib(30), basic operations | --               | Establish baseline numbers                                    |
 
 ## Milestone Criteria
 

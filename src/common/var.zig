@@ -29,8 +29,8 @@ pub const VarKind = enum(u8) {
     user_macro,
 };
 
-/// Builtin function signature: allocator + args -> Value.
-pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
+/// Builtin function signature: re-exported from value.zig to avoid circular dependency.
+pub const BuiltinFn = value.BuiltinFn;
 
 /// Metadata definition for builtin functions/macros (SS10).
 pub const BuiltinDef = struct {
