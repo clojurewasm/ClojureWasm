@@ -10,6 +10,8 @@ pub const reader = @import("common/reader/reader.zig");
 pub const node = @import("common/analyzer/node.zig");
 pub const analyzer = @import("common/analyzer/analyzer.zig");
 pub const env = @import("common/env.zig");
+pub const var_mod = @import("common/var.zig");
+pub const namespace = @import("common/namespace.zig");
 
 test {
     _ = value;
@@ -21,4 +23,6 @@ test {
     _ = node;
     _ = analyzer;
     _ = env;
+    _ = var_mod;
+    _ = namespace;
 }

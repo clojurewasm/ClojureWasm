@@ -49,3 +49,7 @@ Integrate Namespace registry into Env.
 
 ## Log
 
+- Step 1: Created `src/common/var.zig` — Var struct with root/dynamic bindings, flags, qualifiedName. 7 tests.
+- Step 2: Created `src/common/namespace.zig` — Namespace with intern/resolve/refer/alias. 7 tests.
+- Step 3: Updated `src/common/env.zig` — Added NsMap namespace registry, findOrCreateNamespace, findNamespace, current_ns. 6 tests.
+- All tests pass. Path: `src/common/namespace.zig` (flat, matching existing structure).
