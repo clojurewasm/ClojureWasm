@@ -32,7 +32,7 @@ pub const Analyzer = struct {
         idx: u32,
     };
 
-    pub const AnalyzeError = err.AnalysisError;
+    pub const AnalyzeError = err.Error;
 
     pub fn init(allocator: Allocator) Analyzer {
         return .{ .allocator = allocator };
@@ -55,19 +55,16 @@ pub const Analyzer = struct {
     // === Error helpers ===
 
     fn analysisError(self: *const Analyzer, kind: err.Kind, message: []const u8, form: Form) AnalyzeError {
-        // err.analysisError returns full Error; narrow to AnalyzeError
-        const full_err = err.analysisError(kind, message, .{
-            .file = self.source_file,
-            .line = form.line,
-            .column = form.column,
+        return err.setError(.{
+            .kind = kind,
+            .phase = .analysis,
+            .message = message,
+            .location = .{
+                .file = self.source_file,
+                .line = form.line,
+                .column = form.column,
+            },
         });
-        return switch (full_err) {
-            error.UndefinedSymbol => error.UndefinedSymbol,
-            error.InvalidArity => error.InvalidArity,
-            error.InvalidBinding => error.InvalidBinding,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.InvalidArity, // analysis only uses the above kinds
-        };
     }
 
     // === Node constructors ===
@@ -189,7 +186,7 @@ pub const Analyzer = struct {
     fn analyzeIf(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (if test then) or (if test then else)
         if (items.len < 3 or items.len > 4) {
-            return self.analysisError(.invalid_arity, "if requires 2 or 3 arguments", form);
+            return self.analysisError(.arity_error, "if requires 2 or 3 arguments", form);
         }
 
         const test_node = try self.analyze(items[1]);
@@ -237,16 +234,16 @@ pub const Analyzer = struct {
     fn analyzeLet(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (let [bindings...] body...)
         if (items.len < 2) {
-            return self.analysisError(.invalid_arity, "let requires binding vector", form);
+            return self.analysisError(.arity_error, "let requires binding vector", form);
         }
 
         if (items[1].data != .vector) {
-            return self.analysisError(.invalid_binding, "let bindings must be a vector", items[1]);
+            return self.analysisError(.value_error, "let bindings must be a vector", items[1]);
         }
 
         const binding_pairs = items[1].data.vector;
         if (binding_pairs.len % 2 != 0) {
-            return self.analysisError(.invalid_binding, "let bindings must have even number of forms", items[1]);
+            return self.analysisError(.value_error, "let bindings must have even number of forms", items[1]);
         }
 
         const start_locals = self.locals.items.len;
@@ -257,7 +254,7 @@ pub const Analyzer = struct {
         var i: usize = 0;
         while (i < binding_pairs.len) : (i += 2) {
             if (binding_pairs[i].data != .symbol) {
-                return self.analysisError(.invalid_binding, "let binding name must be a symbol", binding_pairs[i]);
+                return self.analysisError(.value_error, "let binding name must be a symbol", binding_pairs[i]);
             }
             const name = binding_pairs[i].data.symbol.name;
             const init_node = try self.analyze(binding_pairs[i + 1]);
@@ -291,7 +288,7 @@ pub const Analyzer = struct {
     fn analyzeFn(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (fn name? [params] body...) or (fn name? ([params] body...) ...)
         if (items.len < 2) {
-            return self.analysisError(.invalid_arity, "fn requires parameter vector", form);
+            return self.analysisError(.arity_error, "fn requires parameter vector", form);
         }
 
         var idx: usize = 1;
@@ -304,7 +301,7 @@ pub const Analyzer = struct {
         }
 
         if (idx >= items.len) {
-            return self.analysisError(.invalid_arity, "fn requires parameter vector", form);
+            return self.analysisError(.arity_error, "fn requires parameter vector", form);
         }
 
         // Named fn: register self-reference local
@@ -339,12 +336,12 @@ pub const Analyzer = struct {
 
         while (idx < items.len) {
             if (items[idx].data != .list) {
-                return self.analysisError(.invalid_arity, "fn arity must be a list: ([params] body...)", form);
+                return self.analysisError(.arity_error, "fn arity must be a list: ([params] body...)", form);
             }
 
             const arity_items = items[idx].data.list;
             if (arity_items.len == 0 or arity_items[0].data != .vector) {
-                return self.analysisError(.invalid_arity, "fn arity must start with parameter vector", form);
+                return self.analysisError(.arity_error, "fn arity must start with parameter vector", form);
             }
 
             const arity = try self.analyzeFnArity(arity_items[0].data.vector, arity_items[1..], form);
@@ -356,7 +353,7 @@ pub const Analyzer = struct {
         self.locals.shrinkRetainingCapacity(fn_name_locals_start);
 
         if (arities_list.items.len == 0) {
-            return self.analysisError(.invalid_arity, "fn requires at least one arity", form);
+            return self.analysisError(.arity_error, "fn requires at least one arity", form);
         }
 
         const fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
@@ -379,7 +376,7 @@ pub const Analyzer = struct {
 
         for (params_form) |p| {
             if (p.data != .symbol) {
-                return self.analysisError(.invalid_binding, "fn parameter must be a symbol", p);
+                return self.analysisError(.value_error, "fn parameter must be a symbol", p);
             }
             const param_name = p.data.symbol.name;
 
@@ -408,11 +405,11 @@ pub const Analyzer = struct {
     fn analyzeDef(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (def name) or (def name value)
         if (items.len < 2 or items.len > 3) {
-            return self.analysisError(.invalid_arity, "def requires 1 or 2 arguments", form);
+            return self.analysisError(.arity_error, "def requires 1 or 2 arguments", form);
         }
 
         if (items[1].data != .symbol) {
-            return self.analysisError(.invalid_binding, "def name must be a symbol", items[1]);
+            return self.analysisError(.value_error, "def name must be a symbol", items[1]);
         }
 
         const sym_name = items[1].data.symbol.name;
@@ -436,7 +433,7 @@ pub const Analyzer = struct {
     fn analyzeQuote(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (quote form)
         if (items.len != 2) {
-            return self.analysisError(.invalid_arity, "quote requires exactly 1 argument", form);
+            return self.analysisError(.arity_error, "quote requires exactly 1 argument", form);
         }
 
         const val = formToValue(items[1]);
@@ -455,11 +452,11 @@ pub const Analyzer = struct {
     fn analyzeDefmacro(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (defmacro name [params] body...) - treated like def + fn with is_macro flag
         if (items.len < 3) {
-            return self.analysisError(.invalid_arity, "defmacro requires name and body", form);
+            return self.analysisError(.arity_error, "defmacro requires name and body", form);
         }
 
         if (items[1].data != .symbol) {
-            return self.analysisError(.invalid_binding, "defmacro name must be a symbol", items[1]);
+            return self.analysisError(.value_error, "defmacro name must be a symbol", items[1]);
         }
 
         const sym_name = items[1].data.symbol.name;
@@ -484,7 +481,7 @@ pub const Analyzer = struct {
     /// Analyze fn body starting from params vector (helper for defmacro).
     fn analyzeFnBody(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         if (items.len == 0 or items[0].data != .vector) {
-            return self.analysisError(.invalid_arity, "expected parameter vector", form);
+            return self.analysisError(.arity_error, "expected parameter vector", form);
         }
 
         const arity = try self.analyzeFnArity(items[0].data.vector, items[1..], form);
@@ -957,7 +954,7 @@ test "analyze error: if with wrong arity" {
         .{ .data = .{ .boolean = true } },
     };
     const result = a.analyze(.{ .data = .{ .list = &items } });
-    try std.testing.expectError(error.InvalidArity, result);
+    try std.testing.expectError(error.ArityError, result);
 }
 
 test "analyze let scoping - x not visible after let" {

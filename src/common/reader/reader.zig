@@ -17,7 +17,7 @@ const SymbolRef = form_mod.SymbolRef;
 const TaggedLiteral = form_mod.TaggedLiteral;
 const err = @import("../error.zig");
 
-pub const ReadError = err.ReadError;
+pub const ReadError = err.Error;
 
 pub const Reader = struct {
     tokenizer: Tokenizer,
@@ -95,7 +95,7 @@ pub const Reader = struct {
     fn readInteger(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
         const value = parseInteger(text) catch {
-            return self.makeError(.invalid_number, "Invalid number literal", token);
+            return self.makeError(.number_error, "Invalid number literal", token);
         };
         return Form{ .data = .{ .integer = value }, .line = token.line, .column = token.column };
     }
@@ -148,7 +148,7 @@ pub const Reader = struct {
             s = s[0 .. s.len - 1];
         }
         const value = std.fmt.parseFloat(f64, s) catch {
-            return self.makeError(.invalid_number, "Invalid float literal", token);
+            return self.makeError(.number_error, "Invalid float literal", token);
         };
         return Form{ .data = .{ .float = value }, .line = token.line, .column = token.column };
     }
@@ -156,16 +156,16 @@ pub const Reader = struct {
     fn readRatio(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
         const slash_idx = std.mem.indexOfScalar(u8, text, '/') orelse {
-            return self.makeError(.invalid_number, "Invalid ratio literal", token);
+            return self.makeError(.number_error, "Invalid ratio literal", token);
         };
         const num = std.fmt.parseInt(i64, text[0..slash_idx], 10) catch {
-            return self.makeError(.invalid_number, "Invalid ratio literal", token);
+            return self.makeError(.number_error, "Invalid ratio literal", token);
         };
         const den = std.fmt.parseInt(i64, text[slash_idx + 1 ..], 10) catch {
-            return self.makeError(.invalid_number, "Invalid ratio literal", token);
+            return self.makeError(.number_error, "Invalid ratio literal", token);
         };
         if (den == 0) {
-            return self.makeError(.invalid_number, "Division by zero in ratio", token);
+            return self.makeError(.number_error, "Division by zero in ratio", token);
         }
         const value: f64 = @as(f64, @floatFromInt(num)) / @as(f64, @floatFromInt(den));
         return Form{ .data = .{ .float = value }, .line = token.line, .column = token.column };
@@ -174,11 +174,11 @@ pub const Reader = struct {
     fn readString(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
         if (text.len < 2) {
-            return self.makeError(.invalid_string, "Invalid string literal", token);
+            return self.makeError(.string_error, "Invalid string literal", token);
         }
         const content = text[1 .. text.len - 1];
         const unescaped = self.unescapeString(content) catch {
-            return self.makeError(.invalid_string, "Invalid escape sequence in string", token);
+            return self.makeError(.string_error, "Invalid escape sequence in string", token);
         };
         return Form{ .data = .{ .string = unescaped }, .line = token.line, .column = token.column };
     }
@@ -222,7 +222,7 @@ pub const Reader = struct {
         const text = token.text(self.source);
         // text starts with '\'
         if (text.len < 2) {
-            return self.makeError(.invalid_character, "Invalid character literal", token);
+            return self.makeError(.string_error, "Invalid character literal", token);
         }
         const name = text[1..];
         const cp: u21 = if (name.len == 1)
@@ -241,10 +241,10 @@ pub const Reader = struct {
             '\x0c'
         else if (name.len == 5 and name[0] == 'u')
             std.fmt.parseInt(u21, name[1..], 16) catch {
-                return self.makeError(.invalid_character, "Invalid unicode character", token);
+                return self.makeError(.string_error, "Invalid unicode character", token);
             }
         else {
-            return self.makeError(.invalid_character, "Unknown character name", token);
+            return self.makeError(.string_error, "Unknown character name", token);
         };
         return Form{ .data = .{ .char = cp }, .line = token.line, .column = token.column };
     }
@@ -290,7 +290,7 @@ pub const Reader = struct {
     fn readMap(self: *Reader, token: Token) ReadError!Form {
         const items = try self.readDelimited(.rbrace);
         if (items.len % 2 != 0) {
-            return self.makeError(.invalid_token, "Map literal must have even number of forms", token);
+            return self.makeError(.syntax_error, "Map literal must have even number of forms", token);
         }
         return Form{ .data = .{ .map = items }, .line = token.line, .column = token.column };
     }
@@ -306,7 +306,7 @@ pub const Reader = struct {
         while (true) {
             const tok = self.nextToken();
             if (tok.kind == .eof) {
-                return self.makeError(.unexpected_eof, "EOF while reading collection", tok);
+                return self.makeError(.syntax_error, "EOF while reading collection", tok);
             }
             if (tok.kind == closing) break;
             const form = try self.readForm(tok);
@@ -321,7 +321,7 @@ pub const Reader = struct {
     fn readWrapped(self: *Reader, wrapper_name: []const u8, start_token: Token) ReadError!Form {
         const next = self.nextToken();
         if (next.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after reader macro", next);
+            return self.makeError(.syntax_error, "EOF after reader macro", next);
         }
         const inner = try self.readForm(next);
         const items = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
@@ -334,7 +334,7 @@ pub const Reader = struct {
         // Read and discard the next form
         const next = self.nextToken();
         if (next.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after #_", next);
+            return self.makeError(.syntax_error, "EOF after #_", next);
         }
         _ = try self.readForm(next);
         // Return the form after the discarded one
@@ -346,14 +346,14 @@ pub const Reader = struct {
         // Read metadata form
         const meta_tok = self.nextToken();
         if (meta_tok.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after ^", meta_tok);
+            return self.makeError(.syntax_error, "EOF after ^", meta_tok);
         }
         const meta_form = try self.readForm(meta_tok);
 
         // Read target form
         const target_tok = self.nextToken();
         if (target_tok.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after metadata", target_tok);
+            return self.makeError(.syntax_error, "EOF after metadata", target_tok);
         }
         const target_form = try self.readForm(target_tok);
 
@@ -373,7 +373,7 @@ pub const Reader = struct {
                 break :blk Form{ .data = .{ .map = entries } };
             },
             else => {
-                return self.makeError(.invalid_token, "Invalid metadata form", meta_tok);
+                return self.makeError(.syntax_error, "Invalid metadata form", meta_tok);
             },
         };
 
@@ -389,7 +389,7 @@ pub const Reader = struct {
         const text = token.text(self.source);
         // #"..." — strip leading #" and trailing "
         if (text.len < 3) {
-            return self.makeError(.invalid_token, "Invalid regex literal", token);
+            return self.makeError(.syntax_error, "Invalid regex literal", token);
         }
         const pattern = text[2 .. text.len - 1];
         return Form{ .data = .{ .regex = pattern }, .line = token.line, .column = token.column };
@@ -398,7 +398,7 @@ pub const Reader = struct {
     fn readSymbolic(self: *Reader, token: Token) ReadError!Form {
         const next = self.nextToken();
         if (next.kind != .symbol) {
-            return self.makeError(.invalid_token, "Expected symbolic value after ##", next);
+            return self.makeError(.syntax_error, "Expected symbolic value after ##", next);
         }
         const text = next.text(self.source);
         if (std.mem.eql(u8, text, "Inf")) {
@@ -408,13 +408,13 @@ pub const Reader = struct {
         } else if (std.mem.eql(u8, text, "NaN")) {
             return Form{ .data = .{ .float = std.math.nan(f64) }, .line = token.line, .column = token.column };
         }
-        return self.makeError(.invalid_token, "Unknown symbolic value", next);
+        return self.makeError(.syntax_error, "Unknown symbolic value", next);
     }
 
     fn readReaderCond(self: *Reader, token: Token) ReadError!Form {
         const open = self.nextToken();
         if (open.kind != .lparen) {
-            return self.makeError(.invalid_token, "Expected ( after #?", open);
+            return self.makeError(.syntax_error, "Expected ( after #?", open);
         }
 
         var clj_form: ?Form = null;
@@ -424,18 +424,18 @@ pub const Reader = struct {
             const kw_tok = self.nextToken();
             if (kw_tok.kind == .rparen) break;
             if (kw_tok.kind == .eof) {
-                return self.makeError(.unexpected_eof, "EOF in reader conditional", kw_tok);
+                return self.makeError(.syntax_error, "EOF in reader conditional", kw_tok);
             }
 
             const kw_form = try self.readForm(kw_tok);
             const kw_name = switch (kw_form.data) {
                 .keyword => |kw| kw.name,
-                else => return self.makeError(.invalid_token, "Expected keyword in reader conditional", kw_tok),
+                else => return self.makeError(.syntax_error, "Expected keyword in reader conditional", kw_tok),
             };
 
             const val_tok = self.nextToken();
             if (val_tok.kind == .eof) {
-                return self.makeError(.unexpected_eof, "EOF in reader conditional", val_tok);
+                return self.makeError(.syntax_error, "EOF in reader conditional", val_tok);
             }
             const val_form = try self.readForm(val_tok);
 
@@ -559,7 +559,7 @@ pub const Reader = struct {
     fn readSyntaxQuote(self: *Reader, token: Token) ReadError!Form {
         const next = self.nextToken();
         if (next.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after syntax-quote", next);
+            return self.makeError(.syntax_error, "EOF after syntax-quote", next);
         }
         const form = try self.readForm(next);
 
@@ -595,7 +595,7 @@ pub const Reader = struct {
             .list => |items| {
                 if (isUnquote(items)) return items[1];
                 if (isUnquoteSplicing(items)) {
-                    return self.makeError(.invalid_token, "Splice not in list", Token{ .kind = .invalid, .start = 0, .len = 0, .line = form.line, .column = form.column });
+                    return self.makeError(.syntax_error, "Splice not in list", Token{ .kind = .invalid, .start = 0, .len = 0, .line = form.line, .column = form.column });
                 }
                 return self.syntaxQuoteColl(items, .list, gensym_map);
             },
@@ -703,14 +703,14 @@ pub const Reader = struct {
         // After '#', tokenizer returns tag token. Next token is the tag name (symbol).
         const tag_tok = self.nextToken();
         if (tag_tok.kind != .symbol) {
-            return self.makeError(.invalid_token, "Expected symbol after #", tag_tok);
+            return self.makeError(.syntax_error, "Expected symbol after #", tag_tok);
         }
         const tag_name = tag_tok.text(self.source);
 
         // Read the tagged value
         const val_tok = self.nextToken();
         if (val_tok.kind == .eof) {
-            return self.makeError(.unexpected_eof, "EOF after tagged literal", val_tok);
+            return self.makeError(.syntax_error, "EOF after tagged literal", val_tok);
         }
         const val_form = try self.readForm(val_tok);
         const val_ptr = self.allocator.create(Form) catch return error.OutOfMemory;
@@ -739,19 +739,20 @@ pub const Reader = struct {
     // --- Error helpers ---
 
     fn makeError(_: *Reader, kind: err.Kind, message: []const u8, token: Token) ReadError {
-        // err.parseError returns err.Error (full set). We need to convert
-        // to ReadError. Since we only pass parse-phase kinds, the returned
-        // error is always in ReadError. Use @errorCast for the conversion.
-        const full_err = err.parseError(kind, message, .{ .line = token.line, .column = token.column });
-        return @errorCast(full_err);
+        return err.setError(.{
+            .kind = kind,
+            .phase = .parse,
+            .message = message,
+            .location = .{ .line = token.line, .column = token.column },
+        });
     }
 
     fn unmatchedError(self: *Reader, token: Token) ReadError {
-        return self.makeError(.unmatched_delimiter, "Unmatched delimiter", token);
+        return self.makeError(.syntax_error, "Unmatched delimiter", token);
     }
 
     fn invalidError(self: *Reader, token: Token) ReadError {
-        return self.makeError(.invalid_token, "Invalid token", token);
+        return self.makeError(.syntax_error, "Invalid token", token);
     }
 };
 
@@ -1009,17 +1010,17 @@ test "Reader - whitespace only" {
 
 test "Reader - unmatched delimiter" {
     const result = readOneForm(")");
-    try testing.expectError(error.UnmatchedDelimiter, result);
+    try testing.expectError(error.SyntaxError, result);
 }
 
 test "Reader - unexpected EOF in list" {
     const result = readOneForm("(1 2");
-    try testing.expectError(error.UnexpectedEof, result);
+    try testing.expectError(error.SyntaxError, result);
 }
 
 test "Reader - odd map literal" {
     const result = readOneForm("{:a 1 :b}");
-    try testing.expectError(error.InvalidToken, result);
+    try testing.expectError(error.SyntaxError, result);
 }
 
 test "Reader - tagged literal" {
