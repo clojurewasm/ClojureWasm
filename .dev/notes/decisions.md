@@ -673,3 +673,29 @@ registry.zig, core.clj, and analyzer cross-reference.
 
 **Query tool**: `yq` (available in nix develop). See `.dev/status/README.md`
 for query examples.
+
+---
+
+## D14: VM-TreeWalk Closure Incompatibility
+
+**Date**: 2026-02-02
+**Context**: T4.5 — attempting to run SCI tests with EvalEngine.compare()
+
+**Problem**: TreeWalk creates Node-based closures (fn_val wrapping FnNode).
+VM creates bytecode-based closures (Fn wrapping FnProto). These are
+incompatible — VM cannot execute TreeWalk closures and vice versa.
+
+**Impact**: `loadCore()` evaluates core.clj via TreeWalk, defining macros
+and functions as TreeWalk closures. When the VM encounters a `call` opcode
+for these Vars, it finds a fn_val it cannot execute.
+
+**Decision**: Defer full SCI compare-mode validation (T4.5) until the AOT
+pipeline (T4.6/T4.7) compiles core.clj to bytecode that both backends can
+use. The 67+ existing EvalEngine.compare() tests provide strong builtin
+parity validation in the interim.
+
+**Alternatives considered**:
+
+- Dual-bootstrap (run core.clj in both backends separately): would diverge
+  macro expansion state and complicate Env sharing
+- Interpreter-neutral closure representation: too invasive for current phase

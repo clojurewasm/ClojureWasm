@@ -143,13 +143,13 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4b: VM Parity
 
-| #   | Task                                          | Archive                        | Notes                                      |
-| --- | --------------------------------------------- | ------------------------------ | ------------------------------------------ |
-| 4.1 | VM: variadic arithmetic (+, -, \*, /)         | task_0038_vm_variadic_arith.md | Compiler-level expansion to binary opcodes |
-| 4.2 | VM: type predicates + numeric predicates      | task_0039_vm_predicates.md     | Already functional; 41 compare tests added |
-| 4.3 | VM: collection ops (first, rest, conj, etc.)  | task_0040_vm_collection_ops.md | Already functional; 14 compare tests added |
-| 4.4 | VM: string/IO + atom builtins                 | task_0041_vm_string_io_atom.md | Already functional; 3 compare tests added  |
-| 4.5 | VM: EvalEngine compare-mode parity validation | --                             | Run all SCI tests with --compare           |
+| #   | Task                                          | Archive                            | Notes                                      |
+| --- | --------------------------------------------- | ---------------------------------- | ------------------------------------------ |
+| 4.1 | VM: variadic arithmetic (+, -, \*, /)         | task_0038_vm_variadic_arith.md     | Compiler-level expansion to binary opcodes |
+| 4.2 | VM: type predicates + numeric predicates      | task_0039_vm_predicates.md         | Already functional; 41 compare tests added |
+| 4.3 | VM: collection ops (first, rest, conj, etc.)  | task_0040_vm_collection_ops.md     | Already functional; 14 compare tests added |
+| 4.4 | VM: string/IO + atom builtins                 | task_0041_vm_string_io_atom.md     | Already functional; 3 compare tests added  |
+| 4.5 | VM: EvalEngine compare-mode parity validation | task_0042_vm_compare_validation.md | Deferred: needs AOT pipeline (T4.6/T4.7)   |
 
 ### Phase 4c: core.clj AOT Pipeline
 
