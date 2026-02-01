@@ -4,7 +4,7 @@
 
 - Current phase: Phase 0 (Bootstrap / Kickoff Planning)
 - Active plan: .dev/plan/active/plan_0000_kickoff.md
-- Next task: Task 3 -- Create .dev/notes/decisions.md (design decisions)
+- Next task: Task 4 -- Set up flake.nix + flake.lock
 - Blockers: none
 
 ## Completed Phases

@@ -1,5 +1,19 @@
 # log_0000_kickoff
 
+## Task 3: Create .dev/notes/decisions.md — DONE
+
+Created 10 design decisions (D1-D10) documenting key choices:
+- D1: Tagged union first, NaN boxing later
+- D2: Arena stub GC, real GC deferred
+- D3: Instantiated VM, no threadlocal
+- D4: Special forms as comptime table
+- D5: core.clj AOT deferred to Phase 3, Zig-only builtins first
+- D6: Dual backend with --compare from Phase 2
+- D7: Directory structure per SS17
+- D8: VarKind classification (7 kinds)
+- D9: Array-based collections initially
+- D10: English-only codebase
+
 ## Task 2: Create plan_0001_bootstrap.md — DONE
 
 Created .dev/plan/active/plan_0001_bootstrap.md with 37 tasks across 3 phases:

@@ -18,7 +18,7 @@ the project is ready for Phase 1 (Reader + Analyzer) implementation.
 |---|---------------------------------------------------------------|---------|-------------------------------------------|
 | 1 | Read future.md (SS0-19) and architecture.md from Beta         | done    | Understand full design before planning    |
 | 2 | Create plan_0001_bootstrap.md (Phase 1-3 implementation plan) | done    | Based on future.md SS19                   |
-| 3 | Create .dev/notes/decisions.md (design decisions)             | pending | NaN boxing timing, GC strategy, etc.      |
+| 3 | Create .dev/notes/decisions.md (design decisions)             | done    | NaN boxing timing, GC strategy, etc.      |
 | 4 | Set up flake.nix + flake.lock                                 | pending | Pin Zig 0.15.2 + toolchain                |
 | 5 | Create build.zig scaffold (zig build / zig build test pass)   | pending | Minimal scaffold, tests pass with 0 tests |
 | 6 | Create src/ directory structure per future.md SS17            | pending | api/, common/, native/, wasm_rt/, wasm/   |
