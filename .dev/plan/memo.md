@@ -3,10 +3,9 @@
 ## Current State
 - Phase: 2a (Runtime infrastructure)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Create Env (environment) in src/common/value/env.zig
-- Task file: .dev/plan/active/task_0012_env.md
+- Current task: Create Namespace in src/common/value/namespace.zig
+- Task file:
 - Blockers: none
-- Note: Task 1.12 (var resolution) deferred — requires Env/Namespace/Var from Phase 2a
 
 ## Completed Phases
 | Phase   | Archive                                      | Date       |
@@ -15,3 +14,4 @@
 | T1.10   | .dev/plan/archive/task_0009_analyzer.md      | 2026-02-01 |
 | D3b     | .dev/plan/archive/task_0010_error_cleanup.md | 2026-02-01 |
 | T1.11   | .dev/plan/archive/task_0011_loop_recur_try.md| 2026-02-01 |
+| T2.1    | .dev/plan/archive/task_0012_env.md           | 2026-02-01 |

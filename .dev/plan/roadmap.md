@@ -57,7 +57,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 | #   | Task                                                 | Archive | Notes                                                                                                      |
 |-----|------------------------------------------------------|---------|------------------------------------------------------------------------------------------------------------|
-| 2.1 | Create Env (environment) in src/common/env.zig       | --      | SS15.5: instantiated VM, no threadlocal. Env holds namespaces, is owned by VM instance. D3a (ErrorContext) completed. |
+| 2.1 | Create Env (environment) in src/common/env.zig       | task_0012_env.md | SS15.5: instantiated VM, no threadlocal. Env holds namespaces, is owned by VM instance. D3a (ErrorContext) completed. |
 | 2.2 | Create Namespace in src/common/value/namespace.zig   | --      | intern/find/refer. Namespace owns Vars                                                                     |
 | 2.3 | Create Var in src/common/value/var.zig               | --      | SS10: VarKind enum, BuiltinDef metadata (doc, arglists, added). Root binding + thread-local binding stack  |
 | 2.4 | Create GcStrategy trait + initial NativeGc stub      | --      | SS5: GcStrategy vtable. Start with arena allocator, real GC deferred. Just alloc + no-op collect initially |
