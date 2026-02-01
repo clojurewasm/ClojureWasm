@@ -91,3 +91,13 @@ use ArenaAllocator, so adding an ErrorContext on the stack is trivial.
 **Decision: Option A** — full removal of threadlocal.
 
 ## Log
+
+- Created ErrorContext struct in error.zig (setError, setErrorFmt, getLastError as instance methods)
+- Created Env struct in src/common/env.zig (owns ErrorContext, allocator)
+- Added env.zig to root.zig module registry
+- Migrated Reader: added error_ctx field, makeError uses self.error_ctx
+- Migrated Analyzer: added error_ctx field, analysisError uses self.error_ctx
+- Removed all threadlocal variables from error.zig (D3a complete)
+- Updated existing tests (2 in error.zig, 1 in reader.zig, 32 in analyzer.zig)
+- Updated decisions.md D3a status: Done
+- All tests pass

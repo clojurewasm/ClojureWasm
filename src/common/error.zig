@@ -67,32 +67,37 @@ pub const Error = error{
     OutOfMemory,
 };
 
-// TODO(D3a): Migrate to ErrorContext instance in Phase 2a (Task 2.1).
-// Threadlocal violates D3 (no threadlocal). When Env is created,
-// move last_error + msg_buf into an instance-based ErrorContext.
-threadlocal var last_error: ?Info = null;
-threadlocal var msg_buf: [512]u8 = undefined;
+/// Instance-based error context (D3a: no threadlocal).
+/// Reader, Analyzer, and VM each hold a pointer to ErrorContext.
+pub const ErrorContext = struct {
+    last_error: ?Info = null,
+    msg_buf: [512]u8 = undefined,
 
-pub fn setError(info: Info) Error {
-    last_error = info;
-    return kindToError(info.kind);
-}
+    pub fn setError(self: *ErrorContext, info: Info) Error {
+        self.last_error = info;
+        return kindToError(info.kind);
+    }
 
-pub fn setErrorFmt(phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
-    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch "error message too long";
-    return setError(.{
-        .kind = kind,
-        .phase = phase,
-        .message = msg,
-        .location = location,
-    });
-}
+    pub fn setErrorFmt(self: *ErrorContext, phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
+        const msg = std.fmt.bufPrint(&self.msg_buf, fmt, args) catch "error message too long";
+        return self.setError(.{
+            .kind = kind,
+            .phase = phase,
+            .message = msg,
+            .location = location,
+        });
+    }
 
-pub fn getLastError() ?Info {
-    const info = last_error;
-    last_error = null;
-    return info;
-}
+    pub fn getLastError(self: *ErrorContext) ?Info {
+        const info = self.last_error;
+        self.last_error = null;
+        return info;
+    }
+};
+
+// Module-level convenience (no threadlocal — uses a file-scoped instance).
+// Only used by error.zig's own tests. Production code uses ErrorContext directly.
+var module_error_ctx: ErrorContext = .{};
 
 fn kindToError(kind: Kind) Error {
     return switch (kind) {
@@ -111,8 +116,9 @@ fn kindToError(kind: Kind) Error {
     };
 }
 
-test "setError and getLastError round-trip" {
-    const e = setError(.{
+test "ErrorContext setError and getLastError round-trip" {
+    var ctx = ErrorContext{};
+    const e = ctx.setError(.{
         .kind = .number_error,
         .phase = .parse,
         .message = "bad number",
@@ -120,21 +126,50 @@ test "setError and getLastError round-trip" {
     });
     try std.testing.expectEqual(error.NumberError, e);
 
-    const info = getLastError().?;
+    const info = ctx.getLastError().?;
     try std.testing.expectEqual(Kind.number_error, info.kind);
     try std.testing.expectEqual(Phase.parse, info.phase);
     try std.testing.expectEqualStrings("bad number", info.message);
     try std.testing.expectEqual(@as(u32, 5), info.location.line);
 
     // getLastError clears the error
-    try std.testing.expect(getLastError() == null);
+    try std.testing.expect(ctx.getLastError() == null);
 }
 
-test "setErrorFmt convenience" {
-    const e = setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
+test "ErrorContext setErrorFmt" {
+    var ctx = ErrorContext{};
+    const e = ctx.setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
     try std.testing.expectEqual(error.SyntaxError, e);
 
-    const info = getLastError().?;
+    const info = ctx.getLastError().?;
+    try std.testing.expectEqual(Kind.syntax_error, info.kind);
+    try std.testing.expectEqualStrings("EOF in list", info.message);
+}
+
+test "setError and getLastError round-trip (module ctx)" {
+    const e = module_error_ctx.setError(.{
+        .kind = .number_error,
+        .phase = .parse,
+        .message = "bad number",
+        .location = .{ .line = 5, .column = 10 },
+    });
+    try std.testing.expectEqual(error.NumberError, e);
+
+    const info = module_error_ctx.getLastError().?;
+    try std.testing.expectEqual(Kind.number_error, info.kind);
+    try std.testing.expectEqual(Phase.parse, info.phase);
+    try std.testing.expectEqualStrings("bad number", info.message);
+    try std.testing.expectEqual(@as(u32, 5), info.location.line);
+
+    // getLastError clears the error
+    try std.testing.expect(module_error_ctx.getLastError() == null);
+}
+
+test "setErrorFmt convenience (module ctx)" {
+    const e = module_error_ctx.setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
+    try std.testing.expectEqual(error.SyntaxError, e);
+
+    const info = module_error_ctx.getLastError().?;
     try std.testing.expectEqual(Kind.syntax_error, info.kind);
     try std.testing.expectEqualStrings("EOF in list", info.message);
 }
