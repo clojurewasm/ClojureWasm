@@ -4,7 +4,7 @@
 
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: VM var/def opcodes (Task 3.2)
+- Current task: VM recur + tail_call opcodes (Task 3.3)
 - Task file:
 - Blockers: none
 
@@ -27,3 +27,4 @@
 | T2.9    | .dev/plan/archive/task_0020_tree_walk.md             | 2026-02-01 |
 | T2.10   | .dev/plan/archive/task_0021_compare_mode.md          | 2026-02-01 |
 | T3.1    | .dev/plan/archive/task_0022_arithmetic_intrinsics.md | 2026-02-01 |
+| T3.2    | .dev/plan/archive/task_0023_var_def_opcodes.md       | 2026-02-01 |

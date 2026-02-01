@@ -56,7 +56,10 @@ pub const EvalEngine = struct {
         try compiler.compile(n);
         try compiler.chunk.emitOp(.ret);
 
-        var vm = VM.init(self.allocator);
+        var vm = if (self.env) |env|
+            VM.initWithEnv(self.allocator, env)
+        else
+            VM.init(self.allocator);
         defer vm.deinit();
         return vm.run(&compiler.chunk);
     }
@@ -276,4 +279,37 @@ test "EvalEngine compare fn+call matches" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
+}
+
+test "EvalEngine compare def+var_ref" {
+    // (do (def x 42) x) => 42 in both backends
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    var init_val = Node{ .constant = .{ .integer = 42 } };
+    var def_data = node_mod.DefNode{
+        .sym_name = "x",
+        .init = &init_val,
+        .source = .{},
+    };
+    var def_node = Node{ .def_node = &def_data };
+    var var_ref_node = Node{ .var_ref = .{ .ns = null, .name = "x", .source = .{} } };
+    var stmts = [_]*Node{ &def_node, &var_ref_node };
+    var do_data = node_mod.DoNode{
+        .statements = &stmts,
+        .source = .{},
+    };
+    const n = Node{ .do_node = &do_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result.vm_value.?);
 }

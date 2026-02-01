@@ -15,6 +15,8 @@ const FnProto = chunk_mod.FnProto;
 const Value = chunk_mod.Value;
 const value_mod = @import("../../common/value.zig");
 const Fn = value_mod.Fn;
+const Env = @import("../../common/env.zig").Env;
+const Namespace = @import("../../common/namespace.zig").Namespace;
 
 /// VM execution errors.
 pub const VMError = error{
@@ -49,6 +51,8 @@ pub const VM = struct {
     frame_count: usize,
     /// Allocated closures (for cleanup).
     allocated_fns: std.ArrayListUnmanaged(*const Fn),
+    /// Runtime environment (Namespace/Var resolution).
+    env: ?*Env,
 
     pub fn init(allocator: std.mem.Allocator) VM {
         return .{
@@ -58,6 +62,19 @@ pub const VM = struct {
             .frames = undefined,
             .frame_count = 0,
             .allocated_fns = .empty,
+            .env = null,
+        };
+    }
+
+    pub fn initWithEnv(allocator: std.mem.Allocator, env: *Env) VM {
+        return .{
+            .allocator = allocator,
+            .stack = undefined,
+            .sp = 0,
+            .frames = undefined,
+            .frame_count = 0,
+            .allocated_fns = .empty,
+            .env = env,
         };
     }
 
@@ -231,8 +248,31 @@ pub const VM = struct {
                 },
 
                 // [E] Var operations
-                .var_load, .var_load_dynamic => return error.InvalidInstruction,
-                .def => return error.InvalidInstruction,
+                .var_load, .var_load_dynamic => {
+                    const sym = frame.constants[instr.operand];
+                    if (sym != .symbol) return error.InvalidInstruction;
+                    const env = self.env orelse return error.UndefinedVar;
+                    const ns = env.current_ns orelse return error.UndefinedVar;
+                    const v = if (sym.symbol.ns) |ns_name|
+                        ns.resolveQualified(ns_name, sym.symbol.name)
+                    else
+                        ns.resolve(sym.symbol.name);
+                    if (v) |resolved| {
+                        try self.push(resolved.deref());
+                    } else {
+                        return error.UndefinedVar;
+                    }
+                },
+                .def => {
+                    const val = self.pop();
+                    const sym = frame.constants[instr.operand];
+                    if (sym != .symbol) return error.InvalidInstruction;
+                    const env = self.env orelse return error.UndefinedVar;
+                    const ns = env.current_ns orelse return error.UndefinedVar;
+                    const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
+                    v.bindRoot(val);
+                    try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
+                },
 
                 // [K] Exceptions
                 .try_begin, .catch_begin, .try_end, .throw_ex => {
@@ -902,6 +942,156 @@ test "VM nop does nothing" {
     try chunk.emitOp(.nop);
     try chunk.emitOp(.ret);
     var vm = VM.init(std.testing.allocator);
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 99 }, result);
+}
+
+test "VM var_load resolves pre-defined Var" {
+    // Setup: create Env with a Var bound to 42
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+    const v = try ns.intern("x");
+    v.bindRoot(.{ .integer = 42 });
+
+    // Bytecode: var_load (symbol "x"), ret
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    try chunk.emit(.var_load, sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+}
+
+test "VM def creates and binds a Var" {
+    // (def x 42) -> should bind x=42 in current namespace, return symbol
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+
+    // Bytecode: const_load(42), def(symbol "x"), ret
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    const val_idx = try chunk.addConstant(.{ .integer = 42 });
+    try chunk.emit(.const_load, val_idx);
+    try chunk.emit(.def, sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+
+    // def returns a symbol with ns/name
+    try std.testing.expect(result == .symbol);
+    try std.testing.expectEqualStrings("x", result.symbol.name);
+    try std.testing.expectEqualStrings("user", result.symbol.ns.?);
+
+    // Var should be bound in namespace
+    const v = ns.resolve("x").?;
+    try std.testing.expect(v.deref().eql(.{ .integer = 42 }));
+}
+
+test "VM def then var_load round-trip" {
+    // (do (def x 10) x) => 10
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    // (def x 10)
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    const val_idx = try chunk.addConstant(.{ .integer = 10 });
+    try chunk.emit(.const_load, val_idx);
+    try chunk.emit(.def, sym_idx);
+    try chunk.emitOp(.pop); // discard def result
+
+    // x (var_load)
+    const var_sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    try chunk.emit(.var_load, var_sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+}
+
+test "VM var_load undefined var returns error" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "nonexistent" } });
+    try chunk.emit(.var_load, sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    defer vm.deinit();
+    try std.testing.expectError(error.UndefinedVar, vm.run(&chunk));
+}
+
+test "VM var_load without env returns error" {
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    try chunk.emit(.var_load, sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    try std.testing.expectError(error.UndefinedVar, vm.run(&chunk));
+}
+
+test "VM var_load qualified symbol" {
+    // user/x resolves via resolveQualified
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    const ns = try env.findOrCreateNamespace("user");
+    env.current_ns = ns;
+    const v = try ns.intern("x");
+    v.bindRoot(.{ .integer = 99 });
+
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = "user", .name = "x" } });
+    try chunk.emit(.var_load, sym_idx);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value{ .integer = 99 }, result);
 }
