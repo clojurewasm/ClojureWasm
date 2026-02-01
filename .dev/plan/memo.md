@@ -4,7 +4,7 @@
 - Phase: 1c (Analyzer)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: Create Analyzer with special form comptime table
-- Task file:
+- Task file: .dev/plan/active/task_0009_analyzer.md
 - Blockers: none
 
 ## Completed Phases
