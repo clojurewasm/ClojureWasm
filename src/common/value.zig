@@ -42,6 +42,56 @@ pub const Value = union(enum) {
     // map: ...
     // set: ...
 
+    /// Clojure pr-str semantics: format value for printing.
+    pub fn format(self: Value, writer: anytype) !void {
+        switch (self) {
+            .nil => try writer.writeAll("nil"),
+            .boolean => |b| try writer.writeAll(if (b) "true" else "false"),
+            .integer => |n| try writer.print("{d}", .{n}),
+            .float => |n| {
+                // Clojure always prints a decimal point for floats.
+                var buf: [32]u8 = undefined;
+                const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch "0";
+                try writer.writeAll(s);
+                var has_dot = false;
+                for (s) |ch| {
+                    if (ch == '.' or ch == 'e' or ch == 'E') {
+                        has_dot = true;
+                        break;
+                    }
+                }
+                if (!has_dot) try writer.writeAll(".0");
+            },
+            .char => |c| switch (c) {
+                '\n' => try writer.writeAll("\\newline"),
+                '\r' => try writer.writeAll("\\return"),
+                ' ' => try writer.writeAll("\\space"),
+                '\t' => try writer.writeAll("\\tab"),
+                else => {
+                    try writer.writeAll("\\");
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(c, &buf) catch 0;
+                    try writer.writeAll(buf[0..len]);
+                },
+            },
+            .string => |s| try writer.print("\"{s}\"", .{s}),
+            .symbol => |sym| {
+                if (sym.ns) |ns| {
+                    try writer.print("{s}/{s}", .{ ns, sym.name });
+                } else {
+                    try writer.writeAll(sym.name);
+                }
+            },
+            .keyword => |k| {
+                if (k.ns) |ns| {
+                    try writer.print(":{s}/{s}", .{ ns, k.name });
+                } else {
+                    try writer.print(":{s}", .{k.name});
+                }
+            },
+        }
+    }
+
     /// Returns true if this value is nil.
     pub fn isNil(self: Value) bool {
         return switch (self) {
@@ -113,6 +163,56 @@ test "Value - namespaced symbol" {
 test "Value - namespaced keyword" {
     const v: Value = .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } };
     try testing.expect(!v.isNil());
+}
+
+fn expectFormat(expected: []const u8, v: Value) !void {
+    const result = try std.fmt.allocPrint(testing.allocator, "{f}", .{v});
+    defer testing.allocator.free(result);
+    try testing.expectEqualStrings(expected, result);
+}
+
+test "Value.format - nil" {
+    try expectFormat("nil", .nil);
+}
+
+test "Value.format - boolean" {
+    try expectFormat("true", .{ .boolean = true });
+    try expectFormat("false", .{ .boolean = false });
+}
+
+test "Value.format - integer" {
+    try expectFormat("42", .{ .integer = 42 });
+    try expectFormat("-1", .{ .integer = -1 });
+    try expectFormat("0", .{ .integer = 0 });
+}
+
+test "Value.format - float" {
+    try expectFormat("3.14", .{ .float = 3.14 });
+    try expectFormat("0.0", .{ .float = 0.0 });
+    try expectFormat("-1.5", .{ .float = -1.5 });
+    try expectFormat("1.0", .{ .float = 1.0 });
+}
+
+test "Value.format - char" {
+    try expectFormat("\\A", .{ .char = 'A' });
+    try expectFormat("\\newline", .{ .char = '\n' });
+    try expectFormat("\\space", .{ .char = ' ' });
+    try expectFormat("\\tab", .{ .char = '\t' });
+}
+
+test "Value.format - string" {
+    try expectFormat("\"hello\"", .{ .string = "hello" });
+    try expectFormat("\"\"", .{ .string = "" });
+}
+
+test "Value.format - symbol" {
+    try expectFormat("foo", .{ .symbol = .{ .name = "foo", .ns = null } });
+    try expectFormat("clojure.core/inc", .{ .symbol = .{ .name = "inc", .ns = "clojure.core" } });
+}
+
+test "Value.format - keyword" {
+    try expectFormat(":bar", .{ .keyword = .{ .name = "bar", .ns = null } });
+    try expectFormat(":clojure.core/keys", .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } });
 }
 
 test "Value - isTruthy" {
