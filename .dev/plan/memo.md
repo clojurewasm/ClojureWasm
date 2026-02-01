@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Phase: 3a (VM intrinsics + runtime functions)
+- Phase: 3b (core.clj AOT pipeline)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Runtime functions: atom, deref, swap!, reset! (Task 3.9)
+- Current task: Create clj/core.clj bootstrap — defmacro, defn, when, cond, ->, ->> (Task 3.10)
 - Task file:
 - Blockers: none
 
@@ -34,3 +34,6 @@
 | T3.6    | .dev/plan/archive/task_0027_collection_intrinsics.md        | 2026-02-02 |
 | T3.7    | .dev/plan/archive/task_0028_type_predicates.md              | 2026-02-02 |
 | T3.8    | .dev/plan/archive/task_0029_str_print_fns.md                | 2026-02-02 |
+| T3.9    | .dev/plan/archive/task_0030_atom.md                         | 2026-02-02 |
+
+**Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.

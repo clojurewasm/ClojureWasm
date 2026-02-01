@@ -87,7 +87,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 3.6 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | task_0027_collection_intrinsics.md        | Core sequence operations. Dep: T3.4, T3.5                                                              |
 | 3.7 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | task_0028_type_predicates.md              | Simple type checks on Value tag. Dep: T3.5                                                             |
 | 3.8 | Runtime functions: str, pr-str, println, prn                                          | task_0029_str_print_fns.md                | String conversion + I/O. Dep: T3.5                                                                     |
-| 3.9 | Runtime functions: atom, deref, swap!, reset!                                         | --                                        | Atom state management. Dep: T3.5                                                                       |
+| 3.9 | Runtime functions: atom, deref, swap!, reset!                                         | task_0030_atom.md                         | Atom state management. Dep: T3.5                                                                       |
 
 ### Phase 3b: core.clj AOT pipeline
 

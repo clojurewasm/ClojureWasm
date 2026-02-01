@@ -28,6 +28,11 @@ pub const Keyword = struct {
     name: []const u8,
 };
 
+/// Atom — mutable reference type.
+pub const Atom = struct {
+    value: Value,
+};
+
 /// Runtime function (closure). Proto is stored as opaque pointer
 /// to avoid circular dependency with bytecode/chunk.zig.
 pub const Fn = struct {
@@ -59,6 +64,9 @@ pub const Value = union(enum) {
     // Functions
     fn_val: *const Fn,
     builtin_fn: @import("var.zig").BuiltinFn,
+
+    // Reference types
+    atom: *Atom,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -146,6 +154,11 @@ pub const Value = union(enum) {
             },
             .fn_val => try w.writeAll("#<fn>"),
             .builtin_fn => try w.writeAll("#<builtin-fn>"),
+            .atom => |a| {
+                try w.writeAll("#<atom ");
+                try a.value.formatPrStr(w);
+                try w.writeAll(">");
+            },
         }
     }
 
@@ -203,6 +216,7 @@ pub const Value = union(enum) {
             .list, .vector => unreachable, // handled by sequential equality above
             .fn_val => |a| a == other.fn_val,
             .builtin_fn => |a| a == other.builtin_fn,
+            .atom => |a| a == other.atom, // identity equality
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;
@@ -608,4 +622,20 @@ test "Value.formatStr - other types same as formatPrStr" {
     try expectFormatStr("true", .{ .boolean = true });
     try expectFormatStr("3.14", .{ .float = 3.14 });
     try expectFormatStr(":foo", .{ .keyword = .{ .name = "foo", .ns = null } });
+}
+
+test "Value - atom creation and formatPrStr" {
+    var a = Atom{ .value = .{ .integer = 42 } };
+    const v: Value = .{ .atom = &a };
+    try testing.expect(!v.isNil());
+    try testing.expect(v.isTruthy());
+    try expectFormat("#<atom 42>", v);
+}
+
+test "Value.eql - atom identity" {
+    var a = Atom{ .value = .{ .integer = 42 } };
+    const v: Value = .{ .atom = &a };
+    try testing.expect(v.eql(v));
+    var b = Atom{ .value = .{ .integer = 42 } };
+    try testing.expect(!v.eql(.{ .atom = &b }));
 }

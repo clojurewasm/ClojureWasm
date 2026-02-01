@@ -515,3 +515,69 @@ test "EvalEngine compare pr-str builtin" {
     try std.testing.expectEqualStrings("\"hello\"", result.tw_value.?.string);
     try std.testing.expectEqualStrings("\"hello\"", result.vm_value.?.string);
 }
+
+test "EvalEngine compare atom + deref" {
+    // (deref (atom 42)) => 42 — both backends via registry
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Build: (atom 42)
+    var atom_callee = Node{ .var_ref = .{ .ns = null, .name = "atom", .source = .{} } };
+    var atom_arg = Node{ .constant = .{ .integer = 42 } };
+    var atom_args = [_]*Node{&atom_arg};
+    var atom_call_data = node_mod.CallNode{ .callee = &atom_callee, .args = &atom_args, .source = .{} };
+    var atom_node = Node{ .call_node = &atom_call_data };
+
+    // Build: (deref <atom-expr>)
+    var deref_callee = Node{ .var_ref = .{ .ns = null, .name = "deref", .source = .{} } };
+    var deref_args = [_]*Node{&atom_node};
+    var deref_call_data = node_mod.CallNode{ .callee = &deref_callee, .args = &deref_args, .source = .{} };
+    const n = Node{ .call_node = &deref_call_data };
+
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 42 }, result.vm_value.?);
+}
+
+test "EvalEngine compare reset!" {
+    // Test: (let [a (atom 0)] (reset! a 99) (deref a)) => 99
+    // Simplified: just test (reset! (atom 0) 99) => 99
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Build: (atom 0)
+    var atom_callee = Node{ .var_ref = .{ .ns = null, .name = "atom", .source = .{} } };
+    var atom_arg = Node{ .constant = .{ .integer = 0 } };
+    var atom_args = [_]*Node{&atom_arg};
+    var atom_call_data = node_mod.CallNode{ .callee = &atom_callee, .args = &atom_args, .source = .{} };
+    var atom_node = Node{ .call_node = &atom_call_data };
+
+    // Build: (reset! <atom-expr> 99)
+    var reset_callee = Node{ .var_ref = .{ .ns = null, .name = "reset!", .source = .{} } };
+    var reset_val = Node{ .constant = .{ .integer = 99 } };
+    var reset_args = [_]*Node{ &atom_node, &reset_val };
+    var reset_call_data = node_mod.CallNode{ .callee = &reset_callee, .args = &reset_args, .source = .{} };
+    const n = Node{ .call_node = &reset_call_data };
+
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 99 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 99 }, result.vm_value.?);
+}

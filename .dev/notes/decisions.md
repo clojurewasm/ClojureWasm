@@ -526,3 +526,28 @@ captured variables are accessed via local_load. Removal is out of scope for
 this revision but noted as future cleanup.
 
 **Total task count**: 37 -> 39 (added 3, deleted 1)
+
+---
+
+## D8: swap! — Builtin-only Function Dispatch (T3.9)
+
+**Decision**: `swap!` currently only supports calling `builtin_fn` values.
+Calling user-defined `fn_val` (closures) returns TypeError.
+
+**Rationale**:
+
+- BuiltinFn signature is `fn(Allocator, []const Value) anyerror!Value` — no
+  access to the evaluator context (VM or TreeWalk)
+- Calling fn_val requires the VM to push a call frame or TreeWalk to invoke
+  `runCall`, which BuiltinFn cannot do
+- Beta solved this with a global `defs.call_fn` function pointer, but that
+  couples builtins to the evaluator and is not compatible with instantiated VM
+
+**Future path** (Phase 3b+):
+
+- When higher-order functions (map, filter, reduce) are implemented in core.clj,
+  they will be Clojure-level functions that the compiler can emit call opcodes for
+- For swap! with user-defined functions, options:
+  (a) Add EvaluatorContext parameter to BuiltinFn (breaking change)
+  (b) Compile swap! as a special form (compiler handles the call)
+  (c) Implement swap! in core.clj using lower-level atom primitives
