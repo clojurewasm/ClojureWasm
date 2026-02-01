@@ -6,6 +6,7 @@ pub const collections = @import("common/collections.zig");
 pub const tokenizer = @import("common/reader/tokenizer.zig");
 pub const form = @import("common/reader/form.zig");
 pub const err = @import("common/error.zig");
+pub const reader = @import("common/reader/reader.zig");
 
 test {
     _ = value;
@@ -13,4 +14,5 @@ test {
     _ = tokenizer;
     _ = form;
     _ = err;
+    _ = reader;
 }
