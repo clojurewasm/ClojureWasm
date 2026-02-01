@@ -132,6 +132,23 @@ getDiagnostics(uri: "file:///path/to/edited.zig")
 - `xref-find-apropos` and `treesit-info` are not functional for Zig (tags / tree-sitter not configured)
 - `xref-find-references` may return many results for core types (Value, etc.)
 
+## Debugging Bytecode
+
+`Chunk.dump(writer)` and `FnProto.dump(writer)` in `src/common/bytecode/chunk.zig`
+produce human-readable bytecode disassembly. No CLI entry point yet (comes in T3.13),
+so use these within tests:
+
+```zig
+// In any test — dump to stderr for quick visual inspection
+var buf: [4096]u8 = undefined;
+var w: std.Io.Writer = .fixed(&buf);
+try chunk.dump(&w);
+std.debug.print("\n{s}\n", .{w.buffered()});
+```
+
+When a compiler or VM test fails unexpectedly, add a dump call before the
+failing assertion to see what was actually compiled. Remove after debugging.
+
 ## Zig 0.15.2 Quick Reference
 
 Full guide: Beta's docs/reference/zig_guide.md
