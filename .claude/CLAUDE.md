@@ -49,8 +49,9 @@ This matches Zig standard library conventions and keeps files readable.
 ### On Start
 
 1. Read `.dev/plan/memo.md` (current task + task file path)
-2. If task file exists: read it, resume from `## Log`
-3. If task file missing: create it (read roadmap + Beta refs, write plan)
+2. Read `.dev/checklist.md` (deferred work + invariants — scan for newly relevant items)
+3. If task file exists: read it, resume from `## Log`
+4. If task file missing: create it (read roadmap + Beta refs, write plan)
 
 ### During Development
 
@@ -66,8 +67,9 @@ This matches Zig standard library conventions and keeps files readable.
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
 3. Advance memo.md to next task (clear Task file path)
-4. `git add` + `git commit` — **single commit covering plan + impl + status**
-5. Verify commit succeeded before proceeding to the next task
+4. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
+5. `git add` + `git commit` — **single commit covering plan + impl + status**
+6. Verify commit succeeded before proceeding to the next task
 
 ## Build & Test
 
