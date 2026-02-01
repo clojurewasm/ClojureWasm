@@ -48,7 +48,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 |------|--------------------------------------------------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | 1.9  | Define Node type in src/common/analyzer/node.zig | task_0008_node_type.md          | Core 14 variants: constant, var_ref, local_ref, if, do, let, loop, recur, fn, call, def, quote, throw, try. Advanced variants deferred |
 | 1.10 | Create Analyzer with special form comptime table | task_0009_analyzer.md           | Beta: 5355L (to be redesigned). SS10: special_forms as comptime table, not if-else chain. Start with: if, do, let, fn, def, quote, defmacro |
-| 1.11 | Analyzer: loop/recur, try/catch/throw            | --                              | Essential control flow                                                                                                                      |
+| 1.11 | Analyzer: loop/recur, try/catch/throw            | task_0011_loop_recur_try.md     | Essential control flow                                                                                                                      |
 | 1.12 | Analyzer: var resolution, namespace lookup       | --                              | Requires Env/Namespace/Var from Phase 2 runtime                                                                                             |
 
 ## Phase 2: Native VM
