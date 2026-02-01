@@ -699,3 +699,119 @@ parity validation in the interim.
 - Dual-bootstrap (run core.clj in both backends separately): would diverge
   macro expansion state and complicate Env sharing
 - Interpreter-neutral closure representation: too invasive for current phase
+
+---
+
+## D18: evalStringVM — Hybrid Bootstrap Architecture (T4.6)
+
+**Date**: 2026-02-02
+**Context**: T4.6 — AOT-less pipeline for running user code through VM
+
+**Problem**: core.clj defines macros (defn, when, cond, etc.) that must be
+available before user code runs. Full AOT compilation (core.clj -> bytecode
+-> @embedFile) requires macro serialization which is unsolved. How to run
+user code through the VM when core.clj bootstrap depends on TreeWalk?
+
+**Decision**: Hybrid approach — bootstrap core.clj via TreeWalk (as before),
+then compile+run user code through Reader -> Analyzer -> Compiler -> VM.
+The VM receives a `fn_val_dispatcher` callback that routes calls to
+TreeWalk-defined closures (macros, core fns) back through TreeWalk.
+
+**Key mechanism**: `FnKind` discriminator on Fn struct (`.bytecode` vs
+`.treewalk`). When the VM encounters a `.treewalk` fn_val during `call`,
+it delegates to `fn_val_dispatcher` instead of interpreting bytecode.
+
+**Alternatives considered**:
+
+1. **Full AOT** (T4.7): Compile core.clj to bytecode at build time, embed
+   via @embedFile. Blocked by macro serialization — defmacro bodies are
+   fn_val closures that reference the Analyzer/Env, not easily serializable
+   to bytecode constants.
+2. **Dual bootstrap** (run core.clj through VM too): Would require the VM
+   to already support all special forms and builtins that core.clj uses
+   during its own bootstrap — circular dependency.
+3. **Re-evaluate core.clj per call**: Too slow. core.clj defines 40+ vars.
+
+**Consequence**: Performance is suboptimal — TreeWalk dispatch for core fns
+adds overhead vs native bytecode execution. This is acceptable because:
+(a) most computation happens in user code (VM-compiled), (b) the hybrid
+approach validates VM correctness against TreeWalk, and (c) full AOT (T4.7)
+remains the planned optimization path.
+
+**Future direction**: T4.7 (AOT bytecode startup) will eliminate the hybrid
+by compiling core.clj to bytecode at build time. This requires solving
+macro body serialization — likely by storing macro bodies as bytecode
+FnProto references rather than TreeWalk Node references.
+
+---
+
+## D19: Multi-Arity Fn — Multiple FnProto Approach (T4.8)
+
+**Date**: 2026-02-02
+**Context**: T4.8 — implementing multi-arity function dispatch
+
+**Problem**: Clojure supports multi-arity functions:
+`(fn ([x] x) ([x y] (+ x y)))`. Each arity has a different parameter
+count and body. How to represent this in bytecode?
+
+**Decision**: Store additional arities as `extra_arities: ?[]const *const anyopaque`
+on the Fn struct. The primary arity is in `proto`, extras are FnProto pointers.
+At call time, `findProtoByArity` selects the matching FnProto by argument count.
+
+**Alternatives considered**:
+
+1. **Embedded jump table in single FnProto**: One bytecode chunk with a
+   dispatch header that jumps to the right arity body. Smaller allocation
+   (one FnProto), but complicates: local_count (must be max across arities),
+   bytecode layout (offset calculations), and debugging (dump shows merged code).
+2. **Wrapper fn with if-else**: Emit a single FnProto that checks arg count
+   and branches. Similar problems to jump table, plus wastes cycles on
+   runtime branching even for single-arity fns.
+3. **Fn subtype**: Create a separate MultiArityFn struct. Increases type
+   complexity in Value union; every fn call site needs type dispatch.
+
+**Why multiple FnProtos**: Each arity compiles independently with its own
+local_count, constants, and code. No special bytecode layout needed.
+The dispatch cost (linear scan of extra_arities) is negligible since
+Clojure functions rarely have more than 3-4 arities.
+
+**Closure interaction**: All arities share the same closure_bindings.
+The `closure` opcode preserves extra_arities from the template Fn.
+
+**Variadic in multi-arity**: `findProtoByArity` tries exact match first,
+then falls back to variadic arities (where `arg_count >= arity - 1`).
+This matches Clojure semantics where `& rest` catches overflow args.
+
+---
+
+## D20: vm_intrinsic Runtime Fallbacks (T4.6 bugfix)
+
+**Date**: 2026-02-02
+**Context**: Discovered during T4.6 — `(reduce + [1 2 3])` failed
+
+**Problem**: Arithmetic/comparison operators (+, -, \*, /, <, >, etc.) are
+registered as `vm_intrinsic` with `func = null`. The Compiler emits direct
+opcodes (add, sub, mul) for `(+ 1 2)`, so no function call happens. But
+when these operators are used as first-class values — `(reduce + [1 2 3])`,
+`(map inc xs)`, `(apply + args)` — the VM does `var_load "+"` which
+returns nil because func is null.
+
+**Decision**: Add runtime fallback functions to all 12 arithmetic/comparison
+intrinsics. Each vm_intrinsic now has a `func` field pointing to a Zig
+function that implements the variadic version of the operation.
+
+**Why not compile-time specialization**: The Compiler could detect
+`(reduce + ...)` and emit specialized bytecode. But this would require
+the Compiler to understand higher-order function semantics, which is
+complex and fragile. The simpler solution is to make the operator values
+callable.
+
+**Implementation detail**: Fallback functions reuse the same `binaryArith`
+and `compareValues` helpers as the VM opcodes. For variadic calls,
+they fold left: `(+ 1 2 3)` -> `binaryArith(binaryArith(1,2), 3)`.
+Zero-arg cases return identity values: `(+)` -> 0, `(*)` -> 1.
+
+**Performance note**: First-class usage goes through `var_load` + `call`
+(function dispatch), which is slower than the direct opcode path. This
+is intentional — the common case `(+ a b)` still uses the fast `add`
+opcode. The fallback only activates for higher-order patterns.
