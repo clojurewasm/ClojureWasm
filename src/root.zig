@@ -24,6 +24,8 @@ pub const builtin_special_forms = @import("common/builtin/special_forms.zig");
 pub const builtin_registry = @import("common/builtin/registry.zig");
 pub const builtin_collections = @import("common/builtin/collections.zig");
 pub const builtin_predicates = @import("common/builtin/predicates.zig");
+pub const builtin_strings = @import("common/builtin/strings.zig");
+pub const builtin_io = @import("common/builtin/io.zig");
 
 test {
     _ = value;
@@ -49,4 +51,6 @@ test {
     _ = builtin_registry;
     _ = builtin_collections;
     _ = builtin_predicates;
+    _ = builtin_strings;
+    _ = builtin_io;
 }

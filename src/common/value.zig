@@ -149,6 +149,21 @@ pub const Value = union(enum) {
         }
     }
 
+    /// Clojure str semantics: non-readable string conversion.
+    /// Differs from formatPrStr: nil => "", strings unquoted, chars as literal.
+    pub fn formatStr(self: Value, w: *Writer) Writer.Error!void {
+        switch (self) {
+            .nil => {}, // nil => "" (empty)
+            .char => |c| {
+                var buf: [4]u8 = undefined;
+                const len = std.unicode.utf8Encode(c, &buf) catch 0;
+                try w.writeAll(buf[0..len]);
+            },
+            .string => |s| try w.writeAll(s),
+            else => try self.formatPrStr(w),
+        }
+    }
+
     /// Clojure = semantics: structural equality.
     pub fn eql(self: Value, other: Value) bool {
         const self_tag = std.meta.activeTag(self);
@@ -566,4 +581,31 @@ test "Value - isTruthy" {
     try testing.expect(true_val.isTruthy());
     try testing.expect(zero_val.isTruthy());
     try testing.expect(empty_str.isTruthy());
+}
+
+fn expectFormatStr(expected: []const u8, v: Value) !void {
+    var buf: [256]u8 = undefined;
+    var w: Writer = .fixed(&buf);
+    try v.formatStr(&w);
+    try testing.expectEqualStrings(expected, w.buffered());
+}
+
+test "Value.formatStr - nil is empty string" {
+    try expectFormatStr("", .nil);
+}
+
+test "Value.formatStr - string without quotes" {
+    try expectFormatStr("hello", .{ .string = "hello" });
+}
+
+test "Value.formatStr - char as literal" {
+    try expectFormatStr("A", .{ .char = 'A' });
+    try expectFormatStr("\n", .{ .char = '\n' });
+}
+
+test "Value.formatStr - other types same as formatPrStr" {
+    try expectFormatStr("42", .{ .integer = 42 });
+    try expectFormatStr("true", .{ .boolean = true });
+    try expectFormatStr("3.14", .{ .float = 3.14 });
+    try expectFormatStr(":foo", .{ .keyword = .{ .name = "foo", .ns = null } });
 }

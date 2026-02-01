@@ -467,3 +467,51 @@ test "EvalEngine compare nil? predicate" {
     try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .boolean = true }, result.vm_value.?);
 }
+
+test "EvalEngine compare str builtin" {
+    // (str 1) => "1" — both backends via registry
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "str", .source = .{} } };
+    var arg = Node{ .constant = .{ .integer = 42 } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqualStrings("42", result.tw_value.?.string);
+    try std.testing.expectEqualStrings("42", result.vm_value.?.string);
+}
+
+test "EvalEngine compare pr-str builtin" {
+    // (pr-str "hello") => "\"hello\"" — both backends via registry
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "pr-str", .source = .{} } };
+    var arg = Node{ .constant = .{ .string = "hello" } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqualStrings("\"hello\"", result.tw_value.?.string);
+    try std.testing.expectEqualStrings("\"hello\"", result.vm_value.?.string);
+}
