@@ -172,7 +172,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | #    | Task                      | Archive                       | Notes                                        |
 | ---- | ------------------------- | ----------------------------- | -------------------------------------------- |
 | 4.12 | Interactive REPL          | task_0048_interactive_repl.md | Multi-line, error recovery, TreeWalk backend |
-| 4.13 | Wasm target (wasm32-wasi) | --                            | Build + test on wasmtime                     |
+| 4.13 | Wasm target (wasm32-wasi) | task_0049_wasm_target.md      | `zig build wasm`, 207KB ReleaseSmall         |
 
 ### Phase 4f: Directory Restructuring
 

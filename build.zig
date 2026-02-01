@@ -30,6 +30,22 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
+    // Wasm build step (wasm32-wasi)
+    const wasm_exe = b.addExecutable(.{
+        .name = "clj-wasm",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = b.resolveTargetQuery(.{
+                .cpu_arch = .wasm32,
+                .os_tag = .wasi,
+            }),
+            .optimize = optimize,
+        }),
+    });
+    const wasm_step = b.step("wasm", "Build for wasm32-wasi");
+    const wasm_install = b.addInstallArtifact(wasm_exe, .{});
+    wasm_step.dependOn(&wasm_install.step);
+
     // Test step
     const test_step = b.step("test", "Run all tests");
 

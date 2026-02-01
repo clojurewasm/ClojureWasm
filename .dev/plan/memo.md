@@ -4,8 +4,8 @@
 
 - Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T4.13 — Wasm target (wasm32-wasi)
-- Task file: .dev/plan/active/task_0049_wasm_target.md
+- Current task: T4.14 — Create src/repl/, src/wasm/ stubs
+- Task file: .dev/plan/active/task_0050_dir_restructure.md
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
@@ -54,6 +54,7 @@
 | T4.10   | .dev/plan/archive/task_0046_for_macro.md                    | 2026-02-02 |
 | T4.11   | .dev/plan/archive/task_0047_protocols_defrecord.md          | 2026-02-02 |
 | T4.12   | .dev/plan/archive/task_0048_interactive_repl.md             | 2026-02-02 |
+| T4.13   | .dev/plan/archive/task_0049_wasm_target.md                  | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)
