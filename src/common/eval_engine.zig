@@ -194,8 +194,8 @@ test "EvalEngine compare let_node" {
     try std.testing.expectEqual(Value{ .integer = 10 }, result.tw_value.?);
 }
 
-test "EvalEngine compare detects mismatch on var_ref" {
-    // var_ref "+" succeeds in TreeWalk (builtin) but fails in VM (no var_load)
+test "EvalEngine compare arithmetic intrinsic matches" {
+    // (+ 1 2) => 3 in both backends (compiler emits add opcode directly)
     var engine = EvalEngine.init(std.testing.allocator, null);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
@@ -204,11 +204,51 @@ test "EvalEngine compare detects mismatch on var_ref" {
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
-    // TreeWalk succeeds with 3, VM fails (var_load not implemented)
-    try std.testing.expect(!result.match);
-    try std.testing.expect(!result.tw_error);
-    try std.testing.expect(result.vm_error);
+    try std.testing.expect(result.match);
     try std.testing.expectEqual(Value{ .integer = 3 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.vm_value.?);
+}
+
+test "EvalEngine compare division" {
+    // (/ 10 4) => 2.5 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 10 } };
+    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .float = 2.5 }, result.tw_value.?);
+}
+
+test "EvalEngine compare mod" {
+    // (mod 7 3) => 1 in both backends
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "mod", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 7 } };
+    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.tw_value.?);
+}
+
+test "EvalEngine compare equality" {
+    // (= 1 1) => true
+    var engine = EvalEngine.init(std.testing.allocator, null);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "=", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .integer = 1 } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
 }
 
 test "EvalEngine compare fn+call matches" {

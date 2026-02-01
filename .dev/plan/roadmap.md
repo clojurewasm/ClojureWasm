@@ -79,7 +79,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 | #   | Task                                                                                  | Archive | Notes                                                                                    |
 |-----|---------------------------------------------------------------------------------------|---------|------------------------------------------------------------------------------------------|
-| 3.1 | Arithmetic intrinsics (+, -, *, /, mod, rem)                                          | --      | VM opcodes for fast path                                                                 |
+| 3.1 | Arithmetic intrinsics (+, -, *, /, mod, rem)                                          | task_0022_arithmetic_intrinsics.md | VM opcodes for fast path. Compiler emits direct opcodes for intrinsics. |
 | 3.2 | Comparison intrinsics (=, <, >, <=, >=, not=)                                         | --      | Value.eql for =, numeric comparison for rest                                             |
 | 3.3 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | --      | Core sequence operations                                                                 |
 | 3.4 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | --      | Simple type checks on Value tag                                                          |

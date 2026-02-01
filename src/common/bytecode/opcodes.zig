@@ -130,6 +130,14 @@ pub const OpCode = enum(u8) {
     gt = 0xB6,
     /// (>= a b)
     ge = 0xB7,
+    /// (mod a b) — Clojure mod (result sign follows divisor)
+    mod = 0xB8,
+    /// (rem a b) — Clojure rem (result sign follows dividend)
+    rem_ = 0xB9,
+    /// (= a b) — equality check
+    eq = 0xBA,
+    /// (not= a b) — inequality check
+    neq = 0xBB,
 
     // === [Z] Reserved/debug (0xF0-0xFF) ===
 
@@ -156,6 +164,10 @@ pub const OpCode = enum(u8) {
             .le,
             .gt,
             .ge,
+            .mod,
+            .rem_,
+            .eq,
+            .neq,
             .throw_ex,
             .try_end,
             .nop,
@@ -239,6 +251,10 @@ test "OpCode category ranges" {
     try std.testing.expectEqual(@as(u8, 0xB5), @intFromEnum(OpCode.le));
     try std.testing.expectEqual(@as(u8, 0xB6), @intFromEnum(OpCode.gt));
     try std.testing.expectEqual(@as(u8, 0xB7), @intFromEnum(OpCode.ge));
+    try std.testing.expectEqual(@as(u8, 0xB8), @intFromEnum(OpCode.mod));
+    try std.testing.expectEqual(@as(u8, 0xB9), @intFromEnum(OpCode.rem_));
+    try std.testing.expectEqual(@as(u8, 0xBA), @intFromEnum(OpCode.eq));
+    try std.testing.expectEqual(@as(u8, 0xBB), @intFromEnum(OpCode.neq));
 
     // Debug (0xF0-0xFF)
     try std.testing.expectEqual(@as(u8, 0xF0), @intFromEnum(OpCode.nop));

@@ -3,7 +3,7 @@
 ## Current State
 - Phase: 3a (VM intrinsics + runtime functions)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Arithmetic intrinsics (Task 3.1)
+- Current task: Comparison intrinsics (Task 3.2)
 - Task file:
 - Blockers: none
 
@@ -24,3 +24,4 @@
 | T2.8    | .dev/plan/archive/task_0019_closures.md             | 2026-02-01 |
 | T2.9    | .dev/plan/archive/task_0020_tree_walk.md            | 2026-02-01 |
 | T2.10   | .dev/plan/archive/task_0021_compare_mode.md        | 2026-02-01 |
+| T3.1    | .dev/plan/archive/task_0022_arithmetic_intrinsics.md | 2026-02-01 |

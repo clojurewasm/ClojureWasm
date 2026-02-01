@@ -248,6 +248,18 @@ pub const VM = struct {
                 .le => try self.binaryCompare(.le),
                 .gt => try self.binaryCompare(.gt),
                 .ge => try self.binaryCompare(.ge),
+                .mod => try self.binaryMod(),
+                .rem_ => try self.binaryRem(),
+                .eq => {
+                    const b = self.pop();
+                    const a = self.pop();
+                    try self.push(.{ .boolean = a.eql(b) });
+                },
+                .neq => {
+                    const b = self.pop();
+                    const a = self.pop();
+                    try self.push(.{ .boolean = !a.eql(b) });
+                },
 
                 // [Z] Debug
                 .nop => {},
@@ -334,6 +346,36 @@ pub const VM = struct {
             .ge => fa >= fb,
         };
         try self.push(.{ .boolean = result });
+    }
+
+    /// Clojure mod: result has same sign as divisor.
+    fn binaryMod(self: *VM) VMError!void {
+        const b = self.pop();
+        const a = self.pop();
+        if (a == .integer and b == .integer) {
+            if (b.integer == 0) return error.DivisionByZero;
+            try self.push(.{ .integer = @mod(a.integer, b.integer) });
+            return;
+        }
+        const fa = numToFloat(a) orelse return error.TypeError;
+        const fb = numToFloat(b) orelse return error.TypeError;
+        if (fb == 0.0) return error.DivisionByZero;
+        try self.push(.{ .float = @mod(fa, fb) });
+    }
+
+    /// Clojure rem: result has same sign as dividend.
+    fn binaryRem(self: *VM) VMError!void {
+        const b = self.pop();
+        const a = self.pop();
+        if (a == .integer and b == .integer) {
+            if (b.integer == 0) return error.DivisionByZero;
+            try self.push(.{ .integer = @rem(a.integer, b.integer) });
+            return;
+        }
+        const fa = numToFloat(a) orelse return error.TypeError;
+        const fb = numToFloat(b) orelse return error.TypeError;
+        if (fb == 0.0) return error.DivisionByZero;
+        try self.push(.{ .float = @rem(fa, fb) });
     }
 
     fn numToFloat(val: Value) ?f64 {

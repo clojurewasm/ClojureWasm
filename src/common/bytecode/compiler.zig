@@ -295,16 +295,46 @@ pub const Compiler = struct {
     }
 
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
-        // Compile callee
-        try self.compile(node.callee);
+        // Check for intrinsic call: (op arg1 arg2) where op is a known var_ref
+        if (node.callee.* == .var_ref and node.args.len == 2) {
+            const name = node.callee.var_ref.name;
+            if (intrinsicOpCode(name)) |op| {
+                // Compile both args, then emit the intrinsic opcode
+                try self.compile(node.args[0]);
+                try self.compile(node.args[1]);
+                try self.chunk.emitOp(op);
+                return;
+            }
+        }
 
-        // Compile arguments
+        // General call: compile callee + args
+        try self.compile(node.callee);
         for (node.args) |arg| {
             try self.compile(arg);
         }
-
-        // Emit call with argument count
         try self.chunk.emit(.call, @intCast(node.args.len));
+    }
+
+    /// Map known builtin names to VM opcodes for 2-arg calls.
+    fn intrinsicOpCode(name: []const u8) ?chunk_mod.OpCode {
+        const map = .{
+            .{ "+", .add },
+            .{ "-", .sub },
+            .{ "*", .mul },
+            .{ "/", .div },
+            .{ "mod", .mod },
+            .{ "rem", .rem_ },
+            .{ "<", .lt },
+            .{ "<=", .le },
+            .{ ">", .gt },
+            .{ ">=", .ge },
+            .{ "=", .eq },
+            .{ "not=", .neq },
+        };
+        inline for (map) |entry| {
+            if (std.mem.eql(u8, name, entry[0])) return entry[1];
+        }
+        return null;
     }
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {

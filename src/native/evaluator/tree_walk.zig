@@ -153,7 +153,7 @@ pub const TreeWalk = struct {
     // Use keyword values as sentinel markers for builtin functions.
 
     fn builtinLookup(name: []const u8) ?Value {
-        const builtins = [_][]const u8{ "+", "-", "*", "/", "<", ">", "<=", ">=" };
+        const builtins = [_][]const u8{ "+", "-", "*", "/", "<", ">", "<=", ">=", "mod", "rem", "=", "not=" };
         for (builtins) |b| {
             if (std.mem.eql(u8, name, b)) {
                 return Value{ .keyword = .{ .ns = "__builtin__", .name = b } };
@@ -391,6 +391,10 @@ pub const TreeWalk = struct {
         if (std.mem.eql(u8, name, ">")) return cmp(a, b, .gt);
         if (std.mem.eql(u8, name, "<=")) return cmp(a, b, .le);
         if (std.mem.eql(u8, name, ">=")) return cmp(a, b, .ge);
+        if (std.mem.eql(u8, name, "mod")) return arithMod(a, b);
+        if (std.mem.eql(u8, name, "rem")) return arithRem(a, b);
+        if (std.mem.eql(u8, name, "=")) return Value{ .boolean = a.eql(b) };
+        if (std.mem.eql(u8, name, "not=")) return Value{ .boolean = !a.eql(b) };
         return error.UndefinedVar;
     }
 
@@ -434,6 +438,30 @@ pub const TreeWalk = struct {
             .ge => fa >= fb,
         };
         return Value{ .boolean = result };
+    }
+
+    /// Clojure mod: result has same sign as divisor.
+    fn arithMod(a: Value, b: Value) TreeWalkError!Value {
+        if (a == .integer and b == .integer) {
+            if (b.integer == 0) return error.DivisionByZero;
+            return Value{ .integer = @mod(a.integer, b.integer) };
+        }
+        const fa = numToFloat(a) orelse return error.TypeError;
+        const fb = numToFloat(b) orelse return error.TypeError;
+        if (fb == 0.0) return error.DivisionByZero;
+        return Value{ .float = @mod(fa, fb) };
+    }
+
+    /// Clojure rem: result has same sign as dividend.
+    fn arithRem(a: Value, b: Value) TreeWalkError!Value {
+        if (a == .integer and b == .integer) {
+            if (b.integer == 0) return error.DivisionByZero;
+            return Value{ .integer = @rem(a.integer, b.integer) };
+        }
+        const fa = numToFloat(a) orelse return error.TypeError;
+        const fb = numToFloat(b) orelse return error.TypeError;
+        if (fb == 0.0) return error.DivisionByZero;
+        return Value{ .float = @rem(fa, fb) };
     }
 
     fn numToFloat(val: Value) ?f64 {
