@@ -8,7 +8,7 @@ description: >
 compatibility: Claude Code only. Requires .dev/plan/ directory structure.
 metadata:
   author: clojurewasm
-  version: 1.0.0
+  version: 2.0.0
 ---
 
 # Phase Check
@@ -17,18 +17,20 @@ Check progress of the current development phase.
 
 ## Steps
 
-1. Read `.dev/plan/memo.md` — identify current phase and position
-2. Read active plan file in `.dev/plan/active/` — check task completion
-3. Run `zig build test` — report pass/fail counts (skip if build.zig does not exist)
-4. List pending tasks and recommend next action
-5. Report blockers if any
-6. Show latest entry from the active log file in `.dev/plan/active/`
+1. Read `.dev/plan/memo.md` — identify current phase and task
+2. Read `.dev/plan/roadmap.md` — check task completion across phases
+3. If task file exists in `.dev/plan/active/`, read its `## Log` for recent progress
+4. Run `zig build test` — report pass/fail counts
+5. List pending tasks and recommend next action
+6. Report blockers if any
 
 ## Output Format
 
 Summarize as:
 - Current phase: Phase N — [name]
-- Tasks: X/Y completed
-- Tests: N passed, M failed (or "build.zig not yet created")
-- Next: [recommended task]
+- Tasks: X/Y completed (in current phase)
+- Tests: N passed, M failed
+- Current task: [task description]
+- Task file: [path or "not yet created"]
+- Next: [recommended action]
 - Blockers: [if any]

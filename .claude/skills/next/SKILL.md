@@ -1,7 +1,7 @@
 ---
 name: next
 description: >
-  Execute exactly one task from the active plan, then stop and report.
+  Execute exactly one task from the roadmap, then stop and report.
   Use when user says "next", "one task", "do the next task", or wants
   controlled single-step execution with a completion report.
 disable-model-invocation: true
@@ -18,7 +18,7 @@ allowed-tools:
 
 **Execute exactly one task, then report and stop.**
 
-## 1. Situation Check
+## 1. Orient
 
 ```bash
 git log --oneline -3
@@ -27,44 +27,50 @@ git status --short
 
 Read with Read tool:
 - `CLAUDE.md` — project instructions
-- `.dev/plan/memo.md` — current position, active plan file reference
-- Active plan file in `.dev/plan/active/` — task details
+- `.dev/plan/memo.md` — current task + task file path
 
-## 2. Task Selection
+## 2. Prepare
 
-From the active plan file, find the **first pending task**.
+- **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
+- **Task file MISSING** (Task file field is empty):
+  1. Read `.dev/plan/roadmap.md` for context + Notes
+  2. Read Beta reference code as needed
+  3. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
+  4. Git commit the plan
 
-## 3. Execute One Task
+## 3. Execute
 
 ### For Code Tasks
 1. **TDD cycle**: Red -> Green -> Refactor (per CLAUDE.md)
-2. **Run tests**: `zig build test` (when build.zig exists)
-3. Mark task as "done" in the active plan file
-4. Append completion note to the active log file
-5. Update "Next task" in memo.md
-6. Git commit
+2. **Run tests**: `zig build test`
+3. Append progress to task file `## Log`
+4. Git commit at meaningful boundaries
 
 ### For Planning Tasks
 1. Read references, analyze, produce required document
 2. Write output to specified path
-3. Mark task as "done", update memo.md
+3. Append progress to task file `## Log`
 4. Git commit
 
-### Conditional Steps
-- **build.zig does not exist yet**: skip `zig build test`
+## 4. Complete
 
-## 4. Completion Report
+1. Move task file from `active/` to `archive/`
+2. Update `roadmap.md` Archive column
+3. Advance `memo.md` to next task (clear Task file path)
+4. Git commit
+
+## 5. Report & Stop
 
 After the task is done, report:
 
 - **Task completed**: [task description]
 - **Files changed**: [list of modified/created files]
-- **Test results**: [pass/fail counts, or "build.zig not yet created"]
-- **Next task**: [next pending task from the plan]
+- **Test results**: [pass/fail counts]
+- **Next task**: [next pending task from the roadmap]
 - **Blockers**: [if any]
 
 Then **stop** — do not proceed to the next task.
 
-## 5. User Instructions
+## 6. User Instructions
 
 $ARGUMENTS

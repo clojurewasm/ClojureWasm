@@ -1,14 +1,13 @@
 # ClojureWasm Development Memo
 
 ## Current State
-
-- Current phase: Phase 1a (Value type foundation)
-- Active plan: .dev/plan/active/plan_0001_bootstrap.md
-- Next task: Task 1.10 -- Create Analyzer with special form comptime table
+- Phase: 1c (Analyzer)
+- Roadmap: .dev/plan/roadmap.md
+- Current task: Create Analyzer with special form comptime table
+- Task file:
 - Blockers: none
 
 ## Completed Phases
-
-| Phase   | Plan file                          | Description              | Date       |
-|---------|------------------------------------|--------------------------|------------|
-| Phase 0 | .dev/plan/archive/plan_0000_kickoff.md | Bootstrap / Kickoff Planning | 2026-02-01 |
+| Phase   | Archive                                | Date       |
+|---------|----------------------------------------|------------|
+| Phase 0 | .dev/plan/archive/plan_0000_kickoff.md | 2026-02-01 |

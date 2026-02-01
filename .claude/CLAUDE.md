@@ -47,30 +47,20 @@ This matches Zig standard library conventions and keeps files readable.
 ## Session Workflow
 
 ### On Start
-
-1. Read .dev/plan/memo.md (identify current phase and next task)
-2. Check .dev/plan/active/ plan file for task details
+1. Read `.dev/plan/memo.md` (current task + task file path)
+2. If task file exists: read it, resume from `## Log`
+3. If task file missing: create it (read roadmap + Beta refs, write plan)
 
 ### During Development
-
-1. Implement via TDD cycle (above)
-2. Reference Beta code, but redesign from understanding — no copy-paste
+1. TDD cycle: Red -> Green -> Refactor
+2. Append progress to task file `## Log`
 3. Commit frequently when tests pass
-4. Append discoveries, completions, and plan changes to .dev/plan/active/ log file
-5. When you discover a new Zig pitfall or workaround, append it to `.claude/references/zig-tips.md`
 
 ### On Task Completion
-
-1. Update the task status to "done" in .dev/plan/active/ plan file
-2. Update "Next task" in memo.md
-3. Git commit at meaningful boundaries
-4. Automatically proceed to next pending task
-
-### On Phase Completion
-
-1. Move plan + log to .dev/plan/archive/
-2. Add entry to "Completed Phases" table in memo.md
-3. Create next phase plan in .dev/plan/active/ (use Plan Mode)
+1. Move task file from `active/` to `archive/`
+2. Update roadmap.md Archive column
+3. Advance memo.md to next task (clear Task file path)
+4. Git commit
 
 ## Build & Test
 
