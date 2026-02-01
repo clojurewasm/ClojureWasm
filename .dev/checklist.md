@@ -33,4 +33,4 @@ Last updated: 2026-02-02 (after T4.10)
 | P3  | Missing language features           | 4d    | —          | Done: multi-arity T4.8, destructuring T4.9, for T4.10, protocols T4.11 |
 | P4  | REPL                                | 4e    | —          | Done: T4.12 interactive REPL with multi-line + error recovery          |
 | P5  | Wasm target                         | 4e    | P1         | Done: T4.13 `zig build wasm`, 207KB, wasmtime verified                 |
-| P6  | Directory restructuring             | 4f    | —          | Create src/repl/, src/wasm/ stubs per README                           |
+| P6  | Directory restructuring             | 4f    | —          | Done: T4.14/15 — src/repl/ created, wasm_rt/gc/ unified                |

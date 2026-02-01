@@ -176,10 +176,10 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4f: Directory Restructuring
 
-| #    | Task                                 | Archive | Notes                                      |
-| ---- | ------------------------------------ | ------- | ------------------------------------------ |
-| 4.14 | Create src/repl/, src/wasm/ stubs    | --      | Physical directories matching README       |
-| 4.15 | Reorganize src/wasm_rt/gc/ structure | --      | Unify gc bridge + backend under wasm_rt/gc |
+| #    | Task                                 | Archive                      | Notes                                    |
+| ---- | ------------------------------------ | ---------------------------- | ---------------------------------------- |
+| 4.14 | Create src/repl/, src/wasm/ stubs    | task_0050_dir_restructure.md | Combined with T4.15                      |
+| 4.15 | Reorganize src/wasm_rt/gc/ structure | task_0050_dir_restructure.md | gc/bridge + gc/backend under wasm_rt/gc/ |
 
 ### Phase 4 Milestone Criteria
 
