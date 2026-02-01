@@ -39,6 +39,7 @@ pub const Compiler = struct {
     scope_depth: u32,
     loop_start: ?usize,
     loop_binding_count: u16,
+    loop_locals_base: u16,
     /// Heap-allocated FnProtos and Fns (for cleanup).
     fn_protos: std.ArrayListUnmanaged(*const FnProto),
     fn_objects: std.ArrayListUnmanaged(*const Fn),
@@ -51,6 +52,7 @@ pub const Compiler = struct {
             .scope_depth = 0,
             .loop_start = null,
             .loop_binding_count = 0,
+            .loop_locals_base = 0,
             .fn_protos = .empty,
             .fn_objects = .empty,
         };
@@ -191,6 +193,9 @@ pub const Compiler = struct {
         self.scope_depth += 1;
         const base_locals = self.locals.items.len;
 
+        // Record stack depth before loop bindings (for recur base_offset)
+        const loop_locals_base: u16 = @intCast(base_locals);
+
         // Compile initial bindings
         for (node.bindings) |binding| {
             try self.compile(binding.init);
@@ -200,8 +205,10 @@ pub const Compiler = struct {
         // Save loop context
         const prev_loop_start = self.loop_start;
         const prev_binding_count = self.loop_binding_count;
+        const prev_loop_locals_base = self.loop_locals_base;
         self.loop_start = self.chunk.currentOffset();
         self.loop_binding_count = @intCast(node.bindings.len);
+        self.loop_locals_base = loop_locals_base;
 
         // Compile body
         try self.compile(node.body);
@@ -209,6 +216,7 @@ pub const Compiler = struct {
         // Restore loop context
         self.loop_start = prev_loop_start;
         self.loop_binding_count = prev_binding_count;
+        self.loop_locals_base = prev_loop_locals_base;
 
         // Clean up locals
         const locals_to_pop = self.locals.items.len - base_locals;
@@ -228,8 +236,10 @@ pub const Compiler = struct {
             try self.compile(arg);
         }
 
-        // Emit recur with arg count
-        try self.chunk.emit(.recur, @intCast(node.args.len));
+        // Emit recur: operand = (base_offset << 8) | arg_count
+        const arg_count: u16 = @intCast(node.args.len);
+        const operand = (self.loop_locals_base << 8) | arg_count;
+        try self.chunk.emit(.recur, operand);
 
         // Jump back to loop start
         if (self.loop_start) |ls| {

@@ -157,52 +157,7 @@ pub const VM = struct {
                 },
 
                 // [G] Functions
-                .call => {
-                    const arg_count = instr.operand;
-                    // Stack: [..., fn_val, arg0, arg1, ...]
-                    // fn_val is at sp - arg_count - 1
-                    const fn_idx = self.sp - arg_count - 1;
-                    const callee = self.stack[fn_idx];
-                    if (callee != .fn_val) return error.TypeError;
-
-                    const fn_obj = callee.fn_val;
-                    const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
-
-                    // Arity check
-                    if (!proto.variadic and arg_count != proto.arity)
-                        return error.ArityError;
-
-                    // Inject closure_bindings before args if present
-                    const closure_count: u16 = if (fn_obj.closure_bindings) |cb| @intCast(cb.len) else 0;
-                    if (closure_count > 0) {
-                        const cb = fn_obj.closure_bindings.?;
-                        // Shift args right by closure_count
-                        const args_start = fn_idx + 1;
-                        if (arg_count > 0) {
-                            var i: u16 = arg_count;
-                            while (i > 0) {
-                                i -= 1;
-                                self.stack[args_start + closure_count + i] = self.stack[args_start + i];
-                            }
-                        }
-                        // Insert closure bindings
-                        for (0..closure_count) |i| {
-                            self.stack[args_start + i] = cb[i];
-                        }
-                        self.sp += closure_count;
-                    }
-
-                    // Push new call frame
-                    if (self.frame_count >= FRAMES_MAX) return error.StackOverflow;
-                    self.frames[self.frame_count] = .{
-                        .ip = 0,
-                        .base = fn_idx + 1, // points to closure_bindings[0] or arg0
-                        .code = proto.code,
-                        .constants = proto.constants,
-                    };
-                    self.frame_count += 1;
-                },
-                .tail_call => return error.InvalidInstruction,
+                .call, .tail_call => try self.performCall(instr.operand),
                 .ret => {
                     const result = self.pop();
                     const base = frame.base;
@@ -239,7 +194,29 @@ pub const VM = struct {
                 },
 
                 // [H] Loop/recur
-                .recur => return error.InvalidInstruction,
+                .recur => {
+                    // Operand: (base_offset << 8) | arg_count
+                    const arg_count: u16 = instr.operand & 0xFF;
+                    const base_offset: u16 = (instr.operand >> 8) & 0xFF;
+
+                    // Pop recur args into temp buffer (reverse order)
+                    var temp_buf: [16]Value = undefined;
+                    var i: u16 = arg_count;
+                    while (i > 0) {
+                        i -= 1;
+                        temp_buf[i] = self.pop();
+                    }
+
+                    // Write new values to loop binding slots
+                    for (0..arg_count) |idx| {
+                        self.stack[frame.base + base_offset + idx] = temp_buf[idx];
+                    }
+
+                    // Reset sp to just after loop bindings
+                    self.sp = frame.base + base_offset + arg_count;
+
+                    // Next instruction is jump_back which loops
+                },
 
                 // [I] Collections
                 .list_new, .vec_new, .map_new, .set_new => {
@@ -324,6 +301,50 @@ pub const VM = struct {
 
     fn peek(self: *VM, distance: usize) Value {
         return self.stack[self.sp - 1 - distance];
+    }
+
+    // --- Call helper ---
+
+    fn performCall(self: *VM, arg_count: u16) VMError!void {
+        // Stack: [..., fn_val, arg0, arg1, ...]
+        const fn_idx = self.sp - arg_count - 1;
+        const callee = self.stack[fn_idx];
+        if (callee != .fn_val) return error.TypeError;
+
+        const fn_obj = callee.fn_val;
+        const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+
+        // Arity check
+        if (!proto.variadic and arg_count != proto.arity)
+            return error.ArityError;
+
+        // Inject closure_bindings before args if present
+        const closure_count: u16 = if (fn_obj.closure_bindings) |cb| @intCast(cb.len) else 0;
+        if (closure_count > 0) {
+            const cb = fn_obj.closure_bindings.?;
+            const args_start = fn_idx + 1;
+            if (arg_count > 0) {
+                var i: u16 = arg_count;
+                while (i > 0) {
+                    i -= 1;
+                    self.stack[args_start + closure_count + i] = self.stack[args_start + i];
+                }
+            }
+            for (0..closure_count) |i| {
+                self.stack[args_start + i] = cb[i];
+            }
+            self.sp += closure_count;
+        }
+
+        // Push new call frame
+        if (self.frame_count >= FRAMES_MAX) return error.StackOverflow;
+        self.frames[self.frame_count] = .{
+            .ip = 0,
+            .base = fn_idx + 1,
+            .code = proto.code,
+            .constants = proto.constants,
+        };
+        self.frame_count += 1;
     }
 
     // --- Arithmetic helpers ---
@@ -1094,4 +1115,69 @@ test "VM var_load qualified symbol" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value{ .integer = 99 }, result);
+}
+
+test "VM compiler+vm: loop/recur counts to 5" {
+    // (loop [x 0] (if (< x 5) (recur (+ x 1)) x)) => 5
+    const allocator = std.testing.allocator;
+    const node_mod = @import("../../common/analyzer/node.zig");
+    const Node = node_mod.Node;
+    const compiler_mod = @import("../../common/bytecode/compiler.zig");
+
+    var compiler = compiler_mod.Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // Build AST
+    // loop binding: x = 0
+    var init_0 = Node{ .constant = .{ .integer = 0 } };
+    const bindings = [_]node_mod.LetBinding{
+        .{ .name = "x", .init = &init_0 },
+    };
+
+    // test: (< x 5)
+    var x_ref1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    var five = Node{ .constant = .{ .integer = 5 } };
+    var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
+    var lt_args = [_]*Node{ &x_ref1, &five };
+    var lt_call = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
+    var test_node = Node{ .call_node = &lt_call };
+
+    // then: (recur (+ x 1))
+    var x_ref2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    var one = Node{ .constant = .{ .integer = 1 } };
+    var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var add_args = [_]*Node{ &x_ref2, &one };
+    var add_call = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
+    var add_node = Node{ .call_node = &add_call };
+    var recur_args = [_]*Node{&add_node};
+    var recur_data = node_mod.RecurNode{ .args = &recur_args, .source = .{} };
+    var then_node = Node{ .recur_node = &recur_data };
+
+    // else: x
+    var x_ref3 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+
+    // if node
+    var if_data = node_mod.IfNode{
+        .test_node = &test_node,
+        .then_node = &then_node,
+        .else_node = &x_ref3,
+        .source = .{},
+    };
+    var body = Node{ .if_node = &if_data };
+
+    // loop node
+    var loop_data = node_mod.LoopNode{
+        .bindings = &bindings,
+        .body = &body,
+        .source = .{},
+    };
+    const loop_node = Node{ .loop_node = &loop_data };
+
+    try compiler.compile(&loop_node);
+    try compiler.chunk.emitOp(.ret);
+
+    var vm = VM.init(allocator);
+    defer vm.deinit();
+    const result = try vm.run(&compiler.chunk);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result);
 }

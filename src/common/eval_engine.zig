@@ -313,3 +313,54 @@ test "EvalEngine compare def+var_ref" {
     try std.testing.expectEqual(Value{ .integer = 42 }, result.tw_value.?);
     try std.testing.expectEqual(Value{ .integer = 42 }, result.vm_value.?);
 }
+
+test "EvalEngine compare loop/recur" {
+    // (loop [x 0] (if (< x 5) (recur (+ x 1)) x)) => 5
+    var engine = EvalEngine.init(std.testing.allocator, null);
+
+    var init_0 = Node{ .constant = .{ .integer = 0 } };
+    const bindings = [_]node_mod.LetBinding{
+        .{ .name = "x", .init = &init_0 },
+    };
+
+    // test: (< x 5)
+    var x_ref1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    var five = Node{ .constant = .{ .integer = 5 } };
+    var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
+    var lt_args = [_]*Node{ &x_ref1, &five };
+    var lt_call = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
+    var test_node = Node{ .call_node = &lt_call };
+
+    // then: (recur (+ x 1))
+    var x_ref2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+    var one = Node{ .constant = .{ .integer = 1 } };
+    var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var add_args = [_]*Node{ &x_ref2, &one };
+    var add_call = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
+    var add_node = Node{ .call_node = &add_call };
+    var recur_args = [_]*Node{&add_node};
+    var recur_data = node_mod.RecurNode{ .args = &recur_args, .source = .{} };
+    var then_node = Node{ .recur_node = &recur_data };
+
+    // else: x
+    var x_ref3 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
+
+    var if_data = node_mod.IfNode{
+        .test_node = &test_node,
+        .then_node = &then_node,
+        .else_node = &x_ref3,
+        .source = .{},
+    };
+    var body = Node{ .if_node = &if_data };
+
+    var loop_data = node_mod.LoopNode{
+        .bindings = &bindings,
+        .body = &body,
+        .source = .{},
+    };
+    const n = Node{ .loop_node = &loop_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.tw_value.?);
+    try std.testing.expectEqual(Value{ .integer = 5 }, result.vm_value.?);
+}
