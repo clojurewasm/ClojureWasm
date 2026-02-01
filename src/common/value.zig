@@ -92,6 +92,34 @@ pub const Value = union(enum) {
         }
     }
 
+    /// Clojure = semantics: structural equality.
+    pub fn eql(self: Value, other: Value) bool {
+        const self_tag = std.meta.activeTag(self);
+        const other_tag = std.meta.activeTag(other);
+
+        // Cross-type numeric equality: (= 1 1.0) => true
+        if ((self_tag == .integer and other_tag == .float) or
+            (self_tag == .float and other_tag == .integer))
+        {
+            const a: f64 = if (self_tag == .integer) @floatFromInt(self.integer) else self.float;
+            const b: f64 = if (other_tag == .integer) @floatFromInt(other.integer) else other.float;
+            return a == b;
+        }
+
+        if (self_tag != other_tag) return false;
+
+        return switch (self) {
+            .nil => true,
+            .boolean => |a| a == other.boolean,
+            .integer => |a| a == other.integer,
+            .float => |a| a == other.float,
+            .char => |a| a == other.char,
+            .string => |a| std.mem.eql(u8, a, other.string),
+            .symbol => |a| eqlOptionalStr(a.ns, other.symbol.ns) and std.mem.eql(u8, a.name, other.symbol.name),
+            .keyword => |a| eqlOptionalStr(a.ns, other.keyword.ns) and std.mem.eql(u8, a.name, other.keyword.name),
+        };
+    }
+
     /// Returns true if this value is nil.
     pub fn isNil(self: Value) bool {
         return switch (self) {
@@ -109,6 +137,14 @@ pub const Value = union(enum) {
         };
     }
 };
+
+fn eqlOptionalStr(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a) |av| {
+        if (b) |bv| return std.mem.eql(u8, av, bv);
+        return false;
+    }
+    return b == null;
+}
 
 // === Tests ===
 
@@ -213,6 +249,79 @@ test "Value.format - symbol" {
 test "Value.format - keyword" {
     try expectFormat(":bar", .{ .keyword = .{ .name = "bar", .ns = null } });
     try expectFormat(":clojure.core/keys", .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } });
+}
+
+test "Value.eql - nil" {
+    try testing.expect((Value{ .nil = {} }).eql(.nil));
+}
+
+test "Value.eql - boolean" {
+    const t: Value = .{ .boolean = true };
+    const f: Value = .{ .boolean = false };
+    try testing.expect(t.eql(.{ .boolean = true }));
+    try testing.expect(f.eql(.{ .boolean = false }));
+    try testing.expect(!t.eql(f));
+}
+
+test "Value.eql - integer" {
+    const a: Value = .{ .integer = 42 };
+    try testing.expect(a.eql(.{ .integer = 42 }));
+    try testing.expect(!a.eql(.{ .integer = 43 }));
+}
+
+test "Value.eql - float" {
+    const a: Value = .{ .float = 3.14 };
+    try testing.expect(a.eql(.{ .float = 3.14 }));
+    try testing.expect(!a.eql(.{ .float = 2.71 }));
+}
+
+test "Value.eql - cross-type numeric" {
+    // Clojure: (= 1 1.0) => true
+    const i: Value = .{ .integer = 1 };
+    const f: Value = .{ .float = 1.0 };
+    try testing.expect(i.eql(f));
+    try testing.expect(f.eql(i));
+    // (= 1 1.5) => false
+    try testing.expect(!i.eql(.{ .float = 1.5 }));
+}
+
+test "Value.eql - char" {
+    const a: Value = .{ .char = 'A' };
+    try testing.expect(a.eql(.{ .char = 'A' }));
+    try testing.expect(!a.eql(.{ .char = 'B' }));
+}
+
+test "Value.eql - string" {
+    const a: Value = .{ .string = "hello" };
+    try testing.expect(a.eql(.{ .string = "hello" }));
+    try testing.expect(!a.eql(.{ .string = "world" }));
+}
+
+test "Value.eql - symbol" {
+    const a: Value = .{ .symbol = .{ .name = "foo", .ns = null } };
+    try testing.expect(a.eql(.{ .symbol = .{ .name = "foo", .ns = null } }));
+    try testing.expect(!a.eql(.{ .symbol = .{ .name = "bar", .ns = null } }));
+    // Namespaced vs non-namespaced
+    try testing.expect(!a.eql(.{ .symbol = .{ .name = "foo", .ns = "x" } }));
+}
+
+test "Value.eql - keyword" {
+    const a: Value = .{ .keyword = .{ .name = "k", .ns = "ns" } };
+    try testing.expect(a.eql(.{ .keyword = .{ .name = "k", .ns = "ns" } }));
+    try testing.expect(!a.eql(.{ .keyword = .{ .name = "k", .ns = null } }));
+    try testing.expect(!a.eql(.{ .keyword = .{ .name = "other", .ns = "ns" } }));
+}
+
+test "Value.eql - different types" {
+    // Different types are never equal (except int/float)
+    const nil_v: Value = .nil;
+    const int_v: Value = .{ .integer = 0 };
+    const bool_v: Value = .{ .boolean = false };
+    const str_v: Value = .{ .string = "nil" };
+    try testing.expect(!nil_v.eql(int_v));
+    try testing.expect(!nil_v.eql(bool_v));
+    try testing.expect(!nil_v.eql(str_v));
+    try testing.expect(!int_v.eql(bool_v));
 }
 
 test "Value - isTruthy" {

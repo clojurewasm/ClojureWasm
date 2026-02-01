@@ -25,3 +25,17 @@ Clojure pr-str semantics for all current variants:
 
 Test helper `expectFormat` for concise format assertions.
 9 new format tests (20 total). All passing via TDD.
+
+## Task 1.3: Implement Value.eql (equality) — DONE
+
+Added Value.eql() with Clojure = semantics:
+
+- Same-type structural comparison for all variants
+- Cross-type numeric equality: (= 1 1.0) => true via f64 conversion
+- Symbol/Keyword: compare both name and ns (namespace)
+- String: byte-level comparison via std.mem.eql
+- Different types => false (except int/float cross-comparison)
+
+Helper: eqlOptionalStr for ?[]const u8 comparison.
+11 new eql tests (31 total). All passing via TDD.
+Collection equality deferred to Task 1.4.

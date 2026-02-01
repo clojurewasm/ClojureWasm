@@ -4,7 +4,7 @@
 
 - Current phase: Phase 1a (Value type foundation)
 - Active plan: .dev/plan/active/plan_0001_bootstrap.md
-- Next task: Task 1.3 -- Implement Value.eql (equality)
+- Next task: Task 1.4 -- Implement basic collection types (ArrayList-based)
 - Blockers: none
 
 ## Completed Phases
