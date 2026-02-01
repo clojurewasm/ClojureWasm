@@ -4,7 +4,7 @@
 
 - Current phase: Phase 1a (Value type foundation)
 - Active plan: .dev/plan/active/plan_0001_bootstrap.md
-- Next task: Task 1.6 -- Create Form type in src/common/reader/form.zig
+- Next task: Task 1.7 -- Create Reader in src/common/reader/reader.zig
 - Blockers: none
 
 ## Completed Phases

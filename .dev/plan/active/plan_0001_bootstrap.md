@@ -40,7 +40,7 @@ Before reader/analyzer, we need the Value type that Form will reference.
 | #   | Task                                                       | Status  | Notes                                                                                                                             |
 |-----|------------------------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------|
 | 1.5 | Create Tokenizer in src/common/reader/tokenizer.zig        | done    | Beta: 832L. Tokens: (, ), [, ], {, }, string, number, symbol, keyword, etc. Input validation (SS14.3): max depth, max string size |
-| 1.6 | Create Form type in src/common/reader/form.zig             | pending | Beta: 264L. Form = tagged union wrapping Value + source location info                                                             |
+| 1.6 | Create Form type in src/common/reader/form.zig             | done    | Beta: 264L. Form = tagged union wrapping Value + source location info                                                             |
 | 1.7 | Create Reader in src/common/reader/reader.zig              | pending | Beta: 1134L. Tokenizer -> Form. S-expression parsing, quote/deref/meta reader macros                                              |
 | 1.8 | Reader edge cases: string escapes, regex, numeric literals | pending | Unicode escapes, ratios, BigInt (skip), hex/octal literals                                                                        |
 
