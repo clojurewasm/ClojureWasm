@@ -3,8 +3,10 @@
 
 pub const value = @import("common/value.zig");
 pub const collections = @import("common/collections.zig");
+pub const tokenizer = @import("common/reader/tokenizer.zig");
 
 test {
     _ = value;
     _ = collections;
+    _ = tokenizer;
 }
