@@ -71,7 +71,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 2.7  | Create VM execution loop in src/native/vm/vm.zig                 | task_0018_vm.md | Beta: vm.zig 1858L. Stack-based VM. Yield points for GC (SS5). Start with: const_load, call, ret, jump, local_load/store, arithmetic |
 | 2.8  | Implement closures and upvalues in VM                            | task_0019_closures.md | capture_count/slot contract. Critical for fn/let                                                                                     |
 | 2.9  | Create TreeWalk evaluator (reference impl)                       | task_0020_tree_walk.md | SS9.2: --compare mode. Simpler, slower, correct. Node -> Value directly                                                              |
-| 2.10 | Wire up --compare mode                                           | --      | Run both TW and VM, diff results. Key regression detection tool                                                                      |
+| 2.10 | Wire up --compare mode                                           | task_0021_compare_mode.md | Run both TW and VM, diff results. Key regression detection tool                                                                      |
 
 ## Phase 3: Builtins + core.clj AOT
 

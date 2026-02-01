@@ -18,6 +18,7 @@ pub const chunk = @import("common/bytecode/chunk.zig");
 pub const compiler = @import("common/bytecode/compiler.zig");
 pub const vm = @import("native/vm/vm.zig");
 pub const tree_walk = @import("native/evaluator/tree_walk.zig");
+pub const eval_engine = @import("common/eval_engine.zig");
 
 test {
     _ = value;
@@ -37,4 +38,5 @@ test {
     _ = compiler;
     _ = vm;
     _ = tree_walk;
+    _ = eval_engine;
 }
