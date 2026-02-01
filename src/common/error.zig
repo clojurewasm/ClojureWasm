@@ -69,6 +69,9 @@ pub const Error = error{
     OutOfMemory,
 };
 
+// TODO(D3a): Migrate to ErrorContext instance in Phase 2a (Task 2.1).
+// Threadlocal violates D3 (no threadlocal). When Env is created,
+// move last_error + msg_buf into an instance-based ErrorContext.
 threadlocal var last_error: ?Info = null;
 threadlocal var msg_buf: [512]u8 = undefined;
 

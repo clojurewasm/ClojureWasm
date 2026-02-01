@@ -62,6 +62,43 @@ or threadlocal state anywhere.
 
 ---
 
+## D3a: Error Module — Threadlocal as Temporary Compromise
+
+**Status**: Known violation of D3. Scheduled for resolution in Phase 2a (Task 2.1).
+
+**Current state**: `src/common/error.zig` uses `threadlocal var last_error` and
+`threadlocal var msg_buf` to pass error details alongside Zig error unions.
+This was carried over from Beta's pattern for expediency during Phase 1.
+
+**Why it exists**: Zig error unions carry no payload. When Reader returns
+`error.InvalidNumber`, the caller needs to know *which* number and *where*.
+Threadlocal storage is the simplest bridge.
+
+**When to fix**: Phase 2a, Task 2.1 (Create Env). When VM/Env becomes an
+explicit instance, error context should move into it:
+
+```zig
+// Current (threadlocal — violates D3):
+threadlocal var last_error: ?Info = null;
+pub fn parseError(...) Error { last_error = ...; return ...; }
+
+// Target (instance-based — satisfies D3):
+pub const ErrorContext = struct {
+    last_error: ?Info = null,
+    msg_buf: [512]u8 = undefined,
+};
+// Reader, Analyzer, VM each hold *ErrorContext (or own one)
+```
+
+**Migration difficulty**: Low. `setError`/`getLastError`/`parseError` call sites
+just add a context parameter. The refactoring is mechanical.
+
+**Why not fix now**: Reader and Analyzer (Phase 1) don't have an instance
+context yet. Introducing ErrorContext before Env exists would create a
+standalone struct with no clear owner. Better to unify when Env is built.
+
+---
+
 ## D4: Special Forms as comptime Table
 
 **Decision**: Special forms are defined in a comptime array of BuiltinDef,

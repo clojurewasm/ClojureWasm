@@ -59,7 +59,7 @@ Before reader/analyzer, we need the Value type that Form will reference.
 
 | #   | Task                                                 | Status  | Notes                                                                                                      |
 |-----|------------------------------------------------------|---------|------------------------------------------------------------------------------------------------------------|
-| 2.1 | Create Env (environment) in src/common/value/env.zig | pending | SS15.5: instantiated VM, no threadlocal. Env holds namespaces, is owned by VM instance                     |
+| 2.1 | Create Env (environment) in src/common/value/env.zig | pending | SS15.5: instantiated VM, no threadlocal. Env holds namespaces, is owned by VM instance. **Also: migrate error.zig threadlocal to ErrorContext instance (D3a)** |
 | 2.2 | Create Namespace in src/common/value/namespace.zig   | pending | intern/find/refer. Namespace owns Vars                                                                     |
 | 2.3 | Create Var in src/common/value/var.zig               | pending | SS10: VarKind enum, BuiltinDef metadata (doc, arglists, added). Root binding + thread-local binding stack  |
 | 2.4 | Create GcStrategy trait + initial NativeGc stub      | pending | SS5: GcStrategy vtable. Start with arena allocator, real GC deferred. Just alloc + no-op collect initially |
