@@ -1,5 +1,11 @@
 # log_0000_kickoff
 
+## Task 4: Set up flake.nix + flake.lock — DONE
+
+Created flake.nix pinning Zig 0.15.2 + toolchain (wasmtime, hyperfine, yq, jq,
+clojure, jdk21, babashka). English comments/messages. Verified: `nix develop`
+gives Zig 0.15.2 and wasmtime 41.0.0.
+
 ## Task 3: Create .dev/notes/decisions.md — DONE
 
 Created 10 design decisions (D1-D10) documenting key choices:
