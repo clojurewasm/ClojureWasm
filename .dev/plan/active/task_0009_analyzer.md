@@ -62,3 +62,24 @@ const special_forms = std.StaticStringMap(SpecialFormFn).initComptime(.{
 - `callee` field in CallNode (not `fn_node`)
 
 ## Log
+
+### 2026-02-01
+- Created src/common/analyzer/analyzer.zig with:
+  - Analyzer struct with allocator, locals stack, source tracking
+  - comptime StaticStringMap dispatch for 9 special form entries:
+    if, do, let, let*, fn, fn*, def, quote, defmacro
+  - analyzeIf: (if test then else?) with optional else
+  - analyzeDo: (do stmt...) wrapping in DoNode
+  - analyzeLet: (let [x 1 y 2] body) with local binding + scoping
+  - analyzeFn: single and multi-arity, variadic (&), named fn self-reference
+  - analyzeDef: (def name init?)
+  - analyzeQuote: (quote form) with formToValue
+  - analyzeDefmacro: (defmacro name [params] body) -> DefNode with is_macro
+  - analyzeSymbol: local lookup -> local_ref, else -> var_ref (name-based)
+  - analyzeCall: (f arg1 arg2...) -> CallNode
+  - Collection literals: vector/map/set -> constant if all-const, else builtin call
+  - formToValue: primitive Form -> Value conversion for quote
+  - Error helpers: analysisError with AnalyzeError narrowing
+- Added AnalysisError type and analysisError/analysisErrorFmt to error.zig
+- Wired up in root.zig
+- 20 tests covering all node types, scoping, error cases. All passing

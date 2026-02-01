@@ -106,6 +106,33 @@ pub fn parseErrorFmt(kind: Kind, comptime fmt: []const u8, args: anytype) Error 
     });
 }
 
+pub fn analysisError(kind: Kind, message: []const u8, location: SourceLocation) Error {
+    return setError(.{
+        .kind = kind,
+        .phase = .analysis,
+        .message = message,
+        .location = location,
+    });
+}
+
+pub fn analysisErrorFmt(kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
+    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch "error message too long";
+    return setError(.{
+        .kind = kind,
+        .phase = .analysis,
+        .message = msg,
+        .location = location,
+    });
+}
+
+/// Analysis error — union of analysis errors and OOM.
+pub const AnalysisError = error{
+    UndefinedSymbol,
+    InvalidArity,
+    InvalidBinding,
+    OutOfMemory,
+};
+
 /// Reader error — union of parse errors and OOM.
 pub const ReadError = error{
     UnexpectedEof,

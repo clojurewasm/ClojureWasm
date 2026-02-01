@@ -8,6 +8,7 @@ pub const form = @import("common/reader/form.zig");
 pub const err = @import("common/error.zig");
 pub const reader = @import("common/reader/reader.zig");
 pub const node = @import("common/analyzer/node.zig");
+pub const analyzer = @import("common/analyzer/analyzer.zig");
 
 test {
     _ = value;
@@ -17,4 +18,5 @@ test {
     _ = err;
     _ = reader;
     _ = node;
+    _ = analyzer;
 }
