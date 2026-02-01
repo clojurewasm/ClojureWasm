@@ -1,5 +1,27 @@
 # log_0000_kickoff
 
+## Task 2: Create plan_0001_bootstrap.md — DONE
+
+Created .dev/plan/active/plan_0001_bootstrap.md with 37 tasks across 3 phases:
+
+- **Phase 1** (12 tasks): Value type foundation + Reader + Analyzer
+  - 1a: Value tagged union (defer NaN boxing), format, eql, collections
+  - 1b: Tokenizer, Form, Reader, edge cases
+  - 1c: Node type, Analyzer with comptime special form table, var resolution
+- **Phase 2** (10 tasks): Native VM
+  - 2a: Env (instantiated, no threadlocal), Namespace, Var (VarKind), GcStrategy stub
+  - 2b: OpCode enum, Compiler, VM loop, closures, TreeWalk evaluator, --compare
+- **Phase 3** (15 tasks): Builtins + core.clj AOT
+  - 3a: Arithmetic/comparison/collection intrinsics, type predicates, I/O, atoms, registry
+  - 3b: core.clj bootstrap, AOT pipeline, startup, HOFs, macros
+  - 3c: CLI, SCI tests, benchmarks
+
+Key decisions in the plan:
+- Start with tagged union, NaN boxing later (correctness first)
+- Start with arena + no-op GC, real GC when needed
+- Minimal special forms first (7), add incrementally
+- --compare mode from Phase 2 for regression detection
+
 ## Task 1: Read future.md and architecture.md — DONE
 
 Read both documents in full:
