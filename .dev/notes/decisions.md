@@ -99,6 +99,105 @@ standalone struct with no clear owner. Better to unify when Env is built.
 
 ---
 
+## D3b: Error Kind Redesign — Python-Style Categories
+
+**Status**: Planned. Execute together with D3a in Phase 2a (Task 2.1).
+
+**Problem**: Current `Kind` enum has 18 entries at inconsistent granularity.
+Some are too fine (`invalid_string`, `invalid_character`, `invalid_regex` are
+all "string-like parse errors"), while important categories are missing
+(`io_error` for future slurp/spit). The mapping from Kind to Zig `error`
+also has lossy collapses (`invalid_regex` → `error.InvalidToken`).
+
+**Reference survey** (2026-02):
+
+| Language    | Approach                          | Granularity       |
+|-------------|-----------------------------------|--------------------|
+| Python      | Hierarchical exception classes    | ~15 leaf classes   |
+| Raku        | `X::` namespace, Phase × Category | ~50 types          |
+| Rust        | Numbered codes (E0001+)           | ~800, no categories|
+| Go          | Sentinel values, no taxonomy      | ad hoc             |
+| Elm         | Phase-based, struct per error     | no enum            |
+| SCI/Babashka| 2 types + message string          | minimal            |
+
+**Decision**: Adopt Python-style categories. Two orthogonal axes:
+
+1. `Phase` — when the error occurred (unchanged: parse, analysis, macroexpand, eval)
+2. `Kind` — what went wrong (reorganized into ~12 Python-inspired categories)
+
+**Target Kind enum**:
+
+```zig
+pub const Kind = enum {
+    // Parse phase (Reader/Tokenizer)
+    syntax_error,       // Structural: unexpected EOF, unmatched delimiters, invalid tokens
+    number_error,       // Number literal parse failure (hex, radix, ratio, etc.)
+    string_error,       // String/char/regex literal issues (bad escape, unterminated)
+
+    // Analysis phase (Analyzer)
+    name_error,         // Undefined symbol, unresolved var, invalid keyword
+    arity_error,        // Wrong number of arguments
+    value_error,        // Invalid binding form, duplicate map key, bad metadata
+
+    // Eval phase (VM/TreeWalk)
+    type_error,         // Operation applied to wrong type: (+ "a" 1)
+    arithmetic_error,   // Division by zero, overflow
+    index_error,        // nth/get out of bounds
+
+    // IO (future: slurp, spit, file operations)
+    io_error,
+
+    // System
+    internal_error,     // Implementation bug (unreachable reached)
+    out_of_memory,      // Allocator failure
+};
+```
+
+**Mapping from current → new**:
+
+| Current (18)             | New (12)          | Notes                              |
+|--------------------------|-------------------|------------------------------------|
+| `unexpected_eof`         | `syntax_error`    | Phase=parse distinguishes          |
+| `invalid_token`          | `syntax_error`    |                                    |
+| `unmatched_delimiter`    | `syntax_error`    |                                    |
+| `invalid_number`         | `number_error`    | Kept separate: common, actionable  |
+| `invalid_character`      | `string_error`    |                                    |
+| `invalid_string`         | `string_error`    |                                    |
+| `invalid_regex`          | `string_error`    |                                    |
+| `invalid_keyword`        | `name_error`      |                                    |
+| `undefined_symbol`       | `name_error`      |                                    |
+| `invalid_arity`          | `arity_error`     |                                    |
+| `invalid_binding`        | `value_error`     |                                    |
+| `duplicate_key`          | `value_error`     |                                    |
+| `division_by_zero`       | `arithmetic_error`|                                    |
+| `index_out_of_bounds`    | `index_error`     |                                    |
+| `type_error`             | `type_error`      |                                    |
+| `internal_error`         | `internal_error`  |                                    |
+| `out_of_memory`          | `out_of_memory`   |                                    |
+
+**Zig error union alignment**: Each Kind maps 1:1 to a Zig error tag.
+`ReadError` becomes a subset: `{SyntaxError, NumberError, StringError, OutOfMemory}`.
+
+**Error display direction** (Babashka-inspired, implement incrementally):
+
+```
+----- Error -------------------------------------------
+Phase:    parse
+Kind:     syntax_error
+Message:  Unexpected end of input while reading list
+Location: foo.clj:3:10
+Context:
+  2: (defn add [a b]
+  3:   (+ a b)
+              ^--- here
+```
+
+**Why Python-style**: Familiar to most developers. Categories are coarse
+enough to stay stable (no need to add new Kinds for every new error message),
+fine enough that programmatic handling (`catch SyntaxError`) is meaningful.
+
+---
+
 ## D4: Special Forms as comptime Table
 
 **Decision**: Special forms are defined in a comptime array of BuiltinDef,

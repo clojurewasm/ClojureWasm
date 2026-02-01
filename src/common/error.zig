@@ -72,6 +72,8 @@ pub const Error = error{
 // TODO(D3a): Migrate to ErrorContext instance in Phase 2a (Task 2.1).
 // Threadlocal violates D3 (no threadlocal). When Env is created,
 // move last_error + msg_buf into an instance-based ErrorContext.
+// TODO(D3b): Redesign Kind enum to Python-style categories (Task 2.1).
+// See .dev/notes/decisions.md D3b for target enum and migration table.
 threadlocal var last_error: ?Info = null;
 threadlocal var msg_buf: [512]u8 = undefined;
 
