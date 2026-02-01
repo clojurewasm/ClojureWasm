@@ -77,17 +77,17 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 3a: VM parity + intrinsics + runtime functions
 
-| #   | Task                                                                                  | Archive                            | Notes                                                                                                  |
-| --- | ------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 3.1 | Arithmetic intrinsics (+, -, \*, /, mod, rem)                                         | task_0022_arithmetic_intrinsics.md | VM opcodes for fast path. Compiler emits direct opcodes for intrinsics. Also includes =,not=,<,>,<=,>= |
-| 3.2 | VM var/def opcodes (var_load, var_load_dynamic, def)                                  | task_0023_var_def_opcodes.md       | Enable Var resolution in VM. Required for non-intrinsic builtin calls                                  |
-| 3.3 | VM recur + tail_call opcodes                                                          | task_0024_recur_tail_call.md       | Loop/recursion support in VM                                                                           |
-| 3.4 | VM collection + exception opcodes                                                     | --                                 | list/vec/map/set_new, try_begin..throw_ex                                                              |
-| 3.5 | BuiltinDef registry with metadata                                                     | --                                 | SS10: VarKind, BuiltinDef, registerCore(). Moved before builtins (was T3.7). Dep: T3.2                 |
-| 3.6 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | --                                 | Core sequence operations. Dep: T3.4, T3.5                                                              |
-| 3.7 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | --                                 | Simple type checks on Value tag. Dep: T3.5                                                             |
-| 3.8 | Runtime functions: str, pr-str, println, prn                                          | --                                 | String conversion + I/O. Dep: T3.5                                                                     |
-| 3.9 | Runtime functions: atom, deref, swap!, reset!                                         | --                                 | Atom state management. Dep: T3.5                                                                       |
+| #   | Task                                                                                  | Archive                                   | Notes                                                                                                  |
+| --- | ------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 3.1 | Arithmetic intrinsics (+, -, \*, /, mod, rem)                                         | task_0022_arithmetic_intrinsics.md        | VM opcodes for fast path. Compiler emits direct opcodes for intrinsics. Also includes =,not=,<,>,<=,>= |
+| 3.2 | VM var/def opcodes (var_load, var_load_dynamic, def)                                  | task_0023_var_def_opcodes.md              | Enable Var resolution in VM. Required for non-intrinsic builtin calls                                  |
+| 3.3 | VM recur + tail_call opcodes                                                          | task_0024_recur_tail_call.md              | Loop/recursion support in VM                                                                           |
+| 3.4 | VM collection + exception opcodes                                                     | task_0025_collection_exception_opcodes.md | list/vec/map/set_new, try_begin..throw_ex                                                              |
+| 3.5 | BuiltinDef registry with metadata                                                     | --                                        | SS10: VarKind, BuiltinDef, registerCore(). Moved before builtins (was T3.7). Dep: T3.2                 |
+| 3.6 | Collection intrinsics (first, rest, cons, conj, assoc, get, nth, count)               | --                                        | Core sequence operations. Dep: T3.4, T3.5                                                              |
+| 3.7 | Type predicates (nil?, number?, string?, keyword?, symbol?, map?, vector?, seq?, fn?) | --                                        | Simple type checks on Value tag. Dep: T3.5                                                             |
+| 3.8 | Runtime functions: str, pr-str, println, prn                                          | --                                        | String conversion + I/O. Dep: T3.5                                                                     |
+| 3.9 | Runtime functions: atom, deref, swap!, reset!                                         | --                                        | Atom state management. Dep: T3.5                                                                       |
 
 ### Phase 3b: core.clj AOT pipeline
 

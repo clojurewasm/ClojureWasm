@@ -17,6 +17,11 @@ const value_mod = @import("../../common/value.zig");
 const Fn = value_mod.Fn;
 const Env = @import("../../common/env.zig").Env;
 const Namespace = @import("../../common/namespace.zig").Namespace;
+const collections = @import("../../common/collections.zig");
+const PersistentList = collections.PersistentList;
+const PersistentVector = collections.PersistentVector;
+const PersistentArrayMap = collections.PersistentArrayMap;
+const PersistentHashSet = collections.PersistentHashSet;
 
 /// VM execution errors.
 pub const VMError = error{
@@ -29,10 +34,20 @@ pub const VMError = error{
     InvalidInstruction,
     DivisionByZero,
     Overflow,
+    UserException,
 };
 
 const STACK_MAX: usize = 256 * 64;
 const FRAMES_MAX: usize = 64;
+const HANDLERS_MAX: usize = 16;
+
+/// Exception handler — saves state for try/catch unwinding.
+const ExceptionHandler = struct {
+    catch_ip: usize,
+    saved_sp: usize,
+    saved_frame_count: usize,
+    frame_idx: usize, // which frame the handler belongs to
+};
 
 /// Call frame — tracks execution state for a function invocation.
 const CallFrame = struct {
@@ -51,6 +66,16 @@ pub const VM = struct {
     frame_count: usize,
     /// Allocated closures (for cleanup).
     allocated_fns: std.ArrayListUnmanaged(*const Fn),
+    /// Allocated collection backing arrays (for cleanup).
+    allocated_slices: std.ArrayListUnmanaged([]const Value),
+    /// Allocated collection structs — typed lists for proper deallocation.
+    allocated_lists: std.ArrayListUnmanaged(*const PersistentList),
+    allocated_vectors: std.ArrayListUnmanaged(*const PersistentVector),
+    allocated_maps: std.ArrayListUnmanaged(*const PersistentArrayMap),
+    allocated_sets: std.ArrayListUnmanaged(*const PersistentHashSet),
+    /// Exception handler stack.
+    handlers: [HANDLERS_MAX]ExceptionHandler,
+    handler_count: usize,
     /// Runtime environment (Namespace/Var resolution).
     env: ?*Env,
 
@@ -62,6 +87,13 @@ pub const VM = struct {
             .frames = undefined,
             .frame_count = 0,
             .allocated_fns = .empty,
+            .allocated_slices = .empty,
+            .allocated_lists = .empty,
+            .allocated_vectors = .empty,
+            .allocated_maps = .empty,
+            .allocated_sets = .empty,
+            .handlers = undefined,
+            .handler_count = 0,
             .env = null,
         };
     }
@@ -74,6 +106,13 @@ pub const VM = struct {
             .frames = undefined,
             .frame_count = 0,
             .allocated_fns = .empty,
+            .allocated_slices = .empty,
+            .allocated_lists = .empty,
+            .allocated_vectors = .empty,
+            .allocated_maps = .empty,
+            .allocated_sets = .empty,
+            .handlers = undefined,
+            .handler_count = 0,
             .env = env,
         };
     }
@@ -83,11 +122,22 @@ pub const VM = struct {
             if (fn_ptr.closure_bindings) |cb| {
                 self.allocator.free(cb);
             }
-            // const-cast to free
             const mutable: *Fn = @constCast(fn_ptr);
             self.allocator.destroy(mutable);
         }
         self.allocated_fns.deinit(self.allocator);
+        for (self.allocated_slices.items) |slice| {
+            self.allocator.free(slice);
+        }
+        self.allocated_slices.deinit(self.allocator);
+        for (self.allocated_lists.items) |p| self.allocator.destroy(@constCast(p));
+        self.allocated_lists.deinit(self.allocator);
+        for (self.allocated_vectors.items) |p| self.allocator.destroy(@constCast(p));
+        self.allocated_vectors.deinit(self.allocator);
+        for (self.allocated_maps.items) |p| self.allocator.destroy(@constCast(p));
+        self.allocated_maps.deinit(self.allocator);
+        for (self.allocated_sets.items) |p| self.allocator.destroy(@constCast(p));
+        self.allocated_sets.deinit(self.allocator);
     }
 
     /// Execute a compiled Chunk and return the result.
@@ -219,10 +269,10 @@ pub const VM = struct {
                 },
 
                 // [I] Collections
-                .list_new, .vec_new, .map_new, .set_new => {
-                    // Placeholder: collect N values from stack
-                    return error.InvalidInstruction;
-                },
+                .list_new => try self.buildCollection(instr.operand, .list),
+                .vec_new => try self.buildCollection(instr.operand, .vec),
+                .map_new => try self.buildCollection(instr.operand, .map),
+                .set_new => try self.buildCollection(instr.operand, .set),
 
                 // [E] Var operations
                 .var_load, .var_load_dynamic => {
@@ -252,8 +302,42 @@ pub const VM = struct {
                 },
 
                 // [K] Exceptions
-                .try_begin, .catch_begin, .try_end, .throw_ex => {
-                    return error.InvalidInstruction;
+                .try_begin => {
+                    // Register exception handler
+                    if (self.handler_count >= HANDLERS_MAX) return error.StackOverflow;
+                    const catch_ip = frame.ip + instr.operand;
+                    self.handlers[self.handler_count] = .{
+                        .catch_ip = catch_ip,
+                        .saved_sp = self.sp,
+                        .saved_frame_count = self.frame_count,
+                        .frame_idx = self.frame_count - 1,
+                    };
+                    self.handler_count += 1;
+                },
+                .catch_begin => {
+                    // Normal flow reached catch — pop handler (try body succeeded)
+                    if (self.handler_count > 0) {
+                        self.handler_count -= 1;
+                    }
+                },
+                .try_end => {
+                    // Marker only — no-op
+                },
+                .throw_ex => {
+                    const thrown = self.pop();
+                    if (self.handler_count > 0) {
+                        self.handler_count -= 1;
+                        const handler = self.handlers[self.handler_count];
+                        // Restore state
+                        self.sp = handler.saved_sp;
+                        self.frame_count = handler.saved_frame_count;
+                        // Push exception value (becomes the catch binding)
+                        try self.push(thrown);
+                        // Jump to catch handler
+                        self.frames[handler.frame_idx].ip = handler.catch_ip;
+                    } else {
+                        return error.UserException;
+                    }
                 },
 
                 // [M] Arithmetic
@@ -301,6 +385,53 @@ pub const VM = struct {
 
     fn peek(self: *VM, distance: usize) Value {
         return self.stack[self.sp - 1 - distance];
+    }
+
+    // --- Collection helper ---
+
+    const CollectionKind = enum { list, vec, map, set };
+
+    fn buildCollection(self: *VM, operand: u16, kind: CollectionKind) VMError!void {
+        // For map_new, operand is pair count; actual values = pairs * 2
+        const count: usize = if (kind == .map) @as(usize, operand) * 2 else operand;
+
+        // Pop values into a new slice
+        const items = self.allocator.alloc(Value, count) catch return error.OutOfMemory;
+        self.allocated_slices.append(self.allocator, items) catch return error.OutOfMemory;
+
+        // Pop in reverse order to maintain original order
+        var i: usize = count;
+        while (i > 0) {
+            i -= 1;
+            items[i] = self.pop();
+        }
+
+        switch (kind) {
+            .list => {
+                const lst = self.allocator.create(PersistentList) catch return error.OutOfMemory;
+                lst.* = .{ .items = items };
+                self.allocated_lists.append(self.allocator, lst) catch return error.OutOfMemory;
+                try self.push(.{ .list = lst });
+            },
+            .vec => {
+                const vec = self.allocator.create(PersistentVector) catch return error.OutOfMemory;
+                vec.* = .{ .items = items };
+                self.allocated_vectors.append(self.allocator, vec) catch return error.OutOfMemory;
+                try self.push(.{ .vector = vec });
+            },
+            .map => {
+                const m = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
+                m.* = .{ .entries = items };
+                self.allocated_maps.append(self.allocator, m) catch return error.OutOfMemory;
+                try self.push(.{ .map = m });
+            },
+            .set => {
+                const s = self.allocator.create(PersistentHashSet) catch return error.OutOfMemory;
+                s.* = .{ .items = items };
+                self.allocated_sets.append(self.allocator, s) catch return error.OutOfMemory;
+                try self.push(.{ .set = s });
+            },
+        }
     }
 
     // --- Call helper ---
@@ -1180,4 +1311,168 @@ test "VM compiler+vm: loop/recur counts to 5" {
     defer vm.deinit();
     const result = try vm.run(&compiler.chunk);
     try std.testing.expectEqual(Value{ .integer = 5 }, result);
+}
+
+test "VM vec_new creates vector" {
+    // Push 3 values, vec_new 3 -> [1 2 3]
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const c1 = try chunk.addConstant(.{ .integer = 1 });
+    const c2 = try chunk.addConstant(.{ .integer = 2 });
+    const c3 = try chunk.addConstant(.{ .integer = 3 });
+    try chunk.emit(.const_load, c1);
+    try chunk.emit(.const_load, c2);
+    try chunk.emit(.const_load, c3);
+    try chunk.emit(.vec_new, 3);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try std.testing.expect(result.vector.items[0].eql(.{ .integer = 1 }));
+    try std.testing.expect(result.vector.items[1].eql(.{ .integer = 2 }));
+    try std.testing.expect(result.vector.items[2].eql(.{ .integer = 3 }));
+}
+
+test "VM list_new creates list" {
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const c1 = try chunk.addConstant(.{ .integer = 10 });
+    const c2 = try chunk.addConstant(.{ .integer = 20 });
+    try chunk.emit(.const_load, c1);
+    try chunk.emit(.const_load, c2);
+    try chunk.emit(.list_new, 2);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try std.testing.expect(result.list.items[0].eql(.{ .integer = 10 }));
+    try std.testing.expect(result.list.items[1].eql(.{ .integer = 20 }));
+}
+
+test "VM map_new creates map" {
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    // {:a 1 :b 2} -> 4 values, map_new 2 (pairs)
+    const ka = try chunk.addConstant(.{ .keyword = .{ .ns = null, .name = "a" } });
+    const v1 = try chunk.addConstant(.{ .integer = 1 });
+    const kb = try chunk.addConstant(.{ .keyword = .{ .ns = null, .name = "b" } });
+    const v2 = try chunk.addConstant(.{ .integer = 2 });
+    try chunk.emit(.const_load, ka);
+    try chunk.emit(.const_load, v1);
+    try chunk.emit(.const_load, kb);
+    try chunk.emit(.const_load, v2);
+    try chunk.emit(.map_new, 2);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .map);
+    try std.testing.expectEqual(@as(usize, 2), result.map.count());
+}
+
+test "VM try/catch handles throw" {
+    // (try (throw "err") (catch e e)) => "err"
+    // Bytecode:
+    //   try_begin -> catch
+    //   const_load "err"
+    //   throw_ex
+    //   jump -> end
+    //   catch_begin     ; catch handler starts here
+    //   ; exception value is on stack as local
+    //   local_load 0    ; load exception
+    //   pop             ; cleanup catch local
+    //   jump -> after_catch
+    //   try_end
+    //   ret
+    //
+    // Simpler approach using compiler:
+    const allocator = std.testing.allocator;
+    const node_mod = @import("../../common/analyzer/node.zig");
+    const Node = node_mod.Node;
+    const compiler_mod = @import("../../common/bytecode/compiler.zig");
+
+    var compiler = compiler_mod.Compiler.init(allocator);
+    defer compiler.deinit();
+
+    // AST: (try (throw "err") (catch e e))
+    var throw_expr = Node{ .constant = .{ .string = "err" } };
+    var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
+    var throw_node = Node{ .throw_node = &throw_data };
+
+    var catch_body = Node{ .local_ref = .{ .name = "e", .idx = 0, .source = .{} } };
+    const catch_clause = node_mod.CatchClause{
+        .binding_name = "e",
+        .body = &catch_body,
+    };
+    var try_data = node_mod.TryNode{
+        .body = &throw_node,
+        .catch_clause = catch_clause,
+        .finally_body = null,
+        .source = .{},
+    };
+    const try_node = Node{ .try_node = &try_data };
+
+    try compiler.compile(&try_node);
+    try compiler.chunk.emitOp(.ret);
+
+    var vm = VM.init(allocator);
+    defer vm.deinit();
+    const result = try vm.run(&compiler.chunk);
+    try std.testing.expect(result == .string);
+    try std.testing.expectEqualStrings("err", result.string);
+}
+
+test "VM throw without handler returns UserException" {
+    // (throw "err") without try/catch
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    const idx = try chunk.addConstant(.{ .string = "oops" });
+    try chunk.emit(.const_load, idx);
+    try chunk.emitOp(.throw_ex);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    try std.testing.expectError(error.UserException, vm.run(&chunk));
+}
+
+test "VM set_new creates set" {
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+
+    const c1 = try chunk.addConstant(.{ .integer = 1 });
+    const c2 = try chunk.addConstant(.{ .integer = 2 });
+    try chunk.emit(.const_load, c1);
+    try chunk.emit(.const_load, c2);
+    try chunk.emit(.set_new, 2);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .set);
+    try std.testing.expectEqual(@as(usize, 2), result.set.count());
+}
+
+test "VM empty vec_new" {
+    var chunk = Chunk.init(std.testing.allocator);
+    defer chunk.deinit();
+    try chunk.emit(.vec_new, 0);
+    try chunk.emitOp(.ret);
+
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    const result = try vm.run(&chunk);
+    try std.testing.expect(result == .vector);
+    try std.testing.expectEqual(@as(usize, 0), result.vector.items.len);
 }
