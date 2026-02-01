@@ -1,5 +1,15 @@
 # log_0000_kickoff
 
+## Task 8: Update settings.json with PostToolUse hook — DONE
+
+Added PostToolUse hook to .claude/settings.json:
+- Matcher: "Edit|Write" (triggers on file edits/writes)
+- Condition: only runs when edited file has .zig extension
+- Action: runs `zig build test` and shows last 20 lines of output
+- Timeout: 30 seconds
+
+This enables automatic TDD feedback: every .zig file edit triggers a test run.
+
 ## Task 7: Create docs/adr/0001-nan-boxing.md scaffold — DONE
 
 Created ADR-0001 documenting the "tagged union first, NaN boxing later" decision.

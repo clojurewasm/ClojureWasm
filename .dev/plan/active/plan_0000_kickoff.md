@@ -23,7 +23,7 @@ the project is ready for Phase 1 (Reader + Analyzer) implementation.
 | 5 | Create build.zig scaffold (zig build / zig build test pass)   | done    | Minimal scaffold, tests pass with 0 tests |
 | 6 | Create src/ directory structure per future.md SS17            | done    | api/, common/, native/, wasm_rt/, wasm/   |
 | 7 | Create docs/adr/0001-nan-boxing.md scaffold                   | done    | ADR template with initial context         |
-| 8 | Update settings.json with PostToolUse hook                    | pending | zig build test on Edit/Write              |
+| 8 | Update settings.json with PostToolUse hook                    | done    | zig build test on Edit/Write              |
 | 9 | Update memo.md to point to plan_0001 / Phase 1                | pending | Final kickoff task                        |
 
 ## Design Notes
