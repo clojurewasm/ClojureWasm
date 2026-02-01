@@ -417,3 +417,203 @@ test "core.clj - drop" {
     try testing.expectEqual(Value{ .integer = 4 }, result.list.items[1]);
     try testing.expectEqual(Value{ .integer = 5 }, result.list.items[2]);
 }
+
+test "core.clj - comment" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(comment 1 2 3)");
+    try testing.expectEqual(Value.nil, result);
+}
+
+test "core.clj - cond" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // First branch true
+    const r1 = try evalString(alloc, &env,
+        \\(cond
+        \\  true 1
+        \\  true 2)
+    );
+    try testing.expectEqual(Value{ .integer = 1 }, r1);
+
+    // Second branch true
+    const r2 = try evalString(alloc, &env,
+        \\(cond
+        \\  false 1
+        \\  true 2)
+    );
+    try testing.expectEqual(Value{ .integer = 2 }, r2);
+
+    // No branch matches -> nil
+    const r3 = try evalString(alloc, &env,
+        \\(cond
+        \\  false 1
+        \\  false 2)
+    );
+    try testing.expectEqual(Value.nil, r3);
+}
+
+test "core.clj - if-not" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(if-not false 1 2)");
+    try testing.expectEqual(Value{ .integer = 1 }, r1);
+
+    const r2 = try evalString(alloc, &env, "(if-not true 1 2)");
+    try testing.expectEqual(Value{ .integer = 2 }, r2);
+}
+
+test "core.clj - when-not" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(when-not false 42)");
+    try testing.expectEqual(Value{ .integer = 42 }, r1);
+
+    const r2 = try evalString(alloc, &env, "(when-not true 42)");
+    try testing.expectEqual(Value.nil, r2);
+}
+
+test "core.clj - and/or" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // and
+    const a1 = try evalString(alloc, &env, "(and true true)");
+    try testing.expectEqual(Value{ .boolean = true }, a1);
+    const a2 = try evalString(alloc, &env, "(and true false)");
+    try testing.expectEqual(Value{ .boolean = false }, a2);
+    const a3 = try evalString(alloc, &env, "(and nil 42)");
+    try testing.expectEqual(Value.nil, a3);
+    const a4 = try evalString(alloc, &env, "(and 1 2 3)");
+    try testing.expectEqual(Value{ .integer = 3 }, a4);
+
+    // or
+    const o1 = try evalString(alloc, &env, "(or nil false 42)");
+    try testing.expectEqual(Value{ .integer = 42 }, o1);
+    const o2 = try evalString(alloc, &env, "(or nil false)");
+    try testing.expectEqual(Value{ .boolean = false }, o2);
+    const o3 = try evalString(alloc, &env, "(or 1 2)");
+    try testing.expectEqual(Value{ .integer = 1 }, o3);
+}
+
+test "core.clj - identity/constantly/complement" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(identity 42)");
+    try testing.expectEqual(Value{ .integer = 42 }, r1);
+
+    const r2 = try evalString(alloc, &env, "((constantly 99) 1 2 3)");
+    try testing.expectEqual(Value{ .integer = 99 }, r2);
+
+    const r3 = try evalString(alloc, &env, "((complement nil?) 42)");
+    try testing.expectEqual(Value{ .boolean = true }, r3);
+    const r4 = try evalString(alloc, &env, "((complement nil?) nil)");
+    try testing.expectEqual(Value{ .boolean = false }, r4);
+}
+
+test "core.clj - thread-first" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
+    _ = try evalString(alloc, &env, "(defn double [x] (* x 2))");
+
+    // (-> 5 inc double) => (double (inc 5)) => 12
+    const r1 = try evalString(alloc, &env, "(-> 5 inc double)");
+    try testing.expectEqual(Value{ .integer = 12 }, r1);
+}
+
+test "core.clj - thread-last" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // (->> (list 1 2 3) (map inc)) with inline inc
+    _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
+    const r1 = try evalString(alloc, &env, "(->> (list 1 2 3) (map inc))");
+    try testing.expect(r1 == .list);
+    try testing.expectEqual(@as(usize, 3), r1.list.items.len);
+    try testing.expectEqual(Value{ .integer = 2 }, r1.list.items[0]);
+}
+
+test "core.clj - defn-" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn- private-fn [x] (+ x 10))");
+    const result = try evalString(alloc, &env, "(private-fn 5)");
+    try testing.expectEqual(Value{ .integer = 15 }, result);
+}
+
+test "core.clj - dotimes" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // dotimes returns nil (side-effect macro)
+    const result = try evalString(alloc, &env, "(dotimes [i 3] i)");
+    try testing.expectEqual(Value.nil, result);
+}

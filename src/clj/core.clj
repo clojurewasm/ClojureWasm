@@ -46,3 +46,87 @@
     (if (if (> i 0) s nil)
       (recur (- i 1) (next s))
       s)))
+
+;; Core macros
+
+(defmacro comment [& body] nil)
+
+(defmacro cond [& clauses]
+  (when (seq clauses)
+    (let [test (first clauses)
+          then (first (rest clauses))
+          more (rest (rest clauses))]
+      (if (seq more)
+        `(if ~test ~then (cond ~@more))
+        `(if ~test ~then)))))
+
+(defmacro if-not [test then else]
+  `(if (not ~test) ~then ~else))
+
+(defmacro when-not [test & body]
+  `(if (not ~test) (do ~@body)))
+
+;; Utility functions
+
+(defn identity [x] x)
+
+(defn constantly [x]
+  (fn [& args] x))
+
+(defn complement [f]
+  (fn [& args]
+    (not (apply f args))))
+
+(defmacro defn- [name & fdecl]
+  `(def ~name (fn ~name ~@fdecl)))
+
+;; Threading macros
+
+(defmacro -> [x & forms]
+  (if (seq forms)
+    (let [form (first forms)
+          threaded (if (seq? form)
+                     `(~(first form) ~x ~@(rest form))
+                     `(~form ~x))]
+      `(-> ~threaded ~@(rest forms)))
+    x))
+
+(defmacro ->> [x & forms]
+  (if (seq forms)
+    (let [form (first forms)
+          threaded (if (seq? form)
+                     `(~(first form) ~@(rest form) ~x)
+                     `(~form ~x))]
+      `(->> ~threaded ~@(rest forms)))
+    x))
+
+;; Iteration
+
+(defmacro dotimes [bindings & body]
+  (let [i (first bindings)
+        n (first (rest bindings))]
+    `(let [n# ~n]
+       (loop [~i 0]
+         (when (< ~i n#)
+           ~@body
+           (recur (+ ~i 1)))))))
+
+;; and/or (2-arity for now; multi-arity requires recursive macros)
+
+(defmacro and
+  [& args]
+  (let [a (first args)
+        more (rest args)]
+    (if (seq more)
+      `(let [and__val ~a]
+         (if and__val (and ~@more) and__val))
+      a)))
+
+(defmacro or
+  [& args]
+  (let [a (first args)
+        more (rest args)]
+    (if (seq more)
+      `(let [or__val ~a]
+         (if or__val or__val (or ~@more)))
+      a)))

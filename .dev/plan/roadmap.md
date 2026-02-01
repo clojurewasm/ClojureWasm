@@ -97,7 +97,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 3.11 | Build-time AOT: core.clj -> bytecode -> @embedFile                  | --                            | build.zig step: compile host tool, use it to compile core.clj, embed result    |
 | 3.12 | Startup: VM loads embedded bytecode, registers Vars                 | --                            | Fast startup, no parse needed                                                  |
 | 3.13 | Higher-order functions in core.clj: map, filter, reduce, take, drop | task_0032_higher_order_fns.md | Pure Clojure definitions, AOT compiled                                         |
-| 3.14 | Remaining core macros: if-let, when-let, condp, case, doto, ..      | --                            | Form->Form transformations                                                     |
+| 3.14 | Remaining core macros: if-let, when-let, condp, case, doto, ..      | task_0033_core_macros.md      | Form->Form transformations                                                     |
 
 ### Phase 3c: Integration + validation
 

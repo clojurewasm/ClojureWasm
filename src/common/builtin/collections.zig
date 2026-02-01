@@ -343,6 +343,25 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
+/// (vector & items) — creates a vector from arguments.
+pub fn vectorFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const items = try allocator.alloc(Value, args.len);
+    @memcpy(items, args);
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = items };
+    return Value{ .vector = vec };
+}
+
+/// (hash-map & kvs) — creates a map from key-value pairs.
+pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len % 2 != 0) return error.ArityError;
+    const entries = try allocator.alloc(Value, args.len);
+    @memcpy(entries, args);
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries };
+    return Value{ .map = map };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -458,6 +477,22 @@ pub const builtins = [_]BuiltinDef{
         .func = &applyFn,
         .doc = "Applies fn f to the argument list formed by prepending intervening arguments to args.",
         .arglists = "([f args] [f x args] [f x y args] [f x y z args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "vector",
+        .kind = .runtime_fn,
+        .func = &vectorFn,
+        .doc = "Creates a new vector containing the args.",
+        .arglists = "([& args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "hash-map",
+        .kind = .runtime_fn,
+        .func = &hashMapFn,
+        .doc = "Returns a new hash map with supplied mappings.",
+        .arglists = "([& keyvals])",
         .added = "1.0",
     },
 };
@@ -669,8 +704,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 14 entries" {
-    try testing.expectEqual(14, builtins.len);
+test "builtins table has 16 entries" {
+    try testing.expectEqual(16, builtins.len);
 }
 
 test "reverse list" {

@@ -4,7 +4,7 @@
 
 - Phase: 3b (core.clj AOT pipeline)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Remaining core macros (Task 3.14, T3.11/T3.12 deferred)
+- Current task: CLI entry point (Task 3.15, T3.11/T3.12 deferred)
 - Task file:
 - Blockers: none
 
@@ -37,5 +37,6 @@
 | T3.9    | .dev/plan/archive/task_0030_atom.md                         | 2026-02-02 |
 | T3.10   | .dev/plan/archive/task_0031_core_bootstrap.md               | 2026-02-02 |
 | T3.13   | .dev/plan/archive/task_0032_higher_order_fns.md             | 2026-02-02 |
+| T3.14   | .dev/plan/archive/task_0033_core_macros.md                  | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
