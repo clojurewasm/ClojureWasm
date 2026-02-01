@@ -62,3 +62,29 @@ Helper functions: isSequential(), sequentialItems() for list/vector abstraction.
 
 10 new collection tests in collections.zig, 13 new tests in value.zig.
 Total: ~54 tests. All passing via TDD.
+
+## Task 1.5: Create Tokenizer — DONE
+
+Created src/common/reader/tokenizer.zig (766 lines). Stateful iterator
+converting Clojure source text into a token stream.
+
+TokenKind enum (u8) with 28 variants:
+- Delimiters: lparen, rparen, lbracket, rbracket, lbrace, rbrace
+- Literals: nil, true_lit, false_lit, integer, float, ratio, string, character, keyword, symbol
+- Macro chars: quote, deref, meta, syntax_quote, unquote, unquote_splicing
+- Dispatch: discard, var_quote, fn_lit, set_lit, regex, symbolic, reader_cond, reader_cond_splicing, ns_map, tag
+- Special: eof, invalid
+
+Token struct: kind + start/len (source offset) + line/column for error reporting.
+
+Key design decisions:
+- Comma treated as whitespace (Clojure convention)
+- # valid inside symbols (gensym: foo#) but dispatches at token start
+- Escape processing deferred to Reader stage
+- Number support: hex (0x), radix (NNr), ratio (N/N), float, exponent, BigN/BigM suffix
+- Shebang (#!) and semicolon comments skipped
+- readSymbol checks for nil/true/false literals
+
+27 tests covering: EOF, whitespace, comments, delimiters, symbols, strings,
+keywords, numbers (all variants), characters, macro chars, dispatch macros,
+regex, tagged literals, line/column tracking, edge cases. All passing via TDD.
