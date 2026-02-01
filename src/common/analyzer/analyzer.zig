@@ -122,6 +122,10 @@ pub const Analyzer = struct {
         .{ "def", analyzeDef },
         .{ "quote", analyzeQuote },
         .{ "defmacro", analyzeDefmacro },
+        .{ "loop", analyzeLoop },
+        .{ "recur", analyzeRecur },
+        .{ "throw", analyzeThrow },
+        .{ "try", analyzeTry },
     });
 
     // === Main entry point ===
@@ -475,6 +479,169 @@ pub const Analyzer = struct {
 
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .def_node = def_data };
+        return n;
+    }
+
+    fn analyzeLoop(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (loop [bindings...] body...)
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "loop requires binding vector", form);
+        }
+
+        if (items[1].data != .vector) {
+            return self.analysisError(.value_error, "loop bindings must be a vector", items[1]);
+        }
+
+        const binding_pairs = items[1].data.vector;
+        if (binding_pairs.len % 2 != 0) {
+            return self.analysisError(.value_error, "loop bindings must have even number of forms", items[1]);
+        }
+
+        const start_locals = self.locals.items.len;
+
+        var bindings = self.allocator.alloc(node_mod.LetBinding, binding_pairs.len / 2) catch return error.OutOfMemory;
+        var bi: usize = 0;
+        var i: usize = 0;
+        while (i < binding_pairs.len) : (i += 2) {
+            if (binding_pairs[i].data != .symbol) {
+                return self.analysisError(.value_error, "loop binding name must be a symbol", binding_pairs[i]);
+            }
+            const name = binding_pairs[i].data.symbol.name;
+            const init_node = try self.analyze(binding_pairs[i + 1]);
+
+            bindings[bi] = .{ .name = name, .init = init_node };
+            bi += 1;
+
+            const idx: u32 = @intCast(self.locals.items.len);
+            self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;
+        }
+
+        const body = try self.analyzeBody(items[2..], form);
+
+        self.locals.shrinkRetainingCapacity(start_locals);
+
+        const loop_data = self.allocator.create(node_mod.LoopNode) catch return error.OutOfMemory;
+        loop_data.* = .{
+            .bindings = bindings,
+            .body = body,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .loop_node = loop_data };
+        return n;
+    }
+
+    fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (recur arg1 arg2 ...)
+        _ = form;
+        var args = self.allocator.alloc(*Node, items.len - 1) catch return error.OutOfMemory;
+        for (items[1..], 0..) |item, i| {
+            args[i] = try self.analyze(item);
+        }
+
+        const recur_data = self.allocator.create(node_mod.RecurNode) catch return error.OutOfMemory;
+        recur_data.* = .{
+            .args = args,
+            .source = self.sourceFromForm(items[0]),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .recur_node = recur_data };
+        return n;
+    }
+
+    fn analyzeThrow(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (throw expr)
+        if (items.len != 2) {
+            return self.analysisError(.arity_error, "throw requires exactly 1 argument", form);
+        }
+
+        const expr = try self.analyze(items[1]);
+
+        const throw_data = self.allocator.create(node_mod.ThrowNode) catch return error.OutOfMemory;
+        throw_data.* = .{
+            .expr = expr,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .throw_node = throw_data };
+        return n;
+    }
+
+    fn analyzeTry(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (try body... (catch ExType e handler...) (finally cleanup...))
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "try requires at least a body expression", form);
+        }
+
+        var body_forms: std.ArrayListUnmanaged(Form) = .empty;
+        var catch_clause: ?node_mod.CatchClause = null;
+        var finally_body: ?*Node = null;
+
+        for (items[1..]) |item| {
+            if (item.data == .list) {
+                const sub_items = item.data.list;
+                if (sub_items.len > 0 and sub_items[0].data == .symbol and sub_items[0].data.symbol.ns == null) {
+                    const name = sub_items[0].data.symbol.name;
+
+                    if (std.mem.eql(u8, name, "catch")) {
+                        // (catch ExType name body*)
+                        if (sub_items.len < 4) {
+                            return self.analysisError(.arity_error, "catch requires (catch ExceptionType name body*)", item);
+                        }
+                        // sub_items[1] = ExType (ignored in Phase 1c)
+                        if (sub_items[2].data != .symbol) {
+                            return self.analysisError(.value_error, "catch binding must be a symbol", sub_items[2]);
+                        }
+                        const binding_name = sub_items[2].data.symbol.name;
+
+                        const saved_depth = self.locals.items.len;
+                        self.locals.append(self.allocator, .{
+                            .name = binding_name,
+                            .idx = @intCast(saved_depth),
+                        }) catch return error.OutOfMemory;
+
+                        const handler_body = try self.analyzeBody(sub_items[3..], item);
+
+                        self.locals.shrinkRetainingCapacity(saved_depth);
+
+                        catch_clause = .{
+                            .binding_name = binding_name,
+                            .body = handler_body,
+                        };
+                        continue;
+                    }
+
+                    if (std.mem.eql(u8, name, "finally")) {
+                        // (finally body*)
+                        if (sub_items.len < 2) {
+                            return self.analysisError(.arity_error, "finally requires at least one expression", item);
+                        }
+
+                        finally_body = try self.analyzeBody(sub_items[1..], item);
+                        continue;
+                    }
+                }
+            }
+
+            // Not catch/finally -> body form
+            body_forms.append(self.allocator, item) catch return error.OutOfMemory;
+        }
+
+        const body_node = try self.analyzeBody(body_forms.items, form);
+
+        const try_data = self.allocator.create(node_mod.TryNode) catch return error.OutOfMemory;
+        try_data.* = .{
+            .body = body_node,
+            .catch_clause = catch_clause,
+            .finally_body = finally_body,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .try_node = try_data };
         return n;
     }
 
@@ -1016,6 +1183,251 @@ test "formToValue converts primitives" {
     const sym = formToValue(.{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
     try std.testing.expect(sym == .symbol);
     try std.testing.expectEqualStrings("foo", sym.symbol.name);
+}
+
+test "analyze (loop [x 0] x)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const bindings = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } },
+        .{ .data = .{ .integer = 0 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "loop" } } },
+        .{ .data = .{ .vector = &bindings } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("loop", result.kindName());
+    try std.testing.expectEqual(@as(usize, 1), result.loop_node.bindings.len);
+    try std.testing.expectEqualStrings("x", result.loop_node.bindings[0].name);
+    try std.testing.expectEqualStrings("local-ref", result.loop_node.body.kindName());
+}
+
+test "analyze (recur 1 2)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "recur" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .integer = 2 } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("recur", result.kindName());
+    try std.testing.expectEqual(@as(usize, 2), result.recur_node.args.len);
+}
+
+test "analyze (throw \"error\")" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "throw" } } },
+        .{ .data = .{ .string = "error" } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("throw", result.kindName());
+    try std.testing.expect(result.throw_node.expr.constant.eql(.{ .string = "error" }));
+}
+
+test "analyze (try 1 (catch Exception e 2))" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    // (catch Exception e 2)
+    const catch_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "catch" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "Exception" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "e" } } },
+        .{ .data = .{ .integer = 2 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "try" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .list = &catch_items } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("try", result.kindName());
+    try std.testing.expect(result.try_node.catch_clause != null);
+    try std.testing.expectEqualStrings("e", result.try_node.catch_clause.?.binding_name);
+    try std.testing.expect(result.try_node.finally_body == null);
+    // body should be constant 1
+    try std.testing.expect(result.try_node.body.constant.eql(.{ .integer = 1 }));
+}
+
+test "analyze (try 1 (finally 3))" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const finally_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "finally" } } },
+        .{ .data = .{ .integer = 3 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "try" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .list = &finally_items } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("try", result.kindName());
+    try std.testing.expect(result.try_node.catch_clause == null);
+    try std.testing.expect(result.try_node.finally_body != null);
+}
+
+test "analyze (try 1 (catch Exception e 2) (finally 3))" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const catch_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "catch" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "Exception" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "e" } } },
+        .{ .data = .{ .integer = 2 } },
+    };
+    const finally_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "finally" } } },
+        .{ .data = .{ .integer = 3 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "try" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .list = &catch_items } },
+        .{ .data = .{ .list = &finally_items } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectEqualStrings("try", result.kindName());
+    try std.testing.expect(result.try_node.catch_clause != null);
+    try std.testing.expect(result.try_node.finally_body != null);
+}
+
+test "analyze error: loop without binding vector" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "loop" } } },
+    };
+    const result = a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectError(error.ArityError, result);
+}
+
+test "analyze error: loop odd bindings" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const bindings = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } },
+        .{ .data = .{ .integer = 0 } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "y" } } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "loop" } } },
+        .{ .data = .{ .vector = &bindings } },
+        .{ .data = .{ .integer = 1 } },
+    };
+    const result = a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectError(error.ValueError, result);
+}
+
+test "analyze error: throw wrong arity" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "throw" } } },
+    };
+    const result = a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectError(error.ArityError, result);
+}
+
+test "analyze error: catch missing binding symbol" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const catch_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "catch" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "Exception" } } },
+        .{ .data = .{ .integer = 42 } }, // not a symbol
+        .{ .data = .{ .integer = 2 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "try" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .list = &catch_items } },
+    };
+    const result = a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectError(error.ValueError, result);
+}
+
+test "analyze catch scoping - e not visible after try" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    // (try 1 (catch Exception e e))
+    const catch_items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "catch" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "Exception" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "e" } } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "e" } } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "try" } } },
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .list = &catch_items } },
+    };
+    const result = try a.analyze(.{ .data = .{ .list = &items } });
+    // e inside catch handler should be local_ref
+    try std.testing.expectEqualStrings("local-ref", result.try_node.catch_clause.?.body.kindName());
+
+    // After try, e should be var_ref (not local)
+    const e_after = try a.analyze(.{ .data = .{ .symbol = .{ .ns = null, .name = "e" } } });
+    try std.testing.expectEqualStrings("var-ref", e_after.kindName());
+}
+
+test "analyze loop scoping - x not visible after loop" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const bindings = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } },
+        .{ .data = .{ .integer = 0 } },
+    };
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "loop" } } },
+        .{ .data = .{ .vector = &bindings } },
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } },
+    };
+    _ = try a.analyze(.{ .data = .{ .list = &items } });
+
+    // After loop, x should be var_ref
+    const x_after = try a.analyze(.{ .data = .{ .symbol = .{ .ns = null, .name = "x" } } });
+    try std.testing.expectEqualStrings("var-ref", x_after.kindName());
 }
 
 test "analyze empty list -> nil" {

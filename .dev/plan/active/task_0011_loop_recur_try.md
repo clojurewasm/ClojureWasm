@@ -65,3 +65,14 @@ Node types (LoopNode, RecurNode, ThrowNode, TryNode, CatchClause) already exist 
 | analyzer.zig   | Add 4 handlers + 4 table entries + tests         |
 
 ## Log
+
+- Added analyzeLoop, analyzeRecur, analyzeThrow, analyzeTry to special_forms table
+- loop: same structure as let (binding vector + body), scoped locals
+- recur: args only, no arity check at analysis (deferred to runtime)
+- throw: exactly 1 arg, arity_error otherwise
+- try: walks items to separate body/catch/finally
+  - catch: (catch ExType name body*), 4+ elements, ExType ignored in Phase 1c
+  - catch binding scoped to handler body
+  - finally: (finally body*), 2+ elements
+- Tests: 10 new tests (happy paths + error cases + scoping)
+- All tests pass
