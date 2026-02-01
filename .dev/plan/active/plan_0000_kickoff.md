@@ -20,7 +20,7 @@ the project is ready for Phase 1 (Reader + Analyzer) implementation.
 | 2 | Create plan_0001_bootstrap.md (Phase 1-3 implementation plan) | done    | Based on future.md SS19                   |
 | 3 | Create .dev/notes/decisions.md (design decisions)             | done    | NaN boxing timing, GC strategy, etc.      |
 | 4 | Set up flake.nix + flake.lock                                 | done    | Pin Zig 0.15.2 + toolchain                |
-| 5 | Create build.zig scaffold (zig build / zig build test pass)   | pending | Minimal scaffold, tests pass with 0 tests |
+| 5 | Create build.zig scaffold (zig build / zig build test pass)   | done    | Minimal scaffold, tests pass with 0 tests |
 | 6 | Create src/ directory structure per future.md SS17            | pending | api/, common/, native/, wasm_rt/, wasm/   |
 | 7 | Create docs/adr/0001-nan-boxing.md scaffold                   | pending | ADR template with initial context         |
 | 8 | Update settings.json with PostToolUse hook                    | pending | zig build test on Edit/Write              |

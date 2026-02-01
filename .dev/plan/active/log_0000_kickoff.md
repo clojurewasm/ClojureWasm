@@ -1,5 +1,17 @@
 # log_0000_kickoff
 
+## Task 5: Create build.zig scaffold — DONE
+
+Created build.zig, build.zig.zon, src/root.zig (library root with empty test block),
+and src/main.zig (minimal executable printing version string).
+
+- `zig build` compiles successfully
+- `zig build test` passes with 0 tests
+- `zig build run` prints "ClojureWasm v0.0.1"
+
+Executable name: clj-wasm. Library module name: ClojureWasm.
+Uses Zig 0.15.2 stdout API pattern (std.fs.File.stdout().writer(&buf)).
+
 ## Task 4: Set up flake.nix + flake.lock — DONE
 
 Created flake.nix pinning Zig 0.15.2 + toolchain (wasmtime, hyperfine, yq, jq,
