@@ -169,10 +169,10 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4e: REPL + Wasm
 
-| #    | Task                      | Archive | Notes                             |
-| ---- | ------------------------- | ------- | --------------------------------- |
-| 4.12 | Interactive REPL          | --      | Line editing, history, completion |
-| 4.13 | Wasm target (wasm32-wasi) | --      | Build + test on wasmtime          |
+| #    | Task                      | Archive                       | Notes                                        |
+| ---- | ------------------------- | ----------------------------- | -------------------------------------------- |
+| 4.12 | Interactive REPL          | task_0048_interactive_repl.md | Multi-line, error recovery, TreeWalk backend |
+| 4.13 | Wasm target (wasm32-wasi) | --                            | Build + test on wasmtime                     |
 
 ### Phase 4f: Directory Restructuring
 

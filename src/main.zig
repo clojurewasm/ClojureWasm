@@ -3,7 +3,7 @@
 // Usage:
 //   clj-wasm -e "expr"    Evaluate expression and print result
 //   clj-wasm file.clj     Evaluate file and print last result
-//   clj-wasm              Print version info (REPL stub)
+//   clj-wasm              Start interactive REPL
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -26,8 +26,18 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-        _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+        // No args — start REPL
+        var env = Env.init(alloc);
+        defer env.deinit();
+        registry.registerBuiltins(&env) catch {
+            std.debug.print("Error: failed to register builtins\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadCore(alloc, &env) catch {
+            std.debug.print("Error: failed to load core.clj\n", .{});
+            std.process.exit(1);
+        };
+        runRepl(alloc, &env);
         return;
     }
 
@@ -63,6 +73,126 @@ pub fn main() !void {
         defer allocator.free(source);
         evalAndPrint(alloc, source, use_vm);
     }
+}
+
+fn runRepl(allocator: Allocator, env: *Env) void {
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+
+    _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+
+    var line_buf: [65536]u8 = undefined;
+    var input_buf: [65536]u8 = undefined;
+    var input_len: usize = 0;
+    var depth: i32 = 0;
+
+    while (true) {
+        // Prompt
+        const prompt: []const u8 = if (depth > 0) "     " else "user=> ";
+        _ = stdout.write(prompt) catch {};
+
+        // Read a line into separate buffer to avoid memcpy alias
+        const line_end = readLine(stdin, &line_buf) orelse {
+            // EOF (Ctrl-D)
+            _ = stdout.write("\n") catch {};
+            break;
+        };
+
+        const trimmed = std.mem.trim(u8, line_buf[0..line_end], " \t\r");
+
+        // Skip empty lines at top level
+        if (trimmed.len == 0 and depth == 0) continue;
+
+        // Append to input buffer
+        if (input_len > 0) {
+            input_buf[input_len] = '\n';
+            input_len += 1;
+        }
+        if (input_len + trimmed.len > input_buf.len) {
+            _ = stdout.write("Error: input too long\n") catch {};
+            input_len = 0;
+            depth = 0;
+            continue;
+        }
+        @memcpy(input_buf[input_len .. input_len + trimmed.len], trimmed);
+        input_len += trimmed.len;
+
+        // Update delimiter depth
+        depth = countDelimiterDepth(input_buf[0..input_len]);
+
+        // If unbalanced, continue reading
+        if (depth > 0) continue;
+
+        // Evaluate
+        const source = input_buf[0..input_len];
+        const result = bootstrap.evalString(allocator, env, source);
+
+        if (result) |val| {
+            var buf: [65536]u8 = undefined;
+            const output = formatValue(&buf, val);
+            _ = stdout.write(output) catch {};
+            _ = stdout.write("\n") catch {};
+        } else |_| {
+            _ = stdout.write("Error: evaluation failed\n") catch {};
+        }
+
+        // Reset for next input
+        input_len = 0;
+        depth = 0;
+    }
+}
+
+/// Read a line from file into buf. Returns line length, or null on EOF with no data.
+fn readLine(file: std.fs.File, buf: []u8) ?usize {
+    var pos: usize = 0;
+    while (pos < buf.len) {
+        var byte: [1]u8 = undefined;
+        const n = file.read(&byte) catch return null;
+        if (n == 0) {
+            // EOF
+            if (pos > 0) return pos;
+            return null;
+        }
+        if (byte[0] == '\n') {
+            return pos;
+        }
+        buf[pos] = byte[0];
+        pos += 1;
+    }
+    // Buffer full
+    return pos;
+}
+
+/// Count nesting depth of delimiters in source.
+/// Returns > 0 if more openers than closers, 0 if balanced, < 0 if over-closed.
+fn countDelimiterDepth(source: []const u8) i32 {
+    var d: i32 = 0;
+    var in_string = false;
+    var in_comment = false;
+    var i: usize = 0;
+    while (i < source.len) : (i += 1) {
+        const c = source[i];
+        if (in_comment) {
+            if (c == '\n') in_comment = false;
+            continue;
+        }
+        if (in_string) {
+            if (c == '\\') {
+                i += 1; // skip escaped char
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        switch (c) {
+            ';' => in_comment = true,
+            '"' => in_string = true,
+            '(', '[', '{' => d += 1,
+            ')', ']', '}' => d -= 1,
+            else => {},
+        }
+    }
+    return d;
 }
 
 fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool) void {
