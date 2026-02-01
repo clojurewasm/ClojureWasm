@@ -65,14 +65,14 @@ pub const VM = struct {
     frames: [FRAMES_MAX]CallFrame,
     frame_count: usize,
     /// Allocated closures (for cleanup).
-    allocated_fns: std.ArrayListUnmanaged(*const Fn),
+    allocated_fns: std.ArrayList(*const Fn),
     /// Allocated collection backing arrays (for cleanup).
-    allocated_slices: std.ArrayListUnmanaged([]const Value),
+    allocated_slices: std.ArrayList([]const Value),
     /// Allocated collection structs — typed lists for proper deallocation.
-    allocated_lists: std.ArrayListUnmanaged(*const PersistentList),
-    allocated_vectors: std.ArrayListUnmanaged(*const PersistentVector),
-    allocated_maps: std.ArrayListUnmanaged(*const PersistentArrayMap),
-    allocated_sets: std.ArrayListUnmanaged(*const PersistentHashSet),
+    allocated_lists: std.ArrayList(*const PersistentList),
+    allocated_vectors: std.ArrayList(*const PersistentVector),
+    allocated_maps: std.ArrayList(*const PersistentArrayMap),
+    allocated_sets: std.ArrayList(*const PersistentHashSet),
     /// Exception handler stack.
     handlers: [HANDLERS_MAX]ExceptionHandler,
     handler_count: usize,

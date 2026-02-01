@@ -136,7 +136,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     // Build new entries: copy base, then override/add pairs
-    var entries = std.ArrayListUnmanaged(Value).empty;
+    var entries = std.ArrayList(Value).empty;
     try entries.appendSlice(allocator, base_entries);
 
     var i: usize = 1;

@@ -44,7 +44,7 @@ pub const Reader = struct {
 
     /// Read all forms until EOF.
     pub fn readAll(self: *Reader) ReadError![]Form {
-        var forms: std.ArrayListUnmanaged(Form) = .empty;
+        var forms: std.ArrayList(Form) = .empty;
         errdefer forms.deinit(self.allocator);
         while (true) {
             const f = try self.read();
@@ -188,7 +188,7 @@ pub const Reader = struct {
     fn unescapeString(self: *Reader, s: []const u8) ![]const u8 {
         if (std.mem.indexOfScalar(u8, s, '\\') == null) return s;
 
-        var result: std.ArrayListUnmanaged(u8) = .empty;
+        var result: std.ArrayList(u8) = .empty;
         errdefer result.deinit(self.allocator);
 
         var i: usize = 0;
@@ -303,7 +303,7 @@ pub const Reader = struct {
     }
 
     fn readDelimited(self: *Reader, closing: TokenKind) ReadError![]Form {
-        var items: std.ArrayListUnmanaged(Form) = .empty;
+        var items: std.ArrayList(Form) = .empty;
         errdefer items.deinit(self.allocator);
         while (true) {
             const tok = self.nextToken();
@@ -611,7 +611,7 @@ pub const Reader = struct {
     const CollKind = enum { list, vector, map, set };
 
     fn syntaxQuoteColl(self: *Reader, items: []const Form, kind: CollKind, gensym_map: *std.StringHashMapUnmanaged([]const u8)) ReadError!Form {
-        var concat_args: std.ArrayListUnmanaged(Form) = .empty;
+        var concat_args: std.ArrayList(Form) = .empty;
         defer concat_args.deinit(self.allocator);
 
         for (items) |item| {

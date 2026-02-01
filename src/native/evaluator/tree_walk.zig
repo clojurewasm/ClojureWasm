@@ -51,9 +51,9 @@ pub const TreeWalk = struct {
     /// Exception value (set by throw).
     exception: ?Value = null,
     /// Allocated closures (for cleanup).
-    allocated_closures: std.ArrayListUnmanaged(*Closure) = .empty,
+    allocated_closures: std.ArrayList(*Closure) = .empty,
     /// Allocated Fn wrappers (for cleanup).
-    allocated_fns: std.ArrayListUnmanaged(*value_mod.Fn) = .empty,
+    allocated_fns: std.ArrayList(*value_mod.Fn) = .empty,
 
     pub fn init(allocator: Allocator) TreeWalk {
         return .{ .allocator = allocator };

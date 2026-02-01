@@ -35,14 +35,14 @@ const Local = struct {
 pub const Compiler = struct {
     allocator: std.mem.Allocator,
     chunk: Chunk,
-    locals: std.ArrayListUnmanaged(Local),
+    locals: std.ArrayList(Local),
     scope_depth: u32,
     loop_start: ?usize,
     loop_binding_count: u16,
     loop_locals_base: u16,
     /// Heap-allocated FnProtos and Fns (for cleanup).
-    fn_protos: std.ArrayListUnmanaged(*const FnProto),
-    fn_objects: std.ArrayListUnmanaged(*const Fn),
+    fn_protos: std.ArrayList(*const FnProto),
+    fn_objects: std.ArrayList(*const Fn),
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{

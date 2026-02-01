@@ -23,7 +23,7 @@ pub const Analyzer = struct {
     error_ctx: *err.ErrorContext,
 
     /// Local variable bindings stack (let, fn parameters).
-    locals: std.ArrayListUnmanaged(LocalBinding) = .empty,
+    locals: std.ArrayList(LocalBinding) = .empty,
 
     /// Source file name (for error reporting).
     source_file: ?[]const u8 = null,
@@ -337,7 +337,7 @@ pub const Analyzer = struct {
         }
 
         // Multi-arity: ([params] body...) ...
-        var arities_list: std.ArrayListUnmanaged(node_mod.FnArity) = .empty;
+        var arities_list: std.ArrayList(node_mod.FnArity) = .empty;
 
         while (idx < items.len) {
             if (items[idx].data != .list) {
@@ -374,7 +374,7 @@ pub const Analyzer = struct {
     }
 
     fn analyzeFnArity(self: *Analyzer, params_form: []const Form, body_forms: []const Form, form: Form) AnalyzeError!node_mod.FnArity {
-        var params: std.ArrayListUnmanaged([]const u8) = .empty;
+        var params: std.ArrayList([]const u8) = .empty;
         var variadic = false;
 
         const start_locals = self.locals.items.len;
@@ -577,7 +577,7 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "try requires at least a body expression", form);
         }
 
-        var body_forms: std.ArrayListUnmanaged(Form) = .empty;
+        var body_forms: std.ArrayList(Form) = .empty;
         var catch_clause: ?node_mod.CatchClause = null;
         var finally_body: ?*Node = null;
 

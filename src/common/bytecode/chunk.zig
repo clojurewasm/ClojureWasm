@@ -15,9 +15,9 @@ pub const Value = value_mod.Value;
 pub const Chunk = struct {
     allocator: std.mem.Allocator,
     /// Instruction sequence.
-    code: std.ArrayListUnmanaged(Instruction),
+    code: std.ArrayList(Instruction),
     /// Constant pool.
-    constants: std.ArrayListUnmanaged(Value),
+    constants: std.ArrayList(Value),
 
     pub fn init(allocator: std.mem.Allocator) Chunk {
         return .{
