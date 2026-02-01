@@ -4,7 +4,7 @@
 
 - Phase: 4b (VM Parity)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T4.4 — VM: string/IO + atom builtins
+- Current task: T4.5 — VM: EvalEngine compare-mode parity validation
 - Task file: (to be created)
 - Blockers: none
 
@@ -45,6 +45,7 @@
 | T4.1    | .dev/plan/archive/task_0038_vm_variadic_arith.md            | 2026-02-02 |
 | T4.2    | .dev/plan/archive/task_0039_vm_predicates.md                | 2026-02-02 |
 | T4.3    | .dev/plan/archive/task_0040_vm_collection_ops.md            | 2026-02-02 |
+| T4.4    | .dev/plan/archive/task_0041_vm_string_io_atom.md            | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

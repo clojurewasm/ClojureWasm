@@ -1357,3 +1357,86 @@ test "EvalEngine compare count on empty list" {
     try std.testing.expect(result.match);
     try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?);
 }
+
+// --- String/IO + Atom compare tests (T4.4) ---
+
+test "EvalEngine compare println returns nil" {
+    // (println 42) => nil in both backends (also prints to stdout)
+    const registry = @import("builtin/registry.zig");
+    const io_mod = @import("builtin/io.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Capture output to avoid test noise
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer buf.deinit(alloc);
+    io_mod.setOutputCapture(alloc, &buf);
+    defer io_mod.setOutputCapture(null, null);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "println", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 42 } };
+    var args = [_]*Node{&a1};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+}
+
+test "EvalEngine compare prn returns nil" {
+    // (prn "hello") => nil in both backends
+    const registry = @import("builtin/registry.zig");
+    const io_mod = @import("builtin/io.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer buf.deinit(alloc);
+    io_mod.setOutputCapture(alloc, &buf);
+    defer io_mod.setOutputCapture(null, null);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "prn", .source = .{} } };
+    var a1 = Node{ .constant = .{ .string = "hello" } };
+    var args = [_]*Node{&a1};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+}
+
+test "EvalEngine compare str multi-arg" {
+    // (str 1 "hello" nil) => "1hello" in both backends
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "str", .source = .{} } };
+    var a1 = Node{ .constant = .{ .integer = 1 } };
+    var a2 = Node{ .constant = .{ .string = "hello" } };
+    var a3 = Node{ .constant = .nil };
+    var args = [_]*Node{ &a1, &a2, &a3 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqualStrings("1hello", result.tw_value.?.string);
+    try std.testing.expectEqualStrings("1hello", result.vm_value.?.string);
+}
