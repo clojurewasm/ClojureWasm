@@ -1,6 +1,7 @@
 # Task 2.4: Create GcStrategy trait + initial NativeGc stub
 
 ## References
+
 - future.md SS5: GC modular design, 3-layer architecture
 - Beta: src/gc/gc_allocator.zig (GcAllocator), src/gc/gc.zig (GC)
 - Roadmap notes: "SS5: GcStrategy vtable. Start with arena allocator, real GC deferred. Just alloc + no-op collect initially"
@@ -8,6 +9,7 @@
 ## Plan
 
 ### Goal
+
 Define a `GcStrategy` vtable-based trait in `src/common/gc.zig` and an initial
 `ArenaGc` implementation that wraps `std.heap.ArenaAllocator`. Real GC (mark-sweep,
 semispace) is deferred — this task only provides the abstraction layer.
@@ -66,6 +68,7 @@ pub const GcStrategy = struct {
 7. Multiple allocations tracked correctly in stats
 
 ### Not in scope
+
 - Real GC (mark-sweep, semispace) — future tasks
 - WasmRtGc — future tasks (wasm_rt backend)
 - YieldPoint / safe points — Task 2.7 (VM)

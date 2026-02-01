@@ -56,7 +56,7 @@ Local bindings are tracked in a stack-like array.
 
 ### Arithmetic builtins
 
-TreeWalk needs to handle calls to builtin arithmetic ("+", "-", "*", "/", "<", ">", "<=", ">=").
+TreeWalk needs to handle calls to builtin arithmetic ("+", "-", "\*", "/", "<", ">", "<=", ">=").
 These are resolved as var_ref in the Node AST. The evaluator will check for known builtin names
 and dispatch to Zig implementations.
 
@@ -68,7 +68,7 @@ and dispatch to Zig implementations.
 4. Red: let_node
 5. Red: fn_node + call_node (simple function)
 6. Red: var_ref with Env lookup (def_node)
-7. Red: arithmetic builtins (+, -, *, /)
+7. Red: arithmetic builtins (+, -, \*, /)
 8. Red: comparison builtins (<, >, <=, >=)
 9. Red: loop_node + recur_node
 10. Red: closures (fn capturing locals)

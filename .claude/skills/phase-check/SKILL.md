@@ -27,6 +27,7 @@ Check progress of the current development phase.
 ## Output Format
 
 Summarize as:
+
 - Current phase: Phase N — [name]
 - Tasks: X/Y completed (in current phase)
 - Tests: N passed, M failed

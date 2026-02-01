@@ -13,6 +13,7 @@ namespaces (Task 2.2), Vars (Task 2.3), and be owned by the VM instance.
 Move threadlocal state from error.zig to an instance-based ErrorContext.
 
 **Before** (threadlocal):
+
 ```zig
 threadlocal var last_error: ?Info = null;
 threadlocal var msg_buf: [512]u8 = undefined;
@@ -21,6 +22,7 @@ pub fn getLastError() ?Info { ... }
 ```
 
 **After** (instance):
+
 ```zig
 pub const ErrorContext = struct {
     last_error: ?Info = null,
@@ -57,13 +59,13 @@ Reader and Analyzer need `*ErrorContext` to call setError.
 
 ### Files to modify
 
-| File               | Changes                                            |
-|--------------------|----------------------------------------------------|
-| error.zig          | Add ErrorContext struct, keep module-level fns as thin wrappers (backward compat) or remove threadlocal |
-| env.zig (new)      | Env struct with ErrorContext                       |
-| reader.zig         | Add error_ctx field, update makeError              |
-| analyzer.zig       | Add error_ctx field, update analysisError          |
-| build.zig          | Add env.zig to modules if needed                   |
+| File          | Changes                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| error.zig     | Add ErrorContext struct, keep module-level fns as thin wrappers (backward compat) or remove threadlocal |
+| env.zig (new) | Env struct with ErrorContext                                                                            |
+| reader.zig    | Add error_ctx field, update makeError                                                                   |
+| analyzer.zig  | Add error_ctx field, update analysisError                                                               |
+| build.zig     | Add env.zig to modules if needed                                                                        |
 
 ### TDD steps
 
@@ -81,6 +83,7 @@ Reader and Analyzer need `*ErrorContext` to call setError.
 ### Decision: backward compatibility
 
 Two options for the threadlocal removal:
+
 - **Option A**: Remove threadlocal entirely, require ErrorContext everywhere
 - **Option B**: Keep threadlocal as fallback, add instance methods
 

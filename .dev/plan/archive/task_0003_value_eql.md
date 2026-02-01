@@ -1,11 +1,13 @@
 # Task 0003: Implement Value.eql (equality)
 
 ## Context
+
 - Phase: 1a (Value type foundation)
 - Depends on: task_0002 (Value.format)
 - References: Clojure = semantics, cross-type numeric equality
 
 ## Plan
+
 1. Add Value.eql() with Clojure = semantics
 2. Same-type structural comparison for all variants
 3. Cross-type numeric equality: (= 1 1.0) => true via f64 conversion
@@ -15,6 +17,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Added Value.eql() with Clojure = semantics:
   - Same-type structural comparison for all variants
   - Cross-type numeric equality: (= 1 1.0) => true via f64 conversion

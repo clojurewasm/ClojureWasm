@@ -13,6 +13,7 @@ These will eventually be promoted to formal ADRs in `docs/adr/` at release time.
 to a later optimization phase.
 
 **Rationale** (future.md SS3, SS5, SS7):
+
 - NaN boxing is a native-route optimization that doesn't apply to wasm_rt
 - Getting correctness right with a simple tagged union is easier to debug
 - Beta's 28+ variant tagged union worked; the issue was maintenance cost, not performance
@@ -32,6 +33,7 @@ becomes a Phase 4 task with measurable benchmarks before/after.
 program exit). Implement real GC when memory pressure testing demands it.
 
 **Rationale** (future.md SS5):
+
 - Beta's GC lessons (fixup exhaustiveness, safe point, deep clone) are complex
 - Getting Reader/Analyzer/VM correct without GC interference reduces bug surface
 - GcStrategy trait (SS5) allows swapping in real GC without API changes
@@ -51,6 +53,7 @@ usage exceeding reasonable bounds for test workloads.
 or threadlocal state anywhere.
 
 **Rationale** (future.md SS15.5):
+
 - Beta used 8 threadlocal variables in defs.zig, making embedding impossible
 - Instantiated VM enables: multiple VMs in one process, library embedding mode,
   clean testing (each test gets fresh VM)
@@ -102,14 +105,14 @@ also has lossy collapses (`invalid_regex` → `error.InvalidToken`).
 
 **Reference survey** (2026-02):
 
-| Language    | Approach                          | Granularity       |
-|-------------|-----------------------------------|--------------------|
-| Python      | Hierarchical exception classes    | ~15 leaf classes   |
-| Raku        | `X::` namespace, Phase × Category | ~50 types          |
-| Rust        | Numbered codes (E0001+)           | ~800, no categories|
-| Go          | Sentinel values, no taxonomy      | ad hoc             |
-| Elm         | Phase-based, struct per error     | no enum            |
-| SCI/Babashka| 2 types + message string          | minimal            |
+| Language     | Approach                          | Granularity         |
+| ------------ | --------------------------------- | ------------------- |
+| Python       | Hierarchical exception classes    | ~15 leaf classes    |
+| Raku         | `X::` namespace, Phase × Category | ~50 types           |
+| Rust         | Numbered codes (E0001+)           | ~800, no categories |
+| Go           | Sentinel values, no taxonomy      | ad hoc              |
+| Elm          | Phase-based, struct per error     | no enum             |
+| SCI/Babashka | 2 types + message string          | minimal             |
 
 **Decision**: Adopt Python-style categories. Two orthogonal axes:
 
@@ -146,25 +149,25 @@ pub const Kind = enum {
 
 **Mapping from current → new**:
 
-| Current (18)             | New (12)          | Notes                              |
-|--------------------------|-------------------|------------------------------------|
-| `unexpected_eof`         | `syntax_error`    | Phase=parse distinguishes          |
-| `invalid_token`          | `syntax_error`    |                                    |
-| `unmatched_delimiter`    | `syntax_error`    |                                    |
-| `invalid_number`         | `number_error`    | Kept separate: common, actionable  |
-| `invalid_character`      | `string_error`    |                                    |
-| `invalid_string`         | `string_error`    |                                    |
-| `invalid_regex`          | `string_error`    |                                    |
-| `invalid_keyword`        | `name_error`      |                                    |
-| `undefined_symbol`       | `name_error`      |                                    |
-| `invalid_arity`          | `arity_error`     |                                    |
-| `invalid_binding`        | `value_error`     |                                    |
-| `duplicate_key`          | `value_error`     |                                    |
-| `division_by_zero`       | `arithmetic_error`|                                    |
-| `index_out_of_bounds`    | `index_error`     |                                    |
-| `type_error`             | `type_error`      |                                    |
-| `internal_error`         | `internal_error`  |                                    |
-| `out_of_memory`          | `out_of_memory`   |                                    |
+| Current (18)          | New (12)           | Notes                             |
+| --------------------- | ------------------ | --------------------------------- |
+| `unexpected_eof`      | `syntax_error`     | Phase=parse distinguishes         |
+| `invalid_token`       | `syntax_error`     |                                   |
+| `unmatched_delimiter` | `syntax_error`     |                                   |
+| `invalid_number`      | `number_error`     | Kept separate: common, actionable |
+| `invalid_character`   | `string_error`     |                                   |
+| `invalid_string`      | `string_error`     |                                   |
+| `invalid_regex`       | `string_error`     |                                   |
+| `invalid_keyword`     | `name_error`       |                                   |
+| `undefined_symbol`    | `name_error`       |                                   |
+| `invalid_arity`       | `arity_error`      |                                   |
+| `invalid_binding`     | `value_error`      |                                   |
+| `duplicate_key`       | `value_error`      |                                   |
+| `division_by_zero`    | `arithmetic_error` |                                   |
+| `index_out_of_bounds` | `index_error`      |                                   |
+| `type_error`          | `type_error`       |                                   |
+| `internal_error`      | `internal_error`   |                                   |
+| `out_of_memory`       | `out_of_memory`    |                                   |
 
 **Zig error union alignment**: Each Kind maps 1:1 to a Zig error tag.
 `ReadError` becomes a subset: `{SyntaxError, NumberError, StringError, OutOfMemory}`.
@@ -188,6 +191,7 @@ enough to stay stable (no need to add new Kinds for every new error message),
 fine enough that programmatic handling (`catch SyntaxError`) is meaningful.
 
 **Implementation summary** (Phase 1c):
+
 - Kind: 18 -> 12 entries, 1:1 with Error tags (no lossy collapse)
 - Removed: ReadError, AnalysisError type aliases
 - Removed: parseError, parseErrorFmt, analysisError, analysisErrorFmt helpers
@@ -202,6 +206,7 @@ fine enough that programmatic handling (`catch SyntaxError`) is meaningful.
 not as string comparisons in if-else chains.
 
 **Rationale** (future.md SS10):
+
 - Beta had special forms as hardcoded string comparisons in analyze.zig
 - comptime table enables: exhaustiveness checking, automatic `(doc if)` support,
   VarKind tagging, and mechanical enumeration
@@ -218,14 +223,16 @@ not as string comparisons in if-else chains.
 goal. Phase 1-2 uses Zig-only builtins to get the system running.
 
 **Rationale** (future.md SS9.6):
+
 - AOT pipeline requires a working Compiler + VM first (chicken-and-egg)
 - Beta proved that all-Zig builtins work (545 functions)
 - The migration path is: Zig builtins -> add AOT pipeline -> move macros to core.clj
 - This avoids blocking Phase 1-2 on a complex build system feature
 
 **Bootstrap sequence** (SS9.6):
+
 1. defmacro stays as special form in Zig Analyzer
-2. core.clj Phase 1: use fn* and def only (no destructuring)
+2. core.clj Phase 1: use fn\* and def only (no destructuring)
 3. core.clj Phase 2: define defn using defmacro
 4. core.clj Phase 3: use defn for everything else
 
@@ -237,6 +244,7 @@ goal. Phase 1-2 uses Zig-only builtins to get the system running.
 Wire --compare mode immediately.
 
 **Rationale** (future.md SS9.2):
+
 - Beta's --compare mode was "the most effective bug-finding tool"
 - TreeWalk is simpler to implement correctly (direct Node -> Value)
 - VM bugs often produce wrong values silently (not crashes)
@@ -254,11 +262,11 @@ produce the same result. The Compiler may emit direct opcodes for performance
 
 **File locations** (established in T2.9 / T2.10):
 
-| Component  | Path                                   |
-|------------|----------------------------------------|
-| VM         | `src/native/vm/vm.zig`                 |
-| TreeWalk   | `src/native/evaluator/tree_walk.zig`   |
-| EvalEngine | `src/common/eval_engine.zig`           |
+| Component  | Path                                 |
+| ---------- | ------------------------------------ |
+| VM         | `src/native/vm/vm.zig`               |
+| TreeWalk   | `src/native/evaluator/tree_walk.zig` |
+| EvalEngine | `src/common/eval_engine.zig`         |
 
 ---
 
@@ -316,6 +324,7 @@ migration progress from Zig to core.clj, and compatibility testing priority.
 data structures later as an optimization.
 
 **Rationale** (future.md SS9.5):
+
 - Beta's ArrayList-based Vector/Map worked for correctness
 - Persistent data structures (HAMT, RRB-Tree) are complex and interact with GC
 - Profile first, optimize the bottleneck collection (likely Vector)
@@ -331,6 +340,7 @@ so the backing implementation can be swapped without API changes.
 and documentation are in English.
 
 **Rationale** (future.md SS0, CLAUDE.md):
+
 - OSS readiness from day one
 - Beta used Japanese comments/commits, which limited accessibility
 - Agent response language is personal preference (configured in ~/.claude/CLAUDE.md)
@@ -343,12 +353,14 @@ and documentation are in English.
 not per-Var binding stacks.
 
 **Alternatives considered**:
+
 1. **Per-Var stack** (Clojure JVM style): Each Var holds its own ThreadLocal
    binding stack. Thread-safe by design.
 2. **Global frame stack** (Beta style, chosen): A single stack of BindingFrame,
    each frame holding a map of Var -> Value overrides. push/pop per `binding` block.
 
 **Rationale** (Task 2.2):
+
 - Single-thread target (Wasm) makes per-Var ThreadLocal unnecessary overhead
 - Global frame stack is simpler: one push/pop per `binding`, O(n) lookup on
   frame depth (typically shallow)
@@ -369,12 +381,12 @@ This is a deliberate simplification; Ratio type is deferred.
 
 **Clojure JVM behavior** (reference):
 
-| Expression    | Result       | Type     |
-|---------------|--------------|----------|
-| `(/ 6 3)`     | `2`          | Long     |
-| `(/ 1 3)`     | `1/3`        | Ratio    |
-| `(/ 1.0 3)`   | `0.333...`   | Double   |
-| `(/ 1 0)`     | throws       | ArithmeticException |
+| Expression  | Result     | Type                |
+| ----------- | ---------- | ------------------- |
+| `(/ 6 3)`   | `2`        | Long                |
+| `(/ 1 3)`   | `1/3`      | Ratio               |
+| `(/ 1.0 3)` | `0.333...` | Double              |
+| `(/ 1 0)`   | throws     | ArithmeticException |
 
 Clojure JVM's `Numbers.divide()` computes GCD, returns Long if denominator
 becomes 1, otherwise constructs `clojure.lang.Ratio` (BigInteger numerator +
@@ -382,12 +394,12 @@ BigInteger denominator, always in lowest terms).
 
 **Our behavior** (simplified):
 
-| Expression    | Result       | Type     |
-|---------------|--------------|----------|
-| `(/ 6 3)`     | `2.0`        | float    |
-| `(/ 1 3)`     | `0.333...`   | float    |
-| `(/ 1.0 3)`   | `0.333...`   | float    |
-| `(/ 1 0)`     | error        | DivisionByZero |
+| Expression  | Result     | Type           |
+| ----------- | ---------- | -------------- |
+| `(/ 6 3)`   | `2.0`      | float          |
+| `(/ 1 3)`   | `0.333...` | float          |
+| `(/ 1.0 3)` | `0.333...` | float          |
+| `(/ 1 0)`   | error      | DivisionByZero |
 
 **Beta behavior**: Same as ours — always float. Comment in Beta's vm.zig says:
 "Clojure の / は常に有理数/浮動小数点を返すが、簡略化".
@@ -397,6 +409,7 @@ which made `(/ 1 3)` return `0`. This is incorrect for any Clojure semantics.
 Always-float is a strictly better approximation than truncated integer division.
 
 **Ratio type implications** (future):
+
 - Requires BigInteger (or at least i128) for numerator/denominator
 - GCD algorithm for automatic reduction to lowest terms
 - Ratio participates in numeric promotion: `Ratio + int → Ratio`, `Ratio + float → float`
@@ -438,6 +451,7 @@ shared opcodes. Category ranges are preserved identically.
 ```
 
 **Why keep Beta's values**:
+
 - No technical reason to renumber. The category ranges are logical and have
   room for expansion (each category has 16 slots, we use 2-8).
 - Preserves mental model when cross-referencing Beta's bytecode dumps.
@@ -469,6 +483,7 @@ This is simpler and avoids the signed/unsigned confusion.
 ```
 
 **`jump` vs `jump_back` role clarification**:
+
 - `jump`: signed operand via `signedOperand()`, can go forward or backward
 - `jump_back`: unsigned operand, always backward (VM subtracts from ip)
 - `jump_back` exists as a separate opcode so the VM can distinguish loop
@@ -483,6 +498,7 @@ adding builtins. Delete redundant T3.2 (comparison intrinsics), add VM parity
 tasks, and reorder BuiltinDef registry earlier.
 
 **Problem** (discovered after T3.1 completion):
+
 1. T3.2 (comparison intrinsics) was redundant — =, not=, <, >, <=, >= were
    all implemented as part of T3.1 alongside arithmetic intrinsics.
 2. VM coverage was only 55% (21/38 opcodes). The Compiler can emit bytecode
@@ -494,15 +510,15 @@ tasks, and reorder BuiltinDef registry earlier.
 
 **Changes**:
 
-| Action  | Task                | Detail                                              |
-|---------|---------------------|-----------------------------------------------------|
-| DELETE  | T3.2 (old)          | Comparison intrinsics — already done in T3.1        |
-| ADD     | T3.2 (new)          | VM var/def opcodes: var_load, var_load_dynamic, def |
-| ADD     | T3.3 (new)          | VM recur + tail_call opcodes                        |
-| ADD     | T3.4 (new)          | VM collection + exception opcodes                   |
-| REORDER | T3.7 -> T3.5        | BuiltinDef registry moved before builtins           |
-| RENUM   | T3.3-T3.6 -> T3.6-T3.9 | Remaining builtins renumbered                   |
-| RENUM   | T3.8-T3.15 -> T3.10-T3.17 | Phases 3b, 3c shifted by +2                 |
+| Action  | Task                      | Detail                                              |
+| ------- | ------------------------- | --------------------------------------------------- |
+| DELETE  | T3.2 (old)                | Comparison intrinsics — already done in T3.1        |
+| ADD     | T3.2 (new)                | VM var/def opcodes: var_load, var_load_dynamic, def |
+| ADD     | T3.3 (new)                | VM recur + tail_call opcodes                        |
+| ADD     | T3.4 (new)                | VM collection + exception opcodes                   |
+| REORDER | T3.7 -> T3.5              | BuiltinDef registry moved before builtins           |
+| RENUM   | T3.3-T3.6 -> T3.6-T3.9    | Remaining builtins renumbered                       |
+| RENUM   | T3.8-T3.15 -> T3.10-T3.17 | Phases 3b, 3c shifted by +2                         |
 
 **upvalue_load/upvalue_store note**: These opcodes exist in opcodes.zig but
 are unused — the VM uses closure_bindings (stack injection) instead, and

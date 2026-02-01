@@ -1,6 +1,7 @@
 # Task 0009: Create Analyzer with special form comptime table
 
 ## Context
+
 - Phase: 1c (Analyzer)
 - Depends on: task_0008 (Node type), task_0007 (Reader)
 - References: Beta src/analyzer/analyze.zig (5355L), future.md SS10
@@ -66,6 +67,7 @@ const special_forms = std.StaticStringMap(SpecialFormFn).initComptime(.{
 ## Status: done
 
 ### 2026-02-01
+
 - Created src/common/analyzer/analyzer.zig with:
   - Analyzer struct with allocator, locals stack, source tracking
   - comptime StaticStringMap dispatch for 9 special form entries:

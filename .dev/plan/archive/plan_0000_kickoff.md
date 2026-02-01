@@ -14,17 +14,17 @@ the project is ready for Phase 1 (Reader + Analyzer) implementation.
 
 ## Tasks
 
-| # | Task                                                          | Status  | Notes                                     |
-|---|---------------------------------------------------------------|---------|-------------------------------------------|
-| 1 | Read future.md (SS0-19) and architecture.md from Beta         | done    | Understand full design before planning    |
-| 2 | Create plan_0001_bootstrap.md (Phase 1-3 implementation plan) | done    | Based on future.md SS19                   |
-| 3 | Create .dev/notes/decisions.md (design decisions)             | done    | NaN boxing timing, GC strategy, etc.      |
-| 4 | Set up flake.nix + flake.lock                                 | done    | Pin Zig 0.15.2 + toolchain                |
-| 5 | Create build.zig scaffold (zig build / zig build test pass)   | done    | Minimal scaffold, tests pass with 0 tests |
-| 6 | Create src/ directory structure per future.md SS17            | done    | api/, common/, native/, wasm_rt/, wasm/   |
-| 7 | Create docs/adr/0001-nan-boxing.md scaffold                   | done    | ADR template with initial context         |
-| 8 | Update settings.json with PostToolUse hook                    | done    | zig build test on Edit/Write              |
-| 9 | Update memo.md to point to plan_0001 / Phase 1                | done    | Final kickoff task                        |
+| #   | Task                                                          | Status | Notes                                     |
+| --- | ------------------------------------------------------------- | ------ | ----------------------------------------- |
+| 1   | Read future.md (SS0-19) and architecture.md from Beta         | done   | Understand full design before planning    |
+| 2   | Create plan_0001_bootstrap.md (Phase 1-3 implementation plan) | done   | Based on future.md SS19                   |
+| 3   | Create .dev/notes/decisions.md (design decisions)             | done   | NaN boxing timing, GC strategy, etc.      |
+| 4   | Set up flake.nix + flake.lock                                 | done   | Pin Zig 0.15.2 + toolchain                |
+| 5   | Create build.zig scaffold (zig build / zig build test pass)   | done   | Minimal scaffold, tests pass with 0 tests |
+| 6   | Create src/ directory structure per future.md SS17            | done   | api/, common/, native/, wasm_rt/, wasm/   |
+| 7   | Create docs/adr/0001-nan-boxing.md scaffold                   | done   | ADR template with initial context         |
+| 8   | Update settings.json with PostToolUse hook                    | done   | zig build test on Edit/Write              |
+| 9   | Update memo.md to point to plan_0001 / Phase 1                | done   | Final kickoff task                        |
 
 ## Design Notes
 

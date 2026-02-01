@@ -1,4 +1,4 @@
-# Task 3.1: Arithmetic Intrinsics (+, -, *, /, mod, rem)
+# Task 3.1: Arithmetic Intrinsics (+, -, \*, /, mod, rem)
 
 ## Goal
 
@@ -8,11 +8,13 @@ Currently VM has add/sub/mul/div opcodes but cannot resolve var_ref "+".
 ## Problem Analysis
 
 The pipeline gap:
+
 1. Analyzer produces `var_ref {name: "+"}` for `(+ 1 2)`
 2. Compiler emits `var_load` with symbol constant
 3. VM hits `var_load` -> `InvalidInstruction`
 
 Need:
+
 - VM gets access to Env for var resolution
 - Env has arithmetic builtins registered as Vars
 - VM var_load resolves symbol -> Var -> Value
@@ -28,9 +30,10 @@ position is compiled to an `add` opcode directly, not a var lookup + call.
 ### Compiler changes
 
 When compiling a call_node where callee is var_ref with a known name:
+
 - "+" -> emit args, emit `add`
 - "-" -> emit args, emit `sub`
-- "*" -> emit args, emit `mul`
+- "\*" -> emit args, emit `mul`
 - "/" -> emit args, emit `div`
 - "mod" -> emit args, emit new `mod` opcode
 - "rem" -> emit args, emit new `rem` opcode
@@ -53,9 +56,9 @@ This avoids needing Env in the Compiler/VM for basic arithmetic.
 
 ## Log
 
-- Added mod(0xB8), rem_(0xB9), eq(0xBA), neq(0xBB) opcodes
+- Added mod(0xB8), rem\_(0xB9), eq(0xBA), neq(0xBB) opcodes
 - Compiler: intrinsic recognition in emitCall — known 2-arg var_refs
-  (+, -, *, /, mod, rem, <, <=, >, >=, =, not=) emit direct opcodes
+  (+, -, \*, /, mod, rem, <, <=, >, >=, =, not=) emit direct opcodes
 - VM: added binaryMod, binaryRem, eq, neq handlers
 - TreeWalk: added mod, rem, =, not= builtins
 - EvalEngine: updated mismatch test to match test (+ now works in VM via intrinsic)

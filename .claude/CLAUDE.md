@@ -47,11 +47,13 @@ This matches Zig standard library conventions and keeps files readable.
 ## Session Workflow
 
 ### On Start
+
 1. Read `.dev/plan/memo.md` (current task + task file path)
 2. If task file exists: read it, resume from `## Log`
 3. If task file missing: create it (read roadmap + Beta refs, write plan)
 
 ### During Development
+
 1. TDD cycle: Red -> Green -> Refactor
 2. Append progress to task file `## Log`
 3. Do NOT commit intermediate steps — all changes go into one commit per task
@@ -88,6 +90,7 @@ zig build test -- "Reader basics"
 ## Differences from Beta
 
 Production version is a full redesign from Beta. Key changes:
+
 - Instantiated VM (no threadlocal) -> future.md SS15.5
 - GcStrategy trait for GC abstraction -> future.md SS5
 - BuiltinDef with metadata (doc, arglists, added) -> future.md SS10
@@ -98,13 +101,14 @@ Production version is a full redesign from Beta. Key changes:
 
 Two evaluation backends exist and **must be kept in sync**:
 
-| Component   | Path                                     | Role                          |
-|-------------|------------------------------------------|-------------------------------|
-| VM          | `src/native/vm/vm.zig`                   | Bytecode compiler + VM (fast) |
-| TreeWalk    | `src/native/evaluator/tree_walk.zig`     | Direct Node -> Value (correct)|
-| EvalEngine  | `src/common/eval_engine.zig`             | Runs both, compares results   |
+| Component  | Path                                 | Role                           |
+| ---------- | ------------------------------------ | ------------------------------ |
+| VM         | `src/native/vm/vm.zig`               | Bytecode compiler + VM (fast)  |
+| TreeWalk   | `src/native/evaluator/tree_walk.zig` | Direct Node -> Value (correct) |
+| EvalEngine | `src/common/eval_engine.zig`         | Runs both, compares results    |
 
 **Rules when adding new features** (builtins, special forms, operators, etc.):
+
 1. Implement in **both** VM and TreeWalk
 2. Add `EvalEngine.compare()` test to verify both backends produce the same result
 3. If the Compiler emits a direct opcode (e.g. `+` -> `add`), TreeWalk must
@@ -117,7 +121,7 @@ Design rationale: `.dev/notes/decisions.md` D6
 Use IDE tools actively when exploring/modifying Zig code to reduce context consumption.
 
 | Tool                   | Purpose                          | Usage                            |
-|------------------------|----------------------------------|----------------------------------|
+| ---------------------- | -------------------------------- | -------------------------------- |
 | `imenu-list-symbols`   | List functions/structs in a file | Understand structure before Read |
 | `xref-find-references` | Find all references to a symbol  | Assess impact before refactoring |
 | `getDiagnostics`       | Get compile errors/warnings      | Detect errors before `zig build` |

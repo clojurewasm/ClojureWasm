@@ -20,26 +20,26 @@ Python-style categories. Helpers (makeError, analysisError) are kept but simplif
 
 ## Kind Mapping
 
-| Old (18)               | New (12)          |
-|------------------------|-------------------|
-| unexpected_eof         | syntax_error      |
-| invalid_token          | syntax_error      |
-| unmatched_delimiter    | syntax_error      |
-| invalid_number         | number_error      |
-| invalid_character      | string_error      |
-| invalid_string         | string_error      |
-| invalid_regex          | string_error      |
-| invalid_keyword        | name_error        |
-| undefined_symbol       | name_error        |
-| invalid_arity          | arity_error       |
-| invalid_binding        | value_error       |
-| duplicate_key          | value_error       |
-| division_by_zero       | arithmetic_error  |
-| index_out_of_bounds    | index_error       |
-| type_error             | type_error        |
-| (new)                  | io_error          |
-| internal_error         | internal_error    |
-| out_of_memory          | out_of_memory     |
+| Old (18)            | New (12)         |
+| ------------------- | ---------------- |
+| unexpected_eof      | syntax_error     |
+| invalid_token       | syntax_error     |
+| unmatched_delimiter | syntax_error     |
+| invalid_number      | number_error     |
+| invalid_character   | string_error     |
+| invalid_string      | string_error     |
+| invalid_regex       | string_error     |
+| invalid_keyword     | name_error       |
+| undefined_symbol    | name_error       |
+| invalid_arity       | arity_error      |
+| invalid_binding     | value_error      |
+| duplicate_key       | value_error      |
+| division_by_zero    | arithmetic_error |
+| index_out_of_bounds | index_error      |
+| type_error          | type_error       |
+| (new)               | io_error         |
+| internal_error      | internal_error   |
+| out_of_memory       | out_of_memory    |
 
 ## Log
 

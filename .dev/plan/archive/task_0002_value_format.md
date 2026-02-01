@@ -1,11 +1,13 @@
 # Task 0002: Implement Value.format (print representation)
 
 ## Context
+
 - Phase: 1a (Value type foundation)
 - Depends on: task_0001 (Value tagged union)
 - References: Beta src/runtime/value.zig, Clojure pr-str semantics
 
 ## Plan
+
 1. Add Value.format() using Zig 0.15 `{f}` format spec
 2. Clojure pr-str semantics for all current variants
 3. Special char names (\newline, \space, \tab, \return)
@@ -15,6 +17,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Added Value.format() using Zig 0.15 `{f}` format spec (1-arg signature)
 - Clojure pr-str semantics for all current variants:
   - nil -> "nil", boolean -> "true"/"false"

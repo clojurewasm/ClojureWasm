@@ -1,11 +1,13 @@
 # Task 0005: Create Tokenizer
 
 ## Context
+
 - Phase: 1b (Reader)
 - Depends on: task_0004 (Collections)
 - References: Beta src/reader/tokenizer.zig (832L), future.md SS14.3
 
 ## Plan
+
 1. Create src/common/reader/tokenizer.zig
 2. TokenKind enum with all Clojure token variants
 3. Stateful iterator converting source text to token stream
@@ -14,6 +16,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Created src/common/reader/tokenizer.zig (766 lines)
 - Stateful iterator converting Clojure source text into token stream
 - TokenKind enum (u8) with 28 variants:

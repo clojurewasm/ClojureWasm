@@ -20,6 +20,7 @@ in `src/common/var.zig` (Task 2.2). This task adds:
 ### Step 1: Add VarKind enum to var.zig
 
 Add `VarKind` enum to classify Vars by dependency layer:
+
 - `special_form` — Compiler-layer (if, do, let, fn, def, quote, etc.)
 - `vm_intrinsic` — VM-layer (dedicated opcodes: +, -, first, rest, etc.)
 - `runtime_fn` — Runtime-layer (OS API: slurp, re-find, etc.)
@@ -51,6 +52,7 @@ TDD: test BuiltinDef creation, comptime table construction.
 ### Step 3: Add metadata fields to Var struct
 
 Add to existing Var struct:
+
 - `kind: VarKind = .user_fn`
 - `doc: ?[]const u8 = null`
 - `arglists: ?[]const u8 = null`
@@ -62,6 +64,7 @@ TDD: test Var metadata access, Var created from BuiltinDef.
 ### Step 4: Add Var.initFromBuiltinDef helper
 
 A helper to populate a Var from BuiltinDef metadata:
+
 ```zig
 pub fn applyBuiltinDef(self: *Var, def: *const BuiltinDef) void {
     self.kind = def.kind;
@@ -77,6 +80,7 @@ TDD: test round-trip BuiltinDef -> Var metadata.
 ### Step 5: Comptime table proof-of-concept
 
 Demonstrate that BuiltinDef can be used in comptime arrays:
+
 ```zig
 const test_builtins = [_]BuiltinDef{
     .{ .name = "+", .kind = .vm_intrinsic, .doc = "Returns the sum of nums." },

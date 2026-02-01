@@ -1,11 +1,13 @@
 # Task 0001: Define Value tagged union
 
 ## Context
+
 - Phase: 1a (Value type foundation)
 - Depends on: Phase 0 (project bootstrap)
 - References: Beta src/runtime/value.zig, future.md SS1
 
 ## Plan
+
 1. Create src/common/value.zig with Value tagged union
 2. Minimal variants: nil, bool, int, float, char, string, symbol, keyword
 3. Helper types: Symbol (ns + name), Keyword (ns + name)
@@ -15,6 +17,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Created src/common/value.zig with Value tagged union
 - Variants: nil, boolean, integer, float, char, string, symbol, keyword
 - Collections deferred to Task 1.4

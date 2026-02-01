@@ -30,6 +30,7 @@ Implement $ARGUMENTS using the strict TDD cycle by t-wada (Takuto Wada).
 ## Key Patterns
 
 See `references/tdd-patterns.md` for details:
+
 - Fake It: pass first test with hardcoded constant
 - Triangulate: second test forces generalization
 - Obvious Implementation: implement directly when pattern is clear

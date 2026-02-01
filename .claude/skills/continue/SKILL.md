@@ -27,6 +27,7 @@ git status --short
 ```
 
 Read with Read tool:
+
 - `CLAUDE.md` — project instructions
 - `.dev/plan/memo.md` — current task + task file path
 
@@ -42,17 +43,20 @@ Read with Read tool:
 ## 3. Execute
 
 ### Development Workflow
+
 1. **TDD cycle**: Red -> Green -> Refactor (per CLAUDE.md)
 2. **Run tests**: `zig build test`
 3. Append progress to task file `## Log`
 4. Do NOT commit intermediate steps
 
 ### Planning Tasks (no code)
+
 1. Read references, analyze, produce required document
 2. Write output to specified path
 3. Append progress to task file `## Log`
 
 ### Continuation
+
 - After completing a task, proceed to the next pending task
 - If design decisions are needed, record in `.dev/notes/` and pick the most reasonable option
 - Build/test failures: investigate and fix before proceeding
@@ -63,11 +67,13 @@ Read with Read tool:
 **CRITICAL: Always commit before moving to the next task.**
 
 ### 4a. Finalize bookkeeping
+
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
 3. Advance `memo.md` to next task (clear Task file path)
 
 ### 4b. Git commit (gate)
+
 4. `git add` all changed files (plan + implementation + status)
 5. `git commit` — **single commit covering everything for this task**
 6. Verify commit succeeded before proceeding
@@ -78,6 +84,7 @@ Read with Read tool:
 ## 5. Phase Completion
 
 When all tasks in a phase are done:
+
 1. Add entry to "Completed Phases" table in `memo.md`
 2. Continue with the first task of the next phase
 

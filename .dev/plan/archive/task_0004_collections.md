@@ -1,11 +1,13 @@
 # Task 0004: Implement basic collection types (ArrayList-based)
 
 ## Context
+
 - Phase: 1a (Value type foundation)
 - Depends on: task_0003 (Value.eql)
 - References: Beta collections, PersistentList/Vector/ArrayMap/HashSet
 
 ## Plan
+
 1. Create src/common/collections.zig with four persistent collection types
 2. Add collection variants to Value tagged union
 3. Extend Value.format for collection print semantics
@@ -14,6 +16,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Created src/common/collections.zig with four persistent collection types:
   - PersistentList: `[]const Value` slice, count/first/rest methods
   - PersistentVector: `[]const Value` slice, count/nth methods

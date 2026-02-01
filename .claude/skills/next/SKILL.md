@@ -26,6 +26,7 @@ git status --short
 ```
 
 Read with Read tool:
+
 - `CLAUDE.md` — project instructions
 - `.dev/plan/memo.md` — current task + task file path
 
@@ -41,12 +42,14 @@ Read with Read tool:
 ## 3. Execute
 
 ### For Code Tasks
+
 1. **TDD cycle**: Red -> Green -> Refactor (per CLAUDE.md)
 2. **Run tests**: `zig build test`
 3. Append progress to task file `## Log`
 4. Do NOT commit intermediate steps
 
 ### For Planning Tasks
+
 1. Read references, analyze, produce required document
 2. Write output to specified path
 3. Append progress to task file `## Log`

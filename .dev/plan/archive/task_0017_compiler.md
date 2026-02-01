@@ -32,22 +32,22 @@ Two new files in `src/common/bytecode/`:
 
 The 14 Node variants in production map to these compiler methods:
 
-| Node variant | Compiler method    | Priority |
-|--------------|--------------------|----------|
-| constant     | emitConstant       | P1       |
-| var_ref      | emitVarRef         | P1       |
-| local_ref    | emitLocalRef       | P1       |
-| if_node      | emitIf             | P1       |
-| do_node      | emitDo             | P1       |
-| let_node     | emitLet            | P1       |
-| loop_node    | emitLoop           | P1       |
-| recur_node   | emitRecur          | P1       |
-| fn_node      | emitFn             | P2 (needs FnProto) |
-| call_node    | emitCall           | P1       |
-| def_node     | emitDef            | P1       |
-| quote_node   | emitQuote          | P1       |
-| throw_node   | emitThrow          | P2       |
-| try_node     | emitTry            | P2       |
+| Node variant | Compiler method | Priority           |
+| ------------ | --------------- | ------------------ |
+| constant     | emitConstant    | P1                 |
+| var_ref      | emitVarRef      | P1                 |
+| local_ref    | emitLocalRef    | P1                 |
+| if_node      | emitIf          | P1                 |
+| do_node      | emitDo          | P1                 |
+| let_node     | emitLet         | P1                 |
+| loop_node    | emitLoop        | P1                 |
+| recur_node   | emitRecur       | P1                 |
+| fn_node      | emitFn          | P2 (needs FnProto) |
+| call_node    | emitCall        | P1                 |
+| def_node     | emitDef         | P1                 |
+| quote_node   | emitQuote       | P1                 |
+| throw_node   | emitThrow       | P2                 |
+| try_node     | emitTry         | P2                 |
 
 P1 = implement in this task. P2 = implement in this task but may be simpler stubs.
 
@@ -63,16 +63,19 @@ P1 = implement in this task. P2 = implement in this task but may be simpler stub
 ### TDD steps
 
 #### Part A: Chunk type
+
 1. Red: Test Chunk init/emit/addConstant
 2. Green: Implement Chunk
 3. Red: Test Chunk jump patching (emitJump/patchJump)
 4. Green: Implement jump helpers
 
 #### Part B: FnProto
+
 5. Red: Test FnProto creation
 6. Green: Implement FnProto struct
 
 #### Part C: Compiler basics
+
 7. Red: Test compile constant (nil, true, false, int)
 8. Green: Implement emitConstant
 9. Red: Test compile if_node
@@ -81,6 +84,7 @@ P1 = implement in this task. P2 = implement in this task but may be simpler stub
 12. Green: Implement emitDo
 
 #### Part D: Variables and definitions
+
 13. Red: Test compile let_node (local_store/load + scope cleanup)
 14. Green: Implement emitLet + addLocal
 15. Red: Test compile local_ref
@@ -91,12 +95,14 @@ P1 = implement in this task. P2 = implement in this task but may be simpler stub
 20. Green: Implement emitQuote
 
 #### Part E: Functions and calls
+
 21. Red: Test compile call_node
 22. Green: Implement emitCall
 23. Red: Test compile fn_node (single arity)
 24. Green: Implement emitFn + compileArity
 
 #### Part F: Loop/recur + exceptions
+
 25. Red: Test compile loop/recur
 26. Green: Implement emitLoop + emitRecur
 27. Red: Test compile throw/try
@@ -105,16 +111,19 @@ P1 = implement in this task. P2 = implement in this task but may be simpler stub
 30. Green: Implement emitVarRef
 
 #### Refactor
+
 31. Final file layout cleanup
 
 ## Log
 
 ### Part A: Chunk type
+
 - Red: Chunk init/emit/addConstant/jump patching tests -> compile error
 - Green: Implemented Chunk with emit, emitOp, addConstant, emitJump, patchJump, emitLoop, currentOffset
 - Green: FnProto struct with name/arity/variadic/local_count/capture_count/code/constants
 
 ### Part B: Compiler
+
 - Red: constant nil/true/false/int compile tests -> compile error (Compiler not defined)
 - Green: Compiler struct with compile() dispatch + emitConstant (nil/bool specialization)
 - Fixed: Symbol field name `ns` not `namespace`

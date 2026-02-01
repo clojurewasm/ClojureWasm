@@ -1,11 +1,13 @@
 # Task 0006: Create Form type
 
 ## Context
+
 - Phase: 1b (Reader)
 - Depends on: task_0005 (Tokenizer)
 - References: Beta src/reader/form.zig (264L)
 
 ## Plan
+
 1. Create src/common/reader/form.zig
 2. Form = tagged union wrapping Value + source location info
 3. FormData variants for all Clojure syntactic constructs
@@ -14,6 +16,7 @@
 ## Log
 
 ### 2026-02-01
+
 - Created Form type in src/common/reader/form.zig
 - Form = tagged union wrapping Value + source location info
 - FormData with variants for all Clojure syntactic constructs

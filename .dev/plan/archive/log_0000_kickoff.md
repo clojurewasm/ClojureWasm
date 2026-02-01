@@ -9,6 +9,7 @@ Phase 0 complete: all 9 tasks done.
 ## Task 8: Update settings.json with PostToolUse hook — DONE
 
 Added PostToolUse hook to .claude/settings.json:
+
 - Matcher: "Edit|Write" (triggers on file edits/writes)
 - Condition: only runs when edited file has .zig extension
 - Action: runs `zig build test` and shows last 20 lines of output
@@ -26,6 +27,7 @@ SS3/SS5/SS7.
 ## Task 6: Create src/ directory structure per future.md SS17 — DONE
 
 Created full directory tree per §17.2 of future.md:
+
 - src/api/ — public API (eval, repl, plugin)
 - src/common/ — shared modules (reader/, analyzer/, bytecode/, value/, builtin/)
 - src/native/ — native track (vm/, gc/, optimizer/)
@@ -59,6 +61,7 @@ gives Zig 0.15.2 and wasmtime 41.0.0.
 ## Task 3: Create .dev/notes/decisions.md — DONE
 
 Created 10 design decisions (D1-D10) documenting key choices:
+
 - D1: Tagged union first, NaN boxing later
 - D2: Arena stub GC, real GC deferred
 - D3: Instantiated VM, no threadlocal
@@ -87,6 +90,7 @@ Created .dev/plan/active/plan_0001_bootstrap.md with 37 tasks across 3 phases:
   - 3c: CLI, SCI tests, benchmarks
 
 Key decisions in the plan:
+
 - Start with tagged union, NaN boxing later (correctness first)
 - Start with arena + no-op GC, real GC when needed
 - Minimal special forms first (7), add incrementally
@@ -115,6 +119,7 @@ Read both documents in full:
   - SS19: Migration roadmap (Phase 0-11)
 
 Key design decisions for production version:
+
 1. Instantiated VM (no threadlocal) — SS15.5
 2. GcStrategy trait for GC abstraction — SS5
 3. BuiltinDef with metadata (doc, arglists, added) — SS10

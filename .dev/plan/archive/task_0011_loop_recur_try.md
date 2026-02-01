@@ -9,29 +9,33 @@ Node types (LoopNode, RecurNode, ThrowNode, TryNode, CatchClause) already exist 
 
 ### Special forms to add to comptime table
 
-| Form  | Handler       | Notes                                          |
-|-------|---------------|------------------------------------------------|
-| loop  | analyzeLoop   | Like let: bindings + body. Recur target.       |
-| recur | analyzeRecur  | Args only. No arity check at analysis time.    |
-| throw | analyzeThrow  | Exactly 1 argument.                            |
-| try   | analyzeTry    | Body + optional catch/finally clauses.         |
+| Form  | Handler      | Notes                                       |
+| ----- | ------------ | ------------------------------------------- |
+| loop  | analyzeLoop  | Like let: bindings + body. Recur target.    |
+| recur | analyzeRecur | Args only. No arity check at analysis time. |
+| throw | analyzeThrow | Exactly 1 argument.                         |
+| try   | analyzeTry   | Body + optional catch/finally clauses.      |
 
 ### Detailed semantics
 
 **loop**: `(loop [x 0 y 1] body...)`
+
 - Same binding structure as let (vector, even pairs, symbol names)
 - Body wrapped in do if multiple forms
 - Locals scoped to body
 
 **recur**: `(recur arg1 arg2 ...)`
+
 - Analyze all args as Nodes
 - No arity validation at analysis time (deferred to runtime, per Beta)
 
 **throw**: `(throw expr)`
+
 - Exactly 1 argument required (arity_error otherwise)
 - Analyze the expression
 
 **try**: `(try body... (catch ExType e handler...) (finally cleanup...))`
+
 - Walk items[1..] to separate body forms from catch/finally
 - catch: `(catch ExType name body*)` — at least 4 elements
   - ExType ignored in Phase 1c (no class hierarchy)
@@ -60,9 +64,9 @@ Node types (LoopNode, RecurNode, ThrowNode, TryNode, CatchClause) already exist 
 
 ### Files to modify
 
-| File           | Changes                                          |
-|----------------|--------------------------------------------------|
-| analyzer.zig   | Add 4 handlers + 4 table entries + tests         |
+| File         | Changes                                  |
+| ------------ | ---------------------------------------- |
+| analyzer.zig | Add 4 handlers + 4 table entries + tests |
 
 ## Log
 
@@ -71,8 +75,8 @@ Node types (LoopNode, RecurNode, ThrowNode, TryNode, CatchClause) already exist 
 - recur: args only, no arity check at analysis (deferred to runtime)
 - throw: exactly 1 arg, arity_error otherwise
 - try: walks items to separate body/catch/finally
-  - catch: (catch ExType name body*), 4+ elements, ExType ignored in Phase 1c
+  - catch: (catch ExType name body\*), 4+ elements, ExType ignored in Phase 1c
   - catch binding scoped to handler body
-  - finally: (finally body*), 2+ elements
+  - finally: (finally body\*), 2+ elements
 - Tests: 10 new tests (happy paths + error cases + scoping)
 - All tests pass
