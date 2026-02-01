@@ -8,6 +8,7 @@
 // (e.g., quote syntax, metadata annotation) for the Analyzer.
 
 const std = @import("std");
+const Writer = std.Io.Writer;
 
 /// Syntactic data variants produced by the Reader.
 pub const FormData = union(enum) {
@@ -107,121 +108,121 @@ pub const Form = struct {
     }
 
     /// Print representation (pr-str semantics).
-    pub fn formatPrStr(self: Form, writer: anytype) anyerror!void {
+    pub fn formatPrStr(self: Form, w: *Writer) Writer.Error!void {
         switch (self.data) {
-            .nil => try writer.writeAll("nil"),
-            .boolean => |b| try writer.writeAll(if (b) "true" else "false"),
-            .integer => |n| try writer.print("{d}", .{n}),
+            .nil => try w.writeAll("nil"),
+            .boolean => |b| try w.writeAll(if (b) "true" else "false"),
+            .integer => |n| try w.print("{d}", .{n}),
             .float => |n| {
                 var buf: [32]u8 = undefined;
                 const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch "?";
-                try writer.writeAll(s);
+                try w.writeAll(s);
             },
-            .char => |c| try writeChar(writer, c),
+            .char => |c| try writeChar(w, c),
             .string => |s| {
-                try writer.writeByte('"');
-                try writer.writeAll(s);
-                try writer.writeByte('"');
+                try w.writeByte('"');
+                try w.writeAll(s);
+                try w.writeByte('"');
             },
-            .symbol => |sym| try writeSymbol(writer, sym),
+            .symbol => |sym| try writeSymbol(w, sym),
             .keyword => |sym| {
-                try writer.writeByte(':');
-                try writeSymbol(writer, sym);
+                try w.writeByte(':');
+                try writeSymbol(w, sym);
             },
-            .list => |items| try writeSeq(writer, "(", ")", items),
-            .vector => |items| try writeSeq(writer, "[", "]", items),
+            .list => |items| try writeSeq(w, "(", ")", items),
+            .vector => |items| try writeSeq(w, "[", "]", items),
             .map => |items| {
-                try writer.writeByte('{');
+                try w.writeByte('{');
                 var i: usize = 0;
                 while (i < items.len) : (i += 2) {
-                    if (i > 0) try writer.writeAll(", ");
-                    try items[i].formatPrStr(writer);
-                    try writer.writeByte(' ');
+                    if (i > 0) try w.writeAll(", ");
+                    try items[i].formatPrStr(w);
+                    try w.writeByte(' ');
                     if (i + 1 < items.len) {
-                        try items[i + 1].formatPrStr(writer);
+                        try items[i + 1].formatPrStr(w);
                     }
                 }
-                try writer.writeByte('}');
+                try w.writeByte('}');
             },
-            .set => |items| try writeSeq(writer, "#{", "}", items),
+            .set => |items| try writeSeq(w, "#{", "}", items),
             .regex => |pattern| {
-                try writer.writeAll("#\"");
-                try writer.writeAll(pattern);
-                try writer.writeByte('"');
+                try w.writeAll("#\"");
+                try w.writeAll(pattern);
+                try w.writeByte('"');
             },
             .quote => |inner| {
-                try writer.writeByte('\'');
-                try inner.formatPrStr(writer);
+                try w.writeByte('\'');
+                try inner.formatPrStr(w);
             },
             .deref => |inner| {
-                try writer.writeByte('@');
-                try inner.formatPrStr(writer);
+                try w.writeByte('@');
+                try inner.formatPrStr(w);
             },
             .syntax_quote => |inner| {
-                try writer.writeByte('`');
-                try inner.formatPrStr(writer);
+                try w.writeByte('`');
+                try inner.formatPrStr(w);
             },
             .unquote => |inner| {
-                try writer.writeByte('~');
-                try inner.formatPrStr(writer);
+                try w.writeByte('~');
+                try inner.formatPrStr(w);
             },
             .unquote_splicing => |inner| {
-                try writer.writeAll("~@");
-                try inner.formatPrStr(writer);
+                try w.writeAll("~@");
+                try inner.formatPrStr(w);
             },
             .var_quote => |inner| {
-                try writer.writeAll("#'");
-                try inner.formatPrStr(writer);
+                try w.writeAll("#'");
+                try inner.formatPrStr(w);
             },
             .meta => |m| {
-                try writer.writeByte('^');
-                try m.meta.formatPrStr(writer);
-                try writer.writeByte(' ');
-                try m.form.formatPrStr(writer);
+                try w.writeByte('^');
+                try m.meta.formatPrStr(w);
+                try w.writeByte(' ');
+                try m.form.formatPrStr(w);
             },
-            .discard => try writer.writeAll("#_"),
+            .discard => try w.writeAll("#_"),
             .tag => |t| {
-                try writer.writeByte('#');
-                try writer.writeAll(t.tag);
-                try writer.writeByte(' ');
-                try t.form.formatPrStr(writer);
+                try w.writeByte('#');
+                try w.writeAll(t.tag);
+                try w.writeByte(' ');
+                try t.form.formatPrStr(w);
             },
         }
     }
 };
 
-fn writeSymbol(writer: anytype, sym: SymbolRef) anyerror!void {
+fn writeSymbol(w: *Writer, sym: SymbolRef) Writer.Error!void {
     if (sym.ns) |ns| {
-        try writer.writeAll(ns);
-        try writer.writeByte('/');
+        try w.writeAll(ns);
+        try w.writeByte('/');
     }
-    try writer.writeAll(sym.name);
+    try w.writeAll(sym.name);
 }
 
-fn writeChar(writer: anytype, c: u21) anyerror!void {
+fn writeChar(w: *Writer, c: u21) Writer.Error!void {
     switch (c) {
-        '\n' => try writer.writeAll("\\newline"),
-        '\r' => try writer.writeAll("\\return"),
-        '\t' => try writer.writeAll("\\tab"),
-        ' ' => try writer.writeAll("\\space"),
-        '\x08' => try writer.writeAll("\\backspace"),
-        '\x0c' => try writer.writeAll("\\formfeed"),
+        '\n' => try w.writeAll("\\newline"),
+        '\r' => try w.writeAll("\\return"),
+        '\t' => try w.writeAll("\\tab"),
+        ' ' => try w.writeAll("\\space"),
+        '\x08' => try w.writeAll("\\backspace"),
+        '\x0c' => try w.writeAll("\\formfeed"),
         else => {
-            try writer.writeByte('\\');
+            try w.writeByte('\\');
             var enc: [4]u8 = undefined;
             const len = std.unicode.utf8Encode(c, &enc) catch 1;
-            try writer.writeAll(enc[0..len]);
+            try w.writeAll(enc[0..len]);
         },
     }
 }
 
-fn writeSeq(writer: anytype, open: []const u8, close: []const u8, items: []const Form) anyerror!void {
-    try writer.writeAll(open);
+fn writeSeq(w: *Writer, open: []const u8, close: []const u8, items: []const Form) Writer.Error!void {
+    try w.writeAll(open);
     for (items, 0..) |item, i| {
-        if (i > 0) try writer.writeByte(' ');
-        try item.formatPrStr(writer);
+        if (i > 0) try w.writeByte(' ');
+        try item.formatPrStr(w);
     }
-    try writer.writeAll(close);
+    try w.writeAll(close);
 }
 
 test "nil literal" {
@@ -304,80 +305,80 @@ test "set collection" {
 test "format - nil" {
     const form = Form{ .data = .nil };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try form.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("nil", stream.getWritten());
+    var w: Writer = .fixed(&buf);
+    try form.formatPrStr(&w);
+    try std.testing.expectEqualStrings("nil", w.buffered());
 }
 
 test "format - boolean" {
     var buf: [256]u8 = undefined;
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const t = Form{ .data = .{ .boolean = true } };
-        try t.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("true", stream.getWritten());
+        try t.formatPrStr(&w);
+        try std.testing.expectEqualStrings("true", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const f = Form{ .data = .{ .boolean = false } };
-        try f.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("false", stream.getWritten());
+        try f.formatPrStr(&w);
+        try std.testing.expectEqualStrings("false", w.buffered());
     }
 }
 
 test "format - integer and float" {
     var buf: [256]u8 = undefined;
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const i = Form{ .data = .{ .integer = 42 } };
-        try i.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("42", stream.getWritten());
+        try i.formatPrStr(&w);
+        try std.testing.expectEqualStrings("42", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const f = Form{ .data = .{ .float = 3.14 } };
-        try f.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("3.14", stream.getWritten());
+        try f.formatPrStr(&w);
+        try std.testing.expectEqualStrings("3.14", w.buffered());
     }
 }
 
 test "format - string" {
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const s = Form{ .data = .{ .string = "hello" } };
-    try s.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("\"hello\"", stream.getWritten());
+    try s.formatPrStr(&w);
+    try std.testing.expectEqualStrings("\"hello\"", w.buffered());
 }
 
 test "format - symbol" {
     var buf: [256]u8 = undefined;
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const sym = Form{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } };
-        try sym.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("foo", stream.getWritten());
+        try sym.formatPrStr(&w);
+        try std.testing.expectEqualStrings("foo", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const sym = Form{ .data = .{ .symbol = .{ .ns = "clojure.core", .name = "+" } } };
-        try sym.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("clojure.core/+", stream.getWritten());
+        try sym.formatPrStr(&w);
+        try std.testing.expectEqualStrings("clojure.core/+", w.buffered());
     }
 }
 
 test "format - keyword" {
     var buf: [256]u8 = undefined;
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const kw = Form{ .data = .{ .keyword = .{ .ns = null, .name = "foo" } } };
-        try kw.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings(":foo", stream.getWritten());
+        try kw.formatPrStr(&w);
+        try std.testing.expectEqualStrings(":foo", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const kw = Form{ .data = .{ .keyword = .{ .ns = "user", .name = "bar" } } };
-        try kw.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings(":user/bar", stream.getWritten());
+        try kw.formatPrStr(&w);
+        try std.testing.expectEqualStrings(":user/bar", w.buffered());
     }
 }
 
@@ -388,10 +389,10 @@ test "format - list" {
         .{ .data = .{ .integer = 2 } },
     };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const list = Form{ .data = .{ .list = &items } };
-    try list.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("(1 + 2)", stream.getWritten());
+    try list.formatPrStr(&w);
+    try std.testing.expectEqualStrings("(1 + 2)", w.buffered());
 }
 
 test "format - vector" {
@@ -400,10 +401,10 @@ test "format - vector" {
         .{ .data = .{ .integer = 2 } },
     };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const vec = Form{ .data = .{ .vector = &items } };
-    try vec.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("[1 2]", stream.getWritten());
+    try vec.formatPrStr(&w);
+    try std.testing.expectEqualStrings("[1 2]", w.buffered());
 }
 
 test "format - map" {
@@ -412,10 +413,10 @@ test "format - map" {
         .{ .data = .{ .integer = 1 } },
     };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const map = Form{ .data = .{ .map = &items } };
-    try map.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("{:a 1}", stream.getWritten());
+    try map.formatPrStr(&w);
+    try std.testing.expectEqualStrings("{:a 1}", w.buffered());
 }
 
 test "format - set" {
@@ -424,65 +425,65 @@ test "format - set" {
         .{ .data = .{ .integer = 2 } },
     };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const set = Form{ .data = .{ .set = &items } };
-    try set.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("#{1 2}", stream.getWritten());
+    try set.formatPrStr(&w);
+    try std.testing.expectEqualStrings("#{1 2}", w.buffered());
 }
 
 test "format - regex" {
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const re = Form{ .data = .{ .regex = "\\d+" } };
-    try re.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("#\"\\d+\"", stream.getWritten());
+    try re.formatPrStr(&w);
+    try std.testing.expectEqualStrings("#\"\\d+\"", w.buffered());
 }
 
 test "format - quote" {
     const inner = Form{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const quoted = Form{ .data = .{ .quote = &inner } };
-    try quoted.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("'foo", stream.getWritten());
+    try quoted.formatPrStr(&w);
+    try std.testing.expectEqualStrings("'foo", w.buffered());
 }
 
 test "format - deref" {
     const inner = Form{ .data = .{ .symbol = .{ .ns = null, .name = "a" } } };
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const form = Form{ .data = .{ .deref = &inner } };
-    try form.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("@a", stream.getWritten());
+    try form.formatPrStr(&w);
+    try std.testing.expectEqualStrings("@a", w.buffered());
 }
 
 test "format - char literal" {
     var buf: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var w: Writer = .fixed(&buf);
     const c = Form{ .data = .{ .char = 'A' } };
-    try c.formatPrStr(stream.writer());
-    try std.testing.expectEqualStrings("\\A", stream.getWritten());
+    try c.formatPrStr(&w);
+    try std.testing.expectEqualStrings("\\A", w.buffered());
 }
 
 test "format - special char names" {
     var buf: [256]u8 = undefined;
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const c = Form{ .data = .{ .char = '\n' } };
-        try c.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("\\newline", stream.getWritten());
+        try c.formatPrStr(&w);
+        try std.testing.expectEqualStrings("\\newline", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const c = Form{ .data = .{ .char = ' ' } };
-        try c.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("\\space", stream.getWritten());
+        try c.formatPrStr(&w);
+        try std.testing.expectEqualStrings("\\space", w.buffered());
     }
     {
-        var stream = std.io.fixedBufferStream(&buf);
+        var w: Writer = .fixed(&buf);
         const c = Form{ .data = .{ .char = '\t' } };
-        try c.formatPrStr(stream.writer());
-        try std.testing.expectEqualStrings("\\tab", stream.getWritten());
+        try c.formatPrStr(&w);
+        try std.testing.expectEqualStrings("\\tab", w.buffered());
     }
 }
 
