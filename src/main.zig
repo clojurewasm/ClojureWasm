@@ -31,26 +31,41 @@ pub fn main() !void {
         return;
     }
 
-    if (std.mem.eql(u8, args[1], "-e")) {
-        if (args.len < 3) {
-            const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-            _ = stderr.write("Error: -e requires an expression argument\n") catch {};
-            std.process.exit(1);
+    // Parse flags
+    var use_vm = true;
+    var expr: ?[]const u8 = null;
+    var file: ?[]const u8 = null;
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--tree-walk")) {
+            use_vm = false;
+        } else if (std.mem.eql(u8, args[i], "-e")) {
+            i += 1;
+            if (i >= args.len) {
+                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+                _ = stderr.write("Error: -e requires an expression argument\n") catch {};
+                std.process.exit(1);
+            }
+            expr = args[i];
+        } else {
+            file = args[i];
         }
-        evalAndPrint(alloc, args[2]);
-    } else {
-        // Treat as filename
-        const source = std.fs.cwd().readFileAlloc(allocator, args[1], 1024 * 1024) catch {
+    }
+
+    if (expr) |e| {
+        evalAndPrint(alloc, e, use_vm);
+    } else if (file) |f| {
+        const source = std.fs.cwd().readFileAlloc(allocator, f, 1024 * 1024) catch {
             const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
             _ = stderr.write("Error: could not read file\n") catch {};
             std.process.exit(1);
         };
         defer allocator.free(source);
-        evalAndPrint(alloc, source);
+        evalAndPrint(alloc, source, use_vm);
     }
 }
 
-fn evalAndPrint(allocator: Allocator, source: []const u8) void {
+fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool) void {
     // Initialize environment
     var env = Env.init(allocator);
     defer env.deinit();
@@ -63,11 +78,17 @@ fn evalAndPrint(allocator: Allocator, source: []const u8) void {
         std.process.exit(1);
     };
 
-    // Evaluate
-    const result = bootstrap.evalString(allocator, &env, source) catch {
-        std.debug.print("Error: evaluation failed\n", .{});
-        std.process.exit(1);
-    };
+    // Evaluate using selected backend
+    const result = if (use_vm)
+        bootstrap.evalStringVM(allocator, &env, source) catch {
+            std.debug.print("Error: VM evaluation failed\n", .{});
+            std.process.exit(1);
+        }
+    else
+        bootstrap.evalString(allocator, &env, source) catch {
+            std.debug.print("Error: evaluation failed\n", .{});
+            std.process.exit(1);
+        };
 
     // Print result to stdout
     var buf: [65536]u8 = undefined;

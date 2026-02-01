@@ -329,6 +329,7 @@ pub const TreeWalk = struct {
         const fn_obj = self.allocator.create(value_mod.Fn) catch return error.OutOfMemory;
         fn_obj.* = .{
             .proto = closure,
+            .kind = .treewalk,
             .closure_bindings = null,
         };
         self.allocated_fns.append(self.allocator, fn_obj) catch return error.OutOfMemory;

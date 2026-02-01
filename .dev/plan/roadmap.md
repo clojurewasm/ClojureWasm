@@ -153,10 +153,10 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4c: core.clj AOT Pipeline
 
-| #   | Task                                                | Archive | Notes                                           |
-| --- | --------------------------------------------------- | ------- | ----------------------------------------------- |
-| 4.6 | Build-time AOT: core.clj -> bytecode -> @embedFile  | --      | build.zig custom step, host compile tool        |
-| 4.7 | Startup: VM loads embedded bytecode, registers Vars | --      | Fast startup, no parse/eval needed for core.clj |
+| #   | Task                                                | Archive                   | Notes                                            |
+| --- | --------------------------------------------------- | ------------------------- | ------------------------------------------------ |
+| 4.6 | VM-based eval pipeline (evalStringVM)               | task_0043_aot_pipeline.md | VM backend for user code; TreeWalk for bootstrap |
+| 4.7 | Startup: VM loads embedded bytecode, registers Vars | --                        | Fast startup, no parse/eval needed for core.clj  |
 
 ### Phase 4d: Missing Language Features
 

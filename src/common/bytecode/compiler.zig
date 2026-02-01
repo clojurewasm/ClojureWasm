@@ -266,6 +266,12 @@ pub const Compiler = struct {
             try fn_compiler.addLocal(local.name);
         }
 
+        // Named fn: reserve self-reference slot (matches Analyzer's local layout)
+        const has_self_ref = node.name != null;
+        if (has_self_ref) {
+            try fn_compiler.addLocal(node.name.?);
+        }
+
         // Add parameters as locals
         for (arity.params) |param| {
             try fn_compiler.addLocal(param);
@@ -289,6 +295,7 @@ pub const Compiler = struct {
             .variadic = arity.variadic,
             .local_count = @intCast(fn_compiler.locals.items.len),
             .capture_count = capture_count,
+            .has_self_ref = has_self_ref,
             .code = code_copy,
             .constants = const_copy,
         };

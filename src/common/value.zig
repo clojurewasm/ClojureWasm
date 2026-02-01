@@ -36,10 +36,17 @@ pub const Atom = struct {
     value: Value,
 };
 
+/// Discriminator for Fn.proto — bytecode (VM) vs treewalk (Node-based).
+pub const FnKind = enum {
+    bytecode, // proto points to FnProto (bytecode/chunk.zig)
+    treewalk, // proto points to TreeWalk.Closure
+};
+
 /// Runtime function (closure). Proto is stored as opaque pointer
 /// to avoid circular dependency with bytecode/chunk.zig.
 pub const Fn = struct {
     proto: *const anyopaque,
+    kind: FnKind = .bytecode,
     closure_bindings: ?[]const Value = null,
 };
 

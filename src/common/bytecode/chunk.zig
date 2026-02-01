@@ -111,6 +111,8 @@ pub const FnProto = struct {
     local_count: u16,
     /// Number of captured variables from parent scope.
     capture_count: u16 = 0,
+    /// Named fn has self-reference as first local (for recursion).
+    has_self_ref: bool = false,
     /// Instruction sequence.
     code: []const Instruction,
     /// Constant pool.

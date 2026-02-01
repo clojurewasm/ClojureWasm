@@ -14,12 +14,15 @@ const Value = @import("value.zig").Value;
 const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
+const Compiler = @import("bytecode/compiler.zig").Compiler;
+const VM = @import("../native/vm/vm.zig").VM;
 
 /// Bootstrap error type.
 pub const BootstrapError = error{
     ReadError,
     AnalyzeError,
     EvalError,
+    CompileError,
     OutOfMemory,
 };
 
@@ -97,8 +100,56 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     return last_value;
 }
 
+/// Evaluate source via Compiler + VM pipeline.
+/// Macros are still expanded via TreeWalk (macroEvalBridge), but evaluation
+/// uses the bytecode compiler and VM. Supports calling TreeWalk-defined
+/// closures (from loadCore) via fn_val_dispatcher.
+pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
+    var error_ctx: err.ErrorContext = .{};
+
+    // Parse all top-level forms
+    var reader = Reader.init(allocator, source, &error_ctx);
+    const forms = reader.readAll() catch return error.ReadError;
+
+    if (forms.len == 0) return .nil;
+
+    // Set env for macro expansion bridge
+    const prev_env = macro_eval_env;
+    macro_eval_env = env;
+    defer macro_eval_env = prev_env;
+
+    var last_value: Value = .nil;
+
+    for (forms) |form| {
+        // Analyze with macro expansion support (same as evalString)
+        var analyzer = Analyzer.initWithMacroEval(
+            allocator,
+            &error_ctx,
+            env,
+            &macroEvalBridge,
+        );
+        defer analyzer.deinit();
+
+        const node = analyzer.analyze(form) catch return error.AnalyzeError;
+
+        // Compile Node -> bytecode
+        var compiler = Compiler.init(allocator);
+        defer compiler.deinit();
+        compiler.compile(node) catch return error.CompileError;
+        compiler.chunk.emitOp(.ret) catch return error.CompileError;
+
+        // Execute via VM
+        var vm = VM.initWithEnv(allocator, env);
+        defer vm.deinit();
+        vm.fn_val_dispatcher = &macroEvalBridge;
+        last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+    }
+
+    return last_value;
+}
+
 /// Bridge function: called by Analyzer to execute fn_val macros via TreeWalk.
-/// Uses thread-local env reference set by evalString.
+/// Also used by VM as fn_val_dispatcher for TreeWalk closures.
 fn macroEvalBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     var tw = if (macro_eval_env) |env|
         TreeWalk.initWithEnv(allocator, env)
@@ -897,4 +948,106 @@ test "SCI - defn-" {
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(do (defn- priv-fn [] 42) (priv-fn))", 42);
+}
+
+// === VM eval tests ===
+
+/// Test helper: evaluate expression via VM and check integer result.
+fn expectVMEvalInt(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: i64) !void {
+    const result = try evalStringVM(alloc, env, source);
+    try testing.expectEqual(Value{ .integer = expected }, result);
+}
+
+test "evalStringVM - basic arithmetic" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    try expectVMEvalInt(alloc, &env, "(+ 1 2 3)", 6);
+    try expectVMEvalInt(alloc, &env, "(- 10 3)", 7);
+    try expectVMEvalInt(alloc, &env, "(* 4 5)", 20);
+}
+
+test "evalStringVM - calls core.clj fn (inc)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // inc is defined in core.clj as (defn inc [x] (+ x 1))
+    // VM should call the TreeWalk closure via fn_val_dispatcher
+    try expectVMEvalInt(alloc, &env, "(inc 5)", 6);
+}
+
+test "evalStringVM - uses core macro (when)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // when is a macro — expanded at analyze time, so VM just sees (if ...)
+    try expectVMEvalInt(alloc, &env, "(when true 42)", 42);
+}
+
+test "evalStringVM - def and call fn" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Inline fn call (no def)
+    try expectVMEvalInt(alloc, &env, "((fn [x] (* x 2)) 21)", 42);
+}
+
+test "evalStringVM - defn and call" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // defn macro expands to (def double (fn double [x] (* x 2)))
+    // VM compiles and executes the def, then calls the VM-compiled closure
+    try expectVMEvalInt(alloc, &env, "(do (defn double [x] (* x 2)) (double 21))", 42);
+}
+
+test "evalStringVM - loop/recur" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectVMEvalInt(alloc, &env,
+        "(loop [x 0] (if (< x 5) (recur (+ x 1)) x))", 5);
+}
+
+test "evalStringVM - higher-order fn (map via dispatcher)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // map is a TreeWalk closure from core.clj; inc is also a TW closure
+    // VM should dispatch both through fn_val_dispatcher
+    try expectVMEvalInt(alloc, &env, "(count (map inc [1 2 3]))", 3);
 }
