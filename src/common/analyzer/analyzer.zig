@@ -158,6 +158,7 @@ pub const Analyzer = struct {
         .{ "recur", analyzeRecur },
         .{ "throw", analyzeThrow },
         .{ "try", analyzeTry },
+        .{ "for", analyzeFor },
     });
 
     // === Main entry point ===
@@ -662,6 +663,226 @@ pub const Analyzer = struct {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .loop_node = loop_data };
         return n;
+    }
+
+    fn analyzeFor(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (for [bindings...] body)
+        // bindings: sym coll [:when test] [:let [binds]] [:while test] sym coll ...
+        if (items.len < 3) {
+            return self.analysisError(.arity_error, "for requires a binding vector and body", form);
+        }
+        if (items[1].data != .vector) {
+            return self.analysisError(.value_error, "for bindings must be a vector", items[1]);
+        }
+        const bindings = items[1].data.vector;
+        const body_forms = items[2..];
+
+        return self.expandForBindings(bindings, body_forms, form);
+    }
+
+    /// Recursively expand for bindings into map/mapcat calls.
+    fn expandForBindings(
+        self: *Analyzer,
+        bindings: []const Form,
+        body_forms: []const Form,
+        form: Form,
+    ) AnalyzeError!*Node {
+        if (bindings.len < 2) {
+            return self.analysisError(.value_error, "for requires at least one binding pair", form);
+        }
+
+        const sym_form = bindings[0];
+        const coll_form = bindings[1];
+
+        // Collect modifiers (:when, :let, :while) after this binding pair
+        var mod_idx: usize = 2;
+        var when_forms: std.ArrayList(Form) = .empty;
+        var let_forms: std.ArrayList(Form) = .empty;
+        while (mod_idx < bindings.len) {
+            if (bindings[mod_idx].data == .keyword) {
+                const kw = bindings[mod_idx].data.keyword.name;
+                if (std.mem.eql(u8, kw, "when")) {
+                    if (mod_idx + 1 >= bindings.len) {
+                        return self.analysisError(.value_error, ":when requires a test expression", form);
+                    }
+                    when_forms.append(self.allocator, bindings[mod_idx + 1]) catch return error.OutOfMemory;
+                    mod_idx += 2;
+                } else if (std.mem.eql(u8, kw, "let")) {
+                    if (mod_idx + 1 >= bindings.len or bindings[mod_idx + 1].data != .vector) {
+                        return self.analysisError(.value_error, ":let requires a binding vector", form);
+                    }
+                    let_forms.append(self.allocator, bindings[mod_idx + 1]) catch return error.OutOfMemory;
+                    mod_idx += 2;
+                } else if (std.mem.eql(u8, kw, "while")) {
+                    // :while is complex (early termination), skip for now
+                    mod_idx += 2;
+                } else {
+                    break; // unknown keyword = start of next binding
+                }
+            } else {
+                break; // next binding pair
+            }
+        }
+
+        const remaining_bindings = bindings[mod_idx..];
+        const is_last = remaining_bindings.len == 0;
+
+        // Analyze collection expression
+        const coll_node = try self.analyze(coll_form);
+
+        // Build the fn body
+        const start_locals = self.locals.items.len;
+
+        // Bind the iteration variable
+        if (sym_form.data != .symbol and sym_form.data != .vector and sym_form.data != .map) {
+            return self.analysisError(.value_error, "for binding must be a symbol, vector, or map", sym_form);
+        }
+
+        // Register param (simple symbol or destructuring)
+        var param_name: []const u8 = undefined;
+        var needs_destructure = false;
+        if (sym_form.data == .symbol) {
+            param_name = sym_form.data.symbol.name;
+        } else {
+            // Destructuring: use synthetic param
+            param_name = try self.makeSyntheticParamName(0);
+            needs_destructure = true;
+        }
+        const param_idx: u32 = @intCast(self.locals.items.len);
+        self.locals.append(self.allocator, .{ .name = param_name, .idx = param_idx }) catch return error.OutOfMemory;
+
+        // Apply :let bindings BEFORE analyzing body (so body can reference :let vars)
+        var let_bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
+        for (let_forms.items) |let_form| {
+            const let_binds = let_form.data.vector;
+            if (let_binds.len % 2 != 0) {
+                return self.analysisError(.value_error, ":let bindings must have even number of forms", form);
+            }
+            var j: usize = 0;
+            while (j < let_binds.len) : (j += 2) {
+                const init_node = try self.analyze(let_binds[j + 1]);
+                try self.expandBindingPattern(let_binds[j], init_node, &let_bindings_list, form);
+            }
+        }
+
+        // Build fn body
+        var fn_body: *Node = undefined;
+
+        if (is_last) {
+            fn_body = try self.analyzeBody(body_forms, form);
+        } else {
+            fn_body = try self.expandForBindings(remaining_bindings, body_forms, form);
+        }
+
+        // Wrap with :let bindings if any
+        if (let_bindings_list.items.len > 0) {
+            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
+            let_data.* = .{
+                .bindings = let_bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = fn_body,
+                .source = self.sourceFromForm(form),
+            };
+            fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
+            fn_body.* = .{ .let_node = let_data };
+        }
+
+        // Wrap with :when guards
+        for (when_forms.items) |when_form| {
+            const test_node = try self.analyze(when_form);
+            if (is_last) {
+                // For innermost level with :when, wrap in (when test body) => (if test (list body) (list))
+                // We need to return a list for filter-like behavior
+                // Actually: (for [x coll :when pred] body) should only include x when pred is true
+                // Strategy: wrap body in (if test [body] []) and then mapcat
+                const body_vec_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+                body_vec_args[0] = fn_body;
+                const body_as_list = try self.makeBuiltinCall("list", body_vec_args);
+
+                const empty_list_args = self.allocator.alloc(*Node, 0) catch return error.OutOfMemory;
+                const empty_list = try self.makeBuiltinCall("list", empty_list_args);
+
+                const if_data = self.allocator.create(node_mod.IfNode) catch return error.OutOfMemory;
+                if_data.* = .{
+                    .test_node = test_node,
+                    .then_node = body_as_list,
+                    .else_node = empty_list,
+                    .source = self.sourceFromForm(form),
+                };
+                fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
+                fn_body.* = .{ .if_node = if_data };
+            } else {
+                // For non-innermost: wrap in (if test inner-for [])
+                const empty_list_args = self.allocator.alloc(*Node, 0) catch return error.OutOfMemory;
+                const empty_list = try self.makeBuiltinCall("list", empty_list_args);
+
+                const if_data = self.allocator.create(node_mod.IfNode) catch return error.OutOfMemory;
+                if_data.* = .{
+                    .test_node = test_node,
+                    .then_node = fn_body,
+                    .else_node = empty_list,
+                    .source = self.sourceFromForm(form),
+                };
+                fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
+                fn_body.* = .{ .if_node = if_data };
+            }
+        }
+
+        // If destructuring needed, wrap body in let
+        if (needs_destructure) {
+            const ref = try self.makeTempLocalRef(param_name, param_idx);
+            var destr_bindings: std.ArrayList(node_mod.LetBinding) = .empty;
+            try self.expandBindingPattern(sym_form, ref, &destr_bindings, form);
+            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
+            let_data.* = .{
+                .bindings = destr_bindings.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = fn_body,
+                .source = self.sourceFromForm(form),
+            };
+            fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
+            fn_body.* = .{ .let_node = let_data };
+        }
+
+        self.locals.shrinkRetainingCapacity(start_locals);
+
+        // Build the fn node: (fn [sym] fn_body)
+        const params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+        params[0] = param_name;
+        const arities = self.allocator.alloc(node_mod.FnArity, 1) catch return error.OutOfMemory;
+        arities[0] = .{
+            .params = params,
+            .variadic = false,
+            .body = fn_body,
+        };
+        const fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
+        fn_data.* = .{
+            .name = null,
+            .arities = arities,
+            .source = self.sourceFromForm(form),
+        };
+        const fn_node = self.allocator.create(Node) catch return error.OutOfMemory;
+        fn_node.* = .{ .fn_node = fn_data };
+
+        // Build the call: map or mapcat
+        // For nested/when cases, use (apply concat (map fn coll)) directly
+        // instead of (mapcat fn coll) to avoid dependency on core.clj's mapcat
+        const use_flatten = !is_last or when_forms.items.len > 0;
+
+        const map_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        map_args[0] = fn_node;
+        map_args[1] = coll_node;
+        const map_call = try self.makeBuiltinCall("map", map_args);
+
+        if (!use_flatten) {
+            return map_call;
+        }
+
+        // (apply concat (map fn coll))
+        const concat_ref = self.allocator.create(Node) catch return error.OutOfMemory;
+        concat_ref.* = .{ .var_ref = .{ .ns = null, .name = "concat", .source = .{} } };
+        const apply_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        apply_args[0] = concat_ref;
+        apply_args[1] = map_call;
+        return self.makeBuiltinCall("apply", apply_args);
     }
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

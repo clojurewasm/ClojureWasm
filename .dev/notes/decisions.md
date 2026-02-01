@@ -815,3 +815,34 @@ Zero-arg cases return identity values: `(+)` -> 0, `(*)` -> 1.
 (function dispatch), which is slower than the direct opcode path. This
 is intentional — the common case `(+ a b)` still uses the fast `add`
 opcode. The fallback only activates for higher-order patterns.
+
+## D21: for macro as Analyzer special form
+
+**Decision**: Implement `for` as an Analyzer special form rather than a
+macro in core.clj.
+
+**Rationale**: The `for` expansion requires structural recursion over
+binding pairs and modifier keywords (:when, :let, :while), generating
+nested map/apply/concat calls. Doing this at the Node level in the
+Analyzer is more straightforward than generating Forms in a core.clj macro.
+
+**Expansion**:
+
+- Single binding: `(for [x coll] body)` -> `(map (fn [x] body) coll)`
+- Nested: `(for [x c1 y c2] body)` -> `(apply concat (map (fn [x] <inner>) c1))`
+- `:when test` -> `(if test (list body) (list))` + flatten via apply/concat
+- `:let [binds]` -> `(let [binds] body)` wrapping
+
+## D22: TreeWalk callClosure must save/restore recur state
+
+**Bug**: Nested fn calls that internally use loop/recur (e.g., `map`
+calling a fn that itself calls `map`) corrupted the outer loop's
+`recur_args` buffer. The outer recur partially writes args, then a nested
+fn call's inner loop overwrites `recur_args[0..N]`. When the outer recur
+resumes, its earlier arg values are gone.
+
+**Fix**: `callClosure` now saves/restores `recur_pending`, `recur_arg_count`,
+and the entire `recur_args` array, same as it already did for `locals`.
+
+**Impact**: This was blocking nested `map`, `reduce`, and any higher-order
+fn that uses loop/recur internally when called from within another such fn.

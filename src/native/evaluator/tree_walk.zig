@@ -236,6 +236,12 @@ pub const TreeWalk = struct {
         var saved_locals: [MAX_LOCALS]Value = undefined;
         @memcpy(saved_locals[0..saved_count], self.locals[0..saved_count]);
 
+        // Save recur state (nested fn calls with loop/recur must not corrupt outer recur args)
+        const saved_recur_pending = self.recur_pending;
+        const saved_recur_arg_count = self.recur_arg_count;
+        var saved_recur_args: [MAX_LOCALS]Value = undefined;
+        @memcpy(&saved_recur_args, &self.recur_args);
+
         // Reset locals to captured state (fn body uses idx from 0)
         self.local_count = 0;
 
@@ -293,6 +299,12 @@ pub const TreeWalk = struct {
         // Restore caller's local frame
         @memcpy(self.locals[0..saved_count], saved_locals[0..saved_count]);
         self.local_count = saved_count;
+
+        // Restore recur state
+        self.recur_pending = saved_recur_pending;
+        self.recur_arg_count = saved_recur_arg_count;
+        @memcpy(&self.recur_args, &saved_recur_args);
+
         return result;
     }
 

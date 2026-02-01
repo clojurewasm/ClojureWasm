@@ -164,7 +164,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | ---- | -------------------------------- | --------------------------- | -------------------------------------------- |
 | 4.8  | Multi-arity fn                   | task_0044_multi_arity_fn.md | Fixed-arity dispatch; variadic rest deferred |
 | 4.9  | Destructuring (sequential + map) | task_0045_destructuring.md  | let, fn, loop binding forms                  |
-| 4.10 | for macro (list comprehension)   | --                          | :let, :when, :while modifiers                |
+| 4.10 | for macro (list comprehension)   | task_0046_for_macro.md      | :let, :when, :while modifiers                |
 | 4.11 | Protocols + defrecord            | --                          | Polymorphic dispatch                         |
 
 ### Phase 4e: REPL + Wasm

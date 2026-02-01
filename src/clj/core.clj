@@ -52,6 +52,9 @@
       (recur (- i 1) (next s))
       s)))
 
+(defn mapcat [f coll]
+  (apply concat (map f coll)))
+
 ;; Core macros
 
 (defmacro comment [& body] nil)

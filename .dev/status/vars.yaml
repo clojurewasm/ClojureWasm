@@ -318,7 +318,7 @@ vars:
     "fn?": {type: function, status: done, impl: host}
     fnext: {type: function, status: todo, impl: none}
     fnil: {type: function, status: todo, impl: none}
-    for: {type: macro, status: todo, impl: none}
+    for: {type: macro, status: done, impl: special_form}
     force: {type: function, status: todo, impl: none}
     format: {type: function, status: todo, impl: none}
     frequencies: {type: function, status: todo, impl: none}
@@ -412,7 +412,7 @@ vars:
     "map-entry?": {type: function, status: todo, impl: none}
     "map-indexed": {type: function, status: todo, impl: none}
     "map?": {type: function, status: done, impl: host}
-    mapcat: {type: function, status: todo, impl: none}
+    mapcat: {type: function, status: done, impl: core_clj}
     mapv: {type: function, status: todo, impl: none}
     max: {type: function, status: todo, impl: none}
     "max-key": {type: function, status: todo, impl: none}

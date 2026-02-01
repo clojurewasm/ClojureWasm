@@ -1248,3 +1248,50 @@ test "destructuring - VM fn params" {
 
     try expectVMEvalInt(alloc, &env, "((fn [[a b]] (+ a b)) [1 2])", 3);
 }
+
+// =========================================================================
+// for macro tests (T4.10)
+// =========================================================================
+
+test "core.clj - mapcat" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // mapcat: (mapcat (fn [x] (list x x)) [1 2 3]) => (1 1 2 2 3 3)
+    try expectEvalInt(alloc, &env, "(count (mapcat (fn [x] (list x x)) [1 2 3]))", 6);
+    try expectEvalInt(alloc, &env, "(first (mapcat (fn [x] (list x x)) [1 2 3]))", 1);
+}
+
+test "core.clj - for comprehension" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Single binding
+    try expectEvalInt(alloc, &env, "(count (for [x [1 2 3]] (* x 2)))", 3);
+    try expectEvalInt(alloc, &env, "(first (for [x [1 2 3]] (* x 2)))", 2);
+    // Nested bindings: (for [x [1 2] y [10 20]] (+ x y)) => (11 21 12 22)
+    try expectEvalInt(alloc, &env, "(count (for [x [1 2] y [10 20]] (+ x y)))", 4);
+    try expectEvalInt(alloc, &env, "(first (for [x [1 2] y [10 20]] (+ x y)))", 11);
+    // :when modifier
+    try expectEvalInt(alloc, &env, "(count (for [x [1 2 3 4 5] :when (odd? x)] x))", 3);
+    try expectEvalInt(alloc, &env, "(first (for [x [1 2 3 4 5] :when (odd? x)] x))", 1);
+    // :let modifier
+    try expectEvalInt(alloc, &env, "(first (for [x [1 2 3] :let [y (* x 10)]] y))", 10);
+}
+
+// VM test for `for` deferred: the `for` expansion generates inline fn nodes
+// that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
+// closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk
+// callClosure expects Closure proto but receives FnProto, causing a segfault.
+// This requires a unified fn_val representation (VM + TreeWalk) to fix — tracked
+// as a known limitation for the dual-backend architecture.
