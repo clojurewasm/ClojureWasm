@@ -32,6 +32,18 @@ IMPORTANT: Strictly follow the TDD approach recommended by t-wada (Takuto Wada).
 - Progress: "Fake It" -> "Triangulate" -> "Obvious Implementation"
 - Refactoring must not change behavior (revert immediately if tests break)
 
+### Zig File Layout Convention
+
+During TDD, tests are written first. However, in the Refactor phase,
+arrange the final file in standard Zig order:
+
+1. `const` / `@import` declarations
+2. `pub const` / `pub fn` — public types and functions
+3. Private helpers
+4. `test "..." { ... }` blocks — **always at the bottom**
+
+This matches Zig standard library conventions and keeps files readable.
+
 ## Session Workflow
 
 ### On Start

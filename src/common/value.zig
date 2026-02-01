@@ -9,6 +9,59 @@ const std = @import("std");
 
 const testing = std.testing;
 
+/// Interned symbol reference.
+pub const Symbol = struct {
+    ns: ?[]const u8,
+    name: []const u8,
+};
+
+/// Interned keyword reference.
+pub const Keyword = struct {
+    ns: ?[]const u8,
+    name: []const u8,
+};
+
+/// Runtime value — tagged union representation.
+/// Minimal variants for Phase 1a. More added incrementally.
+pub const Value = union(enum) {
+    // Primitives
+    nil,
+    boolean: bool,
+    integer: i64,
+    float: f64,
+    char: u21,
+
+    // String / identifiers
+    string: []const u8,
+    symbol: Symbol,
+    keyword: Keyword,
+
+    // Collections (Task 1.4 will expand these)
+    // list: ...
+    // vector: ...
+    // map: ...
+    // set: ...
+
+    /// Returns true if this value is nil.
+    pub fn isNil(self: Value) bool {
+        return switch (self) {
+            .nil => true,
+            else => false,
+        };
+    }
+
+    /// Clojure truthiness: everything is truthy except nil and false.
+    pub fn isTruthy(self: Value) bool {
+        return switch (self) {
+            .nil => false,
+            .boolean => |b| b,
+            else => true,
+        };
+    }
+};
+
+// === Tests ===
+
 test "Value - nil creation" {
     const v: Value = .nil;
     try testing.expect(v.isNil());
@@ -74,54 +127,3 @@ test "Value - isTruthy" {
     try testing.expect(zero_val.isTruthy());
     try testing.expect(empty_str.isTruthy());
 }
-
-/// Interned symbol reference.
-pub const Symbol = struct {
-    ns: ?[]const u8,
-    name: []const u8,
-};
-
-/// Interned keyword reference.
-pub const Keyword = struct {
-    ns: ?[]const u8,
-    name: []const u8,
-};
-
-/// Runtime value — tagged union representation.
-/// Minimal variants for Phase 1a. More added incrementally.
-pub const Value = union(enum) {
-    // Primitives
-    nil,
-    boolean: bool,
-    integer: i64,
-    float: f64,
-    char: u21,
-
-    // String / identifiers
-    string: []const u8,
-    symbol: Symbol,
-    keyword: Keyword,
-
-    // Collections (Task 1.4 will expand these)
-    // list: ...
-    // vector: ...
-    // map: ...
-    // set: ...
-
-    /// Returns true if this value is nil.
-    pub fn isNil(self: Value) bool {
-        return switch (self) {
-            .nil => true,
-            else => false,
-        };
-    }
-
-    /// Clojure truthiness: everything is truthy except nil and false.
-    pub fn isTruthy(self: Value) bool {
-        return switch (self) {
-            .nil => false,
-            .boolean => |b| b,
-            else => true,
-        };
-    }
-};
