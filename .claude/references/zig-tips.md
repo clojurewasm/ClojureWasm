@@ -57,3 +57,34 @@ try std.testing.expectEqualStrings("expected", w.buffered());
 
 Ref: std lib uses `*Writer` throughout (json, fmt, etc.)
 Old `anytype` + `anyerror` pattern is no longer needed.
+
+## @branchHint, not @branch
+
+```zig
+// OK — hint goes INSIDE the branch body
+if (likely_condition) {
+    @branchHint(.likely);
+    // hot path
+} else {
+    @branchHint(.unlikely);
+    return error.Fail;
+}
+
+// NG — @branch(.likely, cond) does not exist
+```
+
+## Custom format method: use {f}, not {}
+
+Types with a `format` method cause "ambiguous format string"
+compile error when printed with `{}`. Use `{f}` or `{any}`.
+
+```zig
+// NG — compile error: ambiguous format string
+try w.print("{}", .{my_value});
+
+// OK — explicitly calls format method
+try w.print("{f}", .{my_value});
+
+// OK — skips format method, uses default
+try w.print("{any}", .{my_value});
+```
