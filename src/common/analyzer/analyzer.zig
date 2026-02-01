@@ -528,7 +528,7 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "quote requires exactly 1 argument", form);
         }
 
-        const val = formToValue(items[1]);
+        const val = macro.formToValue(self.allocator, items[1]) catch return error.OutOfMemory;
 
         const quote_data = self.allocator.create(node_mod.QuoteNode) catch return error.OutOfMemory;
         quote_data.* = .{

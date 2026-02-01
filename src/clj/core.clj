@@ -10,6 +10,11 @@
 (defmacro when [test & body]
   `(if ~test (do ~@body)))
 
+;; Arithmetic helpers
+
+(defn inc [x] (+ x 1))
+(defn dec [x] (- x 1))
+
 ;; Higher-order functions (eager, non-lazy)
 
 (defn next [coll]

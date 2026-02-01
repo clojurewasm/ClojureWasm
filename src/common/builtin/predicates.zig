@@ -113,6 +113,57 @@ pub fn charPred(_: Allocator, args: []const Value) anyerror!Value {
     return predicate(args, isChar);
 }
 
+// Numeric predicates
+fn isZero(v: Value) bool {
+    return switch (v) {
+        .integer => |i| i == 0,
+        .float => |f| f == 0.0,
+        else => false,
+    };
+}
+fn isPos(v: Value) bool {
+    return switch (v) {
+        .integer => |i| i > 0,
+        .float => |f| f > 0.0,
+        else => false,
+    };
+}
+fn isNeg(v: Value) bool {
+    return switch (v) {
+        .integer => |i| i < 0,
+        .float => |f| f < 0.0,
+        else => false,
+    };
+}
+fn isEven(v: Value) bool {
+    return switch (v) {
+        .integer => |i| @mod(i, 2) == 0,
+        else => false,
+    };
+}
+fn isOdd(v: Value) bool {
+    return switch (v) {
+        .integer => |i| @mod(i, 2) != 0,
+        else => false,
+    };
+}
+
+pub fn zeroPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isZero);
+}
+pub fn posPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isPos);
+}
+pub fn negPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isNeg);
+}
+pub fn evenPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isEven);
+}
+pub fn oddPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isOdd);
+}
+
 // not is not a type predicate but a core function
 pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -139,6 +190,11 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "set?", .kind = .runtime_fn, .func = &setPred, .doc = "Returns true if x implements IPersistentSet.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "coll?", .kind = .runtime_fn, .func = &collPred, .doc = "Returns true if x implements IPersistentCollection.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "char?", .kind = .runtime_fn, .func = &charPred, .doc = "Return true if x is a Character.", .arglists = "([x])", .added = "1.5" },
+    .{ .name = "zero?", .kind = .runtime_fn, .func = &zeroPred, .doc = "Returns true if num is zero, else false.", .arglists = "([num])", .added = "1.0" },
+    .{ .name = "pos?", .kind = .runtime_fn, .func = &posPred, .doc = "Returns true if num is greater than zero, else false.", .arglists = "([num])", .added = "1.0" },
+    .{ .name = "neg?", .kind = .runtime_fn, .func = &negPred, .doc = "Returns true if num is less than zero, else false.", .arglists = "([num])", .added = "1.0" },
+    .{ .name = "even?", .kind = .runtime_fn, .func = &evenPred, .doc = "Returns true if n is even, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "odd?", .kind = .runtime_fn, .func = &oddPred, .doc = "Returns true if n is odd, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "not", .kind = .runtime_fn, .func = &notFn, .doc = "Returns true if x is logical false, false otherwise.", .arglists = "([x])", .added = "1.0" },
 };
 
@@ -190,8 +246,43 @@ test "fn? predicate" {
     try testing.expectEqual(Value{ .boolean = false }, try fnPred(test_alloc, &.{Value{ .integer = 1 }}));
 }
 
-test "builtins table has 16 entries" {
-    try testing.expectEqual(16, builtins.len);
+test "zero? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try zeroPred(test_alloc, &.{Value{ .integer = 0 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try zeroPred(test_alloc, &.{Value{ .float = 0.0 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try zeroPred(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try zeroPred(test_alloc, &.{Value{ .float = -0.5 }}));
+}
+
+test "pos? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try posPred(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try posPred(test_alloc, &.{Value{ .integer = 0 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try posPred(test_alloc, &.{Value{ .integer = -1 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try posPred(test_alloc, &.{Value{ .float = 0.1 }}));
+}
+
+test "neg? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try negPred(test_alloc, &.{Value{ .integer = -1 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try negPred(test_alloc, &.{Value{ .integer = 0 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try negPred(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try negPred(test_alloc, &.{Value{ .float = -0.1 }}));
+}
+
+test "even? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try evenPred(test_alloc, &.{Value{ .integer = 0 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try evenPred(test_alloc, &.{Value{ .integer = 2 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try evenPred(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try evenPred(test_alloc, &.{Value{ .integer = -4 }}));
+}
+
+test "odd? predicate" {
+    try testing.expectEqual(Value{ .boolean = true }, try oddPred(test_alloc, &.{Value{ .integer = 1 }}));
+    try testing.expectEqual(Value{ .boolean = true }, try oddPred(test_alloc, &.{Value{ .integer = -3 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 0 }}));
+    try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 2 }}));
+}
+
+test "builtins table has 21 entries" {
+    try testing.expectEqual(21, builtins.len);
 }
 
 test "builtins all have func" {

@@ -468,23 +468,112 @@ pub const TreeWalk = struct {
     // --- Builtin arithmetic/comparison ---
 
     fn callBuiltin(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
-        if (args.len != 2) return error.ArityError;
-        const a = try self.run(args[0]);
-        const b = try self.run(args[1]);
+        // mod/rem: strictly 2-arity
+        if (std.mem.eql(u8, name, "mod") or std.mem.eql(u8, name, "rem")) {
+            if (args.len != 2) return error.ArityError;
+            const a = try self.run(args[0]);
+            const b = try self.run(args[1]);
+            if (std.mem.eql(u8, name, "mod")) return arithMod(a, b);
+            return arithRem(a, b);
+        }
 
-        if (std.mem.eql(u8, name, "+")) return arith(a, b, .add);
-        if (std.mem.eql(u8, name, "-")) return arith(a, b, .sub);
-        if (std.mem.eql(u8, name, "*")) return arith(a, b, .mul);
-        if (std.mem.eql(u8, name, "/")) return arithDiv(a, b);
-        if (std.mem.eql(u8, name, "<")) return cmp(a, b, .lt);
-        if (std.mem.eql(u8, name, ">")) return cmp(a, b, .gt);
-        if (std.mem.eql(u8, name, "<=")) return cmp(a, b, .le);
-        if (std.mem.eql(u8, name, ">=")) return cmp(a, b, .ge);
-        if (std.mem.eql(u8, name, "mod")) return arithMod(a, b);
-        if (std.mem.eql(u8, name, "rem")) return arithRem(a, b);
-        if (std.mem.eql(u8, name, "=")) return Value{ .boolean = a.eql(b) };
-        if (std.mem.eql(u8, name, "not=")) return Value{ .boolean = !a.eql(b) };
+        // Variadic arithmetic: +, -, *, /
+        if (std.mem.eql(u8, name, "+") or std.mem.eql(u8, name, "-") or
+            std.mem.eql(u8, name, "*") or std.mem.eql(u8, name, "/"))
+        {
+            return self.variadicArith(name, args);
+        }
+
+        // Variadic comparisons: <, >, <=, >=
+        if (std.mem.eql(u8, name, "<") or std.mem.eql(u8, name, ">") or
+            std.mem.eql(u8, name, "<=") or std.mem.eql(u8, name, ">="))
+        {
+            return self.variadicCmp(name, args);
+        }
+
+        // Equality: =, not=
+        if (std.mem.eql(u8, name, "=") or std.mem.eql(u8, name, "not=")) {
+            return self.variadicEq(name, args);
+        }
+
         return error.UndefinedVar;
+    }
+
+    fn variadicArith(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
+        const is_add = std.mem.eql(u8, name, "+");
+        const is_sub = std.mem.eql(u8, name, "-");
+        const is_mul = std.mem.eql(u8, name, "*");
+
+        if (args.len == 0) {
+            // (+) => 0, (*) => 1
+            if (is_add) return Value{ .integer = 0 };
+            if (is_mul) return Value{ .integer = 1 };
+            return error.ArityError;
+        }
+
+        var result = try self.run(args[0]);
+
+        if (args.len == 1) {
+            // (- x) => negation, (/ x) => 1/x, (+ x) => x, (* x) => x
+            if (is_sub) {
+                if (result == .integer) return Value{ .integer = -result.integer };
+                if (result == .float) return Value{ .float = -result.float };
+                return error.TypeError;
+            }
+            if (std.mem.eql(u8, name, "/")) {
+                const f = numToFloat(result) orelse return error.TypeError;
+                if (f == 0.0) return error.DivisionByZero;
+                return Value{ .float = 1.0 / f };
+            }
+            return result;
+        }
+
+        // 2+ args: left fold
+        for (args[1..]) |arg| {
+            const b = try self.run(arg);
+            if (is_add) {
+                result = try arith(result, b, .add);
+            } else if (is_sub) {
+                result = try arith(result, b, .sub);
+            } else if (is_mul) {
+                result = try arith(result, b, .mul);
+            } else {
+                result = try arithDiv(result, b);
+            }
+        }
+        return result;
+    }
+
+    fn variadicCmp(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
+        if (args.len == 0) return error.ArityError;
+        if (args.len == 1) return Value{ .boolean = true };
+
+        const op: CmpOp = if (std.mem.eql(u8, name, "<")) .lt
+            else if (std.mem.eql(u8, name, ">")) .gt
+            else if (std.mem.eql(u8, name, "<=")) .le
+            else .ge;
+
+        var prev = try self.run(args[0]);
+        for (args[1..]) |arg| {
+            const cur = try self.run(arg);
+            const result = try cmp(prev, cur, op);
+            if (!result.boolean) return Value{ .boolean = false };
+            prev = cur;
+        }
+        return Value{ .boolean = true };
+    }
+
+    fn variadicEq(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
+        const is_not_eq = std.mem.eql(u8, name, "not=");
+        if (args.len == 0) return error.ArityError;
+        if (args.len == 1) return Value{ .boolean = !is_not_eq };
+
+        const a = try self.run(args[0]);
+        for (args[1..]) |arg| {
+            const b = try self.run(arg);
+            if (!a.eql(b)) return Value{ .boolean = is_not_eq };
+        }
+        return Value{ .boolean = !is_not_eq };
     }
 
     const ArithOp = enum { add, sub, mul };
