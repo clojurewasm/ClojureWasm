@@ -8,14 +8,16 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ## References
 
-- future.md SS1 (Phase 1: Reader + Analyzer)
+- future.md SS1 (Wasm InterOp: wasm/fn, WIT, Component Model)
 - future.md SS2 (Phase 2: Native VM)
 - future.md SS3 (Phase 3: Builtin + core.clj AOT)
+- future.md SS4 (WIT type mapping)
 - future.md SS5 (GC modular design)
 - future.md SS8 (architecture, directory structure)
 - future.md SS9 (Beta lessons)
 - future.md SS10 (VarKind, BuiltinDef, metadata)
-- future.md SS17 (directory structure)
+- future.md SS17 (directory structure — wasm/ file layout)
+- Beta docs/agent_guide_en.md (wasm/ file structure detail)
 - Beta src/reader/ (tokenizer.zig 832L, reader.zig 1134L, form.zig 264L)
 - Beta src/analyzer/ (analyze.zig 5355L, node.zig 605L)
 - Beta src/runtime/ (value.zig 867L, var.zig 265L, namespace.zig 221L, env.zig 218L)
