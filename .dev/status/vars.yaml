@@ -165,7 +165,7 @@ vars:
     booleans: {type: function, status: todo}
     "bound-fn": {type: macro, status: todo}
     "bound-fn*": {type: function, status: todo}
-    "bound?": {type: function, status: todo}
+    "bound?": {type: function, status: done, note: 'Takes symbol, resolves in current ns'}
     "bounded-count": {type: function, status: todo}
     butlast: {type: function, status: done, note: "core.clj loop"}
     byte: {type: function, status: todo}
@@ -232,7 +232,7 @@ vars:
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
     defn: {type: macro, status: done}
     "defn-": {type: macro, status: done}
-    defonce: {type: macro, status: todo, note: "needs bound? builtin"}
+    defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: todo}

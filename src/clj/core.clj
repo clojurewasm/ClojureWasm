@@ -657,3 +657,7 @@
 
 (defn ex-message [ex]
   (when (map? ex) (:message ex)))
+
+(defmacro defonce [name expr]
+  (list 'when-not (list 'bound? (list 'quote name))
+        (list 'def name expr)))

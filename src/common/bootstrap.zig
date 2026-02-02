@@ -16,6 +16,7 @@ const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
 const atom_mod = @import("builtin/atom.zig");
+const predicates_mod = @import("builtin/predicates.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
@@ -68,6 +69,7 @@ const MacroEnvState = struct {
     env: ?*Env,
     realize: *const @TypeOf(macroEvalBridge),
     atom_call_fn: ?atom_mod.CallFnType,
+    pred_env: ?*Env,
 };
 
 fn setupMacroEnv(env: *Env) MacroEnvState {
@@ -75,10 +77,12 @@ fn setupMacroEnv(env: *Env) MacroEnvState {
         .env = macro_eval_env,
         .realize = value_mod.realize_fn,
         .atom_call_fn = atom_mod.call_fn,
+        .pred_env = predicates_mod.current_env,
     };
     macro_eval_env = env;
     value_mod.realize_fn = &macroEvalBridge;
     atom_mod.call_fn = &macroEvalBridge;
+    predicates_mod.current_env = env;
     return prev;
 }
 
@@ -86,6 +90,7 @@ fn restoreMacroEnv(prev: MacroEnvState) void {
     macro_eval_env = prev.env;
     value_mod.realize_fn = prev.realize;
     atom_mod.call_fn = prev.atom_call_fn;
+    predicates_mod.current_env = prev.pred_env;
 }
 
 /// Analyze a single form with macro expansion support.
@@ -1158,6 +1163,26 @@ test "seq on map (T9.5.3)" {
 
     // seq on empty map returns nil
     try expectEvalNil(alloc, &env, "(seq {})");
+}
+
+test "bound? and defonce (T9.5.5)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // bound? on undefined symbol
+    try expectEvalBool(alloc, &env, "(bound? 'undefined-sym-xyz)", false);
+
+    // bound? on defined symbol
+    try expectEvalBool(alloc, &env, "(do (def my-var 42) (bound? 'my-var))", true);
+
+    // defonce: first time defines, second time does not re-evaluate
+    try expectEvalInt(alloc, &env, "(do (defonce x 10) x)", 10);
+    try expectEvalInt(alloc, &env, "(do (defonce x 999) x)", 10); // still 10
 }
 
 // =========================================================================

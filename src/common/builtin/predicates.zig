@@ -9,6 +9,11 @@ const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const Env = @import("../env.zig").Env;
+
+/// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
+/// Module-level (D3 known exception, single-thread only).
+pub var current_env: ?*Env = null;
 
 // ============================================================
 // Implementations
@@ -197,6 +202,23 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
 
+/// (bound? sym) — true if the symbol resolves to a Var with a binding.
+/// Takes a quoted symbol, resolves in current namespace.
+pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .symbol) return error.TypeError;
+    const sym_name = args[0].symbol.name;
+    const env = current_env orelse return Value{ .boolean = false };
+    const ns = env.current_ns orelse return Value{ .boolean = false };
+    const v = ns.resolve(sym_name) orelse return Value{ .boolean = false };
+    // Var exists and has been bound (root != .nil means bound)
+    // Note: in full Clojure, unbound Vars are distinct from nil-bound.
+    // We treat existence in namespace as "bound" since intern + bindRoot
+    // is always paired in our implementation.
+    _ = v;
+    return Value{ .boolean = true };
+}
+
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
 pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
@@ -255,6 +277,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "satisfies?", .func = &satisfiesPred, .doc = "Returns true if x satisfies the protocol.", .arglists = "([protocol x])", .added = "1.2" },
     .{ .name = "type", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "class", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "bound?", .func = &boundPred, .doc = "Returns true if the var/symbol has been bound to a value.", .arglists = "([sym])", .added = "1.2" },
 };
 
 // === Tests ===
@@ -340,8 +363,8 @@ test "odd? predicate" {
     try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 2 }}));
 }
 
-test "builtins table has 22 entries" {
-    try testing.expectEqual(24, builtins.len);
+test "builtins table has 25 entries" {
+    try testing.expectEqual(25, builtins.len);
 }
 
 test "builtins all have func" {
