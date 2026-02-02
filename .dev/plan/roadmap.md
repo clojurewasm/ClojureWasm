@@ -376,6 +376,38 @@ Target: one `callFnVal(allocator, env, fn_val, args)` in bootstrap.zig,
 exposed via a single module-level var. Eliminates Fn.kind default footgun
 and 4 redundant module vars.
 
+## Phase 11: Metadata System + Core Library IV
+
+Metadata is a prerequisite for many Clojure idioms (protocols, defrecord,
+docstrings on user fns). This phase adds the metadata system and fills
+high-priority gaps in the core library.
+
+### Phase 11a: Metadata System
+
+| #    | Task                                          | Archive | Notes                                                   |
+| ---- | --------------------------------------------- | ------- | ------------------------------------------------------- |
+| 11.1 | meta, with-meta, vary-meta, alter-meta!       | --      | Attach/read metadata on collections, Vars, symbols, fns |
+| 11.2 | reset-meta!, IMeta protocol on Value variants | --      | Mutable meta on Vars/atoms; protocol-based dispatch     |
+
+### Phase 11b: Function Combinators + Utility
+
+| #    | Task                       | Archive | Notes                                           |
+| ---- | -------------------------- | ------- | ----------------------------------------------- |
+| 11.3 | memoize, trampoline        | --      | core.clj: function combinators (Phase 6.9 残り) |
+| 11.4 | if-some, when-some, vswap! | --      | core.clj: nil-safe macros + volatile swap       |
+
+### Phase 11c: Regex Support
+
+| #    | Task                                    | Archive | Notes                                      |
+| ---- | --------------------------------------- | ------- | ------------------------------------------ |
+| 11.5 | re-pattern, re-find, re-matches, re-seq | --      | Zig builtin: regex via PCRE or simple impl |
+
+### Phase 11d: Validation
+
+| #    | Task                        | Archive | Notes                                       |
+| ---- | --------------------------- | ------- | ------------------------------------------- |
+| 11.6 | Metadata + regex test suite | --      | Compare-mode tests, SCI compatibility tests |
+
 ## Future Considerations
 
 ### IO / System Namespace Strategy
@@ -408,4 +440,5 @@ Details deferred — decide architecture when the IO/system phase is planned.
 | 9 (a-d)   | 15      | Complete        | Core library expansion III |
 | 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
 | 10 (a-c)  | 4       | Complete        | VM correctness + interop   |
-| **Total** | **109** | **94 archived** |                            |
+| 11 (a-d)  | 6       | Planned         | Metadata + core lib IV     |
+| **Total** | **115** | **94 archived** |                            |
