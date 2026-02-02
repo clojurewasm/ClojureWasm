@@ -14,7 +14,7 @@ RESET='\033[0m'
 
 BENCH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "$BENCH_ROOT/.." && pwd)"
-CLOJUREWASM="$PROJECT_ROOT/zig-out/bin/clj-wasm"
+CLOJUREWASM="$PROJECT_ROOT/zig-out/bin/cljw"
 
 # measure_time CMD...
 # Runs command, captures wall-clock time in ms, stdout, and exit code.

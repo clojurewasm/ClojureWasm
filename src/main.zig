@@ -1,9 +1,9 @@
 // ClojureWasm CLI entry point.
 //
 // Usage:
-//   clj-wasm -e "expr"    Evaluate expression and print result
-//   clj-wasm file.clj     Evaluate file and print last result
-//   clj-wasm              Start interactive REPL
+//   cljw -e "expr"    Evaluate expression and print result
+//   cljw file.clj     Evaluate file and print last result
+//   cljw              Start interactive REPL
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

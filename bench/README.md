@@ -90,7 +90,7 @@ bash bench/run_bench.sh --release
 
 | Language    | How                           |
 | ----------- | ----------------------------- |
-| ClojureWasm | `zig build` + `clj-wasm`      |
+| ClojureWasm | `zig build` + `cljw`          |
 | C           | `cc -O3`                      |
 | Zig         | `zig build-exe -OReleaseFast` |
 | Java        | `javac` + `java` (JDK 25)     |

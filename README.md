@@ -21,9 +21,9 @@ nix develop   # enter dev shell
 zig build
 
 # Run
-zig-out/bin/clj-wasm --version
-zig-out/bin/clj-wasm -e "(+ 1 2)"
-zig-out/bin/clj-wasm script.clj
+zig-out/bin/cljw --version
+zig-out/bin/cljw -e "(+ 1 2)"
+zig-out/bin/cljw script.clj
 
 # Test
 zig build test

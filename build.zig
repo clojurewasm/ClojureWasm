@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     // Executable (same source tree, no module boundary — avoids self-referential type loop)
     const exe = b.addExecutable(.{
-        .name = "clj-wasm",
+        .name = "cljw",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
 
     // Wasm build step (wasm32-wasi)
     const wasm_exe = b.addExecutable(.{
-        .name = "clj-wasm",
+        .name = "cljw",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = b.resolveTargetQuery(.{
