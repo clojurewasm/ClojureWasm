@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Phase: 8 (Refactoring)
+- Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 8 refactoring complete — next phase TBD
+- Current task: T9.2 sort, sort-by, compare
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none

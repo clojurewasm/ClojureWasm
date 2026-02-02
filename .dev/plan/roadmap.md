@@ -255,6 +255,51 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 7.8 | nREPL server (TCP socket)                | task_0062_nrepl_server.md     | eval, load-file, describe, completions ops  |
 | 7.9 | nREPL middleware: completion, stacktrace | task_0063_nrepl_middleware.md | CIDER compat: stdin, interrupt, *1/*2/*3/*e |
 
+## Phase 8: Refactoring
+
+| #    | Task                                            | Archive                          | Notes                         |
+| ---- | ----------------------------------------------- | -------------------------------- | ----------------------------- |
+| 8.R1 | Remove TreeWalk D26 sentinel dispatch dead code | task_0064_treewalk_dead_code.md  | ~180 lines removed            |
+| 8.R2 | Extract shared helpers in bootstrap.zig         | task_0065_bootstrap_dedup.md     | evalString/evalStringVM dedup |
+| 8.R3 | Unify arithmetic/comparison in arithmetic.zig   | task_0066_arith_consolidation.md | Wrapping op bug fixed         |
+
+## Phase 9: Core Library Expansion III
+
+### Phase 9a: Essential Collection Operations (Zig builtins)
+
+| #   | Task                                    | Archive                   | Notes                                          |
+| --- | --------------------------------------- | ------------------------- | ---------------------------------------------- |
+| 9.1 | merge, merge-with, zipmap               | task_0068_merge_zipmap.md | Map merging — very high frequency              |
+| 9.2 | sort, sort-by, compare                  | --                        | Sorting — needs Zig-level comparator           |
+| 9.3 | vec, set, into (improved), list\*       | --                        | Type coercion — used everywhere                |
+| 9.4 | meta, with-meta, vary-meta, alter-meta! | --                        | Metadata system — prerequisite for many things |
+
+### Phase 9b: Core Library Expansion (core.clj)
+
+| #   | Task                                    | Archive | Notes                                 |
+| --- | --------------------------------------- | ------- | ------------------------------------- |
+| 9.5 | map-indexed, keep, keep-indexed, remove | --      | High-frequency HOFs                   |
+| 9.6 | mapv, filterv, reduce-kv                | --      | Vector-returning variants + kv reduce |
+| 9.7 | partition-all, take-while, drop-while   | --      | Sequence slicing                      |
+| 9.8 | butlast, last, second, nfirst, fnext    | --      | Convenience accessors                 |
+| 9.9 | not-empty, every-pred, some-fn, fnil    | --      | Predicate/function utilities          |
+
+### Phase 9c: Control Flow + Utility Macros
+
+| #    | Task                          | Archive | Notes                  |
+| ---- | ----------------------------- | ------- | ---------------------- |
+| 9.10 | while, doseq, doall, dorun    | --      | Imperative iteration   |
+| 9.11 | case, condp, declare, defonce | --      | Missing control macros |
+| 9.12 | delay, force, realized?       | --      | Delayed evaluation     |
+
+### Phase 9d: Misc Builtins
+
+| #    | Task                                            | Archive | Notes                             |
+| ---- | ----------------------------------------------- | ------- | --------------------------------- |
+| 9.13 | boolean, true?, false?, some?, any?             | --      | Basic predicates (Zig builtins)   |
+| 9.14 | bit-and, bit-or, bit-xor, bit-not, bit-shift-\* | --      | Bitwise operations (Zig builtins) |
+| 9.15 | type, class, instance?, isa?                    | --      | Type introspection                |
+
 ## Risk Mitigations
 
 | Risk                          | Mitigation                                                       |

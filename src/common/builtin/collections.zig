@@ -406,6 +406,131 @@ pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = map };
 }
 
+/// (merge & maps) — returns a map that consists of the rest of the maps conj-ed onto the first.
+/// If a key occurs in more than one map, the mapping from the latter (left-to-right) will be the mapping in the result.
+pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return .nil;
+
+    // Skip leading nils, find first map
+    var start: usize = 0;
+    while (start < args.len and args[start] == .nil) : (start += 1) {}
+    if (start >= args.len) return .nil;
+
+    // Start with entries from first map
+    if (args[start] != .map) return error.TypeError;
+    var entries = std.ArrayList(Value).empty;
+    try entries.appendSlice(allocator, args[start].map.entries);
+
+    // Merge remaining maps left-to-right
+    for (args[start + 1 ..]) |arg| {
+        if (arg == .nil) continue;
+        if (arg != .map) return error.TypeError;
+        const src = arg.map.entries;
+        var i: usize = 0;
+        while (i < src.len) : (i += 2) {
+            const key = src[i];
+            const val = src[i + 1];
+            var found = false;
+            var j: usize = 0;
+            while (j < entries.items.len) : (j += 2) {
+                if (entries.items[j].eql(key)) {
+                    entries.items[j + 1] = val;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try entries.append(allocator, key);
+                try entries.append(allocator, val);
+            }
+        }
+    }
+
+    const new_map = try allocator.create(PersistentArrayMap);
+    new_map.* = .{ .entries = entries.items };
+    return Value{ .map = new_map };
+}
+
+/// (merge-with f & maps) — merge maps, calling (f old new) on key conflicts.
+pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return error.ArityError;
+
+    const f = args[0];
+    const maps = args[1..];
+
+    if (maps.len == 0) return .nil;
+
+    // Skip leading nils
+    var start: usize = 0;
+    while (start < maps.len and maps[start] == .nil) : (start += 1) {}
+    if (start >= maps.len) return .nil;
+
+    if (maps[start] != .map) return error.TypeError;
+    var entries = std.ArrayList(Value).empty;
+    try entries.appendSlice(allocator, maps[start].map.entries);
+
+    for (maps[start + 1 ..]) |arg| {
+        if (arg == .nil) continue;
+        if (arg != .map) return error.TypeError;
+        const src = arg.map.entries;
+        var i: usize = 0;
+        while (i < src.len) : (i += 2) {
+            const key = src[i];
+            const val = src[i + 1];
+            var found = false;
+            var j: usize = 0;
+            while (j < entries.items.len) : (j += 2) {
+                if (entries.items[j].eql(key)) {
+                    // Key conflict: call f(old_val, new_val)
+                    entries.items[j + 1] = switch (f) {
+                        .builtin_fn => |func| try func(allocator, &.{ entries.items[j + 1], val }),
+                        else => return error.TypeError,
+                    };
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try entries.append(allocator, key);
+                try entries.append(allocator, val);
+            }
+        }
+    }
+
+    const new_map = try allocator.create(PersistentArrayMap);
+    new_map.* = .{ .entries = entries.items };
+    return Value{ .map = new_map };
+}
+
+/// (zipmap keys vals) — returns a map with keys mapped to corresponding vals.
+pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+
+    const key_items = switch (args[0]) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+    const val_items = switch (args[1]) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+
+    const pair_count = @min(key_items.len, val_items.len);
+    const entries = try allocator.alloc(Value, pair_count * 2);
+    for (0..pair_count) |i| {
+        entries[i * 2] = key_items[i];
+        entries[i * 2 + 1] = val_items[i];
+    }
+
+    const new_map = try allocator.create(PersistentArrayMap);
+    new_map.* = .{ .entries = entries };
+    return Value{ .map = new_map };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -539,12 +664,43 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([& keyvals])",
         .added = "1.0",
     },
+    .{
+        .name = "merge",
+        .kind = .runtime_fn,
+        .func = &mergeFn,
+        .doc = "Returns a map that consists of the rest of the maps conj-ed onto the first. If a key occurs in more than one map, the mapping from the latter will be the mapping in the result.",
+        .arglists = "([& maps])",
+        .added = "1.0",
+    },
+    .{
+        .name = "merge-with",
+        .kind = .runtime_fn,
+        .func = &mergeWithFn,
+        .doc = "Returns a map that consists of the rest of the maps conj-ed onto the first. If a key occurs in more than one map, the mapping(s) from the latter will be combined with the mapping in the result by calling (f val-in-result val-in-latter).",
+        .arglists = "([f & maps])",
+        .added = "1.0",
+    },
+    .{
+        .name = "zipmap",
+        .kind = .runtime_fn,
+        .func = &zipmapFn,
+        .doc = "Returns a map with the keys mapped to the corresponding vals.",
+        .arglists = "([keys vals])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
 
 const testing = std.testing;
 const test_alloc = testing.allocator;
+
+/// Simple addition for testing merge-with.
+fn testAddFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .integer or args[1] != .integer) return error.TypeError;
+    return Value{ .integer = args[0].integer + args[1].integer };
+}
 
 test "first on list" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
@@ -748,8 +904,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 16 entries" {
-    try testing.expectEqual(16, builtins.len);
+test "builtins table has 19 entries" {
+    try testing.expectEqual(19, builtins.len);
 }
 
 test "reverse list" {
@@ -786,6 +942,158 @@ test "apply with builtin_fn" {
         Value{ .list = &arg_list },
     });
     try testing.expectEqual(Value{ .integer = 3 }, result);
+}
+
+test "merge two maps" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const e1 = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+    };
+    var m1 = PersistentArrayMap{ .entries = &e1 };
+    const e2 = [_]Value{
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    var m2 = PersistentArrayMap{ .entries = &e2 };
+
+    const result = try mergeFn(alloc, &.{ Value{ .map = &m1 }, Value{ .map = &m2 } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 2), result.map.count());
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 1 }));
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 2 }));
+}
+
+test "merge with nil" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const e1 = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+    };
+    var m1 = PersistentArrayMap{ .entries = &e1 };
+
+    // (merge nil {:a 1}) => {:a 1}
+    const r1 = try mergeFn(alloc, &.{ .nil, Value{ .map = &m1 } });
+    try testing.expect(r1 == .map);
+    try testing.expectEqual(@as(usize, 1), r1.map.count());
+
+    // (merge {:a 1} nil) => {:a 1}
+    const r2 = try mergeFn(alloc, &.{ Value{ .map = &m1 }, .nil });
+    try testing.expect(r2 == .map);
+    try testing.expectEqual(@as(usize, 1), r2.map.count());
+
+    // (merge nil nil) => nil
+    const r3 = try mergeFn(alloc, &.{ .nil, .nil });
+    try testing.expect(r3 == .nil);
+
+    // (merge) => nil
+    const r4 = try mergeFn(alloc, &.{});
+    try testing.expect(r4 == .nil);
+}
+
+test "merge overlapping keys" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const e1 = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    var m1 = PersistentArrayMap{ .entries = &e1 };
+    const e2 = [_]Value{
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 99 },
+        .{ .keyword = .{ .name = "c", .ns = null } }, .{ .integer = 3 },
+    };
+    var m2 = PersistentArrayMap{ .entries = &e2 };
+
+    const result = try mergeFn(alloc, &.{ Value{ .map = &m1 }, Value{ .map = &m2 } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 3), result.map.count());
+    // :b should be overwritten by m2's value
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 99 }));
+}
+
+test "merge-with merges with function" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const e1 = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+    };
+    var m1 = PersistentArrayMap{ .entries = &e1 };
+    const e2 = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 10 },
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    var m2 = PersistentArrayMap{ .entries = &e2 };
+
+    // (merge-with + {:a 1} {:a 10 :b 2}) => {:a 11 :b 2}
+    const result = try mergeWithFn(alloc, &.{
+        Value{ .builtin_fn = &testAddFn },
+        Value{ .map = &m1 },
+        Value{ .map = &m2 },
+    });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 2), result.map.count());
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 11 }));
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 2 }));
+}
+
+test "zipmap basic" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (zipmap [:a :b :c] [1 2 3]) => {:a 1 :b 2 :c 3}
+    const keys = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } },
+        .{ .keyword = .{ .name = "b", .ns = null } },
+        .{ .keyword = .{ .name = "c", .ns = null } },
+    };
+    var key_vec = PersistentVector{ .items = &keys };
+    const vals = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var val_vec = PersistentVector{ .items = &vals };
+
+    const result = try zipmapFn(alloc, &.{ Value{ .vector = &key_vec }, Value{ .vector = &val_vec } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 3), result.map.count());
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 1 }));
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "c", .ns = null } }).?.eql(.{ .integer = 3 }));
+}
+
+test "zipmap unequal lengths" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (zipmap [:a :b] [1]) => {:a 1} — stops at shorter
+    const keys = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } },
+        .{ .keyword = .{ .name = "b", .ns = null } },
+    };
+    var key_vec = PersistentVector{ .items = &keys };
+    const vals = [_]Value{.{ .integer = 1 }};
+    var val_vec = PersistentVector{ .items = &vals };
+
+    const result = try zipmapFn(alloc, &.{ Value{ .vector = &key_vec }, Value{ .vector = &val_vec } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 1), result.map.count());
+}
+
+test "zipmap empty" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var empty_vec = PersistentVector{ .items = &.{} };
+    const result = try zipmapFn(alloc, &.{ Value{ .vector = &empty_vec }, Value{ .vector = &empty_vec } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 0), result.map.count());
 }
 
 test "builtins all have func" {

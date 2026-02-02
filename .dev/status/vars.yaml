@@ -418,8 +418,8 @@ vars:
     "max-key": {type: function, status: todo, impl: none}
     memfn: {type: macro, status: todo, impl: none}
     memoize: {type: function, status: todo, impl: none}
-    merge: {type: function, status: todo, impl: none}
-    "merge-with": {type: function, status: todo, impl: none}
+    merge: {type: function, status: done, impl: zig_builtin}
+    "merge-with": {type: function, status: done, impl: zig_builtin}
     meta: {type: function, status: todo, impl: none}
     "method-sig": {type: function, status: todo, impl: none}
     methods: {type: function, status: todo, impl: none}
@@ -723,7 +723,7 @@ vars:
     "with-redefs-fn": {type: function, status: todo, impl: none}
     "xml-seq": {type: function, status: todo, impl: none}
     "zero?": {type: function, status: done, impl: host}
-    zipmap: {type: function, status: todo, impl: none}
+    zipmap: {type: function, status: done, impl: zig_builtin}
   clojure_core_protocols:
     CollReduce: {type: var, status: todo, impl: none}
     Datafiable: {type: var, status: todo, impl: none}
