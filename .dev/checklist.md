@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (Phase 9.5 planning — D32)
+Last updated: 2026-02-02 (Phase 9.5 complete)
 
 ## Invariants (always enforce)
 
@@ -33,6 +33,7 @@ Last updated: 2026-02-02 (Phase 9.5 planning — D32)
 | ~~F12~~ | ~~`str` fixed 4KB buffer~~                  | ~~Resolved: T7.2 — Writer.Allocating (dynamic)~~          | bench  |
 | ~~F15~~ | ~~VM evalStringVM fn_val use-after-free~~   | ~~Resolved: T9.5.1 — Compiler.detachFnAllocations~~       | D32    |
 | ~~F16~~ | ~~seq on map (MapEntry)~~                   | ~~Resolved: T9.5.3 — seqFn + firstFn/restFn map support~~ | D32    |
+| F17     | VM loop/recur wrong results                 | fib_loop=25 (expected 75025), arith_loop wrong            | T9.5.4 |
 
 ## Phase 4 task priorities
 

@@ -62,11 +62,24 @@ This matches Zig standard library conventions and keeps files readable.
 
 ### On Start
 
-1. Read `.dev/plan/memo.md` (current task + task file path)
+1. Read `.dev/plan/memo.md` — **the single source of "what to do next"**
 2. Read `.dev/checklist.md` (deferred work + invariants — scan for newly relevant items)
 3. Quick status check: `yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml`
-4. If task file exists: read it, resume from `## Log`
-5. If task file missing: create it (read roadmap + Beta refs, write plan)
+4. Follow memo.md instructions:
+   - **Task file exists** → read it, resume from `## Log`
+   - **Task file = "(none)"** → create task file (read roadmap + Beta refs, write plan)
+   - **Phase planning needed** → see "Phase Planning" below
+
+### Phase Planning
+
+When memo.md says "phase planning needed" or no next task is defined:
+
+1. Read `.dev/plan/roadmap.md` + `.dev/checklist.md` for context
+2. Evaluate priorities: bugs > blockers > feature expansion
+3. **Create a new phase section** in roadmap.md with task table
+4. Update memo.md: set Current task to first task of new phase
+5. Commit the plan: `git commit -m "Add Phase X to roadmap"`
+6. Then start the first task normally
 
 ### During Development
 
@@ -81,12 +94,26 @@ This matches Zig standard library conventions and keeps files readable.
 
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
-3. Advance memo.md: update Current task, Task file, Last completed.
-   Update Technical Notes if the next task has useful context to carry forward.
+3. Advance memo.md — **forward-looking only**:
+   - Set Current task + Task file to the NEXT task
+   - Update Technical Notes with context the next task needs
+   - Do NOT list completed work (that's in roadmap/archive)
 4. If new Vars were implemented, update `.dev/status/vars.yaml` (status/note)
 5. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
 6. `git add` + `git commit` — **single commit covering plan + impl + status**
 7. Verify commit succeeded before proceeding to the next task
+
+### memo.md Role
+
+memo.md is **the instruction sheet for the next session**. It must always answer:
+
+- "What task should I work on?" (Current task + Task file)
+- "What context do I need?" (Technical Notes)
+- "Are there blockers?" (Blockers field)
+
+It is NOT a history log. Completed work goes to roadmap.md + archive/.
+When a phase ends, memo.md must either point to the next task OR say
+"phase planning needed" so the next session knows to plan.
 
 ## Build & Test
 

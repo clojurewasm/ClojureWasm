@@ -86,9 +86,23 @@ Read with Read tool:
 
 When all tasks in a phase are done:
 
-1. Update `memo.md` Current State to the new phase
-2. Clear Technical Notes (new phase = fresh context)
-3. Continue with the first task of the next phase
+1. Check if the **next phase already exists** in `roadmap.md`
+   - **Yes**: Update `memo.md` to point to the first task of the next phase, continue
+   - **No**: Plan the next phase (see below)
+
+### Planning a new phase
+
+1. Read `roadmap.md` (completed phases, future considerations)
+2. Read `checklist.md` (bugs, deferred items — prioritize these)
+3. Evaluate: **bugs > blockers > deferred items > feature expansion**
+4. Create a new phase section in `roadmap.md` with numbered task table
+5. Update `memo.md`:
+   - Current task → first task of new phase
+   - Task file → "(none — create on start)"
+   - Technical Notes → context for the first task
+   - Clear completed-phase notes
+6. Commit: `git commit -m "Add Phase X.Y to roadmap"`
+7. Then start the first task normally
 
 ## 6. User Instructions
 
