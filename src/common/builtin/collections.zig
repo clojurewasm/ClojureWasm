@@ -26,6 +26,12 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .vector => |vec| if (vec.items.len > 0) vec.items[0] else .nil,
         .nil => .nil,
         .cons => |c| c.first,
+        .map => {
+            const s = try seqFn(allocator, args);
+            if (s == .nil) return .nil;
+            const seq_args = [1]Value{s};
+            return firstFn(allocator, &seq_args);
+        },
         .lazy_seq => |ls| {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
@@ -56,6 +62,16 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             break :blk Value{ .list = new_list };
         },
         .cons => |c| c.rest,
+        .map => {
+            const s = try seqFn(allocator, args);
+            if (s == .nil) {
+                const empty = try allocator.create(PersistentList);
+                empty.* = .{ .items = &.{} };
+                return Value{ .list = empty };
+            }
+            const seq_args = [1]Value{s};
+            return restFn(allocator, &seq_args);
+        },
         .lazy_seq => |ls| {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
@@ -269,6 +285,25 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return args[0];
         },
         .cons => args[0], // cons is always non-empty
+        .map => |m| {
+            const n = m.count();
+            if (n == 0) return .nil;
+            const entry_vecs = try allocator.alloc(Value, n);
+            var idx: usize = 0;
+            var i: usize = 0;
+            while (i < m.entries.len) : (i += 2) {
+                const pair = try allocator.alloc(Value, 2);
+                pair[0] = m.entries[i];
+                pair[1] = m.entries[i + 1];
+                const vec = try allocator.create(PersistentVector);
+                vec.* = .{ .items = pair };
+                entry_vecs[idx] = Value{ .vector = vec };
+                idx += 1;
+            }
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = entry_vecs };
+            return Value{ .list = lst };
+        },
         .lazy_seq => |ls| {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
@@ -1460,6 +1495,51 @@ test "list* creates list" {
     try testing.expectEqual(@as(usize, 4), result.list.items.len);
     try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
     try testing.expectEqual(Value{ .integer = 4 }, result.list.items[3]);
+}
+
+test "seq on map returns list of entry vectors" {
+    const alloc = testing.allocator;
+    var entries = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    const m = try alloc.create(PersistentArrayMap);
+    defer alloc.destroy(m);
+    m.* = .{ .entries = &entries };
+
+    const result = try seqFn(alloc, &.{Value{ .map = m }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 2), result.list.items.len);
+
+    // First entry: [:a 1]
+    const e1 = result.list.items[0];
+    try testing.expect(e1 == .vector);
+    try testing.expectEqual(@as(usize, 2), e1.vector.items.len);
+    try testing.expect(e1.vector.items[0].eql(.{ .keyword = .{ .name = "a", .ns = null } }));
+    try testing.expectEqual(Value{ .integer = 1 }, e1.vector.items[1]);
+
+    // Second entry: [:b 2]
+    const e2 = result.list.items[1];
+    try testing.expect(e2 == .vector);
+    try testing.expectEqual(Value{ .integer = 2 }, e2.vector.items[1]);
+
+    // Cleanup
+    alloc.free(e1.vector.items);
+    alloc.destroy(e1.vector);
+    alloc.free(e2.vector.items);
+    alloc.destroy(e2.vector);
+    alloc.free(result.list.items);
+    alloc.destroy(result.list);
+}
+
+test "seq on empty map returns nil" {
+    const alloc = testing.allocator;
+    const m = try alloc.create(PersistentArrayMap);
+    defer alloc.destroy(m);
+    m.* = .{ .entries = &.{} };
+
+    const result = try seqFn(alloc, &.{Value{ .map = m }});
+    try testing.expectEqual(Value.nil, result);
 }
 
 test "builtins all have func" {

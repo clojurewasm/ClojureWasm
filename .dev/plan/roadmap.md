@@ -324,10 +324,10 @@ Fix VM lifetime bugs, unblock deferred items, and establish VM benchmark baselin
 
 ### Phase 9.5b: Data Model
 
-| #     | Task                     | Archive | Notes                                          |
-| ----- | ------------------------ | ------- | ---------------------------------------------- |
-| 9.5.3 | seq on map (MapEntry)    | --      | (seq {:a 1}) -> ([:a 1]) — needed for map HOFs |
-| 9.5.5 | bound? builtin + defonce | --      | Unblocks T9.11 deferred defonce                |
+| #     | Task                     | Archive                 | Notes                                          |
+| ----- | ------------------------ | ----------------------- | ---------------------------------------------- |
+| 9.5.3 | seq on map (MapEntry)    | task_0084_seq_on_map.md | (seq {:a 1}) -> ([:a 1]) — needed for map HOFs |
+| 9.5.5 | bound? builtin + defonce | --                      | Unblocks T9.11 deferred defonce                |
 
 ### Phase 9.5c: Validation
 

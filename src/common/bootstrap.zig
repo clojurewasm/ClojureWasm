@@ -1138,6 +1138,28 @@ test "swap! with fn_val closure (T9.5.2)" {
     );
 }
 
+test "seq on map (T9.5.3)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // (seq {:a 1}) => ([:a 1]) — count is 1
+    try expectEvalInt(alloc, &env, "(count (seq {:a 1 :b 2}))", 2);
+
+    // (first {:a 1}) => [:a 1] — first entry is a vector
+    try expectEvalBool(alloc, &env, "(vector? (first {:a 1}))", true);
+
+    // (count (first {:a 1})) => 2 — MapEntry has 2 elements
+    try expectEvalInt(alloc, &env, "(count (first {:a 1}))", 2);
+
+    // seq on empty map returns nil
+    try expectEvalNil(alloc, &env, "(seq {})");
+}
+
 // =========================================================================
 // Destructuring tests (T4.9)
 // =========================================================================
