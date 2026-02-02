@@ -83,9 +83,10 @@ pub fn main() !void {
     if (expr) |e| {
         evalAndPrint(alloc, e, use_vm);
     } else if (file) |f| {
-        const source = std.fs.cwd().readFileAlloc(allocator, f, 1024 * 1024) catch {
+        const max_file_size = 10 * 1024 * 1024; // 10MB
+        const source = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
             const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-            _ = stderr.write("Error: could not read file\n") catch {};
+            _ = stderr.write("Error: could not read file (max 10MB)\n") catch {};
             std.process.exit(1);
         };
         defer allocator.free(source);

@@ -4,7 +4,7 @@
 
 - Phase: 11 (Metadata System + Core Library IV)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T11.1b — Reader input validation (depth/size limits)
+- Current task: T11.2 — Var as Value variant + Var metadata support
 - Task file: (none)
 - Blockers: none
 
@@ -13,34 +13,31 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T11.1b Background
+### T11.2 Background
 
-nREPL server (Phase 7c) is publicly accessible via TCP. Without Reader
-input limits, malicious input can cause OOM or stack overflow:
+Var needs to become a Value variant so that `(var foo)` returns a Var value,
+and `alter-meta!` / `reset-meta!` can work on Vars directly.
 
-- Deeply nested forms: `(((((((...))))))` — stack overflow in Reader
-- Huge string literals: `"<1MB string>"` — memory exhaustion
-- Massive collection literals: `[1 2 3 ... 100000]` — allocation pressure
+Current state:
 
-See .dev/future.md SS14.3 for the design:
+- Value tagged union has no Var variant
+- `var` special form exists in Reader (var_quote -> `(var x)`)
+- Analyzer handles `var` special form but result is used for resolution only
+- alter-meta! and reset-meta! (T11.1) work on collections/symbols/fns but NOT on Vars
 
-| Limit                    | Default | Config Flag           |
-| ------------------------ | ------- | --------------------- |
-| Nesting depth limit      | 1024    | `--max-depth`         |
-| String literal size      | 1MB     | `--max-string-size`   |
-| Collection literal count | 100,000 | `--max-literal-count` |
-| Source file size         | 10MB    | `--max-file-size`     |
+What T11.2 needs:
 
-Implementation approach: Add depth/size tracking to Reader. Return clear
-error messages (not panic) when limits are exceeded.
+- Add `.var_ref` (or `.var`) variant to Value tagged union
+- `(var foo)` should evaluate to the Var value itself
+- var?, var-get, var-set builtins
+- alter-meta!, reset-meta! extended to work on Var values
+- Metadata on Vars: docstring, arglists, etc. accessible via `(meta #'foo)`
 
-### T11.2 Additional Requirements
+### Important: comptime switch exhaustiveness check
 
-When implementing T11.2 (Var as Value variant), include:
-
-- comptime test verifying no `else => {}` exists in critical Value switch
-  statements (SS3: fixup verification institutionalization)
-- This prevents silent breakage when new Value variants are added
+Include a comptime test verifying no `else => {}` exists in critical Value switch
+statements (SS3: fixup verification institutionalization). This prevents silent
+breakage when new Value variants are added.
 
 ### Builtin Count
 

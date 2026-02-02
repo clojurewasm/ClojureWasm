@@ -20,11 +20,19 @@ const err = @import("../error.zig");
 pub const ReadError = err.Error;
 
 pub const Reader = struct {
+    pub const Limits = struct {
+        max_depth: u32 = 1024,
+        max_string_size: u32 = 1_048_576, // 1MB
+        max_collection_count: u32 = 100_000,
+    };
+
     tokenizer: Tokenizer,
     source: []const u8,
     allocator: std.mem.Allocator,
     error_ctx: *err.ErrorContext,
     peeked: ?Token = null,
+    depth: u32 = 0,
+    limits: Limits = .{},
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8, error_ctx: *err.ErrorContext) Reader {
         return .{
@@ -32,6 +40,16 @@ pub const Reader = struct {
             .source = source,
             .allocator = allocator,
             .error_ctx = error_ctx,
+        };
+    }
+
+    pub fn initWithLimits(allocator: std.mem.Allocator, source: []const u8, error_ctx: *err.ErrorContext, limits: Limits) Reader {
+        return .{
+            .tokenizer = Tokenizer.init(source),
+            .source = source,
+            .allocator = allocator,
+            .error_ctx = error_ctx,
+            .limits = limits,
         };
     }
 
@@ -179,6 +197,9 @@ pub const Reader = struct {
             return self.makeError(.string_error, "Invalid string literal", token);
         }
         const content = text[1 .. text.len - 1];
+        if (content.len > self.limits.max_string_size) {
+            return self.makeError(.syntax_error, "String literal exceeds maximum size", token);
+        }
         const unescaped = self.unescapeString(content) catch {
             return self.makeError(.string_error, "Invalid escape sequence in string", token);
         };
@@ -303,6 +324,8 @@ pub const Reader = struct {
     }
 
     fn readDelimited(self: *Reader, closing: TokenKind) ReadError![]Form {
+        try self.enterDepth(self.tokenizer.line, self.tokenizer.column);
+        defer self.depth -= 1;
         var items: std.ArrayList(Form) = .empty;
         errdefer items.deinit(self.allocator);
         while (true) {
@@ -313,6 +336,14 @@ pub const Reader = struct {
             if (tok.kind == closing) break;
             const form = try self.readForm(tok);
             items.append(self.allocator, form) catch return error.OutOfMemory;
+            if (items.items.len > self.limits.max_collection_count) {
+                return self.error_ctx.setError(.{
+                    .kind = .syntax_error,
+                    .phase = .parse,
+                    .message = "Collection literal exceeds maximum element count",
+                    .location = .{ .line = tok.line, .column = tok.column },
+                });
+            }
         }
         return items.toOwnedSlice(self.allocator) catch return error.OutOfMemory;
     }
@@ -321,6 +352,8 @@ pub const Reader = struct {
 
     /// Expand 'x -> (quote x), @x -> (deref x), etc.
     fn readWrapped(self: *Reader, wrapper_name: []const u8, start_token: Token) ReadError!Form {
+        try self.enterDepth(start_token.line, start_token.column);
+        defer self.depth -= 1;
         const next = self.nextToken();
         if (next.kind == .eof) {
             return self.makeError(.syntax_error, "EOF after reader macro", next);
@@ -332,7 +365,9 @@ pub const Reader = struct {
         return Form{ .data = .{ .list = items }, .line = start_token.line, .column = start_token.column };
     }
 
-    fn readDiscard(self: *Reader, _: Token) ReadError!Form {
+    fn readDiscard(self: *Reader, start_token: Token) ReadError!Form {
+        try self.enterDepth(start_token.line, start_token.column);
+        defer self.depth -= 1;
         // Read and discard the next form
         const next = self.nextToken();
         if (next.kind == .eof) {
@@ -345,6 +380,8 @@ pub const Reader = struct {
     }
 
     fn readMeta(self: *Reader, start_token: Token) ReadError!Form {
+        try self.enterDepth(start_token.line, start_token.column);
+        defer self.depth -= 1;
         // Read metadata form
         const meta_tok = self.nextToken();
         if (meta_tok.kind == .eof) {
@@ -756,6 +793,20 @@ pub const Reader = struct {
     fn invalidError(self: *Reader, token: Token) ReadError {
         return self.makeError(.syntax_error, "Invalid token", token);
     }
+
+    /// Increment nesting depth, checking against limit.
+    /// Returns error if limit exceeded. Caller must `defer self.depth -= 1`.
+    fn enterDepth(self: *Reader, line: u32, column: u16) ReadError!void {
+        self.depth += 1;
+        if (self.depth > self.limits.max_depth) {
+            return self.error_ctx.setError(.{
+                .kind = .syntax_error,
+                .phase = .parse,
+                .message = "Nesting depth exceeds maximum limit",
+                .location = .{ .line = line, .column = column },
+            });
+        }
+    }
 };
 
 // === Tests ===
@@ -1039,4 +1090,75 @@ test "Reader - let pattern" {
     try testing.expectEqual(@as(usize, 3), form.data.list.len);
     try testing.expect(form.data.list[1].data == .vector);
     try testing.expect(form.data.list[2].data == .vector);
+}
+
+// === Input Validation Tests ===
+
+fn readOneWithLimits(source: []const u8, limits: Reader.Limits) ReadError!?Form {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const allocator = arena.allocator();
+    var r = Reader.initWithLimits(allocator, source, &test_error_ctx, limits);
+    return r.read();
+}
+
+test "Reader - depth limit exceeded" {
+    // Build deeply nested list: (((((...))))) with depth > 4
+    const source = "(((((1)))))";
+    const result = readOneWithLimits(source, .{ .max_depth = 4 });
+    try testing.expectError(error.SyntaxError, result);
+}
+
+test "Reader - depth limit not exceeded" {
+    const source = "(((1)))";
+    const form = (try readOneWithLimits(source, .{ .max_depth = 4 })).?;
+    try testing.expect(form.data == .list);
+}
+
+test "Reader - collection element count limit exceeded" {
+    // Build vector with 6 elements, limit to 5
+    const source = "[1 2 3 4 5 6]";
+    const result = readOneWithLimits(source, .{ .max_collection_count = 5 });
+    try testing.expectError(error.SyntaxError, result);
+}
+
+test "Reader - collection element count limit not exceeded" {
+    const source = "[1 2 3 4 5]";
+    const form = (try readOneWithLimits(source, .{ .max_collection_count = 5 })).?;
+    try testing.expect(form.data == .vector);
+    try testing.expectEqual(@as(usize, 5), form.data.vector.len);
+}
+
+test "Reader - string size limit exceeded" {
+    // Build string with 10 chars, limit to 5
+    const source = "\"0123456789\"";
+    const result = readOneWithLimits(source, .{ .max_string_size = 5 });
+    try testing.expectError(error.SyntaxError, result);
+}
+
+test "Reader - string size limit not exceeded" {
+    const source = "\"hello\"";
+    const form = (try readOneWithLimits(source, .{ .max_string_size = 10 })).?;
+    try testing.expect(form.data == .string);
+}
+
+test "Reader - default limits allow normal input" {
+    const source = "(defn f [x] (+ x 1))";
+    const form = (try readOneWithLimits(source, .{})).?;
+    try testing.expect(form.data == .list);
+}
+
+test "Reader - depth limit with nested vectors and maps" {
+    // [{:a [1]}] = depth 3 (vector > map > vector)
+    const source = "[{:a [1]}]";
+    const result = readOneWithLimits(source, .{ .max_depth = 2 });
+    try testing.expectError(error.SyntaxError, result);
+}
+
+test "Reader - depth tracks reader macros" {
+    // '(1) expands to (quote (1)) — the list inside quote adds depth
+    // With readWrapped: depth goes to 1 (for the inner readForm)
+    // Then readList: depth goes to 2
+    const source = "'((1))";
+    const result = readOneWithLimits(source, .{ .max_depth = 2 });
+    try testing.expectError(error.SyntaxError, result);
 }

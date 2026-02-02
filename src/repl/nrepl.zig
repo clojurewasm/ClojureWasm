@@ -341,6 +341,12 @@ fn opEval(
         return;
     };
 
+    // Input size limit for nREPL (1MB)
+    if (code.len > 1_048_576) {
+        sendError(stream, msg, "eval-error", "Input exceeds maximum size (1MB)", allocator);
+        return;
+    }
+
     // Resolve session namespace
     const session_id = bencode.dictGetString(msg, "session");
     const ns_name = if (bencode.dictGetString(msg, "ns")) |n|

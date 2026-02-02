@@ -384,11 +384,11 @@ high-priority gaps in the core library.
 
 ### Phase 11a: Metadata System
 
-| #     | Task                                        | Archive                        | Notes                                                        |
-| ----- | ------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| 11.1  | meta, with-meta, vary-meta, alter-meta!     | task_0091_metadata_builtins.md | Attach/read metadata on collections, Vars, symbols, fns      |
-| 11.1b | Reader input validation (depth/size limits) | --                             | SS14: Prevent OOM/stack overflow with nREPL publicly exposed |
-| 11.2  | Var as Value variant + Var metadata support | --                             | Var in Value union; alter-meta!/reset-meta! on Vars          |
+| #     | Task                                        | Archive                              | Notes                                                        |
+| ----- | ------------------------------------------- | ------------------------------------ | ------------------------------------------------------------ |
+| 11.1  | meta, with-meta, vary-meta, alter-meta!     | task_0091_metadata_builtins.md       | Attach/read metadata on collections, Vars, symbols, fns      |
+| 11.1b | Reader input validation (depth/size limits) | task_0092_reader_input_validation.md | SS14: Prevent OOM/stack overflow with nREPL publicly exposed |
+| 11.2  | Var as Value variant + Var metadata support | --                                   | Var in Value union; alter-meta!/reset-meta! on Vars          |
 
 ### Phase 11b: Function Combinators + Utility
 
