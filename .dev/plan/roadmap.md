@@ -183,22 +183,22 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 4 Milestone Criteria
 
-- VM passes all SCI Tier 1 tests with --compare mode
-- core.clj AOT pipeline works (build -> embed -> startup)
-- Multi-arity fn and destructuring supported
-- Startup time < 5ms (AOT, release build)
-- At least one Wasm target builds and runs basic tests
+- ~~VM passes all SCI Tier 1 tests with --compare mode~~ (Partial: VM works but compare mode needs AOT — deferred)
+- ~~core.clj AOT pipeline works (build -> embed -> startup)~~ (Partial: T4.6 evalStringVM done, T4.7 AOT embed deferred — needs F7)
+- ~~Multi-arity fn and destructuring supported~~ (Done: T4.8, T4.9)
+- ~~Startup time < 5ms (AOT, release build)~~ (Deferred: no AOT yet)
+- ~~At least one Wasm target builds and runs basic tests~~ (Done: T4.13, 207KB)
 
 ## Phase 5: Benchmark System
 
-| #   | Task                            | Archive | Notes                               |
-| --- | ------------------------------- | ------- | ----------------------------------- |
-| 5.1 | Add python314, ruby_4_0, jdk25  | --      | flake.nix language upgrades         |
-| 5.2 | Benchmark framework + meta.yaml | --      | bench/ directory structure          |
-| 5.3 | Implement 11 benchmarks         | --      | 5 categories, hyperfine integration |
-| 5.4 | Multi-language runners          | --      | C, Zig, Java, Python, Ruby, Clj, BB |
-| 5.5 | bench.yaml 2-gen rotation       | --      | --record with delta display         |
-| 5.6 | Record Phase 5 baseline         | --      | TreeWalk, Debug build results       |
+| #   | Task                            | Archive              | Notes                               |
+| --- | ------------------------------- | -------------------- | ----------------------------------- |
+| 5.1 | Add python314, ruby_4_0, jdk25  | (done, no task file) | flake.nix language upgrades         |
+| 5.2 | Benchmark framework + meta.yaml | (done, no task file) | bench/ directory structure          |
+| 5.3 | Implement 11 benchmarks         | (done, no task file) | 5 categories, hyperfine integration |
+| 5.4 | Multi-language runners          | (done, no task file) | C, Zig, Java, Python, Ruby, Clj, BB |
+| 5.5 | bench.yaml 2-gen rotation       | (done, no task file) | --record with delta display         |
+| 5.6 | Record Phase 5 baseline         | (done, no task file) | TreeWalk, Debug build results       |
 
 ## Phase 6: Core Library Expansion
 
@@ -372,14 +372,17 @@ Details deferred — decide architecture when the IO/system phase is planned.
 
 ## Task Count Summary
 
-| Phase     | Tasks  | Scope                  |
-| --------- | ------ | ---------------------- |
-| 1a        | 4      | Value type foundation  |
-| 1b        | 4      | Reader                 |
-| 1c        | 4      | Analyzer               |
-| 2a        | 4      | Runtime infrastructure |
-| 2b        | 6      | Compiler + VM          |
-| 3a        | 9      | VM parity + builtins   |
-| 3b        | 5      | core.clj AOT           |
-| 3c        | 3      | Integration            |
-| **Total** | **39** |                        |
+| Phase     | Tasks   | Status          | Scope                      |
+| --------- | ------- | --------------- | -------------------------- |
+| 1 (a-c)   | 12      | Complete        | Value + Reader + Analyzer  |
+| 2 (a-b)   | 10      | Complete        | Runtime + Compiler + VM    |
+| 3 (a-c)   | 17      | Complete        | Builtins + core.clj + CLI  |
+| 4 (a-f)   | 16      | Complete        | VM parity + lang features  |
+| 5         | 6       | Complete        | Benchmark system           |
+| 6 (a-c)   | 12      | Partial         | Core library expansion     |
+| 7 (a-c)   | 9       | Complete        | Robustness + nREPL         |
+| 8         | 3       | Complete        | Refactoring                |
+| 9 (a-d)   | 15      | Complete        | Core library expansion III |
+| 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
+| 10 (a-b)  | 3       | Active          | VM correctness + interop   |
+| **Total** | **108** | **89 archived** |                            |
