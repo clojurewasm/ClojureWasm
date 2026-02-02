@@ -2317,6 +2317,70 @@ test "core.clj - declare" {
     try std.testing.expectEqual(Value{ .integer = 6 }, r2);
 }
 
+test "core.clj - delay and force" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // delay creates a deferred computation, force evaluates it
+    const result = try evalString(alloc, &env,
+        \\(let [d (delay (+ 1 2))]
+        \\  (force d))
+    );
+    try std.testing.expectEqual(Value{ .integer = 3 }, result);
+}
+
+test "core.clj - delay memoizes" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // force should return same value on repeated calls (memoized)
+    const result = try evalString(alloc, &env,
+        \\(let [counter (atom 0)
+        \\      d (delay (do (swap! counter + 1) (deref counter)))]
+        \\  (force d)
+        \\  (force d)
+        \\  (deref counter))
+    );
+    // Counter should be 1 (thunk evaluated only once)
+    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+}
+
+test "core.clj - realized?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env,
+        \\(let [d (delay (+ 1 2))]
+        \\  (let [before (realized? d)]
+        \\    (force d)
+        \\    (let [after (realized? d)]
+        \\      (list before after))))
+    );
+    // before=false, after=true
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try std.testing.expect(result.list.items[0] == .boolean and result.list.items[0].boolean == false);
+    try std.testing.expect(result.list.items[1] == .boolean and result.list.items[1].boolean == true);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

@@ -237,7 +237,7 @@ vars:
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: todo}
     deftype: {type: macro, status: todo}
-    delay: {type: macro, status: todo}
+    delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
     "delay?": {type: function, status: todo}
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
@@ -308,7 +308,7 @@ vars:
     fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
     fnil: {type: function, status: done, note: "core.clj nil-replacement wrapper"}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
-    force: {type: function, status: todo}
+    force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
     format: {type: function, status: todo}
     frequencies: {type: function, status: done}
     future: {type: macro, status: todo}
@@ -522,7 +522,7 @@ vars:
     "read-string": {type: function, status: todo}
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}
-    "realized?": {type: function, status: todo}
+    "realized?": {type: function, status: done, note: "core.clj checks delay :realized atom"}
     "record?": {type: function, status: todo}
     reduce: {type: function, status: done}
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
@@ -1070,7 +1070,7 @@ vars:
     "char-alphanumeric": {type: function, status: todo}
     "char-ascii": {type: function, status: todo}
     choose: {type: function, status: todo}
-    delay: {type: macro, status: todo}
+    delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
     "delay-impl": {type: function, status: todo}
     double: {type: function, status: todo}
     "double*": {type: function, status: todo}

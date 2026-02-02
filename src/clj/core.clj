@@ -598,6 +598,29 @@
   (dorun coll)
   coll)
 
+;; Delayed evaluation
+
+(defmacro delay [& body]
+  `{:__delay true
+    :thunk (fn [] ~@body)
+    :value (atom nil)
+    :realized (atom false)})
+
+(defn force [x]
+  (if (if (map? x) (:__delay x) false)
+    (if (deref (:realized x))
+      (deref (:value x))
+      (let [v ((:thunk x))]
+        (reset! (:value x) v)
+        (reset! (:realized x) true)
+        v))
+    x))
+
+(defn realized? [x]
+  (if (if (map? x) (:__delay x) false)
+    (deref (:realized x))
+    false))
+
 ;; Exception helpers
 
 (defn ex-info

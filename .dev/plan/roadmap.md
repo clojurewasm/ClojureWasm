@@ -290,7 +290,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | ---- | ----------------------------- | --------------------------------- | ----------------------------------------- |
 | 9.10 | while, doseq, doall, dorun    | task_0076_imperative_iteration.md | Imperative iteration                      |
 | 9.11 | case, condp, declare, defonce | task_0077_control_macros.md       | Missing control macros (defonce deferred) |
-| 9.12 | delay, force, realized?       | --                                | Delayed evaluation                        |
+| 9.12 | delay, force, realized?       | task_0078_delay.md                | Delayed evaluation                        |
 
 ### Phase 9d: Misc Builtins
 
