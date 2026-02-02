@@ -4,7 +4,7 @@
 
 - Phase: 10 (VM Correctness + VM-CoreClj Interop)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: **T10.1 — Fix VM loop/recur wrong results (F17)**
+- Current task: **T10.2 — Unified fn_val proto (F8)**
 - Task file: (none — create on start)
 - Blockers: none
 
@@ -13,31 +13,21 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T10.1 Investigation Notes
+### T10.2 Context
 
-**Symptoms** (from T9.5.4 VM benchmark):
+**Problem**: VM can't call core.clj higher-order functions (map, filter, reduce).
+8/11 VM benchmarks fail because VM dispatch doesn't handle TreeWalk closures.
 
-- fib_loop: returns 25 instead of 75025 (n=25, 3 loop bindings: i, a, b)
-- arith_loop: returns 1000000 instead of 499999500000 (n=1000000, 2 bindings: i, sum)
+**Background** (from F8/D22):
 
-**Pattern**: Both return the value of the FIRST loop binding (i) at completion,
-instead of the correct binding (a for fib, sum for arith). This suggests:
+- core.clj functions are loaded via TreeWalk eval at startup
+- They produce fn_val with TreeWalk-style proto (captured env, body node)
+- VM dispatch only handles VM-compiled fn_val (with FnProto bytecode)
+- Need to unify so VM can call TreeWalk closures and vice versa
 
-- After recur + jump_back, the stack is in correct state for the LOOP
-- But when the loop EXITS (if branch falls through), the body result
-  is being read from the wrong stack slot
+**Key files to investigate**:
 
-**Key code locations**:
-
-- VM recur opcode: `src/native/vm/vm.zig:265` — pops args, writes to slots, resets sp
-- Compiler emitLoop: `src/common/bytecode/compiler.zig:203` — emits pop instructions after body
-- Compiler emitRecur: `src/common/bytecode/compiler.zig:244` — emits recur + jump_back
-
-**Hypothesis**: The `emitLoop` cleanup code (`pop` N times after body) may be
-interacting with the recur sp reset, causing the loop exit path to pick up
-the wrong value. Specifically, when the loop body evaluates to the `if` result
-and the `if` takes the else branch (returning a binding), the value on top of
-stack after all the pops may be wrong.
-
-Look at how `emitLoop` handles cleanup vs how `emitLet` does it (pop_under vs pop).
-emitLet uses `pop_under` to keep body result; emitLoop uses plain `pop` N times.
+- `src/common/value.zig` — fn_val / Fn type definition
+- `src/native/vm/vm.zig` — VM call dispatch
+- `src/native/evaluator/tree_walk.zig` — TreeWalk fn_val creation
+- `src/common/bootstrap.zig` — evalStringVM pipeline

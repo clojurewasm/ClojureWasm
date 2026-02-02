@@ -342,9 +342,9 @@ higher-order functions. This unblocks 8/11 VM benchmarks.
 
 ### Phase 10a: VM Bug Fix
 
-| #    | Task                                  | Archive | Notes                                                                                                      |
-| ---- | ------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| 10.1 | Fix VM loop/recur wrong results (F17) | --      | fib_loop=25 (expect 75025), arith_loop=1000000 (expect 499999500000). Recur base_offset or stack reset bug |
+| #    | Task                                  | Archive                        | Notes                                                             |
+| ---- | ------------------------------------- | ------------------------------ | ----------------------------------------------------------------- |
+| 10.1 | Fix VM loop/recur wrong results (F17) | task_0087_vm_loop_recur_fix.md | emitLoop used pop instead of pop_under; body result was discarded |
 
 ### Phase 10b: VM-CoreClj Interop
 

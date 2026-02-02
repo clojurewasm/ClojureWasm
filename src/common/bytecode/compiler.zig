@@ -229,12 +229,10 @@ pub const Compiler = struct {
         self.loop_binding_count = prev_binding_count;
         self.loop_locals_base = prev_loop_locals_base;
 
-        // Clean up locals
+        // Clean up locals: keep body result on top, remove bindings beneath
         const locals_to_pop = self.locals.items.len - base_locals;
         if (locals_to_pop > 0) {
-            for (0..locals_to_pop) |_| {
-                try self.chunk.emitOp(.pop);
-            }
+            try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
         }
 
         self.locals.shrinkRetainingCapacity(base_locals);
