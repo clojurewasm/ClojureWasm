@@ -118,6 +118,43 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 /// Macros are still expanded via TreeWalk (callFnVal), but evaluation
 /// uses the bytecode compiler and VM. Cross-backend dispatch (VM<->TW)
 /// is handled by callFnVal which both backends import directly.
+/// Compile source to bytecode and dump to stderr without executing.
+/// Dumps top-level chunks and all nested FnProtos.
+pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!void {
+    var error_ctx: err.ErrorContext = .{};
+    const forms = try readForms(allocator, source, &error_ctx);
+    if (forms.len == 0) return;
+
+    const prev = setupMacroEnv(env);
+    defer restoreMacroEnv(prev);
+
+    var aw = std.Io.Writer.Allocating.init(allocator);
+    defer aw.deinit();
+    var w = &aw.writer;
+
+    for (forms, 0..) |form, form_idx| {
+        const node = try analyzeForm(allocator, &error_ctx, env, form);
+
+        var compiler = Compiler.init(allocator);
+        defer compiler.deinit();
+        compiler.compile(node) catch return error.CompileError;
+        compiler.chunk.emitOp(.ret) catch return error.CompileError;
+
+        w.print("\n=== Form {d} ===\n", .{form_idx}) catch {};
+        compiler.chunk.dump(w) catch {};
+
+        // Dump all nested FnProtos
+        for (compiler.fn_protos.items) |proto| {
+            proto.dump(w) catch {};
+        }
+    }
+
+    // Write collected output to stderr
+    const output = w.buffered();
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    _ = stderr.write(output) catch {};
+}
+
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     var error_ctx: err.ErrorContext = .{};
     const forms = try readForms(allocator, source, &error_ctx);

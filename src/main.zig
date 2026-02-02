@@ -44,6 +44,7 @@ pub fn main() !void {
 
     // Parse flags
     var use_vm = true;
+    var dump_bytecode = false;
     var expr: ?[]const u8 = null;
     var file: ?[]const u8 = null;
     var nrepl_mode = false;
@@ -52,6 +53,8 @@ pub fn main() !void {
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--tree-walk")) {
             use_vm = false;
+        } else if (std.mem.eql(u8, args[i], "--dump-bytecode")) {
+            dump_bytecode = true;
         } else if (std.mem.eql(u8, args[i], "--nrepl-server")) {
             nrepl_mode = true;
         } else if (std.mem.startsWith(u8, args[i], "--port=")) {
@@ -81,7 +84,7 @@ pub fn main() !void {
     }
 
     if (expr) |e| {
-        evalAndPrint(alloc, e, use_vm);
+        evalAndPrint(alloc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
         const max_file_size = 10 * 1024 * 1024; // 10MB
         const source = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
@@ -90,7 +93,7 @@ pub fn main() !void {
             std.process.exit(1);
         };
         defer allocator.free(source);
-        evalAndPrint(alloc, source, use_vm);
+        evalAndPrint(alloc, source, use_vm, dump_bytecode);
     }
 }
 
@@ -214,7 +217,7 @@ fn countDelimiterDepth(source: []const u8) i32 {
     return d;
 }
 
-fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool) void {
+fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_bytecode: bool) void {
     // Initialize environment
     var env = Env.init(allocator);
     defer env.deinit();
@@ -226,6 +229,19 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool) void {
         std.debug.print("Error: failed to load core.clj\n", .{});
         std.process.exit(1);
     };
+
+    // Dump bytecode if requested (VM only, dump to stderr then exit)
+    if (dump_bytecode) {
+        if (!use_vm) {
+            std.debug.print("Error: --dump-bytecode requires VM backend (not --tree-walk)\n", .{});
+            std.process.exit(1);
+        }
+        bootstrap.dumpBytecodeVM(allocator, &env, source) catch {
+            std.debug.print("Error: bytecode dump failed\n", .{});
+            std.process.exit(1);
+        };
+        return;
+    }
 
     // Evaluate using selected backend
     const result = if (use_vm)
