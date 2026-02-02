@@ -274,7 +274,7 @@ vars:
     "error-mode": {type: function, status: todo}
     eval: {type: function, status: todo}
     "even?": {type: function, status: done}
-    "every-pred": {type: function, status: todo}
+    "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}
     "every?": {type: function, status: done}
     "ex-cause": {type: function, status: todo}
     "ex-data": {type: function, status: done}
@@ -306,7 +306,7 @@ vars:
     fn: {type: special-form, status: todo}
     "fn?": {type: function, status: done}
     fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
-    fnil: {type: function, status: todo}
+    fnil: {type: function, status: done, note: "core.clj nil-replacement wrapper"}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
     force: {type: function, status: todo}
     format: {type: function, status: todo}
@@ -430,7 +430,7 @@ vars:
     nnext: {type: function, status: todo}
     not: {type: function, status: done}
     "not-any?": {type: function, status: done}
-    "not-empty": {type: function, status: todo}
+    "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
     "not-every?": {type: function, status: done}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
     ns: {type: macro, status: todo}
@@ -595,7 +595,7 @@ vars:
     some: {type: function, status: done}
     "some->": {type: macro, status: done}
     "some->>": {type: macro, status: done}
-    "some-fn": {type: function, status: todo}
+    "some-fn": {type: function, status: done, note: "core.clj or-based combinator"}
     "some?": {type: function, status: todo}
     sort: {type: function, status: done}
     "sort-by": {type: function, status: done}
@@ -1093,7 +1093,7 @@ vars:
     "lazy-prims": {type: macro, status: todo}
     list: {type: function, status: todo}
     map: {type: function, status: todo}
-    "not-empty": {type: function, status: todo}
+    "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
     "one-of": {type: function, status: todo}
     "quick-check": {type: function, status: todo}
     ratio: {type: function, status: todo}

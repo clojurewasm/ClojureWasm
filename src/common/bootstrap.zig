@@ -2106,6 +2106,88 @@ test "core.clj - nfirst" {
     try std.testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
 }
 
+test "core.clj - not-empty" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // non-empty collection returns itself
+    const r1 = try evalString(alloc, &env, "(not-empty [1 2 3])");
+    try std.testing.expect(r1 == .vector);
+    try std.testing.expectEqual(@as(usize, 3), r1.vector.items.len);
+
+    // empty collection returns nil
+    const r2 = try evalString(alloc, &env, "(not-empty [])");
+    try std.testing.expectEqual(Value.nil, r2);
+}
+
+test "core.clj - every-pred" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
+    _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
+
+    // every-pred combines two predicates
+    const r1 = try evalString(alloc, &env, "((every-pred pos? even?) 4)");
+    try std.testing.expect(r1 != Value.nil);
+
+    const r2 = try evalString(alloc, &env, "((every-pred pos? even?) 3)");
+    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+}
+
+test "core.clj - some-fn" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
+    _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
+
+    // some-fn: at least one predicate returns truthy
+    const r1 = try evalString(alloc, &env, "((some-fn pos? even?) -2)");
+    try std.testing.expect(r1 != Value.nil);
+
+    const r2 = try evalString(alloc, &env, "((some-fn pos? even?) -3)");
+    // -3 is not positive and not even => falsy (false or nil depending on or impl)
+    try std.testing.expect(r2 == Value.nil or (r2 == .boolean and r2.boolean == false));
+}
+
+test "core.clj - fnil" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // fnil replaces nil with default
+    const result = try evalString(alloc, &env, "((fnil inc 0) nil)");
+    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+
+    // non-nil passes through
+    const r2 = try evalString(alloc, &env, "((fnil inc 0) 5)");
+    try std.testing.expectEqual(Value{ .integer = 6 }, r2);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

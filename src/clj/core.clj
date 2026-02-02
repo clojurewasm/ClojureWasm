@@ -512,6 +512,27 @@
 (defn nfirst [coll]
   (next (first coll)))
 
+;; Predicate/function utilities
+
+(defn not-empty [coll]
+  (when (seq coll) coll))
+
+(defn every-pred
+  ([p] (fn [x] (p x)))
+  ([p1 p2]
+   (fn [x]
+     (and (p1 x) (p2 x)))))
+
+(defn some-fn
+  ([p] (fn [x] (p x)))
+  ([p1 p2]
+   (fn [x]
+     (or (p1 x) (p2 x)))))
+
+(defn fnil [f default]
+  (fn [x]
+    (f (if (nil? x) default x))))
+
 ;; Exception helpers
 
 (defn ex-info

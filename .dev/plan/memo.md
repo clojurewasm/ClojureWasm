@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.9 not-empty, every-pred, some-fn, fnil (next)
+- Current task: T9.10 while, doseq, doall, dorun (next)
 - Task file: (none)
-- Last completed: T9.8 butlast, last, second, nfirst, fnext
+- Last completed: T9.9 not-empty, every-pred, some-fn, fnil
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 

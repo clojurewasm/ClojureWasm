@@ -282,7 +282,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 9.6 | mapv, filterv, reduce-kv                | task_0072_mapv_filterv_reducekv.md | Vector-returning variants + kv reduce |
 | 9.7 | partition-all, take-while, drop-while   | task_0073_seq_slicing.md           | Sequence slicing                      |
 | 9.8 | butlast, last, second, nfirst, fnext    | task_0074_convenience_accessors.md | Convenience accessors                 |
-| 9.9 | not-empty, every-pred, some-fn, fnil    | --                                 | Predicate/function utilities          |
+| 9.9 | not-empty, every-pred, some-fn, fnil    | task_0075_pred_fn_utils.md         | Predicate/function utilities          |
 
 ### Phase 9c: Control Flow + Utility Macros
 
