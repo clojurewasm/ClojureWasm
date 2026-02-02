@@ -338,6 +338,9 @@ fn writeValue(w: anytype, val: Value) void {
             writeValue(w, v.value);
             w.print(">", .{}) catch {};
         },
+        .regex => |p| {
+            w.print("#\"{s}\"", .{p.source}) catch {};
+        },
         .char => |c| {
             var buf: [4]u8 = undefined;
             const len = std.unicode.utf8Encode(c, &buf) catch 0;

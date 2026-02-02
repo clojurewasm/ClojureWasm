@@ -23,6 +23,8 @@ const Var = var_mod.Var;
 const macro = @import("../macro.zig");
 const collections = @import("../collections.zig");
 const bootstrap = @import("../bootstrap.zig");
+const value_mod = @import("../value.zig");
+const regex_matcher = @import("../regex/matcher.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
@@ -89,6 +91,22 @@ pub const Analyzer = struct {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .constant = val };
         return n;
+    }
+
+    fn analyzeRegex(self: *Analyzer, pattern: []const u8, form: Form) AnalyzeError!*Node {
+        _ = form;
+        // Compile the regex pattern at analysis time
+        const compiled = self.allocator.create(@import("../regex/regex.zig").CompiledRegex) catch return error.OutOfMemory;
+        compiled.* = regex_matcher.compile(self.allocator, pattern) catch {
+            return error.SyntaxError;
+        };
+        const pat = self.allocator.create(value_mod.Pattern) catch return error.OutOfMemory;
+        pat.* = .{
+            .source = pattern,
+            .compiled = @ptrCast(compiled),
+            .group_count = compiled.group_count,
+        };
+        return self.makeConstant(.{ .regex = pat });
     }
 
     fn makeLocalRef(self: *Analyzer, name: []const u8, idx: u32, form: Form) AnalyzeError!*Node {
@@ -169,7 +187,7 @@ pub const Analyzer = struct {
             .vector => |items| self.analyzeVector(items, form),
             .map => |items| self.analyzeMap(items, form),
             .set => |items| self.analyzeSet(items, form),
-            .regex => |pattern| self.makeConstant(.{ .string = pattern }), // regex stored as string for now
+            .regex => |pattern| self.analyzeRegex(pattern, form),
             .tag => self.makeConstant(.nil), // tagged literals deferred
         };
     }

@@ -392,16 +392,16 @@ high-priority gaps in the core library.
 
 ### Phase 11b: Function Combinators + Utility
 
-| #    | Task                       | Archive                         | Notes                                           |
-| ---- | -------------------------- | ------------------------------- | ----------------------------------------------- |
-| 11.3 | memoize, trampoline        | task_0094_memoize_trampoline.md | core.clj: function combinators (Phase 6.9 残り) |
-| 11.4 | if-some, when-some, vswap! | --                              | core.clj: nil-safe macros + volatile swap       |
+| #    | Task                       | Archive                              | Notes                                           |
+| ---- | -------------------------- | ------------------------------------ | ----------------------------------------------- |
+| 11.3 | memoize, trampoline        | task_0094_memoize_trampoline.md      | core.clj: function combinators (Phase 6.9 残り) |
+| 11.4 | if-some, when-some, vswap! | task_0095_if_some_when_some_vswap.md | core.clj: nil-safe macros + volatile swap       |
 
 ### Phase 11c: Regex Support
 
-| #    | Task                                    | Archive | Notes                                      |
-| ---- | --------------------------------------- | ------- | ------------------------------------------ |
-| 11.5 | re-pattern, re-find, re-matches, re-seq | --      | Zig builtin: regex via PCRE or simple impl |
+| #    | Task                                    | Archive                    | Notes                                 |
+| ---- | --------------------------------------- | -------------------------- | ------------------------------------- |
+| 11.5 | re-pattern, re-find, re-matches, re-seq | task_0096_regex_support.md | Ported Beta regex engine + 4 builtins |
 
 ### Phase 11d: Validation
 

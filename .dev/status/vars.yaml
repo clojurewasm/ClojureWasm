@@ -510,12 +510,12 @@ vars:
     "ratio?": {type: function, status: todo}
     "rational?": {type: function, status: todo}
     rationalize: {type: function, status: todo}
-    "re-find": {type: function, status: todo}
+    "re-find": {type: function, status: done}
     "re-groups": {type: function, status: todo}
     "re-matcher": {type: function, status: todo}
-    "re-matches": {type: function, status: todo}
-    "re-pattern": {type: function, status: todo}
-    "re-seq": {type: function, status: todo}
+    "re-matches": {type: function, status: done}
+    "re-pattern": {type: function, status: done}
+    "re-seq": {type: function, status: done}
     read: {type: function, status: todo}
     read+string: {type: function, status: todo}
     "read-line": {type: function, status: todo}

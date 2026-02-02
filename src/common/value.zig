@@ -47,6 +47,13 @@ pub const Volatile = struct {
     value: Value,
 };
 
+/// Compiled regex pattern.
+pub const Pattern = struct {
+    source: []const u8, // original pattern string
+    compiled: *const anyopaque, // *regex.CompiledRegex (opaque to avoid circular deps)
+    group_count: u16,
+};
+
 /// Discriminator for Fn.proto — bytecode (VM) vs treewalk (Node-based).
 pub const FnKind = enum {
     bytecode, // proto points to FnProto (bytecode/chunk.zig)
@@ -148,6 +155,9 @@ pub const Value = union(enum) {
     // Reference types
     atom: *Atom,
     volatile_ref: *Volatile,
+
+    // Regex pattern
+    regex: *Pattern,
 
     // Protocol types
     protocol: *Protocol,
@@ -258,6 +268,11 @@ pub const Value = union(enum) {
                 try w.writeAll("#<volatile ");
                 try v.value.formatPrStr(w);
                 try w.writeAll(">");
+            },
+            .regex => |p| {
+                try w.writeAll("#\"");
+                try w.writeAll(p.source);
+                try w.writeAll("\"");
             },
             .protocol => |p| {
                 try w.writeAll("#<protocol ");
@@ -391,6 +406,7 @@ pub const Value = union(enum) {
             .builtin_fn => |a| a == other.builtin_fn,
             .atom => |a| a == other.atom, // identity equality
             .volatile_ref => |a| a == other.volatile_ref, // identity equality
+            .regex => |a| std.mem.eql(u8, a.source, other.regex.source), // pattern string equality
             .protocol => |a| a == other.protocol, // identity equality
             .protocol_fn => |a| a == other.protocol_fn, // identity equality
             .multi_fn => |a| a == other.multi_fn, // identity equality
