@@ -1886,6 +1886,79 @@ test "lazy-seq - take from infinite sequence" {
     try std.testing.expect(result == .list or result == .vector);
 }
 
+test "core.clj - mapv" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(mapv inc [1 2 3])");
+    try std.testing.expect(result == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try std.testing.expectEqual(Value{ .integer = 2 }, result.vector.items[0]);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.vector.items[1]);
+    try std.testing.expectEqual(Value{ .integer = 4 }, result.vector.items[2]);
+}
+
+test "core.clj - reduce-kv" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // reduce-kv sums values of a map
+    const result = try evalString(alloc, &env,
+        \\(reduce-kv (fn [acc k v] (+ acc v)) 0 {:a 1 :b 2 :c 3})
+    );
+    try std.testing.expectEqual(Value{ .integer = 6 }, result);
+}
+
+test "core.clj - reduce-kv builds new map" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // reduce-kv that transforms values
+    const result = try evalString(alloc, &env,
+        \\(reduce-kv (fn [acc k v] (assoc acc k (inc v))) {} {:a 1 :b 2})
+    );
+    try std.testing.expect(result == .map);
+    // Check the map has 2 entries with incremented values
+    try std.testing.expectEqual(@as(usize, 2), result.map.count());
+}
+
+test "core.clj - filterv" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
+    const result = try evalString(alloc, &env, "(filterv even? [1 2 3 4 5 6])");
+    try std.testing.expect(result == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try std.testing.expectEqual(Value{ .integer = 2 }, result.vector.items[0]);
+    try std.testing.expectEqual(Value{ .integer = 4 }, result.vector.items[1]);
+    try std.testing.expectEqual(Value{ .integer = 6 }, result.vector.items[2]);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

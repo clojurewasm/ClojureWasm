@@ -289,7 +289,7 @@ vars:
     ffirst: {type: function, status: todo}
     "file-seq": {type: function, status: todo}
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
-    filterv: {type: function, status: todo}
+    filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
     find: {type: function, status: todo}
     "find-keyword": {type: function, status: todo}
     "find-ns": {type: function, status: todo}
@@ -402,7 +402,7 @@ vars:
     "map-indexed": {type: function, status: done}
     "map?": {type: function, status: done}
     mapcat: {type: function, status: done}
-    mapv: {type: function, status: todo}
+    mapv: {type: function, status: done, note: "core.clj (vec (map f coll))"}
     max: {type: function, status: done}
     "max-key": {type: function, status: todo}
     memfn: {type: macro, status: todo}
@@ -525,7 +525,7 @@ vars:
     "realized?": {type: function, status: todo}
     "record?": {type: function, status: todo}
     reduce: {type: function, status: done}
-    "reduce-kv": {type: function, status: todo}
+    "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
     reduced: {type: function, status: todo}
     "reduced?": {type: function, status: todo}
     reductions: {type: function, status: todo}

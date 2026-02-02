@@ -446,6 +446,22 @@
           (recur (next s) (+ i 1) (cons v acc))))
       (reverse acc))))
 
+;; Vector-returning variants
+
+(defn mapv [f coll]
+  (vec (map f coll)))
+
+(defn filterv [pred coll]
+  (vec (filter pred coll)))
+
+(defn reduce-kv [f init m]
+  (let [ks (keys m)]
+    (loop [s (seq ks) acc init]
+      (if s
+        (let [k (first s)]
+          (recur (next s) (f acc k (get m k))))
+        acc))))
+
 ;; Exception helpers
 
 (defn ex-info
