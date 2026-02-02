@@ -353,6 +353,29 @@ higher-order functions. This unblocks 8/11 VM benchmarks.
 | 10.2 | Unified fn_val proto (F8)       | task_0088_tw_vm_reverse_dispatch.md | TreeWalk→VM reverse dispatch via bytecode_dispatcher callback. Fixes segfault when core.clj HOFs call VM-compiled callbacks |
 | 10.3 | VM benchmark re-run + recording | --                                  | Re-run all 11 benchmarks after fixes, record in bench.yaml                                                                  |
 
+### Phase 10c: fn_val Dispatch Unification (Refactoring)
+
+Consolidate 5 scattered fn_val dispatch mechanisms into a single `callFnVal`.
+Motivation: T10.2 added yet another dispatcher callback, making 5 total.
+Each caller must independently handle kind check + dispatcher wiring,
+which is error-prone (T10.2 itself exposed a latent kind-default bug).
+
+| #    | Task                                        | Archive | Notes                                                                                                                             |
+| ---- | ------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 10.4 | Unify fn_val dispatch into single callFnVal | --      | Replace 5 dispatch mechanisms (fn_val_dispatcher, bytecode_dispatcher, call_fn, realize_fn, macroEvalBridge) with one entry point |
+
+Current dispatch points (all doing the same thing differently):
+
+- `vm.zig:performCall` — kind==.treewalk → fn_val_dispatcher
+- `tree_walk.zig:callValue/runCall` — kind==.bytecode → bytecode_dispatcher
+- `atom.zig:swapBangFn` — call_fn module var (no kind check)
+- `value.zig:LazySeq.realize` — realize_fn module var (no kind check)
+- `analyzer.zig` — macroEvalBridge passed directly
+
+Target: one `callFnVal(allocator, env, fn_val, args)` in bootstrap.zig,
+exposed via a single module-level var. Eliminates Fn.kind default footgun
+and 4 redundant module vars.
+
 ## Future Considerations
 
 ### IO / System Namespace Strategy
@@ -384,5 +407,5 @@ Details deferred — decide architecture when the IO/system phase is planned.
 | 8         | 3       | Complete        | Refactoring                |
 | 9 (a-d)   | 15      | Complete        | Core library expansion III |
 | 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
-| 10 (a-b)  | 3       | Active          | VM correctness + interop   |
-| **Total** | **108** | **89 archived** |                            |
+| 10 (a-c)  | 4       | Active          | VM correctness + interop   |
+| **Total** | **109** | **90 archived** |                            |

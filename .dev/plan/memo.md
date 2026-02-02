@@ -34,3 +34,19 @@ Key files:
 - `bash bench/run_bench.sh` — run benchmarks
 - `bash bench/run_bench.sh --record --version="Phase 10 VM baseline"` — record
 - `.dev/status/bench.yaml` — benchmark results
+
+### T10.4 Background — fn_val Dispatch Unification
+
+T10.2 review で発覚: fn_val呼び出しが5箇所に散在し、各自が別々の
+ディスパッチ手段を持つ。全て「fn_valを引数付きで呼ぶ」という同一操作。
+
+現状の5つのディスパッチ機構:
+
+1. `vm.zig` — `fn_val_dispatcher` callback (VM→TW)
+2. `tree_walk.zig` — `bytecode_dispatcher` callback (TW→VM)
+3. `atom.zig` — `call_fn` module var (kindチェックなし)
+4. `value.zig` — `realize_fn` module var (kindチェックなし)
+5. `analyzer.zig` — `macroEvalBridge` 直接渡し
+
+→ 1つの `callFnVal(allocator, env, fn_val, args)` に統合。
+詳細は roadmap.md Phase 10c、decisions.md D34 follow-up を参照。

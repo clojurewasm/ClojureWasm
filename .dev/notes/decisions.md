@@ -1093,6 +1093,7 @@ All 5 items are small, focused fixes rather than architectural changes.
 known-exception pattern (single-thread only).
 
 **Alternatives considered**:
+
 - (a) Add evaluator context to BuiltinFn signature — breaking change to all builtins
 - (b) Make swap! a special form — overkill, adds AST complexity
 - (c) Redefine swap! in core.clj using atom primitives — viable but deferred
@@ -1108,6 +1109,7 @@ TreeWalk closures. These HOFs call back the VM-compiled callback fn, but TreeWal
 had no mechanism to execute bytecode fn_vals → segfault.
 
 **Decision**: Symmetric dispatcher callbacks in both directions:
+
 - VM → TreeWalk: `fn_val_dispatcher` → `macroEvalBridge` (existing since Phase 2)
 - TreeWalk → VM: `bytecode_dispatcher` → `bytecodeCallBridge` (new)
 
@@ -1116,6 +1118,7 @@ had no mechanism to execute bytecode fn_vals → segfault.
 and `execute` were made public to support this.
 
 **Alternatives considered**:
+
 - (a) Compile core.clj with VM compiler so everything is bytecode — too large a change
 - (b) Create temporary VM in TreeWalk directly — couples TreeWalk to VM internals
 - (c) **Chosen**: Callback-based dispatch — maintains clean separation, symmetric with existing pattern
@@ -1125,3 +1128,10 @@ default `kind=.bytecode` instead of `.treewalk`, which was harmless before but
 broke with the new kind check. Fixed by explicitly setting `.kind = .treewalk`.
 
 **Impact**: Resolves F8. All 11 benchmarks now work with VM backend.
+
+**Follow-up (T10.4)**: The callback-based approach works but creates a 5th
+dispatch mechanism. fn_val dispatch is now scattered across vm.zig (fn_val_dispatcher),
+tree_walk.zig (bytecode_dispatcher), atom.zig (call_fn), value.zig (realize_fn),
+and analyzer.zig (macroEvalBridge). All do the same thing: call an fn_val with args.
+T10.4 will unify these into a single `callFnVal` entry point and remove Fn.kind
+default footgun.

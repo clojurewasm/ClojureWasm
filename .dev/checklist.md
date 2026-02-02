@@ -8,7 +8,7 @@ Last updated: 2026-02-02 (Phase 10 — T10.2 done, T10.3 next)
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
-  - **Known exceptions**: macro_eval_env (D15), realize_fn (D27), atom.call_fn (D33), predicates.current_env (T9.5.5) — all module-level, single-thread only
+  - **Known exceptions**: macro_eval_env (D15), realize_fn (D27), atom.call_fn (D33), predicates.current_env (T9.5.5) — all module-level, single-thread only. T10.4 で callFnVal に統合予定
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
   - **Known exceptions**: defmulti, defmethod, lazy-seq — TreeWalk only (D28)
 - [ ] D10: All code in English (identifiers, comments, commits)
