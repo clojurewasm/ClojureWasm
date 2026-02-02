@@ -23,6 +23,7 @@ const PersistentVector = collections.PersistentVector;
 const PersistentArrayMap = collections.PersistentArrayMap;
 const PersistentHashSet = collections.PersistentHashSet;
 const arith = @import("../../common/builtin/arithmetic.zig");
+const bootstrap = @import("../../common/bootstrap.zig");
 
 /// VM execution errors.
 pub const VMError = error{
@@ -79,9 +80,6 @@ pub const VM = struct {
     handler_count: usize,
     /// Runtime environment (Namespace/Var resolution).
     env: ?*Env,
-    /// External fn_val dispatcher for treewalk closures.
-    /// Set by bootstrap when VM needs to call TreeWalk-defined functions.
-    fn_val_dispatcher: ?*const fn (std.mem.Allocator, Value, []const Value) anyerror!Value = null,
 
     pub fn init(allocator: std.mem.Allocator) VM {
         return .{
@@ -474,18 +472,15 @@ pub const VM = struct {
 
         const fn_obj = callee.fn_val;
 
-        // TreeWalk closures: dispatch via external callback
+        // TreeWalk closures: dispatch via unified callFnVal
         if (fn_obj.kind == .treewalk) {
-            if (self.fn_val_dispatcher) |dispatcher| {
-                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
-                const result = dispatcher(self.allocator, callee, args) catch |e| {
-                    return @as(VMError, @errorCast(e));
-                };
-                self.sp = fn_idx;
-                try self.push(result);
-                return;
-            }
-            return error.TypeError; // No dispatcher available
+            const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+            const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
+                return @as(VMError, @errorCast(e));
+            };
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
         }
 
         // Arity dispatch: find matching proto

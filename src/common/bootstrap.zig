@@ -15,7 +15,6 @@ const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
-const atom_mod = @import("builtin/atom.zig");
 const predicates_mod = @import("builtin/predicates.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
@@ -67,35 +66,27 @@ fn readForms(allocator: Allocator, source: []const u8, error_ctx: *err.ErrorCont
 /// Returns previous state for restoration via defer.
 const MacroEnvState = struct {
     env: ?*Env,
-    realize: *const @TypeOf(callFnVal),
-    atom_call_fn: ?atom_mod.CallFnType,
     pred_env: ?*Env,
 };
 
 fn setupMacroEnv(env: *Env) MacroEnvState {
     const prev = MacroEnvState{
         .env = macro_eval_env,
-        .realize = value_mod.realize_fn,
-        .atom_call_fn = atom_mod.call_fn,
         .pred_env = predicates_mod.current_env,
     };
     macro_eval_env = env;
-    value_mod.realize_fn = &callFnVal;
-    atom_mod.call_fn = &callFnVal;
     predicates_mod.current_env = env;
     return prev;
 }
 
 fn restoreMacroEnv(prev: MacroEnvState) void {
     macro_eval_env = prev.env;
-    value_mod.realize_fn = prev.realize;
-    atom_mod.call_fn = prev.atom_call_fn;
     predicates_mod.current_env = prev.pred_env;
 }
 
 /// Analyze a single form with macro expansion support.
 fn analyzeForm(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env, form: Form) BootstrapError!*Node {
-    var analyzer = Analyzer.initWithMacroEval(allocator, error_ctx, env, &callFnVal);
+    var analyzer = Analyzer.initWithEnv(allocator, error_ctx, env);
     defer analyzer.deinit();
     return analyzer.analyze(form) catch return error.AnalyzeError;
 }
@@ -124,9 +115,9 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 }
 
 /// Evaluate source via Compiler + VM pipeline.
-/// Macros are still expanded via TreeWalk (macroEvalBridge), but evaluation
-/// uses the bytecode compiler and VM. Supports calling TreeWalk-defined
-/// closures (from loadCore) via fn_val_dispatcher.
+/// Macros are still expanded via TreeWalk (callFnVal), but evaluation
+/// uses the bytecode compiler and VM. Cross-backend dispatch (VM<->TW)
+/// is handled by callFnVal which both backends import directly.
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     var error_ctx: err.ErrorContext = .{};
     const forms = try readForms(allocator, source, &error_ctx);
@@ -176,7 +167,6 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
         var vm = VM.initWithEnv(allocator, env);
         defer vm.deinit();
-        vm.fn_val_dispatcher = &callFnVal;
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
     }
     return last_value;
@@ -186,11 +176,9 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 /// Routes by Fn.kind: treewalk closures go to TreeWalk, bytecode closures
 /// go to a new VM instance, builtin_fn is called directly.
 ///
-/// This replaces 5 separate dispatch mechanisms (D34/T10.4):
-///   - vm.zig fn_val_dispatcher, tree_walk.zig bytecode_dispatcher,
-///   - atom.zig call_fn, value.zig realize_fn, analyzer.zig macro_eval_fn
-///
-/// All call sites now receive &callFnVal as their callback pointer.
+/// This replaces 5 separate dispatch mechanisms (D34/D36/T10.4):
+///   vm.zig, tree_walk.zig, atom.zig, value.zig, analyzer.zig
+/// all import bootstrap.callFnVal directly (no more callback wiring).
 pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     switch (fn_val) {
         .builtin_fn => |f| return f(allocator, args),
@@ -214,7 +202,6 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
-    tw.bytecode_dispatcher = &callFnVal;
     return tw.callValue(fn_val, args);
 }
 
@@ -223,7 +210,6 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
     const env = macro_eval_env orelse return error.EvalError;
     var vm = VM.initWithEnv(allocator, env);
     defer vm.deinit();
-    vm.fn_val_dispatcher = &callFnVal;
 
     // Push fn_val onto stack
     try vm.push(fn_val);

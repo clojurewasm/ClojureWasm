@@ -10,11 +10,7 @@ const Value = value_mod.Value;
 const Atom = value_mod.Atom;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
-
-/// External fn_val dispatcher — set by bootstrap to enable swap!/apply
-/// with user closures. Module-level (D3 known exception, single-thread).
-pub const CallFnType = *const fn (Allocator, Value, []const Value) anyerror!Value;
-pub var call_fn: ?CallFnType = null;
+const bootstrap = @import("../bootstrap.zig");
 
 /// (atom val) => #<atom val>
 pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -67,14 +63,7 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
         call_args[1 + i] = arg;
     }
 
-    const new_val = switch (fn_val) {
-        .builtin_fn => |f| f(allocator, call_args[0..total]) catch |e| return e,
-        .fn_val => if (call_fn) |dispatcher|
-            dispatcher(allocator, fn_val, call_args[0..total]) catch |e| return e
-        else
-            return error.TypeError,
-        else => return error.TypeError,
-    };
+    const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
 
     atom_ptr.value = new_val;
     return new_val;
@@ -190,11 +179,12 @@ test "swap! - with extra args" {
     try testing.expectEqual(Value{ .integer = 15 }, a.value);
 }
 
-test "swap! - type error on fn_val" {
+test "swap! - error on fn_val without env" {
+    // When macro_eval_env is not set (test env), callFnVal returns EvalError
     const Fn = value_mod.Fn;
     var a = Atom{ .value = .{ .integer = 1 } };
     const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
     const args = [_]Value{ .{ .atom = &a }, .{ .fn_val = &fn_obj } };
     const result = swapBangFn(testing.allocator, &args);
-    try testing.expectError(error.TypeError, result);
+    try testing.expectError(error.EvalError, result);
 }

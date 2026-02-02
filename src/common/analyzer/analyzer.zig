@@ -22,6 +22,7 @@ const var_mod = @import("../var.zig");
 const Var = var_mod.Var;
 const macro = @import("../macro.zig");
 const collections = @import("../collections.zig");
+const bootstrap = @import("../bootstrap.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
@@ -30,10 +31,6 @@ pub const Analyzer = struct {
 
     /// Optional runtime environment for macro expansion and var resolution.
     env: ?*Env = null,
-
-    /// Callback to evaluate a fn_val macro call (set by the host evaluator).
-    /// Signature: fn(allocator, fn_value, args) -> result_value
-    macro_eval_fn: ?*const fn (Allocator, Value, []const Value) anyerror!Value = null,
 
     /// Local variable bindings stack (let, fn parameters).
     locals: std.ArrayList(LocalBinding) = .empty,
@@ -56,19 +53,6 @@ pub const Analyzer = struct {
         return .{ .allocator = allocator, .error_ctx = error_ctx, .env = env };
     }
 
-    pub fn initWithMacroEval(
-        allocator: Allocator,
-        error_ctx: *err.ErrorContext,
-        env: *Env,
-        macro_eval_fn: *const fn (Allocator, Value, []const Value) anyerror!Value,
-    ) Analyzer {
-        return .{
-            .allocator = allocator,
-            .error_ctx = error_ctx,
-            .env = env,
-            .macro_eval_fn = macro_eval_fn,
-        };
-    }
 
     pub fn deinit(self: *Analyzer) void {
         self.locals.deinit(self.allocator);
@@ -256,21 +240,9 @@ pub const Analyzer = struct {
             arg_vals[i] = macro.formToValue(self.allocator, af) catch return error.OutOfMemory;
         }
 
-        // Call the macro function
-        const result_val: Value = switch (root) {
-            .builtin_fn => |f| f(self.allocator, arg_vals[0..arg_forms.len]) catch {
-                return self.analysisError(.value_error, "macro expansion failed", form);
-            },
-            .fn_val => blk: {
-                // fn_val macros require evaluator callback for execution
-                const eval_fn = self.macro_eval_fn orelse {
-                    return self.analysisError(.value_error, "fn_val macro expansion requires macro evaluator", form);
-                };
-                break :blk eval_fn(self.allocator, root, arg_vals[0..arg_forms.len]) catch {
-                    return self.analysisError(.value_error, "macro expansion failed", form);
-                };
-            },
-            else => return self.analysisError(.value_error, "macro var has no function value", form),
+        // Call the macro function via unified dispatch
+        const result_val: Value = bootstrap.callFnVal(self.allocator, root, arg_vals[0..arg_forms.len]) catch {
+            return self.analysisError(.value_error, "macro expansion failed", form);
         };
 
         // Convert result Value back to Form

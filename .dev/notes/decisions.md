@@ -1176,12 +1176,22 @@ All 5 callback sites now receive `&callFnVal` instead of `&macroEvalBridge`:
 
 **Alternatives considered**:
 
-1. Remove all module vars and callback fields, use direct import -> circular imports
+1. Keep callback pattern, unify the callback function (initial approach)
 2. Create new fn_dispatch.zig module -> unnecessary file for one function
-3. **Chosen**: Keep callback pattern, unify the callback function
+3. **Chosen**: Direct import of bootstrap.callFnVal from all sites
 
-Module vars/fields retained to avoid circular imports. The key benefit is
-consistent kind routing: all sites now handle both bytecode and treewalk
-fn_vals correctly, eliminating the kind-default footgun from D34.
+Zig 0.15.2 supports circular imports (verified with test project), so the
+assumed circular dependency was not actually a problem. All module vars and
+callback fields removed:
 
-**Impact**: Closes D34 follow-up. 5 dispatchers -> 1 function.
+- atom.zig: `call_fn` module var removed, imports bootstrap directly
+- value.zig: `realize_fn` module var removed, imports bootstrap directly
+- analyzer.zig: `macro_eval_fn` field + `initWithMacroEval` removed
+- vm.zig: `fn_val_dispatcher` field removed, imports bootstrap directly
+- tree_walk.zig: `bytecode_dispatcher` field removed, imports bootstrap directly
+
+bootstrap.zig setupMacroEnv/restoreMacroEnv simplified: only manages
+macro_eval_env and predicates.current_env (2 remaining D3 exceptions).
+
+**Impact**: Closes D34 follow-up. 5 dispatchers -> 1 function, 4 module
+vars/fields eliminated, 3 D3 known exceptions removed.

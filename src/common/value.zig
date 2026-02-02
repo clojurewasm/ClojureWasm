@@ -8,6 +8,7 @@
 const std = @import("std");
 const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
+const bootstrap = @import("bootstrap.zig");
 
 pub const PersistentList = collections.PersistentList;
 pub const PersistentVector = collections.PersistentVector;
@@ -84,24 +85,16 @@ pub const LazySeq = struct {
     thunk: ?Value, // fn of 0 args, null after realization
     realized: ?Value, // cached result, null before realization
 
-    /// Realize this lazy seq, calling the thunk if needed.
-    /// Requires realize_fn to be set (done by bootstrap.evalString).
+    /// Realize this lazy seq by calling the thunk via bootstrap.callFnVal.
     pub fn realize(self: *LazySeq, allocator: std.mem.Allocator) anyerror!Value {
         if (self.realized) |r| return r;
         const thunk = self.thunk orelse return .nil;
-        const result = try realize_fn(allocator, thunk, &.{});
+        const result = try bootstrap.callFnVal(allocator, thunk, &.{});
         self.realized = result;
         self.thunk = null;
         return result;
     }
 };
-
-/// Global callback for realizing lazy seqs. Set by bootstrap during evalString.
-pub var realize_fn: *const fn (std.mem.Allocator, Value, []const Value) anyerror!Value = &defaultRealizeFn;
-
-fn defaultRealizeFn(_: std.mem.Allocator, _: Value, _: []const Value) anyerror!Value {
-    return error.TypeError; // No evaluator available
-}
 
 /// Runtime function (closure). Proto is stored as opaque pointer
 /// to avoid circular dependency with bytecode/chunk.zig.

@@ -16,6 +16,7 @@ const value_mod = @import("../../common/value.zig");
 const Value = value_mod.Value;
 const env_mod = @import("../../common/env.zig");
 const Env = env_mod.Env;
+const bootstrap = @import("../../common/bootstrap.zig");
 
 /// TreeWalk execution errors.
 pub const TreeWalkError = error{
@@ -58,9 +59,6 @@ pub const TreeWalk = struct {
     allocated_closures: std.ArrayList(*Closure) = .empty,
     /// Allocated Fn wrappers (for cleanup).
     allocated_fns: std.ArrayList(*value_mod.Fn) = .empty,
-    /// External dispatcher for bytecode fn_vals.
-    /// Set by bootstrap when TreeWalk needs to call VM-compiled functions.
-    bytecode_dispatcher: ?*const fn (std.mem.Allocator, Value, []const Value) anyerror!Value = null,
 
     pub fn init(allocator: Allocator) TreeWalk {
         return .{ .allocator = allocator };
@@ -170,10 +168,7 @@ pub const TreeWalk = struct {
             .builtin_fn => |f| @errorCast(f(self.allocator, args)),
             .fn_val => |fn_ptr| {
                 if (fn_ptr.kind == .bytecode) {
-                    if (self.bytecode_dispatcher) |dispatcher| {
-                        return @errorCast(dispatcher(self.allocator, callee, args));
-                    }
-                    return error.TypeError;
+                    return @errorCast(bootstrap.callFnVal(self.allocator, callee, args));
                 }
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, args);
@@ -232,12 +227,9 @@ pub const TreeWalk = struct {
             arg_vals[i] = try self.run(arg);
         }
 
-        // Bytecode fn_val: dispatch to VM via callback
+        // Bytecode fn_val: dispatch to VM via unified callFnVal
         if (fn_ptr.kind == .bytecode) {
-            if (self.bytecode_dispatcher) |dispatcher| {
-                return @errorCast(dispatcher(self.allocator, callee, arg_vals));
-            }
-            return error.TypeError;
+            return @errorCast(bootstrap.callFnVal(self.allocator, callee, arg_vals));
         }
 
         // TreeWalk closure
