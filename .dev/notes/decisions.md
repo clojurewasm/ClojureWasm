@@ -925,3 +925,74 @@ to track performance regressions and guide optimization.
 
 **Parameter sizing**: All benchmarks complete in 10ms-1s on ClojureWasm, ideal for
 hyperfine statistical measurement rather than wall-clock timing of long runs.
+
+---
+
+## D27: Lazy Sequence Global realize_fn Callback (T7.6)
+
+**Date**: 2026-02-02
+**Context**: T7.6 — implementing lazy sequences
+
+**Problem**: LazySeq thunks need to be realized (evaluated) by builtins like
+`first`, `rest`, `seq`. But builtins are `fn(Allocator, []Value) !Value` —
+they have no access to the evaluator (TreeWalk/VM). How can a builtin
+trigger evaluation of a zero-arg closure?
+
+**Decision**: Use a module-level `pub var realize_fn` in value.zig. The host
+(bootstrap.zig) sets this to `macroEvalBridge` before evaluation begins.
+Builtins call `lazy_seq.realize(allocator)` which delegates to `realize_fn`.
+
+**D3 tension**: This introduces a global mutable variable, which conflicts
+with D3 (no threadlocal/global state). The precedent is D15's `macro_eval_env`
+module-level variable, which was accepted for single-threaded execution.
+
+**Alternatives considered**:
+
+1. **Pass evaluator context to builtins**: Would require changing BuiltinFn
+   signature to include EvaluatorContext. Invasive change affecting all 40+
+   builtins, and creates coupling between common/ and native/.
+2. **Realize in evaluator only**: TreeWalk/VM would realize before calling
+   builtins. Would require wrapping every builtin call site with realization
+   logic, and breaks composition (a builtin returning a lazy seq to another
+   builtin wouldn't realize).
+3. **Eager realization at cons boundary**: Defeats the purpose of laziness.
+
+**Consequence**: The global callback works for single-threaded use. For future
+multi-VM embedding (D3), realize_fn would need to be per-Env or per-context.
+This is consistent with the D15 approach and can be refactored when needed.
+
+**Additional design**: Added `Cons` value type (linked cell with first+rest)
+to preserve laziness when `cons` is called with a lazy-seq rest. Without this,
+`consFn` would realize the entire lazy chain eagerly.
+
+---
+
+## D28: VM Deferred for defmulti, defmethod, lazy-seq (T7.4, T7.6)
+
+**Date**: 2026-02-02
+**Context**: T7.4 (Multimethod) and T7.6 (Lazy sequences) — TreeWalk only
+
+**Problem**: D6 requires new features in both TreeWalk and VM. However,
+defmulti/defmethod and lazy-seq are high-level features that the VM cannot
+currently support without significant work:
+
+- **defmulti/defmethod**: Requires VM to handle MultiFn dispatch, method
+  table lookup, and dynamic dispatch-fn evaluation. The Compiler would need
+  new opcodes or a call-indirect mechanism.
+- **lazy-seq**: Requires VM to create closures for thunks and realize them
+  on demand. The realize callback architecture (D27) bridges to TreeWalk,
+  which wouldn't work if the VM is the active evaluator for the thunk.
+
+**Decision**: Implement in TreeWalk only. Compiler marks these node types
+as `InvalidNode` (compile error if reached). This is consistent with D14
+(VM-TreeWalk Closure Incompatibility) — the hybrid architecture (D18)
+already accepts that core.clj features run through TreeWalk.
+
+**Impact**: These features work in the default TreeWalk CLI mode and REPL.
+VM mode (`evalStringVM`) cannot use them directly, but user code compiled
+to VM bytecode can call core.clj functions that internally use multimethods
+or lazy sequences (via the fn_val_dispatcher bridge from D18).
+
+**Future**: When the AOT pipeline (T4.7) is implemented, these features
+would need VM opcodes or a call-convention for dispatching through the VM.
+This is tracked as a future extension of P1 (VM parity) in checklist.md.

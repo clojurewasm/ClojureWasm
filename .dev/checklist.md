@@ -3,12 +3,14 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (after T5.6)
+Last updated: 2026-02-02 (after T7.6)
 
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
+  - **Known exceptions**: macro_eval_env (D15), realize_fn (D27) — both module-level, single-thread only
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
+  - **Known exceptions**: defmulti, defmethod, lazy-seq — TreeWalk only (D28)
 - [ ] D10: All code in English (identifiers, comments, commits)
 
 ## Blocked until needed
@@ -23,6 +25,8 @@ Last updated: 2026-02-02 (after T5.6)
 | F6      | Multi-thread dynamic bindings               | Native multi-thread target                            | D11    |
 | F7      | Macro body serialization (AOT blocker)      | T4.7 AOT bytecode startup                             | D18    |
 | F8      | Unified fn_val proto (VM/TreeWalk)          | VM tests for `for`, higher-order cross-boundary calls | D22    |
+| F13     | VM opcodes for defmulti/defmethod           | VM-only mode needs multimethod dispatch               | D28    |
+| F14     | VM opcodes for lazy-seq/realize             | VM-only mode needs lazy evaluation                    | D28    |
 | ~~F9~~  | ~~`empty?` builtin~~                        | ~~Resolved: T6.1~~                                    | bench  |
 | ~~F10~~ | ~~`range` builtin~~                         | ~~Resolved: T6.1~~                                    | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~              | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~  | bench  |

@@ -5,7 +5,7 @@
 - Phase: 7 (Robustness + nREPL)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: T7.7 — bencode encoder/decoder
-- Task file: (not yet created)
+- Task file: .dev/plan/active/task_0061_bencode.md
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
