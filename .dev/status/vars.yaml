@@ -224,7 +224,7 @@ vars:
     cons: {type: function, status: done, impl: host}
     constantly: {type: function, status: done, impl: clj}
     "construct-proxy": {type: function, status: todo, impl: none}
-    "contains?": {type: function, status: todo, impl: none}
+    "contains?": {type: function, status: done, impl: host}
     count: {type: function, status: done, impl: host}
     "counted?": {type: function, status: todo, impl: none}
     "create-ns": {type: function, status: todo, impl: none}
@@ -277,7 +277,7 @@ vars:
     "drop-while": {type: function, status: todo, impl: none}
     eduction: {type: function, status: todo, impl: none}
     empty: {type: function, status: todo, impl: none}
-    "empty?": {type: function, status: todo, impl: none}
+    "empty?": {type: function, status: done, impl: host}
     ensure: {type: function, status: todo, impl: none}
     "ensure-reduced": {type: function, status: todo, impl: none}
     "enumeration-seq": {type: function, status: todo, impl: none}
@@ -382,7 +382,7 @@ vars:
     keep: {type: function, status: todo, impl: none}
     "keep-indexed": {type: function, status: todo, impl: none}
     key: {type: function, status: todo, impl: none}
-    keys: {type: function, status: todo, impl: none}
+    keys: {type: function, status: done, impl: host}
     keyword: {type: function, status: todo, impl: none}
     "keyword?": {type: function, status: done, impl: host}
     last: {type: function, status: todo, impl: none}
@@ -517,7 +517,7 @@ vars:
     "rand-nth": {type: function, status: todo, impl: none}
     "random-sample": {type: function, status: todo, impl: none}
     "random-uuid": {type: function, status: todo, impl: none}
-    range: {type: function, status: todo, impl: none}
+    range: {type: function, status: done, impl: host}
     "ratio?": {type: function, status: todo, impl: none}
     "rational?": {type: function, status: todo, impl: none}
     rationalize: {type: function, status: todo, impl: none}
@@ -556,7 +556,7 @@ vars:
     "remove-ns": {type: function, status: todo, impl: none}
     "remove-tap": {type: function, status: todo, impl: none}
     "remove-watch": {type: function, status: todo, impl: none}
-    repeat: {type: function, status: todo, impl: none}
+    repeat: {type: function, status: done, impl: host, note: 'eager, n-arity only (lazy deferred)'}
     repeatedly: {type: function, status: todo, impl: none}
     replace: {type: function, status: todo, impl: none}
     replicate: {type: function, status: todo, impl: none}
@@ -691,7 +691,7 @@ vars:
     use: {type: function, status: todo, impl: none}
     "uuid?": {type: function, status: todo, impl: none}
     val: {type: function, status: todo, impl: none}
-    vals: {type: function, status: todo, impl: none}
+    vals: {type: function, status: done, impl: host}
     "var-get": {type: function, status: todo, impl: none}
     "var-set": {type: function, status: todo, impl: none}
     "var?": {type: function, status: todo, impl: none}

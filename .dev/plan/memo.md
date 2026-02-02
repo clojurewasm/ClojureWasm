@@ -2,12 +2,12 @@
 
 ## Current State
 
-- Phase: 5 (Benchmark System)
+- Phase: 6 (Core Library Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T5.6 complete — benchmark suite ready for verification
+- Current task: T6.4 — Numeric functions (abs, max, min, quot, rand, rand-int)
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
-- Blockers: nix develop + run benchmarks to verify correctness
+- Blockers: none
 
 ## Completed Phases
 

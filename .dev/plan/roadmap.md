@@ -189,6 +189,46 @@ can evaluate basic Clojure expressions with `--compare` mode.
 - Startup time < 5ms (AOT, release build)
 - At least one Wasm target builds and runs basic tests
 
+## Phase 5: Benchmark System
+
+| #   | Task                            | Archive | Notes                               |
+| --- | ------------------------------- | ------- | ----------------------------------- |
+| 5.1 | Add python314, ruby_4_0, jdk25  | --      | flake.nix language upgrades         |
+| 5.2 | Benchmark framework + meta.yaml | --      | bench/ directory structure          |
+| 5.3 | Implement 11 benchmarks         | --      | 5 categories, hyperfine integration |
+| 5.4 | Multi-language runners          | --      | C, Zig, Java, Python, Ruby, Clj, BB |
+| 5.5 | bench.yaml 2-gen rotation       | --      | --record with delta display         |
+| 5.6 | Record Phase 5 baseline         | --      | TreeWalk, Debug build results       |
+
+## Phase 6: Core Library Expansion
+
+### Phase 6a: Essential Missing Builtins (Zig-level)
+
+| #   | Task                                                     | Archive                    | Notes                          |
+| --- | -------------------------------------------------------- | -------------------------- | ------------------------------ |
+| 6.1 | Sequence utilities: range, repeat, iterate               | task_0052_seq_utilities.md | Merged with T6.2; eager impl   |
+| 6.2 | Collection queries: empty?, contains?, keys, vals        | task_0052_seq_utilities.md | Merged into T6.1               |
+| 6.3 | Collection builders: hash-set, sorted-map, zipmap        | --                         | New collection construction    |
+| 6.4 | Numeric functions: abs, max, min, quot, rand, rand-int   | --                         | Math operations                |
+| 6.5 | String functions: subs, name, namespace, keyword, symbol | --                         | String manipulation + coercion |
+
+### Phase 6b: Core Library Expansion (core.clj)
+
+| #    | Task                                                                                   | Archive | Notes                   |
+| ---- | -------------------------------------------------------------------------------------- | ------- | ----------------------- |
+| 6.6  | Assoc/update family: assoc-in, update, update-in, get-in, select-keys                  | --      | Deep nested ops         |
+| 6.7  | Predicate/search: some, every?, not-every?, not-any?, distinct, frequencies            | --      | Higher-order predicates |
+| 6.8  | Sequence transforms: partition, partition-by, group-by, flatten, interleave, interpose | --      | Advanced seq ops        |
+| 6.9  | Function combinators: partial, comp, juxt, memoize, trampoline                         | --      | Function composition    |
+| 6.10 | Utility macros: doto, as->, cond->, cond->>, if-let, when-let, some->, some->>         | --      | Threading + binding     |
+
+### Phase 6c: Validation
+
+| #    | Task                         | Archive | Notes                                  |
+| ---- | ---------------------------- | ------- | -------------------------------------- |
+| 6.11 | SCI Tier 2 test expansion    | --      | 30+ test cases for new functions       |
+| 6.12 | Benchmark re-run + recording | --      | Regression check + new function impact |
+
 ## Risk Mitigations
 
 | Risk                          | Mitigation                                                       |
