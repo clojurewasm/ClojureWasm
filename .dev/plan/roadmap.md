@@ -267,12 +267,12 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 9a: Essential Collection Operations (Zig builtins)
 
-| #   | Task                                    | Archive                   | Notes                                          |
-| --- | --------------------------------------- | ------------------------- | ---------------------------------------------- |
-| 9.1 | merge, merge-with, zipmap               | task_0068_merge_zipmap.md | Map merging — very high frequency              |
-| 9.2 | sort, sort-by, compare                  | task_0069_sort_compare.md | Sorting — needs Zig-level comparator           |
-| 9.3 | vec, set, into (improved), list\*       | --                        | Type coercion — used everywhere                |
-| 9.4 | meta, with-meta, vary-meta, alter-meta! | --                        | Metadata system — prerequisite for many things |
+| #   | Task                                    | Archive                    | Notes                                          |
+| --- | --------------------------------------- | -------------------------- | ---------------------------------------------- |
+| 9.1 | merge, merge-with, zipmap               | task_0068_merge_zipmap.md  | Map merging — very high frequency              |
+| 9.2 | sort, sort-by, compare                  | task_0069_sort_compare.md  | Sorting — needs Zig-level comparator           |
+| 9.3 | vec, set, into (improved), list\*       | task_0070_type_coercion.md | Type coercion — used everywhere                |
+| 9.4 | meta, with-meta, vary-meta, alter-meta! | --                         | Metadata system — prerequisite for many things |
 
 ### Phase 9b: Core Library Expansion (core.clj)
 

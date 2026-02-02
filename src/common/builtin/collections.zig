@@ -680,6 +680,88 @@ pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = new_map };
 }
 
+/// (vec coll) — coerce a collection to a vector.
+pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const items = switch (args[0]) {
+        .vector => return args[0], // already a vector
+        .list => |lst| lst.items,
+        .nil => @as([]const Value, &.{}),
+        .set => |s| s.items,
+        else => return error.TypeError,
+    };
+    const new_items = try allocator.alloc(Value, items.len);
+    @memcpy(new_items, items);
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = new_items };
+    return Value{ .vector = vec };
+}
+
+/// (set coll) — coerce a collection to a set (removing duplicates).
+pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const items = switch (args[0]) {
+        .set => return args[0], // already a set
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+
+    // Deduplicate
+    var result = std.ArrayList(Value).empty;
+    for (items) |item| {
+        var dup = false;
+        for (result.items) |existing| {
+            if (existing.eql(item)) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) try result.append(allocator, item);
+    }
+
+    const new_set = try allocator.create(PersistentHashSet);
+    new_set.* = .{ .items = result.items };
+    return Value{ .set = new_set };
+}
+
+/// (list* args... coll) — creates a list with args prepended to the final collection.
+pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return error.ArityError;
+    if (args.len == 1) {
+        // (list* coll) — just return as seq
+        return switch (args[0]) {
+            .list => args[0],
+            .vector => |vec| blk: {
+                const lst = try allocator.create(PersistentList);
+                lst.* = .{ .items = vec.items };
+                break :blk Value{ .list = lst };
+            },
+            .nil => .nil,
+            else => return error.TypeError,
+        };
+    }
+
+    // Last arg is the tail collection
+    const tail_items = switch (args[args.len - 1]) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+
+    const prefix_count = args.len - 1;
+    const total = prefix_count + tail_items.len;
+    const new_items = try allocator.alloc(Value, total);
+    @memcpy(new_items[0..prefix_count], args[0..prefix_count]);
+    @memcpy(new_items[prefix_count..], tail_items);
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = new_items };
+    return Value{ .list = lst };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -859,6 +941,30 @@ pub const builtins = [_]BuiltinDef{
         .func = &sortByFn,
         .doc = "Returns a sorted sequence of the items in coll, where the sort order is determined by comparing (keyfn item).",
         .arglists = "([keyfn coll] [keyfn comp coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "vec",
+        .kind = .runtime_fn,
+        .func = &vecFn,
+        .doc = "Creates a new vector containing the contents of coll.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "set",
+        .kind = .runtime_fn,
+        .func = &setCoerceFn,
+        .doc = "Returns a set of the distinct elements of coll.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "list*",
+        .kind = .runtime_fn,
+        .func = &listStarFn,
+        .doc = "Creates a new seq containing the items prepended to the rest, the last of which will be treated as a sequence.",
+        .arglists = "([args] [a args] [a b args] [a b c args])",
         .added = "1.0",
     },
 };
@@ -1077,8 +1183,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 22 entries" {
-    try testing.expectEqual(22, builtins.len);
+test "builtins table has 25 entries" {
+    try testing.expectEqual(25, builtins.len);
 }
 
 test "reverse list" {
@@ -1330,6 +1436,55 @@ test "sort-by with keyfn" {
     try testing.expect(result.list.items[0].eql(.{ .string = "a" }));
     try testing.expect(result.list.items[1].eql(.{ .string = "bb" }));
     try testing.expect(result.list.items[2].eql(.{ .string = "ccc" }));
+}
+
+test "vec converts list to vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var lst = PersistentList{ .items = &items };
+    const result = try vecFn(alloc, &.{Value{ .list = &lst }});
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expectEqual(Value{ .integer = 1 }, result.vector.items[0]);
+}
+
+test "vec on nil returns empty vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try vecFn(arena.allocator(), &.{.nil});
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 0), result.vector.items.len);
+}
+
+test "set converts vector to set" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (set [1 2 2 3]) => #{1 2 3}
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var vec = PersistentVector{ .items = &items };
+    const result = try setCoerceFn(alloc, &.{Value{ .vector = &vec }});
+    try testing.expect(result == .set);
+    try testing.expectEqual(@as(usize, 3), result.set.items.len);
+}
+
+test "list* creates list" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (list* 1 2 [3 4]) => (1 2 3 4)
+    const tail_items = [_]Value{ .{ .integer = 3 }, .{ .integer = 4 } };
+    var tail_vec = PersistentVector{ .items = &tail_items };
+    const result = try listStarFn(alloc, &.{ .{ .integer = 1 }, .{ .integer = 2 }, Value{ .vector = &tail_vec } });
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 4), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[3]);
 }
 
 test "builtins all have func" {

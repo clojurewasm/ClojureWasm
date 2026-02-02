@@ -391,9 +391,9 @@ vars:
     let: {type: special-form, status: todo, impl: none}
     letfn: {type: special-form, status: todo, impl: none}
     "line-seq": {type: function, status: todo, impl: none}
-    list: {type: function, status: done, impl: host}
-    "list*": {type: function, status: todo, impl: none}
-    "list?": {type: function, status: todo, impl: none}
+    list: {type: function, status: done, impl: zig_builtin}
+    "list*": {type: function, status: done, impl: zig_builtin}
+    "list?": {type: function, status: done, impl: zig_builtin}
     load: {type: function, status: todo, impl: none}
     "load-file": {type: var, status: todo, impl: none}
     "load-reader": {type: function, status: todo, impl: none}
@@ -587,7 +587,7 @@ vars:
     seque: {type: function, status: todo, impl: none}
     sequence: {type: function, status: todo, impl: none}
     "sequential?": {type: function, status: todo, impl: none}
-    set: {type: function, status: todo, impl: none}
+    set: {type: function, status: done, impl: zig_builtin}
     "set-agent-send-executor!": {type: function, status: todo, impl: none}
     "set-agent-send-off-executor!": {type: function, status: todo, impl: none}
     "set-error-handler!": {type: function, status: todo, impl: none}
@@ -696,7 +696,7 @@ vars:
     "var-set": {type: function, status: todo, impl: none}
     "var?": {type: function, status: todo, impl: none}
     "vary-meta": {type: function, status: todo, impl: none}
-    vec: {type: function, status: todo, impl: none}
+    vec: {type: function, status: done, impl: zig_builtin}
     vector: {type: function, status: done, impl: host}
     "vector-of": {type: function, status: todo, impl: none}
     "vector?": {type: function, status: done, impl: host}
