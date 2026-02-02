@@ -54,7 +54,12 @@ Read with Read tool:
 2. Write output to specified path
 3. Append progress to task file `## Log`
 
-## 4. Complete
+## 4. Pre-Commit Verification
+
+If `src/common/bytecode/compiler.zig` was modified during this task,
+run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
+
+## 5. Complete
 
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
@@ -62,7 +67,7 @@ Read with Read tool:
    Update Technical Notes with context useful for the next task.
 4. **Single git commit** covering plan + implementation + status update
 
-## 5. Report & Stop
+## 6. Report & Stop
 
 After the task is done, report:
 
@@ -74,6 +79,6 @@ After the task is done, report:
 
 Then **stop** — do not proceed to the next task.
 
-## 6. User Instructions
+## 7. User Instructions
 
 $ARGUMENTS

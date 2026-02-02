@@ -73,7 +73,12 @@ Read with Read tool:
 3. Advance `memo.md`: update Current task, Task file, Last completed.
    Update Technical Notes with context useful for the next task (root cause, key files, findings).
 
-### 4b. Git commit (gate)
+### 4b. Pre-Commit Verification
+
+If `src/common/bytecode/compiler.zig` was modified during this task,
+run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
+
+### 4c. Git commit (gate)
 
 4. `git add` all changed files (plan + implementation + status)
 5. `git commit` — **single commit covering everything for this task**

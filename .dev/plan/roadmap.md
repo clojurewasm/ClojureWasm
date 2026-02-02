@@ -457,8 +457,42 @@ the two phases.
 2. Phase 12b: SCI test port — run, triage failures into "missing Tier 1"
    vs "missing Tier 2" vs "JVM-specific skip"
 3. Phase 12c: Tier 2 core.clj mass expansion — test-driven, simple iteration
-4. Phase 12d: Tier 3 triage — mark JVM-specific as "not-applicable" in
+4. Phase 12c.5: **Upstream alignment** — replace simplified core.clj definitions
+   with verbatim upstream Clojure definitions (see below)
+5. Phase 12d: Tier 3 triage — mark JVM-specific as "not-applicable" in
    vars.yaml, add stubs where useful
+
+#### Phase 12c.5: Upstream Alignment
+
+**Goal**: Replace all `UPSTREAM-DIFF` tagged definitions in core.clj with
+the verbatim upstream Clojure definitions (from `src/clj/clojure/core.clj`).
+
+**Why here**: By Phase 12c, all Tier 1 Zig builtins and most Tier 2
+core.clj functions will be implemented. The missing deps that forced
+simplified definitions (if-let, find, val, @ reader macro, #() reader
+macro) should all be available by this point.
+
+**Current UPSTREAM-DIFF items** (query: `grep UPSTREAM-DIFF .dev/status/vars.yaml`):
+
+| Var        | Missing Deps                         | Impl Phase |
+| ---------- | ------------------------------------ | ---------- |
+| memoize    | if-let, find, val, @ reader macro    | 12a-12c    |
+| trampoline | #() reader macro (fn-level recur OK) | 12a        |
+
+**Procedure**:
+
+1. Query all UPSTREAM-DIFF entries: `grep UPSTREAM-DIFF .dev/status/vars.yaml`
+2. For each entry, verify all listed missing deps are now implemented
+3. Read the upstream definition from `src/clj/clojure/core.clj`
+4. Replace the simplified definition in `src/clj/core.clj` with the
+   upstream version (including docstring and metadata)
+5. Run tests to verify behavioral equivalence
+6. Update vars.yaml: remove UPSTREAM-DIFF note (or replace with "upstream-aligned")
+7. Single commit per batch of aligned definitions
+
+**Expected scope**: Small (currently 2 items, may grow to ~5-10 as more
+core.clj functions are added in earlier phases). This is a cleanup task,
+not a feature implementation phase.
 
 **When to plan**: After Phase 11 completes, set memo.md to
 "phase planning needed" and reference this section.
