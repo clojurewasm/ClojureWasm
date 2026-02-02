@@ -1586,3 +1586,293 @@ test "EvalEngine compare str multi-arg" {
     try std.testing.expectEqualStrings("1hello", result.tw_value.?.string);
     try std.testing.expectEqualStrings("1hello", result.vm_value.?.string);
 }
+
+// --- Metadata compare tests (T11.6) ---
+
+test "EvalEngine compare meta on plain vector returns nil" {
+    // (meta [1 2]) => nil
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Build: (meta [1 2])
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = try alloc.create(@import("collections.zig").PersistentVector);
+    vec.* = .{ .items = &items };
+    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var meta_callee = Node{ .var_ref = .{ .ns = null, .name = "meta", .source = .{} } };
+    var meta_args = [_]*Node{&vec_node};
+    var meta_call = node_mod.CallNode{ .callee = &meta_callee, .args = &meta_args, .source = .{} };
+    const n = Node{ .call_node = &meta_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+}
+
+test "EvalEngine compare with-meta attaches metadata" {
+    // (with-meta [1 2] {:tag :int}) => [1 2] (with metadata)
+    const registry = @import("builtin/registry.zig");
+    const collections = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Build: (with-meta [1 2] {:tag :int})
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = try alloc.create(collections.PersistentVector);
+    vec.* = .{ .items = &items };
+    var vec_node = Node{ .constant = .{ .vector = vec } };
+
+    const meta_entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "tag" } },
+        .{ .keyword = .{ .ns = null, .name = "int" } },
+    };
+    const meta_map = try alloc.create(collections.PersistentArrayMap);
+    meta_map.* = .{ .entries = &meta_entries };
+    var meta_node = Node{ .constant = .{ .map = meta_map } };
+
+    var wm_callee = Node{ .var_ref = .{ .ns = null, .name = "with-meta", .source = .{} } };
+    var wm_args = [_]*Node{ &vec_node, &meta_node };
+    var wm_call = node_mod.CallNode{ .callee = &wm_callee, .args = &wm_args, .source = .{} };
+    const n = Node{ .call_node = &wm_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // Result should be a vector
+    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.vm_value.? == .vector);
+}
+
+test "EvalEngine compare meta retrieves attached metadata" {
+    // (meta (with-meta [1 2] {:tag :int})) => {:tag :int}
+    const registry = @import("builtin/registry.zig");
+    const collections = @import("collections.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // Inner: (with-meta [1 2] {:tag :int})
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = try alloc.create(collections.PersistentVector);
+    vec.* = .{ .items = &items };
+    var vec_node = Node{ .constant = .{ .vector = vec } };
+
+    const meta_entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "tag" } },
+        .{ .keyword = .{ .ns = null, .name = "int" } },
+    };
+    const meta_map = try alloc.create(collections.PersistentArrayMap);
+    meta_map.* = .{ .entries = &meta_entries };
+    var meta_node = Node{ .constant = .{ .map = meta_map } };
+
+    var wm_callee = Node{ .var_ref = .{ .ns = null, .name = "with-meta", .source = .{} } };
+    var wm_args = [_]*Node{ &vec_node, &meta_node };
+    var wm_call = node_mod.CallNode{ .callee = &wm_callee, .args = &wm_args, .source = .{} };
+    var wm_node = Node{ .call_node = &wm_call };
+
+    // Outer: (meta ...)
+    var meta_callee = Node{ .var_ref = .{ .ns = null, .name = "meta", .source = .{} } };
+    var outer_args = [_]*Node{&wm_node};
+    var outer_call = node_mod.CallNode{ .callee = &meta_callee, .args = &outer_args, .source = .{} };
+    const n = Node{ .call_node = &outer_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // Result should be a map containing :tag :int
+    try std.testing.expect(result.tw_value.? == .map);
+    try std.testing.expect(result.vm_value.? == .map);
+}
+
+// --- Regex compare tests (T11.6) ---
+
+test "EvalEngine compare re-find simple match" {
+    // (re-find (re-pattern "\\d+") "abc123") => "123"
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    // (re-pattern "\\d+")
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    // (re-find <pattern> "abc123")
+    var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "abc123" } };
+    var rf_args = [_]*Node{ &rp_node, &input_str };
+    var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
+    const n = Node{ .call_node = &rf_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqualStrings("123", result.tw_value.?.string);
+    try std.testing.expectEqualStrings("123", result.vm_value.?.string);
+}
+
+test "EvalEngine compare re-find no match returns nil" {
+    // (re-find (re-pattern "\\d+") "abc") => nil
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "abc" } };
+    var rf_args = [_]*Node{ &rp_node, &input_str };
+    var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
+    const n = Node{ .call_node = &rf_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+}
+
+test "EvalEngine compare re-matches full match" {
+    // (re-matches (re-pattern "\\d+") "123") => "123"
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "123" } };
+    var rm_args = [_]*Node{ &rp_node, &input_str };
+    var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
+    const n = Node{ .call_node = &rm_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqualStrings("123", result.tw_value.?.string);
+    try std.testing.expectEqualStrings("123", result.vm_value.?.string);
+}
+
+test "EvalEngine compare re-matches partial returns nil" {
+    // (re-matches (re-pattern "\\d+") "abc123") => nil
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "abc123" } };
+    var rm_args = [_]*Node{ &rp_node, &input_str };
+    var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
+    const n = Node{ .call_node = &rm_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+}
+
+test "EvalEngine compare re-seq all matches" {
+    // (re-seq (re-pattern "\\d+") "a1b22c333") => ("1" "22" "333")
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    var rs_callee = Node{ .var_ref = .{ .ns = null, .name = "re-seq", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "a1b22c333" } };
+    var rs_args = [_]*Node{ &rp_node, &input_str };
+    var rs_call = node_mod.CallNode{ .callee = &rs_callee, .args = &rs_args, .source = .{} };
+    const n = Node{ .call_node = &rs_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // Result should be a list with 3 elements
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expect(result.vm_value.? == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.list.items.len);
+    try std.testing.expectEqualStrings("1", result.tw_value.?.list.items[0].string);
+    try std.testing.expectEqualStrings("22", result.tw_value.?.list.items[1].string);
+    try std.testing.expectEqualStrings("333", result.tw_value.?.list.items[2].string);
+}
+
+test "EvalEngine compare re-find with capture groups" {
+    // (re-find (re-pattern "(\\d+)-(\\d+)") "x12-34y") => ["12-34" "12" "34"]
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
+    var pat_str = Node{ .constant = .{ .string = "(\\d+)-(\\d+)" } };
+    var rp_args = [_]*Node{&pat_str};
+    var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
+    var rp_node = Node{ .call_node = &rp_call };
+
+    var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
+    var input_str = Node{ .constant = .{ .string = "x12-34y" } };
+    var rf_args = [_]*Node{ &rp_node, &input_str };
+    var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
+    const n = Node{ .call_node = &rf_call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    // Result should be a vector ["12-34" "12" "34"]
+    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.vm_value.? == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.vector.items.len);
+    try std.testing.expectEqualStrings("12-34", result.tw_value.?.vector.items[0].string);
+    try std.testing.expectEqualStrings("12", result.tw_value.?.vector.items[1].string);
+    try std.testing.expectEqualStrings("34", result.tw_value.?.vector.items[2].string);
+}

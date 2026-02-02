@@ -405,9 +405,9 @@ high-priority gaps in the core library.
 
 ### Phase 11d: Validation
 
-| #    | Task                        | Archive | Notes                                       |
-| ---- | --------------------------- | ------- | ------------------------------------------- |
-| 11.6 | Metadata + regex test suite | --      | Compare-mode tests, SCI compatibility tests |
+| #    | Task                        | Archive                                | Notes                                       |
+| ---- | --------------------------- | -------------------------------------- | ------------------------------------------- |
+| 11.6 | Metadata + regex test suite | task_0097_metadata_regex_test_suite.md | Compare-mode tests, SCI compatibility tests |
 
 ## Future Considerations
 
