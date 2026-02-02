@@ -15,6 +15,7 @@ const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
+const atom_mod = @import("builtin/atom.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
@@ -61,20 +62,30 @@ fn readForms(allocator: Allocator, source: []const u8, error_ctx: *err.ErrorCont
     return reader.readAll() catch return error.ReadError;
 }
 
-/// Save and set macro expansion / lazy-seq realization globals.
+/// Save and set macro expansion / lazy-seq realization / fn_val dispatch globals.
 /// Returns previous state for restoration via defer.
-const MacroEnvState = struct { env: ?*Env, realize: *const @TypeOf(macroEvalBridge) };
+const MacroEnvState = struct {
+    env: ?*Env,
+    realize: *const @TypeOf(macroEvalBridge),
+    atom_call_fn: ?atom_mod.CallFnType,
+};
 
 fn setupMacroEnv(env: *Env) MacroEnvState {
-    const prev = MacroEnvState{ .env = macro_eval_env, .realize = value_mod.realize_fn };
+    const prev = MacroEnvState{
+        .env = macro_eval_env,
+        .realize = value_mod.realize_fn,
+        .atom_call_fn = atom_mod.call_fn,
+    };
     macro_eval_env = env;
     value_mod.realize_fn = &macroEvalBridge;
+    atom_mod.call_fn = &macroEvalBridge;
     return prev;
 }
 
 fn restoreMacroEnv(prev: MacroEnvState) void {
     macro_eval_env = prev.env;
     value_mod.realize_fn = prev.realize;
+    atom_mod.call_fn = prev.atom_call_fn;
 }
 
 /// Analyze a single form with macro expansion support.
@@ -1102,6 +1113,28 @@ test "evalStringVM - def fn then call across forms (T9.5.1)" {
     try expectVMEvalInt(alloc, &env,
         "(def add2 (fn [x] (+ x 2))) (def add3 (fn [x] (+ x 3))) (+ (add2 10) (add3 10))",
         25,
+    );
+}
+
+test "swap! with fn_val closure (T9.5.2)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // swap! with a user-defined closure (fn_val), not a builtin_fn
+    try expectEvalInt(alloc, &env,
+        "(def a (atom 10)) (swap! a (fn [x] (+ x 5))) @a",
+        15,
+    );
+
+    // swap! with fn_val and extra args
+    try expectEvalInt(alloc, &env,
+        "(def b (atom 0)) (swap! b (fn [x y z] (+ x y z)) 3 7) @b",
+        10,
     );
 }
 

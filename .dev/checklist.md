@@ -21,7 +21,7 @@ Last updated: 2026-02-02 (Phase 9.5 planning — D32)
 | F2      | Real GC (replace arena)                     | Long-running REPL or memory benchmarks exceed bounds  | D2     |
 | F3      | Ratio type (`1/3`)                          | SCI tests fail on float precision loss                | D12    |
 | F4      | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                 | D9     |
-| F5      | swap! with fn_val (closure dispatch)        | **Phase 9.5.2 — actively targeted**                   | D8     |
+| ~~F5~~  | ~~swap! with fn_val (closure dispatch)~~    | ~~Resolved: T9.5.2 — atom.call_fn dispatcher~~        | D8     |
 | F6      | Multi-thread dynamic bindings               | Native multi-thread target                            | D11    |
 | F7      | Macro body serialization (AOT blocker)      | T4.7 AOT bytecode startup                             | D18    |
 | F8      | Unified fn_val proto (VM/TreeWalk)          | VM tests for `for`, higher-order cross-boundary calls | D22    |

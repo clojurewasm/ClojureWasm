@@ -11,6 +11,11 @@ const Atom = value_mod.Atom;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 
+/// External fn_val dispatcher — set by bootstrap to enable swap!/apply
+/// with user closures. Module-level (D3 known exception, single-thread).
+pub const CallFnType = *const fn (Allocator, Value, []const Value) anyerror!Value;
+pub var call_fn: ?CallFnType = null;
+
 /// (atom val) => #<atom val>
 pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -42,7 +47,7 @@ pub fn resetBangFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (swap! atom f) => (f @atom)
 /// (swap! atom f x y ...) => (f @atom x y ...)
-/// Currently only supports builtin_fn as f. fn_val requires evaluator context.
+/// Supports builtin_fn directly and fn_val via call_fn dispatcher.
 pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return error.ArityError;
     const atom_ptr = switch (args[0]) {
@@ -64,7 +69,11 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const new_val = switch (fn_val) {
         .builtin_fn => |f| f(allocator, call_args[0..total]) catch |e| return e,
-        else => return error.TypeError, // fn_val not yet supported
+        .fn_val => if (call_fn) |dispatcher|
+            dispatcher(allocator, fn_val, call_args[0..total]) catch |e| return e
+        else
+            return error.TypeError,
+        else => return error.TypeError,
     };
 
     atom_ptr.value = new_val;

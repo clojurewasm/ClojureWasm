@@ -1083,3 +1083,19 @@ Phase 10 (next var expansion). Fix foundations first, measure VM perf second.
 
 **Impact**: Delays var count growth temporarily but improves velocity afterward.
 All 5 items are small, focused fixes rather than architectural changes.
+
+## D33: atom.call_fn Module-Level Dispatcher (T9.5.2)
+
+**Context**: swap! needed fn_val support but BuiltinFn has no evaluator context.
+
+**Decision**: Added `atom.call_fn` module-level function pointer, set by
+`setupMacroEnv` alongside `macro_eval_env` and `realize_fn`. Same D3
+known-exception pattern (single-thread only).
+
+**Alternatives considered**:
+- (a) Add evaluator context to BuiltinFn signature — breaking change to all builtins
+- (b) Make swap! a special form — overkill, adds AST complexity
+- (c) Redefine swap! in core.clj using atom primitives — viable but deferred
+
+**Impact**: Minimal. One more module-level var in the D3 exception set.
+Pattern can extend to apply, merge-with, sort-by if needed.
