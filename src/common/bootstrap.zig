@@ -1648,6 +1648,83 @@ test "core.clj - frequencies" {
     try expectEvalInt(alloc, &env, "(count (frequencies [1 2 3]))", 3);
 }
 
+test "evalString - call depth limit prevents crash" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    // Define a non-tail-recursive function
+    _ = try evalString(alloc, &env, "(def deep (fn [n] (if (= n 0) 0 (+ 1 (deep (- n 1))))))");
+
+    // Small depth should succeed
+    try expectEvalInt(alloc, &env, "(deep 10)", 10);
+
+    // Moderate depth should succeed (within MAX_CALL_DEPTH)
+    try expectEvalInt(alloc, &env, "(deep 100)", 100);
+
+    // Exceeding MAX_CALL_DEPTH (512) should return error, not crash
+    const result = evalString(alloc, &env, "(deep 520)");
+    try testing.expectError(error.EvalError, result);
+}
+
+test "core.clj - doto macro" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // doto returns the original value
+    try expectEvalInt(alloc, &env, "(doto 42 identity inc)", 42);
+}
+
+test "core.clj - as-> macro" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // as-> lets you name the threaded value and place it anywhere
+    try expectEvalInt(alloc, &env, "(as-> 1 x (+ x 10) (- x 5))", 6);
+    try expectEvalStr(alloc, &env, "(as-> 42 x (str \"value=\" x))", "value=42");
+}
+
+test "core.clj - some-> macro" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // some-> threads value through forms, short-circuits on nil
+    try expectEvalInt(alloc, &env, "(some-> 1 inc inc)", 3);
+    try expectEvalNil(alloc, &env, "(some-> nil inc inc)");
+}
+
+test "core.clj - cond-> macro" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // cond-> threads value through forms where condition is true
+    try expectEvalInt(alloc, &env, "(cond-> 1 true inc false inc)", 2);
+    try expectEvalInt(alloc, &env, "(cond-> 1 true inc true inc)", 3);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

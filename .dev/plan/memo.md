@@ -2,10 +2,10 @@
 
 ## Current State
 
-- Phase: 6 (Core Library Expansion)
+- Phase: 7 (Robustness + nREPL)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T6.11 — Phase 6 validation + benchmark
-- Task file: (none)
+- Current task: T7.4 — Multimethod (defmulti, defmethod)
+- Task file: (none — create on start)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
@@ -56,6 +56,16 @@
 | T4.12    | .dev/plan/archive/task_0048_interactive_repl.md             | 2026-02-02 |
 | T4.13    | .dev/plan/archive/task_0049_wasm_target.md                  | 2026-02-02 |
 | T4.14/15 | .dev/plan/archive/task_0050_dir_restructure.md              | 2026-02-02 |
+| T7.0     | .dev/plan/archive/task_0054_phase7_planning.md              | 2026-02-02 |
+| T7.1     | .dev/plan/archive/task_0055_stack_depth.md                  | 2026-02-02 |
+| T7.2     | .dev/plan/archive/task_0056_str_dynamic_buffer.md           | 2026-02-02 |
+| T7.3     | .dev/plan/archive/task_0057_threading_macros.md             | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)
+**Phase 6 complete** — 140 vars implemented (was 101). Key additions: range, empty?,
+contains?, keys, vals, abs, max, min, subs, name, namespace, keyword, symbol,
+get-in, assoc-in, update, update-in, partial, comp, juxt, some, every?,
+partition, group-by, flatten, interleave, interpose, distinct, frequencies,
+if-let, when-let. Fixed TreeWalk intrinsic dispatch (D26).
+Benchmark regression: none.

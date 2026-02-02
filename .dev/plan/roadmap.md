@@ -229,6 +229,32 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 6.11 | SCI Tier 2 test expansion    | --      | 30+ test cases for new functions       |
 | 6.12 | Benchmark re-run + recording | --      | Regression check + new function impact |
 
+## Phase 7: Robustness + nREPL
+
+### Phase 7a: Robustness Fixes
+
+| #   | Task                           | Archive                         | Notes                                        |
+| --- | ------------------------------ | ------------------------------- | -------------------------------------------- |
+| 7.1 | TreeWalk stack depth fix (F11) | task_0055_stack_depth.md        | MAX_CALL_DEPTH=512 + heap-alloc saved locals |
+| 7.2 | str dynamic buffer (F12)       | task_0056_str_dynamic_buffer.md | Writer.Allocating replaces fixed 4KB buffer  |
+
+### Phase 7b: Core Library Expansion II
+
+| #   | Task                                            | Archive                       | Notes                                                  |
+| --- | ----------------------------------------------- | ----------------------------- | ------------------------------------------------------ |
+| 7.3 | Missing core macros: doto, as->, cond->, some-> | task_0057_threading_macros.md | 6 threading variants added to core.clj                 |
+| 7.4 | Multimethod: defmulti, defmethod                | --                            | Dynamic dispatch without protocols                     |
+| 7.5 | Exception handling: try/catch/throw in eval     | --                            | Currently analyzed but not fully wired in TreeWalk     |
+| 7.6 | Lazy sequences: lazy-seq, lazy-cat              | --                            | Foundation for idiomatic Clojure; iterate, repeat lazy |
+
+### Phase 7c: nREPL Server
+
+| #   | Task                                     | Archive | Notes                                      |
+| --- | ---------------------------------------- | ------- | ------------------------------------------ |
+| 7.7 | bencode encoder/decoder                  | --      | nREPL wire protocol                        |
+| 7.8 | nREPL server (TCP socket)                | --      | eval, load-file, describe, completions ops |
+| 7.9 | nREPL middleware: completion, stacktrace | --      | Editor integration quality                 |
+
 ## Risk Mitigations
 
 | Risk                          | Mitigation                                                       |

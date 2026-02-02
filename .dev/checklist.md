@@ -25,8 +25,8 @@ Last updated: 2026-02-02 (after T5.6)
 | F8      | Unified fn_val proto (VM/TreeWalk)          | VM tests for `for`, higher-order cross-boundary calls | D22    |
 | ~~F9~~  | ~~`empty?` builtin~~                        | ~~Resolved: T6.1~~                                    | bench  |
 | ~~F10~~ | ~~`range` builtin~~                         | ~~Resolved: T6.1~~                                    | bench  |
-| F11     | TreeWalk stack depth limit                  | ack(3,6) segfaults; deep recursion unusable           | bench  |
-| F12     | `str` fixed 4KB buffer                      | str_concat bench removed; large string ops fail       | bench  |
+| ~~F11~~ | ~~TreeWalk stack depth limit~~              | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~  | bench  |
+| ~~F12~~ | ~~`str` fixed 4KB buffer~~                  | ~~Resolved: T7.2 — Writer.Allocating (dynamic)~~      | bench  |
 
 ## Phase 4 task priorities
 

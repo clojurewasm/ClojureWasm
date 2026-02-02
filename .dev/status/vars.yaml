@@ -134,7 +134,7 @@ vars:
     apply: {type: function, status: done, impl: host}
     areduce: {type: macro, status: todo, impl: none}
     "array-map": {type: function, status: todo, impl: none}
-    "as->": {type: macro, status: todo, impl: none}
+    "as->": {type: macro, status: done, impl: clj}
     aset: {type: function, status: todo, impl: none}
     "aset-boolean": {type: function, status: todo, impl: none}
     "aset-byte": {type: function, status: todo, impl: none}
@@ -216,8 +216,8 @@ vars:
     completing: {type: function, status: todo, impl: none}
     concat: {type: function, status: done, impl: host}
     cond: {type: macro, status: done, impl: clj}
-    "cond->": {type: macro, status: todo, impl: none}
-    "cond->>": {type: macro, status: todo, impl: none}
+    "cond->": {type: macro, status: done, impl: clj}
+    "cond->>": {type: macro, status: done, impl: clj}
     condp: {type: macro, status: todo, impl: none}
     conj: {type: function, status: done, impl: host}
     "conj!": {type: function, status: todo, impl: none}
@@ -267,7 +267,7 @@ vars:
     doseq: {type: macro, status: todo, impl: none}
     dosync: {type: macro, status: todo, impl: none}
     dotimes: {type: macro, status: done, impl: clj}
-    doto: {type: macro, status: todo, impl: none}
+    doto: {type: macro, status: done, impl: clj}
     double: {type: function, status: todo, impl: none}
     "double-array": {type: function, status: todo, impl: none}
     "double?": {type: function, status: todo, impl: none}
@@ -604,8 +604,8 @@ vars:
     "simple-symbol?": {type: function, status: todo, impl: none}
     slurp: {type: function, status: todo, impl: none}
     some: {type: function, status: done, impl: clj}
-    "some->": {type: macro, status: todo, impl: none}
-    "some->>": {type: macro, status: todo, impl: none}
+    "some->": {type: macro, status: done, impl: clj}
+    "some->>": {type: macro, status: done, impl: clj}
     "some-fn": {type: function, status: todo, impl: none}
     "some?": {type: function, status: todo, impl: none}
     sort: {type: function, status: todo, impl: none}

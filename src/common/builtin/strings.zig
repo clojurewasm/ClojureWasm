@@ -23,15 +23,13 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return strSingle(allocator, args[0]);
     }
 
-    // Multi-arg: concatenate into buffer
-    var buf: [4096]u8 = undefined;
-    var w: Writer = .fixed(&buf);
+    // Multi-arg: concatenate with dynamic writer
+    var aw: Writer.Allocating = .init(allocator);
+    defer aw.deinit();
     for (args) |arg| {
-        arg.formatStr(&w) catch return error.StringTooLong;
+        try arg.formatStr(&aw.writer);
     }
-    const result = w.buffered();
-    const owned = try allocator.alloc(u8, result.len);
-    @memcpy(owned, result);
+    const owned = try aw.toOwnedSlice();
     return Value{ .string = owned };
 }
 
@@ -40,12 +38,10 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
         .nil => return Value{ .string = "" },
         .string => return val, // already a string, return as-is
         else => {
-            var buf: [4096]u8 = undefined;
-            var w: Writer = .fixed(&buf);
-            val.formatStr(&w) catch return error.StringTooLong;
-            const result = w.buffered();
-            const owned = try allocator.alloc(u8, result.len);
-            @memcpy(owned, result);
+            var aw: Writer.Allocating = .init(allocator);
+            defer aw.deinit();
+            try val.formatStr(&aw.writer);
+            const owned = try aw.toOwnedSlice();
             return Value{ .string = owned };
         },
     }
@@ -57,15 +53,13 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
 pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return Value{ .string = "" };
 
-    var buf: [4096]u8 = undefined;
-    var w: Writer = .fixed(&buf);
+    var aw: Writer.Allocating = .init(allocator);
+    defer aw.deinit();
     for (args, 0..) |arg, i| {
-        if (i > 0) w.writeAll(" ") catch return error.StringTooLong;
-        arg.formatPrStr(&w) catch return error.StringTooLong;
+        if (i > 0) try aw.writer.writeAll(" ");
+        try arg.formatPrStr(&aw.writer);
     }
-    const result = w.buffered();
-    const owned = try allocator.alloc(u8, result.len);
-    @memcpy(owned, result);
+    const owned = try aw.toOwnedSlice();
     return Value{ .string = owned };
 }
 
@@ -404,4 +398,16 @@ test "symbol with ns and name" {
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.symbol.name);
     try testing.expectEqualStrings("my.ns", result.symbol.ns.?);
+}
+
+test "str - large string over 4KB" {
+    // Build a 5000-char string via str concatenation
+    const chunk = "a" ** 100; // 100 bytes
+    var args: [60]Value = undefined;
+    for (&args) |*a| {
+        a.* = Value{ .string = chunk };
+    }
+    const result = try strFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqual(@as(usize, 6000), result.string.len);
 }

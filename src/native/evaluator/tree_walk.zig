@@ -25,9 +25,11 @@ pub const TreeWalkError = error{
     DivisionByZero,
     UserException,
     OutOfMemory,
+    StackOverflow,
 };
 
 const MAX_LOCALS: usize = 256;
+const MAX_CALL_DEPTH: usize = 512;
 
 /// TreeWalk closure — captures fn node + local bindings at definition time.
 pub const Closure = struct {
@@ -48,6 +50,8 @@ pub const TreeWalk = struct {
     /// Recur args buffer.
     recur_args: [MAX_LOCALS]Value = undefined,
     recur_arg_count: usize = 0,
+    /// Current call depth (for stack overflow protection).
+    call_depth: usize = 0,
     /// Exception value (set by throw).
     exception: ?Value = null,
     /// Allocated closures (for cleanup).
@@ -226,32 +230,40 @@ pub const TreeWalk = struct {
         // fn_val.proto is actually *Closure for TreeWalk
         const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
 
-        // Evaluate args
-        var arg_vals: [MAX_LOCALS]Value = undefined;
+        // Evaluate args (heap-allocated to reduce stack frame size)
+        const arg_count = call_n.args.len;
+        const arg_vals = self.allocator.alloc(Value, arg_count) catch return error.OutOfMemory;
+        defer self.allocator.free(arg_vals);
         for (call_n.args, 0..) |arg, i| {
             arg_vals[i] = try self.run(arg);
         }
-        const arg_count = call_n.args.len;
 
-        return self.callClosure(closure, arg_vals[0..arg_count]);
+        return self.callClosure(closure, arg_vals);
     }
 
     fn callClosure(self: *TreeWalk, closure: *const Closure, args: []const Value) TreeWalkError!Value {
+        // Stack overflow protection
+        if (self.call_depth >= MAX_CALL_DEPTH) return error.StackOverflow;
+        self.call_depth += 1;
+        defer self.call_depth -= 1;
+
         const fn_n = closure.fn_node;
 
         // Find matching arity
         const arity = findArity(fn_n.arities, args.len) orelse return error.ArityError;
 
-        // Save caller's local frame (nested closure calls must not clobber it)
+        // Save caller's local frame on heap (avoids stack overflow in deep recursion)
         const saved_count = self.local_count;
-        var saved_locals: [MAX_LOCALS]Value = undefined;
-        @memcpy(saved_locals[0..saved_count], self.locals[0..saved_count]);
+        const saved_locals = self.allocator.alloc(Value, saved_count) catch return error.OutOfMemory;
+        defer self.allocator.free(saved_locals);
+        @memcpy(saved_locals, self.locals[0..saved_count]);
 
-        // Save recur state (nested fn calls with loop/recur must not corrupt outer recur args)
+        // Save recur state (full buffer — inner calls may change arg_count)
         const saved_recur_pending = self.recur_pending;
         const saved_recur_arg_count = self.recur_arg_count;
-        var saved_recur_args: [MAX_LOCALS]Value = undefined;
-        @memcpy(&saved_recur_args, &self.recur_args);
+        const saved_recur_args = self.allocator.alloc(Value, MAX_LOCALS) catch return error.OutOfMemory;
+        defer self.allocator.free(saved_recur_args);
+        @memcpy(saved_recur_args, &self.recur_args);
 
         // Reset locals to captured state (fn body uses idx from 0)
         self.local_count = 0;
@@ -308,13 +320,13 @@ pub const TreeWalk = struct {
         const result = try self.run(arity.body);
 
         // Restore caller's local frame
-        @memcpy(self.locals[0..saved_count], saved_locals[0..saved_count]);
+        @memcpy(self.locals[0..saved_count], saved_locals);
         self.local_count = saved_count;
 
         // Restore recur state
         self.recur_pending = saved_recur_pending;
         self.recur_arg_count = saved_recur_arg_count;
-        @memcpy(&self.recur_args, &saved_recur_args);
+        @memcpy(&self.recur_args, saved_recur_args);
 
         return result;
     }
@@ -615,12 +627,13 @@ pub const TreeWalk = struct {
     const var_mod = @import("../../common/var.zig");
 
     fn callBuiltinFn(self: *TreeWalk, func: var_mod.BuiltinFn, arg_nodes: []const *Node) TreeWalkError!Value {
-        // Evaluate all arguments
-        var arg_vals: [MAX_LOCALS]Value = undefined;
+        // Evaluate all arguments (heap-allocated to reduce stack frame size)
+        const arg_vals = self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory;
+        defer self.allocator.free(arg_vals);
         for (arg_nodes, 0..) |arg, i| {
             arg_vals[i] = try self.run(arg);
         }
-        const result = func(self.allocator, arg_vals[0..arg_nodes.len]);
+        const result = func(self.allocator, arg_vals);
         if (result) |v| {
             return v;
         } else |e| {
