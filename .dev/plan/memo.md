@@ -4,7 +4,7 @@
 
 - Phase: 8 (Refactoring)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T8.R3 (arithmetic/comparison helper consolidation)
+- Current task: Phase 8 refactoring complete — next phase TBD
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
@@ -68,6 +68,11 @@
 | T7.9     | .dev/plan/archive/task_0063_nrepl_middleware.md             | 2026-02-02 |
 | T8.R1    | .dev/plan/archive/task_0064_treewalk_dead_code.md           | 2026-02-02 |
 | T8.R2    | .dev/plan/archive/task_0065_bootstrap_dedup.md              | 2026-02-02 |
+| T8.R3    | .dev/plan/archive/task_0066_arith_consolidation.md          | 2026-02-02 |
+
+**Phase 8 refactoring complete** — T8.R1-T8.R3 done. Dead code removed
+from TreeWalk (~180 lines), bootstrap eval helpers deduplicated,
+arithmetic/comparison unified in arithmetic.zig (wrapping op bug fixed).
 
 **Phase 7 complete** — T7.1-T7.9 done. Key additions: stack depth fix,
 dynamic str buffer, threading macros (doto, as->, some->, cond->),

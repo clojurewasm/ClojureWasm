@@ -22,6 +22,7 @@ const PersistentList = collections.PersistentList;
 const PersistentVector = collections.PersistentVector;
 const PersistentArrayMap = collections.PersistentArrayMap;
 const PersistentHashSet = collections.PersistentHashSet;
+const arith = @import("../../common/builtin/arithmetic.zig");
 
 /// VM execution errors.
 pub const VMError = error{
@@ -358,16 +359,16 @@ pub const VM = struct {
                 },
 
                 // [M] Arithmetic
-                .add => try self.binaryArith(.add),
-                .sub => try self.binaryArith(.sub),
-                .mul => try self.binaryArith(.mul),
-                .div => try self.binaryArith(.div),
-                .lt => try self.binaryCompare(.lt),
-                .le => try self.binaryCompare(.le),
-                .gt => try self.binaryCompare(.gt),
-                .ge => try self.binaryCompare(.ge),
-                .mod => try self.binaryMod(),
-                .rem_ => try self.binaryRem(),
+                .add => try self.vmBinaryArith(.add),
+                .sub => try self.vmBinaryArith(.sub),
+                .mul => try self.vmBinaryArith(.mul),
+                .div => try self.vmBinaryDiv(),
+                .lt => try self.vmBinaryCompare(.lt),
+                .le => try self.vmBinaryCompare(.le),
+                .gt => try self.vmBinaryCompare(.gt),
+                .ge => try self.vmBinaryCompare(.ge),
+                .mod => try self.vmBinaryMod(),
+                .rem_ => try self.vmBinaryRem(),
                 .eq => {
                     const b = self.pop();
                     const a = self.pop();
@@ -560,104 +561,45 @@ pub const VM = struct {
         return error.ArityError;
     }
 
-    // --- Arithmetic helpers ---
+    // --- Arithmetic helpers (delegated to common/builtin/arithmetic.zig) ---
 
-    const ArithOp = enum { add, sub, mul, div };
-
-    fn binaryArith(self: *VM, op: ArithOp) VMError!void {
+    fn vmBinaryArith(self: *VM, comptime op: arith.ArithOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
-
-        // Division always promotes to float (Clojure semantics: / returns Ratio,
-        // but we use float as approximation until Ratio type is implemented).
-        // See decisions.md D12.
-        if (op == .div) {
-            const fa = numToFloat(a) orelse return error.TypeError;
-            const fb = numToFloat(b) orelse return error.TypeError;
-            if (fb == 0.0) return error.DivisionByZero;
-            try self.push(.{ .float = fa / fb });
-            return;
-        }
-
-        // Both integers: stay in integer domain (add, sub, mul)
-        if (a == .integer and b == .integer) {
-            const result: Value = switch (op) {
-                .add => .{ .integer = a.integer + b.integer },
-                .sub => .{ .integer = a.integer - b.integer },
-                .mul => .{ .integer = a.integer * b.integer },
-                .div => unreachable, // handled above
-            };
-            try self.push(result);
-            return;
-        }
-
-        // Mixed int/float: promote to float
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-
-        const result: f64 = switch (op) {
-            .add => fa + fb,
-            .sub => fa - fb,
-            .mul => fa * fb,
-            .div => unreachable, // handled above
-        };
-        try self.push(.{ .float = result });
+        try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
     }
 
-    const CmpOp = enum { lt, le, gt, ge };
-
-    fn binaryCompare(self: *VM, op: CmpOp) VMError!void {
+    fn vmBinaryDiv(self: *VM) VMError!void {
         const b = self.pop();
         const a = self.pop();
-
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-
-        const result: bool = switch (op) {
-            .lt => fa < fb,
-            .le => fa <= fb,
-            .gt => fa > fb,
-            .ge => fa >= fb,
-        };
-        try self.push(.{ .boolean = result });
+        try self.push(arith.binaryDiv(a, b) catch |e| switch (e) {
+            error.DivisionByZero => return error.DivisionByZero,
+            else => return error.TypeError,
+        });
     }
 
-    /// Clojure mod: result has same sign as divisor.
-    fn binaryMod(self: *VM) VMError!void {
+    fn vmBinaryCompare(self: *VM, comptime op: arith.CompareOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
-        if (a == .integer and b == .integer) {
-            if (b.integer == 0) return error.DivisionByZero;
-            try self.push(.{ .integer = @mod(a.integer, b.integer) });
-            return;
-        }
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        if (fb == 0.0) return error.DivisionByZero;
-        try self.push(.{ .float = @mod(fa, fb) });
+        try self.push(.{ .boolean = arith.compareFn(a, b, op) catch return error.TypeError });
     }
 
-    /// Clojure rem: result has same sign as dividend.
-    fn binaryRem(self: *VM) VMError!void {
+    fn vmBinaryMod(self: *VM) VMError!void {
         const b = self.pop();
         const a = self.pop();
-        if (a == .integer and b == .integer) {
-            if (b.integer == 0) return error.DivisionByZero;
-            try self.push(.{ .integer = @rem(a.integer, b.integer) });
-            return;
-        }
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        if (fb == 0.0) return error.DivisionByZero;
-        try self.push(.{ .float = @rem(fa, fb) });
+        try self.push(arith.binaryMod(a, b) catch |e| switch (e) {
+            error.DivisionByZero => return error.DivisionByZero,
+            else => return error.TypeError,
+        });
     }
 
-    fn numToFloat(val: Value) ?f64 {
-        return switch (val) {
-            .integer => |i| @floatFromInt(i),
-            .float => |f| f,
-            else => null,
-        };
+    fn vmBinaryRem(self: *VM) VMError!void {
+        const b = self.pop();
+        const a = self.pop();
+        try self.push(arith.binaryRem(a, b) catch |e| switch (e) {
+            error.DivisionByZero => return error.DivisionByZero,
+            else => return error.TypeError,
+        });
     }
 };
 

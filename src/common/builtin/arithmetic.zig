@@ -113,7 +113,7 @@ pub const builtins = [_]BuiltinDef{
 
 // --- Runtime fallback functions for first-class usage ---
 
-fn toFloat(v: Value) !f64 {
+pub fn toFloat(v: Value) !f64 {
     return switch (v) {
         .integer => |i| @floatFromInt(i),
         .float => |f| f,
@@ -121,12 +121,14 @@ fn toFloat(v: Value) !f64 {
     };
 }
 
-fn binaryArith(a: Value, b: Value, comptime op: enum { add, sub, mul }) !Value {
+pub const ArithOp = enum { add, sub, mul };
+
+pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
     if (a == .integer and b == .integer) {
         return .{ .integer = switch (op) {
-            .add => a.integer +% b.integer,
-            .sub => a.integer -% b.integer,
-            .mul => a.integer *% b.integer,
+            .add => a.integer + b.integer,
+            .sub => a.integer - b.integer,
+            .mul => a.integer * b.integer,
         } };
     }
     const fa = try toFloat(a);
@@ -162,33 +164,20 @@ fn mulFn(_: Allocator, args: []const Value) anyerror!Value {
 
 fn divFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return error.ArityError;
-    if (args.len == 1) {
-        const d = try toFloat(args[0]);
-        return .{ .float = 1.0 / d };
-    }
-    var fa = try toFloat(args[0]);
-    for (args[1..]) |arg| fa /= try toFloat(arg);
-    return .{ .float = fa };
+    if (args.len == 1) return binaryDiv(.{ .integer = 1 }, args[0]);
+    var result = args[0];
+    for (args[1..]) |arg| result = try binaryDiv(result, arg);
+    return result;
 }
 
 fn modFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
-    if (args[0] == .integer and args[1] == .integer) {
-        return .{ .integer = @mod(args[0].integer, args[1].integer) };
-    }
-    const a = try toFloat(args[0]);
-    const b = try toFloat(args[1]);
-    return .{ .float = @mod(a, b) };
+    return binaryMod(args[0], args[1]);
 }
 
 fn remFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
-    if (args[0] == .integer and args[1] == .integer) {
-        return .{ .integer = @rem(args[0].integer, args[1].integer) };
-    }
-    const a = try toFloat(args[0]);
-    const b = try toFloat(args[1]);
-    return .{ .float = @rem(a, b) };
+    return binaryRem(args[0], args[1]);
 }
 
 fn eqFn(_: Allocator, args: []const Value) anyerror!Value {
@@ -206,9 +195,38 @@ fn neqFn(_: Allocator, args: []const Value) anyerror!Value {
     return .{ .boolean = !args[0].eql(args[1]) };
 }
 
-const CompareOp = enum { lt, le, gt, ge };
+pub fn binaryDiv(a: Value, b: Value) !Value {
+    const fa = try toFloat(a);
+    const fb = try toFloat(b);
+    if (fb == 0.0) return error.DivisionByZero;
+    return .{ .float = fa / fb };
+}
 
-fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
+pub fn binaryMod(a: Value, b: Value) !Value {
+    if (a == .integer and b == .integer) {
+        if (b.integer == 0) return error.DivisionByZero;
+        return .{ .integer = @mod(a.integer, b.integer) };
+    }
+    const fa = try toFloat(a);
+    const fb = try toFloat(b);
+    if (fb == 0.0) return error.DivisionByZero;
+    return .{ .float = @mod(fa, fb) };
+}
+
+pub fn binaryRem(a: Value, b: Value) !Value {
+    if (a == .integer and b == .integer) {
+        if (b.integer == 0) return error.DivisionByZero;
+        return .{ .integer = @rem(a.integer, b.integer) };
+    }
+    const fa = try toFloat(a);
+    const fb = try toFloat(b);
+    if (fb == 0.0) return error.DivisionByZero;
+    return .{ .float = @rem(fa, fb) };
+}
+
+pub const CompareOp = enum { lt, le, gt, ge };
+
+pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
     if (a == .integer and b == .integer) {
         return switch (op) {
             .lt => a.integer < b.integer,

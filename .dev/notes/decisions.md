@@ -1022,3 +1022,23 @@ interning arena separate from the eval arena.
 
 **Impact**: Cross-eval `def`/`defn` persistence works correctly. Verified
 with integration tests (def x, defn square, multi-form defs).
+
+---
+
+## D30: Unified Arithmetic Helpers in arithmetic.zig (T8.R3)
+
+**Date**: 2026-02-02
+**Context**: Arithmetic/comparison logic was duplicated in three places:
+`arithmetic.zig` (BuiltinFn variadic path), `vm.zig` (binary opcode
+dispatch), and `tree_walk.zig` (removed in T8.R1). The `arithmetic.zig`
+version also used wrapping operators (`+%`, `-%`, `*%`), which silently
+wrapped on overflow instead of producing Zig's overflow behavior.
+
+**Decision**: Make `arithmetic.zig` the single source of truth for
+binary arithmetic, comparison, division, mod, and rem operations.
+VM delegates to these shared helpers instead of maintaining its own
+copies. Fixed wrapping operators to non-wrapping (`+`, `-`, `*`).
+
+**Impact**: ~50 lines removed from VM. Semantics unified across
+all evaluation paths. Wrapping arithmetic bug in first-class usage
+(e.g., `(reduce + ...)`) is fixed.
