@@ -410,6 +410,58 @@ high-priority gaps in the core library.
 
 ## Future Considerations
 
+### Phase 12 Strategy: Zig Foundation Completion + SCI Test Port
+
+**Background** (discussed during Phase 11 planning):
+
+Remaining 488 unimplemented vars fall into 4 tiers:
+
+| Tier | Description                 | Count    | Impl Language |
+| ---- | --------------------------- | -------- | ------------- |
+| 1    | Zig-required runtime fundns | ~30-40   | Zig           |
+| 2    | Pure Clojure combinators    | ~100-150 | core.clj      |
+| 3    | JVM-specific (skip/stub)    | ~150-200 | N/A           |
+| 4    | Dynamic vars / config       | ~50      | Zig stubs     |
+
+**Key insight**: Tier 1 (Zig-required) blocks Tier 2 (core.clj). Once Tier 1
+is complete, remaining var expansion becomes simple iteration: write test,
+write defn in core.clj, verify. SCI test porting acts as the gate between
+the two phases.
+
+**Tier 1 candidates** (Zig builtins needed before core.clj can take over):
+
+- **Var as Value**: var?, var-get, var-set, find-var, alter-var-root
+- **Namespace ops**: all-ns, find-ns, ns-name, ns-map, ns-publics, create-ns, the-ns, ns-interns, ns-refers, ns-aliases, ns-unmap, ns-resolve, resolve, refer
+- **Collection gaps**: dissoc, disj, find, subvec, peek, pop, empty, array-map, hash-set, sorted-map
+- **Hash**: hash, hash-combine, identical?
+- **IO basics**: slurp, spit, read-line, flush, newline, \*in\*, \*out\*, \*err\*
+- **eval / load**: eval, macroexpand, macroexpand-1, load-string, read-string
+- **Transient**: transient, persistent!, conj!, assoc!, dissoc!, pop!
+- **Regex**: re-pattern, re-find, re-matches, re-seq (Zig has no regex — needs PCRE or hand-rolled)
+- **Misc**: gensym, format, compare-and-set!, reduced, reduced?, unreduced
+
+**Tier 3 (JVM-specific) — skip or minimal stub**:
+
+- Java array ops: aset-\*, aget, alength, \*-array, make-array (~40)
+- agent/ref/STM: agent, send, ref, dosync, alter, commute (~30)
+- proxy/reify/gen: proxy, reify, gen-class, gen-interface (~15)
+- Java type coercion: byte, short, long, float, double, int, char (~15)
+- unchecked-\* : unchecked-add, unchecked-multiply, etc. (~20)
+- Class loader: compile, load, import, require (~10)
+- future/promise: future, promise, deliver (thread-dependent)
+
+**Recommended Phase 12 structure**:
+
+1. Phase 12a: Tier 1 Zig builtins (3-5 tasks covering the groups above)
+2. Phase 12b: SCI test port — run, triage failures into "missing Tier 1"
+   vs "missing Tier 2" vs "JVM-specific skip"
+3. Phase 12c: Tier 2 core.clj mass expansion — test-driven, simple iteration
+4. Phase 12d: Tier 3 triage — mark JVM-specific as "not-applicable" in
+   vars.yaml, add stubs where useful
+
+**When to plan**: After Phase 11 completes, set memo.md to
+"phase planning needed" and reference this section.
+
 ### IO / System Namespace Strategy
 
 When implementing IO and system functionality, decide on namespace design:
