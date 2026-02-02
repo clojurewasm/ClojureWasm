@@ -189,7 +189,7 @@ vars:
     "chunk-next": {type: function, status: todo}
     "chunk-rest": {type: function, status: todo}
     "chunked-seq?": {type: function, status: todo}
-    class: {type: function, status: todo}
+    class: {type: function, status: done, note: "Zig builtin alias of type"}
     "class?": {type: function, status: todo}
     "clear-agent-errors": {type: function, status: todo}
     "clojure-version": {type: function, status: todo}
@@ -351,7 +351,7 @@ vars:
     "inst-ms": {type: function, status: todo}
     "inst-ms*": {type: function, status: todo}
     "inst?": {type: function, status: todo}
-    "instance?": {type: function, status: todo}
+    "instance?": {type: function, status: done, note: "core.clj (= t (type x))"}
     int: {type: function, status: todo}
     "int-array": {type: function, status: todo}
     "int?": {type: function, status: todo}
@@ -363,7 +363,7 @@ vars:
     "into-array": {type: function, status: todo}
     ints: {type: function, status: todo}
     "io!": {type: macro, status: todo}
-    "isa?": {type: function, status: todo}
+    "isa?": {type: function, status: done, note: "core.clj simplified (= child parent)"}
     iterate: {type: function, status: done}
     iteration: {type: function, status: todo}
     "iterator-seq": {type: function, status: todo}
@@ -644,7 +644,7 @@ vars:
     transient: {type: function, status: todo}
     "tree-seq": {type: function, status: todo}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
-    type: {type: function, status: todo}
+    type: {type: function, status: done, note: "Zig builtin returns keyword"}
     "unchecked-add": {type: function, status: todo}
     "unchecked-add-int": {type: function, status: todo}
     "unchecked-byte": {type: function, status: todo}

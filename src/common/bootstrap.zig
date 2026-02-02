@@ -2433,6 +2433,55 @@ test "core.clj - true? false? some? any?" {
     try std.testing.expect(r7 == .boolean and r7.boolean == true);
 }
 
+test "core.clj - type" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // type returns keyword for value type
+    const r1 = try evalString(alloc, &env, "(type 42)");
+    try std.testing.expect(r1 == .keyword);
+    try std.testing.expectEqualStrings("integer", r1.keyword.name);
+
+    const r2 = try evalString(alloc, &env, "(type \"hello\")");
+    try std.testing.expect(r2 == .keyword);
+    try std.testing.expectEqualStrings("string", r2.keyword.name);
+
+    const r3 = try evalString(alloc, &env, "(type :foo)");
+    try std.testing.expect(r3 == .keyword);
+    try std.testing.expectEqualStrings("keyword", r3.keyword.name);
+
+    const r4 = try evalString(alloc, &env, "(type [1 2])");
+    try std.testing.expect(r4 == .keyword);
+    try std.testing.expectEqualStrings("vector", r4.keyword.name);
+
+    const r5 = try evalString(alloc, &env, "(type nil)");
+    try std.testing.expect(r5 == .keyword);
+    try std.testing.expectEqualStrings("nil", r5.keyword.name);
+}
+
+test "core.clj - instance?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(instance? :integer 42)");
+    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+
+    const r2 = try evalString(alloc, &env, "(instance? :string 42)");
+    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

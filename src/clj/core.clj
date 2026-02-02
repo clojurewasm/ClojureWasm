@@ -638,6 +638,14 @@
 (defn any? [x]
   true)
 
+;; Type introspection
+
+(defn instance? [t x]
+  (= t (type x)))
+
+(defn isa? [child parent]
+  (= child parent))
+
 ;; Exception helpers
 
 (defn ex-info

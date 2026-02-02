@@ -170,6 +170,33 @@ pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .boolean = !args[0].isTruthy() };
 }
 
+/// (type x) — returns a keyword indicating the runtime type of x.
+pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const name: []const u8 = switch (args[0]) {
+        .nil => "nil",
+        .boolean => "boolean",
+        .integer => "integer",
+        .float => "float",
+        .char => "char",
+        .string => "string",
+        .symbol => "symbol",
+        .keyword => "keyword",
+        .list => "list",
+        .vector => "vector",
+        .map => "map",
+        .set => "set",
+        .fn_val, .builtin_fn => "function",
+        .atom => "atom",
+        .protocol => "protocol",
+        .protocol_fn => "protocol-fn",
+        .multi_fn => "multi-fn",
+        .lazy_seq => "lazy-seq",
+        .cons => "cons",
+    };
+    return Value{ .keyword = .{ .ns = null, .name = name } };
+}
+
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
 pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
@@ -226,6 +253,8 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "odd?", .func = &oddPred, .doc = "Returns true if n is odd, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "not", .func = &notFn, .doc = "Returns true if x is logical false, false otherwise.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "satisfies?", .func = &satisfiesPred, .doc = "Returns true if x satisfies the protocol.", .arglists = "([protocol x])", .added = "1.2" },
+    .{ .name = "type", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "class", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -312,7 +341,7 @@ test "odd? predicate" {
 }
 
 test "builtins table has 22 entries" {
-    try testing.expectEqual(22, builtins.len);
+    try testing.expectEqual(24, builtins.len);
 }
 
 test "builtins all have func" {

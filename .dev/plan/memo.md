@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.15 type, class, instance?, isa? (next)
+- Current task: Phase 9 complete — next phase TBD
 - Task file: (none)
-- Last completed: T9.14 bit-and, bit-or, bit-xor, bit-not, bit-shift-\*
+- Last completed: T9.15 type, class, instance?, isa?
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
@@ -70,6 +70,14 @@
 | T8.R1    | .dev/plan/archive/task_0064_treewalk_dead_code.md           | 2026-02-02 |
 | T8.R2    | .dev/plan/archive/task_0065_bootstrap_dedup.md              | 2026-02-02 |
 | T8.R3    | .dev/plan/archive/task_0066_arith_consolidation.md          | 2026-02-02 |
+
+**Phase 9 complete** — T9.1-T9.15 done. Key additions: merge, merge-with, zipmap,
+sort, sort-by, compare, vec, set, list\*, mapv, filterv, reduce-kv,
+partition-all, take-while, drop-while, last, butlast, second, fnext, nfirst,
+not-empty, every-pred, some-fn, fnil, while, doseq, doall, dorun,
+case, condp, declare, delay, force, realized?, boolean, true?, false?,
+some?, any?, bit-and/or/xor/not/shift-left/shift-right,
+type, class, instance?, isa?. 105 Zig builtins registered.
 
 **Phase 8 refactoring complete** — T8.R1-T8.R3 done. Dead code removed
 from TreeWalk (~180 lines), bootstrap eval helpers deduplicated,
