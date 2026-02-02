@@ -10,7 +10,8 @@ const Reader = @import("reader/reader.zig").Reader;
 const Form = @import("reader/form.zig").Form;
 const Analyzer = @import("analyzer/analyzer.zig").Analyzer;
 const Node = @import("analyzer/node.zig").Node;
-const Value = @import("value.zig").Value;
+const value_mod = @import("value.zig");
+const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
@@ -74,10 +75,14 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // Memory is owned by the arena allocator passed in.
     var tw = TreeWalk.initWithEnv(allocator, env);
 
-    // Set env for macro expansion bridge
+    // Set env for macro expansion bridge and lazy seq realization
     const prev_env = macro_eval_env;
     macro_eval_env = env;
     defer macro_eval_env = prev_env;
+
+    const prev_realize = value_mod.realize_fn;
+    value_mod.realize_fn = &macroEvalBridge;
+    defer value_mod.realize_fn = prev_realize;
 
     var last_value: Value = .nil;
 
@@ -113,10 +118,14 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
     if (forms.len == 0) return .nil;
 
-    // Set env for macro expansion bridge
+    // Set env for macro expansion bridge and lazy seq realization
     const prev_env = macro_eval_env;
     macro_eval_env = env;
     defer macro_eval_env = prev_env;
+
+    const prev_realize = value_mod.realize_fn;
+    value_mod.realize_fn = &macroEvalBridge;
+    defer value_mod.realize_fn = prev_realize;
 
     var last_value: Value = .nil;
 
@@ -151,11 +160,13 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 /// Bridge function: called by Analyzer to execute fn_val macros via TreeWalk.
 /// Also used by VM as fn_val_dispatcher for TreeWalk closures.
 fn macroEvalBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    // Note: tw is NOT deinit'd here — closures created during evaluation
+    // (e.g., lazy-seq thunks) must outlive this scope. Memory is owned by
+    // the arena allocator, which handles bulk deallocation.
     var tw = if (macro_eval_env) |env|
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
-    defer tw.deinit();
     return tw.callValue(fn_val, args);
 }
 
@@ -1723,6 +1734,178 @@ test "core.clj - cond-> macro" {
     // cond-> threads value through forms where condition is true
     try expectEvalInt(alloc, &env, "(cond-> 1 true inc false inc)", 2);
     try expectEvalInt(alloc, &env, "(cond-> 1 true inc true inc)", 3);
+}
+
+test "defmulti/defmethod - basic dispatch" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Define a multimethod dispatching on :shape key
+    _ = try evalString(alloc, &env,
+        \\(defmulti area :shape)
+        \\(defmethod area :circle [x] (* 3 (:radius x) (:radius x)))
+        \\(defmethod area :rect [x] (* (:width x) (:height x)))
+    );
+
+    try expectEvalInt(alloc, &env, "(area {:shape :circle :radius 5})", 75);
+    try expectEvalInt(alloc, &env, "(area {:shape :rect :width 3 :height 4})", 12);
+}
+
+test "defmulti/defmethod - default method" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env,
+        \\(defmulti greet identity)
+        \\(defmethod greet :en [_] "hello")
+        \\(defmethod greet :default [_] "hi")
+    );
+
+    try expectEvalStr(alloc, &env, "(greet :en)", "hello");
+    try expectEvalStr(alloc, &env, "(greet :fr)", "hi");
+}
+
+test "try/catch/throw - basic exception" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalStr(alloc, &env,
+        \\(try (throw "oops") (catch Exception e (str "caught: " e)))
+    , "caught: oops");
+}
+
+test "try/catch/throw - no exception" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(try (+ 1 2) (catch Exception e 0))", 3);
+}
+
+test "try/catch/throw - throw map value" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalStr(alloc, &env,
+        \\(try (throw {:type :err :msg "bad"}) (catch Exception e (:msg e)))
+    , "bad");
+}
+
+test "ex-info and ex-data" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalStr(alloc, &env,
+        \\(try (throw (ex-info "boom" {:code 42}))
+        \\  (catch Exception e (ex-message e)))
+    , "boom");
+
+    try expectEvalInt(alloc, &env,
+        \\(try (throw (ex-info "boom" {:code 42}))
+        \\  (catch Exception e (:code (ex-data e))))
+    , 42);
+}
+
+test "try/catch/finally" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // finally runs but return value is from catch
+    try expectEvalStr(alloc, &env,
+        \\(try (throw "x") (catch Exception e e) (finally nil))
+    , "x");
+}
+
+test "lazy-seq - basic" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // lazy-seq wrapping cons produces a seq
+    try expectEvalInt(alloc, &env,
+        \\(first (lazy-seq (cons 42 nil)))
+    , 42);
+}
+
+test "lazy-seq - iterate with take" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Define iterate using lazy-seq
+    _ = try evalString(alloc, &env,
+        \\(defn my-iterate [f x]
+        \\  (lazy-seq (cons x (my-iterate f (f x)))))
+    );
+
+    try expectEvalInt(alloc, &env, "(first (my-iterate inc 0))", 0);
+    try expectEvalInt(alloc, &env, "(first (rest (my-iterate inc 0)))", 1);
+    try expectEvalInt(alloc, &env, "(first (rest (rest (my-iterate inc 0))))", 2);
+}
+
+test "lazy-seq - take from infinite sequence" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Build lazy iterate + take
+    _ = try evalString(alloc, &env,
+        \\(defn my-iterate [f x]
+        \\  (lazy-seq (cons x (my-iterate f (f x)))))
+    );
+
+    // take 5 from infinite sequence
+    const result = try evalString(alloc, &env,
+        \\(take 5 (my-iterate inc 0))
+    );
+    // Should be (0 1 2 3 4) or [0 1 2 3 4]
+    try std.testing.expect(result == .list or result == .vector);
 }
 
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes

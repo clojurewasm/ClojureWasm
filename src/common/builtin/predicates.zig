@@ -192,6 +192,9 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .atom => "atom",
         .protocol => "protocol",
         .protocol_fn => "protocol_fn",
+        .multi_fn => "multi_fn",
+        .lazy_seq => "lazy_seq",
+        .cons => "cons",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
 }

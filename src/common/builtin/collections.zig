@@ -19,12 +19,18 @@ const BuiltinDef = var_mod.BuiltinDef;
 // ============================================================
 
 /// (first coll) — returns the first element, or nil if empty/nil.
-pub fn firstFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
     return switch (args[0]) {
         .list => |lst| lst.first(),
         .vector => |vec| if (vec.items.len > 0) vec.items[0] else .nil,
         .nil => .nil,
+        .cons => |c| c.first,
+        .lazy_seq => |ls| {
+            const realized = try ls.realize(allocator);
+            const realized_args = [1]Value{realized};
+            return firstFn(allocator, &realized_args);
+        },
         else => error.TypeError,
     };
 }
@@ -49,14 +55,29 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             new_list.* = .{ .items = &.{} };
             break :blk Value{ .list = new_list };
         },
+        .cons => |c| c.rest,
+        .lazy_seq => |ls| {
+            const realized = try ls.realize(allocator);
+            const realized_args = [1]Value{realized};
+            return restFn(allocator, &realized_args);
+        },
         else => error.TypeError,
     };
 }
 
-/// (cons x seq) — prepend x to seq, returns a list.
+/// (cons x seq) — prepend x to seq, returns a list or cons cell.
+/// Returns a Cons cell when rest is lazy_seq or cons (preserves laziness).
 pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
     const x = args[0];
+
+    // For lazy_seq or cons rest, return a Cons cell to preserve laziness
+    if (args[1] == .lazy_seq or args[1] == .cons) {
+        const cell = try allocator.create(value_mod.Cons);
+        cell.* = .{ .first = x, .rest = args[1] };
+        return Value{ .cons = cell };
+    }
+
     const seq_items = switch (args[1]) {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
@@ -197,8 +218,26 @@ pub fn nthFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (count coll) — number of elements.
-pub fn countFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
+    if (args[0] == .lazy_seq) {
+        const realized = try args[0].lazy_seq.realize(allocator);
+        const realized_args = [1]Value{realized};
+        return countFn(allocator, &realized_args);
+    }
+    if (args[0] == .cons) {
+        // Count by walking the cons chain
+        var n: i64 = 0;
+        var current = args[0];
+        while (current == .cons) {
+            n += 1;
+            current = current.cons.rest;
+        }
+        // Count remaining (list/vector/nil)
+        const rest_args = [1]Value{current};
+        const rest_count = try countFn(allocator, &rest_args);
+        return Value{ .integer = n + rest_count.integer };
+    }
     return Value{ .integer = @intCast(switch (args[0]) {
         .list => |lst| lst.count(),
         .vector => |vec| vec.count(),
@@ -220,15 +259,20 @@ pub fn listFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (seq coll) — returns a seq on the collection. Returns nil if empty.
-pub fn seqFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
     return switch (args[0]) {
         .nil => .nil,
         .list => |lst| if (lst.items.len == 0) .nil else args[0],
         .vector => |vec| {
             if (vec.items.len == 0) return .nil;
-            // Return as-is (vector is sequential)
             return args[0];
+        },
+        .cons => args[0], // cons is always non-empty
+        .lazy_seq => |ls| {
+            const realized = try ls.realize(allocator);
+            const realized_args = [1]Value{realized};
+            return seqFn(allocator, &realized_args);
         },
         else => error.TypeError,
     };

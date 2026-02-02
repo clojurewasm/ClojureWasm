@@ -389,3 +389,42 @@
                       (list 'if test step '__cond_val__))))
             expr
             pairs)))
+
+;; Lazy sequence constructors
+
+(defn iterate [f x]
+  (lazy-seq (cons x (iterate f (f x)))))
+
+(defn repeat
+  ([x] (lazy-seq (cons x (repeat x))))
+  ([n x]
+   (take n (repeat x))))
+
+(defn repeatedly
+  ([f] (lazy-seq (cons (f) (repeatedly f))))
+  ([n f] (take n (repeatedly f))))
+
+(defn lazy-cat-helper [colls]
+  (when (seq colls)
+    (lazy-seq
+     (let [c (first colls)]
+       (if (seq c)
+         (cons (first c) (lazy-cat-helper (cons (rest c) (rest colls))))
+         (lazy-cat-helper (rest colls)))))))
+
+(defn cycle [coll]
+  (when (seq coll)
+    (lazy-seq
+     (lazy-cat-helper (repeat coll)))))
+
+;; Exception helpers
+
+(defn ex-info
+  ([msg data] {:__ex_info true :message msg :data data :cause nil})
+  ([msg data cause] {:__ex_info true :message msg :data data :cause cause}))
+
+(defn ex-data [ex]
+  (when (map? ex) (:data ex)))
+
+(defn ex-message [ex]
+  (when (map? ex) (:message ex)))

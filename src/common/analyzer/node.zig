@@ -174,6 +174,29 @@ pub const ExtendMethodNode = struct {
     fn_node: *FnNode,
 };
 
+// -- Multimethods --
+
+/// defmulti: (defmulti name dispatch-fn)
+pub const DefMultiNode = struct {
+    name: []const u8,
+    dispatch_fn: *Node,
+    source: SourceInfo,
+};
+
+/// lazy-seq: (lazy-seq body) — wraps body as a zero-arg fn thunk.
+pub const LazySeqNode = struct {
+    body_fn: *FnNode, // zero-arg fn wrapping the body
+    source: SourceInfo,
+};
+
+/// defmethod: (defmethod name dispatch-val [args] body)
+pub const DefMethodNode = struct {
+    multi_name: []const u8,
+    dispatch_val: *Node,
+    fn_node: *FnNode,
+    source: SourceInfo,
+};
+
 // === Node tagged union ===
 
 /// Executable AST node — output of the Analyzer.
@@ -210,6 +233,13 @@ pub const Node = union(enum) {
     defprotocol_node: *DefProtocolNode,
     extend_type_node: *ExtendTypeNode,
 
+    // Multimethods
+    defmulti_node: *DefMultiNode,
+    defmethod_node: *DefMethodNode,
+
+    // Lazy sequences
+    lazy_seq_node: *LazySeqNode,
+
     /// Get source location info for error reporting.
     pub fn source(self: Node) SourceInfo {
         return switch (self) {
@@ -229,6 +259,9 @@ pub const Node = union(enum) {
             .try_node => |n| n.source,
             .defprotocol_node => |n| n.source,
             .extend_type_node => |n| n.source,
+            .defmulti_node => |n| n.source,
+            .defmethod_node => |n| n.source,
+            .lazy_seq_node => |n| n.source,
         };
     }
 
@@ -251,6 +284,9 @@ pub const Node = union(enum) {
             .try_node => "try",
             .defprotocol_node => "defprotocol",
             .extend_type_node => "extend-type",
+            .defmulti_node => "defmulti",
+            .defmethod_node => "defmethod",
+            .lazy_seq_node => "lazy-seq",
         };
     }
 };

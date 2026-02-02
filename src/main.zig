@@ -306,5 +306,20 @@ fn writeValue(w: anytype, val: Value) void {
         },
         .protocol => |p| w.print("#<protocol {s}>", .{p.name}) catch {},
         .protocol_fn => |pf| w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {},
+        .multi_fn => |mf| w.print("#<multifn {s}>", .{mf.name}) catch {},
+        .lazy_seq => |ls| {
+            if (ls.realized) |r| {
+                writeValue(w, r);
+            } else {
+                w.print("#<lazy-seq>", .{}) catch {};
+            }
+        },
+        .cons => |c| {
+            w.print("(", .{}) catch {};
+            writeValue(w, c.first);
+            w.print(" . ", .{}) catch {};
+            writeValue(w, c.rest);
+            w.print(")", .{}) catch {};
+        },
     }
 }

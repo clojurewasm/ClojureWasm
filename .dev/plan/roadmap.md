@@ -240,12 +240,12 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 7b: Core Library Expansion II
 
-| #   | Task                                            | Archive                       | Notes                                                  |
-| --- | ----------------------------------------------- | ----------------------------- | ------------------------------------------------------ |
-| 7.3 | Missing core macros: doto, as->, cond->, some-> | task_0057_threading_macros.md | 6 threading variants added to core.clj                 |
-| 7.4 | Multimethod: defmulti, defmethod                | --                            | Dynamic dispatch without protocols                     |
-| 7.5 | Exception handling: try/catch/throw in eval     | --                            | Currently analyzed but not fully wired in TreeWalk     |
-| 7.6 | Lazy sequences: lazy-seq, lazy-cat              | --                            | Foundation for idiomatic Clojure; iterate, repeat lazy |
+| #   | Task                                            | Archive                         | Notes                                                  |
+| --- | ----------------------------------------------- | ------------------------------- | ------------------------------------------------------ |
+| 7.3 | Missing core macros: doto, as->, cond->, some-> | task_0057_threading_macros.md   | 6 threading variants added to core.clj                 |
+| 7.4 | Multimethod: defmulti, defmethod                | task_0058_multimethod.md        | Dynamic dispatch without protocols                     |
+| 7.5 | Exception handling: try/catch/throw + ex-info   | task_0059_exception_handling.md | Already implemented; added ex-info/ex-data/ex-message  |
+| 7.6 | Lazy sequences: lazy-seq, lazy-cat              | task_0060_lazy_seq.md           | LazySeq+Cons types; iterate, repeat, repeatedly, cycle |
 
 ### Phase 7c: nREPL Server
 

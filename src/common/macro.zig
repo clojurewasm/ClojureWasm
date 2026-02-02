@@ -109,7 +109,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             return Form{ .data = .{ .set = forms } };
         },
         // Non-data values become nil (shouldn't appear in macro output)
-        .fn_val, .builtin_fn, .atom, .protocol, .protocol_fn => Form{ .data = .nil },
+        .fn_val, .builtin_fn, .atom, .protocol, .protocol_fn, .multi_fn, .lazy_seq, .cons => Form{ .data = .nil },
     };
 }
 

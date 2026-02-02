@@ -131,6 +131,9 @@ pub const TreeWalk = struct {
             .try_node => |try_n| self.runTry(try_n),
             .defprotocol_node => |dp_n| self.runDefprotocol(dp_n),
             .extend_type_node => |et_n| self.runExtendType(et_n),
+            .defmulti_node => |dm_n| self.runDefmulti(dm_n),
+            .defmethod_node => |dm_n| self.runDefmethod(dm_n),
+            .lazy_seq_node => |ls_n| self.runLazySeq(ls_n),
         };
     }
 
@@ -191,6 +194,15 @@ pub const TreeWalk = struct {
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, args);
             },
+            .keyword => {
+                // Keyword-as-function: (:key map) => (get map :key)
+                if (args.len < 1 or args.len > 2) return error.ArityError;
+                if (args[0] == .map) {
+                    return args[0].map.get(callee) orelse
+                        if (args.len == 2) args[1] else .nil;
+                }
+                return if (args.len == 2) args[1] else .nil;
+            },
             else => return error.TypeError,
         };
     }
@@ -211,6 +223,11 @@ pub const TreeWalk = struct {
         // Protocol function dispatch
         if (callee == .protocol_fn) {
             return self.callProtocolFn(callee.protocol_fn, call_n.args);
+        }
+
+        // Multimethod dispatch
+        if (callee == .multi_fn) {
+            return self.callMultiFn(callee.multi_fn, call_n.args);
         }
 
         // Keyword-as-function: (:key map) => (get map :key)
@@ -528,7 +545,101 @@ pub const TreeWalk = struct {
             .atom => "atom",
             .protocol => "protocol",
             .protocol_fn => "protocol_fn",
+            .multi_fn => "multi_fn",
+            .lazy_seq => "lazy_seq",
+            .cons => "cons",
         };
+    }
+
+    // --- Multimethods ---
+
+    fn runDefmulti(self: *TreeWalk, dm_n: *const node_mod.DefMultiNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+
+        // Evaluate dispatch function
+        const dispatch_fn = try self.run(dm_n.dispatch_fn);
+
+        // Create MultiFn
+        const mf = self.allocator.create(value_mod.MultiFn) catch return error.OutOfMemory;
+        const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        empty_map.* = .{ .entries = &.{} };
+        mf.* = .{
+            .name = dm_n.name,
+            .dispatch_fn = dispatch_fn,
+            .methods = empty_map,
+        };
+
+        // Bind to var
+        const v = ns.intern(dm_n.name) catch return error.OutOfMemory;
+        v.bindRoot(.{ .multi_fn = mf });
+
+        return Value{ .multi_fn = mf };
+    }
+
+    fn runDefmethod(self: *TreeWalk, dm_n: *const node_mod.DefMethodNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+
+        // Resolve the multimethod
+        const mf_var = ns.resolve(dm_n.multi_name) orelse return error.UndefinedVar;
+        const mf_val = mf_var.deref();
+        if (mf_val != .multi_fn) return error.TypeError;
+        const mf = mf_val.multi_fn;
+
+        // Evaluate dispatch value
+        const dispatch_val = try self.run(dm_n.dispatch_val);
+
+        // Build method fn
+        const method_fn = try self.makeClosure(dm_n.fn_node);
+
+        // Add to methods map: assoc dispatch_val -> method_fn
+        const old = mf.methods;
+        const new_entries = self.allocator.alloc(Value, old.entries.len + 2) catch return error.OutOfMemory;
+        @memcpy(new_entries[0..old.entries.len], old.entries);
+        new_entries[old.entries.len] = dispatch_val;
+        new_entries[old.entries.len + 1] = method_fn;
+        const new_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        new_map.* = .{ .entries = new_entries };
+        mf.methods = new_map;
+
+        return method_fn;
+    }
+
+    fn callMultiFn(self: *TreeWalk, mf: *const value_mod.MultiFn, arg_nodes: []const *Node) TreeWalkError!Value {
+        // Evaluate all arguments
+        const args = self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory;
+        for (arg_nodes, 0..) |arg_node, i| {
+            args[i] = try self.run(arg_node);
+        }
+
+        // Call dispatch function on args
+        const dispatch_val = try self.callValue(mf.dispatch_fn, args);
+
+        // Lookup method by dispatch value
+        const method_fn = mf.methods.get(dispatch_val) orelse blk: {
+            // Try :default
+            break :blk mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
+                return error.TypeError;
+        };
+
+        // Call the matched method
+        return self.callValue(method_fn, args);
+    }
+
+    // --- Lazy Sequences ---
+
+    fn runLazySeq(self: *TreeWalk, ls_n: *const node_mod.LazySeqNode) TreeWalkError!Value {
+        // Create a closure from the body fn (captures current env)
+        const thunk = try self.makeClosure(ls_n.body_fn);
+
+        // Create LazySeq with thunk
+        const ls = self.allocator.create(value_mod.LazySeq) catch return error.OutOfMemory;
+        ls.* = .{
+            .thunk = thunk,
+            .realized = null,
+        };
+        return Value{ .lazy_seq = ls };
     }
 
     // --- Loop / Recur ---

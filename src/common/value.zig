@@ -62,6 +62,47 @@ pub const ProtocolFn = struct {
     method_name: []const u8,
 };
 
+/// MultiFn — multimethod with dispatch function.
+pub const MultiFn = struct {
+    name: []const u8,
+    dispatch_fn: Value,
+    /// Maps dispatch_value -> method function (Value).
+    methods: *PersistentArrayMap,
+};
+
+/// Cons cell — a pair of (first, rest) forming a linked sequence.
+/// rest can be list, vector, lazy_seq, cons, or nil.
+pub const Cons = struct {
+    first: Value,
+    rest: Value,
+};
+
+/// Lazy sequence — thunk-based deferred evaluation with caching.
+/// The thunk is a zero-arg function that returns a seq (list/nil/cons).
+/// Once realized, the result is cached and the thunk is discarded.
+pub const LazySeq = struct {
+    thunk: ?Value, // fn of 0 args, null after realization
+    realized: ?Value, // cached result, null before realization
+
+    /// Realize this lazy seq, calling the thunk if needed.
+    /// Requires realize_fn to be set (done by bootstrap.evalString).
+    pub fn realize(self: *LazySeq, allocator: std.mem.Allocator) anyerror!Value {
+        if (self.realized) |r| return r;
+        const thunk = self.thunk orelse return .nil;
+        const result = try realize_fn(allocator, thunk, &.{});
+        self.realized = result;
+        self.thunk = null;
+        return result;
+    }
+};
+
+/// Global callback for realizing lazy seqs. Set by bootstrap during evalString.
+pub var realize_fn: *const fn (std.mem.Allocator, Value, []const Value) anyerror!Value = &defaultRealizeFn;
+
+fn defaultRealizeFn(_: std.mem.Allocator, _: Value, _: []const Value) anyerror!Value {
+    return error.TypeError; // No evaluator available
+}
+
 /// Runtime function (closure). Proto is stored as opaque pointer
 /// to avoid circular dependency with bytecode/chunk.zig.
 pub const Fn = struct {
@@ -105,6 +146,13 @@ pub const Value = union(enum) {
     // Protocol types
     protocol: *Protocol,
     protocol_fn: *const ProtocolFn,
+
+    // Multimethod
+    multi_fn: *MultiFn,
+
+    // Lazy sequence / cons cell
+    lazy_seq: *LazySeq,
+    cons: *Cons,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -209,6 +257,51 @@ pub const Value = union(enum) {
                 try w.writeAll(pf.method_name);
                 try w.writeAll(">");
             },
+            .multi_fn => |mf| {
+                try w.writeAll("#<multifn ");
+                try w.writeAll(mf.name);
+                try w.writeAll(">");
+            },
+            .lazy_seq => |ls| {
+                if (ls.realized) |r| {
+                    try r.formatPrStr(w);
+                } else {
+                    try w.writeAll("#<lazy-seq>");
+                }
+            },
+            .cons => |c| {
+                try w.writeAll("(");
+                try c.first.formatPrStr(w);
+                // Print rest elements
+                var rest = c.rest;
+                while (true) {
+                    switch (rest) {
+                        .cons => |rc| {
+                            try w.writeAll(" ");
+                            try rc.first.formatPrStr(w);
+                            rest = rc.rest;
+                        },
+                        .nil => break,
+                        .list => |lst| {
+                            for (lst.items) |item| {
+                                try w.writeAll(" ");
+                                try item.formatPrStr(w);
+                            }
+                            break;
+                        },
+                        .lazy_seq => {
+                            try w.writeAll(" ...");
+                            break;
+                        },
+                        else => {
+                            try w.writeAll(" . ");
+                            try rest.formatPrStr(w);
+                            break;
+                        },
+                    }
+                }
+                try w.writeAll(")");
+            },
         }
     }
 
@@ -241,6 +334,16 @@ pub const Value = union(enum) {
             return a == b;
         }
 
+        // Realized lazy seqs delegate to their realized value
+        if (self_tag == .lazy_seq) {
+            if (self.lazy_seq.realized) |r| return r.eql(other);
+            return false; // unrealized lazy seqs only equal by identity
+        }
+        if (other_tag == .lazy_seq) {
+            if (other.lazy_seq.realized) |r| return self.eql(r);
+            return false;
+        }
+
         // Sequential equality: (= '(1 2) [1 2]) => true
         if (isSequential(self_tag) and isSequential(other_tag)) {
             const a_items = sequentialItems(self);
@@ -269,6 +372,9 @@ pub const Value = union(enum) {
             .atom => |a| a == other.atom, // identity equality
             .protocol => |a| a == other.protocol, // identity equality
             .protocol_fn => |a| a == other.protocol_fn, // identity equality
+            .multi_fn => |a| a == other.multi_fn, // identity equality
+            .lazy_seq => unreachable, // handled by early return above
+            .cons => |a| a == other.cons, // identity equality (full comparison needs realization)
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;

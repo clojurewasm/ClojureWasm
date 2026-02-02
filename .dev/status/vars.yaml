@@ -229,7 +229,7 @@ vars:
     "counted?": {type: function, status: todo, impl: none}
     "create-ns": {type: function, status: todo, impl: none}
     "create-struct": {type: function, status: todo, impl: none}
-    cycle: {type: function, status: todo, impl: none}
+    cycle: {type: function, status: done, impl: clj}
     dec: {type: function, status: done, impl: clj}
     "dec'": {type: function, status: todo, impl: none}
     "decimal?": {type: function, status: todo, impl: none}
@@ -239,8 +239,8 @@ vars:
     definline: {type: macro, status: todo, impl: none}
     definterface: {type: macro, status: todo, impl: none}
     defmacro: {type: macro, status: done, impl: special_form, note: "special form in this impl"}
-    defmethod: {type: macro, status: todo, impl: none}
-    defmulti: {type: macro, status: todo, impl: none}
+    defmethod: {type: macro, status: done, impl: special_form}
+    defmulti: {type: macro, status: done, impl: special_form}
     defn: {type: macro, status: done, impl: clj}
     "defn-": {type: macro, status: done, impl: clj}
     defonce: {type: macro, status: todo, impl: none}
@@ -288,9 +288,9 @@ vars:
     "every-pred": {type: function, status: todo, impl: none}
     "every?": {type: function, status: done, impl: clj}
     "ex-cause": {type: function, status: todo, impl: none}
-    "ex-data": {type: function, status: todo, impl: none}
-    "ex-info": {type: function, status: todo, impl: none}
-    "ex-message": {type: function, status: todo, impl: none}
+    "ex-data": {type: function, status: done, impl: clj}
+    "ex-info": {type: function, status: done, impl: clj}
+    "ex-message": {type: function, status: done, impl: clj}
     extend: {type: function, status: todo, impl: none}
     "extend-protocol": {type: macro, status: todo, impl: none}
     "extend-type": {type: macro, status: done, impl: special_form}
@@ -375,7 +375,7 @@ vars:
     ints: {type: function, status: todo, impl: none}
     "io!": {type: macro, status: todo, impl: none}
     "isa?": {type: function, status: todo, impl: none}
-    iterate: {type: function, status: todo, impl: none}
+    iterate: {type: function, status: done, impl: clj}
     iteration: {type: function, status: todo, impl: none}
     "iterator-seq": {type: function, status: todo, impl: none}
     juxt: {type: function, status: done, impl: clj}
@@ -387,7 +387,7 @@ vars:
     "keyword?": {type: function, status: done, impl: host}
     last: {type: function, status: todo, impl: none}
     "lazy-cat": {type: macro, status: todo, impl: none}
-    "lazy-seq": {type: macro, status: todo, impl: none}
+    "lazy-seq": {type: macro, status: done, impl: special_form}
     let: {type: special-form, status: todo, impl: none}
     letfn: {type: special-form, status: todo, impl: none}
     "line-seq": {type: function, status: todo, impl: none}
@@ -556,8 +556,8 @@ vars:
     "remove-ns": {type: function, status: todo, impl: none}
     "remove-tap": {type: function, status: todo, impl: none}
     "remove-watch": {type: function, status: todo, impl: none}
-    repeat: {type: function, status: done, impl: host, note: 'eager, n-arity only (lazy deferred)'}
-    repeatedly: {type: function, status: todo, impl: none}
+    repeat: {type: function, status: done, impl: clj, note: 'lazy, infinite + n-arity'}
+    repeatedly: {type: function, status: done, impl: clj}
     replace: {type: function, status: todo, impl: none}
     replicate: {type: function, status: todo, impl: none}
     require: {type: function, status: todo, impl: none}

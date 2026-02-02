@@ -162,6 +162,9 @@ pub const Analyzer = struct {
         .{ "defprotocol", analyzeDefprotocol },
         .{ "extend-type", analyzeExtendType },
         .{ "defrecord", analyzeDefrecord },
+        .{ "defmulti", analyzeDefmulti },
+        .{ "defmethod", analyzeDefmethod },
+        .{ "lazy-seq", analyzeLazySeq },
     });
 
     // === Main entry point ===
@@ -1045,6 +1048,90 @@ pub const Analyzer = struct {
 
         const def_form = Form{ .data = .{ .list = def_forms } };
         return self.analyze(def_form);
+    }
+
+    fn analyzeDefmulti(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (defmulti name dispatch-fn)
+        if (items.len < 3) {
+            return self.analysisError(.arity_error, "defmulti requires name and dispatch-fn", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "defmulti name must be a symbol", items[1]);
+        }
+
+        const name = items[1].data.symbol.name;
+        const dispatch_node = try self.analyze(items[2]);
+
+        const dm = self.allocator.create(node_mod.DefMultiNode) catch return error.OutOfMemory;
+        dm.* = .{
+            .name = name,
+            .dispatch_fn = dispatch_node,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .defmulti_node = dm };
+        return n;
+    }
+
+    fn analyzeDefmethod(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (defmethod name dispatch-val [args] body)
+        if (items.len < 5) {
+            return self.analysisError(.arity_error, "defmethod requires name, dispatch-val, args, body", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "defmethod name must be a symbol", items[1]);
+        }
+
+        const multi_name = items[1].data.symbol.name;
+        const dispatch_val_node = try self.analyze(items[2]);
+
+        // Build fn node from [args] body: reuse analyzeFn
+        // Construct (fn [args] body) form items
+        const fn_items = self.allocator.alloc(Form, items.len - 2) catch return error.OutOfMemory;
+        fn_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
+        @memcpy(fn_items[1..], items[3..]);
+
+        const fn_node = try self.analyzeFn(fn_items, form);
+
+        const dm = self.allocator.create(node_mod.DefMethodNode) catch return error.OutOfMemory;
+        dm.* = .{
+            .multi_name = multi_name,
+            .dispatch_val = dispatch_val_node,
+            .fn_node = fn_node.fn_node,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .defmethod_node = dm };
+        return n;
+    }
+
+    fn analyzeLazySeq(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (lazy-seq body) — wrap body in (fn [] body)
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "lazy-seq requires a body", form);
+        }
+
+        // items = [lazy-seq, body1, body2, ...]
+        // Build fn_items = [fn, [], body1, body2, ...]
+        const body_forms = items[1..]; // skip "lazy-seq"
+        const fn_items = self.allocator.alloc(Form, 2 + body_forms.len) catch return error.OutOfMemory;
+        fn_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
+        fn_items[1] = .{ .data = .{ .vector = &.{} } }; // empty params []
+        @memcpy(fn_items[2..], body_forms);
+
+        const fn_node = try self.analyzeFn(fn_items, form);
+
+        const ls = self.allocator.create(node_mod.LazySeqNode) catch return error.OutOfMemory;
+        ls.* = .{
+            .body_fn = fn_node.fn_node,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .lazy_seq_node = ls };
+        return n;
     }
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

@@ -4,8 +4,8 @@
 
 - Phase: 7 (Robustness + nREPL)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T7.4 — Multimethod (defmulti, defmethod)
-- Task file: (none — create on start)
+- Current task: T7.7 — bencode encoder/decoder
+- Task file: (not yet created)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
@@ -60,6 +60,9 @@
 | T7.1     | .dev/plan/archive/task_0055_stack_depth.md                  | 2026-02-02 |
 | T7.2     | .dev/plan/archive/task_0056_str_dynamic_buffer.md           | 2026-02-02 |
 | T7.3     | .dev/plan/archive/task_0057_threading_macros.md             | 2026-02-02 |
+| T7.4     | .dev/plan/archive/task_0058_multimethod.md                  | 2026-02-02 |
+| T7.5     | .dev/plan/archive/task_0059_exception_handling.md           | 2026-02-02 |
+| T7.6     | .dev/plan/archive/task_0060_lazy_seq.md                     | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)
