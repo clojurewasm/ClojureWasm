@@ -799,6 +799,163 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .list = lst };
 }
 
+/// (dissoc map key & ks) — remove key(s) from map.
+pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return error.ArityError;
+    if (args.len == 1) {
+        // (dissoc map) — identity
+        return switch (args[0]) {
+            .map => args[0],
+            .nil => .nil,
+            else => return error.TypeError,
+        };
+    }
+    const base_entries = switch (args[0]) {
+        .map => |m| m.entries,
+        .nil => return .nil,
+        else => return error.TypeError,
+    };
+
+    var entries = std.ArrayList(Value).empty;
+    try entries.appendSlice(allocator, base_entries);
+
+    // Remove each key
+    var ki: usize = 1;
+    while (ki < args.len) : (ki += 1) {
+        const key = args[ki];
+        var j: usize = 0;
+        while (j < entries.items.len) {
+            if (entries.items[j].eql(key)) {
+                // Remove k-v pair (j and j+1)
+                _ = entries.orderedRemove(j);
+                _ = entries.orderedRemove(j);
+            } else {
+                j += 2;
+            }
+        }
+    }
+
+    const new_map = try allocator.create(PersistentArrayMap);
+    new_map.* = .{ .entries = entries.items, .meta = if (args[0] == .map) args[0].map.meta else null };
+    return Value{ .map = new_map };
+}
+
+/// (disj set val & vals) — remove value(s) from set.
+pub fn disjFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return error.ArityError;
+    if (args.len == 1) {
+        return switch (args[0]) {
+            .set => args[0],
+            .nil => .nil,
+            else => return error.TypeError,
+        };
+    }
+    const base_items = switch (args[0]) {
+        .set => |s| s.items,
+        .nil => return .nil,
+        else => return error.TypeError,
+    };
+
+    var items = std.ArrayList(Value).empty;
+    try items.appendSlice(allocator, base_items);
+
+    var ki: usize = 1;
+    while (ki < args.len) : (ki += 1) {
+        const val = args[ki];
+        var j: usize = 0;
+        while (j < items.items.len) {
+            if (items.items[j].eql(val)) {
+                _ = items.orderedRemove(j);
+            } else {
+                j += 1;
+            }
+        }
+    }
+
+    const new_set = try allocator.create(PersistentHashSet);
+    new_set.* = .{ .items = items.items, .meta = if (args[0] == .set) args[0].set.meta else null };
+    return Value{ .set = new_set };
+}
+
+/// (find map key) — returns [key value] (MapEntry) or nil.
+pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    return switch (args[0]) {
+        .map => |m| {
+            const v = m.get(args[1]) orelse return .nil;
+            const pair = try allocator.alloc(Value, 2);
+            pair[0] = args[1];
+            pair[1] = v;
+            const vec = try allocator.create(PersistentVector);
+            vec.* = .{ .items = pair };
+            return Value{ .vector = vec };
+        },
+        .nil => .nil,
+        else => return error.TypeError,
+    };
+}
+
+/// (peek coll) — stack top: last of vector, first of list.
+pub fn peekFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .vector => |vec| if (vec.items.len > 0) vec.items[vec.items.len - 1] else .nil,
+        .list => |lst| if (lst.items.len > 0) lst.items[0] else .nil,
+        .nil => .nil,
+        else => return error.TypeError,
+    };
+}
+
+/// (pop coll) — stack pop: vector without last, list without first.
+pub fn popFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .vector => |vec| {
+            if (vec.items.len == 0) return error.IllegalState;
+            const new_vec = try allocator.create(PersistentVector);
+            new_vec.* = .{ .items = vec.items[0 .. vec.items.len - 1], .meta = vec.meta };
+            return Value{ .vector = new_vec };
+        },
+        .list => |lst| {
+            if (lst.items.len == 0) return error.IllegalState;
+            const new_lst = try allocator.create(PersistentList);
+            new_lst.* = .{ .items = lst.items[1..], .meta = lst.meta };
+            return Value{ .list = new_lst };
+        },
+        .nil => return error.IllegalState,
+        else => return error.TypeError,
+    };
+}
+
+/// (empty coll) — empty collection of same type, or nil.
+pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .vector => blk: {
+            const new_vec = try allocator.create(PersistentVector);
+            new_vec.* = .{ .items = &.{} };
+            break :blk Value{ .vector = new_vec };
+        },
+        .list => blk: {
+            const new_lst = try allocator.create(PersistentList);
+            new_lst.* = .{ .items = &.{} };
+            break :blk Value{ .list = new_lst };
+        },
+        .map => blk: {
+            const new_map = try allocator.create(PersistentArrayMap);
+            new_map.* = .{ .entries = &.{} };
+            break :blk Value{ .map = new_map };
+        },
+        .set => blk: {
+            const new_set = try allocator.create(PersistentHashSet);
+            new_set.* = .{ .items = &.{} };
+            break :blk Value{ .set = new_set };
+        },
+        .nil => .nil,
+        else => .nil,
+    };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -977,6 +1134,48 @@ pub const builtins = [_]BuiltinDef{
         .func = &listStarFn,
         .doc = "Creates a new seq containing the items prepended to the rest, the last of which will be treated as a sequence.",
         .arglists = "([args] [a args] [a b args] [a b c args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "dissoc",
+        .func = &dissocFn,
+        .doc = "dissoc[iate]. Returns a new map of the same (hashed/sorted) type, that does not contain a mapping for key(s).",
+        .arglists = "([map] [map key] [map key & ks])",
+        .added = "1.0",
+    },
+    .{
+        .name = "disj",
+        .func = &disjFn,
+        .doc = "disj[oin]. Returns a new set of the same (hashed/sorted) type, that does not contain key(s).",
+        .arglists = "([set] [set key] [set key & ks])",
+        .added = "1.0",
+    },
+    .{
+        .name = "find",
+        .func = &findFn,
+        .doc = "Returns the map entry for key, or nil if key not present.",
+        .arglists = "([map key])",
+        .added = "1.0",
+    },
+    .{
+        .name = "peek",
+        .func = &peekFn,
+        .doc = "For a list or queue, same as first, for a vector, same as, but much more efficient than, last. If the collection is empty, returns nil.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "pop",
+        .func = &popFn,
+        .doc = "For a list or queue, returns a new list/queue without the first item, for a vector, returns a new vector without the last item.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "empty",
+        .func = &emptyFn,
+        .doc = "Returns an empty collection of the same category as coll, or nil.",
+        .arglists = "([coll])",
         .added = "1.0",
     },
 };
@@ -1195,8 +1394,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 25 entries" {
-    try testing.expectEqual(25, builtins.len);
+test "builtins table has 31 entries" {
+    try testing.expectEqual(31, builtins.len);
 }
 
 test "reverse list" {
@@ -1548,4 +1747,204 @@ test "builtins all have func" {
     for (builtins) |b| {
         try testing.expect(b.func != null);
     }
+}
+
+// --- dissoc tests ---
+
+test "dissoc removes key from map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 },
+        .{ .keyword = .{ .ns = null, .name = "b" } }, .{ .integer = 2 },
+    };
+    const m = try alloc.create(PersistentArrayMap);
+    m.* = .{ .entries = &entries };
+
+    const result = try dissocFn(alloc, &.{ Value{ .map = m }, .{ .keyword = .{ .ns = null, .name = "a" } } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 1), result.map.count());
+    try testing.expect(result.map.get(.{ .keyword = .{ .ns = null, .name = "b" } }) != null);
+    try testing.expect(result.map.get(.{ .keyword = .{ .ns = null, .name = "a" } }) == null);
+}
+
+test "dissoc on nil returns nil" {
+    const result = try dissocFn(test_alloc, &.{ Value.nil, .{ .keyword = .{ .ns = null, .name = "a" } } });
+    try testing.expectEqual(Value.nil, result);
+}
+
+test "dissoc missing key is identity" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 },
+    };
+    const m = try alloc.create(PersistentArrayMap);
+    m.* = .{ .entries = &entries };
+
+    const result = try dissocFn(alloc, &.{ Value{ .map = m }, .{ .keyword = .{ .ns = null, .name = "z" } } });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 1), result.map.count());
+}
+
+// --- disj tests ---
+
+test "disj removes value from set" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const s = try alloc.create(PersistentHashSet);
+    s.* = .{ .items = &items };
+
+    const result = try disjFn(alloc, &.{ Value{ .set = s }, .{ .integer = 2 } });
+    try testing.expect(result == .set);
+    try testing.expectEqual(@as(usize, 2), result.set.count());
+    try testing.expect(!result.set.contains(.{ .integer = 2 }));
+    try testing.expect(result.set.contains(.{ .integer = 1 }));
+    try testing.expect(result.set.contains(.{ .integer = 3 }));
+}
+
+test "disj on nil returns nil" {
+    const result = try disjFn(test_alloc, &.{ Value.nil, .{ .integer = 1 } });
+    try testing.expectEqual(Value.nil, result);
+}
+
+// --- find tests ---
+
+test "find returns MapEntry vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 },
+        .{ .keyword = .{ .ns = null, .name = "b" } }, .{ .integer = 2 },
+    };
+    const m = try alloc.create(PersistentArrayMap);
+    m.* = .{ .entries = &entries };
+
+    const result = try findFn(alloc, &.{ Value{ .map = m }, .{ .keyword = .{ .ns = null, .name = "a" } } });
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
+    try testing.expect(result.vector.items[0].eql(.{ .keyword = .{ .ns = null, .name = "a" } }));
+    try testing.expect(result.vector.items[1].eql(.{ .integer = 1 }));
+}
+
+test "find returns nil for missing key" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 },
+    };
+    const m = try alloc.create(PersistentArrayMap);
+    m.* = .{ .entries = &entries };
+
+    const result = try findFn(alloc, &.{ Value{ .map = m }, .{ .keyword = .{ .ns = null, .name = "z" } } });
+    try testing.expectEqual(Value.nil, result);
+}
+
+// --- peek tests ---
+
+test "peek on vector returns last element" {
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const vec = PersistentVector{ .items = &items };
+    const result = try peekFn(test_alloc, &.{Value{ .vector = &vec }});
+    try testing.expect(result.eql(.{ .integer = 3 }));
+}
+
+test "peek on list returns first element" {
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 } };
+    const lst = PersistentList{ .items = &items };
+    const result = try peekFn(test_alloc, &.{Value{ .list = &lst }});
+    try testing.expect(result.eql(.{ .integer = 10 }));
+}
+
+test "peek on nil returns nil" {
+    const result = try peekFn(test_alloc, &.{Value.nil});
+    try testing.expectEqual(Value.nil, result);
+}
+
+test "peek on empty vector returns nil" {
+    const vec = PersistentVector{ .items = &.{} };
+    const result = try peekFn(test_alloc, &.{Value{ .vector = &vec }});
+    try testing.expectEqual(Value.nil, result);
+}
+
+// --- pop tests ---
+
+test "pop on vector removes last element" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+
+    const result = try popFn(alloc, &.{Value{ .vector = vec }});
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
+    try testing.expect(result.vector.items[0].eql(.{ .integer = 1 }));
+    try testing.expect(result.vector.items[1].eql(.{ .integer = 2 }));
+}
+
+test "pop on list removes first element" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    const lst = try alloc.create(PersistentList);
+    lst.* = .{ .items = &items };
+
+    const result = try popFn(alloc, &.{Value{ .list = lst }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try testing.expect(result.list.items[0].eql(.{ .integer = 20 }));
+    try testing.expect(result.list.items[1].eql(.{ .integer = 30 }));
+}
+
+test "pop on empty vector is error" {
+    const vec = PersistentVector{ .items = &.{} };
+    const result = popFn(test_alloc, &.{Value{ .vector = &vec }});
+    try testing.expectError(error.IllegalState, result);
+}
+
+test "pop on nil is error" {
+    const result = popFn(test_alloc, &.{Value.nil});
+    try testing.expectError(error.IllegalState, result);
+}
+
+// --- empty tests ---
+
+test "empty on vector returns empty vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+
+    const result = try emptyFn(alloc, &.{Value{ .vector = vec }});
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 0), result.vector.items.len);
+}
+
+test "empty on nil returns nil" {
+    const result = try emptyFn(test_alloc, &.{Value.nil});
+    try testing.expectEqual(Value.nil, result);
+}
+
+test "empty on string returns nil" {
+    const result = try emptyFn(test_alloc, &.{Value{ .string = "abc" }});
+    try testing.expectEqual(Value.nil, result);
 }

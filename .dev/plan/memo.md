@@ -4,7 +4,7 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.1 — Collection gaps: dissoc, disj, find, peek, pop, empty
+- Current task: T12.2 — subvec, array-map, hash-set, sorted-map
 - Task file: (none)
 - Blockers: none
 
@@ -13,28 +13,21 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### Phase 12 planned
+### T12.1 completed — collection gaps
 
-Phase 12a: Tier 1 Zig builtins (T12.1-T12.8)
-Phase 12b: SCI test port (T12.9)
-Phase 12c: Tier 2 core.clj expansion (T12.10-T12.12)
+Added 6 builtins: dissoc, disj, find, peek, pop, empty
+Registry: 126 builtins, 237/702 vars implemented
 
-### T12.1 scope
+### T12.2 scope
 
-6 builtins to add (all Zig, in collections module):
+4 collection constructors/utilities:
 
-- `dissoc` — remove key from map
-- `disj` — remove value from set
-- `find` — lookup key in map, return MapEntry or nil
-- `peek` — stack top (vector last, list first)
-- `pop` — stack pop (vector butlast, list rest)
-- `empty` — return empty collection of same type
-
-These are fundamental collection operations that many Tier 2 core.clj
-functions depend on. `find` is especially important as a dependency for
-upstream-compatible memoize.
+- `subvec` — vector slice: (subvec v start) or (subvec v start end)
+- `array-map` — create map from key-value pairs (like hash-map but preserves order)
+- `hash-set` — create set from values
+- `sorted-map` — create sorted map (need to decide on implementation approach)
 
 ### Builtin Count
 
-120 builtins registered
-231/702 vars implemented
+126 builtins registered
+237/702 vars implemented

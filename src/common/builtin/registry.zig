@@ -99,7 +99,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
 test "all_builtins count" {
     // Was 116, +4 (re-pattern, re-find, re-matches, re-seq)
-    try std.testing.expectEqual(120, builtin_count);
+    try std.testing.expectEqual(126, builtin_count);
 }
 
 test "comptime lookup finds +" {

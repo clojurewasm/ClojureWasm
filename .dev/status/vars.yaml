@@ -245,9 +245,9 @@ vars:
     derive: {type: function, status: todo}
     descendants: {type: function, status: todo}
     destructure: {type: function, status: todo}
-    disj: {type: function, status: todo}
+    disj: {type: function, status: done}
     "disj!": {type: function, status: todo}
-    dissoc: {type: function, status: todo}
+    dissoc: {type: function, status: done}
     "dissoc!": {type: function, status: todo}
     distinct: {type: function, status: done}
     "distinct?": {type: function, status: todo}
@@ -265,7 +265,7 @@ vars:
     "drop-last": {type: function, status: todo}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
     eduction: {type: function, status: todo}
-    empty: {type: function, status: todo}
+    empty: {type: function, status: done}
     "empty?": {type: function, status: done}
     ensure: {type: function, status: todo}
     "ensure-reduced": {type: function, status: todo}
@@ -290,7 +290,7 @@ vars:
     "file-seq": {type: function, status: todo}
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
-    find: {type: function, status: todo}
+    find: {type: function, status: done}
     "find-keyword": {type: function, status: todo}
     "find-ns": {type: function, status: todo}
     "find-protocol-impl": {type: function, status: todo}
@@ -465,10 +465,10 @@ vars:
     partitionv: {type: function, status: todo}
     "partitionv-all": {type: function, status: todo}
     pcalls: {type: function, status: todo}
-    peek: {type: function, status: todo}
+    peek: {type: function, status: done}
     "persistent!": {type: function, status: todo}
     pmap: {type: function, status: todo}
-    pop: {type: function, status: todo}
+    pop: {type: function, status: done}
     "pop!": {type: function, status: todo}
     "pop-thread-bindings": {type: function, status: todo}
     "pos-int?": {type: function, status: todo}
