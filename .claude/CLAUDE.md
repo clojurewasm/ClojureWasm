@@ -131,6 +131,29 @@ zig build test
 zig build test -- "Reader basics"
 ```
 
+### CLI Evaluation
+
+```bash
+# -e flag for simple expressions
+./zig-out/bin/cljw -e '(+ 1 2)'
+
+# File execution (preferred for complex expressions)
+./zig-out/bin/cljw path/to/file.clj
+
+# Backend selection
+./zig-out/bin/cljw --tree-walk -e '(+ 1 2)'   # TreeWalk (default)
+./zig-out/bin/cljw -e '(+ 1 2)'                # VM
+```
+
+**IMPORTANT — Shell escaping with `!` and `?`**:
+Claude Code's Bash tool escapes `!` inside single quotes (`swap!` → `swap\!`),
+breaking Clojure symbols like `swap!`, `reset!`, `nil?`, `empty?`.
+When testing expressions containing `!` or `?`:
+
+1. **Write a temp .clj file** and execute via `./zig-out/bin/cljw file.clj`
+2. **Never use `-e`** for expressions with `!` — the shell will mangle them
+3. Clean up temp files after testing
+
 ## Differences from Beta
 
 Production version is a full redesign from Beta. Key changes:
