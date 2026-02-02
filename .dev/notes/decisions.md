@@ -1154,3 +1154,34 @@ tracking lists. The parent (or `evalStringVM`) then manages their lifetime.
 **File**: `src/common/bytecode/compiler.zig` (compileArity)
 
 **Impact**: Fixes all VM benchmarks involving defn + nested closures (sieve, etc.).
+
+## D36: Unified fn_val dispatch via callFnVal (T10.4)
+
+**Context**: T10.4 (fn_val dispatch unification). Follow-up to D34.
+
+**Problem**: 5 separate dispatch mechanisms for calling fn_val, each with its own
+callback wiring and inconsistent kind-checking. Error-prone when adding new features.
+
+**Solution**: Single `callFnVal(allocator, fn_val, args)` function in bootstrap.zig.
+Routes by Value tag and Fn.kind:
+
+- `builtin_fn` -> direct call
+- `fn_val(.bytecode)` -> bytecodeCallBridge (creates new VM instance)
+- `fn_val(.treewalk)` -> treewalkCallBridge (creates new TreeWalk)
+
+All 5 callback sites now receive `&callFnVal` instead of `&macroEvalBridge`:
+
+- vm.zig fn_val_dispatcher, tree_walk.zig bytecode_dispatcher
+- atom.zig call_fn, value.zig realize_fn, analyzer.zig macro_eval_fn
+
+**Alternatives considered**:
+
+1. Remove all module vars and callback fields, use direct import -> circular imports
+2. Create new fn_dispatch.zig module -> unnecessary file for one function
+3. **Chosen**: Keep callback pattern, unify the callback function
+
+Module vars/fields retained to avoid circular imports. The key benefit is
+consistent kind routing: all sites now handle both bytecode and treewalk
+fn_vals correctly, eliminating the kind-default footgun from D34.
+
+**Impact**: Closes D34 follow-up. 5 dispatchers -> 1 function.

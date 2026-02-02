@@ -360,9 +360,9 @@ Motivation: T10.2 added yet another dispatcher callback, making 5 total.
 Each caller must independently handle kind check + dispatcher wiring,
 which is error-prone (T10.2 itself exposed a latent kind-default bug).
 
-| #    | Task                                        | Archive | Notes                                                                                                                             |
-| ---- | ------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 10.4 | Unify fn_val dispatch into single callFnVal | --      | Replace 5 dispatch mechanisms (fn_val_dispatcher, bytecode_dispatcher, call_fn, realize_fn, macroEvalBridge) with one entry point |
+| #    | Task                                        | Archive                            | Notes                                                              |
+| ---- | ------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| 10.4 | Unify fn_val dispatch into single callFnVal | task_0090_unify_fn_val_dispatch.md | Replace 5 dispatch mechanisms with one callFnVal entry point (D36) |
 
 Current dispatch points (all doing the same thing differently):
 
@@ -407,5 +407,5 @@ Details deferred — decide architecture when the IO/system phase is planned.
 | 8         | 3       | Complete        | Refactoring                |
 | 9 (a-d)   | 15      | Complete        | Core library expansion III |
 | 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
-| 10 (a-c)  | 4       | Active          | VM correctness + interop   |
-| **Total** | **109** | **90 archived** |                            |
+| 10 (a-c)  | 4       | Complete        | VM correctness + interop   |
+| **Total** | **109** | **94 archived** |                            |

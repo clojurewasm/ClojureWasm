@@ -67,7 +67,7 @@ fn readForms(allocator: Allocator, source: []const u8, error_ctx: *err.ErrorCont
 /// Returns previous state for restoration via defer.
 const MacroEnvState = struct {
     env: ?*Env,
-    realize: *const @TypeOf(macroEvalBridge),
+    realize: *const @TypeOf(callFnVal),
     atom_call_fn: ?atom_mod.CallFnType,
     pred_env: ?*Env,
 };
@@ -80,8 +80,8 @@ fn setupMacroEnv(env: *Env) MacroEnvState {
         .pred_env = predicates_mod.current_env,
     };
     macro_eval_env = env;
-    value_mod.realize_fn = &macroEvalBridge;
-    atom_mod.call_fn = &macroEvalBridge;
+    value_mod.realize_fn = &callFnVal;
+    atom_mod.call_fn = &callFnVal;
     predicates_mod.current_env = env;
     return prev;
 }
@@ -95,7 +95,7 @@ fn restoreMacroEnv(prev: MacroEnvState) void {
 
 /// Analyze a single form with macro expansion support.
 fn analyzeForm(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env, form: Form) BootstrapError!*Node {
-    var analyzer = Analyzer.initWithMacroEval(allocator, error_ctx, env, &macroEvalBridge);
+    var analyzer = Analyzer.initWithMacroEval(allocator, error_ctx, env, &callFnVal);
     defer analyzer.deinit();
     return analyzer.analyze(form) catch return error.AnalyzeError;
 }
@@ -176,15 +176,37 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
         var vm = VM.initWithEnv(allocator, env);
         defer vm.deinit();
-        vm.fn_val_dispatcher = &macroEvalBridge;
+        vm.fn_val_dispatcher = &callFnVal;
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
     }
     return last_value;
 }
 
-/// Bridge function: called by Analyzer to execute fn_val macros via TreeWalk.
-/// Also used by VM as fn_val_dispatcher for TreeWalk closures.
-fn macroEvalBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+/// Unified fn_val dispatch — single entry point for calling any fn_val.
+/// Routes by Fn.kind: treewalk closures go to TreeWalk, bytecode closures
+/// go to a new VM instance, builtin_fn is called directly.
+///
+/// This replaces 5 separate dispatch mechanisms (D34/T10.4):
+///   - vm.zig fn_val_dispatcher, tree_walk.zig bytecode_dispatcher,
+///   - atom.zig call_fn, value.zig realize_fn, analyzer.zig macro_eval_fn
+///
+/// All call sites now receive &callFnVal as their callback pointer.
+pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    switch (fn_val) {
+        .builtin_fn => |f| return f(allocator, args),
+        .fn_val => |fn_obj| {
+            if (fn_obj.kind == .bytecode) {
+                return bytecodeCallBridge(allocator, fn_val, args);
+            } else {
+                return treewalkCallBridge(allocator, fn_val, args);
+            }
+        },
+        else => return error.TypeError,
+    }
+}
+
+/// Execute a treewalk fn_val via TreeWalk evaluator.
+fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     // Note: tw is NOT deinit'd here — closures created during evaluation
     // (e.g., lazy-seq thunks) must outlive this scope. Memory is owned by
     // the arena allocator, which handles bulk deallocation.
@@ -192,17 +214,16 @@ fn macroEvalBridge(allocator: Allocator, fn_val: Value, args: []const Value) any
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
-    tw.bytecode_dispatcher = &bytecodeCallBridge;
+    tw.bytecode_dispatcher = &callFnVal;
     return tw.callValue(fn_val, args);
 }
 
-/// Bridge function: called by TreeWalk to execute bytecode fn_vals via VM.
-/// Symmetric to macroEvalBridge (which goes VM→TreeWalk).
+/// Execute a bytecode fn_val via a new VM instance.
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     const env = macro_eval_env orelse return error.EvalError;
     var vm = VM.initWithEnv(allocator, env);
     defer vm.deinit();
-    vm.fn_val_dispatcher = &macroEvalBridge;
+    vm.fn_val_dispatcher = &callFnVal;
 
     // Push fn_val onto stack
     try vm.push(fn_val);
