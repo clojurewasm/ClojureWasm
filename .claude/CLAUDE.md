@@ -44,6 +44,20 @@ arrange the final file in standard Zig order:
 
 This matches Zig standard library conventions and keeps files readable.
 
+## Critical Rules (read every session)
+
+- **One task = one commit**. Never batch multiple tasks into a single commit.
+  Each task gets its own `git commit` covering plan + impl + status updates.
+- **Design decisions → `.dev/notes/decisions.md` immediately**. If you chose
+  between alternatives, added global state, deferred VM support, or introduced
+  a new architectural pattern, record a D## entry _before_ moving to the next task.
+- **D6 exceptions require both a decision record and a checklist entry**.
+  If a feature is TreeWalk-only (VM deferred), add a D## entry in decisions.md
+  explaining why, _and_ add a corresponding F## item in `.dev/checklist.md`.
+- **Update `.dev/checklist.md` when deferred items are resolved or added**.
+  Strike-through resolved items, add new F## entries for newly deferred work,
+  and keep the "Last updated" line current.
+
 ## Session Workflow
 
 ### On Start
