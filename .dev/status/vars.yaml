@@ -167,7 +167,7 @@ vars:
     "bound-fn*": {type: function, status: todo}
     "bound?": {type: function, status: todo}
     "bounded-count": {type: function, status: todo}
-    butlast: {type: function, status: todo}
+    butlast: {type: function, status: done, note: "core.clj loop"}
     byte: {type: function, status: todo}
     "byte-array": {type: function, status: todo}
     bytes: {type: function, status: todo}
@@ -305,7 +305,7 @@ vars:
     flush: {type: function, status: todo}
     fn: {type: special-form, status: todo}
     "fn?": {type: function, status: done}
-    fnext: {type: function, status: todo}
+    fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
     fnil: {type: function, status: todo}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
     force: {type: function, status: todo}
@@ -374,7 +374,7 @@ vars:
     keys: {type: function, status: done}
     keyword: {type: function, status: done}
     "keyword?": {type: function, status: done}
-    last: {type: function, status: todo}
+    last: {type: function, status: done, note: "core.clj loop to end"}
     "lazy-cat": {type: macro, status: todo}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: todo}
@@ -425,7 +425,7 @@ vars:
     "neg?": {type: function, status: done}
     newline: {type: function, status: todo}
     next: {type: function, status: done}
-    nfirst: {type: function, status: todo}
+    nfirst: {type: function, status: done, note: "core.clj (next (first coll))"}
     "nil?": {type: function, status: done}
     nnext: {type: function, status: todo}
     not: {type: function, status: done}
@@ -564,7 +564,7 @@ vars:
     rsubseq: {type: function, status: todo}
     "run!": {type: function, status: todo}
     "satisfies?": {type: function, status: done}
-    second: {type: function, status: todo}
+    second: {type: function, status: done, note: "core.clj (first (next coll))"}
     "select-keys": {type: function, status: done}
     send: {type: function, status: todo}
     "send-off": {type: function, status: todo}

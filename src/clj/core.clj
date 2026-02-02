@@ -485,6 +485,33 @@
           (recur (next s) (f acc k (get m k))))
         acc))))
 
+;; Convenience accessors
+
+(defn last [coll]
+  (loop [s (seq coll)]
+    (if s
+      (if (next s)
+        (recur (next s))
+        (first s))
+      nil)))
+
+(defn butlast [coll]
+  (loop [s (seq coll) acc (list)]
+    (if s
+      (if (next s)
+        (recur (next s) (cons (first s) acc))
+        (if (seq acc) (reverse acc) nil))
+      nil)))
+
+(defn second [coll]
+  (first (next coll)))
+
+(defn fnext [coll]
+  (first (next coll)))
+
+(defn nfirst [coll]
+  (next (first coll)))
+
 ;; Exception helpers
 
 (defn ex-info

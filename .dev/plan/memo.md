@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.8 butlast, last, second, nfirst, fnext (next)
+- Current task: T9.9 not-empty, every-pred, some-fn, fnil (next)
 - Task file: (none)
-- Last completed: T9.7 partition-all, take-while, drop-while
+- Last completed: T9.8 butlast, last, second, nfirst, fnext
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 

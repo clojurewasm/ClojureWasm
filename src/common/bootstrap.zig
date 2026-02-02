@@ -2020,6 +2020,92 @@ test "core.clj - drop-while" {
     try std.testing.expectEqual(Value{ .integer = -1 }, result.list.items[1]);
 }
 
+test "core.clj - last" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(last [1 2 3 4 5])");
+    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+
+    const r2 = try evalString(alloc, &env, "(last [42])");
+    try std.testing.expectEqual(Value{ .integer = 42 }, r2);
+
+    const r3 = try evalString(alloc, &env, "(last [])");
+    try std.testing.expectEqual(Value.nil, r3);
+}
+
+test "core.clj - butlast" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(butlast [1 2 3 4])");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.list.items[2]);
+
+    const r2 = try evalString(alloc, &env, "(butlast [1])");
+    try std.testing.expectEqual(Value.nil, r2);
+}
+
+test "core.clj - second" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(second [10 20 30])");
+    try std.testing.expectEqual(Value{ .integer = 20 }, result);
+}
+
+test "core.clj - fnext" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // fnext = first of next = second
+    const result = try evalString(alloc, &env, "(fnext [10 20 30])");
+    try std.testing.expectEqual(Value{ .integer = 20 }, result);
+}
+
+test "core.clj - nfirst" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // nfirst = next of first; first of [[1 2] [3 4]] is [1 2], next of that is (2)
+    const result = try evalString(alloc, &env, "(nfirst [[1 2] [3 4]])");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 1), result.list.items.len);
+    try std.testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk
