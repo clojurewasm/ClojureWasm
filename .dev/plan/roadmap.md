@@ -310,6 +310,23 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | Analyzer redesign scope       | Start with minimal special forms (7), add incrementally          |
 | Compiler-VM contract bugs     | --compare mode catches mismatches early                          |
 
+## Future Considerations
+
+### IO / System Namespace Strategy
+
+When implementing IO and system functionality, decide on namespace design:
+
+- **Java interop exclusion**: `proxy`/`reify`/`gen-class` are JVM-specific — skip
+- **Native aliases**: `slurp`/`spit` via Zig `std.fs`, `Thread/sleep` via `std.time.sleep`
+- **`clojure.java.io`**: Provide equivalent as `clojure.java.io` (compatible) or `clojure.io` (clean).
+  Both approaches work — `clojure.java.io` keeps existing code running, `clojure.io` is cleaner.
+  Could also support both (alias one to the other). Decide when implementing.
+- **System**: `System/getenv`, `System/nanoTime` etc. can work via `tryJavaInterop` routing
+  or a `clojure.system` namespace. Decide when implementing.
+- **Reference**: future.md SS11 (Java Interop exclusion and compatibility aliases)
+
+Details deferred — decide architecture when the IO/system phase is planned.
+
 ## Task Count Summary
 
 | Phase     | Tasks  | Scope                  |
