@@ -16,7 +16,6 @@ env:
     ruby: "4.0.1"
     clojure: "latest (deps.edn)"
     babashka: "latest"
-
 benchmarks:
   fib_recursive:
     description: "Naive recursive fibonacci fib(25) — function call overhead"
@@ -73,10 +72,55 @@ benchmarks:
     category: state
     expected: 10000
     clj_file: "bench/benchmarks/11_atom_swap/bench.clj"
-
 previous: {}
-latest: {}
-
+latest:
+  date: "2026-02-02"
+  version: Phase 5 baseline
+  results:
+    arith_loop:
+      clojurewasm:
+        time_ms: 1021
+        mem_mb: null
+    map_filter_reduce:
+      clojurewasm:
+        time_ms: 426
+        mem_mb: null
+    vector_ops:
+      clojurewasm:
+        time_ms: 200
+        mem_mb: null
+    fib_recursive:
+      clojurewasm:
+        time_ms: 409
+        mem_mb: null
+    map_ops:
+      clojurewasm:
+        time_ms: 32
+        mem_mb: null
+    nqueens:
+      clojurewasm:
+        time_ms: 220
+        mem_mb: null
+    fib_loop:
+      clojurewasm:
+        time_ms: 14
+        mem_mb: null
+    list_build:
+      clojurewasm:
+        time_ms: 158
+        mem_mb: null
+    sieve:
+      clojurewasm:
+        time_ms: 89
+        mem_mb: null
+    atom_swap:
+      clojurewasm:
+        time_ms: 36
+        mem_mb: null
+    tak:
+      clojurewasm:
+        time_ms: 105
+        mem_mb: null
 # Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)
 history:
   - date: "2026-02-02"
@@ -86,3 +130,5 @@ history:
       fib30: {time_ms: 3240, stddev_ms: 30}
       arith_loop: {time_ms: 1300, note: "approximate (time command)"}
       higher_order: {time_ms: 3, note: "dominated by startup"}
+  - date: "2026-02-02"
+    version: Phase 5 baseline
