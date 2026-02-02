@@ -82,25 +82,10 @@ pub const VM = struct {
     env: ?*Env,
 
     pub fn init(allocator: std.mem.Allocator) VM {
-        return .{
-            .allocator = allocator,
-            .stack = undefined,
-            .sp = 0,
-            .frames = undefined,
-            .frame_count = 0,
-            .allocated_fns = .empty,
-            .allocated_slices = .empty,
-            .allocated_lists = .empty,
-            .allocated_vectors = .empty,
-            .allocated_maps = .empty,
-            .allocated_sets = .empty,
-            .handlers = undefined,
-            .handler_count = 0,
-            .env = null,
-        };
+        return initWithEnv(allocator, null);
     }
 
-    pub fn initWithEnv(allocator: std.mem.Allocator, env: *Env) VM {
+    pub fn initWithEnv(allocator: std.mem.Allocator, env: ?*Env) VM {
         return .{
             .allocator = allocator,
             .stack = undefined,
@@ -360,13 +345,13 @@ pub const VM = struct {
                 .add => try self.vmBinaryArith(.add),
                 .sub => try self.vmBinaryArith(.sub),
                 .mul => try self.vmBinaryArith(.mul),
-                .div => try self.vmBinaryDiv(),
+                .div => try self.vmBinaryDivLike(arith.binaryDiv),
                 .lt => try self.vmBinaryCompare(.lt),
                 .le => try self.vmBinaryCompare(.le),
                 .gt => try self.vmBinaryCompare(.gt),
                 .ge => try self.vmBinaryCompare(.ge),
-                .mod => try self.vmBinaryMod(),
-                .rem_ => try self.vmBinaryRem(),
+                .mod => try self.vmBinaryDivLike(arith.binaryMod),
+                .rem_ => try self.vmBinaryDivLike(arith.binaryRem),
                 .eq => {
                     const b = self.pop();
                     const a = self.pop();
@@ -491,13 +476,7 @@ pub const VM = struct {
         if (closure_count > 0) {
             const cb = fn_obj.closure_bindings.?;
             const args_start = fn_idx + 1;
-            if (arg_count > 0) {
-                var i: u16 = arg_count;
-                while (i > 0) {
-                    i -= 1;
-                    self.stack[args_start + closure_count + i] = self.stack[args_start + i];
-                }
-            }
+            shiftStackRight(self.stack[0..], args_start, arg_count, closure_count);
             for (0..closure_count) |i| {
                 self.stack[args_start + i] = cb[i];
             }
@@ -507,14 +486,7 @@ pub const VM = struct {
         // Named fn self-reference: inject fn_val at slot after captures, before args
         if (proto.has_self_ref) {
             const self_slot = fn_idx + 1 + closure_count;
-            // Shift args right by 1 to make room
-            if (arg_count > 0) {
-                var i: u16 = arg_count;
-                while (i > 0) {
-                    i -= 1;
-                    self.stack[self_slot + 1 + i] = self.stack[self_slot + i];
-                }
-            }
+            shiftStackRight(self.stack[0..], self_slot, arg_count, 1);
             self.stack[self_slot] = callee;
             self.sp += 1;
         }
@@ -564,10 +536,11 @@ pub const VM = struct {
         try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
     }
 
-    fn vmBinaryDiv(self: *VM) VMError!void {
+    /// Binary op that may produce DivisionByZero (div, mod, rem).
+    fn vmBinaryDivLike(self: *VM, comptime func: fn (Value, Value) anyerror!Value) VMError!void {
         const b = self.pop();
         const a = self.pop();
-        try self.push(arith.binaryDiv(a, b) catch |e| switch (e) {
+        try self.push(func(a, b) catch |e| switch (e) {
             error.DivisionByZero => return error.DivisionByZero,
             else => return error.TypeError,
         });
@@ -578,25 +551,18 @@ pub const VM = struct {
         const a = self.pop();
         try self.push(.{ .boolean = arith.compareFn(a, b, op) catch return error.TypeError });
     }
-
-    fn vmBinaryMod(self: *VM) VMError!void {
-        const b = self.pop();
-        const a = self.pop();
-        try self.push(arith.binaryMod(a, b) catch |e| switch (e) {
-            error.DivisionByZero => return error.DivisionByZero,
-            else => return error.TypeError,
-        });
-    }
-
-    fn vmBinaryRem(self: *VM) VMError!void {
-        const b = self.pop();
-        const a = self.pop();
-        try self.push(arith.binaryRem(a, b) catch |e| switch (e) {
-            error.DivisionByZero => return error.DivisionByZero,
-            else => return error.TypeError,
-        });
-    }
 };
+
+/// Shift `count` stack elements starting at `start` to the right by `shift` positions.
+/// Used to make room for injected values (closure bindings, self-reference).
+fn shiftStackRight(stack: []Value, start: usize, count: u16, shift: u16) void {
+    if (count == 0) return;
+    var i: u16 = count;
+    while (i > 0) {
+        i -= 1;
+        stack[start + shift + i] = stack[start + i];
+    }
+}
 
 // === Tests ===
 

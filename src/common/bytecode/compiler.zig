@@ -38,6 +38,9 @@ pub const Compiler = struct {
     chunk: Chunk,
     locals: std.ArrayList(Local),
     scope_depth: u32,
+    /// Tracks actual VM stack depth relative to frame base.
+    /// Used by addLocal to assign correct stack slots.
+    stack_depth: u16,
     loop_start: ?usize,
     loop_binding_count: u16,
     loop_locals_base: u16,
@@ -51,6 +54,7 @@ pub const Compiler = struct {
             .chunk = Chunk.init(allocator),
             .locals = .empty,
             .scope_depth = 0,
+            .stack_depth = 0,
             .loop_start = null,
             .loop_binding_count = 0,
             .loop_locals_base = 0,
@@ -124,6 +128,7 @@ pub const Compiler = struct {
                 try self.chunk.emit(.const_load, idx);
             },
         }
+        self.stack_depth += 1;
     }
 
     fn emitLocalRef(self: *Compiler, ref: node_mod.LocalRefNode) CompileError!void {
@@ -133,46 +138,58 @@ pub const Compiler = struct {
         } else {
             try self.chunk.emit(.local_load, @intCast(ref.idx));
         }
+        self.stack_depth += 1;
     }
 
     fn emitIf(self: *Compiler, node: *const node_mod.IfNode) CompileError!void {
-        // Compile test expression
+        // Compile test expression (+1)
         try self.compile(node.test_node);
 
-        // Jump over then-branch if false
+        // Jump over then-branch if false (pops test: -1)
         const jump_if_false = self.chunk.emitJump(.jump_if_false) catch return error.OutOfMemory;
+        self.stack_depth -= 1;
 
-        // Compile then-branch
+        // Save depth before branches (both must produce same net effect)
+        const branch_base = self.stack_depth;
+
+        // Compile then-branch (+1)
         try self.compile(node.then_node);
 
         // Jump over else-branch
         const jump_over_else = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
 
+        // Reset depth for else branch (then result not on stack in else path)
+        self.stack_depth = branch_base;
+
         // Patch false jump to else-branch
         self.chunk.patchJump(jump_if_false);
 
-        // Compile else-branch (or nil if absent)
+        // Compile else-branch (or nil if absent) (+1)
         if (node.else_node) |else_n| {
             try self.compile(else_n);
         } else {
             try self.chunk.emitOp(.nil);
+            self.stack_depth += 1;
         }
 
         // Patch jump over else
         self.chunk.patchJump(jump_over_else);
+        // Both branches leave depth at branch_base + 1
     }
 
     fn emitDo(self: *Compiler, node: *const node_mod.DoNode) CompileError!void {
         if (node.statements.len == 0) {
             try self.chunk.emitOp(.nil);
+            self.stack_depth += 1;
             return;
         }
 
         for (node.statements, 0..) |stmt, i| {
-            try self.compile(stmt);
+            try self.compile(stmt); // +1
             // Pop intermediate results, keep the last
             if (i < node.statements.len - 1) {
                 try self.chunk.emitOp(.pop);
+                self.stack_depth -= 1;
             }
         }
     }
@@ -181,19 +198,20 @@ pub const Compiler = struct {
         self.scope_depth += 1;
         const base_locals = self.locals.items.len;
 
-        // Compile bindings
+        // Compile bindings: each compile pushes a value, addLocal names it
         for (node.bindings) |binding| {
-            try self.compile(binding.init);
-            try self.addLocal(binding.name);
+            try self.compile(binding.init); // +1
+            try self.addLocal(binding.name); // slot = stack_depth - 1
         }
 
-        // Compile body
+        // Compile body (+1)
         try self.compile(node.body);
 
         // Clean up: keep body result, remove binding slots below it
         const locals_to_pop = self.locals.items.len - base_locals;
         if (locals_to_pop > 0) {
             try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
+            self.stack_depth -= @intCast(locals_to_pop);
         }
 
         self.locals.shrinkRetainingCapacity(base_locals);
@@ -204,13 +222,13 @@ pub const Compiler = struct {
         self.scope_depth += 1;
         const base_locals = self.locals.items.len;
 
-        // Record stack depth before loop bindings (for recur base_offset)
-        const loop_locals_base: u16 = @intCast(base_locals);
+        // Record actual stack depth before bindings (for recur base_offset)
+        const loop_locals_base: u16 = self.stack_depth;
 
         // Compile initial bindings
         for (node.bindings) |binding| {
-            try self.compile(binding.init);
-            try self.addLocal(binding.name);
+            try self.compile(binding.init); // +1
+            try self.addLocal(binding.name); // slot = stack_depth - 1
         }
 
         // Save loop context
@@ -221,7 +239,7 @@ pub const Compiler = struct {
         self.loop_binding_count = @intCast(node.bindings.len);
         self.loop_locals_base = loop_locals_base;
 
-        // Compile body
+        // Compile body (+1)
         try self.compile(node.body);
 
         // Restore loop context
@@ -233,6 +251,7 @@ pub const Compiler = struct {
         const locals_to_pop = self.locals.items.len - base_locals;
         if (locals_to_pop > 0) {
             try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
+            self.stack_depth -= @intCast(locals_to_pop);
         }
 
         self.locals.shrinkRetainingCapacity(base_locals);
@@ -242,13 +261,16 @@ pub const Compiler = struct {
     fn emitRecur(self: *Compiler, node: *const node_mod.RecurNode) CompileError!void {
         // Compile new values for loop bindings
         for (node.args) |arg| {
-            try self.compile(arg);
+            try self.compile(arg); // +1 each
         }
 
         // Emit recur: operand = (base_offset << 8) | arg_count
         const arg_count: u16 = @intCast(node.args.len);
         const operand = (self.loop_locals_base << 8) | arg_count;
         try self.chunk.emit(.recur, operand);
+
+        // recur consumes args and resets stack to loop bindings
+        self.stack_depth -= arg_count;
 
         // Jump back to loop start
         if (self.loop_start) |ls| {
@@ -284,6 +306,7 @@ pub const Compiler = struct {
         const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
             return error.TooManyConstants;
         try self.chunk.emit(.closure, idx);
+        self.stack_depth += 1; // closure pushes fn_val
     }
 
     fn compileArity(
@@ -296,18 +319,23 @@ pub const Compiler = struct {
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
 
-        // Reserve slots for captured variables (they appear before params)
+        // Reserve slots for captured variables (they appear before params).
+        // The VM places these on the stack before fn body runs,
+        // so increment stack_depth for each.
         for (self.locals.items) |local| {
+            fn_compiler.stack_depth += 1;
             try fn_compiler.addLocal(local.name);
         }
 
         // Named fn: reserve self-reference slot (matches Analyzer's local layout)
         if (has_self_ref) {
+            fn_compiler.stack_depth += 1;
             try fn_compiler.addLocal(node.name.?);
         }
 
         // Add parameters as locals
         for (arity.params) |param| {
+            fn_compiler.stack_depth += 1;
             try fn_compiler.addLocal(param);
         }
 
@@ -362,20 +390,23 @@ pub const Compiler = struct {
             // 2-arg intrinsics: mod, rem, comparison ops
             if (node.args.len == 2) {
                 if (binaryOnlyIntrinsic(name)) |op| {
-                    try self.compile(node.args[0]);
-                    try self.compile(node.args[1]);
+                    try self.compile(node.args[0]); // +1
+                    try self.compile(node.args[1]); // +1
                     try self.chunk.emitOp(op);
+                    self.stack_depth -= 1; // binary op: 2 → 1
                     return;
                 }
             }
         }
 
         // General call: compile callee + args
-        try self.compile(node.callee);
+        try self.compile(node.callee); // +1
         for (node.args) |arg| {
-            try self.compile(arg);
+            try self.compile(arg); // +1 each
         }
         try self.chunk.emit(.call, @intCast(node.args.len));
+        // call pops callee + N args, pushes 1 result: net -(N+1)+1 = -N
+        self.stack_depth -= @intCast(node.args.len);
     }
 
     /// Emit variadic arithmetic (+, -, *, /) as sequences of binary opcodes.
@@ -390,9 +421,11 @@ pub const Compiler = struct {
                 if (is_add) {
                     const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
+                    self.stack_depth += 1;
                 } else if (is_mul) {
                     const idx = self.chunk.addConstant(.{ .integer = 1 }) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
+                    self.stack_depth += 1;
                 } else {
                     return error.ArityError;
                 }
@@ -402,27 +435,33 @@ pub const Compiler = struct {
                     // (- x) => (0 - x)
                     const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
-                    try self.compile(args[0]);
+                    self.stack_depth += 1;
+                    try self.compile(args[0]); // +1
                     try self.chunk.emitOp(.sub);
+                    self.stack_depth -= 1; // binary: 2 → 1
                 } else if (std.mem.eql(u8, name, "/")) {
                     // (/ x) => (1.0 / x)
                     const idx = self.chunk.addConstant(.{ .float = 1.0 }) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
-                    try self.compile(args[0]);
+                    self.stack_depth += 1;
+                    try self.compile(args[0]); // +1
                     try self.chunk.emitOp(.div);
+                    self.stack_depth -= 1; // binary: 2 → 1
                 } else {
                     // (+ x) => x, (* x) => x
-                    try self.compile(args[0]);
+                    try self.compile(args[0]); // +1
                 }
             },
             else => {
                 // 2+ args: compile first two, emit op, then fold remaining
-                try self.compile(args[0]);
-                try self.compile(args[1]);
+                try self.compile(args[0]); // +1
+                try self.compile(args[1]); // +1
                 try self.chunk.emitOp(op);
+                self.stack_depth -= 1; // binary: 2 → 1
                 for (args[2..]) |arg| {
-                    try self.compile(arg);
+                    try self.compile(arg); // +1
                     try self.chunk.emitOp(op);
+                    self.stack_depth -= 1; // binary: 2 → 1
                 }
             },
         }
@@ -467,31 +506,40 @@ pub const Compiler = struct {
 
         // Compile init expression if present
         if (node.init) |init_node| {
-            try self.compile(init_node);
+            try self.compile(init_node); // +1
         } else {
             try self.chunk.emitOp(.nil);
+            self.stack_depth += 1;
         }
 
-        // Emit def
+        // Emit def: pops value, pushes symbol (net 0)
         try self.chunk.emit(.def, idx);
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {
         const idx = self.chunk.addConstant(node.value) catch return error.TooManyConstants;
         try self.chunk.emit(.const_load, idx);
+        self.stack_depth += 1;
     }
 
     fn emitThrow(self: *Compiler, node: *const node_mod.ThrowNode) CompileError!void {
-        try self.compile(node.expr);
+        try self.compile(node.expr); // +1
         try self.chunk.emitOp(.throw_ex);
+        self.stack_depth -= 1; // throw pops (control transfers)
     }
 
     fn emitTry(self: *Compiler, node: *const node_mod.TryNode) CompileError!void {
         // Emit try_begin with placeholder offset to catch
         const try_begin_offset = self.chunk.emitJump(.try_begin) catch return error.OutOfMemory;
 
-        // Compile body
+        const depth_before_body = self.stack_depth;
+
+        // Compile body (may contain throw which disrupts depth tracking)
         try self.compile(node.body);
+
+        // Normalize: body produces exactly 1 value on normal path
+        const body_depth = depth_before_body + 1;
+        self.stack_depth = body_depth;
 
         // Jump over catch to try_end
         const jump_to_end = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
@@ -501,31 +549,42 @@ pub const Compiler = struct {
 
         // Compile catch clause if present
         if (node.catch_clause) |catch_clause| {
+            // In catch path, body result is not on stack. VM's throw handler
+            // restores sp to saved_sp and pushes exception value.
+            self.stack_depth = depth_before_body;
             try self.chunk.emitOp(.catch_begin);
+
+            // Exception value is pushed by VM throw handler
+            self.stack_depth += 1;
 
             // Add catch binding as local
             self.scope_depth += 1;
             const base = self.locals.items.len;
-            try self.addLocal(catch_clause.binding_name);
+            try self.addLocal(catch_clause.binding_name); // slot = stack_depth - 1
 
-            try self.compile(catch_clause.body);
+            try self.compile(catch_clause.body); // +1
 
             // Clean up catch local
             const to_pop = self.locals.items.len - base;
             for (0..to_pop) |_| {
                 try self.chunk.emitOp(.pop);
+                self.stack_depth -= 1;
             }
             self.locals.shrinkRetainingCapacity(base);
             self.scope_depth -= 1;
         }
+
+        // Both paths converge at body_depth
+        self.stack_depth = body_depth;
 
         // Patch jump to end
         self.chunk.patchJump(jump_to_end);
 
         // Compile finally if present
         if (node.finally_body) |finally_body| {
-            try self.compile(finally_body);
+            try self.compile(finally_body); // +1
             try self.chunk.emitOp(.pop); // finally result is discarded
+            self.stack_depth -= 1;
         }
 
         try self.chunk.emitOp(.try_end);
@@ -536,12 +595,17 @@ pub const Compiler = struct {
         const sym_val = Value{ .symbol = .{ .ns = ref.ns, .name = ref.name } };
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         try self.chunk.emit(.var_load, idx);
+        self.stack_depth += 1;
     }
 
     // --- Helpers ---
 
+    /// Register a named local at the current stack position.
+    /// The value must already be on the stack (stack_depth already incremented
+    /// by the preceding compile/emit that pushed the value).
     fn addLocal(self: *Compiler, name: []const u8) CompileError!void {
-        const slot: u16 = @intCast(self.locals.items.len);
+        // slot = stack_depth - 1 because the value is already pushed
+        const slot: u16 = self.stack_depth - 1;
         self.locals.append(self.allocator, .{
             .name = name,
             .depth = self.scope_depth,
