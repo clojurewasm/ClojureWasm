@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Phase: 11 completed (Metadata System + Core Library IV)
+- Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 11 complete — Phase 12 planning needed
+- Current task: T12.1 — Collection gaps: dissoc, disj, find, peek, pop, empty
 - Task file: (none)
 - Blockers: none
 
@@ -13,30 +13,28 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### Phase 11 completed
+### Phase 12 planned
 
-All T11.1-T11.6 done:
+Phase 12a: Tier 1 Zig builtins (T12.1-T12.8)
+Phase 12b: SCI test port (T12.9)
+Phase 12c: Tier 2 core.clj expansion (T12.10-T12.12)
 
-- T11.1: Metadata infrastructure (meta, with-meta, vary-meta)
-- T11.2: alter-meta!, reset-meta!
-- T11.3: memoize, trampoline
-- T11.4: if-some, when-some, vswap! + volatile system
-- T11.5: Regex engine + re-pattern, re-find, re-matches, re-seq
-- T11.6: Metadata + regex compare-mode test suite (9 new tests)
+### T12.1 scope
+
+6 builtins to add (all Zig, in collections module):
+
+- `dissoc` — remove key from map
+- `disj` — remove value from set
+- `find` — lookup key in map, return MapEntry or nil
+- `peek` — stack top (vector last, list first)
+- `pop` — stack pop (vector butlast, list rest)
+- `empty` — return empty collection of same type
+
+These are fundamental collection operations that many Tier 2 core.clj
+functions depend on. `find` is especially important as a dependency for
+upstream-compatible memoize.
 
 ### Builtin Count
 
 120 builtins registered
 231/702 vars implemented
-
-### Next: Phase 12 planning
-
-Phase 12 strategy outlined in roadmap.md "Future Considerations":
-
-- 12a: Tier 1 Zig builtins (string, numeric, collection, sequence gaps)
-- 12b: SCI test port
-- 12c: Tier 2 core.clj mass expansion
-- 12c.5: Upstream alignment
-- 12d: Tier 3 triage
-
-Need to create detailed Phase 12 task breakdown.

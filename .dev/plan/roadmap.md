@@ -409,9 +409,38 @@ high-priority gaps in the core library.
 | ---- | --------------------------- | -------------------------------------- | ------------------------------------------- |
 | 11.6 | Metadata + regex test suite | task_0097_metadata_regex_test_suite.md | Compare-mode tests, SCI compatibility tests |
 
+## Phase 12: Zig Foundation Completion + SCI Test Port
+
+### Phase 12a: Tier 1 Zig Builtins
+
+| #    | Task                                                  | Archive | Notes                                                    |
+| ---- | ----------------------------------------------------- | ------- | -------------------------------------------------------- |
+| 12.1 | Collection gaps: dissoc, disj, find, peek, pop, empty | --      | Map/set removal, stack ops, empty collection constructor |
+| 12.2 | subvec, array-map, hash-set, sorted-map               | --      | Vector slice + collection constructors                   |
+| 12.3 | Hash & identity: hash, identical?, ==                 | --      | hash-combine deferred; == is numeric cross-type equality |
+| 12.4 | Reduced: reduced, reduced?, unreduced, ensure-reduced | --      | Early-termination for reduce; Reduced Value variant      |
+| 12.5 | eval, macroexpand, macroexpand-1, read-string         | --      | Runtime eval pipeline; load-string deferred              |
+| 12.6 | Namespace ops I: all-ns, find-ns, ns-name, create-ns  | --      | Namespace introspection basics                           |
+| 12.7 | Namespace ops II: ns-map, ns-publics, ns-interns      | --      | Namespace Var mapping                                    |
+| 12.8 | gensym, compare-and-set!, format                      | --      | Misc Tier 1 utilities                                    |
+
+### Phase 12b: SCI Test Port
+
+| #    | Task                   | Archive | Notes                              |
+| ---- | ---------------------- | ------- | ---------------------------------- |
+| 12.9 | SCI test port + triage | --      | Run SCI tests, categorize failures |
+
+### Phase 12c: Tier 2 core.clj Expansion
+
+| #     | Task                                                 | Archive | Notes                          |
+| ----- | ---------------------------------------------------- | ------- | ------------------------------ |
+| 12.10 | Core.clj batch 1: key, val, keys, vals, MapEntry ops | --      | Unlocks map iteration patterns |
+| 12.11 | Core.clj batch 2: every?, not-every?, some, not-any? | --      | Predicate sequence ops         |
+| 12.12 | Core.clj batch 3: map-indexed, keep, keep-indexed    | --      | Advanced sequence transforms   |
+
 ## Future Considerations
 
-### Phase 12 Strategy: Zig Foundation Completion + SCI Test Port
+### Phase 12 Strategy (Reference)
 
 **Background** (discussed during Phase 11 planning):
 
