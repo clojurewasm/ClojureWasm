@@ -111,7 +111,7 @@ vars:
     "PrintWriter-on": {type: function, status: todo, impl: none}
     "StackTraceElement->vec": {type: function, status: todo, impl: none}
     "Throwable->map": {type: function, status: todo, impl: none}
-    abs: {type: function, status: todo, impl: none}
+    abs: {type: function, status: done, impl: host}
     accessor: {type: function, status: todo, impl: none}
     aclone: {type: function, status: todo, impl: none}
     "add-classpath": {type: function, status: todo, impl: none}
@@ -414,7 +414,7 @@ vars:
     "map?": {type: function, status: done, impl: host}
     mapcat: {type: function, status: done, impl: core_clj}
     mapv: {type: function, status: todo, impl: none}
-    max: {type: function, status: todo, impl: none}
+    max: {type: function, status: done, impl: host}
     "max-key": {type: function, status: todo, impl: none}
     memfn: {type: macro, status: todo, impl: none}
     memoize: {type: function, status: todo, impl: none}
@@ -423,7 +423,7 @@ vars:
     meta: {type: function, status: todo, impl: none}
     "method-sig": {type: function, status: todo, impl: none}
     methods: {type: function, status: todo, impl: none}
-    min: {type: function, status: todo, impl: none}
+    min: {type: function, status: done, impl: host}
     "min-key": {type: function, status: todo, impl: none}
     "mix-collection-hash": {type: function, status: todo, impl: none}
     mod: {type: function, status: done, impl: intrinsic}
@@ -511,9 +511,9 @@ vars:
     "qualified-ident?": {type: function, status: todo, impl: none}
     "qualified-keyword?": {type: function, status: todo, impl: none}
     "qualified-symbol?": {type: function, status: todo, impl: none}
-    quot: {type: function, status: todo, impl: none}
-    rand: {type: function, status: todo, impl: none}
-    "rand-int": {type: function, status: todo, impl: none}
+    quot: {type: function, status: done, impl: host}
+    rand: {type: function, status: done, impl: host}
+    "rand-int": {type: function, status: done, impl: host}
     "rand-nth": {type: function, status: todo, impl: none}
     "random-sample": {type: function, status: todo, impl: none}
     "random-uuid": {type: function, status: todo, impl: none}

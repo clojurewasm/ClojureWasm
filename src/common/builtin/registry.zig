@@ -19,13 +19,14 @@ const strings_mod = @import("strings.zig");
 const io_mod = @import("io.zig");
 const atom_mod = @import("atom.zig");
 const sequences_mod = @import("sequences.zig");
+const numeric_mod = @import("numeric.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -96,7 +97,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
 test "all_builtins count" {
     // 12 arithmetic + 13 special forms + 16 collections + 22 predicates + 2 strings + 2 io + 4 atom
-    try std.testing.expectEqual(77, builtin_count);
+    try std.testing.expectEqual(83, builtin_count);
 }
 
 test "comptime lookup finds +" {

@@ -4,7 +4,7 @@
 
 - Phase: 6 (Core Library Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T6.4 — Numeric functions (abs, max, min, quot, rand, rand-int)
+- Current task: T6.5 — String functions (subs, name, namespace, keyword, symbol)
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
