@@ -335,6 +335,24 @@ Fix VM lifetime bugs, unblock deferred items, and establish VM benchmark baselin
 | ----- | --------------------- | ------------------------------ | -------------------------------------------------------- |
 | 9.5.4 | VM benchmark baseline | task_0086_vm_bench_baseline.md | Run all 11 benchmarks with --backend=vm, record baseline |
 
+## Phase 10: VM Correctness + VM-CoreClj Interop
+
+Fix VM loop/recur bug (F17), then unify fn_val proto so VM can call core.clj
+higher-order functions. This unblocks 8/11 VM benchmarks.
+
+### Phase 10a: VM Bug Fix
+
+| #    | Task                                  | Archive | Notes                                                                                                      |
+| ---- | ------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| 10.1 | Fix VM loop/recur wrong results (F17) | --      | fib_loop=25 (expect 75025), arith_loop=1000000 (expect 499999500000). Recur base_offset or stack reset bug |
+
+### Phase 10b: VM-CoreClj Interop
+
+| #    | Task                            | Archive | Notes                                                                                                                   |
+| ---- | ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 10.2 | Unified fn_val proto (F8)       | --      | VM can't call core.clj HOFs (map, filter, reduce). Unify fn_val representation so VM dispatch handles TreeWalk closures |
+| 10.3 | VM benchmark re-run + recording | --      | Re-run all 11 benchmarks after fixes, record in bench.yaml                                                              |
+
 ## Future Considerations
 
 ### IO / System Namespace Strategy
