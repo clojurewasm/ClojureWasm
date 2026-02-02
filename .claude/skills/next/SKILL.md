@@ -28,7 +28,7 @@ git status --short
 Read with Read tool:
 
 - `CLAUDE.md` — project instructions
-- `.dev/plan/memo.md` — current task + task file path
+- `.dev/plan/memo.md` — current task + task file path + technical notes
 
 ## 2. Prepare
 
@@ -58,7 +58,8 @@ Read with Read tool:
 
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
-3. Advance `memo.md` to next task (clear Task file path)
+3. Advance `memo.md`: update Current task, Task file, Last completed.
+   Update Technical Notes with context useful for the next task.
 4. **Single git commit** covering plan + implementation + status update
 
 ## 5. Report & Stop

@@ -81,7 +81,8 @@ This matches Zig standard library conventions and keeps files readable.
 
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
-3. Advance memo.md to next task (clear Task file path)
+3. Advance memo.md: update Current task, Task file, Last completed.
+   Update Technical Notes if the next task has useful context to carry forward.
 4. If new Vars were implemented, update `.dev/status/vars.yaml` (status/note)
 5. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
 6. `git add` + `git commit` — **single commit covering plan + impl + status**

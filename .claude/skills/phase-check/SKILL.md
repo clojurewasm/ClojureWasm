@@ -17,7 +17,7 @@ Check progress of the current development phase.
 
 ## Steps
 
-1. Read `.dev/plan/memo.md` — identify current phase and task
+1. Read `.dev/plan/memo.md` — identify current phase, task, and technical context
 2. Read `.dev/plan/roadmap.md` — check task completion across phases
 3. If task file exists in `.dev/plan/active/`, read its `## Log` for recent progress
 4. Run `zig build test` — report pass/fail counts

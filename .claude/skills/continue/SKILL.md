@@ -29,7 +29,7 @@ git status --short
 Read with Read tool:
 
 - `CLAUDE.md` — project instructions
-- `.dev/plan/memo.md` — current task + task file path
+- `.dev/plan/memo.md` — current task + task file path + technical notes
 
 ## 2. Prepare
 
@@ -70,7 +70,8 @@ Read with Read tool:
 
 1. Move task file from `active/` to `archive/`
 2. Update `roadmap.md` Archive column
-3. Advance `memo.md` to next task (clear Task file path)
+3. Advance `memo.md`: update Current task, Task file, Last completed.
+   Update Technical Notes with context useful for the next task (root cause, key files, findings).
 
 ### 4b. Git commit (gate)
 
@@ -85,8 +86,9 @@ Read with Read tool:
 
 When all tasks in a phase are done:
 
-1. Add entry to "Completed Phases" table in `memo.md`
-2. Continue with the first task of the next phase
+1. Update `memo.md` Current State to the new phase
+2. Clear Technical Notes (new phase = fresh context)
+3. Continue with the first task of the next phase
 
 ## 6. User Instructions
 
