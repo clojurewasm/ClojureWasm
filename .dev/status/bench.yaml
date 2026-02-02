@@ -74,6 +74,7 @@ benchmarks:
     expected: 10000
     clj_file: "bench/benchmarks/11_atom_swap/bench.clj"
 
+previous: {}
 latest: {}
 
 # Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)

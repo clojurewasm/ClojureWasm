@@ -238,9 +238,13 @@ bash bench/run_bench.sh --release
 
 **When to run**:
 
-- After performance optimizations
-- After adding new features that affect evaluation speed
-- Before recording a new baseline (`--record --version="..."`)
+- After performance optimizations → `bash bench/run_bench.sh --record`
+- After adding new builtins/features that affect evaluation → ClojureWasm-only
+- Before recording a new baseline → `--record --version="..."`
+- Other languages rarely change → only run `--all` for initial baseline or language upgrades
+
+**Recording**: `--record` rotates `latest` → `previous` and shows ±% delta.
+Two generations kept in bench.yaml for quick regression check.
 
 Results go to `.dev/status/bench.yaml`. See `bench/README.md` for full docs.
 

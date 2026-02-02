@@ -230,6 +230,46 @@ for bench_dir in "${BENCH_DIRS[@]}"; do
   done
 done
 
+# --- Show delta against previous latest ---
+show_delta() {
+  local bench_yaml="$1"
+  local has_previous
+  has_previous=$(yq '.previous | has("results")' "$bench_yaml")
+  [[ "$has_previous" == "true" ]] || return 0
+
+  echo ""
+  echo -e "${BOLD}Delta vs previous${RESET}"
+  local prev_version
+  prev_version=$(yq '.previous.version // "unknown"' "$bench_yaml")
+  echo -e "  Previous: $prev_version"
+  echo ""
+
+  for key in "${!RESULTS[@]}"; do
+    IFS=':' read -r bench lang <<< "$key"
+    IFS=':' read -r time_ms _ <<< "${RESULTS[$key]}"
+    local prev_ms
+    prev_ms=$(yq ".previous.results.${bench}.${lang}.time_ms // 0" "$bench_yaml")
+    if [[ "$prev_ms" != "0" && "$prev_ms" != "null" ]]; then
+      local delta pct sign color
+      delta=$((time_ms - prev_ms))
+      if [[ "$prev_ms" -gt 0 ]]; then
+        pct=$(echo "scale=1; $delta * 100 / $prev_ms" | bc)
+      else
+        pct="N/A"
+      fi
+      if [[ "$delta" -lt 0 ]]; then
+        sign=""; color="$GREEN"
+      elif [[ "$delta" -gt 0 ]]; then
+        sign="+"; color="$RED"
+      else
+        sign=""; color="$RESET"
+      fi
+      printf "  %-16s %-12s %6d ms → %6d ms  ${color}%s%s%%${RESET}\n" \
+        "$bench" "$lang" "$prev_ms" "$time_ms" "$sign" "$pct"
+    fi
+  done
+}
+
 # --- Record results ---
 if $RECORD; then
   BENCH_YAML="$PROJECT_ROOT/.dev/status/bench.yaml"
@@ -241,9 +281,14 @@ if $RECORD; then
   echo -e "  Version: $LABEL"
   echo -e "  Date: $DATE"
 
-  # Update latest section
-  yq -i ".latest.date = \"$DATE\"" "$BENCH_YAML"
-  yq -i ".latest.version = \"$LABEL\"" "$BENCH_YAML"
+  # Show delta before overwriting
+  show_delta "$BENCH_YAML"
+
+  # Rotate: latest -> previous
+  yq -i '.previous = .latest' "$BENCH_YAML"
+
+  # Write new latest
+  yq -i ".latest = {\"date\": \"$DATE\", \"version\": \"$LABEL\", \"results\": {}}" "$BENCH_YAML"
 
   for key in "${!RESULTS[@]}"; do
     IFS=':' read -r bench lang <<< "$key"
