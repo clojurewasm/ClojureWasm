@@ -2381,6 +2381,58 @@ test "core.clj - realized?" {
     try std.testing.expect(result.list.items[1] == .boolean and result.list.items[1].boolean == true);
 }
 
+test "core.clj - boolean" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(boolean 42)");
+    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+
+    const r2 = try evalString(alloc, &env, "(boolean nil)");
+    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+
+    const r3 = try evalString(alloc, &env, "(boolean false)");
+    try std.testing.expect(r3 == .boolean and r3.boolean == false);
+}
+
+test "core.clj - true? false? some? any?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(true? true)");
+    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+
+    const r2 = try evalString(alloc, &env, "(true? 1)");
+    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+
+    const r3 = try evalString(alloc, &env, "(false? false)");
+    try std.testing.expect(r3 == .boolean and r3.boolean == true);
+
+    const r4 = try evalString(alloc, &env, "(false? nil)");
+    try std.testing.expect(r4 == .boolean and r4.boolean == false);
+
+    const r5 = try evalString(alloc, &env, "(some? 42)");
+    try std.testing.expect(r5 == .boolean and r5.boolean == true);
+
+    const r6 = try evalString(alloc, &env, "(some? nil)");
+    try std.testing.expect(r6 == .boolean and r6.boolean == false);
+
+    const r7 = try evalString(alloc, &env, "(any? nil)");
+    try std.testing.expect(r7 == .boolean and r7.boolean == true);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

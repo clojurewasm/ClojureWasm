@@ -621,6 +621,23 @@
     (deref (:realized x))
     false))
 
+;; Basic predicates
+
+(defn boolean [x]
+  (if x true false))
+
+(defn true? [x]
+  (= x true))
+
+(defn false? [x]
+  (= x false))
+
+(defn some? [x]
+  (not (nil? x)))
+
+(defn any? [x]
+  true)
+
 ;; Exception helpers
 
 (defn ex-info

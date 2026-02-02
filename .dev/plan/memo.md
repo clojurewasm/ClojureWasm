@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.13 boolean, true?, false?, some?, any? (next)
+- Current task: T9.14 bit-and, bit-or, bit-xor, bit-not, bit-shift-\* (next)
 - Task file: (none)
-- Last completed: T9.12 delay, force, realized?
+- Last completed: T9.13 boolean, true?, false?, some?, any?
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 

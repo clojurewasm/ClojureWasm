@@ -119,7 +119,7 @@ vars:
     amap: {type: macro, status: todo}
     ancestors: {type: function, status: todo}
     and: {type: macro, status: done}
-    "any?": {type: function, status: todo}
+    "any?": {type: function, status: done, note: "core.clj always true"}
     apply: {type: function, status: done}
     areduce: {type: macro, status: todo}
     "array-map": {type: function, status: todo}
@@ -159,7 +159,7 @@ vars:
     "bit-shift-right": {type: function, status: todo}
     "bit-test": {type: function, status: todo}
     "bit-xor": {type: function, status: todo}
-    boolean: {type: function, status: todo}
+    boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
     "boolean?": {type: function, status: done}
     booleans: {type: function, status: todo}
@@ -285,7 +285,7 @@ vars:
     "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
     extenders: {type: function, status: todo}
     "extends?": {type: function, status: todo}
-    "false?": {type: function, status: todo}
+    "false?": {type: function, status: done, note: "core.clj (= x false)"}
     ffirst: {type: function, status: todo}
     "file-seq": {type: function, status: todo}
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
@@ -596,7 +596,7 @@ vars:
     "some->": {type: macro, status: done}
     "some->>": {type: macro, status: done}
     "some-fn": {type: function, status: done, note: "core.clj or-based combinator"}
-    "some?": {type: function, status: todo}
+    "some?": {type: function, status: done, note: "core.clj (not (nil? x))"}
     sort: {type: function, status: done}
     "sort-by": {type: function, status: done}
     "sorted-map": {type: function, status: todo}
@@ -643,7 +643,7 @@ vars:
     transduce: {type: function, status: todo}
     transient: {type: function, status: todo}
     "tree-seq": {type: function, status: todo}
-    "true?": {type: function, status: todo}
+    "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: todo}
     "unchecked-add": {type: function, status: todo}
     "unchecked-add-int": {type: function, status: todo}
@@ -1062,7 +1062,7 @@ vars:
     any: {type: function, status: todo}
     "any-printable": {type: function, status: todo}
     bind: {type: function, status: todo}
-    boolean: {type: function, status: todo}
+    boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     bytes: {type: function, status: todo}
     cat: {type: function, status: todo}
     char: {type: function, status: todo}
