@@ -2,12 +2,12 @@
 
 ## Current State
 
-- Phase: 4b (VM Parity)
+- Phase: 5 (Benchmark System)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 4 complete — plan next phase
+- Current task: T5.1 flake.nix update (done, awaiting nix develop)
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
-- Blockers: none
+- Blockers: nix develop required before Session 2 (T5.2-T5.6)
 
 ## Completed Phases
 

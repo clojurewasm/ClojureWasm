@@ -59,8 +59,12 @@
 
             # Reference implementations (for compatibility testing)
             clojure
-            jdk21
+            jdk25
             babashka
+
+            # Benchmark comparison languages
+            python314
+            ruby_4_0
 
             # Utilities
             gnused
@@ -71,6 +75,9 @@
             echo "ClojureWasm dev environment"
             echo "  Zig:      $(zig version 2>/dev/null || echo 'loading...')"
             echo "  wasmtime: $(wasmtime --version 2>/dev/null || echo 'N/A')"
+            echo "  Java:     $(java --version 2>&1 | head -1 || echo 'N/A')"
+            echo "  Python:   $(python3 --version 2>/dev/null || echo 'N/A')"
+            echo "  Ruby:     $(ruby --version 2>/dev/null || echo 'N/A')"
           '';
         };
       }
