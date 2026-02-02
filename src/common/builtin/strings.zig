@@ -69,6 +69,104 @@ pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = owned };
 }
 
+/// (subs s start), (subs s start end) — returns substring.
+pub fn subsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return error.ArityError;
+    const s = switch (args[0]) {
+        .string => |s| s,
+        else => return error.TypeError,
+    };
+    const start_i = switch (args[1]) {
+        .integer => |i| i,
+        else => return error.TypeError,
+    };
+    if (start_i < 0 or @as(usize, @intCast(start_i)) > s.len) return error.IndexOutOfBounds;
+    const start: usize = @intCast(start_i);
+
+    const end: usize = if (args.len == 3) blk: {
+        const end_i = switch (args[2]) {
+            .integer => |i| i,
+            else => return error.TypeError,
+        };
+        if (end_i < start_i or @as(usize, @intCast(end_i)) > s.len) return error.IndexOutOfBounds;
+        break :blk @intCast(end_i);
+    } else s.len;
+
+    const slice = s[start..end];
+    const owned = try allocator.alloc(u8, slice.len);
+    @memcpy(owned, slice);
+    return Value{ .string = owned };
+}
+
+/// (name x) — returns the name part of a string, symbol, or keyword.
+pub fn nameFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .string => args[0],
+        .keyword => |k| Value{ .string = k.name },
+        .symbol => |s| Value{ .string = s.name },
+        else => error.TypeError,
+    };
+}
+
+/// (namespace x) — returns the namespace part of a symbol or keyword, or nil.
+pub fn namespaceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .keyword => |k| if (k.ns) |ns| Value{ .string = ns } else Value.nil,
+        .symbol => |s| if (s.ns) |ns| Value{ .string = ns } else Value.nil,
+        else => error.TypeError,
+    };
+}
+
+/// (keyword x), (keyword ns name) — coerce to keyword.
+pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        return switch (args[0]) {
+            .keyword => args[0],
+            .string => |s| Value{ .keyword = .{ .name = s, .ns = null } },
+            .symbol => |sym| Value{ .keyword = .{ .name = sym.name, .ns = sym.ns } },
+            else => error.TypeError,
+        };
+    } else if (args.len == 2) {
+        const ns_str = switch (args[0]) {
+            .string => |s| s,
+            .nil => @as(?[]const u8, null),
+            else => return error.TypeError,
+        };
+        const name_str = switch (args[1]) {
+            .string => |s| s,
+            else => return error.TypeError,
+        };
+        return Value{ .keyword = .{ .name = name_str, .ns = ns_str } };
+    }
+    return error.ArityError;
+}
+
+/// (symbol x), (symbol ns name) — coerce to symbol.
+pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        return switch (args[0]) {
+            .symbol => args[0],
+            .string => |s| Value{ .symbol = .{ .name = s, .ns = null } },
+            .keyword => |k| Value{ .symbol = .{ .name = k.name, .ns = k.ns } },
+            else => error.TypeError,
+        };
+    } else if (args.len == 2) {
+        const ns_str = switch (args[0]) {
+            .string => |s| s,
+            .nil => @as(?[]const u8, null),
+            else => return error.TypeError,
+        };
+        const name_str = switch (args[1]) {
+            .string => |s| s,
+            else => return error.TypeError,
+        };
+        return Value{ .symbol = .{ .name = name_str, .ns = ns_str } };
+    }
+    return error.ArityError;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "str",
@@ -84,6 +182,46 @@ pub const builtins = [_]BuiltinDef{
         .func = &prStrFn,
         .doc = "pr to a string, returning it. Prints any object to the string readable.",
         .arglists = "([& xs])",
+        .added = "1.0",
+    },
+    .{
+        .name = "subs",
+        .kind = .runtime_fn,
+        .func = &subsFn,
+        .doc = "Returns the substring of s beginning at start inclusive, and ending at end (defaults to length of string), exclusive.",
+        .arglists = "([s start] [s start end])",
+        .added = "1.0",
+    },
+    .{
+        .name = "name",
+        .kind = .runtime_fn,
+        .func = &nameFn,
+        .doc = "Returns the name String of a string, symbol or keyword.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "namespace",
+        .kind = .runtime_fn,
+        .func = &namespaceFn,
+        .doc = "Returns the namespace String of a symbol or keyword, or nil if not present.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "keyword",
+        .kind = .runtime_fn,
+        .func = &keywordFn,
+        .doc = "Returns a Keyword with the given namespace and name.",
+        .arglists = "([name] [ns name])",
+        .added = "1.0",
+    },
+    .{
+        .name = "symbol",
+        .kind = .runtime_fn,
+        .func = &symbolFn,
+        .doc = "Returns a Symbol with the given namespace and name.",
+        .arglists = "([name] [ns name])",
         .added = "1.0",
     },
 };
@@ -180,4 +318,90 @@ test "pr-str - multi-arg space separated" {
     const result = try prStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.string);
     try testing.expectEqualStrings("1 \"hello\" nil", result.string);
+}
+
+// --- subs tests ---
+
+test "subs with start" {
+    const result = try subsFn(testing.allocator, &.{
+        Value{ .string = "hello world" },
+        Value{ .integer = 6 },
+    });
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("world", result.string);
+}
+
+test "subs with start and end" {
+    const result = try subsFn(testing.allocator, &.{
+        Value{ .string = "hello world" },
+        Value{ .integer = 0 },
+        Value{ .integer = 5 },
+    });
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("hello", result.string);
+}
+
+test "subs out of bounds" {
+    try testing.expectError(error.IndexOutOfBounds, subsFn(testing.allocator, &.{
+        Value{ .string = "hi" },
+        Value{ .integer = 10 },
+    }));
+}
+
+// --- name/namespace tests ---
+
+test "name of keyword" {
+    const result = try nameFn(testing.allocator, &.{Value{ .keyword = .{ .name = "foo", .ns = "bar" } }});
+    try testing.expectEqualStrings("foo", result.string);
+}
+
+test "name of string" {
+    const result = try nameFn(testing.allocator, &.{Value{ .string = "hello" }});
+    try testing.expectEqualStrings("hello", result.string);
+}
+
+test "namespace of keyword with ns" {
+    const result = try namespaceFn(testing.allocator, &.{Value{ .keyword = .{ .name = "foo", .ns = "bar" } }});
+    try testing.expectEqualStrings("bar", result.string);
+}
+
+test "namespace of keyword without ns" {
+    const result = try namespaceFn(testing.allocator, &.{Value{ .keyword = .{ .name = "foo", .ns = null } }});
+    try testing.expect(result == .nil);
+}
+
+// --- keyword/symbol coercion tests ---
+
+test "keyword from string" {
+    const result = try keywordFn(testing.allocator, &.{Value{ .string = "foo" }});
+    try testing.expect(result == .keyword);
+    try testing.expectEqualStrings("foo", result.keyword.name);
+    try testing.expect(result.keyword.ns == null);
+}
+
+test "keyword with ns and name" {
+    const result = try keywordFn(testing.allocator, &.{
+        Value{ .string = "my.ns" },
+        Value{ .string = "foo" },
+    });
+    try testing.expect(result == .keyword);
+    try testing.expectEqualStrings("foo", result.keyword.name);
+    try testing.expectEqualStrings("my.ns", result.keyword.ns.?);
+}
+
+test "symbol from string" {
+    const result = try symbolFn(testing.allocator, &.{Value{ .string = "bar" }});
+    try testing.expect(result == .symbol);
+    try testing.expectEqualStrings("bar", result.symbol.name);
+    try testing.expect(result.symbol.ns == null);
+}
+
+test "symbol with ns and name" {
+    const result = try symbolFn(testing.allocator, &.{
+        Value{ .string = "my.ns" },
+        Value{ .string = "bar" },
+    });
+    try testing.expect(result == .symbol);
+    try testing.expectEqualStrings("bar", result.symbol.name);
+    try testing.expectEqualStrings("my.ns", result.symbol.ns.?);
 }

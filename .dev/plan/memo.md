@@ -4,7 +4,7 @@
 
 - Phase: 6 (Core Library Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T6.5 — String functions (subs, name, namespace, keyword, symbol)
+- Current task: T6.6 — Assoc/update family in core.clj
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none

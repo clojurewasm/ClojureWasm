@@ -383,7 +383,7 @@ vars:
     "keep-indexed": {type: function, status: todo, impl: none}
     key: {type: function, status: todo, impl: none}
     keys: {type: function, status: done, impl: host}
-    keyword: {type: function, status: todo, impl: none}
+    keyword: {type: function, status: done, impl: host}
     "keyword?": {type: function, status: done, impl: host}
     last: {type: function, status: todo, impl: none}
     "lazy-cat": {type: macro, status: todo, impl: none}
@@ -428,8 +428,8 @@ vars:
     "mix-collection-hash": {type: function, status: todo, impl: none}
     mod: {type: function, status: done, impl: intrinsic}
     munge: {type: function, status: todo, impl: none}
-    name: {type: function, status: todo, impl: none}
-    namespace: {type: function, status: todo, impl: none}
+    name: {type: function, status: done, impl: host}
+    namespace: {type: function, status: done, impl: host}
     "namespace-munge": {type: function, status: todo, impl: none}
     "nat-int?": {type: function, status: todo, impl: none}
     "neg-int?": {type: function, status: todo, impl: none}
@@ -628,13 +628,13 @@ vars:
     "string?": {type: function, status: done, impl: host}
     struct: {type: function, status: todo, impl: none}
     "struct-map": {type: function, status: todo, impl: none}
-    subs: {type: function, status: todo, impl: none}
+    subs: {type: function, status: done, impl: host}
     subseq: {type: function, status: todo, impl: none}
     subvec: {type: function, status: todo, impl: none}
     supers: {type: function, status: todo, impl: none}
     "swap!": {type: function, status: done, impl: host, note: "builtin-fn only (D8)"}
     "swap-vals!": {type: function, status: todo, impl: none}
-    symbol: {type: function, status: todo, impl: none}
+    symbol: {type: function, status: done, impl: host}
     "symbol?": {type: function, status: done, impl: host}
     sync: {type: macro, status: todo, impl: none}
     "tagged-literal": {type: function, status: todo, impl: none}

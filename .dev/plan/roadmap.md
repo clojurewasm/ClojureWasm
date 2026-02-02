@@ -210,7 +210,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | 6.2 | Collection queries: empty?, contains?, keys, vals        | task_0052_seq_utilities.md | Merged into T6.1               |
 | 6.3 | Collection builders: hash-set, sorted-map, zipmap        | --                         | New collection construction    |
 | 6.4 | Numeric functions: abs, max, min, quot, rand, rand-int   | task_0053_numeric_fns.md   | Math operations                |
-| 6.5 | String functions: subs, name, namespace, keyword, symbol | --                         | String manipulation + coercion |
+| 6.5 | String functions: subs, name, namespace, keyword, symbol | (in strings.zig)           | String manipulation + coercion |
 
 ### Phase 6b: Core Library Expansion (core.clj)
 
