@@ -384,10 +384,10 @@ high-priority gaps in the core library.
 
 ### Phase 11a: Metadata System
 
-| #    | Task                                          | Archive | Notes                                                   |
-| ---- | --------------------------------------------- | ------- | ------------------------------------------------------- |
-| 11.1 | meta, with-meta, vary-meta, alter-meta!       | --      | Attach/read metadata on collections, Vars, symbols, fns |
-| 11.2 | reset-meta!, IMeta protocol on Value variants | --      | Mutable meta on Vars/atoms; protocol-based dispatch     |
+| #    | Task                                        | Archive                        | Notes                                                   |
+| ---- | ------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| 11.1 | meta, with-meta, vary-meta, alter-meta!     | task_0091_metadata_builtins.md | Attach/read metadata on collections, Vars, symbols, fns |
+| 11.2 | Var as Value variant + Var metadata support | --                             | Var in Value union; alter-meta!/reset-meta! on Vars     |
 
 ### Phase 11b: Function Combinators + Utility
 

@@ -661,3 +661,9 @@
 (defmacro defonce [name expr]
   (list 'when-not (list 'bound? (list 'quote name))
         (list 'def name expr)))
+
+;; Metadata utilities
+
+(defn vary-meta
+  [obj f & args]
+  (with-meta obj (apply f (meta obj) args)))

@@ -409,7 +409,7 @@ vars:
     memoize: {type: function, status: todo}
     merge: {type: function, status: done}
     "merge-with": {type: function, status: done}
-    meta: {type: function, status: todo}
+    meta: {type: function, status: done, note: 'Zig builtin: returns metadata map from collections, fn, atom'}
     "method-sig": {type: function, status: todo}
     methods: {type: function, status: todo}
     min: {type: function, status: done}
@@ -684,7 +684,7 @@ vars:
     "var-get": {type: function, status: todo}
     "var-set": {type: function, status: todo}
     "var?": {type: function, status: todo}
-    "vary-meta": {type: function, status: todo}
+    "vary-meta": {type: function, status: done, note: 'core.clj: (with-meta obj (apply f (meta obj) args))'}
     vec: {type: function, status: done}
     vector: {type: function, status: done}
     "vector-of": {type: function, status: todo}
@@ -704,7 +704,7 @@ vars:
     "with-in-str": {type: macro, status: todo}
     "with-loading-context": {type: macro, status: todo}
     "with-local-vars": {type: macro, status: todo}
-    "with-meta": {type: function, status: todo}
+    "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: todo}
     "with-out-str": {type: macro, status: todo}
     "with-precision": {type: macro, status: todo}
@@ -713,6 +713,14 @@ vars:
     "xml-seq": {type: function, status: todo}
     "zero?": {type: function, status: done}
     zipmap: {type: function, status: done}
+    alter-meta\!:
+      status: done
+      note: 'Zig builtin: mutates atom metadata'
+      type: function
+    reset-meta\!:
+      status: done
+      note: 'Zig builtin: replaces atom metadata'
+      type: function
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

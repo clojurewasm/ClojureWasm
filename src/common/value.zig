@@ -35,6 +35,8 @@ pub const Keyword = struct {
 /// Atom — mutable reference type.
 pub const Atom = struct {
     value: Value,
+    /// Metadata map (mutable via alter-meta! / reset-meta!).
+    meta: ?*Value = null,
 };
 
 /// Discriminator for Fn.proto — bytecode (VM) vs treewalk (Node-based).
@@ -106,6 +108,8 @@ pub const Fn = struct {
     /// Each entry is a *const FnProto (opaque to avoid circular import).
     /// Null for single-arity functions (common case — no overhead).
     extra_arities: ?[]const *const anyopaque = null,
+    /// Metadata map (Clojure IMeta protocol).
+    meta: ?*const Value = null,
 };
 
 /// Runtime value — tagged union representation.

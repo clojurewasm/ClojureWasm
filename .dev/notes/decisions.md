@@ -1195,3 +1195,34 @@ macro_eval_env and predicates.current_env (2 remaining D3 exceptions).
 
 **Impact**: Closes D34 follow-up. 5 dispatchers -> 1 function, 4 module
 vars/fields eliminated, 3 D3 known exceptions removed.
+
+## D37: Metadata System — `?*const Value` Map Approach (T11.1)
+
+**Date**: 2026-02-02
+**Context**: T11.1 — implementing Clojure metadata system
+
+**Decision**: Store metadata as `?*const Value` (pointer to a map Value)
+on all types that support Clojure's IMeta protocol. Collections already
+had this field; added it to Fn and Atom.
+
+**Design choices**:
+
+- Collections (list, vector, map, set): `meta: ?*const Value = null` (immutable)
+- Fn: `meta: ?*const Value = null` (immutable; with-meta returns new copy)
+- Atom: `meta: ?*Value = null` (mutable; alter-meta!/reset-meta! mutate in place)
+- Var: keeps specialized fields (doc, arglists, added, etc.) — no generic meta
+  field added yet. Var is not a Value variant, so alter-meta! on Vars is deferred.
+- Symbol/Keyword: no metadata support (rarely used in Clojure practice)
+
+**Alternatives considered**:
+
+1. **Specialized metadata structs per type** (FnMeta, AtomMeta, etc.):
+   Type-safe but inflexible; doesn't match Clojure's generic map protocol.
+2. **External metadata table** (identity -> meta map): Avoids struct changes
+   but requires identity-based lookup and GC coordination.
+3. **Chosen**: Inline `?*const Value` pointer — zero cost when null,
+   consistent across types, matches Clojure's `(meta obj)` -> map semantics.
+
+**Deferred**: Var as Value variant (T11.2) — needed for `(meta #'var)`
+and `(alter-meta! #'var f args)`. Currently Var is only accessible via
+namespace resolution, not as a first-class Value.

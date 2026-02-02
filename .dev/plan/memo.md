@@ -4,7 +4,7 @@
 
 - Phase: 11 (Metadata System + Core Library IV)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T11.1 — meta, with-meta, vary-meta, alter-meta!
+- Current task: T11.2 — Var as Value variant + Var metadata support
 - Task file: (none)
 - Blockers: none
 
@@ -13,30 +13,27 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### Phase 11 Focus
+### T11.1 Completed
 
-Metadata system is prerequisite for many Clojure idioms. T11.1 adds the
-core metadata builtins: meta, with-meta, vary-meta, alter-meta!
+Metadata system implemented: meta, with-meta, vary-meta (core.clj),
+alter-meta!, reset-meta!. All work on collections, fn_val, and atoms.
 
-### Metadata Design Considerations
+**Deferred**: alter-meta!/reset-meta! on Vars — Var is not a Value variant.
+T11.2 addresses this by adding Var to the Value union.
 
-- Value types that support metadata: PersistentList, PersistentVector,
-  PersistentArrayMap, PersistentHashSet, Symbol, Var, Fn
-- Metadata is a map (PersistentArrayMap typically)
-- with-meta returns a new value with metadata attached (immutable)
-- vary-meta applies a function to the existing metadata
-- alter-meta! mutates metadata on Vars/atoms (mutable reference types)
-- meta returns the metadata map (or nil)
+### T11.2 Considerations
 
-### Implementation Approach
+Var needs to be a Value variant so that `#'some-var` can return a Var
+as a first-class value. This enables:
 
-- Add an optional metadata field to Value types that support it
-- For immutable types (collections, symbols): store metadata as part of the value
-- For mutable types (Var, Atom): metadata is already conceptually part of their state
-- Zig approach: metadata can be a ?\*PersistentArrayMap or ?Value on relevant types
+- `(meta #'some-var)` to return Var metadata as a map
+- `(alter-meta! #'some-var f args)` to mutate Var metadata
+- Var as first-class value (pass to functions, store in collections)
 
-### VM Performance Profile (from Phase 10)
+Current Var fields (doc, arglists, added, etc.) should be exposed
+via `(meta #'var)` as a standard Clojure metadata map.
 
-VM is 4-9x faster for pure computation but slower for HOF-heavy workloads
-due to cross-backend dispatch (VM -> TW -> VM). AOT pipeline (F7) would
-eliminate this overhead but is a larger project for a future phase.
+### Builtin Count
+
+110 builtins registered (was 106, +4: meta, with-meta, alter-meta!, reset-meta!)
+216/702 vars implemented (was 211, +5 including vary-meta in core.clj)
