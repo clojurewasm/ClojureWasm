@@ -317,10 +317,10 @@ Fix VM lifetime bugs, unblock deferred items, and establish VM benchmark baselin
 
 ### Phase 9.5a: VM Fixes
 
-| #     | Task                                 | Archive | Notes                                                                       |
-| ----- | ------------------------------------ | ------- | --------------------------------------------------------------------------- |
-| 9.5.1 | VM evalStringVM fn_val lifetime fix  | --      | compiler.deinit() frees fn objects still referenced by Env (use-after-free) |
-| 9.5.2 | swap! with fn_val (closure dispatch) | --      | F5: swap! only accepts builtin_fn, not user closures                        |
+| #     | Task                                 | Archive                     | Notes                                                                       |
+| ----- | ------------------------------------ | --------------------------- | --------------------------------------------------------------------------- |
+| 9.5.1 | VM evalStringVM fn_val lifetime fix  | task_0082_vm_fn_lifetime.md | compiler.deinit() frees fn objects still referenced by Env (use-after-free) |
+| 9.5.2 | swap! with fn_val (closure dispatch) | --                          | F5: swap! only accepts builtin_fn, not user closures                        |
 
 ### Phase 9.5b: Data Model
 

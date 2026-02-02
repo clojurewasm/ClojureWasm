@@ -31,7 +31,7 @@ Last updated: 2026-02-02 (Phase 9.5 planning — D32)
 | ~~F10~~ | ~~`range` builtin~~                         | ~~Resolved: T6.1~~                                    | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~              | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~  | bench  |
 | ~~F12~~ | ~~`str` fixed 4KB buffer~~                  | ~~Resolved: T7.2 — Writer.Allocating (dynamic)~~      | bench  |
-| F15     | VM evalStringVM fn_val use-after-free       | **Phase 9.5.1 — actively targeted**                   | D32    |
+| ~~F15~~ | ~~VM evalStringVM fn_val use-after-free~~   | ~~Resolved: T9.5.1 — Compiler.detachFnAllocations~~   | D32    |
 | F16     | seq on map (MapEntry)                       | **Phase 9.5.3 — actively targeted**                   | D32    |
 
 ## Phase 4 task priorities

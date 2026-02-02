@@ -74,6 +74,17 @@ pub const Compiler = struct {
         self.locals.deinit(self.allocator);
     }
 
+    /// Detach fn allocations from this compiler so deinit() won't free them.
+    /// Caller takes ownership and is responsible for freeing the returned items.
+    pub fn detachFnAllocations(self: *Compiler) struct {
+        fn_protos: []const *const FnProto,
+        fn_objects: []const *const Fn,
+    } {
+        const protos = self.fn_protos.toOwnedSlice(self.allocator) catch &.{};
+        const objects = self.fn_objects.toOwnedSlice(self.allocator) catch &.{};
+        return .{ .fn_protos = protos, .fn_objects = objects };
+    }
+
     /// Compile a single Node to bytecode.
     pub fn compile(self: *Compiler, n: *const Node) CompileError!void {
         switch (n.*) {

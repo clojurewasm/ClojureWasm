@@ -15,6 +15,7 @@ const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
 const err = @import("error.zig");
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
+const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
 
@@ -118,6 +119,25 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
 
+    // Accumulate fn allocations across forms so def'd fn_vals survive
+    // across Compiler boundaries (fix for use-after-free T9.5.1).
+    var retained_protos: std.ArrayList(*const chunk_mod.FnProto) = .empty;
+    defer {
+        for (retained_protos.items) |proto| {
+            allocator.free(proto.code);
+            allocator.free(proto.constants);
+            allocator.destroy(@constCast(proto));
+        }
+        retained_protos.deinit(allocator);
+    }
+    var retained_fns: std.ArrayList(*const value_mod.Fn) = .empty;
+    defer {
+        for (retained_fns.items) |fn_obj| {
+            allocator.destroy(@constCast(fn_obj));
+        }
+        retained_fns.deinit(allocator);
+    }
+
     var last_value: Value = .nil;
     for (forms) |form| {
         const node = try analyzeForm(allocator, &error_ctx, env, form);
@@ -126,6 +146,17 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         defer compiler.deinit();
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
+
+        // Detach fn allocations before deinit so they survive for later forms
+        const detached = compiler.detachFnAllocations();
+        for (detached.fn_protos) |p| {
+            retained_protos.append(allocator, p) catch return error.CompileError;
+        }
+        if (detached.fn_protos.len > 0) allocator.free(detached.fn_protos);
+        for (detached.fn_objects) |o| {
+            retained_fns.append(allocator, o) catch return error.CompileError;
+        }
+        if (detached.fn_objects.len > 0) allocator.free(detached.fn_objects);
 
         var vm = VM.initWithEnv(allocator, env);
         defer vm.deinit();
@@ -1053,6 +1084,25 @@ test "evalStringVM - multi-arity fn" {
     // Multi-arity: select by argument count
     try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 5)", 5);
     try expectVMEvalInt(alloc, &env, "((fn ([x] x) ([x y] (+ x y))) 3 4)", 7);
+}
+
+test "evalStringVM - def fn then call across forms (T9.5.1)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    // Two separate top-level forms: def creates fn_val in form 1,
+    // form 2 calls it. This crosses Compiler boundaries in evalStringVM.
+    try expectVMEvalInt(alloc, &env, "(def f (fn [x] (+ x 1))) (f 5)", 6);
+
+    // Multiple defs across forms, then cross-call
+    try expectVMEvalInt(alloc, &env,
+        "(def add2 (fn [x] (+ x 2))) (def add3 (fn [x] (+ x 3))) (+ (add2 10) (add3 10))",
+        25,
+    );
 }
 
 // =========================================================================
