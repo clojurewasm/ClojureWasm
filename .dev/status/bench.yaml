@@ -72,54 +72,101 @@ benchmarks:
     category: state
     expected: 10000
     clj_file: "bench/benchmarks/11_atom_swap/bench.clj"
-previous: {}
-latest:
+previous:
   date: "2026-02-02"
-  version: Phase 5 baseline
+  version: Phase 10 VM baseline
   results:
     arith_loop:
       clojurewasm:
-        time_ms: 1021
+        time_ms: 213
         mem_mb: null
     map_filter_reduce:
       clojurewasm:
-        time_ms: 426
+        time_ms: 623
         mem_mb: null
     vector_ops:
       clojurewasm:
-        time_ms: 200
+        time_ms: 133
         mem_mb: null
     fib_recursive:
       clojurewasm:
-        time_ms: 409
+        time_ms: 54
         mem_mb: null
     map_ops:
       clojurewasm:
-        time_ms: 32
+        time_ms: 26
         mem_mb: null
     nqueens:
       clojurewasm:
-        time_ms: 220
+        time_ms: 78
         mem_mb: null
     fib_loop:
       clojurewasm:
-        time_ms: 14
+        time_ms: 10
         mem_mb: null
     list_build:
       clojurewasm:
-        time_ms: 158
+        time_ms: 129
         mem_mb: null
     sieve:
       clojurewasm:
-        time_ms: 89
+        time_ms: 299
         mem_mb: null
     atom_swap:
       clojurewasm:
-        time_ms: 36
+        time_ms: 19
         mem_mb: null
     tak:
       clojurewasm:
-        time_ms: 105
+        time_ms: 22
+        mem_mb: null
+latest:
+  date: "2026-02-02"
+  version: Phase 10 TreeWalk
+  results:
+    arith_loop:
+      clojurewasm:
+        time_ms: 840
+        mem_mb: null
+    map_filter_reduce:
+      clojurewasm:
+        time_ms: 381
+        mem_mb: null
+    vector_ops:
+      clojurewasm:
+        time_ms: 145
+        mem_mb: null
+    fib_recursive:
+      clojurewasm:
+        time_ms: 494
+        mem_mb: null
+    map_ops:
+      clojurewasm:
+        time_ms: 27
+        mem_mb: null
+    nqueens:
+      clojurewasm:
+        time_ms: 214
+        mem_mb: null
+    fib_loop:
+      clojurewasm:
+        time_ms: 11
+        mem_mb: null
+    list_build:
+      clojurewasm:
+        time_ms: 135
+        mem_mb: null
+    sieve:
+      clojurewasm:
+        time_ms: 86
+        mem_mb: null
+    atom_swap:
+      clojurewasm:
+        time_ms: 28
+        mem_mb: null
+    tak:
+      clojurewasm:
+        time_ms: 124
         mem_mb: null
 # Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)
 history:
@@ -132,3 +179,7 @@ history:
       higher_order: {time_ms: 3, note: "dominated by startup"}
   - date: "2026-02-02"
     version: Phase 5 baseline
+  - date: "2026-02-02"
+    version: Phase 10 VM baseline
+  - date: "2026-02-02"
+    version: Phase 10 TreeWalk

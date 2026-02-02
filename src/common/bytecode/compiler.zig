@@ -315,6 +315,18 @@ pub const Compiler = struct {
         try fn_compiler.compile(arity.body);
         try fn_compiler.chunk.emitOp(.ret);
 
+        // Transfer nested fn allocations to parent compiler before deinit frees them.
+        // The constants table may contain .fn_val pointers to these objects.
+        const nested = fn_compiler.detachFnAllocations();
+        for (nested.fn_protos) |p| {
+            self.fn_protos.append(self.allocator, p) catch return error.OutOfMemory;
+        }
+        if (nested.fn_protos.len > 0) self.allocator.free(nested.fn_protos);
+        for (nested.fn_objects) |o| {
+            self.fn_objects.append(self.allocator, o) catch return error.OutOfMemory;
+        }
+        if (nested.fn_objects.len > 0) self.allocator.free(nested.fn_objects);
+
         // Allocate owned copies of code and constants
         const code_copy = self.allocator.dupe(Instruction, fn_compiler.chunk.code.items) catch
             return error.OutOfMemory;

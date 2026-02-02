@@ -351,7 +351,7 @@ higher-order functions. This unblocks 8/11 VM benchmarks.
 | #    | Task                            | Archive                             | Notes                                                                                                                       |
 | ---- | ------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | 10.2 | Unified fn_val proto (F8)       | task_0088_tw_vm_reverse_dispatch.md | TreeWalk→VM reverse dispatch via bytecode_dispatcher callback. Fixes segfault when core.clj HOFs call VM-compiled callbacks |
-| 10.3 | VM benchmark re-run + recording | --                                  | Re-run all 11 benchmarks after fixes, record in bench.yaml                                                                  |
+| 10.3 | VM benchmark re-run + recording | task_0089_vm_bench_rerun.md         | Re-run all 11 benchmarks after fixes, record in bench.yaml. Fixed nested fn use-after-free (D35/F18)                        |
 
 ### Phase 10c: fn_val Dispatch Unification (Refactoring)
 

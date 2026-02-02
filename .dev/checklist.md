@@ -3,12 +3,12 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (Phase 10 — T10.2 done, T10.3 next)
+Last updated: 2026-02-02 (Phase 10 — T10.3 done, T10.4 next)
 
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
-  - **Known exceptions**: macro_eval_env (D15), realize_fn (D27), atom.call_fn (D33), predicates.current_env (T9.5.5) — all module-level, single-thread only. T10.4 で callFnVal に統合予定
+  - **Known exceptions**: macro_eval_env (D15), realize_fn (D27), atom.call_fn (D33), predicates.current_env (T9.5.5) — all module-level, single-thread only. T10.4 will unify into callFnVal
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
   - **Known exceptions**: defmulti, defmethod, lazy-seq — TreeWalk only (D28)
 - [ ] D10: All code in English (identifiers, comments, commits)
@@ -34,6 +34,7 @@ Last updated: 2026-02-02 (Phase 10 — T10.2 done, T10.3 next)
 | ~~F15~~ | ~~VM evalStringVM fn_val use-after-free~~   | ~~Resolved: T9.5.1 — Compiler.detachFnAllocations~~          | D32    |
 | ~~F16~~ | ~~seq on map (MapEntry)~~                   | ~~Resolved: T9.5.3 — seqFn + firstFn/restFn map support~~    | D32    |
 | ~~F17~~ | ~~VM loop/recur wrong results~~             | ~~Resolved: T10.1 — emitLoop used pop instead of pop_under~~ | T9.5.4 |
+| ~~F18~~ | ~~Nested fn use-after-free in compiler~~    | ~~Resolved: T10.3 — detachFnAllocations in compileArity~~    | D35    |
 
 ## Phase 4 task priorities (historical — all complete)
 

@@ -1135,3 +1135,22 @@ tree_walk.zig (bytecode_dispatcher), atom.zig (call_fn), value.zig (realize_fn),
 and analyzer.zig (macroEvalBridge). All do the same thing: call an fn_val with args.
 T10.4 will unify these into a single `callFnVal` entry point and remove Fn.kind
 default footgun.
+
+## D35: Nested fn compilation use-after-free fix
+
+**Context**: T10.3 (VM benchmark re-run). sieve benchmark crashed with
+"switch on corrupt value" when running with VM backend.
+
+**Problem**: `compileArity` in compiler.zig creates a child `fn_compiler` for each
+function body. If the body contains nested fns (e.g., `(fn [x] ...)`), those nested
+fns' FnProto and Fn objects are allocated by `fn_compiler`. The parent copies
+`fn_compiler.chunk.constants` (which contains `.fn_val` pointers to those objects),
+then `fn_compiler.deinit()` frees the objects — use-after-free.
+
+**Fix**: Before `fn_compiler.deinit()`, call `detachFnAllocations()` on the child
+compiler and transfer all nested fn_protos/fn_objects to the parent compiler's
+tracking lists. The parent (or `evalStringVM`) then manages their lifetime.
+
+**File**: `src/common/bytecode/compiler.zig` (compileArity)
+
+**Impact**: Fixes all VM benchmarks involving defn + nested closures (sieve, etc.).
