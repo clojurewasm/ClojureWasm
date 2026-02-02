@@ -533,6 +533,32 @@
   (fn [x]
     (f (if (nil? x) default x))))
 
+;; Imperative iteration
+
+(defmacro while [test & body]
+  `(loop []
+     (when ~test
+       ~@body
+       (recur))))
+
+(defmacro doseq [bindings & body]
+  (let [sym (first bindings)
+        coll (first (rest bindings))]
+    `(loop [s# (seq ~coll)]
+       (when s#
+         (let [~sym (first s#)]
+           ~@body)
+         (recur (next s#))))))
+
+(defn dorun [coll]
+  (loop [s (seq coll)]
+    (when s
+      (recur (next s)))))
+
+(defn doall [coll]
+  (dorun coll)
+  coll)
+
 ;; Exception helpers
 
 (defn ex-info

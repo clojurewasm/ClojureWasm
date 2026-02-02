@@ -286,11 +286,11 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 9c: Control Flow + Utility Macros
 
-| #    | Task                          | Archive | Notes                  |
-| ---- | ----------------------------- | ------- | ---------------------- |
-| 9.10 | while, doseq, doall, dorun    | --      | Imperative iteration   |
-| 9.11 | case, condp, declare, defonce | --      | Missing control macros |
-| 9.12 | delay, force, realized?       | --      | Delayed evaluation     |
+| #    | Task                          | Archive                           | Notes                  |
+| ---- | ----------------------------- | --------------------------------- | ---------------------- |
+| 9.10 | while, doseq, doall, dorun    | task_0076_imperative_iteration.md | Imperative iteration   |
+| 9.11 | case, condp, declare, defonce | --                                | Missing control macros |
+| 9.12 | delay, force, realized?       | --                                | Delayed evaluation     |
 
 ### Phase 9d: Misc Builtins
 

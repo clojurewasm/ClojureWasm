@@ -251,9 +251,9 @@ vars:
     "dissoc!": {type: function, status: todo}
     distinct: {type: function, status: done}
     "distinct?": {type: function, status: todo}
-    doall: {type: function, status: todo}
-    dorun: {type: function, status: todo}
-    doseq: {type: macro, status: todo}
+    doall: {type: function, status: done, note: "core.clj dorun+return"}
+    dorun: {type: function, status: done, note: "core.clj loop over seq"}
+    doseq: {type: macro, status: done, note: "core.clj single-binding loop"}
     dosync: {type: macro, status: todo}
     dotimes: {type: macro, status: done}
     doto: {type: macro, status: done}
@@ -698,7 +698,7 @@ vars:
     "when-let": {type: macro, status: done}
     "when-not": {type: macro, status: done}
     "when-some": {type: macro, status: todo}
-    while: {type: macro, status: todo}
+    while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: todo}
     "with-bindings*": {type: function, status: todo}
     "with-in-str": {type: macro, status: todo}

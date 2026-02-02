@@ -2188,6 +2188,77 @@ test "core.clj - fnil" {
     try std.testing.expectEqual(Value{ .integer = 6 }, r2);
 }
 
+test "core.clj - doseq" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // doseq iterates for side effects, returns nil
+    const result = try evalString(alloc, &env,
+        \\(let [a (atom 0)]
+        \\  (doseq [x [1 2 3]]
+        \\    (swap! a + x))
+        \\  (deref a))
+    );
+    try std.testing.expectEqual(Value{ .integer = 6 }, result);
+}
+
+test "core.clj - doall" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // doall forces lazy seq and returns it
+    const result = try evalString(alloc, &env, "(doall (map inc [1 2 3]))");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
+}
+
+test "core.clj - dorun" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // dorun walks seq, returns nil
+    const result = try evalString(alloc, &env, "(dorun (map inc [1 2 3]))");
+    try std.testing.expectEqual(Value.nil, result);
+}
+
+test "core.clj - while" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // while loop with atom — use builtin + for swap!
+    const result = try evalString(alloc, &env,
+        \\(let [a (atom 0)]
+        \\  (while (< (deref a) 5)
+        \\    (swap! a + 1))
+        \\  (deref a))
+    );
+    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk
