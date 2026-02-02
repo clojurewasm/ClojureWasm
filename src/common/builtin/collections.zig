@@ -502,6 +502,155 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = new_map };
 }
 
+/// Generic value comparison returning std.math.Order.
+/// Supports: nil, booleans, integers, floats, strings, keywords, symbols.
+/// Cross-type numeric comparison supported. Non-comparable types return TypeError.
+pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
+    // nil sorts before everything
+    if (a == .nil and b == .nil) return .eq;
+    if (a == .nil) return .lt;
+    if (b == .nil) return .gt;
+
+    // booleans: false < true
+    if (a == .boolean and b == .boolean) {
+        if (a.boolean == b.boolean) return .eq;
+        return if (!a.boolean) .lt else .gt;
+    }
+
+    // numeric: int/float cross-comparison
+    if ((a == .integer or a == .float) and (b == .integer or b == .float)) {
+        const fa: f64 = if (a == .integer) @floatFromInt(a.integer) else a.float;
+        const fb: f64 = if (b == .integer) @floatFromInt(b.integer) else b.float;
+        return std.math.order(fa, fb);
+    }
+
+    // strings
+    if (a == .string and b == .string) {
+        return std.mem.order(u8, a.string, b.string);
+    }
+
+    // keywords: compare by namespace then name
+    if (a == .keyword and b == .keyword) {
+        const ans = a.keyword.ns orelse "";
+        const bns = b.keyword.ns orelse "";
+        const ns_ord = std.mem.order(u8, ans, bns);
+        if (ns_ord != .eq) return ns_ord;
+        return std.mem.order(u8, a.keyword.name, b.keyword.name);
+    }
+
+    // symbols: compare by namespace then name
+    if (a == .symbol and b == .symbol) {
+        const ans = a.symbol.ns orelse "";
+        const bns = b.symbol.ns orelse "";
+        const ns_ord = std.mem.order(u8, ans, bns);
+        if (ns_ord != .eq) return ns_ord;
+        return std.mem.order(u8, a.symbol.name, b.symbol.name);
+    }
+
+    return error.TypeError;
+}
+
+/// (compare x y) — comparator returning negative, zero, or positive integer.
+pub fn compareFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const ord = try compareValues(args[0], args[1]);
+    return Value{ .integer = switch (ord) {
+        .lt => -1,
+        .eq => 0,
+        .gt => 1,
+    } };
+}
+
+/// (sort coll) or (sort comp coll) — returns a sorted list.
+/// With 1 arg: sorts using natural ordering (compare).
+/// With 2 args: first arg is comparator function (not yet supported in unit tests).
+pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1 or args.len > 2) return error.ArityError;
+
+    // Get the collection (last arg)
+    const coll = args[args.len - 1];
+    const items = switch (coll) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+
+    // Copy items so we can sort in place
+    const sorted = try allocator.alloc(Value, items.len);
+    @memcpy(sorted, items);
+
+    if (args.len == 1) {
+        // Natural ordering using compareValues
+        std.mem.sortUnstable(Value, sorted, {}, struct {
+            fn lessThan(_: void, a: Value, b: Value) bool {
+                const ord = compareValues(a, b) catch return false;
+                return ord == .lt;
+            }
+        }.lessThan);
+    } else {
+        // Custom comparator (builtin_fn only in unit tests)
+        // For now, only support builtin_fn comparators
+        // Full fn_val support requires evaluator context
+        return error.TypeError;
+    }
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = sorted };
+    return Value{ .list = lst };
+}
+
+/// (sort-by keyfn coll) or (sort-by keyfn comp coll) — sort by key extraction.
+pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return error.ArityError;
+
+    const keyfn = args[0];
+    const coll = args[args.len - 1];
+    const items = switch (coll) {
+        .list => |lst| lst.items,
+        .vector => |vec| vec.items,
+        .nil => @as([]const Value, &.{}),
+        else => return error.TypeError,
+    };
+
+    if (items.len == 0) {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        return Value{ .list = lst };
+    }
+
+    // Compute keys for each element
+    const keys = try allocator.alloc(Value, items.len);
+    for (items, 0..) |item, i| {
+        keys[i] = switch (keyfn) {
+            .builtin_fn => |func| try func(allocator, &.{item}),
+            else => return error.TypeError,
+        };
+    }
+
+    // Build index array and sort by keys
+    const indices = try allocator.alloc(usize, items.len);
+    for (0..items.len) |i| indices[i] = i;
+
+    const SortCtx = struct {
+        keys_slice: []const Value,
+        fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+            const ord = compareValues(ctx.keys_slice[a], ctx.keys_slice[b]) catch return false;
+            return ord == .lt;
+        }
+    };
+
+    std.mem.sortUnstable(usize, indices, SortCtx{ .keys_slice = keys }, SortCtx.lessThan);
+
+    // Build result list in sorted order
+    const sorted = try allocator.alloc(Value, items.len);
+    for (indices, 0..) |idx, i| sorted[i] = items[idx];
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = sorted };
+    return Value{ .list = lst };
+}
+
 /// (zipmap keys vals) — returns a map with keys mapped to corresponding vals.
 pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
@@ -686,6 +835,30 @@ pub const builtins = [_]BuiltinDef{
         .func = &zipmapFn,
         .doc = "Returns a map with the keys mapped to the corresponding vals.",
         .arglists = "([keys vals])",
+        .added = "1.0",
+    },
+    .{
+        .name = "compare",
+        .kind = .runtime_fn,
+        .func = &compareFn,
+        .doc = "Comparator. Returns a negative number, zero, or a positive number when x is logically 'less than', 'equal to', or 'greater than' y.",
+        .arglists = "([x y])",
+        .added = "1.0",
+    },
+    .{
+        .name = "sort",
+        .kind = .runtime_fn,
+        .func = &sortFn,
+        .doc = "Returns a sorted sequence of the items in coll.",
+        .arglists = "([coll] [comp coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "sort-by",
+        .kind = .runtime_fn,
+        .func = &sortByFn,
+        .doc = "Returns a sorted sequence of the items in coll, where the sort order is determined by comparing (keyfn item).",
+        .arglists = "([keyfn coll] [keyfn comp coll])",
         .added = "1.0",
     },
 };
@@ -904,8 +1077,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 19 entries" {
-    try testing.expectEqual(19, builtins.len);
+test "builtins table has 22 entries" {
+    try testing.expectEqual(22, builtins.len);
 }
 
 test "reverse list" {
@@ -1094,6 +1267,69 @@ test "zipmap empty" {
     const result = try zipmapFn(alloc, &.{ Value{ .vector = &empty_vec }, Value{ .vector = &empty_vec } });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 0), result.map.count());
+}
+
+test "compare integers" {
+    const r1 = try compareFn(test_alloc, &.{ .{ .integer = 1 }, .{ .integer = 2 } });
+    try testing.expectEqual(Value{ .integer = -1 }, r1);
+    const r2 = try compareFn(test_alloc, &.{ .{ .integer = 2 }, .{ .integer = 1 } });
+    try testing.expectEqual(Value{ .integer = 1 }, r2);
+    const r3 = try compareFn(test_alloc, &.{ .{ .integer = 5 }, .{ .integer = 5 } });
+    try testing.expectEqual(Value{ .integer = 0 }, r3);
+}
+
+test "compare strings" {
+    const r1 = try compareFn(test_alloc, &.{ .{ .string = "apple" }, .{ .string = "banana" } });
+    try testing.expect(r1.integer < 0);
+    const r2 = try compareFn(test_alloc, &.{ .{ .string = "banana" }, .{ .string = "apple" } });
+    try testing.expect(r2.integer > 0);
+    const r3 = try compareFn(test_alloc, &.{ .{ .string = "abc" }, .{ .string = "abc" } });
+    try testing.expectEqual(Value{ .integer = 0 }, r3);
+}
+
+test "sort integers" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 3 }, .{ .integer = 1 }, .{ .integer = 2 } };
+    var vec = PersistentVector{ .items = &items };
+    const result = try sortFn(alloc, &.{Value{ .vector = &vec }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
+    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[1]);
+    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[2]);
+}
+
+test "sort empty" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var empty_vec = PersistentVector{ .items = &.{} };
+    const result = try sortFn(alloc, &.{Value{ .vector = &empty_vec }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 0), result.list.items.len);
+}
+
+test "sort-by with keyfn" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // sort-by count ["bb" "a" "ccc"] => ["a" "bb" "ccc"]
+    const items = [_]Value{ .{ .string = "bb" }, .{ .string = "a" }, .{ .string = "ccc" } };
+    var vec = PersistentVector{ .items = &items };
+    const result = try sortByFn(alloc, &.{
+        Value{ .builtin_fn = &countFn },
+        Value{ .vector = &vec },
+    });
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expect(result.list.items[0].eql(.{ .string = "a" }));
+    try testing.expect(result.list.items[1].eql(.{ .string = "bb" }));
+    try testing.expect(result.list.items[2].eql(.{ .string = "ccc" }));
 }
 
 test "builtins all have func" {

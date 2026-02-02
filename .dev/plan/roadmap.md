@@ -270,7 +270,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | #   | Task                                    | Archive                   | Notes                                          |
 | --- | --------------------------------------- | ------------------------- | ---------------------------------------------- |
 | 9.1 | merge, merge-with, zipmap               | task_0068_merge_zipmap.md | Map merging — very high frequency              |
-| 9.2 | sort, sort-by, compare                  | --                        | Sorting — needs Zig-level comparator           |
+| 9.2 | sort, sort-by, compare                  | task_0069_sort_compare.md | Sorting — needs Zig-level comparator           |
 | 9.3 | vec, set, into (improved), list\*       | --                        | Type coercion — used everywhere                |
 | 9.4 | meta, with-meta, vary-meta, alter-meta! | --                        | Metadata system — prerequisite for many things |
 

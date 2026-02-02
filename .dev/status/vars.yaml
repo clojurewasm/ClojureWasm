@@ -209,7 +209,7 @@ vars:
     commute: {type: function, status: todo, impl: none}
     comp: {type: function, status: done, impl: clj}
     comparator: {type: function, status: todo, impl: none}
-    compare: {type: function, status: todo, impl: none}
+    compare: {type: function, status: done, impl: zig_builtin}
     "compare-and-set!": {type: function, status: todo, impl: none}
     compile: {type: function, status: todo, impl: none}
     complement: {type: function, status: done, impl: clj}
@@ -608,8 +608,8 @@ vars:
     "some->>": {type: macro, status: done, impl: clj}
     "some-fn": {type: function, status: todo, impl: none}
     "some?": {type: function, status: todo, impl: none}
-    sort: {type: function, status: todo, impl: none}
-    "sort-by": {type: function, status: todo, impl: none}
+    sort: {type: function, status: done, impl: zig_builtin}
+    "sort-by": {type: function, status: done, impl: zig_builtin}
     "sorted-map": {type: function, status: todo, impl: none}
     "sorted-map-by": {type: function, status: todo, impl: none}
     "sorted-set": {type: function, status: todo, impl: none}

@@ -4,7 +4,7 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.2 sort, sort-by, compare
+- Current task: T9.3 vec, set, into (improved), list\*
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
