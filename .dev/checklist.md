@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (Phase 11 — T11.1 done, T11.2 next)
+Last updated: 2026-02-02 (Phase 11 — T11.1 done, T11.1b next)
 
 ## Invariants (always enforce)
 
@@ -27,6 +27,10 @@ Last updated: 2026-02-02 (Phase 11 — T11.1 done, T11.2 next)
 | ~~F8~~  | ~~TreeWalk→VM reverse dispatch~~            | ~~Resolved: T10.2 — bytecodeCallBridge in bootstrap.zig~~    | D22    |
 | F13     | VM opcodes for defmulti/defmethod           | VM-only mode needs multimethod dispatch                      | D28    |
 | F14     | VM opcodes for lazy-seq/realize             | VM-only mode needs lazy evaluation                           | D28    |
+| F19     | Reader input validation (depth/size limits) | nREPL public or external input acceptance (T11.1b)           | SS14   |
+| F20     | Safe point GC design                        | Real GC (F2) implementation start                            | SS5    |
+| F21     | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass            | SS5    |
+| F22     | compat_test.yaml introduction               | SCI/upstream test mass porting (Phase 12b)                   | SS10   |
 | ~~F9~~  | ~~`empty?` builtin~~                        | ~~Resolved: T6.1~~                                           | bench  |
 | ~~F10~~ | ~~`range` builtin~~                         | ~~Resolved: T6.1~~                                           | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~              | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~         | bench  |

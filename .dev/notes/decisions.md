@@ -1,7 +1,7 @@
 # Design Decisions
 
 Key design decisions for ClojureWasm production version.
-Each decision references future.md sections and Beta lessons.
+Each decision references .dev/future.md sections and Beta lessons.
 
 These will eventually be promoted to formal ADRs in `docs/adr/` at release time.
 
@@ -12,7 +12,7 @@ These will eventually be promoted to formal ADRs in `docs/adr/` at release time.
 **Decision**: Start with a standard Zig tagged union for Value. Defer NaN boxing
 to a later optimization phase.
 
-**Rationale** (future.md SS3, SS5, SS7):
+**Rationale** (.dev/future.md SS3, SS5, SS7):
 
 - NaN boxing is a native-route optimization that doesn't apply to wasm_rt
 - Getting correctness right with a simple tagged union is easier to debug
@@ -32,7 +32,7 @@ becomes a Phase 4 task with measurable benchmarks before/after.
 **Decision**: Start with ArenaAllocator + no-op GC (allocate only, bulk free at
 program exit). Implement real GC when memory pressure testing demands it.
 
-**Rationale** (future.md SS5):
+**Rationale** (.dev/future.md SS5):
 
 - Beta's GC lessons (fixup exhaustiveness, safe point, deep clone) are complex
 - Getting Reader/Analyzer/VM correct without GC interference reduces bug surface
@@ -52,7 +52,7 @@ usage exceeding reasonable bounds for test workloads.
 **Decision**: VM is an explicit struct instance passed as parameter. No global
 or threadlocal state anywhere.
 
-**Rationale** (future.md SS15.5):
+**Rationale** (.dev/future.md SS15.5):
 
 - Beta used 8 threadlocal variables in defs.zig, making embedding impossible
 - Instantiated VM enables: multiple VMs in one process, library embedding mode,
@@ -205,7 +205,7 @@ fine enough that programmatic handling (`catch SyntaxError`) is meaningful.
 **Decision**: Special forms are defined in a comptime array of BuiltinDef,
 not as string comparisons in if-else chains.
 
-**Rationale** (future.md SS10):
+**Rationale** (.dev/future.md SS10):
 
 - Beta had special forms as hardcoded string comparisons in analyze.zig
 - comptime table enables: exhaustiveness checking, automatic `(doc if)` support,
@@ -222,7 +222,7 @@ not as string comparisons in if-else chains.
 **Decision**: The AOT pipeline (core.clj -> bytecode -> @embedFile) is a Phase 3
 goal. Phase 1-2 uses Zig-only builtins to get the system running.
 
-**Rationale** (future.md SS9.6):
+**Rationale** (.dev/future.md SS9.6):
 
 - AOT pipeline requires a working Compiler + VM first (chicken-and-egg)
 - Beta proved that all-Zig builtins work (545 functions)
@@ -243,7 +243,7 @@ goal. Phase 1-2 uses Zig-only builtins to get the system running.
 **Decision**: Implement TreeWalk evaluator alongside VM from Phase 2.
 Wire --compare mode immediately.
 
-**Rationale** (future.md SS9.2):
+**Rationale** (.dev/future.md SS9.2):
 
 - Beta's --compare mode was "the most effective bug-finding tool"
 - TreeWalk is simpler to implement correctly (direct Node -> Value)
@@ -270,7 +270,7 @@ produce the same result. The Compiler may emit direct opcodes for performance
 
 ---
 
-## D7: Directory Structure — future.md SS17
+## D7: Directory Structure — .dev/future.md SS17
 
 **Decision**: Follow SS17 directory layout exactly.
 
@@ -318,7 +318,7 @@ fields (macro, dynamic) and vars.yaml `note`.
 **Decision**: Start with array-based collections (like Beta), add persistent
 data structures later as an optimization.
 
-**Rationale** (future.md SS9.5):
+**Rationale** (.dev/future.md SS9.5):
 
 - Beta's ArrayList-based Vector/Map worked for correctness
 - Persistent data structures (HAMT, RRB-Tree) are complex and interact with GC
@@ -334,7 +334,7 @@ so the backing implementation can be swapped without API changes.
 **Decision**: All source code, comments, commit messages, PR descriptions,
 and documentation are in English.
 
-**Rationale** (future.md SS0, CLAUDE.md):
+**Rationale** (.dev/future.md SS0, CLAUDE.md):
 
 - OSS readiness from day one
 - Beta used Japanese comments/commits, which limited accessibility
@@ -365,7 +365,7 @@ not per-Var binding stacks.
 redesigning this to either per-Var stacks or a concurrent frame structure.
 This is acceptable since Wasm is the primary target.
 
-**References**: future.md SS15.5, D3
+**References**: .dev/future.md SS15.5, D3
 
 ---
 
@@ -585,7 +585,7 @@ execution bridge. fn_val macros are executed through a `macro_eval_fn` callback.
 ## D16: Directory Structure Revision (T4.0)
 
 **Decision**: Revise the project directory structure to match the dual-track
-architecture described in future.md SS8/SS17.
+architecture described in .dev/future.md SS8/SS17.
 
 **Key changes from Phase 1-3 layout**:
 

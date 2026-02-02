@@ -17,7 +17,7 @@ ClojureWasm needs a runtime Value representation. Two main strategies exist:
    small values, and enables faster dispatch. However, it only benefits
    the native track (Wasm has its own typed value model).
 
-The production design (future.md SS5, SS7) specifies NaN boxing for native
+The production design (.dev/future.md SS5, SS7) specifies NaN boxing for native
 and tagged union for wasm_rt, selectable via comptime. The question is
 when to introduce NaN boxing.
 
@@ -57,5 +57,5 @@ suite are stable.
 
 ## References
 
-- future.md SS3, SS5, SS7 (Value representation, GC, dual-track)
+- .dev/future.md SS3, SS5, SS7 (Value representation, GC, dual-track)
 - .dev/notes/decisions.md D1

@@ -3,7 +3,7 @@
 Full-scratch Clojure implementation in Zig. Targeting behavioral compatibility (black-box).
 
 Reference implementation: ClojureWasmBeta repository (via add-dir)
-Design document: ClojureWasmBeta's docs/future.md
+Design document: .dev/future.md
 
 Current state: see .dev/plan/memo.md
 
@@ -158,9 +158,9 @@ When testing expressions containing `!` or `?`:
 
 Production version is a full redesign from Beta. Key changes:
 
-- Instantiated VM (no threadlocal) -> future.md SS15.5
-- GcStrategy trait for GC abstraction -> future.md SS5 (currently arena stub; real GC deferred)
-- BuiltinDef with metadata (doc, arglists, added) -> future.md SS10
+- Instantiated VM (no threadlocal) -> .dev/future.md SS15
+- GcStrategy trait for GC abstraction -> .dev/future.md SS5 (currently arena stub; real GC deferred)
+- BuiltinDef with metadata (doc, arglists, added) -> .dev/future.md SS10
 - core.clj loaded at startup via read+eval (AOT @embedFile pipeline deferred to Phase 4)
 - Design decisions recorded in `.dev/notes/decisions.md` (ADR in docs/adr/ has one entry)
 

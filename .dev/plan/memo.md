@@ -4,7 +4,7 @@
 
 - Phase: 11 (Metadata System + Core Library IV)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T11.2 — Var as Value variant + Var metadata support
+- Current task: T11.1b — Reader input validation (depth/size limits)
 - Task file: (none)
 - Blockers: none
 
@@ -13,25 +13,34 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T11.1 Completed
+### T11.1b Background
 
-Metadata system implemented: meta, with-meta, vary-meta (core.clj),
-alter-meta!, reset-meta!. All work on collections, fn_val, and atoms.
+nREPL server (Phase 7c) is publicly accessible via TCP. Without Reader
+input limits, malicious input can cause OOM or stack overflow:
 
-**Deferred**: alter-meta!/reset-meta! on Vars — Var is not a Value variant.
-T11.2 addresses this by adding Var to the Value union.
+- Deeply nested forms: `(((((((...))))))` — stack overflow in Reader
+- Huge string literals: `"<1MB string>"` — memory exhaustion
+- Massive collection literals: `[1 2 3 ... 100000]` — allocation pressure
 
-### T11.2 Considerations
+See .dev/future.md SS14.3 for the design:
 
-Var needs to be a Value variant so that `#'some-var` can return a Var
-as a first-class value. This enables:
+| Limit                    | Default | Config Flag           |
+| ------------------------ | ------- | --------------------- |
+| Nesting depth limit      | 1024    | `--max-depth`         |
+| String literal size      | 1MB     | `--max-string-size`   |
+| Collection literal count | 100,000 | `--max-literal-count` |
+| Source file size         | 10MB    | `--max-file-size`     |
 
-- `(meta #'some-var)` to return Var metadata as a map
-- `(alter-meta! #'some-var f args)` to mutate Var metadata
-- Var as first-class value (pass to functions, store in collections)
+Implementation approach: Add depth/size tracking to Reader. Return clear
+error messages (not panic) when limits are exceeded.
 
-Current Var fields (doc, arglists, added, etc.) should be exposed
-via `(meta #'var)` as a standard Clojure metadata map.
+### T11.2 Additional Requirements
+
+When implementing T11.2 (Var as Value variant), include:
+
+- comptime test verifying no `else => {}` exists in critical Value switch
+  statements (SS3: fixup verification institutionalization)
+- This prevents silent breakage when new Value variants are added
 
 ### Builtin Count
 

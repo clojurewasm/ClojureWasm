@@ -2,21 +2,21 @@
 
 ## Overview
 
-Phases 1-3 of the ClojureWasm production version, based on future.md SS19.
+Phases 1-3 of the ClojureWasm production version, based on .dev/future.md SS19.
 Goal: Reader + Analyzer + Native VM + core builtins, producing a system that
 can evaluate basic Clojure expressions with `--compare` mode.
 
 ## References
 
-- future.md SS1 (Wasm InterOp: wasm/fn, WIT, Component Model)
-- future.md SS2 (Phase 2: Native VM)
-- future.md SS3 (Phase 3: Builtin + core.clj AOT)
-- future.md SS4 (WIT type mapping)
-- future.md SS5 (GC modular design)
-- future.md SS8 (architecture, directory structure)
-- future.md SS9 (Beta lessons)
-- future.md SS10 (BuiltinDef, metadata — VarKind removed in D31)
-- future.md SS17 (directory structure — wasm/ file layout)
+- .dev/future.md SS1 (Wasm InterOp: wasm/fn, WIT, Component Model)
+- .dev/future.md SS2 (Phase 2: Native VM)
+- .dev/future.md SS3 (Phase 3: Builtin + core.clj AOT)
+- .dev/future.md SS4 (WIT type mapping)
+- .dev/future.md SS5 (GC modular design)
+- .dev/future.md SS8 (architecture, directory structure)
+- .dev/future.md SS9 (Beta lessons)
+- .dev/future.md SS10 (BuiltinDef, metadata — VarKind removed in D31)
+- .dev/future.md SS17 (directory structure — wasm/ file layout)
 - Beta docs/agent_guide_en.md (wasm/ file structure detail)
 - Beta src/reader/ (tokenizer.zig 832L, reader.zig 1134L, form.zig 264L)
 - Beta src/analyzer/ (analyze.zig 5355L, node.zig 605L)
@@ -384,10 +384,11 @@ high-priority gaps in the core library.
 
 ### Phase 11a: Metadata System
 
-| #    | Task                                        | Archive                        | Notes                                                   |
-| ---- | ------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
-| 11.1 | meta, with-meta, vary-meta, alter-meta!     | task_0091_metadata_builtins.md | Attach/read metadata on collections, Vars, symbols, fns |
-| 11.2 | Var as Value variant + Var metadata support | --                             | Var in Value union; alter-meta!/reset-meta! on Vars     |
+| #     | Task                                        | Archive                        | Notes                                                        |
+| ----- | ------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| 11.1  | meta, with-meta, vary-meta, alter-meta!     | task_0091_metadata_builtins.md | Attach/read metadata on collections, Vars, symbols, fns      |
+| 11.1b | Reader input validation (depth/size limits) | --                             | SS14: Prevent OOM/stack overflow with nREPL publicly exposed |
+| 11.2  | Var as Value variant + Var metadata support | --                             | Var in Value union; alter-meta!/reset-meta! on Vars          |
 
 ### Phase 11b: Function Combinators + Utility
 
@@ -462,6 +463,33 @@ the two phases.
 **When to plan**: After Phase 11 completes, set memo.md to
 "phase planning needed" and reference this section.
 
+#### Dual Test Strategy (SCI + Clojure Upstream)
+
+Both-side testing provides stronger bug discovery than either alone:
+
+| Source         | Characteristics                 | Conversion Method                      |
+| -------------- | ------------------------------- | -------------------------------------- |
+| SCI            | Low Java contamination, ~4K LOC | Tier 1 auto-convert (eval\* -> direct) |
+| Clojure native | Heavy Java InterOp, ~14.3K LOC  | Read test intent, hand-port sans Java  |
+
+- SCI: Apply automatic conversion rules -> triage non-working tests
+- Clojure upstream: Read tests, create equivalent Java-free tests by hand
+- Test tracking: introduce `compat_test.yaml` at Phase 12b
+
+```yaml
+# .dev/status/compat_test.yaml (Phase 12b)
+tests:
+  sci/core_test:
+    test-eval:
+      status: pass | fail | skip | pending
+      source: sci
+  clojure/core_test:
+    test-assoc:
+      status: pass | fail | skip | manual-port
+      source: clojure
+      note: "Java HashMap removed, uses PersistentArrayMap"
+```
+
 ### IO / System Namespace Strategy
 
 When implementing IO and system functionality, decide on namespace design:
@@ -473,7 +501,7 @@ When implementing IO and system functionality, decide on namespace design:
   Could also support both (alias one to the other). Decide when implementing.
 - **System**: `System/getenv`, `System/nanoTime` etc. can work via `tryJavaInterop` routing
   or a `clojure.system` namespace. Decide when implementing.
-- **Reference**: future.md SS11 (Java Interop exclusion and compatibility aliases)
+- **Reference**: .dev/future.md SS11 (Java Interop exclusion and compatibility aliases)
 
 Details deferred — decide architecture when the IO/system phase is planned.
 
@@ -492,5 +520,5 @@ Details deferred — decide architecture when the IO/system phase is planned.
 | 9 (a-d)   | 15      | Complete        | Core library expansion III |
 | 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
 | 10 (a-c)  | 4       | Complete        | VM correctness + interop   |
-| 11 (a-d)  | 6       | Planned         | Metadata + core lib IV     |
-| **Total** | **115** | **94 archived** |                            |
+| 11 (a-d)  | 7       | Planned         | Metadata + core lib IV     |
+| **Total** | **116** | **94 archived** |                            |
