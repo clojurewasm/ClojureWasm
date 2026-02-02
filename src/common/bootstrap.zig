@@ -1560,6 +1560,94 @@ test "core.clj - keys and vals" {
     try expectEvalInt(alloc, &env, "(reduce + 0 (vals {:a 1 :b 2}))", 3);
 }
 
+test "core.clj - partition" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (partition 2 [1 2 3 4 5]))", 2);
+    try expectEvalInt(alloc, &env, "(count (first (partition 2 [1 2 3 4])))", 2);
+}
+
+test "core.clj - group-by" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (group-by even? [1 2 3 4 5]))", 2);
+}
+
+test "core.clj - flatten" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (flatten [[1 2] [3 [4 5]]]))", 5);
+    try expectEvalInt(alloc, &env, "(first (flatten [[1 2] [3]]))", 1);
+}
+
+test "core.clj - interleave" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (interleave [1 2 3] [4 5 6]))", 6);
+    try expectEvalInt(alloc, &env, "(first (interleave [1 2] [3 4]))", 1);
+}
+
+test "core.clj - interpose" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (interpose 0 [1 2 3]))", 5);
+}
+
+test "core.clj - distinct" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (distinct [1 2 1 3 2]))", 3);
+}
+
+test "core.clj - frequencies" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(get (frequencies [1 1 2 3 3 3]) 3)", 3);
+    try expectEvalInt(alloc, &env, "(count (frequencies [1 2 3]))", 3);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

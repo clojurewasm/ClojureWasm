@@ -260,7 +260,7 @@ vars:
     "disj!": {type: function, status: todo, impl: none}
     dissoc: {type: function, status: todo, impl: none}
     "dissoc!": {type: function, status: todo, impl: none}
-    distinct: {type: function, status: todo, impl: none}
+    distinct: {type: function, status: done, impl: clj}
     "distinct?": {type: function, status: todo, impl: none}
     doall: {type: function, status: todo, impl: none}
     dorun: {type: function, status: todo, impl: none}
@@ -308,7 +308,7 @@ vars:
     "find-protocol-method": {type: function, status: todo, impl: none}
     "find-var": {type: function, status: todo, impl: none}
     first: {type: function, status: done, impl: host}
-    flatten: {type: function, status: todo, impl: none}
+    flatten: {type: function, status: done, impl: clj}
     float: {type: function, status: todo, impl: none}
     "float-array": {type: function, status: todo, impl: none}
     "float?": {type: function, status: done, impl: host}
@@ -321,7 +321,7 @@ vars:
     for: {type: macro, status: done, impl: special_form}
     force: {type: function, status: todo, impl: none}
     format: {type: function, status: todo, impl: none}
-    frequencies: {type: function, status: todo, impl: none}
+    frequencies: {type: function, status: done, impl: clj}
     future: {type: macro, status: todo, impl: none}
     "future-call": {type: function, status: todo, impl: none}
     "future-cancel": {type: function, status: todo, impl: none}
@@ -337,7 +337,7 @@ vars:
     "get-proxy-class": {type: function, status: todo, impl: none}
     "get-thread-bindings": {type: function, status: todo, impl: none}
     "get-validator": {type: function, status: todo, impl: none}
-    "group-by": {type: function, status: todo, impl: none}
+    "group-by": {type: function, status: done, impl: clj}
     "halt-when": {type: function, status: todo, impl: none}
     hash: {type: function, status: todo, impl: none}
     "hash-combine": {type: function, status: todo, impl: none}
@@ -367,9 +367,9 @@ vars:
     "int-array": {type: function, status: todo, impl: none}
     "int?": {type: function, status: todo, impl: none}
     "integer?": {type: function, status: done, impl: host}
-    interleave: {type: function, status: todo, impl: none}
+    interleave: {type: function, status: done, impl: clj}
     intern: {type: function, status: todo, impl: none}
-    interpose: {type: function, status: todo, impl: none}
+    interpose: {type: function, status: done, impl: clj}
     into: {type: function, status: done, impl: bridge}
     "into-array": {type: function, status: todo, impl: none}
     ints: {type: function, status: todo, impl: none}
@@ -470,9 +470,9 @@ vars:
     "parse-long": {type: function, status: todo, impl: none}
     "parse-uuid": {type: function, status: todo, impl: none}
     partial: {type: function, status: done, impl: clj}
-    partition: {type: function, status: todo, impl: none}
+    partition: {type: function, status: done, impl: clj}
     "partition-all": {type: function, status: todo, impl: none}
-    "partition-by": {type: function, status: todo, impl: none}
+    "partition-by": {type: function, status: done, impl: clj}
     partitionv: {type: function, status: todo, impl: none}
     "partitionv-all": {type: function, status: todo, impl: none}
     pcalls: {type: function, status: todo, impl: none}

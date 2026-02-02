@@ -216,6 +216,74 @@
    (fn [& args]
      (vector (apply f args) (apply g args)))))
 
+;; Sequence transforms
+
+(defn partition [n coll]
+  (loop [s (seq coll) acc (list)]
+    (let [chunk (take n s)]
+      (if (= (count chunk) n)
+        (recur (drop n s) (cons chunk acc))
+        (reverse acc)))))
+
+(defn partition-by [f coll]
+  (loop [s (seq coll) acc (list) cur (list) prev nil started false]
+    (if s
+      (let [v (first s)
+            fv (f v)]
+        (if (if started (= fv prev) true)
+          (recur (next s) acc (cons v cur) fv true)
+          (recur (next s) (cons (reverse cur) acc) (list v) fv true)))
+      (if (seq cur)
+        (reverse (cons (reverse cur) acc))
+        (reverse acc)))))
+
+(defn group-by [f coll]
+  (reduce (fn [acc x]
+            (let [k (f x)
+                  v (get acc k)]
+              (assoc acc k (if v (conj v x) [x]))))
+          {}
+          coll))
+
+(defn flatten [coll]
+  (loop [s (seq coll) acc (list)]
+    (if s
+      (let [x (first s)]
+        (if (coll? x)
+          (recur (concat (seq x) (next s)) acc)
+          (recur (next s) (cons x acc))))
+      (reverse acc))))
+
+(defn interleave [c1 c2]
+  (loop [s1 (seq c1) s2 (seq c2) acc (list)]
+    (if (if s1 s2 nil)
+      (recur (next s1) (next s2) (cons (first s2) (cons (first s1) acc)))
+      (reverse acc))))
+
+(defn interpose [sep coll]
+  (loop [s (seq coll) acc (list) started false]
+    (if s
+      (if started
+        (recur (next s) (cons (first s) (cons sep acc)) true)
+        (recur (next s) (cons (first s) acc) true))
+      (reverse acc))))
+
+(defn distinct [coll]
+  (loop [s (seq coll) seen #{} acc (list)]
+    (if s
+      (let [x (first s)]
+        (if (contains? seen x)
+          (recur (next s) seen acc)
+          (recur (next s) (conj seen x) (cons x acc))))
+      (reverse acc))))
+
+(defn frequencies [coll]
+  (reduce (fn [acc x]
+            (let [n (get acc x)]
+              (assoc acc x (if n (inc n) 1))))
+          {}
+          coll))
+
 ;; Utility macros
 
 (defmacro if-let [bindings then else]

@@ -4,7 +4,7 @@
 
 - Phase: 6 (Core Library Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T6.8 — Sequence transforms (partition, group-by, etc.)
+- Current task: T6.11 — Phase 6 validation + benchmark
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none

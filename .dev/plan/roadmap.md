@@ -217,8 +217,8 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | #    | Task                                                                                   | Archive    | Notes                           |
 | ---- | -------------------------------------------------------------------------------------- | ---------- | ------------------------------- |
 | 6.6  | Assoc/update family: assoc-in, update, update-in, get-in, select-keys                  | (core.clj) | Deep nested ops                 |
-| 6.7  | Predicate/search: some, every?, not-every?, not-any?, distinct, frequencies            | (core.clj) | Partial (no distinct/freq)      |
-| 6.8  | Sequence transforms: partition, partition-by, group-by, flatten, interleave, interpose | --         | Advanced seq ops                |
+| 6.7  | Predicate/search: some, every?, not-every?, not-any?, distinct, frequencies            | (core.clj) | All done                        |
+| 6.8  | Sequence transforms: partition, partition-by, group-by, flatten, interleave, interpose | (core.clj) | All done                        |
 | 6.9  | Function combinators: partial, comp, juxt, memoize, trampoline                         | (core.clj) | Partial (no memoize/trampoline) |
 | 6.10 | Utility macros: doto, as->, cond->, cond->>, if-let, when-let, some->, some->>         | (core.clj) | Partial (if-let, when-let)      |
 
