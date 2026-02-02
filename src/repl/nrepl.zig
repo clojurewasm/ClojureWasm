@@ -61,6 +61,9 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
         return;
     };
 
+    // Define REPL vars (*1, *2, *3, *e)
+    _ = bootstrap.evalString(alloc, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
+
     var state = ServerState{
         .env = &env,
         .sessions = .empty,
@@ -205,6 +208,10 @@ fn dispatchOp(
         opEldoc(state, msg, stream, allocator);
     } else if (std.mem.eql(u8, op, "ns-list")) {
         opNsList(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "stdin")) {
+        opStdin(msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "interrupt")) {
+        opInterrupt(msg, stream, allocator);
     } else {
         // Unknown op — return done so editors don't hang
         sendDone(stream, msg, allocator);
@@ -288,6 +295,7 @@ fn opDescribe(
         .{ .key = "eldoc", .value = .{ .dict = &.{} } },
         .{ .key = "ns-list", .value = .{ .dict = &.{} } },
         .{ .key = "stdin", .value = .{ .dict = &.{} } },
+        .{ .key = "interrupt", .value = .{ .dict = &.{} } },
     };
 
     const version_entries = [_]BencodeValue.DictEntry{
@@ -296,12 +304,26 @@ fn opDescribe(
         .{ .key = "incremental", .value = .{ .integer = 0 } },
     };
 
+    const clj_version = [_]BencodeValue.DictEntry{
+        .{ .key = "major", .value = .{ .integer = 1 } },
+        .{ .key = "minor", .value = .{ .integer = 11 } },
+        .{ .key = "incremental", .value = .{ .integer = 0 } },
+        .{ .key = "qualifier", .value = .{ .string = "" } },
+    };
+
+    const aux_entries = [_]BencodeValue.DictEntry{
+        .{ .key = "current-ns", .value = .{ .string = "user" } },
+    };
+
     const entries = [_]BencodeValue.DictEntry{
         idEntry(msg),
         .{ .key = "ops", .value = .{ .dict = &ops_entries } },
         .{ .key = "versions", .value = .{ .dict = &.{
             .{ .key = "clojure-wasm", .value = .{ .dict = &version_entries } },
+            .{ .key = "clojure", .value = .{ .dict = &clj_version } },
+            .{ .key = "nrepl", .value = .{ .dict = &version_entries } },
         } } },
+        .{ .key = "aux", .value = .{ .dict = &aux_entries } },
         statusDone(),
     };
     sendBencode(stream, &entries, allocator);
@@ -365,6 +387,11 @@ fn opEval(
     }
 
     if (result) |val| {
+        // Update *1, *2, *3 (shift history)
+        updateReplVar(state, "*3", "*2");
+        updateReplVar(state, "*2", "*1");
+        setReplVar(state, "*1", val);
+
         // Format value as string
         var val_buf: [65536]u8 = undefined;
         var val_stream = std.io.fixedBufferStream(&val_buf);
@@ -382,11 +409,13 @@ fn opEval(
         sendBencode(stream, &val_entries, allocator);
         sendDone(stream, msg, allocator);
     } else |_| {
-        // Error
+        // Error — bind *e
         const err_msg = if (state.env.error_ctx.getLastError()) |info|
             info.message
         else
             "evaluation failed";
+
+        setReplVar(state, "*e", .{ .string = err_msg });
 
         sendEvalError(stream, msg, err_msg, allocator);
     }
@@ -671,9 +700,55 @@ fn opNsList(
     sendBencode(stream, &entries, allocator);
 }
 
+/// stdin: input stub (not supported, returns done).
+fn opStdin(
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    sendDone(stream, msg, allocator);
+}
+
+/// interrupt: cancel evaluation stub (not supported, returns done).
+fn opInterrupt(
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const status_items = [_]BencodeValue{
+        .{ .string = "done" },
+        .{ .string = "session-idle" },
+    };
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "status", .value = .{ .list = &status_items } },
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
 // ====================================================================
 // Helpers
 // ====================================================================
+
+/// Set a REPL var (*1, *2, *3, *e) to a value.
+fn setReplVar(state: *ServerState, name: []const u8, val: Value) void {
+    if (state.env.current_ns) |ns| {
+        if (ns.resolve(name)) |v| {
+            v.bindRoot(val);
+        }
+    }
+}
+
+/// Copy one REPL var's value to another (*3 = *2, *2 = *1).
+fn updateReplVar(state: *ServerState, target: []const u8, source: []const u8) void {
+    if (state.env.current_ns) |ns| {
+        const src_val = if (ns.resolve(source)) |v| v.deref() else Value.nil;
+        if (ns.resolve(target)) |tv| {
+            tv.bindRoot(src_val);
+        }
+    }
+}
 
 /// Resolve a symbol in the environment.
 fn resolveSymbol(env: *Env, sym_name: []const u8, ns_hint: ?[]const u8) ?*Var {

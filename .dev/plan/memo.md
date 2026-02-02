@@ -4,8 +4,8 @@
 
 - Phase: 7 (Robustness + nREPL)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T7.9 — nREPL middleware (completion, stacktrace)
-- Task file: (not yet created)
+- Current task: Phase 7 complete — next phase TBD
+- Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
@@ -65,7 +65,14 @@
 | T7.6     | .dev/plan/archive/task_0060_lazy_seq.md                     | 2026-02-02 |
 | T7.7     | .dev/plan/archive/task_0061_bencode.md                      | 2026-02-02 |
 | T7.8     | .dev/plan/archive/task_0062_nrepl_server.md                 | 2026-02-02 |
+| T7.9     | .dev/plan/archive/task_0063_nrepl_middleware.md             | 2026-02-02 |
 
+**Phase 7 complete** — T7.1-T7.9 done. Key additions: stack depth fix,
+dynamic str buffer, threading macros (doto, as->, some->, cond->),
+multimethods (defmulti/defmethod), ex-info/ex-data/ex-message,
+lazy sequences (lazy-seq, iterate, repeat, repeatedly, cycle),
+bencode encoder/decoder, full nREPL server (11 ops, TCP, session mgmt,
+REPL vars *1/*2/*3/*e, CIDER-compatible describe).
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)
 **Phase 6 complete** — 140 vars implemented (was 101). Key additions: range, empty?,

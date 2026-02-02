@@ -249,11 +249,11 @@ can evaluate basic Clojure expressions with `--compare` mode.
 
 ### Phase 7c: nREPL Server
 
-| #   | Task                                     | Archive                   | Notes                                      |
-| --- | ---------------------------------------- | ------------------------- | ------------------------------------------ |
-| 7.7 | bencode encoder/decoder                  | task_0061_bencode.md      | nREPL wire protocol; 9 tests               |
-| 7.8 | nREPL server (TCP socket)                | task_0062_nrepl_server.md | eval, load-file, describe, completions ops |
-| 7.9 | nREPL middleware: completion, stacktrace | --                        | Editor integration quality                 |
+| #   | Task                                     | Archive                       | Notes                                       |
+| --- | ---------------------------------------- | ----------------------------- | ------------------------------------------- |
+| 7.7 | bencode encoder/decoder                  | task_0061_bencode.md          | nREPL wire protocol; 9 tests                |
+| 7.8 | nREPL server (TCP socket)                | task_0062_nrepl_server.md     | eval, load-file, describe, completions ops  |
+| 7.9 | nREPL middleware: completion, stacktrace | task_0063_nrepl_middleware.md | CIDER compat: stdin, interrupt, *1/*2/*3/*e |
 
 ## Risk Mitigations
 
