@@ -1059,3 +1059,27 @@ Free-text `note` is more flexible and easier to maintain.
 **Future**: Generic metadata map (T9.4) will handle arbitrary user
 metadata. The remaining Var fields (macro, dynamic, doc, arglists,
 added, since_cw) are sufficient for the Clojure metadata protocol.
+
+## D32: Phase 9.5 Infrastructure Fixes before var expansion
+
+**Date**: 2026-02-02
+**Context**: Phase 9 complete (209/702 vars). Before continuing var expansion,
+several infrastructure issues limit productivity and correctness.
+
+**Problem**:
+
+1. VM evalStringVM has use-after-free: compiler.deinit() frees fn objects
+   still referenced by Env vars. Multi-form programs crash with
+   "switch on corrupt value" panic on any program with `def` + subsequent call.
+2. swap! only accepts builtin_fn, not fn_val (user closures). Workarounds
+   needed throughout core.clj (e.g., `(swap! a + 1)` instead of `(swap! a inc)`).
+3. `(seq map)` not implemented — blocks natural map iteration in HOFs like
+   reduce-kv (currently uses keys+get loop workaround).
+4. VM benchmarks cannot run (blocked by #1). No performance baseline exists.
+5. `bound?` missing — defonce deferred in T9.11.
+
+**Decision**: Insert Phase 9.5 (5 tasks) as a stabilization phase before
+Phase 10 (next var expansion). Fix foundations first, measure VM perf second.
+
+**Impact**: Delays var count growth temporarily but improves velocity afterward.
+All 5 items are small, focused fixes rather than architectural changes.

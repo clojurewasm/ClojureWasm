@@ -310,6 +310,31 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | Analyzer redesign scope       | Start with minimal special forms (7), add incrementally          |
 | Compiler-VM contract bugs     | --compare mode catches mismatches early                          |
 
+## Phase 9.5: Infrastructure Fixes
+
+Short stabilization phase before continuing var expansion.
+Fix VM lifetime bugs, unblock deferred items, and establish VM benchmark baseline.
+
+### Phase 9.5a: VM Fixes
+
+| #     | Task                                 | Archive | Notes                                                                       |
+| ----- | ------------------------------------ | ------- | --------------------------------------------------------------------------- |
+| 9.5.1 | VM evalStringVM fn_val lifetime fix  | --      | compiler.deinit() frees fn objects still referenced by Env (use-after-free) |
+| 9.5.2 | swap! with fn_val (closure dispatch) | --      | F5: swap! only accepts builtin_fn, not user closures                        |
+
+### Phase 9.5b: Data Model
+
+| #     | Task                     | Archive | Notes                                          |
+| ----- | ------------------------ | ------- | ---------------------------------------------- |
+| 9.5.3 | seq on map (MapEntry)    | --      | (seq {:a 1}) -> ([:a 1]) — needed for map HOFs |
+| 9.5.5 | bound? builtin + defonce | --      | Unblocks T9.11 deferred defonce                |
+
+### Phase 9.5c: Validation
+
+| #     | Task                  | Archive | Notes                                                    |
+| ----- | --------------------- | ------- | -------------------------------------------------------- |
+| 9.5.4 | VM benchmark baseline | --      | Run all 11 benchmarks with --backend=vm, record baseline |
+
 ## Future Considerations
 
 ### IO / System Namespace Strategy

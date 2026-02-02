@@ -2,10 +2,10 @@
 
 ## Current State
 
-- Phase: 9 (Core Library Expansion III)
+- Phase: 9.5 (Infrastructure Fixes)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 9 complete — next phase TBD
-- Task file: (none)
+- Current task: T9.5.1 VM evalStringVM fn_val lifetime fix
+- Task file: (none — create on start)
 - Last completed: T9.15 type, class, instance?, isa?
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
