@@ -41,6 +41,12 @@ pub const Atom = struct {
     meta: ?*Value = null,
 };
 
+/// Volatile — non-atomic mutable reference type.
+/// Like Atom but without CAS semantics. Used for thread-local mutation.
+pub const Volatile = struct {
+    value: Value,
+};
+
 /// Discriminator for Fn.proto — bytecode (VM) vs treewalk (Node-based).
 pub const FnKind = enum {
     bytecode, // proto points to FnProto (bytecode/chunk.zig)
@@ -141,6 +147,7 @@ pub const Value = union(enum) {
 
     // Reference types
     atom: *Atom,
+    volatile_ref: *Volatile,
 
     // Protocol types
     protocol: *Protocol,
@@ -245,6 +252,11 @@ pub const Value = union(enum) {
             .atom => |a| {
                 try w.writeAll("#<atom ");
                 try a.value.formatPrStr(w);
+                try w.writeAll(">");
+            },
+            .volatile_ref => |v| {
+                try w.writeAll("#<volatile ");
+                try v.value.formatPrStr(w);
                 try w.writeAll(">");
             },
             .protocol => |p| {
@@ -378,6 +390,7 @@ pub const Value = union(enum) {
             .fn_val => |a| a == other.fn_val,
             .builtin_fn => |a| a == other.builtin_fn,
             .atom => |a| a == other.atom, // identity equality
+            .volatile_ref => |a| a == other.volatile_ref, // identity equality
             .protocol => |a| a == other.protocol, // identity equality
             .protocol_fn => |a| a == other.protocol_fn, // identity equality
             .multi_fn => |a| a == other.multi_fn, // identity equality

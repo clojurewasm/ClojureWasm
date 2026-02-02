@@ -1,6 +1,7 @@
-// Atom builtins — atom, deref, swap!, reset!
+// Atom and Volatile builtins — atom, deref, swap!, reset!, volatile!, vreset!, volatile?
 //
 // Atoms provide mutable reference semantics in Clojure.
+// Volatiles provide non-atomic mutable references (thread-local mutation).
 // No watchers/validators in this minimal implementation.
 
 const std = @import("std");
@@ -8,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const Atom = value_mod.Atom;
+const Volatile = value_mod.Volatile;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../bootstrap.zig");
@@ -20,11 +22,12 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .atom = a };
 }
 
-/// (deref atom) => val
+/// (deref ref) => val  — works on atoms and volatiles
 pub fn derefFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
     return switch (args[0]) {
         .atom => |a| a.value,
+        .volatile_ref => |v| v.value,
         else => error.TypeError,
     };
 }
@@ -69,6 +72,32 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return new_val;
 }
 
+/// (volatile! val) => #<volatile val>
+pub fn volatileFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const v = try allocator.create(Volatile);
+    v.* = .{ .value = args[0] };
+    return Value{ .volatile_ref = v };
+}
+
+/// (vreset! vol new-val) => new-val
+pub fn vresetBangFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    return switch (args[0]) {
+        .volatile_ref => |v| {
+            v.value = args[1];
+            return args[1];
+        },
+        else => error.TypeError,
+    };
+}
+
+/// (volatile? x) => true if x is a volatile
+pub fn volatilePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = args[0] == .volatile_ref };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "atom",
@@ -97,6 +126,27 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Atomically swaps the value of atom to be: (apply f current-value-of-atom args).",
         .arglists = "([atom f] [atom f x] [atom f x y] [atom f x y & args])",
         .added = "1.0",
+    },
+    .{
+        .name = "volatile!",
+        .func = &volatileFn,
+        .doc = "Creates and returns a Volatile with an initial value of val.",
+        .arglists = "([val])",
+        .added = "1.7",
+    },
+    .{
+        .name = "vreset!",
+        .func = &vresetBangFn,
+        .doc = "Sets the value of volatile to newval without regard for the current value. Returns newval.",
+        .arglists = "([vol newval])",
+        .added = "1.7",
+    },
+    .{
+        .name = "volatile?",
+        .func = &volatilePred,
+        .doc = "Returns true if x is a volatile.",
+        .arglists = "([x])",
+        .added = "1.7",
     },
 };
 
@@ -187,4 +237,56 @@ test "swap! - error on fn_val without env" {
     const args = [_]Value{ .{ .atom = &a }, .{ .fn_val = &fn_obj } };
     const result = swapBangFn(testing.allocator, &args);
     try testing.expectError(error.EvalError, result);
+}
+
+// === Volatile tests ===
+
+test "volatile! - create and deref" {
+    const args = [_]Value{.{ .integer = 42 }};
+    const result = try volatileFn(testing.allocator, &args);
+    defer testing.allocator.destroy(result.volatile_ref);
+    try testing.expect(result == .volatile_ref);
+
+    const deref_args = [_]Value{result};
+    const val = try derefFn(testing.allocator, &deref_args);
+    try testing.expectEqual(Value{ .integer = 42 }, val);
+}
+
+test "volatile! - arity error" {
+    const result = volatileFn(testing.allocator, &.{});
+    try testing.expectError(error.ArityError, result);
+}
+
+test "vreset! - sets new value" {
+    var v = Volatile{ .value = .{ .integer = 1 } };
+    const args = [_]Value{ .{ .volatile_ref = &v }, .{ .integer = 99 } };
+    const result = try vresetBangFn(testing.allocator, &args);
+    try testing.expectEqual(Value{ .integer = 99 }, result);
+    try testing.expectEqual(Value{ .integer = 99 }, v.value);
+}
+
+test "vreset! - arity error" {
+    var v = Volatile{ .value = .nil };
+    const args = [_]Value{.{ .volatile_ref = &v }};
+    const result = vresetBangFn(testing.allocator, &args);
+    try testing.expectError(error.ArityError, result);
+}
+
+test "vreset! - type error on non-volatile" {
+    const args = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const result = vresetBangFn(testing.allocator, &args);
+    try testing.expectError(error.TypeError, result);
+}
+
+test "volatile? - returns true for volatile" {
+    var v = Volatile{ .value = .nil };
+    const args = [_]Value{.{ .volatile_ref = &v }};
+    const result = try volatilePred(testing.allocator, &args);
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "volatile? - returns false for non-volatile" {
+    const args = [_]Value{.{ .integer = 42 }};
+    const result = try volatilePred(testing.allocator, &args);
+    try testing.expectEqual(Value{ .boolean = false }, result);
 }

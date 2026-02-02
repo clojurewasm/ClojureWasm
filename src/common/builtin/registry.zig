@@ -97,8 +97,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // Was 110, +3 (var?, var-get, var-set in predicates)
-    try std.testing.expectEqual(113, builtin_count);
+    // Was 113, +3 (volatile!, vreset!, volatile? in atom)
+    try std.testing.expectEqual(116, builtin_count);
 }
 
 test "comptime lookup finds +" {

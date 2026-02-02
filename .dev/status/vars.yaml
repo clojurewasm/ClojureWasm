@@ -339,7 +339,7 @@ vars:
     identity: {type: function, status: done}
     "if-let": {type: macro, status: done}
     "if-not": {type: macro, status: done}
-    "if-some": {type: macro, status: todo}
+    "if-some": {type: macro, status: done, note: "core.clj macro"}
     "ifn?": {type: function, status: todo}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: todo}
@@ -689,15 +689,15 @@ vars:
     vector: {type: function, status: done}
     "vector-of": {type: function, status: todo}
     "vector?": {type: function, status: done}
-    "volatile!": {type: function, status: todo}
-    "volatile?": {type: function, status: todo}
-    "vreset!": {type: function, status: todo}
-    "vswap!": {type: macro, status: todo}
+    "volatile!": {type: function, status: done}
+    "volatile?": {type: function, status: done}
+    "vreset!": {type: function, status: done}
+    "vswap!": {type: macro, status: done, note: "core.clj macro"}
     when: {type: macro, status: done}
     "when-first": {type: macro, status: todo}
     "when-let": {type: macro, status: done}
     "when-not": {type: macro, status: done}
-    "when-some": {type: macro, status: todo}
+    "when-some": {type: macro, status: done, note: "core.clj macro"}
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: todo}
     "with-bindings*": {type: function, status: todo}

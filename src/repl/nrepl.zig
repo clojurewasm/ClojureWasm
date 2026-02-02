@@ -938,6 +938,11 @@ fn writeValue(w: anytype, val: Value) void {
             writeValue(w, a.value);
             w.print(")", .{}) catch {};
         },
+        .volatile_ref => |v| {
+            w.print("#<volatile ", .{}) catch {};
+            writeValue(w, v.value);
+            w.print(">", .{}) catch {};
+        },
         .char => |c| {
             var buf: [4]u8 = undefined;
             const len = std.unicode.utf8Encode(c, &buf) catch 0;

@@ -527,6 +527,7 @@ pub const TreeWalk = struct {
         if (std.mem.eql(u8, type_name, "PersistentArrayMap") or std.mem.eql(u8, type_name, "Map")) return "map";
         if (std.mem.eql(u8, type_name, "PersistentHashSet") or std.mem.eql(u8, type_name, "Set")) return "set";
         if (std.mem.eql(u8, type_name, "Atom")) return "atom";
+        if (std.mem.eql(u8, type_name, "Volatile")) return "volatile";
         // Default: use as-is (for custom record types)
         return type_name;
     }
@@ -548,6 +549,7 @@ pub const TreeWalk = struct {
             .set => "set",
             .fn_val, .builtin_fn => "function",
             .atom => "atom",
+            .volatile_ref => "volatile",
             .protocol => "protocol",
             .protocol_fn => "protocol_fn",
             .multi_fn => "multi_fn",

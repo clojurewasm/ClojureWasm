@@ -668,6 +668,29 @@
   [obj f & args]
   (with-meta obj (apply f (meta obj) args)))
 
+;; Nil-safe conditionals
+
+(defmacro if-some [bindings then else]
+  (let [sym (first bindings)
+        val (first (rest bindings))]
+    `(let [temp# ~val]
+       (if (nil? temp#)
+         ~else
+         (let [~sym temp#] ~then)))))
+
+(defmacro when-some [bindings & body]
+  (let [sym (first bindings)
+        val (first (rest bindings))]
+    `(let [temp# ~val]
+       (if (nil? temp#)
+         nil
+         (let [~sym temp#] ~@body)))))
+
+;; Volatile swap macro
+
+(defmacro vswap! [vol f & args]
+  `(vreset! ~vol (~f (deref ~vol) ~@args)))
+
 ;; Function combinators — memoize and trampoline
 
 (defn memoize [f]
