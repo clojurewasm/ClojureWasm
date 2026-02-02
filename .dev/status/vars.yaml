@@ -172,7 +172,7 @@ vars:
     "byte-array": {type: function, status: todo}
     bytes: {type: function, status: todo}
     "bytes?": {type: function, status: todo}
-    case: {type: macro, status: todo}
+    case: {type: macro, status: done, note: "core.clj cond-based dispatch"}
     cast: {type: function, status: todo}
     cat: {type: function, status: todo}
     char: {type: function, status: todo}
@@ -207,7 +207,7 @@ vars:
     cond: {type: macro, status: done}
     "cond->": {type: macro, status: done}
     "cond->>": {type: macro, status: done}
-    condp: {type: macro, status: todo}
+    condp: {type: macro, status: done, note: "core.clj predicate dispatch"}
     conj: {type: function, status: done}
     "conj!": {type: function, status: todo}
     cons: {type: function, status: done}
@@ -222,7 +222,7 @@ vars:
     dec: {type: function, status: done}
     "dec'": {type: function, status: todo}
     "decimal?": {type: function, status: todo}
-    declare: {type: macro, status: todo}
+    declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: todo}
     "default-data-readers": {type: var, status: todo}
     definline: {type: macro, status: todo}
@@ -232,7 +232,7 @@ vars:
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
     defn: {type: macro, status: done}
     "defn-": {type: macro, status: done}
-    defonce: {type: macro, status: todo}
+    defonce: {type: macro, status: todo, note: "needs bound? builtin"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: todo}

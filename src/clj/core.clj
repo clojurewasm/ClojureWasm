@@ -533,6 +533,45 @@
   (fn [x]
     (f (if (nil? x) default x))))
 
+;; Control flow macros
+
+(defmacro case [expr & clauses]
+  (let [pairs (partition 2 clauses)
+        default (if (= (* 2 (count pairs)) (count clauses))
+                  nil
+                  (last clauses))
+        gexpr '__case_val__]
+    `(let [~gexpr ~expr]
+       (cond
+         ~@(mapcat (fn [pair]
+                     (list (list '= gexpr (first pair))
+                           (first (rest pair))))
+                   pairs)
+         ~@(if default
+             (list true default)
+             nil)))))
+
+(defmacro condp [pred expr & clauses]
+  (let [pairs (partition 2 clauses)
+        default (if (= (* 2 (count pairs)) (count clauses))
+                  nil
+                  (last clauses))
+        gexpr '__condp_val__]
+    (cons 'let
+          (list [gexpr expr]
+                (cons 'cond
+                      (concat
+                       (mapcat (fn [pair]
+                                 (list (list pred (first pair) gexpr)
+                                       (first (rest pair))))
+                               pairs)
+                       (if default
+                         (list true default)
+                         (list))))))))
+
+(defmacro declare [& names]
+  (cons 'do (map (fn [n] (list 'def n)) names)))
+
 ;; Imperative iteration
 
 (defmacro while [test & body]

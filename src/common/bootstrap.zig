@@ -2259,6 +2259,64 @@ test "core.clj - while" {
     try std.testing.expectEqual(Value{ .integer = 5 }, result);
 }
 
+test "core.clj - case" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const r1 = try evalString(alloc, &env, "(case 2 1 :a 2 :b 3 :c)");
+    try std.testing.expect(r1 == .keyword);
+
+    // default case
+    const r2 = try evalString(alloc, &env, "(case 99 1 :a 2 :b :default)");
+    try std.testing.expect(r2 == .keyword);
+}
+
+test "core.clj - condp" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env,
+        \\(condp = 2
+        \\  1 :a
+        \\  2 :b
+        \\  3 :c)
+    );
+    try std.testing.expect(result == .keyword);
+}
+
+test "core.clj - declare" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(declare my-forward-fn)");
+    // Should be nil (declared but not defined)
+    const result = try evalString(alloc, &env, "my-forward-fn");
+    try std.testing.expectEqual(Value.nil, result);
+
+    // Now define it
+    _ = try evalString(alloc, &env, "(defn my-forward-fn [x] (+ x 1))");
+    const r2 = try evalString(alloc, &env, "(my-forward-fn 5)");
+    try std.testing.expectEqual(Value{ .integer = 6 }, r2);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

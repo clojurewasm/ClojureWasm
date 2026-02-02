@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.11 case, condp, declare, defonce (next)
+- Current task: T9.12 delay, force, realized? (next)
 - Task file: (none)
-- Last completed: T9.10 while, doseq, doall, dorun
+- Last completed: T9.11 case, condp, declare (defonce deferred)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
