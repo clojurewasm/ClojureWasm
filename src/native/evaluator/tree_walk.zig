@@ -138,17 +138,10 @@ pub const TreeWalk = struct {
             if (env.current_ns) |cur_ns| {
                 if (ns) |ns_name| {
                     if (cur_ns.resolveQualified(ns_name, name)) |v| {
-                        // vm_intrinsic Vars have no func yet — use sentinel for dispatch
-                        if (v.kind == .vm_intrinsic or v.kind == .special_form) {
-                            return Value{ .keyword = .{ .ns = "__builtin__", .name = v.sym.name } };
-                        }
                         return v.deref();
                     }
                 } else {
                     if (cur_ns.resolve(name)) |v| {
-                        if (v.kind == .vm_intrinsic or v.kind == .special_form) {
-                            return Value{ .keyword = .{ .ns = "__builtin__", .name = v.sym.name } };
-                        }
                         return v.deref();
                     }
                 }

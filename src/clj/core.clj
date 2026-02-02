@@ -119,7 +119,7 @@
            ~@body
            (recur (+ ~i 1)))))))
 
-;; and/or (2-arity for now; multi-arity requires recursive macros)
+;; and/or
 
 (defmacro and
   [& args]
@@ -138,3 +138,97 @@
       `(let [or__val ~a]
          (if or__val or__val (or ~@more)))
       a)))
+
+;; Nested collection operations
+
+(defn get-in [m ks]
+  (reduce get m ks))
+
+(defn assoc-in [m ks v]
+  (let [k (first ks)
+        ks-rest (next ks)]
+    (if ks-rest
+      (assoc m k (assoc-in (get m k) ks-rest v))
+      (assoc m k v))))
+
+(defn update [m k f]
+  (assoc m k (f (get m k))))
+
+(defn update-in [m ks f]
+  (let [k (first ks)
+        ks-rest (next ks)]
+    (if ks-rest
+      (assoc m k (update-in (get m k) ks-rest f))
+      (assoc m k (f (get m k))))))
+
+(defn select-keys [m keyseq]
+  (reduce (fn [acc k]
+            (let [v (get m k)]
+              (if (not (nil? v))
+                (assoc acc k v)
+                acc)))
+          {}
+          keyseq))
+
+;; Predicates and search
+
+(defn some [pred coll]
+  (loop [s (seq coll)]
+    (if s
+      (if (pred (first s))
+        (first s)
+        (recur (next s)))
+      nil)))
+
+(defn every? [pred coll]
+  (loop [s (seq coll)]
+    (if s
+      (if (pred (first s))
+        (recur (next s))
+        false)
+      true)))
+
+(defn not-every? [pred coll]
+  (not (every? pred coll)))
+
+(defn not-any? [pred coll]
+  (not (some pred coll)))
+
+;; Function combinators
+
+(defn partial
+  ([f a]
+   (fn [& args] (apply f (cons a args))))
+  ([f a b]
+   (fn [& args] (apply f (cons a (cons b args))))))
+
+(defn comp
+  ([] identity)
+  ([f] f)
+  ([f g]
+   (fn [x] (f (g x)))))
+
+(defn juxt
+  ([f]
+   (fn [& args]
+     (vector (apply f args))))
+  ([f g]
+   (fn [& args]
+     (vector (apply f args) (apply g args)))))
+
+;; Utility macros
+
+(defmacro if-let [bindings then else]
+  (let [sym (first bindings)
+        val (first (rest bindings))]
+    `(let [temp# ~val]
+       (if temp#
+         (let [~sym temp#] ~then)
+         ~else))))
+
+(defmacro when-let [bindings & body]
+  (let [sym (first bindings)
+        val (first (rest bindings))]
+    `(let [temp# ~val]
+       (when temp#
+         (let [~sym temp#] ~@body)))))

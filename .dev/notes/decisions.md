@@ -867,6 +867,34 @@ arg. This was needed for defrecord field access.
 through the normal pipeline: `(def ->Name (fn ->Name [fields] (hash-map ...)))`.
 This ensures proper local tracking via the Analyzer.
 
+## D26: Remove TreeWalk vm_intrinsic Sentinel Dispatch (T6.6)
+
+**Date**: 2026-02-02
+**Context**: `(apply + [1 2])` failed because TreeWalk returned a keyword
+sentinel for vm_intrinsic Vars instead of the `builtin_fn` pointer.
+
+**Problem**: TreeWalk used `__builtin__` keyword sentinels to dispatch
+arithmetic/comparison intrinsics in call position. When these Vars were
+used as first-class values (e.g., `(apply + args)`, `(partial + 10)`),
+the sentinel keyword was passed to `apply` which only accepted `builtin_fn`.
+
+**Decision**: Remove sentinel dispatch from `resolveVar`. All Vars
+(including vm_intrinsic) now return `v.deref()` — the `builtin_fn`
+pointer set by D20's runtime fallback functions. TreeWalk's `runCall`
+dispatches via `callBuiltinFn` for all builtins uniformly.
+
+**Impact**: Arithmetic operators now go through the BuiltinFn variadic
+path instead of the hand-coded `variadicArith`/`variadicCmp` fast path.
+This may be slightly slower for multi-arg arithmetic, but is correct
+for all use patterns. The `builtinLookup`/`isBuiltin`/`callBuiltin`
+code remains for env-less fallback but is no longer reached in normal
+operation.
+
+**Consequence**: `apply`, `partial`, `comp`, `juxt`, `map`, `reduce`,
+and any higher-order pattern with intrinsic operators now works correctly.
+
+---
+
 ## D25: Benchmark System Design
 
 **Decision**: 13 benchmarks across 5 categories with multi-language comparison.

@@ -147,7 +147,7 @@ vars:
     assert: {type: macro, status: todo, impl: none}
     assoc: {type: function, status: done, impl: host}
     "assoc!": {type: function, status: todo, impl: none}
-    "assoc-in": {type: function, status: todo, impl: none}
+    "assoc-in": {type: function, status: done, impl: clj}
     "associative?": {type: function, status: todo, impl: none}
     atom: {type: function, status: done, impl: host}
     await: {type: function, status: todo, impl: none}
@@ -207,7 +207,7 @@ vars:
     "coll?": {type: function, status: done, impl: host}
     comment: {type: macro, status: done, impl: clj}
     commute: {type: function, status: todo, impl: none}
-    comp: {type: function, status: todo, impl: none}
+    comp: {type: function, status: done, impl: clj}
     comparator: {type: function, status: todo, impl: none}
     compare: {type: function, status: todo, impl: none}
     "compare-and-set!": {type: function, status: todo, impl: none}
@@ -286,7 +286,7 @@ vars:
     eval: {type: function, status: todo, impl: none}
     "even?": {type: function, status: done, impl: host}
     "every-pred": {type: function, status: todo, impl: none}
-    "every?": {type: function, status: todo, impl: none}
+    "every?": {type: function, status: done, impl: clj}
     "ex-cause": {type: function, status: todo, impl: none}
     "ex-data": {type: function, status: todo, impl: none}
     "ex-info": {type: function, status: todo, impl: none}
@@ -332,7 +332,7 @@ vars:
     "gen-interface": {type: macro, status: todo, impl: none}
     gensym: {type: function, status: todo, impl: none}
     get: {type: function, status: done, impl: host}
-    "get-in": {type: function, status: todo, impl: none}
+    "get-in": {type: function, status: done, impl: clj}
     "get-method": {type: function, status: todo, impl: none}
     "get-proxy-class": {type: function, status: todo, impl: none}
     "get-thread-bindings": {type: function, status: todo, impl: none}
@@ -348,7 +348,7 @@ vars:
     "ident?": {type: function, status: todo, impl: none}
     "identical?": {type: function, status: todo, impl: none}
     identity: {type: function, status: done, impl: clj}
-    "if-let": {type: macro, status: todo, impl: none}
+    "if-let": {type: macro, status: done, impl: clj}
     "if-not": {type: macro, status: done, impl: clj}
     "if-some": {type: macro, status: todo, impl: none}
     "ifn?": {type: function, status: todo, impl: none}
@@ -378,7 +378,7 @@ vars:
     iterate: {type: function, status: todo, impl: none}
     iteration: {type: function, status: todo, impl: none}
     "iterator-seq": {type: function, status: todo, impl: none}
-    juxt: {type: function, status: todo, impl: none}
+    juxt: {type: function, status: done, impl: clj}
     keep: {type: function, status: todo, impl: none}
     "keep-indexed": {type: function, status: todo, impl: none}
     key: {type: function, status: todo, impl: none}
@@ -440,9 +440,9 @@ vars:
     "nil?": {type: function, status: done, impl: host}
     nnext: {type: function, status: todo, impl: none}
     not: {type: function, status: done, impl: host}
-    "not-any?": {type: function, status: todo, impl: none}
+    "not-any?": {type: function, status: done, impl: clj}
     "not-empty": {type: function, status: todo, impl: none}
-    "not-every?": {type: function, status: todo, impl: none}
+    "not-every?": {type: function, status: done, impl: clj}
     "not=": {type: function, status: done, impl: intrinsic}
     ns: {type: macro, status: todo, impl: none}
     "ns-aliases": {type: function, status: todo, impl: none}
@@ -469,7 +469,7 @@ vars:
     "parse-double": {type: function, status: todo, impl: none}
     "parse-long": {type: function, status: todo, impl: none}
     "parse-uuid": {type: function, status: todo, impl: none}
-    partial: {type: function, status: todo, impl: none}
+    partial: {type: function, status: done, impl: clj}
     partition: {type: function, status: todo, impl: none}
     "partition-all": {type: function, status: todo, impl: none}
     "partition-by": {type: function, status: todo, impl: none}
@@ -576,7 +576,7 @@ vars:
     "run!": {type: function, status: todo, impl: none}
     "satisfies?": {type: function, status: done, impl: host}
     second: {type: function, status: todo, impl: none}
-    "select-keys": {type: function, status: todo, impl: none}
+    "select-keys": {type: function, status: done, impl: clj}
     send: {type: function, status: todo, impl: none}
     "send-off": {type: function, status: todo, impl: none}
     "send-via": {type: function, status: todo, impl: none}
@@ -603,7 +603,7 @@ vars:
     "simple-keyword?": {type: function, status: todo, impl: none}
     "simple-symbol?": {type: function, status: todo, impl: none}
     slurp: {type: function, status: todo, impl: none}
-    some: {type: function, status: todo, impl: none}
+    some: {type: function, status: done, impl: clj}
     "some->": {type: macro, status: todo, impl: none}
     "some->>": {type: macro, status: todo, impl: none}
     "some-fn": {type: function, status: todo, impl: none}
@@ -682,8 +682,8 @@ vars:
     "unquote-splicing": {type: var, status: todo, impl: none}
     unreduced: {type: function, status: todo, impl: none}
     "unsigned-bit-shift-right": {type: function, status: todo, impl: none}
-    update: {type: function, status: todo, impl: none}
-    "update-in": {type: function, status: todo, impl: none}
+    update: {type: function, status: done, impl: clj}
+    "update-in": {type: function, status: done, impl: clj}
     "update-keys": {type: function, status: todo, impl: none}
     "update-proxy": {type: function, status: todo, impl: none}
     "update-vals": {type: function, status: todo, impl: none}
@@ -706,7 +706,7 @@ vars:
     "vswap!": {type: macro, status: todo, impl: none}
     when: {type: macro, status: done, impl: clj}
     "when-first": {type: macro, status: todo, impl: none}
-    "when-let": {type: macro, status: todo, impl: none}
+    "when-let": {type: macro, status: done, impl: clj}
     "when-not": {type: macro, status: done, impl: clj}
     "when-some": {type: macro, status: todo, impl: none}
     while: {type: macro, status: todo, impl: none}

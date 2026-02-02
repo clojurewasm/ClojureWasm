@@ -1350,6 +1350,216 @@ test "defrecord - basic constructor" {
     try expectEvalInt(alloc, &env, "(:y (->Point 1 2))", 2);
 }
 
+// =========================================================================
+// Phase 6b: core.clj expansion tests (T6.6-T6.10)
+// =========================================================================
+
+test "core.clj - get-in" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(get-in {:a {:b 42}} [:a :b])", 42);
+    try expectEvalNil(alloc, &env, "(get-in {:a 1} [:b :c])");
+}
+
+test "core.clj - assoc-in" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(get-in (assoc-in {} [:a :b] 42) [:a :b])", 42);
+}
+
+test "core.clj - update" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(:a (update {:a 1} :a inc))", 2);
+}
+
+test "core.clj - update-in" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(get-in (update-in {:a {:b 1}} [:a :b] inc) [:a :b])", 2);
+}
+
+test "core.clj - select-keys" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (select-keys {:a 1 :b 2 :c 3} [:a :c]))", 2);
+    try expectEvalInt(alloc, &env, "(:a (select-keys {:a 1 :b 2} [:a]))", 1);
+}
+
+test "core.clj - some" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(some even? [1 2 3])", 2);
+    try expectEvalNil(alloc, &env, "(some even? [1 3 5])");
+}
+
+test "core.clj - every?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalBool(alloc, &env, "(every? even? [2 4 6])", true);
+    try expectEvalBool(alloc, &env, "(every? even? [2 3 6])", false);
+}
+
+test "core.clj - not-every?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalBool(alloc, &env, "(not-every? even? [2 4 6])", false);
+    try expectEvalBool(alloc, &env, "(not-every? even? [2 3 6])", true);
+}
+
+test "core.clj - partial" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "((partial + 10) 5)", 15);
+    try expectEvalInt(alloc, &env, "((partial + 1 2) 3)", 6);
+}
+
+test "core.clj - comp" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "((comp inc inc) 0)", 2);
+}
+
+test "core.clj - if-let" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(if-let [x 42] x 0)", 42);
+    try expectEvalInt(alloc, &env, "(if-let [x nil] 1 0)", 0);
+}
+
+test "core.clj - when-let" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(when-let [x 42] x)", 42);
+    try expectEvalNil(alloc, &env, "(when-let [x nil] 42)");
+}
+
+test "core.clj - range" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (range 5))", 5);
+    try expectEvalInt(alloc, &env, "(first (range 3))", 0);
+    try expectEvalInt(alloc, &env, "(count (range 2 8))", 6);
+}
+
+test "core.clj - empty?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalBool(alloc, &env, "(empty? [])", true);
+    try expectEvalBool(alloc, &env, "(empty? [1])", false);
+    try expectEvalBool(alloc, &env, "(empty? nil)", true);
+}
+
+test "core.clj - contains?" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalBool(alloc, &env, "(contains? {:a 1} :a)", true);
+    try expectEvalBool(alloc, &env, "(contains? {:a 1} :b)", false);
+}
+
+test "core.clj - keys and vals" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(count (keys {:a 1 :b 2}))", 2);
+    try expectEvalInt(alloc, &env, "(reduce + 0 (vals {:a 1 :b 2}))", 3);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk
