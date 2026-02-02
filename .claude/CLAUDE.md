@@ -141,8 +141,8 @@ zig build test -- "Reader basics"
 ./zig-out/bin/cljw path/to/file.clj
 
 # Backend selection
-./zig-out/bin/cljw --tree-walk -e '(+ 1 2)'   # TreeWalk (default)
-./zig-out/bin/cljw -e '(+ 1 2)'                # VM
+./zig-out/bin/cljw -e '(+ 1 2)'                # VM (default)
+./zig-out/bin/cljw --tree-walk -e '(+ 1 2)'   # TreeWalk
 ```
 
 **IMPORTANT — Shell escaping with `!` and `?`**:
