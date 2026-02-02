@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Phase: 7 (Robustness + nREPL)
+- Phase: 8 (Refactoring)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 7 complete — next phase TBD
+- Current task: T8.R2 (bootstrap.zig evalString/evalStringVM deduplication)
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
@@ -66,6 +66,7 @@
 | T7.7     | .dev/plan/archive/task_0061_bencode.md                      | 2026-02-02 |
 | T7.8     | .dev/plan/archive/task_0062_nrepl_server.md                 | 2026-02-02 |
 | T7.9     | .dev/plan/archive/task_0063_nrepl_middleware.md             | 2026-02-02 |
+| T8.R1    | .dev/plan/archive/task_0064_treewalk_dead_code.md           | 2026-02-02 |
 
 **Phase 7 complete** — T7.1-T7.9 done. Key additions: stack depth fix,
 dynamic str buffer, threading macros (doto, as->, some->, cond->),

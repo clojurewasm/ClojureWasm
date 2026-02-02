@@ -199,7 +199,14 @@ test "EvalEngine compare let_node" {
 
 test "EvalEngine compare arithmetic intrinsic matches" {
     // (+ 1 2) => 3 in both backends (compiler emits add opcode directly)
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
     var a2 = Node{ .constant = .{ .integer = 2 } };
@@ -214,7 +221,14 @@ test "EvalEngine compare arithmetic intrinsic matches" {
 
 test "EvalEngine compare division" {
     // (/ 10 4) => 2.5 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 10 } };
     var a2 = Node{ .constant = .{ .integer = 4 } };
@@ -228,7 +242,14 @@ test "EvalEngine compare division" {
 
 test "EvalEngine compare mod" {
     // (mod 7 3) => 1 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "mod", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 7 } };
     var a2 = Node{ .constant = .{ .integer = 3 } };
@@ -242,7 +263,14 @@ test "EvalEngine compare mod" {
 
 test "EvalEngine compare equality" {
     // (= 1 1) => true
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "=", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
     var a2 = Node{ .constant = .{ .integer = 1 } };
@@ -382,7 +410,14 @@ test "EvalEngine compare def+var_ref" {
 
 test "EvalEngine compare loop/recur" {
     // (loop [x 0] (if (< x 5) (recur (+ x 1)) x)) => 5
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
 
     var init_0 = Node{ .constant = .{ .integer = 0 } };
     const bindings = [_]node_mod.LetBinding{
@@ -625,7 +660,14 @@ test "EvalEngine compare reset!" {
 
 test "EvalEngine compare variadic add 3 args" {
     // (+ 1 2 3) => 6 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
     var a2 = Node{ .constant = .{ .integer = 2 } };
@@ -641,7 +683,14 @@ test "EvalEngine compare variadic add 3 args" {
 
 test "EvalEngine compare variadic add 0 args" {
     // (+) => 0 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var args = [_]*Node{};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
@@ -654,7 +703,14 @@ test "EvalEngine compare variadic add 0 args" {
 
 test "EvalEngine compare variadic mul 0 args" {
     // (*) => 1 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
     var args = [_]*Node{};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
@@ -667,7 +723,14 @@ test "EvalEngine compare variadic mul 0 args" {
 
 test "EvalEngine compare variadic add 1 arg" {
     // (+ 5) => 5 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 5 } };
     var args = [_]*Node{&a1};
@@ -681,7 +744,14 @@ test "EvalEngine compare variadic add 1 arg" {
 
 test "EvalEngine compare variadic sub 1 arg (negation)" {
     // (- 5) => -5 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 5 } };
     var args = [_]*Node{&a1};
@@ -695,7 +765,14 @@ test "EvalEngine compare variadic sub 1 arg (negation)" {
 
 test "EvalEngine compare variadic div 1 arg (reciprocal)" {
     // (/ 4) => 0.25 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 4 } };
     var args = [_]*Node{&a1};
@@ -709,7 +786,14 @@ test "EvalEngine compare variadic div 1 arg (reciprocal)" {
 
 test "EvalEngine compare variadic mul 3 args" {
     // (* 2 3 4) => 24 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 2 } };
     var a2 = Node{ .constant = .{ .integer = 3 } };
@@ -725,7 +809,14 @@ test "EvalEngine compare variadic mul 3 args" {
 
 test "EvalEngine compare variadic sub 3 args" {
     // (- 10 3 2) => 5 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 10 } };
     var a2 = Node{ .constant = .{ .integer = 3 } };
@@ -741,7 +832,14 @@ test "EvalEngine compare variadic sub 3 args" {
 
 test "EvalEngine compare variadic div 3 args" {
     // (/ 120 6 4) => 5.0 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 120 } };
     var a2 = Node{ .constant = .{ .integer = 6 } };
@@ -757,7 +855,14 @@ test "EvalEngine compare variadic div 3 args" {
 
 test "EvalEngine compare variadic add 5 args" {
     // (+ 1 2 3 4 5) => 15 in both backends
-    var engine = EvalEngine.init(std.testing.allocator, null);
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
     var a2 = Node{ .constant = .{ .integer = 2 } };

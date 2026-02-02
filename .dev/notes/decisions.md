@@ -887,8 +887,7 @@ dispatches via `callBuiltinFn` for all builtins uniformly.
 path instead of the hand-coded `variadicArith`/`variadicCmp` fast path.
 This may be slightly slower for multi-arg arithmetic, but is correct
 for all use patterns. The `builtinLookup`/`isBuiltin`/`callBuiltin`
-code remains for env-less fallback but is no longer reached in normal
-operation.
+code was removed in T8.R1 (dead code cleanup).
 
 **Consequence**: `apply`, `partial`, `comp`, `juxt`, `map`, `reduce`,
 and any higher-order pattern with intrinsic operators now works correctly.

@@ -155,32 +155,7 @@ pub const TreeWalk = struct {
             }
         }
 
-        // Fallback: hardcoded builtin lookup (when no Env is configured)
-        if (ns == null) {
-            if (builtinLookup(name)) |val| return val;
-        }
-
         return error.UndefinedVar;
-    }
-
-    // --- Builtin sentinel values ---
-    // Use keyword values as sentinel markers for builtin functions.
-
-    fn builtinLookup(name: []const u8) ?Value {
-        const builtins = [_][]const u8{ "+", "-", "*", "/", "<", ">", "<=", ">=", "mod", "rem", "=", "not=" };
-        for (builtins) |b| {
-            if (std.mem.eql(u8, name, b)) {
-                return Value{ .keyword = .{ .ns = "__builtin__", .name = b } };
-            }
-        }
-        return null;
-    }
-
-    fn isBuiltin(val: Value) bool {
-        if (val != .keyword) return false;
-        const kw = val.keyword;
-        if (kw.ns) |ns| return std.mem.eql(u8, ns, "__builtin__");
-        return false;
     }
 
     // --- Function call ---
@@ -209,11 +184,6 @@ pub const TreeWalk = struct {
 
     fn runCall(self: *TreeWalk, call_n: *const node_mod.CallNode) TreeWalkError!Value {
         const callee = try self.run(call_n.callee);
-
-        // Builtin dispatch (sentinel keyword for intrinsics)
-        if (isBuiltin(callee)) {
-            return self.callBuiltin(callee.keyword.name, call_n.args);
-        }
 
         // Builtin function dispatch (runtime_fn via BuiltinFn pointer)
         if (callee == .builtin_fn) {
@@ -752,190 +722,6 @@ pub const TreeWalk = struct {
         }
     }
 
-    // --- Builtin arithmetic/comparison ---
-
-    fn callBuiltin(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
-        // mod/rem: strictly 2-arity
-        if (std.mem.eql(u8, name, "mod") or std.mem.eql(u8, name, "rem")) {
-            if (args.len != 2) return error.ArityError;
-            const a = try self.run(args[0]);
-            const b = try self.run(args[1]);
-            if (std.mem.eql(u8, name, "mod")) return arithMod(a, b);
-            return arithRem(a, b);
-        }
-
-        // Variadic arithmetic: +, -, *, /
-        if (std.mem.eql(u8, name, "+") or std.mem.eql(u8, name, "-") or
-            std.mem.eql(u8, name, "*") or std.mem.eql(u8, name, "/"))
-        {
-            return self.variadicArith(name, args);
-        }
-
-        // Variadic comparisons: <, >, <=, >=
-        if (std.mem.eql(u8, name, "<") or std.mem.eql(u8, name, ">") or
-            std.mem.eql(u8, name, "<=") or std.mem.eql(u8, name, ">="))
-        {
-            return self.variadicCmp(name, args);
-        }
-
-        // Equality: =, not=
-        if (std.mem.eql(u8, name, "=") or std.mem.eql(u8, name, "not=")) {
-            return self.variadicEq(name, args);
-        }
-
-        return error.UndefinedVar;
-    }
-
-    fn variadicArith(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
-        const is_add = std.mem.eql(u8, name, "+");
-        const is_sub = std.mem.eql(u8, name, "-");
-        const is_mul = std.mem.eql(u8, name, "*");
-
-        if (args.len == 0) {
-            // (+) => 0, (*) => 1
-            if (is_add) return Value{ .integer = 0 };
-            if (is_mul) return Value{ .integer = 1 };
-            return error.ArityError;
-        }
-
-        var result = try self.run(args[0]);
-
-        if (args.len == 1) {
-            // (- x) => negation, (/ x) => 1/x, (+ x) => x, (* x) => x
-            if (is_sub) {
-                if (result == .integer) return Value{ .integer = -result.integer };
-                if (result == .float) return Value{ .float = -result.float };
-                return error.TypeError;
-            }
-            if (std.mem.eql(u8, name, "/")) {
-                const f = numToFloat(result) orelse return error.TypeError;
-                if (f == 0.0) return error.DivisionByZero;
-                return Value{ .float = 1.0 / f };
-            }
-            return result;
-        }
-
-        // 2+ args: left fold
-        for (args[1..]) |arg| {
-            const b = try self.run(arg);
-            if (is_add) {
-                result = try arith(result, b, .add);
-            } else if (is_sub) {
-                result = try arith(result, b, .sub);
-            } else if (is_mul) {
-                result = try arith(result, b, .mul);
-            } else {
-                result = try arithDiv(result, b);
-            }
-        }
-        return result;
-    }
-
-    fn variadicCmp(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
-        if (args.len == 0) return error.ArityError;
-        if (args.len == 1) return Value{ .boolean = true };
-
-        const op: CmpOp = if (std.mem.eql(u8, name, "<")) .lt
-            else if (std.mem.eql(u8, name, ">")) .gt
-            else if (std.mem.eql(u8, name, "<=")) .le
-            else .ge;
-
-        var prev = try self.run(args[0]);
-        for (args[1..]) |arg| {
-            const cur = try self.run(arg);
-            const result = try cmp(prev, cur, op);
-            if (!result.boolean) return Value{ .boolean = false };
-            prev = cur;
-        }
-        return Value{ .boolean = true };
-    }
-
-    fn variadicEq(self: *TreeWalk, name: []const u8, args: []const *Node) TreeWalkError!Value {
-        const is_not_eq = std.mem.eql(u8, name, "not=");
-        if (args.len == 0) return error.ArityError;
-        if (args.len == 1) return Value{ .boolean = !is_not_eq };
-
-        const a = try self.run(args[0]);
-        for (args[1..]) |arg| {
-            const b = try self.run(arg);
-            if (!a.eql(b)) return Value{ .boolean = is_not_eq };
-        }
-        return Value{ .boolean = !is_not_eq };
-    }
-
-    const ArithOp = enum { add, sub, mul };
-
-    fn arith(a: Value, b: Value, op: ArithOp) TreeWalkError!Value {
-        // Both integer
-        if (a == .integer and b == .integer) {
-            return Value{ .integer = switch (op) {
-                .add => a.integer + b.integer,
-                .sub => a.integer - b.integer,
-                .mul => a.integer * b.integer,
-            } };
-        }
-        // Promote to float
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        return Value{ .float = switch (op) {
-            .add => fa + fb,
-            .sub => fa - fb,
-            .mul => fa * fb,
-        } };
-    }
-
-    fn arithDiv(a: Value, b: Value) TreeWalkError!Value {
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        if (fb == 0.0) return error.DivisionByZero;
-        return Value{ .float = fa / fb };
-    }
-
-    const CmpOp = enum { lt, le, gt, ge };
-
-    fn cmp(a: Value, b: Value, op: CmpOp) TreeWalkError!Value {
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        const result: bool = switch (op) {
-            .lt => fa < fb,
-            .le => fa <= fb,
-            .gt => fa > fb,
-            .ge => fa >= fb,
-        };
-        return Value{ .boolean = result };
-    }
-
-    /// Clojure mod: result has same sign as divisor.
-    fn arithMod(a: Value, b: Value) TreeWalkError!Value {
-        if (a == .integer and b == .integer) {
-            if (b.integer == 0) return error.DivisionByZero;
-            return Value{ .integer = @mod(a.integer, b.integer) };
-        }
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        if (fb == 0.0) return error.DivisionByZero;
-        return Value{ .float = @mod(fa, fb) };
-    }
-
-    /// Clojure rem: result has same sign as dividend.
-    fn arithRem(a: Value, b: Value) TreeWalkError!Value {
-        if (a == .integer and b == .integer) {
-            if (b.integer == 0) return error.DivisionByZero;
-            return Value{ .integer = @rem(a.integer, b.integer) };
-        }
-        const fa = numToFloat(a) orelse return error.TypeError;
-        const fb = numToFloat(b) orelse return error.TypeError;
-        if (fb == 0.0) return error.DivisionByZero;
-        return Value{ .float = @rem(fa, fb) };
-    }
-
-    fn numToFloat(val: Value) ?f64 {
-        return switch (val) {
-            .integer => |i| @floatFromInt(i),
-            .float => |f| f,
-            else => null,
-        };
-    }
 };
 
 // === Tests ===
@@ -1171,7 +957,15 @@ test "TreeWalk fn with two params" {
 
 test "TreeWalk arithmetic builtins" {
     // (+ 3 4) => 7
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 3 } };
     var a2 = Node{ .constant = .{ .integer = 4 } };
@@ -1183,7 +977,15 @@ test "TreeWalk arithmetic builtins" {
 }
 
 test "TreeWalk subtraction" {
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 10 } };
     var a2 = Node{ .constant = .{ .integer = 3 } };
@@ -1195,7 +997,15 @@ test "TreeWalk subtraction" {
 }
 
 test "TreeWalk multiplication" {
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 6 } };
     var a2 = Node{ .constant = .{ .integer = 7 } };
@@ -1207,7 +1017,15 @@ test "TreeWalk multiplication" {
 }
 
 test "TreeWalk division returns float" {
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 10 } };
     var a2 = Node{ .constant = .{ .integer = 4 } };
@@ -1220,7 +1038,15 @@ test "TreeWalk division returns float" {
 
 test "TreeWalk comparison" {
     // (< 1 2) => true
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
+
     var callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var a1 = Node{ .constant = .{ .integer = 1 } };
     var a2 = Node{ .constant = .{ .integer = 2 } };
@@ -1262,7 +1088,14 @@ test "TreeWalk def and var_ref" {
 
 test "TreeWalk loop/recur" {
     // (loop [i 0] (if (< i 5) (recur (+ i 1)) i)) => 5
-    var tw = TreeWalk.init(std.testing.allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
+    defer tw.deinit();
 
     // Build AST
     var i_ref = Node{ .local_ref = .{ .name = "i", .idx = 0, .source = .{} } };
@@ -1310,8 +1143,13 @@ test "TreeWalk loop/recur" {
 
 test "TreeWalk closure captures locals" {
     // (let [x 10] ((fn [y] (+ x y)) 5)) => 15
-    const allocator = std.testing.allocator;
-    var tw = TreeWalk.init(allocator);
+    const registry = @import("../../common/builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
     defer tw.deinit();
 
     // fn body: (+ x y)
