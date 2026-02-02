@@ -13,6 +13,7 @@ const PersistentArrayMap = value_mod.PersistentArrayMap;
 const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const bootstrap = @import("../bootstrap.zig");
 
 // ============================================================
 // Implementations
@@ -418,6 +419,7 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Call the function
     return switch (f) {
         .builtin_fn => |func| func(allocator, call_args),
+        .fn_val => bootstrap.callFnVal(allocator, f, call_args),
         else => error.TypeError,
     };
 }

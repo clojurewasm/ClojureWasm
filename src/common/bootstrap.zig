@@ -205,6 +205,14 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         var vm = VM.initWithEnv(allocator, env);
         defer vm.deinit();
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+
+        // Detach runtime-created Fn objects so they survive VM deinit
+        // (closures stored in Vars must outlive the VM that created them)
+        const vm_fns = vm.detachFnAllocations();
+        for (vm_fns) |f| {
+            retained_fns.append(allocator, f) catch return error.CompileError;
+        }
+        if (vm_fns.len > 0) allocator.free(vm_fns);
     }
     return last_value;
 }
@@ -245,8 +253,10 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 /// Execute a bytecode fn_val via a new VM instance.
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     const env = macro_eval_env orelse return error.EvalError;
+    // Note: VM is NOT deinit'd here — closures created during execution
+    // (e.g., fn values returned from calls) must outlive this scope.
+    // Memory is owned by the arena allocator, which handles bulk deallocation.
     var vm = VM.initWithEnv(allocator, env);
-    defer vm.deinit();
 
     // Push fn_val onto stack
     try vm.push(fn_val);

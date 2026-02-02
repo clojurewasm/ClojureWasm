@@ -667,3 +667,23 @@
 (defn vary-meta
   [obj f & args]
   (with-meta obj (apply f (meta obj) args)))
+
+;; Function combinators — memoize and trampoline
+
+(defn memoize [f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (if (contains? (deref mem) args)
+        (get (deref mem) args)
+        (let [ret (apply f args)]
+          (swap! mem assoc args ret)
+          ret)))))
+
+(defn trampoline
+  ([f]
+   (loop [ret (f)]
+     (if (fn? ret)
+       (recur (ret))
+       ret)))
+  ([f & args]
+   (trampoline (fn [] (apply f args)))))

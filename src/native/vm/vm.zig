@@ -104,6 +104,16 @@ pub const VM = struct {
         };
     }
 
+    /// Detach runtime-allocated Fn objects so they survive VM deinit.
+    /// Returns the list of Fn pointers. Caller takes ownership.
+    pub fn detachFnAllocations(self: *VM) []const *const Fn {
+        const items = self.allocated_fns.items;
+        const result = self.allocator.alloc(*const Fn, items.len) catch return &.{};
+        @memcpy(result, items);
+        self.allocated_fns.clearRetainingCapacity();
+        return result;
+    }
+
     pub fn deinit(self: *VM) void {
         for (self.allocated_fns.items) |fn_ptr| {
             if (fn_ptr.closure_bindings) |cb| {
