@@ -11,6 +11,7 @@ const Env = @import("common/env.zig").Env;
 const registry = @import("common/builtin/registry.zig");
 const bootstrap = @import("common/bootstrap.zig");
 const Value = @import("common/value.zig").Value;
+const nrepl = @import("repl/nrepl.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -45,10 +46,16 @@ pub fn main() !void {
     var use_vm = true;
     var expr: ?[]const u8 = null;
     var file: ?[]const u8 = null;
+    var nrepl_mode = false;
+    var nrepl_port: u16 = 0;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--tree-walk")) {
             use_vm = false;
+        } else if (std.mem.eql(u8, args[i], "--nrepl-server")) {
+            nrepl_mode = true;
+        } else if (std.mem.startsWith(u8, args[i], "--port=")) {
+            nrepl_port = std.fmt.parseInt(u16, args[i]["--port=".len..], 10) catch 0;
         } else if (std.mem.eql(u8, args[i], "-e")) {
             i += 1;
             if (i >= args.len) {
@@ -60,6 +67,17 @@ pub fn main() !void {
         } else {
             file = args[i];
         }
+    }
+
+    if (nrepl_mode) {
+        nrepl.startServer(allocator, nrepl_port) catch |e| {
+            const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+            _ = stderr.write("Error: nREPL server failed: ") catch {};
+            _ = stderr.write(@errorName(e)) catch {};
+            _ = stderr.write("\n") catch {};
+            std.process.exit(1);
+        };
+        return;
     }
 
     if (expr) |e| {

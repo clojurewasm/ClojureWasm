@@ -4,7 +4,7 @@
 
 - Phase: 7 (Robustness + nREPL)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T7.8 — nREPL server (TCP socket)
+- Current task: T7.9 — nREPL middleware (completion, stacktrace)
 - Task file: (not yet created)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
@@ -64,6 +64,7 @@
 | T7.5     | .dev/plan/archive/task_0059_exception_handling.md           | 2026-02-02 |
 | T7.6     | .dev/plan/archive/task_0060_lazy_seq.md                     | 2026-02-02 |
 | T7.7     | .dev/plan/archive/task_0061_bencode.md                      | 2026-02-02 |
+| T7.8     | .dev/plan/archive/task_0062_nrepl_server.md                 | 2026-02-02 |
 
 **Phase 3a complete** — all 9 tasks (T3.1-T3.9) done.
 **Phase 3c complete** — T3.15-T3.17 done. (T3.11/T3.12 AOT deferred to Phase 4c.)

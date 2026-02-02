@@ -1,0 +1,1054 @@
+// nREPL server — TCP-based nREPL protocol implementation.
+//
+// CIDER/Calva/Conjure compatible minimum ops:
+// clone, close, describe, eval, load-file,
+// completions, info, lookup, eldoc, ls-sessions, ns-list
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const bencode = @import("bencode.zig");
+const BencodeValue = bencode.BencodeValue;
+const clj = @import("../root.zig");
+const Env = clj.env.Env;
+const Namespace = clj.namespace.Namespace;
+const Value = clj.value.Value;
+const Var = clj.var_mod.Var;
+const bootstrap = clj.bootstrap;
+const io_mod = clj.builtin_io;
+const registry = clj.builtin_registry;
+const err_mod = clj.err;
+
+// ====================================================================
+// Types
+// ====================================================================
+
+/// Session — tracks per-client state.
+const Session = struct {
+    id: []const u8,
+    ns_name: []const u8,
+};
+
+/// Server state shared across all client threads.
+pub const ServerState = struct {
+    env: *Env,
+    sessions: std.StringHashMapUnmanaged(Session),
+    mutex: std.Thread.Mutex,
+    running: bool,
+    gpa: Allocator,
+    /// Arena allocator for evaluation scratch space.
+    eval_arena: std.heap.ArenaAllocator,
+    port_file_written: bool,
+};
+
+// ====================================================================
+// Server entry point
+// ====================================================================
+
+/// Start the nREPL server on the given port (0 = OS auto-assign).
+pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
+    // Initialize environment
+    var eval_arena = std.heap.ArenaAllocator.init(gpa_allocator);
+    const alloc = eval_arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        return;
+    };
+    bootstrap.loadCore(alloc, &env) catch {
+        std.debug.print("Error: failed to load core.clj\n", .{});
+        return;
+    };
+
+    var state = ServerState{
+        .env = &env,
+        .sessions = .empty,
+        .mutex = .{},
+        .running = true,
+        .gpa = gpa_allocator,
+        .eval_arena = eval_arena,
+        .port_file_written = false,
+    };
+    defer {
+        if (state.port_file_written) {
+            std.fs.cwd().deleteFile(".nrepl-port") catch {};
+        }
+        // Free sessions
+        var iter = state.sessions.iterator();
+        while (iter.next()) |entry| {
+            gpa_allocator.free(entry.value_ptr.id);
+            gpa_allocator.free(entry.value_ptr.ns_name);
+        }
+        state.sessions.deinit(gpa_allocator);
+    }
+
+    // TCP listen
+    const address = std.net.Address.parseIp("127.0.0.1", port) catch unreachable;
+    var server = try address.listen(.{ .reuse_address = true });
+    defer server.deinit();
+
+    const actual_port = server.listen_address.getPort();
+
+    // Write .nrepl-port file
+    {
+        var port_buf: [10]u8 = undefined;
+        const port_str = std.fmt.bufPrint(&port_buf, "{d}", .{actual_port}) catch unreachable;
+        std.fs.cwd().writeFile(.{ .sub_path = ".nrepl-port", .data = port_str }) catch {};
+        state.port_file_written = true;
+    }
+
+    std.debug.print("nREPL server started on port {d} on host 127.0.0.1 - nrepl://127.0.0.1:{d}\n", .{ actual_port, actual_port });
+
+    // Accept loop
+    while (state.running) {
+        const conn = server.accept() catch |e| {
+            std.debug.print("accept error: {s}\n", .{@errorName(e)});
+            continue;
+        };
+
+        const thread = std.Thread.spawn(.{}, handleClient, .{ &state, conn }) catch |e| {
+            std.debug.print("thread spawn error: {s}\n", .{@errorName(e)});
+            conn.stream.close();
+            continue;
+        };
+        thread.detach();
+    }
+}
+
+/// Client connection handler (thread entry).
+fn handleClient(state: *ServerState, conn: std.net.Server.Connection) void {
+    defer conn.stream.close();
+    messageLoop(state, conn.stream);
+}
+
+/// Bencode message loop — read, decode, dispatch.
+fn messageLoop(state: *ServerState, stream: std.net.Stream) void {
+    var recv_buf: [65536]u8 = undefined;
+    var pending: std.ArrayListUnmanaged(u8) = .empty;
+    defer pending.deinit(state.gpa);
+
+    while (true) {
+        const n = stream.read(&recv_buf) catch break;
+        if (n == 0) break;
+
+        pending.appendSlice(state.gpa, recv_buf[0..n]) catch break;
+
+        while (pending.items.len > 0) {
+            var arena = std.heap.ArenaAllocator.init(state.gpa);
+            defer arena.deinit();
+
+            const result = bencode.decode(arena.allocator(), pending.items) catch |e| {
+                switch (e) {
+                    error.UnexpectedEof => break,
+                    else => return,
+                }
+            };
+
+            const msg = switch (result.value) {
+                .dict => |d| d,
+                else => {
+                    shiftPending(&pending, result.consumed);
+                    continue;
+                },
+            };
+
+            dispatchOp(state, msg, stream, arena.allocator());
+            shiftPending(&pending, result.consumed);
+        }
+    }
+}
+
+/// Remove consumed bytes from pending buffer.
+fn shiftPending(pending: *std.ArrayListUnmanaged(u8), n: usize) void {
+    if (n >= pending.items.len) {
+        pending.clearRetainingCapacity();
+    } else {
+        std.mem.copyForwards(u8, pending.items[0..], pending.items[n..]);
+        pending.items.len -= n;
+    }
+}
+
+// ====================================================================
+// Op dispatch
+// ====================================================================
+
+/// Route incoming message to the appropriate op handler.
+fn dispatchOp(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const op = bencode.dictGetString(msg, "op") orelse {
+        sendError(stream, msg, "missing-op", "No op specified", allocator);
+        return;
+    };
+
+    if (std.mem.eql(u8, op, "clone")) {
+        opClone(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "close")) {
+        opClose(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "describe")) {
+        opDescribe(msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "eval")) {
+        opEval(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "load-file")) {
+        opLoadFile(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "ls-sessions")) {
+        opLsSessions(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "completions") or std.mem.eql(u8, op, "complete")) {
+        opCompletions(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "info") or std.mem.eql(u8, op, "lookup")) {
+        opInfo(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "eldoc")) {
+        opEldoc(state, msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "ns-list")) {
+        opNsList(state, msg, stream, allocator);
+    } else {
+        // Unknown op — return done so editors don't hang
+        sendDone(stream, msg, allocator);
+    }
+}
+
+// ====================================================================
+// Op implementations
+// ====================================================================
+
+/// clone: create a new session.
+fn opClone(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const session_id = generateUUID(allocator) catch return;
+
+    state.mutex.lock();
+    const ns_name = state.gpa.dupe(u8, "user") catch {
+        state.mutex.unlock();
+        return;
+    };
+    const id_persistent = state.gpa.dupe(u8, session_id) catch {
+        state.mutex.unlock();
+        return;
+    };
+    state.sessions.put(state.gpa, id_persistent, .{
+        .id = id_persistent,
+        .ns_name = ns_name,
+    }) catch {
+        state.mutex.unlock();
+        return;
+    };
+    state.mutex.unlock();
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        .{ .key = "new-session", .value = .{ .string = session_id } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// close: destroy a session.
+fn opClose(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    if (bencode.dictGetString(msg, "session")) |sid| {
+        state.mutex.lock();
+        if (state.sessions.fetchRemove(sid)) |entry| {
+            state.gpa.free(entry.value.id);
+            state.gpa.free(entry.value.ns_name);
+        }
+        state.mutex.unlock();
+    }
+    sendDone(stream, msg, allocator);
+}
+
+/// describe: server information and supported ops.
+fn opDescribe(
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const ops_entries = [_]BencodeValue.DictEntry{
+        .{ .key = "clone", .value = .{ .dict = &.{} } },
+        .{ .key = "close", .value = .{ .dict = &.{} } },
+        .{ .key = "describe", .value = .{ .dict = &.{} } },
+        .{ .key = "eval", .value = .{ .dict = &.{} } },
+        .{ .key = "load-file", .value = .{ .dict = &.{} } },
+        .{ .key = "ls-sessions", .value = .{ .dict = &.{} } },
+        .{ .key = "completions", .value = .{ .dict = &.{} } },
+        .{ .key = "complete", .value = .{ .dict = &.{} } },
+        .{ .key = "info", .value = .{ .dict = &.{} } },
+        .{ .key = "lookup", .value = .{ .dict = &.{} } },
+        .{ .key = "eldoc", .value = .{ .dict = &.{} } },
+        .{ .key = "ns-list", .value = .{ .dict = &.{} } },
+        .{ .key = "stdin", .value = .{ .dict = &.{} } },
+    };
+
+    const version_entries = [_]BencodeValue.DictEntry{
+        .{ .key = "major", .value = .{ .integer = 0 } },
+        .{ .key = "minor", .value = .{ .integer = 1 } },
+        .{ .key = "incremental", .value = .{ .integer = 0 } },
+    };
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        .{ .key = "ops", .value = .{ .dict = &ops_entries } },
+        .{ .key = "versions", .value = .{ .dict = &.{
+            .{ .key = "clojure-wasm", .value = .{ .dict = &version_entries } },
+        } } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// eval: evaluate Clojure code.
+fn opEval(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const code = bencode.dictGetString(msg, "code") orelse {
+        sendError(stream, msg, "eval-error", "No code provided", allocator);
+        return;
+    };
+
+    // Resolve session namespace
+    const session_id = bencode.dictGetString(msg, "session");
+    const ns_name = if (bencode.dictGetString(msg, "ns")) |n|
+        n
+    else if (session_id) |sid| blk: {
+        state.mutex.lock();
+        defer state.mutex.unlock();
+        break :blk if (state.sessions.get(sid)) |s| s.ns_name else "user";
+    } else "user";
+
+    // Serialize evaluation
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    // Switch namespace
+    if (state.env.findNamespace(ns_name)) |ns| {
+        state.env.current_ns = ns;
+    }
+
+    // Set up output capture
+    var capture_buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer capture_buf.deinit(state.gpa);
+    io_mod.setOutputCapture(state.gpa, &capture_buf);
+    defer io_mod.setOutputCapture(null, null);
+
+    // Copy code to eval_arena so it outlives the message decode arena.
+    // evalString's Reader and Analyzer may reference the source string.
+    const code_persistent = state.eval_arena.allocator().dupe(u8, code) catch {
+        sendError(stream, msg, "eval-error", "Out of memory", allocator);
+        return;
+    };
+
+    // Evaluate via bootstrap (TreeWalk)
+    const result = bootstrap.evalString(state.eval_arena.allocator(), state.env, code_persistent);
+
+    // Flush captured output
+    if (capture_buf.items.len > 0) {
+        const out_entries = [_]BencodeValue.DictEntry{
+            idEntry(msg),
+            sessionEntry(msg),
+            .{ .key = "out", .value = .{ .string = capture_buf.items } },
+        };
+        sendBencode(stream, &out_entries, allocator);
+    }
+
+    if (result) |val| {
+        // Format value as string
+        var val_buf: [65536]u8 = undefined;
+        var val_stream = std.io.fixedBufferStream(&val_buf);
+        writeValue(val_stream.writer(), val);
+        const val_str = val_stream.getWritten();
+
+        const current_ns_name = if (state.env.current_ns) |ns| ns.name else "user";
+
+        const val_entries = [_]BencodeValue.DictEntry{
+            idEntry(msg),
+            sessionEntry(msg),
+            .{ .key = "value", .value = .{ .string = val_str } },
+            .{ .key = "ns", .value = .{ .string = current_ns_name } },
+        };
+        sendBencode(stream, &val_entries, allocator);
+        sendDone(stream, msg, allocator);
+    } else |_| {
+        // Error
+        const err_msg = if (state.env.error_ctx.getLastError()) |info|
+            info.message
+        else
+            "evaluation failed";
+
+        sendEvalError(stream, msg, err_msg, allocator);
+    }
+
+    // Update session namespace
+    if (session_id) |sid| {
+        if (state.sessions.getPtr(sid)) |session| {
+            if (state.env.current_ns) |ns| {
+                state.gpa.free(session.ns_name);
+                session.ns_name = state.gpa.dupe(u8, ns.name) catch session.ns_name;
+            }
+        }
+    }
+}
+
+/// Send eval error response.
+fn sendEvalError(
+    stream: std.net.Stream,
+    msg: []const BencodeValue.DictEntry,
+    err_msg: []const u8,
+    allocator: Allocator,
+) void {
+    const err_entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "err", .value = .{ .string = err_msg } },
+    };
+    sendBencode(stream, &err_entries, allocator);
+
+    const ex_entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "ex", .value = .{ .string = err_msg } },
+    };
+    sendBencode(stream, &ex_entries, allocator);
+
+    const status_items = [_]BencodeValue{
+        .{ .string = "done" },
+        .{ .string = "eval-error" },
+    };
+    const done_entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "status", .value = .{ .list = &status_items } },
+    };
+    sendBencode(stream, &done_entries, allocator);
+}
+
+/// load-file: evaluate file content as code.
+fn opLoadFile(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const file_content = bencode.dictGetString(msg, "file") orelse {
+        sendError(stream, msg, "eval-error", "No file content provided", allocator);
+        return;
+    };
+
+    // Build a synthetic eval message with code = file content
+    var eval_msg_buf: [8]BencodeValue.DictEntry = undefined;
+    var eval_msg_len: usize = 0;
+
+    for (msg) |entry| {
+        if (eval_msg_len >= eval_msg_buf.len) break;
+        if (std.mem.eql(u8, entry.key, "op")) {
+            eval_msg_buf[eval_msg_len] = .{ .key = "op", .value = .{ .string = "eval" } };
+        } else if (std.mem.eql(u8, entry.key, "file")) {
+            eval_msg_buf[eval_msg_len] = .{ .key = "code", .value = .{ .string = file_content } };
+        } else {
+            eval_msg_buf[eval_msg_len] = entry;
+        }
+        eval_msg_len += 1;
+    }
+
+    opEval(state, eval_msg_buf[0..eval_msg_len], stream, allocator);
+}
+
+/// ls-sessions: list active sessions.
+fn opLsSessions(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    var session_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var iter = state.sessions.iterator();
+    while (iter.next()) |entry| {
+        session_list.append(allocator, .{ .string = entry.value_ptr.id }) catch {};
+    }
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        .{ .key = "sessions", .value = .{ .list = session_list.items } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// completions: symbol prefix completion.
+fn opCompletions(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const prefix = bencode.dictGetString(msg, "prefix") orelse
+        bencode.dictGetString(msg, "symbol") orelse "";
+
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    var completions: std.ArrayListUnmanaged(BencodeValue) = .empty;
+
+    // Current namespace vars + refers
+    if (state.env.current_ns) |ns| {
+        collectCompletions(allocator, &completions, &ns.mappings, prefix, ns.name);
+        collectCompletions(allocator, &completions, &ns.refers, prefix, null);
+    }
+
+    // clojure.core vars
+    if (state.env.findNamespace("clojure.core")) |core_ns| {
+        collectCompletions(allocator, &completions, &core_ns.mappings, prefix, "clojure.core");
+    }
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        .{ .key = "completions", .value = .{ .list = completions.items } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// Collect completion candidates from a VarMap.
+fn collectCompletions(
+    allocator: Allocator,
+    completions: *std.ArrayListUnmanaged(BencodeValue),
+    var_map: *const clj.namespace.VarMap,
+    prefix: []const u8,
+    ns_name: ?[]const u8,
+) void {
+    var iter = var_map.iterator();
+    while (iter.next()) |entry| {
+        const name = entry.key_ptr.*;
+        if (prefix.len == 0 or std.mem.startsWith(u8, name, prefix)) {
+            const v: *const Var = entry.value_ptr.*;
+            if (v.isPrivate()) continue;
+
+            var comp_entries_buf: [3]BencodeValue.DictEntry = undefined;
+            var comp_len: usize = 0;
+            comp_entries_buf[comp_len] = .{ .key = "candidate", .value = .{ .string = name } };
+            comp_len += 1;
+            if (ns_name) |ns| {
+                comp_entries_buf[comp_len] = .{ .key = "ns", .value = .{ .string = ns } };
+                comp_len += 1;
+            }
+            comp_entries_buf[comp_len] = .{ .key = "type", .value = .{ .string = "var" } };
+            comp_len += 1;
+
+            const comp_dict = allocator.dupe(BencodeValue.DictEntry, comp_entries_buf[0..comp_len]) catch continue;
+            completions.append(allocator, .{ .dict = comp_dict }) catch {};
+        }
+    }
+}
+
+/// info / lookup: symbol documentation.
+fn opInfo(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const sym_name = bencode.dictGetString(msg, "sym") orelse
+        bencode.dictGetString(msg, "symbol") orelse {
+        sendDone(stream, msg, allocator);
+        return;
+    };
+
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    const v = resolveSymbol(state.env, sym_name, bencode.dictGetString(msg, "ns"));
+    if (v == null) {
+        const status_items = [_]BencodeValue{
+            .{ .string = "done" },
+            .{ .string = "no-info" },
+        };
+        const entries = [_]BencodeValue.DictEntry{
+            idEntry(msg),
+            .{ .key = "status", .value = .{ .list = &status_items } },
+        };
+        sendBencode(stream, &entries, allocator);
+        return;
+    }
+
+    const var_ptr = v.?;
+    var info_entries: std.ArrayListUnmanaged(BencodeValue.DictEntry) = .empty;
+    info_entries.append(allocator, idEntry(msg)) catch {};
+    info_entries.append(allocator, .{ .key = "name", .value = .{ .string = var_ptr.sym.name } }) catch {};
+    if (var_ptr.ns_name.len > 0) {
+        info_entries.append(allocator, .{ .key = "ns", .value = .{ .string = var_ptr.ns_name } }) catch {};
+    }
+    if (var_ptr.doc) |doc| {
+        info_entries.append(allocator, .{ .key = "doc", .value = .{ .string = doc } }) catch {};
+    }
+    if (var_ptr.arglists) |arglists| {
+        info_entries.append(allocator, .{ .key = "arglists-str", .value = .{ .string = arglists } }) catch {};
+    }
+    info_entries.append(allocator, statusDone()) catch {};
+
+    sendBencode(stream, info_entries.items, allocator);
+}
+
+/// eldoc: function argument list for editor display.
+fn opEldoc(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const sym_name = bencode.dictGetString(msg, "sym") orelse
+        bencode.dictGetString(msg, "symbol") orelse
+        bencode.dictGetString(msg, "ns") orelse {
+        sendDone(stream, msg, allocator);
+        return;
+    };
+
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    const v = resolveSymbol(state.env, sym_name, bencode.dictGetString(msg, "ns"));
+    if (v == null) {
+        sendDone(stream, msg, allocator);
+        return;
+    }
+
+    const var_ptr = v.?;
+    var eldoc_entries: std.ArrayListUnmanaged(BencodeValue.DictEntry) = .empty;
+    eldoc_entries.append(allocator, idEntry(msg)) catch {};
+    eldoc_entries.append(allocator, .{ .key = "name", .value = .{ .string = var_ptr.sym.name } }) catch {};
+    if (var_ptr.ns_name.len > 0) {
+        eldoc_entries.append(allocator, .{ .key = "ns", .value = .{ .string = var_ptr.ns_name } }) catch {};
+    }
+    if (var_ptr.arglists) |arglists| {
+        const eldoc_list = [_]BencodeValue{.{ .string = arglists }};
+        eldoc_entries.append(allocator, .{ .key = "eldoc", .value = .{ .list = &eldoc_list } }) catch {};
+    }
+    if (var_ptr.doc) |doc| {
+        eldoc_entries.append(allocator, .{ .key = "docstring", .value = .{ .string = doc } }) catch {};
+    }
+    eldoc_entries.append(allocator, .{ .key = "type", .value = .{ .string = "function" } }) catch {};
+    eldoc_entries.append(allocator, statusDone()) catch {};
+
+    sendBencode(stream, eldoc_entries.items, allocator);
+}
+
+/// ns-list: list all namespaces.
+fn opNsList(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    var ns_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var iter = state.env.namespaces.iterator();
+    while (iter.next()) |entry| {
+        ns_list.append(allocator, .{ .string = entry.key_ptr.* }) catch {};
+    }
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        .{ .key = "ns-list", .value = .{ .list = ns_list.items } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+// ====================================================================
+// Helpers
+// ====================================================================
+
+/// Resolve a symbol in the environment.
+fn resolveSymbol(env: *Env, sym_name: []const u8, ns_hint: ?[]const u8) ?*Var {
+    // Qualified name (ns/name)
+    if (std.mem.indexOfScalar(u8, sym_name, '/')) |slash| {
+        const ns_part = sym_name[0..slash];
+        const name_part = sym_name[slash + 1 ..];
+        if (env.findNamespace(ns_part)) |ns| {
+            return ns.resolve(name_part);
+        }
+    }
+
+    // Namespace hint
+    if (ns_hint) |ns_name| {
+        if (env.findNamespace(ns_name)) |ns| {
+            if (ns.resolve(sym_name)) |v| return v;
+        }
+    }
+
+    // Current namespace
+    if (env.current_ns) |ns| {
+        if (ns.resolve(sym_name)) |v| return v;
+    }
+
+    // clojure.core
+    if (env.findNamespace("clojure.core")) |core_ns| {
+        return core_ns.resolve(sym_name);
+    }
+
+    return null;
+}
+
+/// UUID v4 generation.
+fn generateUUID(allocator: Allocator) ![]const u8 {
+    var bytes: [16]u8 = undefined;
+    std.crypto.random.bytes(&bytes);
+
+    // v4: version (bits 48-51) = 0100, variant (bits 64-65) = 10
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    return std.fmt.allocPrint(allocator, "{x:0>2}{x:0>2}{x:0>2}{x:0>2}-{x:0>2}{x:0>2}-{x:0>2}{x:0>2}-{x:0>2}{x:0>2}-{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}", .{
+        bytes[0],  bytes[1],  bytes[2],  bytes[3],
+        bytes[4],  bytes[5],
+        bytes[6],  bytes[7],
+        bytes[8],  bytes[9],
+        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+    });
+}
+
+/// Build "id" entry from request message.
+fn idEntry(msg: []const BencodeValue.DictEntry) BencodeValue.DictEntry {
+    return .{
+        .key = "id",
+        .value = .{ .string = bencode.dictGetString(msg, "id") orelse "" },
+    };
+}
+
+/// Build "session" entry from request message.
+fn sessionEntry(msg: []const BencodeValue.DictEntry) BencodeValue.DictEntry {
+    return .{
+        .key = "session",
+        .value = .{ .string = bencode.dictGetString(msg, "session") orelse "" },
+    };
+}
+
+/// Build status "done" entry.
+fn statusDone() BencodeValue.DictEntry {
+    const done_items = [_]BencodeValue{.{ .string = "done" }};
+    return .{ .key = "status", .value = .{ .list = &done_items } };
+}
+
+/// Encode and send a bencode dict over a TCP stream.
+fn sendBencode(
+    stream: std.net.Stream,
+    entries: []const BencodeValue.DictEntry,
+    allocator: Allocator,
+) void {
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    bencode.encode(allocator, &buf, .{ .dict = entries }) catch return;
+    stream.writeAll(buf.items) catch {};
+}
+
+/// Send a simple "done" response.
+fn sendDone(
+    stream: std.net.Stream,
+    msg: []const BencodeValue.DictEntry,
+    allocator: Allocator,
+) void {
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// Send an error response.
+fn sendError(
+    stream: std.net.Stream,
+    msg: []const BencodeValue.DictEntry,
+    status: []const u8,
+    err_msg: []const u8,
+    allocator: Allocator,
+) void {
+    const status_items = [_]BencodeValue{
+        .{ .string = "done" },
+        .{ .string = status },
+    };
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "err", .value = .{ .string = err_msg } },
+        .{ .key = "status", .value = .{ .list = &status_items } },
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// Format a Value as a Clojure-readable string.
+/// Equivalent to pr-str semantics.
+fn writeValue(w: anytype, val: Value) void {
+    switch (val) {
+        .nil => w.print("nil", .{}) catch {},
+        .boolean => |b| w.print("{}", .{b}) catch {},
+        .integer => |i| w.print("{d}", .{i}) catch {},
+        .float => |f| w.print("{d}", .{f}) catch {},
+        .string => |s| w.print("\"{s}\"", .{s}) catch {},
+        .keyword => |k| {
+            if (k.ns) |ns| {
+                w.print(":{s}/{s}", .{ ns, k.name }) catch {};
+            } else {
+                w.print(":{s}", .{k.name}) catch {};
+            }
+        },
+        .symbol => |s| {
+            if (s.ns) |ns| {
+                w.print("{s}/{s}", .{ ns, s.name }) catch {};
+            } else {
+                w.print("{s}", .{s.name}) catch {};
+            }
+        },
+        .list => |lst| {
+            w.print("(", .{}) catch {};
+            for (lst.items, 0..) |item, i| {
+                if (i > 0) w.print(" ", .{}) catch {};
+                writeValue(w, item);
+            }
+            w.print(")", .{}) catch {};
+        },
+        .vector => |vec| {
+            w.print("[", .{}) catch {};
+            for (vec.items, 0..) |item, i| {
+                if (i > 0) w.print(" ", .{}) catch {};
+                writeValue(w, item);
+            }
+            w.print("]", .{}) catch {};
+        },
+        .map => |m| {
+            w.print("{{", .{}) catch {};
+            var i: usize = 0;
+            while (i < m.entries.len) : (i += 2) {
+                if (i > 0) w.print(", ", .{}) catch {};
+                writeValue(w, m.entries[i]);
+                w.print(" ", .{}) catch {};
+                writeValue(w, m.entries[i + 1]);
+            }
+            w.print("}}", .{}) catch {};
+        },
+        .set => |s| {
+            w.print("#{{", .{}) catch {};
+            for (s.items, 0..) |item, i| {
+                if (i > 0) w.print(" ", .{}) catch {};
+                writeValue(w, item);
+            }
+            w.print("}}", .{}) catch {};
+        },
+        .fn_val => w.print("#<fn>", .{}) catch {},
+        .builtin_fn => w.print("#<builtin>", .{}) catch {},
+        .atom => |a| {
+            w.print("(atom ", .{}) catch {};
+            writeValue(w, a.value);
+            w.print(")", .{}) catch {};
+        },
+        .char => |c| {
+            var buf: [4]u8 = undefined;
+            const len = std.unicode.utf8Encode(c, &buf) catch 0;
+            _ = w.write("\\") catch {};
+            _ = w.write(buf[0..len]) catch {};
+        },
+        .protocol => |p| w.print("#<protocol {s}>", .{p.name}) catch {},
+        .protocol_fn => |pf| w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {},
+        .multi_fn => |mf| w.print("#<multifn {s}>", .{mf.name}) catch {},
+        .lazy_seq => |ls| {
+            if (ls.realized) |r| {
+                writeValue(w, r);
+            } else {
+                w.print("#<lazy-seq>", .{}) catch {};
+            }
+        },
+        .cons => |c| {
+            w.print("(", .{}) catch {};
+            writeValue(w, c.first);
+            w.print(" . ", .{}) catch {};
+            writeValue(w, c.rest);
+            w.print(")", .{}) catch {};
+        },
+    }
+}
+
+// ====================================================================
+// Tests
+// ====================================================================
+
+test "nrepl - generateUUID format" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const uuid = try generateUUID(allocator);
+
+    // UUID v4 format: 8-4-4-4-12 hex chars = 36 total
+    try std.testing.expectEqual(@as(usize, 36), uuid.len);
+    try std.testing.expectEqual(@as(u8, '-'), uuid[8]);
+    try std.testing.expectEqual(@as(u8, '-'), uuid[13]);
+    try std.testing.expectEqual(@as(u8, '-'), uuid[18]);
+    try std.testing.expectEqual(@as(u8, '-'), uuid[23]);
+
+    // Version nibble (position 14) should be '4'
+    try std.testing.expectEqual(@as(u8, '4'), uuid[14]);
+
+    // Variant nibble (position 19) should be 8, 9, a, or b
+    const variant = uuid[19];
+    try std.testing.expect(variant == '8' or variant == '9' or variant == 'a' or variant == 'b');
+}
+
+test "nrepl - generateUUID uniqueness" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const uuid1 = try generateUUID(allocator);
+    const uuid2 = try generateUUID(allocator);
+    try std.testing.expect(!std.mem.eql(u8, uuid1, uuid2));
+}
+
+test "nrepl - idEntry extracts id from message" {
+    const msg = [_]BencodeValue.DictEntry{
+        .{ .key = "id", .value = .{ .string = "42" } },
+        .{ .key = "op", .value = .{ .string = "eval" } },
+    };
+    const entry = idEntry(&msg);
+    try std.testing.expectEqualSlices(u8, "id", entry.key);
+    try std.testing.expectEqualSlices(u8, "42", entry.value.string);
+}
+
+test "nrepl - idEntry returns empty when no id" {
+    const msg = [_]BencodeValue.DictEntry{
+        .{ .key = "op", .value = .{ .string = "eval" } },
+    };
+    const entry = idEntry(&msg);
+    try std.testing.expectEqualSlices(u8, "", entry.value.string);
+}
+
+test "nrepl - sessionEntry extracts session" {
+    const msg = [_]BencodeValue.DictEntry{
+        .{ .key = "session", .value = .{ .string = "abc-123" } },
+    };
+    const entry = sessionEntry(&msg);
+    try std.testing.expectEqualSlices(u8, "session", entry.key);
+    try std.testing.expectEqualSlices(u8, "abc-123", entry.value.string);
+}
+
+test "nrepl - statusDone produces done list" {
+    const entry = statusDone();
+    try std.testing.expectEqualSlices(u8, "status", entry.key);
+    const list = entry.value.list;
+    try std.testing.expectEqual(@as(usize, 1), list.len);
+    try std.testing.expectEqualSlices(u8, "done", list[0].string);
+}
+
+test "nrepl - writeValue integer" {
+    var buf: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    writeValue(stream.writer(), .{ .integer = 42 });
+    try std.testing.expectEqualSlices(u8, "42", stream.getWritten());
+}
+
+test "nrepl - writeValue string" {
+    var buf: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    writeValue(stream.writer(), .{ .string = "hello" });
+    try std.testing.expectEqualSlices(u8, "\"hello\"", stream.getWritten());
+}
+
+test "nrepl - writeValue nil" {
+    var buf: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    writeValue(stream.writer(), .nil);
+    try std.testing.expectEqualSlices(u8, "nil", stream.getWritten());
+}
+
+test "nrepl - writeValue boolean" {
+    var buf: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    writeValue(stream.writer(), .{ .boolean = true });
+    try std.testing.expectEqualSlices(u8, "true", stream.getWritten());
+}
+
+test "nrepl - writeValue keyword" {
+    var buf: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    writeValue(stream.writer(), .{ .keyword = .{ .name = "foo", .ns = null } });
+    try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
+}
+
+test "nrepl - TCP integration: describe op" {
+    // Start server on random port
+    const allocator = std.testing.allocator;
+
+    const address = std.net.Address.parseIp("127.0.0.1", 0) catch unreachable;
+    var server = try address.listen(.{ .reuse_address = true });
+    defer server.deinit();
+    const port = server.listen_address.getPort();
+
+    // Client thread: connect and send describe request
+    const ClientThread = struct {
+        fn run(p: u16) !void {
+            const alloc = std.testing.allocator;
+            var decode_arena = std.heap.ArenaAllocator.init(alloc);
+            defer decode_arena.deinit();
+
+            const addr = std.net.Address.parseIp("127.0.0.1", p) catch unreachable;
+            var stream = try std.net.tcpConnectToAddress(addr);
+            defer stream.close();
+
+            // Send describe request
+            var send_buf: std.ArrayListUnmanaged(u8) = .empty;
+            defer send_buf.deinit(alloc);
+            const msg_entries = [_]BencodeValue.DictEntry{
+                .{ .key = "op", .value = .{ .string = "describe" } },
+                .{ .key = "id", .value = .{ .string = "1" } },
+            };
+            try bencode.encode(alloc, &send_buf, .{ .dict = &msg_entries });
+            try stream.writeAll(send_buf.items);
+
+            // Read response
+            var recv_buf: [4096]u8 = undefined;
+            const n = try stream.read(&recv_buf);
+            try std.testing.expect(n > 0);
+
+            // Decode and verify (use arena to avoid leak)
+            const result = try bencode.decode(decode_arena.allocator(), recv_buf[0..n]);
+            const dict = result.value.dict;
+            try std.testing.expectEqualSlices(u8, "1", bencode.dictGetString(dict, "id").?);
+            // Should have ops key
+            try std.testing.expect(bencode.dictGet(dict, "ops") != null);
+        }
+    };
+
+    const client_thread = try std.Thread.spawn(.{}, ClientThread.run, .{port});
+
+    // Server side: accept one connection and process one message
+    const conn = try server.accept();
+    defer conn.stream.close();
+
+    // Read request
+    var recv_buf: [4096]u8 = undefined;
+    const n = try conn.stream.read(&recv_buf);
+    if (n > 0) {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const result = bencode.decode(arena.allocator(), recv_buf[0..n]) catch unreachable;
+        const msg = result.value.dict;
+        opDescribe(msg, conn.stream, arena.allocator());
+    }
+
+    client_thread.join();
+}

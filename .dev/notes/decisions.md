@@ -996,3 +996,30 @@ or lazy sequences (via the fn_val_dispatcher bridge from D18).
 **Future**: When the AOT pipeline (T4.7) is implemented, these features
 would need VM opcodes or a call-convention for dispatching through the VM.
 This is tracked as a future extension of P1 (VM parity) in checklist.md.
+
+---
+
+## D29: nREPL Server — eval_arena for Code String Persistence (T7.8)
+
+**Date**: 2026-02-02
+**Context**: T7.8 (nREPL Server) — bencode-decoded code strings and eval lifetime
+
+**Problem**: In the nREPL message loop, each bencode message is decoded into
+a per-request arena that is freed after `dispatchOp` returns. However, the
+`code` string extracted from the bencode dict points into this arena memory.
+When `bootstrap.evalString` processes `def`/`defn`, it may intern symbol names
+or source references that outlive the request arena — causing use-after-free
+(segfault) on subsequent evals that reference those vars.
+
+**Decision**: Copy the code string to `state.eval_arena` (which accumulates
+and is never reset during the server lifetime) before passing it to
+`evalString`. This ensures all source strings referenced by interned vars
+remain valid for the lifetime of the server.
+
+**Trade-off**: The eval_arena grows monotonically. For a development-time
+nREPL server this is acceptable — typical sessions evaluate kilobytes of
+code, not gigabytes. A future optimization could use a dedicated string
+interning arena separate from the eval arena.
+
+**Impact**: Cross-eval `def`/`defn` persistence works correctly. Verified
+with integration tests (def x, defn square, multi-form defs).

@@ -30,6 +30,7 @@ pub const builtin_atom = @import("common/builtin/atom.zig");
 pub const macro_utils = @import("common/macro.zig");
 pub const bootstrap = @import("common/bootstrap.zig");
 pub const bencode = @import("repl/bencode.zig");
+pub const nrepl = @import("repl/nrepl.zig");
 
 test {
     _ = value;
@@ -61,4 +62,5 @@ test {
     _ = macro_utils;
     _ = bootstrap;
     _ = bencode;
+    _ = nrepl;
 }
