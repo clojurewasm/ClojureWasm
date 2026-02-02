@@ -1,0 +1,4 @@
+name: "Fibonacci (loop/recur)"
+category: computation
+expected_output: "75025"
+description: "Iterative fibonacci with loop/recur — measures tail recursion"

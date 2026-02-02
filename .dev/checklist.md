@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (after T4.10)
+Last updated: 2026-02-02 (after T5.6)
 
 ## Invariants (always enforce)
 
@@ -23,6 +23,10 @@ Last updated: 2026-02-02 (after T4.10)
 | F6  | Multi-thread dynamic bindings               | Native multi-thread target                            | D11    |
 | F7  | Macro body serialization (AOT blocker)      | T4.7 AOT bytecode startup                             | D18    |
 | F8  | Unified fn_val proto (VM/TreeWalk)          | VM tests for `for`, higher-order cross-boundary calls | D22    |
+| F9  | `empty?` builtin                            | Benchmark .clj uses `(nil? (seq ...))` workaround     | bench  |
+| F10 | `range` builtin                             | Benchmark .clj uses loop/recur; JVM .clj can't share  | bench  |
+| F11 | TreeWalk stack depth limit                  | ack(3,6) segfaults; deep recursion unusable           | bench  |
+| F12 | `str` fixed 4KB buffer                      | str_concat bench removed; large string ops fail       | bench  |
 
 ## Phase 4 task priorities
 

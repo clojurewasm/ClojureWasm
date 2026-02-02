@@ -213,6 +213,37 @@ std.debug.print("\n{s}\n", .{w.buffered()});
 When a compiler or VM test fails unexpectedly, add a dump call before the
 failing assertion to see what was actually compiled. Remove after debugging.
 
+## Benchmark Suite
+
+11 benchmarks across 5 categories (computation, collections, HOF, state).
+Compares ClojureWasm against C, Zig, Java, Python, Ruby, Clojure JVM, Babashka.
+Parameters sized for hyperfine precision (10ms-1s per run).
+
+```bash
+# ClojureWasm only
+bash bench/run_bench.sh
+
+# All languages
+bash bench/run_bench.sh --all
+
+# Record baseline
+bash bench/run_bench.sh --all --record --version="Phase 5 baseline"
+
+# Single benchmark with hyperfine
+bash bench/run_bench.sh --bench=fib_recursive --hyperfine
+
+# ReleaseFast build
+bash bench/run_bench.sh --release
+```
+
+**When to run**:
+
+- After performance optimizations
+- After adding new features that affect evaluation speed
+- Before recording a new baseline (`--record --version="..."`)
+
+Results go to `.dev/status/bench.yaml`. See `bench/README.md` for full docs.
+
 ## Zig 0.15.2 Quick Reference
 
 Full guide: Beta's docs/reference/zig_guide.md

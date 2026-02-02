@@ -1,0 +1,4 @@
+name: "Fibonacci (recursive)"
+category: computation
+expected_output: "75025"
+description: "Naive recursive fibonacci — measures function call overhead"

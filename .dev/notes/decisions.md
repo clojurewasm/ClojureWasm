@@ -866,3 +866,34 @@ arg. This was needed for defrecord field access.
 **Decision**: `defrecord` expands into Forms (not Nodes) and re-analyzes
 through the normal pipeline: `(def ->Name (fn ->Name [fields] (hash-map ...)))`.
 This ensures proper local tracking via the Analyzer.
+
+## D25: Benchmark System Design
+
+**Decision**: 13 benchmarks across 5 categories with multi-language comparison.
+
+**Context**: Phase 3 had 4 ad-hoc benchmarks (startup, fib30, arith_loop, higher_order).
+As the implementation matured through Phase 4, a systematic benchmark suite was needed
+to track performance regressions and guide optimization.
+
+**Design choices**:
+
+- `bench/` directory with per-benchmark subdirectories (self-contained)
+- `meta.yaml` per benchmark for machine-readable metadata
+- `run_bench.sh` as single entry point with option flags
+- 8 comparison languages: C, Zig, Java, Python, Ruby, Clojure JVM, Babashka
+- `--record` appends to `.dev/status/bench.yaml` (append-only history)
+- `--hyperfine` for high-precision measurement when needed
+- `clj_warm_bench.clj` for JIT-warmed JVM comparison
+- `.clj` files shared between ClojureWasm, Clojure JVM, and Babashka runners
+- `range` not available in ClojureWasm, so all benchmarks use loop/recur
+- `swap!` limited to builtins (D8), so atom_swap uses reset!/deref pattern
+
+**Categories**: computation (4), collections (4), HOF (2), state (1)
+
+**Removed benchmarks**:
+
+- `ackermann`: Stack depth limit in TreeWalk (segfault at ack(3,6)) — unfair comparison
+- `str_concat`: Fixed 4KB buffer in `str` builtin limits scale to 1K — too trivial
+
+**Parameter sizing**: All benchmarks complete in 10ms-1s on ClojureWasm, ideal for
+hyperfine statistical measurement rather than wall-clock timing of long runs.

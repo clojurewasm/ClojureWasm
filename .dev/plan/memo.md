@@ -4,10 +4,10 @@
 
 - Phase: 5 (Benchmark System)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T5.1 flake.nix update (done, awaiting nix develop)
+- Current task: T5.6 complete — benchmark suite ready for verification
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
-- Blockers: nix develop required before Session 2 (T5.2-T5.6)
+- Blockers: nix develop + run benchmarks to verify correctness
 
 ## Completed Phases
 

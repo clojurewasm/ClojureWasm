@@ -106,13 +106,15 @@ Note: as the Wasm track matures, some `common/` modules (value, bytecode, builti
 - **core.clj bootstrap**: loaded via read+eval at startup (AOT @embedFile deferred)
 - **Instantiated VM**: no threadlocal/global mutable state
 
-## Benchmarks (TreeWalk, Debug, Apple M1 Pro)
+## Benchmarks
 
-| Benchmark        | Result       | Time          |
-| ---------------- | ------------ | ------------- |
-| Startup (-e nil) | nil          | 2.6ms ± 0.2ms |
-| fib(30)          | 832040       | 3.24s ± 0.03s |
-| Arith loop (1M)  | 499999500000 | ~1.3s         |
+11 benchmarks across 5 categories. See `bench/README.md` for full details.
+
+```bash
+bash bench/run_bench.sh                    # ClojureWasm only
+bash bench/run_bench.sh --all              # All 8 languages
+bash bench/run_bench.sh --bench=fib_recursive --hyperfine  # Single, precise
+```
 
 ## License
 

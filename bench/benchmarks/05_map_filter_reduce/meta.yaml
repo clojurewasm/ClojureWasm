@@ -1,0 +1,4 @@
+name: "Map/Filter/Reduce"
+category: collections
+expected_output: "166616670000"
+description: "HOF chain over 10K elements — map, filter, reduce"

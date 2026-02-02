@@ -3,6 +3,10 @@
 zig-out/
 *.o
 
+# Benchmark build artifacts
+bench/benchmarks/**/*.class
+bench/benchmarks/**/a.out
+
 # Clojure
 .clj-kondo/.cache/
 .lsp/.cache/

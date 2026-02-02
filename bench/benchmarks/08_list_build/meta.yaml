@@ -1,0 +1,4 @@
+name: "List build"
+category: collections
+expected_output: "10000"
+description: "cons + count over 10K elements"

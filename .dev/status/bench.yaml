@@ -1,36 +1,84 @@
-# ClojureWasm Benchmark Results
+# ClojureWasm Benchmark Results (v2)
 #
-# Measurement: hyperfine --warmup 2 --runs 5 (mean)
-# Date: 2026-02-02
+# Schema: env + benchmarks (11) + latest + history
+# Measurement: bash bench/run_bench.sh --hyperfine
 
 env:
-  cpu: Apple M1 Pro
-  ram: 16 GB
+  cpu: Apple M4 Pro
+  ram: 48 GB
   os: Darwin 25.2.0 (arm64)
-  build: Debug (zig build)
-  backend: TreeWalk
+  versions:
+    clojurewasm: "Phase 5 (TreeWalk)"
+    zig: "0.15.2"
+    c: "clang (system)"
+    java: "25.0.0"
+    python: "3.14.2"
+    ruby: "4.0.1"
+    clojure: "latest (deps.edn)"
+    babashka: "latest"
 
 benchmarks:
-  startup:
-    description: "Startup time — bootstrap overhead (core.clj parse + eval)"
-    command: 'clj-wasm -e "nil"'
-    expected_result: nil
-  fib30:
-    description: "Recursive fibonacci fib(30) — function call overhead"
-    command: '(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 30)'
-    expected_result: 832040
+  fib_recursive:
+    description: "Naive recursive fibonacci fib(25) — function call overhead"
+    category: computation
+    expected: 75025
+    clj_file: "bench/benchmarks/01_fib_recursive/bench.clj"
+  fib_loop:
+    description: "Iterative fibonacci fib(25) — tail recursion (loop/recur)"
+    category: computation
+    expected: 75025
+    clj_file: "bench/benchmarks/02_fib_loop/bench.clj"
+  tak:
+    description: "Takeuchi function tak(18,12,6) — non-tail deep recursion"
+    category: computation
+    expected: 7
+    clj_file: "bench/benchmarks/03_tak/bench.clj"
   arith_loop:
     description: "Arithmetic loop (1M iterations) — numeric ops + loop/recur"
-    command: '(loop [i 0 s 0] (if (< i 1000000) (recur (inc i) (+ s i)) s))'
-    expected_result: 499999500000
-  higher_order:
-    description: "Higher-order functions — map + reduce (10 elements)"
-    command: '(reduce + 0 (map inc (list 1 2 3 4 5 6 7 8 9 10)))'
-    expected_result: 65
+    category: computation
+    expected: 499999500000
+    clj_file: "bench/benchmarks/04_arith_loop/bench.clj"
+  map_filter_reduce:
+    description: "Map/filter/reduce chain over 10K elements"
+    category: collections
+    expected: 166616670000
+    clj_file: "bench/benchmarks/05_map_filter_reduce/bench.clj"
+  vector_ops:
+    description: "Vector conj + nth loop (10K elements)"
+    category: collections
+    expected: 49995000
+    clj_file: "bench/benchmarks/06_vector_ops/bench.clj"
+  map_ops:
+    description: "Map assoc + get loop (1K entries)"
+    category: collections
+    expected: 499500
+    clj_file: "bench/benchmarks/07_map_ops/bench.clj"
+  list_build:
+    description: "Cons list build + count (10K elements)"
+    category: collections
+    expected: 10000
+    clj_file: "bench/benchmarks/08_list_build/bench.clj"
+  sieve:
+    description: "Sieve of Eratosthenes with filter (primes up to 1000)"
+    category: hof
+    expected: 168
+    clj_file: "bench/benchmarks/09_sieve/bench.clj"
+  nqueens:
+    description: "N-Queens backtracking for N=8"
+    category: hof
+    expected: 92
+    clj_file: "bench/benchmarks/10_nqueens/bench.clj"
+  atom_swap:
+    description: "Atom reset!/deref loop (10K iterations)"
+    category: state
+    expected: 10000
+    clj_file: "bench/benchmarks/11_atom_swap/bench.clj"
 
-# Phase 3 baseline results (TreeWalk, Debug, Apple M1 Pro)
+latest: {}
+
+# Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)
 history:
-  - date: 2026-02-02
+  - date: "2026-02-02"
     version: "Phase 3 complete (TreeWalk, Debug)"
     results:
       startup: {time_ms: 2.6, stddev_ms: 0.2}
