@@ -392,10 +392,10 @@ high-priority gaps in the core library.
 
 ### Phase 11b: Function Combinators + Utility
 
-| #    | Task                       | Archive | Notes                                           |
-| ---- | -------------------------- | ------- | ----------------------------------------------- |
-| 11.3 | memoize, trampoline        | --      | core.clj: function combinators (Phase 6.9 残り) |
-| 11.4 | if-some, when-some, vswap! | --      | core.clj: nil-safe macros + volatile swap       |
+| #    | Task                       | Archive                         | Notes                                           |
+| ---- | -------------------------- | ------------------------------- | ----------------------------------------------- |
+| 11.3 | memoize, trampoline        | task_0094_memoize_trampoline.md | core.clj: function combinators (Phase 6.9 残り) |
+| 11.4 | if-some, when-some, vswap! | --                              | core.clj: nil-safe macros + volatile swap       |
 
 ### Phase 11c: Regex Support
 

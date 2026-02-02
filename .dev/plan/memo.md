@@ -4,7 +4,7 @@
 
 - Phase: 11 (Metadata System + Core Library IV)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T11.3 — memoize, trampoline
+- Current task: T11.4 — if-some, when-some, vswap!
 - Task file: (none)
 - Blockers: none
 
@@ -13,29 +13,21 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T11.3 — BLOCKED by 2 VM bugs
+### T11.3 completed — major bug fixes included
 
-T11.3 (memoize, trampoline) requires fixing 2 pre-existing VM bugs first.
-Full investigation notes in `.dev/plan/active/task_0094_memoize_trampoline.md`.
+T11.3 (memoize, trampoline) required fixing several pre-existing bugs:
 
-**Bug 1 (compiler slot mismatch)**: `addLocal` in compiler.zig uses
-`locals.items.len` as slot, but when temporaries are on the stack
-(e.g. call args), this doesn't match the actual VM stack position.
-Affects any `(f (let/loop ...))` pattern. Pre-existing bug, not
-introduced by T11.3 work. Fix: add `stack_depth` tracking to Compiler.
-Use helper methods (`compileExpr`, `emitPop`, etc.) to centralize tracking.
-Key files: `src/common/bytecode/compiler.zig` (addLocal, emitLet, emitLoop).
-
-**Bug 2 (fn-level recur)**: `(fn [n] (if (> n 0) (recur (dec n)) n))`
-doesn't work — recur inside fn body (not loop) is unimplemented.
-TreeWalk fix: wrap callClosure body exec in while-loop checking recur_pending.
-VM fix: set loop_start/loop_locals_base in compileArity after adding params.
-Key files: `src/native/evaluator/tree_walk.zig` (callClosure),
-`src/common/bytecode/compiler.zig` (compileArity).
-
-**Order**: Fix Bug 1 first, then Bug 2, then implement trampoline + memoize.
+1. **Bug 1 (compiler stack_depth)**: Fixed in refactoring commit. Compiler
+   now tracks actual VM stack position via `stack_depth` field.
+2. **Bug 2 (fn-level recur)**: Fixed in both VM (compileArity loop context)
+   and TreeWalk (callClosure while-loop for recur_pending).
+3. **apply fn_val dispatch**: apply builtin now handles closures via
+   bootstrap.callFnVal (was only handling builtin_fn).
+4. **VM use-after-free**: bytecodeCallBridge no longer deinits VM (closures
+   returned must outlive bridge scope). evalStringVM detaches VM-created
+   Fn objects into retained list.
 
 ### Builtin Count
 
 113 builtins registered (was 110, +3: var?, var-get, var-set)
-219/702 vars implemented (was 216, +3)
+221/702 vars implemented (was 219, +2: memoize, trampoline)

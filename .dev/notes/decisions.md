@@ -1267,3 +1267,34 @@ in the current Env and returns a constant node with `.var_ref` value.
    how var_ref works, but unnecessary since Analyzer already has Env access.
 2. **Chosen**: constant node with .var_ref value — simpler, works with both
    TreeWalk and VM (constant load opcode handles it automatically).
+
+---
+
+## D40: VM bytecodeCallBridge — No deinit (T11.3)
+
+**Context**: When VM executes a bytecode closure via bytecodeCallBridge
+(e.g., TreeWalk calls a bytecode fn_val during trampoline execution),
+the VM creates new Fn objects (closures) that may be returned as values.
+
+**Problem**: `defer vm.deinit()` destroys these Fn objects, causing
+use-after-free when the caller tries to use the returned fn_val.
+
+**Decision**: bytecodeCallBridge does NOT deinit the VM. Memory is owned
+by the arena allocator and freed in bulk. This matches treewalkCallBridge
+which already skips deinit for the same reason.
+
+Additionally, evalStringVM detaches VM-created Fn objects into a retained
+list (via VM.detachFnAllocations) so closures stored in Vars survive
+across form boundaries within the same evalStringVM call.
+
+---
+
+## D41: apply fn_val Dispatch via callFnVal (T11.3)
+
+**Context**: The `apply` builtin only handled `.builtin_fn` callees,
+returning TypeError for closures (`.fn_val`).
+
+**Decision**: Route `.fn_val` through `bootstrap.callFnVal`, which
+handles both bytecode and treewalk closures via the appropriate bridge.
+This is the same dispatch mechanism used by VM performCall and TreeWalk
+callValue.

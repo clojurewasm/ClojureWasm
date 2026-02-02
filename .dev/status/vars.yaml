@@ -406,7 +406,7 @@ vars:
     max: {type: function, status: done}
     "max-key": {type: function, status: todo}
     memfn: {type: macro, status: todo}
-    memoize: {type: function, status: todo}
+    memoize: {type: function, status: done, note: 'core.clj: atom-based cache with contains?/get'}
     merge: {type: function, status: done}
     "merge-with": {type: function, status: done}
     meta: {type: function, status: done, note: 'Zig builtin: returns metadata map from collections, fn, atom'}
@@ -639,7 +639,7 @@ vars:
     time: {type: macro, status: todo}
     "to-array": {type: function, status: todo}
     "to-array-2d": {type: function, status: todo}
-    trampoline: {type: function, status: todo}
+    trampoline: {type: function, status: done, note: 'core.clj: multi-arity with loop/recur and fn?'}
     transduce: {type: function, status: todo}
     transient: {type: function, status: todo}
     "tree-seq": {type: function, status: todo}
