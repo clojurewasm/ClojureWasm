@@ -379,8 +379,8 @@ vars:
     iteration: {type: function, status: todo, impl: none}
     "iterator-seq": {type: function, status: todo, impl: none}
     juxt: {type: function, status: done, impl: clj}
-    keep: {type: function, status: todo, impl: none}
-    "keep-indexed": {type: function, status: todo, impl: none}
+    keep: {type: function, status: done, impl: core_clj}
+    "keep-indexed": {type: function, status: done, impl: core_clj}
     key: {type: function, status: todo, impl: none}
     keys: {type: function, status: done, impl: host}
     keyword: {type: function, status: done, impl: host}
@@ -410,7 +410,7 @@ vars:
     "make-hierarchy": {type: function, status: todo, impl: none}
     map: {type: function, status: done, impl: clj, note: "eager (no lazy seq)"}
     "map-entry?": {type: function, status: todo, impl: none}
-    "map-indexed": {type: function, status: todo, impl: none}
+    "map-indexed": {type: function, status: done, impl: core_clj}
     "map?": {type: function, status: done, impl: host}
     mapcat: {type: function, status: done, impl: core_clj}
     mapv: {type: function, status: todo, impl: none}
@@ -550,7 +550,7 @@ vars:
     reify: {type: macro, status: todo, impl: none}
     "release-pending-sends": {type: function, status: todo, impl: none}
     rem: {type: function, status: done, impl: intrinsic}
-    remove: {type: function, status: todo, impl: none}
+    remove: {type: function, status: done, impl: core_clj}
     "remove-all-methods": {type: function, status: todo, impl: none}
     "remove-method": {type: function, status: todo, impl: none}
     "remove-ns": {type: function, status: todo, impl: none}

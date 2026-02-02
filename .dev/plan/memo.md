@@ -4,7 +4,7 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.5 map-indexed, keep, keep-indexed, remove
+- Current task: T9.6 mapv, filterv, reduce-kv
 - Task file: (none)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none

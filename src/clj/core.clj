@@ -417,6 +417,35 @@
     (lazy-seq
      (lazy-cat-helper (repeat coll)))))
 
+;; Additional HOFs
+
+(defn remove [pred coll]
+  (filter (complement pred) coll))
+
+(defn map-indexed [f coll]
+  (loop [s (seq coll) i 0 acc (list)]
+    (if s
+      (recur (next s) (+ i 1) (cons (f i (first s)) acc))
+      (reverse acc))))
+
+(defn keep [f coll]
+  (loop [s (seq coll) acc (list)]
+    (if s
+      (let [v (f (first s))]
+        (if (nil? v)
+          (recur (next s) acc)
+          (recur (next s) (cons v acc))))
+      (reverse acc))))
+
+(defn keep-indexed [f coll]
+  (loop [s (seq coll) i 0 acc (list)]
+    (if s
+      (let [v (f i (first s))]
+        (if (nil? v)
+          (recur (next s) (+ i 1) acc)
+          (recur (next s) (+ i 1) (cons v acc))))
+      (reverse acc))))
+
 ;; Exception helpers
 
 (defn ex-info
