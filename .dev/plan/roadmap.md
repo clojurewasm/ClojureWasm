@@ -331,9 +331,9 @@ Fix VM lifetime bugs, unblock deferred items, and establish VM benchmark baselin
 
 ### Phase 9.5c: Validation
 
-| #     | Task                  | Archive | Notes                                                    |
-| ----- | --------------------- | ------- | -------------------------------------------------------- |
-| 9.5.4 | VM benchmark baseline | --      | Run all 11 benchmarks with --backend=vm, record baseline |
+| #     | Task                  | Archive                        | Notes                                                    |
+| ----- | --------------------- | ------------------------------ | -------------------------------------------------------- |
+| 9.5.4 | VM benchmark baseline | task_0086_vm_bench_baseline.md | Run all 11 benchmarks with --backend=vm, record baseline |
 
 ## Future Considerations
 
