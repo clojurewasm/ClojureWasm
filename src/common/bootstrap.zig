@@ -54,54 +54,55 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     }
 }
 
+/// Parse source into top-level forms.
+fn readForms(allocator: Allocator, source: []const u8, error_ctx: *err.ErrorContext) BootstrapError![]Form {
+    var reader = Reader.init(allocator, source, error_ctx);
+    return reader.readAll() catch return error.ReadError;
+}
+
+/// Save and set macro expansion / lazy-seq realization globals.
+/// Returns previous state for restoration via defer.
+const MacroEnvState = struct { env: ?*Env, realize: *const @TypeOf(macroEvalBridge) };
+
+fn setupMacroEnv(env: *Env) MacroEnvState {
+    const prev = MacroEnvState{ .env = macro_eval_env, .realize = value_mod.realize_fn };
+    macro_eval_env = env;
+    value_mod.realize_fn = &macroEvalBridge;
+    return prev;
+}
+
+fn restoreMacroEnv(prev: MacroEnvState) void {
+    macro_eval_env = prev.env;
+    value_mod.realize_fn = prev.realize;
+}
+
+/// Analyze a single form with macro expansion support.
+fn analyzeForm(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env, form: Form) BootstrapError!*Node {
+    var analyzer = Analyzer.initWithMacroEval(allocator, error_ctx, env, &macroEvalBridge);
+    defer analyzer.deinit();
+    return analyzer.analyze(form) catch return error.AnalyzeError;
+}
+
 /// Evaluate a source string in the given Env.
 /// Reads, analyzes, and evaluates each top-level form sequentially.
 /// Returns the value of the last form, or nil if source is empty.
 pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
-    // Create error context (shared by reader and analyzer)
     var error_ctx: err.ErrorContext = .{};
-
-    // Parse all top-level forms
-    var reader = Reader.init(allocator, source, &error_ctx);
-    const forms = reader.readAll() catch return error.ReadError;
-
+    const forms = try readForms(allocator, source, &error_ctx);
     if (forms.len == 0) return .nil;
 
-    // Create a TreeWalk instance for:
-    //   1. Evaluating each top-level form
-    //   2. Providing macro_eval_fn for fn_val macros during analysis
-    // Note: tw is intentionally not deinit'd here because closures created
-    // during evaluation may be def'd into Vars and must outlive this scope.
-    // Memory is owned by the arena allocator passed in.
+    const prev = setupMacroEnv(env);
+    defer restoreMacroEnv(prev);
+
+    // Note: tw is intentionally not deinit'd — closures created during
+    // evaluation may be def'd into Vars and must outlive this scope.
     var tw = TreeWalk.initWithEnv(allocator, env);
 
-    // Set env for macro expansion bridge and lazy seq realization
-    const prev_env = macro_eval_env;
-    macro_eval_env = env;
-    defer macro_eval_env = prev_env;
-
-    const prev_realize = value_mod.realize_fn;
-    value_mod.realize_fn = &macroEvalBridge;
-    defer value_mod.realize_fn = prev_realize;
-
     var last_value: Value = .nil;
-
     for (forms) |form| {
-        // Analyze with macro expansion support
-        var analyzer = Analyzer.initWithMacroEval(
-            allocator,
-            &error_ctx,
-            env,
-            &macroEvalBridge,
-        );
-        defer analyzer.deinit();
-
-        const node = analyzer.analyze(form) catch return error.AnalyzeError;
-
-        // Evaluate
+        const node = try analyzeForm(allocator, &error_ctx, env, form);
         last_value = tw.run(node) catch return error.EvalError;
     }
-
     return last_value;
 }
 
@@ -111,49 +112,26 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 /// closures (from loadCore) via fn_val_dispatcher.
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     var error_ctx: err.ErrorContext = .{};
-
-    // Parse all top-level forms
-    var reader = Reader.init(allocator, source, &error_ctx);
-    const forms = reader.readAll() catch return error.ReadError;
-
+    const forms = try readForms(allocator, source, &error_ctx);
     if (forms.len == 0) return .nil;
 
-    // Set env for macro expansion bridge and lazy seq realization
-    const prev_env = macro_eval_env;
-    macro_eval_env = env;
-    defer macro_eval_env = prev_env;
-
-    const prev_realize = value_mod.realize_fn;
-    value_mod.realize_fn = &macroEvalBridge;
-    defer value_mod.realize_fn = prev_realize;
+    const prev = setupMacroEnv(env);
+    defer restoreMacroEnv(prev);
 
     var last_value: Value = .nil;
-
     for (forms) |form| {
-        // Analyze with macro expansion support (same as evalString)
-        var analyzer = Analyzer.initWithMacroEval(
-            allocator,
-            &error_ctx,
-            env,
-            &macroEvalBridge,
-        );
-        defer analyzer.deinit();
+        const node = try analyzeForm(allocator, &error_ctx, env, form);
 
-        const node = analyzer.analyze(form) catch return error.AnalyzeError;
-
-        // Compile Node -> bytecode
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
-        // Execute via VM
         var vm = VM.initWithEnv(allocator, env);
         defer vm.deinit();
         vm.fn_val_dispatcher = &macroEvalBridge;
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
     }
-
     return last_value;
 }
 
