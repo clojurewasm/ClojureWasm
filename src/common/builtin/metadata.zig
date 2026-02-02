@@ -32,6 +32,7 @@ pub fn getMeta(val: Value) Value {
         .set => |s| if (s.meta) |m| m.* else .nil,
         .fn_val => |f| if (f.meta) |m| m.* else .nil,
         .atom => |a| if (a.meta) |m| m.* else .nil,
+        .var_ref => |v| if (v.meta) |m| Value{ .map = m } else .nil,
         else => .nil,
     };
 }
@@ -105,24 +106,31 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const f = args[1];
     const extra = args[2..];
 
+    // Build args for (f current-meta extra...)
+    const call_args = try allocator.alloc(Value, 1 + extra.len);
+    @memcpy(call_args[1..], extra);
+
     switch (ref) {
         .atom => |a| {
-            const current_meta: Value = if (a.meta) |m| m.* else .nil;
-            // Build args for (f current-meta extra...)
-            const call_args = try allocator.alloc(Value, 1 + extra.len);
-            call_args[0] = current_meta;
-            @memcpy(call_args[1..], extra);
+            call_args[0] = if (a.meta) |m| m.* else .nil;
             const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
-            // Validate new meta is a map or nil
             switch (new_meta) {
                 .map => {
                     const ptr = try allocator.create(Value);
                     ptr.* = new_meta;
                     a.meta = ptr;
                 },
-                .nil => {
-                    a.meta = null;
-                },
+                .nil => a.meta = null,
+                else => return error.TypeError,
+            }
+            return new_meta;
+        },
+        .var_ref => |v| {
+            call_args[0] = if (v.meta) |m| Value{ .map = m } else .nil;
+            const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
+            switch (new_meta) {
+                .map => |m| v.meta = @constCast(m),
+                .nil => v.meta = null,
                 else => return error.TypeError,
             }
             return new_meta;
@@ -148,9 +156,15 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     ptr.* = new_meta;
                     a.meta = ptr;
                 },
-                .nil => {
-                    a.meta = null;
-                },
+                .nil => a.meta = null,
+                else => return error.TypeError,
+            }
+            return new_meta;
+        },
+        .var_ref => |v| {
+            switch (new_meta) {
+                .map => |m| v.meta = @constCast(m),
+                .nil => v.meta = null,
                 else => return error.TypeError,
             }
             return new_meta;

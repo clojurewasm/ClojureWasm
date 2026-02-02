@@ -681,9 +681,9 @@ vars:
     "uuid?": {type: function, status: todo}
     val: {type: function, status: todo}
     vals: {type: function, status: done}
-    "var-get": {type: function, status: todo}
-    "var-set": {type: function, status: todo}
-    "var?": {type: function, status: todo}
+    "var-get": {type: function, status: done, note: T11.2}
+    "var-set": {type: function, status: done, note: T11.2}
+    "var?": {type: function, status: done, note: T11.2}
     "vary-meta": {type: function, status: done, note: 'core.clj: (with-meta obj (apply f (meta obj) args))'}
     vec: {type: function, status: done}
     vector: {type: function, status: done}

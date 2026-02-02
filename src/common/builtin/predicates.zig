@@ -198,6 +198,7 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .multi_fn => "multi-fn",
         .lazy_seq => "lazy-seq",
         .cons => "cons",
+        .var_ref => "var",
     };
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
@@ -217,6 +218,27 @@ pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
     // is always paired in our implementation.
     _ = v;
     return Value{ .boolean = true };
+}
+
+/// (var? x) — true if x is a Var reference.
+pub fn varPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = args[0] == .var_ref };
+}
+
+/// (var-get v) — returns the value of the Var.
+pub fn varGetFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .var_ref) return error.TypeError;
+    return args[0].var_ref.deref();
+}
+
+/// (var-set v val) — sets the root binding of the Var. Returns val.
+pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .var_ref) return error.TypeError;
+    args[0].var_ref.bindRoot(args[1]);
+    return args[1];
 }
 
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
@@ -244,6 +266,7 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .multi_fn => "multi_fn",
         .lazy_seq => "lazy_seq",
         .cons => "cons",
+        .var_ref => "var",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
 }
@@ -278,6 +301,9 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "type", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "class", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "bound?", .func = &boundPred, .doc = "Returns true if the var/symbol has been bound to a value.", .arglists = "([sym])", .added = "1.2" },
+    .{ .name = "var?", .func = &varPred, .doc = "Returns true if v is of type clojure.lang.Var.", .arglists = "([v])", .added = "1.0" },
+    .{ .name = "var-get", .func = &varGetFn, .doc = "Gets the value in the var object.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "var-set", .func = &varSetFn, .doc = "Sets the value in the var object to val.", .arglists = "([x val])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -363,8 +389,8 @@ test "odd? predicate" {
     try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 2 }}));
 }
 
-test "builtins table has 25 entries" {
-    try testing.expectEqual(25, builtins.len);
+test "builtins table has 28 entries" {
+    try testing.expectEqual(28, builtins.len);
 }
 
 test "builtins all have func" {

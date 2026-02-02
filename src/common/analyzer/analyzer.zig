@@ -149,6 +149,7 @@ pub const Analyzer = struct {
         .{ "defmulti", analyzeDefmulti },
         .{ "defmethod", analyzeDefmethod },
         .{ "lazy-seq", analyzeLazySeq },
+        .{ "var", analyzeVarForm },
     });
 
     // === Main entry point ===
@@ -1104,6 +1105,31 @@ pub const Analyzer = struct {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .lazy_seq_node = ls };
         return n;
+    }
+
+    /// (var sym) — resolve symbol to its Var and return as a Value.
+    fn analyzeVarForm(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        if (items.len != 2) {
+            return self.analysisError(.arity_error, "var requires exactly one argument", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.syntax_error, "var requires a symbol argument", form);
+        }
+        const sym = items[1].data.symbol;
+        const env = self.env orelse {
+            return self.analysisError(.syntax_error, "var requires runtime environment", form);
+        };
+        const ns = env.current_ns orelse {
+            return self.analysisError(.syntax_error, "var requires a current namespace", form);
+        };
+        const the_var = if (sym.ns) |ns_name|
+            ns.resolveQualified(ns_name, sym.name)
+        else
+            ns.resolve(sym.name);
+        if (the_var) |v| {
+            return self.makeConstant(.{ .var_ref = v });
+        }
+        return self.analysisError(.syntax_error, "Unable to resolve var", form);
     }
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

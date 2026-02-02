@@ -961,6 +961,9 @@ fn writeValue(w: anytype, val: Value) void {
             writeValue(w, c.rest);
             w.print(")", .{}) catch {};
         },
+        .var_ref => |v| {
+            w.print("#'{s}/{s}", .{ v.ns_name, v.sym.name }) catch {};
+        },
     }
 }
 

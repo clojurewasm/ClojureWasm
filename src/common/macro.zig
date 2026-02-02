@@ -108,6 +108,13 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             }
             return Form{ .data = .{ .set = forms } };
         },
+        .var_ref => |v| {
+            // (var ns/name)
+            const items = try allocator.alloc(Form, 2);
+            items[0] = Form{ .data = .{ .symbol = .{ .ns = null, .name = "var" } } };
+            items[1] = Form{ .data = .{ .symbol = .{ .ns = v.ns_name, .name = v.sym.name } } };
+            return Form{ .data = .{ .list = items } };
+        },
         // Non-data values become nil (shouldn't appear in macro output)
         .fn_val, .builtin_fn, .atom, .protocol, .protocol_fn, .multi_fn, .lazy_seq, .cons => Form{ .data = .nil },
     };

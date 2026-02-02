@@ -9,6 +9,8 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
 const bootstrap = @import("bootstrap.zig");
+const var_mod = @import("var.zig");
+pub const Var = var_mod.Var;
 
 pub const PersistentList = collections.PersistentList;
 pub const PersistentVector = collections.PersistentVector;
@@ -151,6 +153,9 @@ pub const Value = union(enum) {
     lazy_seq: *LazySeq,
     cons: *Cons,
 
+    // Var reference — first-class Var value (#'foo)
+    var_ref: *Var,
+
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
@@ -266,6 +271,12 @@ pub const Value = union(enum) {
                     try w.writeAll("#<lazy-seq>");
                 }
             },
+            .var_ref => |v| {
+                try w.writeAll("#'");
+                try w.writeAll(v.ns_name);
+                try w.writeAll("/");
+                try w.writeAll(v.sym.name);
+            },
             .cons => |c| {
                 try w.writeAll("(");
                 try c.first.formatPrStr(w);
@@ -371,6 +382,7 @@ pub const Value = union(enum) {
             .protocol_fn => |a| a == other.protocol_fn, // identity equality
             .multi_fn => |a| a == other.multi_fn, // identity equality
             .lazy_seq => unreachable, // handled by early return above
+            .var_ref => |a| a == other.var_ref, // identity equality
             .cons => |a| a == other.cons, // identity equality (full comparison needs realization)
             .map => |a| {
                 const b = other.map;
@@ -793,4 +805,26 @@ test "Value.eql - atom identity" {
     try testing.expect(v.eql(v));
     var b = Atom{ .value = .{ .integer = 42 } };
     try testing.expect(!v.eql(.{ .atom = &b }));
+}
+
+test "Value.formatPrStr - var_ref" {
+    var the_var = Var{
+        .sym = .{ .ns = null, .name = "foo" },
+        .ns_name = "user",
+    };
+    try expectFormat("#'user/foo", .{ .var_ref = &the_var });
+}
+
+test "Value.eql - var_ref identity" {
+    var the_var = Var{
+        .sym = .{ .ns = null, .name = "foo" },
+        .ns_name = "user",
+    };
+    const v: Value = .{ .var_ref = &the_var };
+    try testing.expect(v.eql(v));
+    var other_var = Var{
+        .sym = .{ .ns = null, .name = "foo" },
+        .ns_name = "user",
+    };
+    try testing.expect(!v.eql(.{ .var_ref = &other_var }));
 }

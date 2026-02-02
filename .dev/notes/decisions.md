@@ -1223,6 +1223,47 @@ had this field; added it to Fn and Atom.
 3. **Chosen**: Inline `?*const Value` pointer — zero cost when null,
    consistent across types, matches Clojure's `(meta obj)` -> map semantics.
 
-**Deferred**: Var as Value variant (T11.2) — needed for `(meta #'var)`
-and `(alter-meta! #'var f args)`. Currently Var is only accessible via
-namespace resolution, not as a first-class Value.
+**Deferred**: ~~Var as Value variant (T11.2) — needed for `(meta #'var)`
+and `(alter-meta! #'var f args)`.~~ Resolved in D39.
+
+## D38: Reader Input Validation — Limits (T11.1b)
+
+**Date**: 2026-02-02
+**Context**: nREPL server (Phase 7c) is publicly accessible. Without Reader
+input limits, malicious input can cause OOM or stack overflow.
+
+**Decision**: Add Reader.Limits struct with configurable safety bounds applied
+by default to all Reader instances:
+
+- max_depth (1024): prevents stack overflow from deeply nested forms
+- max_string_size (1MB): prevents memory exhaustion from huge strings
+- max_collection_count (100K): prevents allocation pressure from massive literals
+- File size: 10MB at CLI, 1MB at nREPL
+
+**Implementation**: `enterDepth()` helper tracks nesting across readDelimited,
+readWrapped, readDiscard, readMeta. Reader.initWithLimits for custom limits.
+
+## D39: Var as Value Variant (T11.2)
+
+**Date**: 2026-02-02
+**Context**: T11.2 — making Var a first-class Value for `(var foo)`, `#'foo`,
+and metadata operations on Vars.
+
+**Decision**: Add `.var_ref: *Var` to the Value tagged union. The `var` special
+form is handled by the Analyzer (not TreeWalk): it resolves the symbol to a Var
+in the current Env and returns a constant node with `.var_ref` value.
+
+**Key changes**:
+
+- Value union: added `var_ref: *Var` variant (21st variant)
+- Var struct: added `meta: ?*PersistentArrayMap` field for mutable metadata
+- Analyzer: `var` special form resolves symbol -> Var at analysis time
+- meta/alter-meta!/reset-meta!: extended to handle var_ref
+- New builtins: var?, var-get, var-set (113 total, was 110)
+
+**Alternatives considered**:
+
+1. **New node type** (the_var node) evaluated at runtime: More consistent with
+   how var_ref works, but unnecessary since Analyzer already has Env access.
+2. **Chosen**: constant node with .var_ref value — simpler, works with both
+   TreeWalk and VM (constant load opcode handles it automatically).

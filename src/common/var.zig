@@ -65,6 +65,9 @@ pub const Var = struct {
     /// ClojureWasm version when added.
     since_cw: ?[]const u8 = null,
 
+    /// User-defined metadata map (mutable via alter-meta! / reset-meta!).
+    meta: ?*value.PersistentArrayMap = null,
+
     /// Dereference: return the current value.
     /// When dynamic, checks thread binding stack first.
     pub fn deref(self: *const Var) Value {

@@ -97,8 +97,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 12 arithmetic + 13 special forms + 16 collections + 22 predicates + 2 strings + 2 io + 4 atom
-    try std.testing.expectEqual(110, builtin_count);
+    // Was 110, +3 (var?, var-get, var-set in predicates)
+    try std.testing.expectEqual(113, builtin_count);
 }
 
 test "comptime lookup finds +" {

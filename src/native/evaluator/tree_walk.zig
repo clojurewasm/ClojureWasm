@@ -527,6 +527,7 @@ pub const TreeWalk = struct {
             .multi_fn => "multi_fn",
             .lazy_seq => "lazy_seq",
             .cons => "cons",
+            .var_ref => "var",
         };
     }
 
