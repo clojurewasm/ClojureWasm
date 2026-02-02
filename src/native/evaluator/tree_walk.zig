@@ -58,6 +58,9 @@ pub const TreeWalk = struct {
     allocated_closures: std.ArrayList(*Closure) = .empty,
     /// Allocated Fn wrappers (for cleanup).
     allocated_fns: std.ArrayList(*value_mod.Fn) = .empty,
+    /// External dispatcher for bytecode fn_vals.
+    /// Set by bootstrap when TreeWalk needs to call VM-compiled functions.
+    bytecode_dispatcher: ?*const fn (std.mem.Allocator, Value, []const Value) anyerror!Value = null,
 
     pub fn init(allocator: Allocator) TreeWalk {
         return .{ .allocator = allocator };
@@ -166,6 +169,12 @@ pub const TreeWalk = struct {
         return switch (callee) {
             .builtin_fn => |f| @errorCast(f(self.allocator, args)),
             .fn_val => |fn_ptr| {
+                if (fn_ptr.kind == .bytecode) {
+                    if (self.bytecode_dispatcher) |dispatcher| {
+                        return @errorCast(dispatcher(self.allocator, callee, args));
+                    }
+                    return error.TypeError;
+                }
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, args);
             },
@@ -214,8 +223,6 @@ pub const TreeWalk = struct {
         // Closure call
         if (callee != .fn_val) return error.TypeError;
         const fn_ptr = callee.fn_val;
-        // fn_val.proto is actually *Closure for TreeWalk
-        const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
 
         // Evaluate args (heap-allocated to reduce stack frame size)
         const arg_count = call_n.args.len;
@@ -225,6 +232,16 @@ pub const TreeWalk = struct {
             arg_vals[i] = try self.run(arg);
         }
 
+        // Bytecode fn_val: dispatch to VM via callback
+        if (fn_ptr.kind == .bytecode) {
+            if (self.bytecode_dispatcher) |dispatcher| {
+                return @errorCast(dispatcher(self.allocator, callee, arg_vals));
+            }
+            return error.TypeError;
+        }
+
+        // TreeWalk closure
+        const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
         return self.callClosure(closure, arg_vals);
     }
 
@@ -267,7 +284,7 @@ pub const TreeWalk = struct {
             if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
             // Reconstruct fn_val pointing back to this closure
             const fn_obj = self.allocator.create(value_mod.Fn) catch return error.OutOfMemory;
-            fn_obj.* = .{ .proto = @ptrCast(@constCast(closure)) };
+            fn_obj.* = .{ .proto = @ptrCast(@constCast(closure)), .kind = .treewalk };
             self.locals[self.local_count] = Value{ .fn_val = fn_obj };
             self.local_count += 1;
         }

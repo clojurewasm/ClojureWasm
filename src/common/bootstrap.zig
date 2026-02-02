@@ -192,7 +192,28 @@ fn macroEvalBridge(allocator: Allocator, fn_val: Value, args: []const Value) any
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
+    tw.bytecode_dispatcher = &bytecodeCallBridge;
     return tw.callValue(fn_val, args);
+}
+
+/// Bridge function: called by TreeWalk to execute bytecode fn_vals via VM.
+/// Symmetric to macroEvalBridge (which goes VM→TreeWalk).
+fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    const env = macro_eval_env orelse return error.EvalError;
+    var vm = VM.initWithEnv(allocator, env);
+    defer vm.deinit();
+    vm.fn_val_dispatcher = &macroEvalBridge;
+
+    // Push fn_val onto stack
+    try vm.push(fn_val);
+    // Push args
+    for (args) |arg| {
+        try vm.push(arg);
+    }
+    // Call the function
+    try vm.performCall(@intCast(args.len));
+    // Execute until return
+    return vm.execute();
 }
 
 /// Env reference for macro expansion bridge. Set during evalString.
@@ -2630,9 +2651,39 @@ test "core.clj - instance?" {
     try std.testing.expect(r2 == .boolean and r2.boolean == false);
 }
 
-// VM test for `for` deferred: the `for` expansion generates inline fn nodes
-// that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
-// closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk
-// callClosure expects Closure proto but receives FnProto, causing a segfault.
-// This requires a unified fn_val representation (VM + TreeWalk) to fix — tracked
-// as a known limitation for the dual-backend architecture.
+test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
+    // When VM evaluates `(map (fn [x] (* x x)) [1 2 3])`:
+    //   1. VM compiles `(fn [x] (* x x))` to bytecode fn_val (kind=.bytecode)
+    //   2. VM calls `map` — which is a TreeWalk closure from core.clj
+    //   3. `map` calls back the bytecode fn via TreeWalk's callValue
+    //   4. TreeWalk must detect kind=.bytecode and dispatch to VM
+    // Without reverse dispatch, step 4 segfaults (Closure ptr != FnProto ptr).
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // map with fn callback
+    const r1 = try evalStringVM(alloc, &env, "(map (fn [x] (* x x)) [1 2 3])");
+    try testing.expect(r1 == .list);
+    var buf: [256]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try r1.formatPrStr(&w);
+    try testing.expectEqualStrings("(1 4 9)", w.buffered());
+
+    // filter with fn callback
+    const r2 = try evalStringVM(alloc, &env, "(filter (fn [x] (> x 2)) [1 2 3 4 5])");
+    try testing.expect(r2 == .list);
+    var buf2: [256]u8 = undefined;
+    var w2: std.Io.Writer = .fixed(&buf2);
+    try r2.formatPrStr(&w2);
+    try testing.expectEqualStrings("(3 4 5)", w2.buffered());
+
+    // reduce with fn callback
+    const r3 = try evalStringVM(alloc, &env, "(reduce (fn [acc x] (+ acc x)) 0 [1 2 3 4 5])");
+    try testing.expectEqual(Value{ .integer = 15 }, r3);
+}

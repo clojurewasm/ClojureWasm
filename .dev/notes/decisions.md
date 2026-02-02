@@ -1099,3 +1099,29 @@ known-exception pattern (single-thread only).
 
 **Impact**: Minimal. One more module-level var in the D3 exception set.
 Pattern can extend to apply, merge-with, sort-by if needed.
+
+## D34: Bidirectional VM↔TreeWalk fn_val Dispatch (T10.2)
+
+**Date**: 2026-02-02
+**Context**: VM-compiled code calls core.clj HOFs (map, filter, reduce) which are
+TreeWalk closures. These HOFs call back the VM-compiled callback fn, but TreeWalk
+had no mechanism to execute bytecode fn_vals → segfault.
+
+**Decision**: Symmetric dispatcher callbacks in both directions:
+- VM → TreeWalk: `fn_val_dispatcher` → `macroEvalBridge` (existing since Phase 2)
+- TreeWalk → VM: `bytecode_dispatcher` → `bytecodeCallBridge` (new)
+
+`bytecodeCallBridge` creates a temporary VM, pushes fn+args onto stack, calls
+`performCall` + `execute`, and returns the result. VM's `push`, `performCall`,
+and `execute` were made public to support this.
+
+**Alternatives considered**:
+- (a) Compile core.clj with VM compiler so everything is bytecode — too large a change
+- (b) Create temporary VM in TreeWalk directly — couples TreeWalk to VM internals
+- (c) **Chosen**: Callback-based dispatch — maintains clean separation, symmetric with existing pattern
+
+**Side fix**: Named fn self-reference in `callClosure` was creating fn_val with
+default `kind=.bytecode` instead of `.treewalk`, which was harmless before but
+broke with the new kind check. Fixed by explicitly setting `.kind = .treewalk`.
+
+**Impact**: Resolves F8. All 11 benchmarks now work with VM backend.

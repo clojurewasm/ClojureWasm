@@ -348,10 +348,10 @@ higher-order functions. This unblocks 8/11 VM benchmarks.
 
 ### Phase 10b: VM-CoreClj Interop
 
-| #    | Task                            | Archive | Notes                                                                                                                   |
-| ---- | ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 10.2 | Unified fn_val proto (F8)       | --      | VM can't call core.clj HOFs (map, filter, reduce). Unify fn_val representation so VM dispatch handles TreeWalk closures |
-| 10.3 | VM benchmark re-run + recording | --      | Re-run all 11 benchmarks after fixes, record in bench.yaml                                                              |
+| #    | Task                            | Archive                             | Notes                                                                                                                       |
+| ---- | ------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 10.2 | Unified fn_val proto (F8)       | task_0088_tw_vm_reverse_dispatch.md | TreeWalk→VM reverse dispatch via bytecode_dispatcher callback. Fixes segfault when core.clj HOFs call VM-compiled callbacks |
+| 10.3 | VM benchmark re-run + recording | --                                  | Re-run all 11 benchmarks after fixes, record in bench.yaml                                                                  |
 
 ## Future Considerations
 

@@ -156,7 +156,7 @@ pub const VM = struct {
         return self.execute();
     }
 
-    fn execute(self: *VM) VMError!Value {
+    pub fn execute(self: *VM) VMError!Value {
         while (true) {
             const frame = &self.frames[self.frame_count - 1];
             if (frame.ip >= frame.code.len) {
@@ -390,7 +390,7 @@ pub const VM = struct {
         }
     }
 
-    fn push(self: *VM, val: Value) VMError!void {
+    pub fn push(self: *VM, val: Value) VMError!void {
         if (self.sp >= STACK_MAX) return error.StackOverflow;
         self.stack[self.sp] = val;
         self.sp += 1;
@@ -454,7 +454,7 @@ pub const VM = struct {
 
     // --- Call helper ---
 
-    fn performCall(self: *VM, arg_count: u16) VMError!void {
+    pub fn performCall(self: *VM, arg_count: u16) VMError!void {
         // Stack: [..., fn_val, arg0, arg1, ...]
         const fn_idx = self.sp - arg_count - 1;
         const callee = self.stack[fn_idx];
