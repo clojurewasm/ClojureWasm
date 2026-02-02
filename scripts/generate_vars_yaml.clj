@@ -2,7 +2,7 @@
 ;; Usage: clj scripts/generate_vars_yaml.clj > .dev/status/vars.yaml
 ;;
 ;; Generates a YAML file listing all public Vars from target Clojure namespaces.
-;; Output uses default status: todo, impl: none for manual update.
+;; Output uses default status: todo for manual update.
 
 (def target-namespaces
   '[clojure.core
@@ -85,7 +85,7 @@
 
 (defn emit-var-entry [var-name var-type]
   (let [key (yaml-escape-key (str var-name))]
-    (str "    " key ": {type: " var-type ", status: todo, impl: none}")))
+    (str "    " key ": {type: " var-type ", status: todo}")))
 
 ;; Load all namespaces
 (doseq [ns-sym target-namespaces]
@@ -110,19 +110,8 @@
 (println "#     special-form | function | macro | dynamic-var | var")
 (println "#   status: Implementation state")
 (println "#     todo | wip | partial | done | skip")
-(println "#   impl: Implementation method in this project")
-(println "#     special_form  - Analyzer direct dispatch")
-(println "#     intrinsic     - VM opcode fast path (+, -, *, / etc.)")
-(println "#     host          - Zig BuiltinFn, Zig required (Value internals, IO)")
-(println "#     bridge        - Zig BuiltinFn, .clj migration candidate")
-(println "#     clj           - Defined in Clojure source (.clj files)")
-(println "#     none          - Not yet implemented")
-(println "#")
-(println "# Cross-reference patterns:")
-(println "#   type: function + impl: special_form  -> provisional special form")
-(println "#   type: macro    + impl: special_form  -> provisional special form")
-(println "#   type: function + impl: intrinsic     -> VM fast-path intrinsic")
-(println "#   type: function + impl: bridge        -> .clj migration candidate")
+(println "#   note: (optional) Developer notes")
+(println "#     Deviations from upstream, implementation constraints, VM optimizations, etc.")
 (println "")
 (println "vars:")
 
@@ -132,7 +121,7 @@
 ;; Special forms first
 (doseq [sf (sort special-form-names)]
   (let [key (yaml-escape-key (str sf))]
-    (println (str "    " key ": {type: special-form, status: todo, impl: none}"))))
+    (println (str "    " key ": {type: special-form, status: todo}"))))
 
 ;; Then regular vars from clojure.core
 (let [ns-obj (find-ns 'clojure.core)
@@ -141,7 +130,7 @@
     (when-not (contains? special-form-names sym)
       (let [var-type (try (classify-var v) (catch Exception _ "var"))
             key (yaml-escape-key (str sym))]
-        (println (str "    " key ": {type: " var-type ", status: todo, impl: none}"))))))
+        (println (str "    " key ": {type: " var-type ", status: todo}"))))))
 
 ;; Other namespaces
 (doseq [ns-sym (rest target-namespaces)]
@@ -152,4 +141,4 @@
       (doseq [[sym v] publics]
         (let [var-type (try (classify-var v) (catch Exception _ "var"))
               key (yaml-escape-key (str sym))]
-          (println (str "    " key ": {type: " var-type ", status: todo, impl: none}")))))))
+          (println (str "    " key ": {type: " var-type ", status: todo}")))))))

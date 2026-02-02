@@ -11,24 +11,6 @@ const value = @import("value.zig");
 const Value = value.Value;
 const Symbol = value.Symbol;
 
-/// Dependency-layer classification for Vars (SS10).
-pub const VarKind = enum(u8) {
-    /// Special form — Compiler layer (if, do, let, fn, def, quote, etc.)
-    special_form,
-    /// VM intrinsic — dedicated opcode for fast execution (+, -, first, rest, etc.)
-    vm_intrinsic,
-    /// Runtime function — OS API calls (slurp, re-find, etc.)
-    runtime_fn,
-    /// core.clj AOT function — pure Clojure (map, filter, take, etc.)
-    core_fn,
-    /// core.clj AOT macro — pure Clojure (defn, when, cond, ->, etc.)
-    core_macro,
-    /// User-defined function.
-    user_fn,
-    /// User-defined macro.
-    user_macro,
-};
-
 /// Builtin function signature: re-exported from value.zig to avoid circular dependency.
 pub const BuiltinFn = value.BuiltinFn;
 
@@ -36,8 +18,6 @@ pub const BuiltinFn = value.BuiltinFn;
 pub const BuiltinDef = struct {
     /// Function/macro name (e.g. "+", "map", "if").
     name: []const u8,
-    /// Dependency-layer classification.
-    kind: VarKind,
     /// Runtime function pointer (null for special forms and vm_intrinsics).
     func: ?BuiltinFn = null,
     /// Docstring (Clojure :doc metadata).
@@ -72,9 +52,6 @@ pub const Var = struct {
 
     /// ^:const flag (compile-time inlining).
     is_const: bool = false,
-
-    /// Dependency-layer classification.
-    kind: VarKind = .user_fn,
 
     /// Docstring (Clojure :doc metadata).
     doc: ?[]const u8 = null,
@@ -125,7 +102,6 @@ pub const Var = struct {
 
     /// Apply metadata from a BuiltinDef to this Var.
     pub fn applyBuiltinDef(self: *Var, def: BuiltinDef) void {
-        self.kind = def.kind;
         self.doc = def.doc;
         self.arglists = def.arglists;
         self.added = def.added;
@@ -310,7 +286,6 @@ test "Var set! outside binding is error" {
 test "BuiltinDef creation" {
     const def = BuiltinDef{
         .name = "+",
-        .kind = .vm_intrinsic,
         .doc = "Returns the sum of nums. (+) returns 0.",
         .arglists = "([] [x] [x y] [x y & more])",
         .added = "1.0",
@@ -318,7 +293,6 @@ test "BuiltinDef creation" {
     };
 
     try std.testing.expectEqualStrings("+", def.name);
-    try std.testing.expect(def.kind == .vm_intrinsic);
     try std.testing.expectEqualStrings("Returns the sum of nums. (+) returns 0.", def.doc.?);
     try std.testing.expectEqualStrings("([] [x] [x y] [x y & more])", def.arglists.?);
     try std.testing.expectEqualStrings("1.0", def.added.?);
@@ -328,7 +302,6 @@ test "BuiltinDef creation" {
 test "BuiltinDef optional fields default to null" {
     const def = BuiltinDef{
         .name = "if",
-        .kind = .special_form,
     };
 
     try std.testing.expectEqualStrings("if", def.name);
@@ -342,7 +315,6 @@ test "Var metadata fields" {
     const v = Var{
         .sym = .{ .name = "map", .ns = null },
         .ns_name = "clojure.core",
-        .kind = .core_fn,
         .doc = "Returns a lazy sequence...",
         .arglists = "([f] [f coll] [f c1 c2] [f c1 c2 c3] [f c1 c2 c3 & colls])",
         .added = "1.0",
@@ -367,7 +339,6 @@ test "Var metadata fields" {
 test "Var applyBuiltinDef transfers metadata" {
     const def = BuiltinDef{
         .name = "+",
-        .kind = .vm_intrinsic,
         .doc = "Returns the sum of nums.",
         .arglists = "([] [x] [x y] [x y & more])",
         .added = "1.0",
@@ -380,13 +351,11 @@ test "Var applyBuiltinDef transfers metadata" {
     };
 
     // Before: defaults
-    try std.testing.expect(v.kind == .user_fn);
     try std.testing.expect(v.doc == null);
 
     v.applyBuiltinDef(def);
 
     // After: metadata transferred
-    try std.testing.expect(v.kind == .vm_intrinsic);
     try std.testing.expectEqualStrings("Returns the sum of nums.", v.doc.?);
     try std.testing.expectEqualStrings("([] [x] [x y] [x y & more])", v.arglists.?);
     try std.testing.expectEqualStrings("1.0", v.added.?);
@@ -395,20 +364,20 @@ test "Var applyBuiltinDef transfers metadata" {
 
 test "BuiltinDef comptime table" {
     const builtins = [_]BuiltinDef{
-        .{ .name = "+", .kind = .vm_intrinsic, .doc = "Returns the sum of nums.", .added = "1.0" },
-        .{ .name = "-", .kind = .vm_intrinsic, .doc = "Subtraction.", .added = "1.0" },
-        .{ .name = "if", .kind = .special_form },
-        .{ .name = "map", .kind = .core_fn, .doc = "Returns a lazy sequence.", .added = "1.0" },
-        .{ .name = "defn", .kind = .core_macro, .doc = "Define a function.", .added = "1.0" },
+        .{ .name = "+", .doc = "Returns the sum of nums.", .added = "1.0" },
+        .{ .name = "-", .doc = "Subtraction.", .added = "1.0" },
+        .{ .name = "if" },
+        .{ .name = "map", .doc = "Returns a lazy sequence.", .added = "1.0" },
+        .{ .name = "defn", .doc = "Define a function.", .added = "1.0" },
     };
 
     // Comptime iteration works
     comptime {
         var count: usize = 0;
         for (builtins) |b| {
-            if (b.kind == .vm_intrinsic) count += 1;
+            if (b.doc != null) count += 1;
         }
-        if (count != 2) @compileError("expected 2 vm_intrinsics");
+        if (count != 4) @compileError("expected 4 with doc");
     }
 
     // Runtime lookup by name
@@ -419,43 +388,7 @@ test "BuiltinDef comptime table" {
         @compileError("not found");
     };
     try std.testing.expectEqualStrings("map", found.name);
-    try std.testing.expect(found.kind == .core_fn);
     try std.testing.expectEqualStrings("Returns a lazy sequence.", found.doc.?);
-}
-
-test "VarKind enum values" {
-    const kind_sf: VarKind = .special_form;
-    const kind_vi: VarKind = .vm_intrinsic;
-    const kind_rf: VarKind = .runtime_fn;
-    const kind_cf: VarKind = .core_fn;
-    const kind_cm: VarKind = .core_macro;
-    const kind_uf: VarKind = .user_fn;
-    const kind_um: VarKind = .user_macro;
-
-    // All variants are distinct
-    try std.testing.expect(kind_sf != kind_vi);
-    try std.testing.expect(kind_rf != kind_cf);
-    try std.testing.expect(kind_cm != kind_uf);
-    try std.testing.expect(kind_uf != kind_um);
-
-    // u8 representation
-    try std.testing.expect(@intFromEnum(kind_sf) != @intFromEnum(kind_vi));
-}
-
-test "Var has kind field" {
-    const v = Var{
-        .sym = .{ .name = "map", .ns = null },
-        .ns_name = "clojure.core",
-        .kind = .core_fn,
-    };
-    try std.testing.expect(v.kind == .core_fn);
-
-    // Default kind is user_fn
-    const v2 = Var{
-        .sym = .{ .name = "my-fn", .ns = null },
-        .ns_name = "user",
-    };
-    try std.testing.expect(v2.kind == .user_fn);
 }
 
 test "Var qualifiedName" {

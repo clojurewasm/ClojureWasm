@@ -39,29 +39,18 @@ Classification in upstream Clojure.
 
 ---
 
-## `impl` Definitions
+## `note` Field
 
-Implementation method in this project.
+Optional developer notes for deviations, constraints, or implementation details.
 
-| impl           | Description                                              |
-| -------------- | -------------------------------------------------------- |
-| `special_form` | Analyzer direct dispatch                                 |
-| `intrinsic`    | VM opcode fast path (+, -, \*, /, mod, rem, comparisons) |
-| `host`         | Zig BuiltinFn — Zig required (Value internals, IO)       |
-| `bridge`       | Zig BuiltinFn — .clj migration candidate                 |
-| `clj`          | Defined in Clojure source (.clj files)                   |
-| `none`         | Not yet implemented                                      |
+Common patterns:
 
-### Provisional Special Forms
-
-Entries where `type: function` + `impl: special_form` indicate a
-"provisional special form" — a function in upstream Clojure that is
-implemented as a special form in this project (e.g., `defmacro`).
-
-### Bridge Functions
-
-Entries with `impl: bridge` are implemented in Zig for practical reasons
-(bootstrap order, performance) but could be migrated to .clj in the future.
+| Note                            | Meaning                                         |
+| ------------------------------- | ----------------------------------------------- |
+| `"VM intrinsic opcode"`         | Compiled to direct VM opcode for fast execution |
+| `"analyzer special form in CW"` | Macro in upstream, special form in ClojureWasm  |
+| `"portable to clj"`             | Zig builtin that could be migrated to .clj      |
+| `"eager (no lazy seq)"`         | Upstream is lazy, this impl is eager            |
 
 ---
 
@@ -87,29 +76,26 @@ When a performance optimization is applied, append a new entry to `history`.
 # Count implemented vars in clojure.core
 yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
 
-# Find provisional special forms (functions implemented as special forms)
-yq '.vars.clojure_core | to_entries[] | select(.value.type == "function" and .value.impl == "special_form") | .key' .dev/status/vars.yaml
-
-# Count by impl (done only)
-yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.impl] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
-
-# Find .clj migration candidates
-yq '.vars.clojure_core | to_entries[] | select(.value.impl == "bridge") | .key' .dev/status/vars.yaml
-
-# Zig-required total (host + intrinsic + special_form)
-yq '.vars.clojure_core | to_entries | map(select(.value.impl == "host" or .value.impl == "intrinsic" or .value.impl == "special_form")) | length' .dev/status/vars.yaml
-
 # Find unimplemented functions
 yq '.vars.clojure_core | to_entries[] | select(.value.status == "todo" and .value.type == "function") | .key' .dev/status/vars.yaml
 
 # Find skipped vars (JVM-specific)
 yq '.vars.clojure_core | to_entries[] | select(.value.status == "skip") | .key' .dev/status/vars.yaml
 
+# Find entries with notes
+yq '.vars.clojure_core | to_entries[] | select(.value.note) | .key + " -> " + .value.note' .dev/status/vars.yaml
+
+# Find VM intrinsics
+yq '.vars.clojure_core | to_entries[] | select(.value.note == "VM intrinsic opcode") | .key' .dev/status/vars.yaml
+
+# Find deviations from upstream (analyzer special forms)
+yq '.vars.clojure_core | to_entries[] | select(.value.note == "analyzer special form in CW") | .key' .dev/status/vars.yaml
+
 # List all namespaces
 yq '.vars | keys' .dev/status/vars.yaml
 
-# Count by impl
-yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.impl] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
+# Count by type (done only)
+yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.type] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
 
 # Benchmark history
 yq '.history' .dev/status/bench.yaml

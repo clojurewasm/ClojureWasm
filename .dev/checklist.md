@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-02 (after T7.6)
+Last updated: 2026-02-02 (after D31 VarKind removal)
 
 ## Invariants (always enforce)
 

@@ -164,7 +164,6 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "str",
-        .kind = .runtime_fn,
         .func = &strFn,
         .doc = "With no args, returns the empty string. With one arg x, returns x.toString(). With more than one arg, returns the concatenation of the str values of the args.",
         .arglists = "([] [x] [x & ys])",
@@ -172,7 +171,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "pr-str",
-        .kind = .runtime_fn,
         .func = &prStrFn,
         .doc = "pr to a string, returning it. Prints any object to the string readable.",
         .arglists = "([& xs])",
@@ -180,7 +178,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "subs",
-        .kind = .runtime_fn,
         .func = &subsFn,
         .doc = "Returns the substring of s beginning at start inclusive, and ending at end (defaults to length of string), exclusive.",
         .arglists = "([s start] [s start end])",
@@ -188,7 +185,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "name",
-        .kind = .runtime_fn,
         .func = &nameFn,
         .doc = "Returns the name String of a string, symbol or keyword.",
         .arglists = "([x])",
@@ -196,7 +192,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "namespace",
-        .kind = .runtime_fn,
         .func = &namespaceFn,
         .doc = "Returns the namespace String of a symbol or keyword, or nil if not present.",
         .arglists = "([x])",
@@ -204,7 +199,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "keyword",
-        .kind = .runtime_fn,
         .func = &keywordFn,
         .doc = "Returns a Keyword with the given namespace and name.",
         .arglists = "([name] [ns name])",
@@ -212,7 +206,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "symbol",
-        .kind = .runtime_fn,
         .func = &symbolFn,
         .doc = "Returns a Symbol with the given namespace and name.",
         .arglists = "([name] [ns name])",

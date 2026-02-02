@@ -6,1234 +6,1223 @@
 #     special-form | function | macro | dynamic-var | var
 #   status: Implementation state
 #     todo | wip | partial | done | skip
-#   impl: Implementation method in this project
-#     special_form  - Analyzer direct dispatch
-#     intrinsic     - VM opcode fast path (+, -, *, / etc.)
-#     host          - Zig BuiltinFn, Zig required (Value internals, IO)
-#     bridge        - Zig BuiltinFn, .clj migration candidate
-#     clj           - Defined in Clojure source (.clj files)
-#     none          - Not yet implemented
-#
-# Cross-reference patterns:
-#   type: function + impl: special_form  -> provisional special form
-#   type: macro    + impl: special_form  -> provisional special form
-#   type: function + impl: intrinsic     -> VM fast-path intrinsic
-#   type: function + impl: bridge        -> .clj migration candidate
+#   note: (optional) Developer notes
+#     Deviations from upstream, implementation constraints, VM optimizations, etc.
 
 vars:
   clojure_core:
-    ".": {type: special-form, status: skip, impl: none, note: "JVM interop"}
-    "case*": {type: special-form, status: todo, impl: none}
-    catch: {type: special-form, status: done, impl: special_form}
-    def: {type: special-form, status: done, impl: special_form}
-    "deftype*": {type: special-form, status: skip, impl: none, note: "JVM type system"}
-    do: {type: special-form, status: done, impl: special_form}
-    finally: {type: special-form, status: done, impl: special_form, note: "part of try"}
-    "fn*": {type: special-form, status: done, impl: special_form}
-    if: {type: special-form, status: done, impl: special_form}
-    "import*": {type: special-form, status: skip, impl: none, note: "JVM interop"}
-    "let*": {type: special-form, status: done, impl: special_form}
-    "letfn*": {type: special-form, status: todo, impl: none}
-    "loop*": {type: special-form, status: done, impl: special_form}
-    "monitor-enter": {type: special-form, status: skip, impl: none, note: "JVM concurrency"}
-    "monitor-exit": {type: special-form, status: skip, impl: none, note: "JVM concurrency"}
-    new: {type: special-form, status: skip, impl: none, note: "JVM interop"}
-    quote: {type: special-form, status: done, impl: special_form}
-    recur: {type: special-form, status: done, impl: special_form}
-    "reify*": {type: special-form, status: skip, impl: none, note: "JVM type system"}
-    "set!": {type: special-form, status: done, impl: special_form}
-    throw: {type: special-form, status: done, impl: special_form}
-    try: {type: special-form, status: done, impl: special_form}
-    var: {type: special-form, status: done, impl: special_form}
-    "*": {type: function, status: done, impl: intrinsic}
-    "*'": {type: function, status: todo, impl: none}
-    "*1": {type: dynamic-var, status: todo, impl: none}
-    "*2": {type: dynamic-var, status: todo, impl: none}
-    "*3": {type: dynamic-var, status: todo, impl: none}
-    "*agent*": {type: var, status: todo, impl: none}
-    "*allow-unresolved-vars*": {type: var, status: todo, impl: none}
-    "*assert*": {type: var, status: todo, impl: none}
-    "*clojure-version*": {type: dynamic-var, status: todo, impl: none}
-    "*command-line-args*": {type: var, status: todo, impl: none}
-    "*compile-files*": {type: var, status: todo, impl: none}
-    "*compile-path*": {type: var, status: todo, impl: none}
-    "*compiler-options*": {type: var, status: todo, impl: none}
-    "*data-readers*": {type: dynamic-var, status: todo, impl: none}
-    "*default-data-reader-fn*": {type: dynamic-var, status: todo, impl: none}
-    "*e": {type: dynamic-var, status: todo, impl: none}
-    "*err*": {type: var, status: todo, impl: none}
-    "*file*": {type: var, status: todo, impl: none}
-    "*flush-on-newline*": {type: var, status: todo, impl: none}
-    "*fn-loader*": {type: var, status: todo, impl: none}
-    "*in*": {type: var, status: todo, impl: none}
-    "*math-context*": {type: var, status: todo, impl: none}
-    "*ns*": {type: var, status: todo, impl: none}
-    "*out*": {type: var, status: todo, impl: none}
-    "*print-dup*": {type: var, status: todo, impl: none}
-    "*print-length*": {type: dynamic-var, status: todo, impl: none}
-    "*print-level*": {type: dynamic-var, status: todo, impl: none}
-    "*print-meta*": {type: var, status: todo, impl: none}
-    "*print-namespace-maps*": {type: dynamic-var, status: todo, impl: none}
-    "*print-readably*": {type: var, status: todo, impl: none}
-    "*read-eval*": {type: var, status: todo, impl: none}
-    "*reader-resolver*": {type: var, status: todo, impl: none}
-    "*repl*": {type: dynamic-var, status: todo, impl: none}
-    "*source-path*": {type: var, status: todo, impl: none}
-    "*suppress-read*": {type: var, status: todo, impl: none}
-    "*unchecked-math*": {type: var, status: todo, impl: none}
-    "*use-context-classloader*": {type: var, status: todo, impl: none}
-    "*verbose-defrecords*": {type: dynamic-var, status: todo, impl: none}
-    "*warn-on-reflection*": {type: var, status: todo, impl: none}
-    "+": {type: function, status: done, impl: intrinsic}
-    "+'": {type: function, status: todo, impl: none}
-    "-": {type: function, status: done, impl: intrinsic}
-    "-'": {type: function, status: todo, impl: none}
-    "->": {type: macro, status: done, impl: clj}
-    "->>": {type: macro, status: done, impl: clj}
-    "->ArrayChunk": {type: function, status: todo, impl: none}
-    "->Eduction": {type: function, status: todo, impl: none}
-    "->Vec": {type: function, status: todo, impl: none}
-    "->VecNode": {type: function, status: todo, impl: none}
-    "->VecSeq": {type: function, status: todo, impl: none}
-    "-cache-protocol-fn": {type: function, status: todo, impl: none}
-    "-reset-methods": {type: function, status: todo, impl: none}
-    "..": {type: macro, status: todo, impl: none}
-    "/": {type: function, status: done, impl: intrinsic, note: "always returns float (D12)"}
-    "<": {type: function, status: done, impl: intrinsic}
-    "<=": {type: function, status: done, impl: intrinsic}
-    "=": {type: function, status: done, impl: intrinsic}
-    "==": {type: function, status: todo, impl: none}
-    ">": {type: function, status: done, impl: intrinsic}
-    ">=": {type: function, status: done, impl: intrinsic}
-    "EMPTY-NODE": {type: var, status: todo, impl: none}
-    Inst: {type: var, status: todo, impl: none}
-    "NaN?": {type: function, status: todo, impl: none}
-    "PrintWriter-on": {type: function, status: todo, impl: none}
-    "StackTraceElement->vec": {type: function, status: todo, impl: none}
-    "Throwable->map": {type: function, status: todo, impl: none}
-    abs: {type: function, status: done, impl: host}
-    accessor: {type: function, status: todo, impl: none}
-    aclone: {type: function, status: todo, impl: none}
-    "add-classpath": {type: function, status: todo, impl: none}
-    "add-tap": {type: function, status: todo, impl: none}
-    "add-watch": {type: function, status: todo, impl: none}
-    agent: {type: function, status: todo, impl: none}
-    "agent-error": {type: function, status: todo, impl: none}
-    "agent-errors": {type: function, status: todo, impl: none}
-    aget: {type: function, status: todo, impl: none}
-    alength: {type: function, status: todo, impl: none}
-    alias: {type: function, status: todo, impl: none}
-    "all-ns": {type: function, status: todo, impl: none}
-    alter: {type: function, status: todo, impl: none}
-    "alter-meta!": {type: function, status: todo, impl: none}
-    "alter-var-root": {type: function, status: todo, impl: none}
-    amap: {type: macro, status: todo, impl: none}
-    ancestors: {type: function, status: todo, impl: none}
-    and: {type: macro, status: done, impl: clj}
-    "any?": {type: function, status: todo, impl: none}
-    apply: {type: function, status: done, impl: host}
-    areduce: {type: macro, status: todo, impl: none}
-    "array-map": {type: function, status: todo, impl: none}
-    "as->": {type: macro, status: done, impl: clj}
-    aset: {type: function, status: todo, impl: none}
-    "aset-boolean": {type: function, status: todo, impl: none}
-    "aset-byte": {type: function, status: todo, impl: none}
-    "aset-char": {type: function, status: todo, impl: none}
-    "aset-double": {type: function, status: todo, impl: none}
-    "aset-float": {type: function, status: todo, impl: none}
-    "aset-int": {type: function, status: todo, impl: none}
-    "aset-long": {type: function, status: todo, impl: none}
-    "aset-short": {type: function, status: todo, impl: none}
-    assert: {type: macro, status: todo, impl: none}
-    assoc: {type: function, status: done, impl: host}
-    "assoc!": {type: function, status: todo, impl: none}
-    "assoc-in": {type: function, status: done, impl: clj}
-    "associative?": {type: function, status: todo, impl: none}
-    atom: {type: function, status: done, impl: host}
-    await: {type: function, status: todo, impl: none}
-    "await-for": {type: function, status: todo, impl: none}
-    await1: {type: function, status: todo, impl: none}
-    bases: {type: function, status: todo, impl: none}
-    bean: {type: function, status: todo, impl: none}
-    bigdec: {type: function, status: todo, impl: none}
-    bigint: {type: function, status: todo, impl: none}
-    biginteger: {type: function, status: todo, impl: none}
-    binding: {type: macro, status: todo, impl: none}
-    "bit-and": {type: function, status: todo, impl: none}
-    "bit-and-not": {type: function, status: todo, impl: none}
-    "bit-clear": {type: function, status: todo, impl: none}
-    "bit-flip": {type: function, status: todo, impl: none}
-    "bit-not": {type: function, status: todo, impl: none}
-    "bit-or": {type: function, status: todo, impl: none}
-    "bit-set": {type: function, status: todo, impl: none}
-    "bit-shift-left": {type: function, status: todo, impl: none}
-    "bit-shift-right": {type: function, status: todo, impl: none}
-    "bit-test": {type: function, status: todo, impl: none}
-    "bit-xor": {type: function, status: todo, impl: none}
-    boolean: {type: function, status: todo, impl: none}
-    "boolean-array": {type: function, status: todo, impl: none}
-    "boolean?": {type: function, status: done, impl: host}
-    booleans: {type: function, status: todo, impl: none}
-    "bound-fn": {type: macro, status: todo, impl: none}
-    "bound-fn*": {type: function, status: todo, impl: none}
-    "bound?": {type: function, status: todo, impl: none}
-    "bounded-count": {type: function, status: todo, impl: none}
-    butlast: {type: function, status: todo, impl: none}
-    byte: {type: function, status: todo, impl: none}
-    "byte-array": {type: function, status: todo, impl: none}
-    bytes: {type: function, status: todo, impl: none}
-    "bytes?": {type: function, status: todo, impl: none}
-    case: {type: macro, status: todo, impl: none}
-    cast: {type: function, status: todo, impl: none}
-    cat: {type: function, status: todo, impl: none}
-    char: {type: function, status: todo, impl: none}
-    "char-array": {type: function, status: todo, impl: none}
-    "char-escape-string": {type: var, status: todo, impl: none}
-    "char-name-string": {type: var, status: todo, impl: none}
-    "char?": {type: function, status: done, impl: host}
-    chars: {type: function, status: todo, impl: none}
-    chunk: {type: function, status: todo, impl: none}
-    "chunk-append": {type: function, status: todo, impl: none}
-    "chunk-buffer": {type: function, status: todo, impl: none}
-    "chunk-cons": {type: function, status: todo, impl: none}
-    "chunk-first": {type: function, status: todo, impl: none}
-    "chunk-next": {type: function, status: todo, impl: none}
-    "chunk-rest": {type: function, status: todo, impl: none}
-    "chunked-seq?": {type: function, status: todo, impl: none}
-    class: {type: function, status: todo, impl: none}
-    "class?": {type: function, status: todo, impl: none}
-    "clear-agent-errors": {type: function, status: todo, impl: none}
-    "clojure-version": {type: function, status: todo, impl: none}
-    "coll?": {type: function, status: done, impl: host}
-    comment: {type: macro, status: done, impl: clj}
-    commute: {type: function, status: todo, impl: none}
-    comp: {type: function, status: done, impl: clj}
-    comparator: {type: function, status: todo, impl: none}
-    compare: {type: function, status: done, impl: zig_builtin}
-    "compare-and-set!": {type: function, status: todo, impl: none}
-    compile: {type: function, status: todo, impl: none}
-    complement: {type: function, status: done, impl: clj}
-    completing: {type: function, status: todo, impl: none}
-    concat: {type: function, status: done, impl: host}
-    cond: {type: macro, status: done, impl: clj}
-    "cond->": {type: macro, status: done, impl: clj}
-    "cond->>": {type: macro, status: done, impl: clj}
-    condp: {type: macro, status: todo, impl: none}
-    conj: {type: function, status: done, impl: host}
-    "conj!": {type: function, status: todo, impl: none}
-    cons: {type: function, status: done, impl: host}
-    constantly: {type: function, status: done, impl: clj}
-    "construct-proxy": {type: function, status: todo, impl: none}
-    "contains?": {type: function, status: done, impl: host}
-    count: {type: function, status: done, impl: host}
-    "counted?": {type: function, status: todo, impl: none}
-    "create-ns": {type: function, status: todo, impl: none}
-    "create-struct": {type: function, status: todo, impl: none}
-    cycle: {type: function, status: done, impl: clj}
-    dec: {type: function, status: done, impl: clj}
-    "dec'": {type: function, status: todo, impl: none}
-    "decimal?": {type: function, status: todo, impl: none}
-    declare: {type: macro, status: todo, impl: none}
-    dedupe: {type: function, status: todo, impl: none}
-    "default-data-readers": {type: var, status: todo, impl: none}
-    definline: {type: macro, status: todo, impl: none}
-    definterface: {type: macro, status: todo, impl: none}
-    defmacro: {type: macro, status: done, impl: special_form, note: "special form in this impl"}
-    defmethod: {type: macro, status: done, impl: special_form}
-    defmulti: {type: macro, status: done, impl: special_form}
-    defn: {type: macro, status: done, impl: clj}
-    "defn-": {type: macro, status: done, impl: clj}
-    defonce: {type: macro, status: todo, impl: none}
-    defprotocol: {type: macro, status: done, impl: special_form}
-    defrecord: {type: macro, status: done, impl: special_form}
-    defstruct: {type: macro, status: todo, impl: none}
-    deftype: {type: macro, status: todo, impl: none}
-    delay: {type: macro, status: todo, impl: none}
-    "delay?": {type: function, status: todo, impl: none}
-    deliver: {type: function, status: todo, impl: none}
-    denominator: {type: function, status: todo, impl: none}
-    deref: {type: function, status: done, impl: host}
-    derive: {type: function, status: todo, impl: none}
-    descendants: {type: function, status: todo, impl: none}
-    destructure: {type: function, status: todo, impl: none}
-    disj: {type: function, status: todo, impl: none}
-    "disj!": {type: function, status: todo, impl: none}
-    dissoc: {type: function, status: todo, impl: none}
-    "dissoc!": {type: function, status: todo, impl: none}
-    distinct: {type: function, status: done, impl: clj}
-    "distinct?": {type: function, status: todo, impl: none}
-    doall: {type: function, status: todo, impl: none}
-    dorun: {type: function, status: todo, impl: none}
-    doseq: {type: macro, status: todo, impl: none}
-    dosync: {type: macro, status: todo, impl: none}
-    dotimes: {type: macro, status: done, impl: clj}
-    doto: {type: macro, status: done, impl: clj}
-    double: {type: function, status: todo, impl: none}
-    "double-array": {type: function, status: todo, impl: none}
-    "double?": {type: function, status: todo, impl: none}
-    doubles: {type: function, status: todo, impl: none}
-    drop: {type: function, status: done, impl: clj}
-    "drop-last": {type: function, status: todo, impl: none}
-    "drop-while": {type: function, status: todo, impl: none}
-    eduction: {type: function, status: todo, impl: none}
-    empty: {type: function, status: todo, impl: none}
-    "empty?": {type: function, status: done, impl: host}
-    ensure: {type: function, status: todo, impl: none}
-    "ensure-reduced": {type: function, status: todo, impl: none}
-    "enumeration-seq": {type: function, status: todo, impl: none}
-    "error-handler": {type: function, status: todo, impl: none}
-    "error-mode": {type: function, status: todo, impl: none}
-    eval: {type: function, status: todo, impl: none}
-    "even?": {type: function, status: done, impl: host}
-    "every-pred": {type: function, status: todo, impl: none}
-    "every?": {type: function, status: done, impl: clj}
-    "ex-cause": {type: function, status: todo, impl: none}
-    "ex-data": {type: function, status: done, impl: clj}
-    "ex-info": {type: function, status: done, impl: clj}
-    "ex-message": {type: function, status: done, impl: clj}
-    extend: {type: function, status: todo, impl: none}
-    "extend-protocol": {type: macro, status: todo, impl: none}
-    "extend-type": {type: macro, status: done, impl: special_form}
-    extenders: {type: function, status: todo, impl: none}
-    "extends?": {type: function, status: todo, impl: none}
-    "false?": {type: function, status: todo, impl: none}
-    ffirst: {type: function, status: todo, impl: none}
-    "file-seq": {type: function, status: todo, impl: none}
-    filter: {type: function, status: done, impl: clj, note: "eager (no lazy seq)"}
-    filterv: {type: function, status: todo, impl: none}
-    find: {type: function, status: todo, impl: none}
-    "find-keyword": {type: function, status: todo, impl: none}
-    "find-ns": {type: function, status: todo, impl: none}
-    "find-protocol-impl": {type: function, status: todo, impl: none}
-    "find-protocol-method": {type: function, status: todo, impl: none}
-    "find-var": {type: function, status: todo, impl: none}
-    first: {type: function, status: done, impl: host}
-    flatten: {type: function, status: done, impl: clj}
-    float: {type: function, status: todo, impl: none}
-    "float-array": {type: function, status: todo, impl: none}
-    "float?": {type: function, status: done, impl: host}
-    floats: {type: function, status: todo, impl: none}
-    flush: {type: function, status: todo, impl: none}
-    fn: {type: special-form, status: todo, impl: none}
-    "fn?": {type: function, status: done, impl: host}
-    fnext: {type: function, status: todo, impl: none}
-    fnil: {type: function, status: todo, impl: none}
-    for: {type: macro, status: done, impl: special_form}
-    force: {type: function, status: todo, impl: none}
-    format: {type: function, status: todo, impl: none}
-    frequencies: {type: function, status: done, impl: clj}
-    future: {type: macro, status: todo, impl: none}
-    "future-call": {type: function, status: todo, impl: none}
-    "future-cancel": {type: function, status: todo, impl: none}
-    "future-cancelled?": {type: function, status: todo, impl: none}
-    "future-done?": {type: function, status: todo, impl: none}
-    "future?": {type: function, status: todo, impl: none}
-    "gen-class": {type: macro, status: todo, impl: none}
-    "gen-interface": {type: macro, status: todo, impl: none}
-    gensym: {type: function, status: todo, impl: none}
-    get: {type: function, status: done, impl: host}
-    "get-in": {type: function, status: done, impl: clj}
-    "get-method": {type: function, status: todo, impl: none}
-    "get-proxy-class": {type: function, status: todo, impl: none}
-    "get-thread-bindings": {type: function, status: todo, impl: none}
-    "get-validator": {type: function, status: todo, impl: none}
-    "group-by": {type: function, status: done, impl: clj}
-    "halt-when": {type: function, status: todo, impl: none}
-    hash: {type: function, status: todo, impl: none}
-    "hash-combine": {type: function, status: todo, impl: none}
-    "hash-map": {type: function, status: done, impl: host}
-    "hash-ordered-coll": {type: function, status: todo, impl: none}
-    "hash-set": {type: function, status: todo, impl: none}
-    "hash-unordered-coll": {type: function, status: todo, impl: none}
-    "ident?": {type: function, status: todo, impl: none}
-    "identical?": {type: function, status: todo, impl: none}
-    identity: {type: function, status: done, impl: clj}
-    "if-let": {type: macro, status: done, impl: clj}
-    "if-not": {type: macro, status: done, impl: clj}
-    "if-some": {type: macro, status: todo, impl: none}
-    "ifn?": {type: function, status: todo, impl: none}
-    import: {type: macro, status: todo, impl: none}
-    "in-ns": {type: var, status: todo, impl: none}
-    inc: {type: function, status: done, impl: clj}
-    "inc'": {type: function, status: todo, impl: none}
-    "indexed?": {type: function, status: todo, impl: none}
-    "infinite?": {type: function, status: todo, impl: none}
-    "init-proxy": {type: function, status: todo, impl: none}
-    "inst-ms": {type: function, status: todo, impl: none}
-    "inst-ms*": {type: function, status: todo, impl: none}
-    "inst?": {type: function, status: todo, impl: none}
-    "instance?": {type: function, status: todo, impl: none}
-    int: {type: function, status: todo, impl: none}
-    "int-array": {type: function, status: todo, impl: none}
-    "int?": {type: function, status: todo, impl: none}
-    "integer?": {type: function, status: done, impl: host}
-    interleave: {type: function, status: done, impl: clj}
-    intern: {type: function, status: todo, impl: none}
-    interpose: {type: function, status: done, impl: clj}
-    into: {type: function, status: done, impl: bridge}
-    "into-array": {type: function, status: todo, impl: none}
-    ints: {type: function, status: todo, impl: none}
-    "io!": {type: macro, status: todo, impl: none}
-    "isa?": {type: function, status: todo, impl: none}
-    iterate: {type: function, status: done, impl: clj}
-    iteration: {type: function, status: todo, impl: none}
-    "iterator-seq": {type: function, status: todo, impl: none}
-    juxt: {type: function, status: done, impl: clj}
-    keep: {type: function, status: done, impl: core_clj}
-    "keep-indexed": {type: function, status: done, impl: core_clj}
-    key: {type: function, status: todo, impl: none}
-    keys: {type: function, status: done, impl: host}
-    keyword: {type: function, status: done, impl: host}
-    "keyword?": {type: function, status: done, impl: host}
-    last: {type: function, status: todo, impl: none}
-    "lazy-cat": {type: macro, status: todo, impl: none}
-    "lazy-seq": {type: macro, status: done, impl: special_form}
-    let: {type: special-form, status: todo, impl: none}
-    letfn: {type: special-form, status: todo, impl: none}
-    "line-seq": {type: function, status: todo, impl: none}
-    list: {type: function, status: done, impl: zig_builtin}
-    "list*": {type: function, status: done, impl: zig_builtin}
-    "list?": {type: function, status: done, impl: zig_builtin}
-    load: {type: function, status: todo, impl: none}
-    "load-file": {type: var, status: todo, impl: none}
-    "load-reader": {type: function, status: todo, impl: none}
-    "load-string": {type: function, status: todo, impl: none}
-    "loaded-libs": {type: function, status: todo, impl: none}
-    locking: {type: macro, status: todo, impl: none}
-    long: {type: function, status: todo, impl: none}
-    "long-array": {type: function, status: todo, impl: none}
-    longs: {type: function, status: todo, impl: none}
-    loop: {type: special-form, status: todo, impl: none}
-    macroexpand: {type: function, status: todo, impl: none}
-    "macroexpand-1": {type: function, status: todo, impl: none}
-    "make-array": {type: function, status: todo, impl: none}
-    "make-hierarchy": {type: function, status: todo, impl: none}
-    map: {type: function, status: done, impl: clj, note: "eager (no lazy seq)"}
-    "map-entry?": {type: function, status: todo, impl: none}
-    "map-indexed": {type: function, status: done, impl: core_clj}
-    "map?": {type: function, status: done, impl: host}
-    mapcat: {type: function, status: done, impl: core_clj}
-    mapv: {type: function, status: todo, impl: none}
-    max: {type: function, status: done, impl: host}
-    "max-key": {type: function, status: todo, impl: none}
-    memfn: {type: macro, status: todo, impl: none}
-    memoize: {type: function, status: todo, impl: none}
-    merge: {type: function, status: done, impl: zig_builtin}
-    "merge-with": {type: function, status: done, impl: zig_builtin}
-    meta: {type: function, status: todo, impl: none}
-    "method-sig": {type: function, status: todo, impl: none}
-    methods: {type: function, status: todo, impl: none}
-    min: {type: function, status: done, impl: host}
-    "min-key": {type: function, status: todo, impl: none}
-    "mix-collection-hash": {type: function, status: todo, impl: none}
-    mod: {type: function, status: done, impl: intrinsic}
-    munge: {type: function, status: todo, impl: none}
-    name: {type: function, status: done, impl: host}
-    namespace: {type: function, status: done, impl: host}
-    "namespace-munge": {type: function, status: todo, impl: none}
-    "nat-int?": {type: function, status: todo, impl: none}
-    "neg-int?": {type: function, status: todo, impl: none}
-    "neg?": {type: function, status: done, impl: host}
-    newline: {type: function, status: todo, impl: none}
-    next: {type: function, status: done, impl: clj}
-    nfirst: {type: function, status: todo, impl: none}
-    "nil?": {type: function, status: done, impl: host}
-    nnext: {type: function, status: todo, impl: none}
-    not: {type: function, status: done, impl: host}
-    "not-any?": {type: function, status: done, impl: clj}
-    "not-empty": {type: function, status: todo, impl: none}
-    "not-every?": {type: function, status: done, impl: clj}
-    "not=": {type: function, status: done, impl: intrinsic}
-    ns: {type: macro, status: todo, impl: none}
-    "ns-aliases": {type: function, status: todo, impl: none}
-    "ns-imports": {type: function, status: todo, impl: none}
-    "ns-interns": {type: function, status: todo, impl: none}
-    "ns-map": {type: function, status: todo, impl: none}
-    "ns-name": {type: function, status: todo, impl: none}
-    "ns-publics": {type: function, status: todo, impl: none}
-    "ns-refers": {type: function, status: todo, impl: none}
-    "ns-resolve": {type: function, status: todo, impl: none}
-    "ns-unalias": {type: function, status: todo, impl: none}
-    "ns-unmap": {type: function, status: todo, impl: none}
-    nth: {type: function, status: done, impl: host}
-    nthnext: {type: function, status: todo, impl: none}
-    nthrest: {type: function, status: todo, impl: none}
-    num: {type: function, status: todo, impl: none}
-    "number?": {type: function, status: done, impl: host}
-    numerator: {type: function, status: todo, impl: none}
-    "object-array": {type: function, status: todo, impl: none}
-    "odd?": {type: function, status: done, impl: host}
-    or: {type: macro, status: done, impl: clj}
-    parents: {type: function, status: todo, impl: none}
-    "parse-boolean": {type: function, status: todo, impl: none}
-    "parse-double": {type: function, status: todo, impl: none}
-    "parse-long": {type: function, status: todo, impl: none}
-    "parse-uuid": {type: function, status: todo, impl: none}
-    partial: {type: function, status: done, impl: clj}
-    partition: {type: function, status: done, impl: clj}
-    "partition-all": {type: function, status: todo, impl: none}
-    "partition-by": {type: function, status: done, impl: clj}
-    partitionv: {type: function, status: todo, impl: none}
-    "partitionv-all": {type: function, status: todo, impl: none}
-    pcalls: {type: function, status: todo, impl: none}
-    peek: {type: function, status: todo, impl: none}
-    "persistent!": {type: function, status: todo, impl: none}
-    pmap: {type: function, status: todo, impl: none}
-    pop: {type: function, status: todo, impl: none}
-    "pop!": {type: function, status: todo, impl: none}
-    "pop-thread-bindings": {type: function, status: todo, impl: none}
-    "pos-int?": {type: function, status: todo, impl: none}
-    "pos?": {type: function, status: done, impl: host}
-    pr: {type: function, status: todo, impl: none}
-    "pr-str": {type: function, status: done, impl: host}
-    "prefer-method": {type: function, status: todo, impl: none}
-    prefers: {type: function, status: todo, impl: none}
-    "primitives-classnames": {type: var, status: todo, impl: none}
-    print: {type: function, status: todo, impl: none}
-    "print-ctor": {type: function, status: todo, impl: none}
-    "print-dup": {type: var, status: todo, impl: none}
-    "print-method": {type: var, status: todo, impl: none}
-    "print-simple": {type: function, status: todo, impl: none}
-    "print-str": {type: function, status: todo, impl: none}
-    printf: {type: function, status: todo, impl: none}
-    println: {type: function, status: done, impl: host}
-    "println-str": {type: function, status: todo, impl: none}
-    prn: {type: function, status: done, impl: host}
-    "prn-str": {type: function, status: todo, impl: none}
-    promise: {type: function, status: todo, impl: none}
-    proxy: {type: macro, status: todo, impl: none}
-    "proxy-call-with-super": {type: function, status: todo, impl: none}
-    "proxy-mappings": {type: function, status: todo, impl: none}
-    "proxy-name": {type: function, status: todo, impl: none}
-    "proxy-super": {type: macro, status: todo, impl: none}
-    "push-thread-bindings": {type: function, status: todo, impl: none}
-    pvalues: {type: macro, status: todo, impl: none}
-    "qualified-ident?": {type: function, status: todo, impl: none}
-    "qualified-keyword?": {type: function, status: todo, impl: none}
-    "qualified-symbol?": {type: function, status: todo, impl: none}
-    quot: {type: function, status: done, impl: host}
-    rand: {type: function, status: done, impl: host}
-    "rand-int": {type: function, status: done, impl: host}
-    "rand-nth": {type: function, status: todo, impl: none}
-    "random-sample": {type: function, status: todo, impl: none}
-    "random-uuid": {type: function, status: todo, impl: none}
-    range: {type: function, status: done, impl: host}
-    "ratio?": {type: function, status: todo, impl: none}
-    "rational?": {type: function, status: todo, impl: none}
-    rationalize: {type: function, status: todo, impl: none}
-    "re-find": {type: function, status: todo, impl: none}
-    "re-groups": {type: function, status: todo, impl: none}
-    "re-matcher": {type: function, status: todo, impl: none}
-    "re-matches": {type: function, status: todo, impl: none}
-    "re-pattern": {type: function, status: todo, impl: none}
-    "re-seq": {type: function, status: todo, impl: none}
-    read: {type: function, status: todo, impl: none}
-    read+string: {type: function, status: todo, impl: none}
-    "read-line": {type: function, status: todo, impl: none}
-    "read-string": {type: function, status: todo, impl: none}
-    "reader-conditional": {type: function, status: todo, impl: none}
-    "reader-conditional?": {type: function, status: todo, impl: none}
-    "realized?": {type: function, status: todo, impl: none}
-    "record?": {type: function, status: todo, impl: none}
-    reduce: {type: function, status: done, impl: clj}
-    "reduce-kv": {type: function, status: todo, impl: none}
-    reduced: {type: function, status: todo, impl: none}
-    "reduced?": {type: function, status: todo, impl: none}
-    reductions: {type: function, status: todo, impl: none}
-    ref: {type: function, status: todo, impl: none}
-    "ref-history-count": {type: function, status: todo, impl: none}
-    "ref-max-history": {type: function, status: todo, impl: none}
-    "ref-min-history": {type: function, status: todo, impl: none}
-    "ref-set": {type: function, status: todo, impl: none}
-    refer: {type: function, status: todo, impl: none}
-    "refer-clojure": {type: macro, status: todo, impl: none}
-    reify: {type: macro, status: todo, impl: none}
-    "release-pending-sends": {type: function, status: todo, impl: none}
-    rem: {type: function, status: done, impl: intrinsic}
-    remove: {type: function, status: done, impl: core_clj}
-    "remove-all-methods": {type: function, status: todo, impl: none}
-    "remove-method": {type: function, status: todo, impl: none}
-    "remove-ns": {type: function, status: todo, impl: none}
-    "remove-tap": {type: function, status: todo, impl: none}
-    "remove-watch": {type: function, status: todo, impl: none}
-    repeat: {type: function, status: done, impl: clj, note: 'lazy, infinite + n-arity'}
-    repeatedly: {type: function, status: done, impl: clj}
-    replace: {type: function, status: todo, impl: none}
-    replicate: {type: function, status: todo, impl: none}
-    require: {type: function, status: todo, impl: none}
-    "requiring-resolve": {type: function, status: todo, impl: none}
-    "reset!": {type: function, status: done, impl: host}
-    "reset-meta!": {type: function, status: todo, impl: none}
-    "reset-vals!": {type: function, status: todo, impl: none}
-    resolve: {type: function, status: todo, impl: none}
-    rest: {type: function, status: done, impl: host}
-    "restart-agent": {type: function, status: todo, impl: none}
-    "resultset-seq": {type: function, status: todo, impl: none}
-    reverse: {type: function, status: done, impl: bridge}
-    "reversible?": {type: function, status: todo, impl: none}
-    rseq: {type: function, status: todo, impl: none}
-    rsubseq: {type: function, status: todo, impl: none}
-    "run!": {type: function, status: todo, impl: none}
-    "satisfies?": {type: function, status: done, impl: host}
-    second: {type: function, status: todo, impl: none}
-    "select-keys": {type: function, status: done, impl: clj}
-    send: {type: function, status: todo, impl: none}
-    "send-off": {type: function, status: todo, impl: none}
-    "send-via": {type: function, status: todo, impl: none}
-    seq: {type: function, status: done, impl: host}
-    "seq-to-map-for-destructuring": {type: function, status: todo, impl: none}
-    "seq?": {type: function, status: done, impl: host}
-    "seqable?": {type: function, status: todo, impl: none}
-    seque: {type: function, status: todo, impl: none}
-    sequence: {type: function, status: todo, impl: none}
-    "sequential?": {type: function, status: todo, impl: none}
-    set: {type: function, status: done, impl: zig_builtin}
-    "set-agent-send-executor!": {type: function, status: todo, impl: none}
-    "set-agent-send-off-executor!": {type: function, status: todo, impl: none}
-    "set-error-handler!": {type: function, status: todo, impl: none}
-    "set-error-mode!": {type: function, status: todo, impl: none}
-    "set-validator!": {type: function, status: todo, impl: none}
-    "set?": {type: function, status: done, impl: host}
-    short: {type: function, status: todo, impl: none}
-    "short-array": {type: function, status: todo, impl: none}
-    shorts: {type: function, status: todo, impl: none}
-    shuffle: {type: function, status: todo, impl: none}
-    "shutdown-agents": {type: function, status: todo, impl: none}
-    "simple-ident?": {type: function, status: todo, impl: none}
-    "simple-keyword?": {type: function, status: todo, impl: none}
-    "simple-symbol?": {type: function, status: todo, impl: none}
-    slurp: {type: function, status: todo, impl: none}
-    some: {type: function, status: done, impl: clj}
-    "some->": {type: macro, status: done, impl: clj}
-    "some->>": {type: macro, status: done, impl: clj}
-    "some-fn": {type: function, status: todo, impl: none}
-    "some?": {type: function, status: todo, impl: none}
-    sort: {type: function, status: done, impl: zig_builtin}
-    "sort-by": {type: function, status: done, impl: zig_builtin}
-    "sorted-map": {type: function, status: todo, impl: none}
-    "sorted-map-by": {type: function, status: todo, impl: none}
-    "sorted-set": {type: function, status: todo, impl: none}
-    "sorted-set-by": {type: function, status: todo, impl: none}
-    "sorted?": {type: function, status: todo, impl: none}
-    "special-symbol?": {type: function, status: todo, impl: none}
-    spit: {type: function, status: todo, impl: none}
-    "split-at": {type: function, status: todo, impl: none}
-    "split-with": {type: function, status: todo, impl: none}
-    "splitv-at": {type: function, status: todo, impl: none}
-    str: {type: function, status: done, impl: bridge}
-    "stream-into!": {type: function, status: todo, impl: none}
-    "stream-reduce!": {type: function, status: todo, impl: none}
-    "stream-seq!": {type: function, status: todo, impl: none}
-    "stream-transduce!": {type: function, status: todo, impl: none}
-    "string?": {type: function, status: done, impl: host}
-    struct: {type: function, status: todo, impl: none}
-    "struct-map": {type: function, status: todo, impl: none}
-    subs: {type: function, status: done, impl: host}
-    subseq: {type: function, status: todo, impl: none}
-    subvec: {type: function, status: todo, impl: none}
-    supers: {type: function, status: todo, impl: none}
-    "swap!": {type: function, status: done, impl: host, note: "builtin-fn only (D8)"}
-    "swap-vals!": {type: function, status: todo, impl: none}
-    symbol: {type: function, status: done, impl: host}
-    "symbol?": {type: function, status: done, impl: host}
-    sync: {type: macro, status: todo, impl: none}
-    "tagged-literal": {type: function, status: todo, impl: none}
-    "tagged-literal?": {type: function, status: todo, impl: none}
-    take: {type: function, status: done, impl: clj}
-    "take-last": {type: function, status: todo, impl: none}
-    "take-nth": {type: function, status: todo, impl: none}
-    "take-while": {type: function, status: todo, impl: none}
-    "tap>": {type: function, status: todo, impl: none}
-    test: {type: function, status: todo, impl: none}
-    "the-ns": {type: function, status: todo, impl: none}
-    "thread-bound?": {type: function, status: todo, impl: none}
-    time: {type: macro, status: todo, impl: none}
-    "to-array": {type: function, status: todo, impl: none}
-    "to-array-2d": {type: function, status: todo, impl: none}
-    trampoline: {type: function, status: todo, impl: none}
-    transduce: {type: function, status: todo, impl: none}
-    transient: {type: function, status: todo, impl: none}
-    "tree-seq": {type: function, status: todo, impl: none}
-    "true?": {type: function, status: todo, impl: none}
-    type: {type: function, status: todo, impl: none}
-    "unchecked-add": {type: function, status: todo, impl: none}
-    "unchecked-add-int": {type: function, status: todo, impl: none}
-    "unchecked-byte": {type: function, status: todo, impl: none}
-    "unchecked-char": {type: function, status: todo, impl: none}
-    "unchecked-dec": {type: function, status: todo, impl: none}
-    "unchecked-dec-int": {type: function, status: todo, impl: none}
-    "unchecked-divide-int": {type: function, status: todo, impl: none}
-    "unchecked-double": {type: function, status: todo, impl: none}
-    "unchecked-float": {type: function, status: todo, impl: none}
-    "unchecked-inc": {type: function, status: todo, impl: none}
-    "unchecked-inc-int": {type: function, status: todo, impl: none}
-    "unchecked-int": {type: function, status: todo, impl: none}
-    "unchecked-long": {type: function, status: todo, impl: none}
-    "unchecked-multiply": {type: function, status: todo, impl: none}
-    "unchecked-multiply-int": {type: function, status: todo, impl: none}
-    "unchecked-negate": {type: function, status: todo, impl: none}
-    "unchecked-negate-int": {type: function, status: todo, impl: none}
-    "unchecked-remainder-int": {type: function, status: todo, impl: none}
-    "unchecked-short": {type: function, status: todo, impl: none}
-    "unchecked-subtract": {type: function, status: todo, impl: none}
-    "unchecked-subtract-int": {type: function, status: todo, impl: none}
-    underive: {type: function, status: todo, impl: none}
-    unquote: {type: var, status: todo, impl: none}
-    "unquote-splicing": {type: var, status: todo, impl: none}
-    unreduced: {type: function, status: todo, impl: none}
-    "unsigned-bit-shift-right": {type: function, status: todo, impl: none}
-    update: {type: function, status: done, impl: clj}
-    "update-in": {type: function, status: done, impl: clj}
-    "update-keys": {type: function, status: todo, impl: none}
-    "update-proxy": {type: function, status: todo, impl: none}
-    "update-vals": {type: function, status: todo, impl: none}
-    "uri?": {type: function, status: todo, impl: none}
-    use: {type: function, status: todo, impl: none}
-    "uuid?": {type: function, status: todo, impl: none}
-    val: {type: function, status: todo, impl: none}
-    vals: {type: function, status: done, impl: host}
-    "var-get": {type: function, status: todo, impl: none}
-    "var-set": {type: function, status: todo, impl: none}
-    "var?": {type: function, status: todo, impl: none}
-    "vary-meta": {type: function, status: todo, impl: none}
-    vec: {type: function, status: done, impl: zig_builtin}
-    vector: {type: function, status: done, impl: host}
-    "vector-of": {type: function, status: todo, impl: none}
-    "vector?": {type: function, status: done, impl: host}
-    "volatile!": {type: function, status: todo, impl: none}
-    "volatile?": {type: function, status: todo, impl: none}
-    "vreset!": {type: function, status: todo, impl: none}
-    "vswap!": {type: macro, status: todo, impl: none}
-    when: {type: macro, status: done, impl: clj}
-    "when-first": {type: macro, status: todo, impl: none}
-    "when-let": {type: macro, status: done, impl: clj}
-    "when-not": {type: macro, status: done, impl: clj}
-    "when-some": {type: macro, status: todo, impl: none}
-    while: {type: macro, status: todo, impl: none}
-    "with-bindings": {type: macro, status: todo, impl: none}
-    "with-bindings*": {type: function, status: todo, impl: none}
-    "with-in-str": {type: macro, status: todo, impl: none}
-    "with-loading-context": {type: macro, status: todo, impl: none}
-    "with-local-vars": {type: macro, status: todo, impl: none}
-    "with-meta": {type: function, status: todo, impl: none}
-    "with-open": {type: macro, status: todo, impl: none}
-    "with-out-str": {type: macro, status: todo, impl: none}
-    "with-precision": {type: macro, status: todo, impl: none}
-    "with-redefs": {type: macro, status: todo, impl: none}
-    "with-redefs-fn": {type: function, status: todo, impl: none}
-    "xml-seq": {type: function, status: todo, impl: none}
-    "zero?": {type: function, status: done, impl: host}
-    zipmap: {type: function, status: done, impl: zig_builtin}
+    ".": {type: special-form, status: skip, note: "JVM interop"}
+    "case*": {type: special-form, status: todo}
+    catch: {type: special-form, status: done}
+    def: {type: special-form, status: done}
+    "deftype*": {type: special-form, status: skip, note: "JVM type system"}
+    do: {type: special-form, status: done}
+    finally: {type: special-form, status: done, note: "part of try"}
+    "fn*": {type: special-form, status: done}
+    if: {type: special-form, status: done}
+    "import*": {type: special-form, status: skip, note: "JVM interop"}
+    "let*": {type: special-form, status: done}
+    "letfn*": {type: special-form, status: todo}
+    "loop*": {type: special-form, status: done}
+    "monitor-enter": {type: special-form, status: skip, note: "JVM concurrency"}
+    "monitor-exit": {type: special-form, status: skip, note: "JVM concurrency"}
+    new: {type: special-form, status: skip, note: "JVM interop"}
+    quote: {type: special-form, status: done}
+    recur: {type: special-form, status: done}
+    "reify*": {type: special-form, status: skip, note: "JVM type system"}
+    "set!": {type: special-form, status: done}
+    throw: {type: special-form, status: done}
+    try: {type: special-form, status: done}
+    var: {type: special-form, status: done}
+    "*": {type: function, status: done, note: "VM intrinsic opcode"}
+    "*'": {type: function, status: todo}
+    "*1": {type: dynamic-var, status: todo}
+    "*2": {type: dynamic-var, status: todo}
+    "*3": {type: dynamic-var, status: todo}
+    "*agent*": {type: var, status: todo}
+    "*allow-unresolved-vars*": {type: var, status: todo}
+    "*assert*": {type: var, status: todo}
+    "*clojure-version*": {type: dynamic-var, status: todo}
+    "*command-line-args*": {type: var, status: todo}
+    "*compile-files*": {type: var, status: todo}
+    "*compile-path*": {type: var, status: todo}
+    "*compiler-options*": {type: var, status: todo}
+    "*data-readers*": {type: dynamic-var, status: todo}
+    "*default-data-reader-fn*": {type: dynamic-var, status: todo}
+    "*e": {type: dynamic-var, status: todo}
+    "*err*": {type: var, status: todo}
+    "*file*": {type: var, status: todo}
+    "*flush-on-newline*": {type: var, status: todo}
+    "*fn-loader*": {type: var, status: todo}
+    "*in*": {type: var, status: todo}
+    "*math-context*": {type: var, status: todo}
+    "*ns*": {type: var, status: todo}
+    "*out*": {type: var, status: todo}
+    "*print-dup*": {type: var, status: todo}
+    "*print-length*": {type: dynamic-var, status: todo}
+    "*print-level*": {type: dynamic-var, status: todo}
+    "*print-meta*": {type: var, status: todo}
+    "*print-namespace-maps*": {type: dynamic-var, status: todo}
+    "*print-readably*": {type: var, status: todo}
+    "*read-eval*": {type: var, status: todo}
+    "*reader-resolver*": {type: var, status: todo}
+    "*repl*": {type: dynamic-var, status: todo}
+    "*source-path*": {type: var, status: todo}
+    "*suppress-read*": {type: var, status: todo}
+    "*unchecked-math*": {type: var, status: todo}
+    "*use-context-classloader*": {type: var, status: todo}
+    "*verbose-defrecords*": {type: dynamic-var, status: todo}
+    "*warn-on-reflection*": {type: var, status: todo}
+    "+": {type: function, status: done, note: "VM intrinsic opcode"}
+    "+'": {type: function, status: todo}
+    "-": {type: function, status: done, note: "VM intrinsic opcode"}
+    "-'": {type: function, status: todo}
+    "->": {type: macro, status: done}
+    "->>": {type: macro, status: done}
+    "->ArrayChunk": {type: function, status: todo}
+    "->Eduction": {type: function, status: todo}
+    "->Vec": {type: function, status: todo}
+    "->VecNode": {type: function, status: todo}
+    "->VecSeq": {type: function, status: todo}
+    "-cache-protocol-fn": {type: function, status: todo}
+    "-reset-methods": {type: function, status: todo}
+    "..": {type: macro, status: todo}
+    "/": {type: function, status: done, note: "always returns float (D12); VM intrinsic opcode"}
+    "<": {type: function, status: done, note: "VM intrinsic opcode"}
+    "<=": {type: function, status: done, note: "VM intrinsic opcode"}
+    "=": {type: function, status: done, note: "VM intrinsic opcode"}
+    "==": {type: function, status: todo}
+    ">": {type: function, status: done, note: "VM intrinsic opcode"}
+    ">=": {type: function, status: done, note: "VM intrinsic opcode"}
+    "EMPTY-NODE": {type: var, status: todo}
+    Inst: {type: var, status: todo}
+    "NaN?": {type: function, status: todo}
+    "PrintWriter-on": {type: function, status: todo}
+    "StackTraceElement->vec": {type: function, status: todo}
+    "Throwable->map": {type: function, status: todo}
+    abs: {type: function, status: done}
+    accessor: {type: function, status: todo}
+    aclone: {type: function, status: todo}
+    "add-classpath": {type: function, status: todo}
+    "add-tap": {type: function, status: todo}
+    "add-watch": {type: function, status: todo}
+    agent: {type: function, status: todo}
+    "agent-error": {type: function, status: todo}
+    "agent-errors": {type: function, status: todo}
+    aget: {type: function, status: todo}
+    alength: {type: function, status: todo}
+    alias: {type: function, status: todo}
+    "all-ns": {type: function, status: todo}
+    alter: {type: function, status: todo}
+    "alter-meta!": {type: function, status: todo}
+    "alter-var-root": {type: function, status: todo}
+    amap: {type: macro, status: todo}
+    ancestors: {type: function, status: todo}
+    and: {type: macro, status: done}
+    "any?": {type: function, status: todo}
+    apply: {type: function, status: done}
+    areduce: {type: macro, status: todo}
+    "array-map": {type: function, status: todo}
+    "as->": {type: macro, status: done}
+    aset: {type: function, status: todo}
+    "aset-boolean": {type: function, status: todo}
+    "aset-byte": {type: function, status: todo}
+    "aset-char": {type: function, status: todo}
+    "aset-double": {type: function, status: todo}
+    "aset-float": {type: function, status: todo}
+    "aset-int": {type: function, status: todo}
+    "aset-long": {type: function, status: todo}
+    "aset-short": {type: function, status: todo}
+    assert: {type: macro, status: todo}
+    assoc: {type: function, status: done}
+    "assoc!": {type: function, status: todo}
+    "assoc-in": {type: function, status: done}
+    "associative?": {type: function, status: todo}
+    atom: {type: function, status: done}
+    await: {type: function, status: todo}
+    "await-for": {type: function, status: todo}
+    await1: {type: function, status: todo}
+    bases: {type: function, status: todo}
+    bean: {type: function, status: todo}
+    bigdec: {type: function, status: todo}
+    bigint: {type: function, status: todo}
+    biginteger: {type: function, status: todo}
+    binding: {type: macro, status: todo}
+    "bit-and": {type: function, status: todo}
+    "bit-and-not": {type: function, status: todo}
+    "bit-clear": {type: function, status: todo}
+    "bit-flip": {type: function, status: todo}
+    "bit-not": {type: function, status: todo}
+    "bit-or": {type: function, status: todo}
+    "bit-set": {type: function, status: todo}
+    "bit-shift-left": {type: function, status: todo}
+    "bit-shift-right": {type: function, status: todo}
+    "bit-test": {type: function, status: todo}
+    "bit-xor": {type: function, status: todo}
+    boolean: {type: function, status: todo}
+    "boolean-array": {type: function, status: todo}
+    "boolean?": {type: function, status: done}
+    booleans: {type: function, status: todo}
+    "bound-fn": {type: macro, status: todo}
+    "bound-fn*": {type: function, status: todo}
+    "bound?": {type: function, status: todo}
+    "bounded-count": {type: function, status: todo}
+    butlast: {type: function, status: todo}
+    byte: {type: function, status: todo}
+    "byte-array": {type: function, status: todo}
+    bytes: {type: function, status: todo}
+    "bytes?": {type: function, status: todo}
+    case: {type: macro, status: todo}
+    cast: {type: function, status: todo}
+    cat: {type: function, status: todo}
+    char: {type: function, status: todo}
+    "char-array": {type: function, status: todo}
+    "char-escape-string": {type: var, status: todo}
+    "char-name-string": {type: var, status: todo}
+    "char?": {type: function, status: done}
+    chars: {type: function, status: todo}
+    chunk: {type: function, status: todo}
+    "chunk-append": {type: function, status: todo}
+    "chunk-buffer": {type: function, status: todo}
+    "chunk-cons": {type: function, status: todo}
+    "chunk-first": {type: function, status: todo}
+    "chunk-next": {type: function, status: todo}
+    "chunk-rest": {type: function, status: todo}
+    "chunked-seq?": {type: function, status: todo}
+    class: {type: function, status: todo}
+    "class?": {type: function, status: todo}
+    "clear-agent-errors": {type: function, status: todo}
+    "clojure-version": {type: function, status: todo}
+    "coll?": {type: function, status: done}
+    comment: {type: macro, status: done}
+    commute: {type: function, status: todo}
+    comp: {type: function, status: done}
+    comparator: {type: function, status: todo}
+    compare: {type: function, status: done}
+    "compare-and-set!": {type: function, status: todo}
+    compile: {type: function, status: todo}
+    complement: {type: function, status: done}
+    completing: {type: function, status: todo}
+    concat: {type: function, status: done}
+    cond: {type: macro, status: done}
+    "cond->": {type: macro, status: done}
+    "cond->>": {type: macro, status: done}
+    condp: {type: macro, status: todo}
+    conj: {type: function, status: done}
+    "conj!": {type: function, status: todo}
+    cons: {type: function, status: done}
+    constantly: {type: function, status: done}
+    "construct-proxy": {type: function, status: todo}
+    "contains?": {type: function, status: done}
+    count: {type: function, status: done}
+    "counted?": {type: function, status: todo}
+    "create-ns": {type: function, status: todo}
+    "create-struct": {type: function, status: todo}
+    cycle: {type: function, status: done}
+    dec: {type: function, status: done}
+    "dec'": {type: function, status: todo}
+    "decimal?": {type: function, status: todo}
+    declare: {type: macro, status: todo}
+    dedupe: {type: function, status: todo}
+    "default-data-readers": {type: var, status: todo}
+    definline: {type: macro, status: todo}
+    definterface: {type: macro, status: todo}
+    defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
+    defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
+    defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
+    defn: {type: macro, status: done}
+    "defn-": {type: macro, status: done}
+    defonce: {type: macro, status: todo}
+    defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
+    defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
+    defstruct: {type: macro, status: todo}
+    deftype: {type: macro, status: todo}
+    delay: {type: macro, status: todo}
+    "delay?": {type: function, status: todo}
+    deliver: {type: function, status: todo}
+    denominator: {type: function, status: todo}
+    deref: {type: function, status: done}
+    derive: {type: function, status: todo}
+    descendants: {type: function, status: todo}
+    destructure: {type: function, status: todo}
+    disj: {type: function, status: todo}
+    "disj!": {type: function, status: todo}
+    dissoc: {type: function, status: todo}
+    "dissoc!": {type: function, status: todo}
+    distinct: {type: function, status: done}
+    "distinct?": {type: function, status: todo}
+    doall: {type: function, status: todo}
+    dorun: {type: function, status: todo}
+    doseq: {type: macro, status: todo}
+    dosync: {type: macro, status: todo}
+    dotimes: {type: macro, status: done}
+    doto: {type: macro, status: done}
+    double: {type: function, status: todo}
+    "double-array": {type: function, status: todo}
+    "double?": {type: function, status: todo}
+    doubles: {type: function, status: todo}
+    drop: {type: function, status: done}
+    "drop-last": {type: function, status: todo}
+    "drop-while": {type: function, status: todo}
+    eduction: {type: function, status: todo}
+    empty: {type: function, status: todo}
+    "empty?": {type: function, status: done}
+    ensure: {type: function, status: todo}
+    "ensure-reduced": {type: function, status: todo}
+    "enumeration-seq": {type: function, status: todo}
+    "error-handler": {type: function, status: todo}
+    "error-mode": {type: function, status: todo}
+    eval: {type: function, status: todo}
+    "even?": {type: function, status: done}
+    "every-pred": {type: function, status: todo}
+    "every?": {type: function, status: done}
+    "ex-cause": {type: function, status: todo}
+    "ex-data": {type: function, status: done}
+    "ex-info": {type: function, status: done}
+    "ex-message": {type: function, status: done}
+    extend: {type: function, status: todo}
+    "extend-protocol": {type: macro, status: todo}
+    "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
+    extenders: {type: function, status: todo}
+    "extends?": {type: function, status: todo}
+    "false?": {type: function, status: todo}
+    ffirst: {type: function, status: todo}
+    "file-seq": {type: function, status: todo}
+    filter: {type: function, status: done, note: "eager (no lazy seq)"}
+    filterv: {type: function, status: todo}
+    find: {type: function, status: todo}
+    "find-keyword": {type: function, status: todo}
+    "find-ns": {type: function, status: todo}
+    "find-protocol-impl": {type: function, status: todo}
+    "find-protocol-method": {type: function, status: todo}
+    "find-var": {type: function, status: todo}
+    first: {type: function, status: done}
+    flatten: {type: function, status: done}
+    float: {type: function, status: todo}
+    "float-array": {type: function, status: todo}
+    "float?": {type: function, status: done}
+    floats: {type: function, status: todo}
+    flush: {type: function, status: todo}
+    fn: {type: special-form, status: todo}
+    "fn?": {type: function, status: done}
+    fnext: {type: function, status: todo}
+    fnil: {type: function, status: todo}
+    for: {type: macro, status: done, note: "analyzer special form in CW"}
+    force: {type: function, status: todo}
+    format: {type: function, status: todo}
+    frequencies: {type: function, status: done}
+    future: {type: macro, status: todo}
+    "future-call": {type: function, status: todo}
+    "future-cancel": {type: function, status: todo}
+    "future-cancelled?": {type: function, status: todo}
+    "future-done?": {type: function, status: todo}
+    "future?": {type: function, status: todo}
+    "gen-class": {type: macro, status: todo}
+    "gen-interface": {type: macro, status: todo}
+    gensym: {type: function, status: todo}
+    get: {type: function, status: done}
+    "get-in": {type: function, status: done}
+    "get-method": {type: function, status: todo}
+    "get-proxy-class": {type: function, status: todo}
+    "get-thread-bindings": {type: function, status: todo}
+    "get-validator": {type: function, status: todo}
+    "group-by": {type: function, status: done}
+    "halt-when": {type: function, status: todo}
+    hash: {type: function, status: todo}
+    "hash-combine": {type: function, status: todo}
+    "hash-map": {type: function, status: done}
+    "hash-ordered-coll": {type: function, status: todo}
+    "hash-set": {type: function, status: todo}
+    "hash-unordered-coll": {type: function, status: todo}
+    "ident?": {type: function, status: todo}
+    "identical?": {type: function, status: todo}
+    identity: {type: function, status: done}
+    "if-let": {type: macro, status: done}
+    "if-not": {type: macro, status: done}
+    "if-some": {type: macro, status: todo}
+    "ifn?": {type: function, status: todo}
+    import: {type: macro, status: todo}
+    "in-ns": {type: var, status: todo}
+    inc: {type: function, status: done}
+    "inc'": {type: function, status: todo}
+    "indexed?": {type: function, status: todo}
+    "infinite?": {type: function, status: todo}
+    "init-proxy": {type: function, status: todo}
+    "inst-ms": {type: function, status: todo}
+    "inst-ms*": {type: function, status: todo}
+    "inst?": {type: function, status: todo}
+    "instance?": {type: function, status: todo}
+    int: {type: function, status: todo}
+    "int-array": {type: function, status: todo}
+    "int?": {type: function, status: todo}
+    "integer?": {type: function, status: done}
+    interleave: {type: function, status: done}
+    intern: {type: function, status: todo}
+    interpose: {type: function, status: done}
+    into: {type: function, status: done, note: "portable to clj"}
+    "into-array": {type: function, status: todo}
+    ints: {type: function, status: todo}
+    "io!": {type: macro, status: todo}
+    "isa?": {type: function, status: todo}
+    iterate: {type: function, status: done}
+    iteration: {type: function, status: todo}
+    "iterator-seq": {type: function, status: todo}
+    juxt: {type: function, status: done}
+    keep: {type: function, status: done}
+    "keep-indexed": {type: function, status: done}
+    key: {type: function, status: todo}
+    keys: {type: function, status: done}
+    keyword: {type: function, status: done}
+    "keyword?": {type: function, status: done}
+    last: {type: function, status: todo}
+    "lazy-cat": {type: macro, status: todo}
+    "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
+    let: {type: special-form, status: todo}
+    letfn: {type: special-form, status: todo}
+    "line-seq": {type: function, status: todo}
+    list: {type: function, status: done}
+    "list*": {type: function, status: done}
+    "list?": {type: function, status: done}
+    load: {type: function, status: todo}
+    "load-file": {type: var, status: todo}
+    "load-reader": {type: function, status: todo}
+    "load-string": {type: function, status: todo}
+    "loaded-libs": {type: function, status: todo}
+    locking: {type: macro, status: todo}
+    long: {type: function, status: todo}
+    "long-array": {type: function, status: todo}
+    longs: {type: function, status: todo}
+    loop: {type: special-form, status: todo}
+    macroexpand: {type: function, status: todo}
+    "macroexpand-1": {type: function, status: todo}
+    "make-array": {type: function, status: todo}
+    "make-hierarchy": {type: function, status: todo}
+    map: {type: function, status: done, note: "eager (no lazy seq)"}
+    "map-entry?": {type: function, status: todo}
+    "map-indexed": {type: function, status: done}
+    "map?": {type: function, status: done}
+    mapcat: {type: function, status: done}
+    mapv: {type: function, status: todo}
+    max: {type: function, status: done}
+    "max-key": {type: function, status: todo}
+    memfn: {type: macro, status: todo}
+    memoize: {type: function, status: todo}
+    merge: {type: function, status: done}
+    "merge-with": {type: function, status: done}
+    meta: {type: function, status: todo}
+    "method-sig": {type: function, status: todo}
+    methods: {type: function, status: todo}
+    min: {type: function, status: done}
+    "min-key": {type: function, status: todo}
+    "mix-collection-hash": {type: function, status: todo}
+    mod: {type: function, status: done, note: "VM intrinsic opcode"}
+    munge: {type: function, status: todo}
+    name: {type: function, status: done}
+    namespace: {type: function, status: done}
+    "namespace-munge": {type: function, status: todo}
+    "nat-int?": {type: function, status: todo}
+    "neg-int?": {type: function, status: todo}
+    "neg?": {type: function, status: done}
+    newline: {type: function, status: todo}
+    next: {type: function, status: done}
+    nfirst: {type: function, status: todo}
+    "nil?": {type: function, status: done}
+    nnext: {type: function, status: todo}
+    not: {type: function, status: done}
+    "not-any?": {type: function, status: done}
+    "not-empty": {type: function, status: todo}
+    "not-every?": {type: function, status: done}
+    "not=": {type: function, status: done, note: "VM intrinsic opcode"}
+    ns: {type: macro, status: todo}
+    "ns-aliases": {type: function, status: todo}
+    "ns-imports": {type: function, status: todo}
+    "ns-interns": {type: function, status: todo}
+    "ns-map": {type: function, status: todo}
+    "ns-name": {type: function, status: todo}
+    "ns-publics": {type: function, status: todo}
+    "ns-refers": {type: function, status: todo}
+    "ns-resolve": {type: function, status: todo}
+    "ns-unalias": {type: function, status: todo}
+    "ns-unmap": {type: function, status: todo}
+    nth: {type: function, status: done}
+    nthnext: {type: function, status: todo}
+    nthrest: {type: function, status: todo}
+    num: {type: function, status: todo}
+    "number?": {type: function, status: done}
+    numerator: {type: function, status: todo}
+    "object-array": {type: function, status: todo}
+    "odd?": {type: function, status: done}
+    or: {type: macro, status: done}
+    parents: {type: function, status: todo}
+    "parse-boolean": {type: function, status: todo}
+    "parse-double": {type: function, status: todo}
+    "parse-long": {type: function, status: todo}
+    "parse-uuid": {type: function, status: todo}
+    partial: {type: function, status: done}
+    partition: {type: function, status: done}
+    "partition-all": {type: function, status: todo}
+    "partition-by": {type: function, status: done}
+    partitionv: {type: function, status: todo}
+    "partitionv-all": {type: function, status: todo}
+    pcalls: {type: function, status: todo}
+    peek: {type: function, status: todo}
+    "persistent!": {type: function, status: todo}
+    pmap: {type: function, status: todo}
+    pop: {type: function, status: todo}
+    "pop!": {type: function, status: todo}
+    "pop-thread-bindings": {type: function, status: todo}
+    "pos-int?": {type: function, status: todo}
+    "pos?": {type: function, status: done}
+    pr: {type: function, status: todo}
+    "pr-str": {type: function, status: done}
+    "prefer-method": {type: function, status: todo}
+    prefers: {type: function, status: todo}
+    "primitives-classnames": {type: var, status: todo}
+    print: {type: function, status: todo}
+    "print-ctor": {type: function, status: todo}
+    "print-dup": {type: var, status: todo}
+    "print-method": {type: var, status: todo}
+    "print-simple": {type: function, status: todo}
+    "print-str": {type: function, status: todo}
+    printf: {type: function, status: todo}
+    println: {type: function, status: done}
+    "println-str": {type: function, status: todo}
+    prn: {type: function, status: done}
+    "prn-str": {type: function, status: todo}
+    promise: {type: function, status: todo}
+    proxy: {type: macro, status: todo}
+    "proxy-call-with-super": {type: function, status: todo}
+    "proxy-mappings": {type: function, status: todo}
+    "proxy-name": {type: function, status: todo}
+    "proxy-super": {type: macro, status: todo}
+    "push-thread-bindings": {type: function, status: todo}
+    pvalues: {type: macro, status: todo}
+    "qualified-ident?": {type: function, status: todo}
+    "qualified-keyword?": {type: function, status: todo}
+    "qualified-symbol?": {type: function, status: todo}
+    quot: {type: function, status: done}
+    rand: {type: function, status: done}
+    "rand-int": {type: function, status: done}
+    "rand-nth": {type: function, status: todo}
+    "random-sample": {type: function, status: todo}
+    "random-uuid": {type: function, status: todo}
+    range: {type: function, status: done}
+    "ratio?": {type: function, status: todo}
+    "rational?": {type: function, status: todo}
+    rationalize: {type: function, status: todo}
+    "re-find": {type: function, status: todo}
+    "re-groups": {type: function, status: todo}
+    "re-matcher": {type: function, status: todo}
+    "re-matches": {type: function, status: todo}
+    "re-pattern": {type: function, status: todo}
+    "re-seq": {type: function, status: todo}
+    read: {type: function, status: todo}
+    read+string: {type: function, status: todo}
+    "read-line": {type: function, status: todo}
+    "read-string": {type: function, status: todo}
+    "reader-conditional": {type: function, status: todo}
+    "reader-conditional?": {type: function, status: todo}
+    "realized?": {type: function, status: todo}
+    "record?": {type: function, status: todo}
+    reduce: {type: function, status: done}
+    "reduce-kv": {type: function, status: todo}
+    reduced: {type: function, status: todo}
+    "reduced?": {type: function, status: todo}
+    reductions: {type: function, status: todo}
+    ref: {type: function, status: todo}
+    "ref-history-count": {type: function, status: todo}
+    "ref-max-history": {type: function, status: todo}
+    "ref-min-history": {type: function, status: todo}
+    "ref-set": {type: function, status: todo}
+    refer: {type: function, status: todo}
+    "refer-clojure": {type: macro, status: todo}
+    reify: {type: macro, status: todo}
+    "release-pending-sends": {type: function, status: todo}
+    rem: {type: function, status: done, note: "VM intrinsic opcode"}
+    remove: {type: function, status: done}
+    "remove-all-methods": {type: function, status: todo}
+    "remove-method": {type: function, status: todo}
+    "remove-ns": {type: function, status: todo}
+    "remove-tap": {type: function, status: todo}
+    "remove-watch": {type: function, status: todo}
+    repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
+    repeatedly: {type: function, status: done}
+    replace: {type: function, status: todo}
+    replicate: {type: function, status: todo}
+    require: {type: function, status: todo}
+    "requiring-resolve": {type: function, status: todo}
+    "reset!": {type: function, status: done}
+    "reset-meta!": {type: function, status: todo}
+    "reset-vals!": {type: function, status: todo}
+    resolve: {type: function, status: todo}
+    rest: {type: function, status: done}
+    "restart-agent": {type: function, status: todo}
+    "resultset-seq": {type: function, status: todo}
+    reverse: {type: function, status: done, note: "portable to clj"}
+    "reversible?": {type: function, status: todo}
+    rseq: {type: function, status: todo}
+    rsubseq: {type: function, status: todo}
+    "run!": {type: function, status: todo}
+    "satisfies?": {type: function, status: done}
+    second: {type: function, status: todo}
+    "select-keys": {type: function, status: done}
+    send: {type: function, status: todo}
+    "send-off": {type: function, status: todo}
+    "send-via": {type: function, status: todo}
+    seq: {type: function, status: done}
+    "seq-to-map-for-destructuring": {type: function, status: todo}
+    "seq?": {type: function, status: done}
+    "seqable?": {type: function, status: todo}
+    seque: {type: function, status: todo}
+    sequence: {type: function, status: todo}
+    "sequential?": {type: function, status: todo}
+    set: {type: function, status: done}
+    "set-agent-send-executor!": {type: function, status: todo}
+    "set-agent-send-off-executor!": {type: function, status: todo}
+    "set-error-handler!": {type: function, status: todo}
+    "set-error-mode!": {type: function, status: todo}
+    "set-validator!": {type: function, status: todo}
+    "set?": {type: function, status: done}
+    short: {type: function, status: todo}
+    "short-array": {type: function, status: todo}
+    shorts: {type: function, status: todo}
+    shuffle: {type: function, status: todo}
+    "shutdown-agents": {type: function, status: todo}
+    "simple-ident?": {type: function, status: todo}
+    "simple-keyword?": {type: function, status: todo}
+    "simple-symbol?": {type: function, status: todo}
+    slurp: {type: function, status: todo}
+    some: {type: function, status: done}
+    "some->": {type: macro, status: done}
+    "some->>": {type: macro, status: done}
+    "some-fn": {type: function, status: todo}
+    "some?": {type: function, status: todo}
+    sort: {type: function, status: done}
+    "sort-by": {type: function, status: done}
+    "sorted-map": {type: function, status: todo}
+    "sorted-map-by": {type: function, status: todo}
+    "sorted-set": {type: function, status: todo}
+    "sorted-set-by": {type: function, status: todo}
+    "sorted?": {type: function, status: todo}
+    "special-symbol?": {type: function, status: todo}
+    spit: {type: function, status: todo}
+    "split-at": {type: function, status: todo}
+    "split-with": {type: function, status: todo}
+    "splitv-at": {type: function, status: todo}
+    str: {type: function, status: done, note: "portable to clj"}
+    "stream-into!": {type: function, status: todo}
+    "stream-reduce!": {type: function, status: todo}
+    "stream-seq!": {type: function, status: todo}
+    "stream-transduce!": {type: function, status: todo}
+    "string?": {type: function, status: done}
+    struct: {type: function, status: todo}
+    "struct-map": {type: function, status: todo}
+    subs: {type: function, status: done}
+    subseq: {type: function, status: todo}
+    subvec: {type: function, status: todo}
+    supers: {type: function, status: todo}
+    "swap!": {type: function, status: done, note: "builtin-fn only (D8)"}
+    "swap-vals!": {type: function, status: todo}
+    symbol: {type: function, status: done}
+    "symbol?": {type: function, status: done}
+    sync: {type: macro, status: todo}
+    "tagged-literal": {type: function, status: todo}
+    "tagged-literal?": {type: function, status: todo}
+    take: {type: function, status: done}
+    "take-last": {type: function, status: todo}
+    "take-nth": {type: function, status: todo}
+    "take-while": {type: function, status: todo}
+    "tap>": {type: function, status: todo}
+    test: {type: function, status: todo}
+    "the-ns": {type: function, status: todo}
+    "thread-bound?": {type: function, status: todo}
+    time: {type: macro, status: todo}
+    "to-array": {type: function, status: todo}
+    "to-array-2d": {type: function, status: todo}
+    trampoline: {type: function, status: todo}
+    transduce: {type: function, status: todo}
+    transient: {type: function, status: todo}
+    "tree-seq": {type: function, status: todo}
+    "true?": {type: function, status: todo}
+    type: {type: function, status: todo}
+    "unchecked-add": {type: function, status: todo}
+    "unchecked-add-int": {type: function, status: todo}
+    "unchecked-byte": {type: function, status: todo}
+    "unchecked-char": {type: function, status: todo}
+    "unchecked-dec": {type: function, status: todo}
+    "unchecked-dec-int": {type: function, status: todo}
+    "unchecked-divide-int": {type: function, status: todo}
+    "unchecked-double": {type: function, status: todo}
+    "unchecked-float": {type: function, status: todo}
+    "unchecked-inc": {type: function, status: todo}
+    "unchecked-inc-int": {type: function, status: todo}
+    "unchecked-int": {type: function, status: todo}
+    "unchecked-long": {type: function, status: todo}
+    "unchecked-multiply": {type: function, status: todo}
+    "unchecked-multiply-int": {type: function, status: todo}
+    "unchecked-negate": {type: function, status: todo}
+    "unchecked-negate-int": {type: function, status: todo}
+    "unchecked-remainder-int": {type: function, status: todo}
+    "unchecked-short": {type: function, status: todo}
+    "unchecked-subtract": {type: function, status: todo}
+    "unchecked-subtract-int": {type: function, status: todo}
+    underive: {type: function, status: todo}
+    unquote: {type: var, status: todo}
+    "unquote-splicing": {type: var, status: todo}
+    unreduced: {type: function, status: todo}
+    "unsigned-bit-shift-right": {type: function, status: todo}
+    update: {type: function, status: done}
+    "update-in": {type: function, status: done}
+    "update-keys": {type: function, status: todo}
+    "update-proxy": {type: function, status: todo}
+    "update-vals": {type: function, status: todo}
+    "uri?": {type: function, status: todo}
+    use: {type: function, status: todo}
+    "uuid?": {type: function, status: todo}
+    val: {type: function, status: todo}
+    vals: {type: function, status: done}
+    "var-get": {type: function, status: todo}
+    "var-set": {type: function, status: todo}
+    "var?": {type: function, status: todo}
+    "vary-meta": {type: function, status: todo}
+    vec: {type: function, status: done}
+    vector: {type: function, status: done}
+    "vector-of": {type: function, status: todo}
+    "vector?": {type: function, status: done}
+    "volatile!": {type: function, status: todo}
+    "volatile?": {type: function, status: todo}
+    "vreset!": {type: function, status: todo}
+    "vswap!": {type: macro, status: todo}
+    when: {type: macro, status: done}
+    "when-first": {type: macro, status: todo}
+    "when-let": {type: macro, status: done}
+    "when-not": {type: macro, status: done}
+    "when-some": {type: macro, status: todo}
+    while: {type: macro, status: todo}
+    "with-bindings": {type: macro, status: todo}
+    "with-bindings*": {type: function, status: todo}
+    "with-in-str": {type: macro, status: todo}
+    "with-loading-context": {type: macro, status: todo}
+    "with-local-vars": {type: macro, status: todo}
+    "with-meta": {type: function, status: todo}
+    "with-open": {type: macro, status: todo}
+    "with-out-str": {type: macro, status: todo}
+    "with-precision": {type: macro, status: todo}
+    "with-redefs": {type: macro, status: todo}
+    "with-redefs-fn": {type: function, status: todo}
+    "xml-seq": {type: function, status: todo}
+    "zero?": {type: function, status: done}
+    zipmap: {type: function, status: done}
   clojure_core_protocols:
-    CollReduce: {type: var, status: todo, impl: none}
-    Datafiable: {type: var, status: todo, impl: none}
-    IKVReduce: {type: var, status: todo, impl: none}
-    InternalReduce: {type: var, status: todo, impl: none}
-    Navigable: {type: var, status: todo, impl: none}
-    "coll-reduce": {type: function, status: todo, impl: none}
-    datafy: {type: function, status: todo, impl: none}
-    "internal-reduce": {type: function, status: todo, impl: none}
-    "iterator-reduce!": {type: function, status: todo, impl: none}
-    "kv-reduce": {type: function, status: todo, impl: none}
-    nav: {type: function, status: todo, impl: none}
+    CollReduce: {type: var, status: todo}
+    Datafiable: {type: var, status: todo}
+    IKVReduce: {type: var, status: todo}
+    InternalReduce: {type: var, status: todo}
+    Navigable: {type: var, status: todo}
+    "coll-reduce": {type: function, status: todo}
+    datafy: {type: function, status: todo}
+    "internal-reduce": {type: function, status: todo}
+    "iterator-reduce!": {type: function, status: todo}
+    "kv-reduce": {type: function, status: todo}
+    nav: {type: function, status: todo}
   clojure_core_reducers:
-    "->Cat": {type: function, status: todo, impl: none}
-    CollFold: {type: var, status: todo, impl: none}
-    "append!": {type: function, status: todo, impl: none}
-    cat: {type: function, status: todo, impl: none}
-    "coll-fold": {type: function, status: todo, impl: none}
-    drop: {type: function, status: todo, impl: none}
-    filter: {type: function, status: todo, impl: none}
-    fjtask: {type: function, status: todo, impl: none}
-    flatten: {type: function, status: todo, impl: none}
-    fold: {type: function, status: todo, impl: none}
-    foldcat: {type: function, status: todo, impl: none}
-    folder: {type: function, status: todo, impl: none}
-    map: {type: function, status: todo, impl: none}
-    mapcat: {type: function, status: todo, impl: none}
-    monoid: {type: function, status: todo, impl: none}
-    pool: {type: var, status: todo, impl: none}
-    reduce: {type: function, status: todo, impl: none}
-    reducer: {type: function, status: todo, impl: none}
-    remove: {type: function, status: todo, impl: none}
-    take: {type: function, status: todo, impl: none}
-    "take-while": {type: function, status: todo, impl: none}
+    "->Cat": {type: function, status: todo}
+    CollFold: {type: var, status: todo}
+    "append!": {type: function, status: todo}
+    cat: {type: function, status: todo}
+    "coll-fold": {type: function, status: todo}
+    drop: {type: function, status: todo}
+    filter: {type: function, status: todo}
+    fjtask: {type: function, status: todo}
+    flatten: {type: function, status: todo}
+    fold: {type: function, status: todo}
+    foldcat: {type: function, status: todo}
+    folder: {type: function, status: todo}
+    map: {type: function, status: todo}
+    mapcat: {type: function, status: todo}
+    monoid: {type: function, status: todo}
+    pool: {type: var, status: todo}
+    reduce: {type: function, status: todo}
+    reducer: {type: function, status: todo}
+    remove: {type: function, status: todo}
+    take: {type: function, status: todo}
+    "take-while": {type: function, status: todo}
   clojure_core_server:
-    "*session*": {type: dynamic-var, status: todo, impl: none}
-    "io-prepl": {type: function, status: todo, impl: none}
-    prepl: {type: function, status: todo, impl: none}
-    "remote-prepl": {type: function, status: todo, impl: none}
-    repl: {type: function, status: todo, impl: none}
-    "repl-init": {type: function, status: todo, impl: none}
-    "repl-read": {type: function, status: todo, impl: none}
-    "start-server": {type: function, status: todo, impl: none}
-    "start-servers": {type: function, status: todo, impl: none}
-    "stop-server": {type: function, status: todo, impl: none}
-    "stop-servers": {type: function, status: todo, impl: none}
+    "*session*": {type: dynamic-var, status: todo}
+    "io-prepl": {type: function, status: todo}
+    prepl: {type: function, status: todo}
+    "remote-prepl": {type: function, status: todo}
+    repl: {type: function, status: todo}
+    "repl-init": {type: function, status: todo}
+    "repl-read": {type: function, status: todo}
+    "start-server": {type: function, status: todo}
+    "start-servers": {type: function, status: todo}
+    "stop-server": {type: function, status: todo}
+    "stop-servers": {type: function, status: todo}
   clojure_core_specs_alpha:
-    "even-number-of-forms?": {type: function, status: todo, impl: none}
+    "even-number-of-forms?": {type: function, status: todo}
   clojure_data:
-    Diff: {type: var, status: todo, impl: none}
-    EqualityPartition: {type: var, status: todo, impl: none}
-    diff: {type: function, status: todo, impl: none}
-    "diff-similar": {type: function, status: todo, impl: none}
-    "equality-partition": {type: function, status: todo, impl: none}
+    Diff: {type: var, status: todo}
+    EqualityPartition: {type: var, status: todo}
+    diff: {type: function, status: todo}
+    "diff-similar": {type: function, status: todo}
+    "equality-partition": {type: function, status: todo}
   clojure_datafy:
-    datafy: {type: function, status: todo, impl: none}
-    nav: {type: function, status: todo, impl: none}
+    datafy: {type: function, status: todo}
+    nav: {type: function, status: todo}
   clojure_edn:
-    read: {type: function, status: todo, impl: none}
-    "read-string": {type: function, status: todo, impl: none}
+    read: {type: function, status: todo}
+    "read-string": {type: function, status: todo}
   clojure_inspector:
-    "atom?": {type: function, status: todo, impl: none}
-    "collection-tag": {type: function, status: todo, impl: none}
-    "get-child": {type: var, status: todo, impl: none}
-    "get-child-count": {type: var, status: todo, impl: none}
-    inspect: {type: function, status: todo, impl: none}
-    "inspect-table": {type: function, status: todo, impl: none}
-    "inspect-tree": {type: function, status: todo, impl: none}
-    "is-leaf": {type: var, status: todo, impl: none}
-    "list-model": {type: function, status: todo, impl: none}
-    "list-provider": {type: var, status: todo, impl: none}
-    "old-table-model": {type: function, status: todo, impl: none}
-    "table-model": {type: var, status: todo, impl: none}
-    "tree-model": {type: function, status: todo, impl: none}
+    "atom?": {type: function, status: todo}
+    "collection-tag": {type: function, status: todo}
+    "get-child": {type: var, status: todo}
+    "get-child-count": {type: var, status: todo}
+    inspect: {type: function, status: todo}
+    "inspect-table": {type: function, status: todo}
+    "inspect-tree": {type: function, status: todo}
+    "is-leaf": {type: var, status: todo}
+    "list-model": {type: function, status: todo}
+    "list-provider": {type: var, status: todo}
+    "old-table-model": {type: function, status: todo}
+    "table-model": {type: var, status: todo}
+    "tree-model": {type: function, status: todo}
   clojure_instant:
-    "parse-timestamp": {type: function, status: todo, impl: none}
-    "read-instant-calendar": {type: function, status: todo, impl: none}
-    "read-instant-date": {type: function, status: todo, impl: none}
-    "read-instant-timestamp": {type: function, status: todo, impl: none}
-    validated: {type: function, status: todo, impl: none}
+    "parse-timestamp": {type: function, status: todo}
+    "read-instant-calendar": {type: function, status: todo}
+    "read-instant-date": {type: function, status: todo}
+    "read-instant-timestamp": {type: function, status: todo}
+    validated: {type: function, status: todo}
   clojure_java_browse:
-    "*open-url-script*": {type: dynamic-var, status: todo, impl: none}
-    "browse-url": {type: function, status: todo, impl: none}
+    "*open-url-script*": {type: dynamic-var, status: todo}
+    "browse-url": {type: function, status: todo}
   clojure_java_io:
-    Coercions: {type: var, status: todo, impl: none}
-    IOFactory: {type: var, status: todo, impl: none}
-    "as-file": {type: function, status: todo, impl: none}
-    "as-relative-path": {type: function, status: todo, impl: none}
-    "as-url": {type: function, status: todo, impl: none}
-    copy: {type: function, status: todo, impl: none}
-    "default-streams-impl": {type: var, status: todo, impl: none}
-    "delete-file": {type: function, status: todo, impl: none}
-    file: {type: function, status: todo, impl: none}
-    "input-stream": {type: function, status: todo, impl: none}
-    "make-input-stream": {type: function, status: todo, impl: none}
-    "make-output-stream": {type: function, status: todo, impl: none}
-    "make-parents": {type: function, status: todo, impl: none}
-    "make-reader": {type: function, status: todo, impl: none}
-    "make-writer": {type: function, status: todo, impl: none}
-    "output-stream": {type: function, status: todo, impl: none}
-    reader: {type: function, status: todo, impl: none}
-    resource: {type: function, status: todo, impl: none}
-    writer: {type: function, status: todo, impl: none}
+    Coercions: {type: var, status: todo}
+    IOFactory: {type: var, status: todo}
+    "as-file": {type: function, status: todo}
+    "as-relative-path": {type: function, status: todo}
+    "as-url": {type: function, status: todo}
+    copy: {type: function, status: todo}
+    "default-streams-impl": {type: var, status: todo}
+    "delete-file": {type: function, status: todo}
+    file: {type: function, status: todo}
+    "input-stream": {type: function, status: todo}
+    "make-input-stream": {type: function, status: todo}
+    "make-output-stream": {type: function, status: todo}
+    "make-parents": {type: function, status: todo}
+    "make-reader": {type: function, status: todo}
+    "make-writer": {type: function, status: todo}
+    "output-stream": {type: function, status: todo}
+    reader: {type: function, status: todo}
+    resource: {type: function, status: todo}
+    writer: {type: function, status: todo}
   clojure_java_javadoc:
-    "*core-java-api*": {type: dynamic-var, status: todo, impl: none}
-    "*feeling-lucky*": {type: dynamic-var, status: todo, impl: none}
-    "*feeling-lucky-url*": {type: dynamic-var, status: todo, impl: none}
-    "*local-javadocs*": {type: dynamic-var, status: todo, impl: none}
-    "*remote-javadocs*": {type: dynamic-var, status: todo, impl: none}
-    "add-local-javadoc": {type: function, status: todo, impl: none}
-    "add-remote-javadoc": {type: function, status: todo, impl: none}
-    javadoc: {type: function, status: todo, impl: none}
+    "*core-java-api*": {type: dynamic-var, status: todo}
+    "*feeling-lucky*": {type: dynamic-var, status: todo}
+    "*feeling-lucky-url*": {type: dynamic-var, status: todo}
+    "*local-javadocs*": {type: dynamic-var, status: todo}
+    "*remote-javadocs*": {type: dynamic-var, status: todo}
+    "add-local-javadoc": {type: function, status: todo}
+    "add-remote-javadoc": {type: function, status: todo}
+    javadoc: {type: function, status: todo}
   clojure_java_shell:
-    "*sh-dir*": {type: dynamic-var, status: todo, impl: none}
-    "*sh-env*": {type: dynamic-var, status: todo, impl: none}
-    sh: {type: function, status: todo, impl: none}
-    "with-sh-dir": {type: macro, status: todo, impl: none}
-    "with-sh-env": {type: macro, status: todo, impl: none}
+    "*sh-dir*": {type: dynamic-var, status: todo}
+    "*sh-env*": {type: dynamic-var, status: todo}
+    sh: {type: function, status: todo}
+    "with-sh-dir": {type: macro, status: todo}
+    "with-sh-env": {type: macro, status: todo}
   clojure_main:
-    demunge: {type: function, status: todo, impl: none}
-    "err->msg": {type: function, status: todo, impl: none}
-    "ex-str": {type: function, status: todo, impl: none}
-    "ex-triage": {type: function, status: todo, impl: none}
-    "load-script": {type: function, status: todo, impl: none}
-    main: {type: function, status: todo, impl: none}
-    "renumbering-read": {type: function, status: todo, impl: none}
-    repl: {type: function, status: todo, impl: none}
-    "repl-caught": {type: function, status: todo, impl: none}
-    "repl-exception": {type: function, status: todo, impl: none}
-    "repl-prompt": {type: function, status: todo, impl: none}
-    "repl-read": {type: function, status: todo, impl: none}
-    "repl-requires": {type: var, status: todo, impl: none}
-    "report-error": {type: function, status: todo, impl: none}
-    "root-cause": {type: function, status: todo, impl: none}
-    "skip-if-eol": {type: function, status: todo, impl: none}
-    "skip-whitespace": {type: function, status: todo, impl: none}
-    "stack-element-str": {type: function, status: todo, impl: none}
-    "with-bindings": {type: macro, status: todo, impl: none}
-    "with-read-known": {type: macro, status: todo, impl: none}
+    demunge: {type: function, status: todo}
+    "err->msg": {type: function, status: todo}
+    "ex-str": {type: function, status: todo}
+    "ex-triage": {type: function, status: todo}
+    "load-script": {type: function, status: todo}
+    main: {type: function, status: todo}
+    "renumbering-read": {type: function, status: todo}
+    repl: {type: function, status: todo}
+    "repl-caught": {type: function, status: todo}
+    "repl-exception": {type: function, status: todo}
+    "repl-prompt": {type: function, status: todo}
+    "repl-read": {type: function, status: todo}
+    "repl-requires": {type: var, status: todo}
+    "report-error": {type: function, status: todo}
+    "root-cause": {type: function, status: todo}
+    "skip-if-eol": {type: function, status: todo}
+    "skip-whitespace": {type: function, status: todo}
+    "stack-element-str": {type: function, status: todo}
+    "with-bindings": {type: macro, status: todo}
+    "with-read-known": {type: macro, status: todo}
   clojure_math:
-    E: {type: var, status: todo, impl: none}
-    "IEEE-remainder": {type: function, status: todo, impl: none}
-    PI: {type: var, status: todo, impl: none}
-    acos: {type: function, status: todo, impl: none}
-    "add-exact": {type: function, status: todo, impl: none}
-    asin: {type: function, status: todo, impl: none}
-    atan: {type: function, status: todo, impl: none}
-    atan2: {type: function, status: todo, impl: none}
-    cbrt: {type: function, status: todo, impl: none}
-    ceil: {type: function, status: todo, impl: none}
-    "copy-sign": {type: function, status: todo, impl: none}
-    cos: {type: function, status: todo, impl: none}
-    cosh: {type: function, status: todo, impl: none}
-    "decrement-exact": {type: function, status: todo, impl: none}
-    exp: {type: function, status: todo, impl: none}
-    expm1: {type: function, status: todo, impl: none}
-    floor: {type: function, status: todo, impl: none}
-    "floor-div": {type: function, status: todo, impl: none}
-    "floor-mod": {type: function, status: todo, impl: none}
-    "get-exponent": {type: function, status: todo, impl: none}
-    hypot: {type: function, status: todo, impl: none}
-    "increment-exact": {type: function, status: todo, impl: none}
-    log: {type: function, status: todo, impl: none}
-    log10: {type: function, status: todo, impl: none}
-    log1p: {type: function, status: todo, impl: none}
-    "multiply-exact": {type: function, status: todo, impl: none}
-    "negate-exact": {type: function, status: todo, impl: none}
-    "next-after": {type: function, status: todo, impl: none}
-    "next-down": {type: function, status: todo, impl: none}
-    "next-up": {type: function, status: todo, impl: none}
-    pow: {type: function, status: todo, impl: none}
-    random: {type: function, status: todo, impl: none}
-    rint: {type: function, status: todo, impl: none}
-    round: {type: function, status: todo, impl: none}
-    scalb: {type: function, status: todo, impl: none}
-    signum: {type: function, status: todo, impl: none}
-    sin: {type: function, status: todo, impl: none}
-    sinh: {type: function, status: todo, impl: none}
-    sqrt: {type: function, status: todo, impl: none}
-    "subtract-exact": {type: function, status: todo, impl: none}
-    tan: {type: function, status: todo, impl: none}
-    tanh: {type: function, status: todo, impl: none}
-    "to-degrees": {type: function, status: todo, impl: none}
-    "to-radians": {type: function, status: todo, impl: none}
-    ulp: {type: function, status: todo, impl: none}
+    E: {type: var, status: todo}
+    "IEEE-remainder": {type: function, status: todo}
+    PI: {type: var, status: todo}
+    acos: {type: function, status: todo}
+    "add-exact": {type: function, status: todo}
+    asin: {type: function, status: todo}
+    atan: {type: function, status: todo}
+    atan2: {type: function, status: todo}
+    cbrt: {type: function, status: todo}
+    ceil: {type: function, status: todo}
+    "copy-sign": {type: function, status: todo}
+    cos: {type: function, status: todo}
+    cosh: {type: function, status: todo}
+    "decrement-exact": {type: function, status: todo}
+    exp: {type: function, status: todo}
+    expm1: {type: function, status: todo}
+    floor: {type: function, status: todo}
+    "floor-div": {type: function, status: todo}
+    "floor-mod": {type: function, status: todo}
+    "get-exponent": {type: function, status: todo}
+    hypot: {type: function, status: todo}
+    "increment-exact": {type: function, status: todo}
+    log: {type: function, status: todo}
+    log10: {type: function, status: todo}
+    log1p: {type: function, status: todo}
+    "multiply-exact": {type: function, status: todo}
+    "negate-exact": {type: function, status: todo}
+    "next-after": {type: function, status: todo}
+    "next-down": {type: function, status: todo}
+    "next-up": {type: function, status: todo}
+    pow: {type: function, status: todo}
+    random: {type: function, status: todo}
+    rint: {type: function, status: todo}
+    round: {type: function, status: todo}
+    scalb: {type: function, status: todo}
+    signum: {type: function, status: todo}
+    sin: {type: function, status: todo}
+    sinh: {type: function, status: todo}
+    sqrt: {type: function, status: todo}
+    "subtract-exact": {type: function, status: todo}
+    tan: {type: function, status: todo}
+    tanh: {type: function, status: todo}
+    "to-degrees": {type: function, status: todo}
+    "to-radians": {type: function, status: todo}
+    ulp: {type: function, status: todo}
   clojure_pprint:
-    "*print-base*": {type: dynamic-var, status: todo, impl: none}
-    "*print-miser-width*": {type: dynamic-var, status: todo, impl: none}
-    "*print-pprint-dispatch*": {type: dynamic-var, status: todo, impl: none}
-    "*print-pretty*": {type: dynamic-var, status: todo, impl: none}
-    "*print-radix*": {type: dynamic-var, status: todo, impl: none}
-    "*print-right-margin*": {type: dynamic-var, status: todo, impl: none}
-    "*print-suppress-namespaces*": {type: dynamic-var, status: todo, impl: none}
-    "cl-format": {type: function, status: todo, impl: none}
-    "code-dispatch": {type: var, status: todo, impl: none}
-    formatter: {type: macro, status: todo, impl: none}
-    "formatter-out": {type: macro, status: todo, impl: none}
-    "fresh-line": {type: function, status: todo, impl: none}
-    "get-pretty-writer": {type: function, status: todo, impl: none}
-    pp: {type: macro, status: todo, impl: none}
-    pprint: {type: function, status: todo, impl: none}
-    "pprint-indent": {type: function, status: todo, impl: none}
-    "pprint-logical-block": {type: macro, status: todo, impl: none}
-    "pprint-newline": {type: function, status: todo, impl: none}
-    "pprint-tab": {type: function, status: todo, impl: none}
-    "print-length-loop": {type: macro, status: todo, impl: none}
-    "print-table": {type: function, status: todo, impl: none}
-    "set-pprint-dispatch": {type: function, status: todo, impl: none}
-    "simple-dispatch": {type: var, status: todo, impl: none}
-    "with-pprint-dispatch": {type: macro, status: todo, impl: none}
-    write: {type: function, status: todo, impl: none}
-    "write-out": {type: function, status: todo, impl: none}
+    "*print-base*": {type: dynamic-var, status: todo}
+    "*print-miser-width*": {type: dynamic-var, status: todo}
+    "*print-pprint-dispatch*": {type: dynamic-var, status: todo}
+    "*print-pretty*": {type: dynamic-var, status: todo}
+    "*print-radix*": {type: dynamic-var, status: todo}
+    "*print-right-margin*": {type: dynamic-var, status: todo}
+    "*print-suppress-namespaces*": {type: dynamic-var, status: todo}
+    "cl-format": {type: function, status: todo}
+    "code-dispatch": {type: var, status: todo}
+    formatter: {type: macro, status: todo}
+    "formatter-out": {type: macro, status: todo}
+    "fresh-line": {type: function, status: todo}
+    "get-pretty-writer": {type: function, status: todo}
+    pp: {type: macro, status: todo}
+    pprint: {type: function, status: todo}
+    "pprint-indent": {type: function, status: todo}
+    "pprint-logical-block": {type: macro, status: todo}
+    "pprint-newline": {type: function, status: todo}
+    "pprint-tab": {type: function, status: todo}
+    "print-length-loop": {type: macro, status: todo}
+    "print-table": {type: function, status: todo}
+    "set-pprint-dispatch": {type: function, status: todo}
+    "simple-dispatch": {type: var, status: todo}
+    "with-pprint-dispatch": {type: macro, status: todo}
+    write: {type: function, status: todo}
+    "write-out": {type: function, status: todo}
   clojure_reflect:
-    "->AsmReflector": {type: function, status: todo, impl: none}
-    "->Constructor": {type: function, status: todo, impl: none}
-    "->Field": {type: function, status: todo, impl: none}
-    "->JavaReflector": {type: function, status: todo, impl: none}
-    "->Method": {type: function, status: todo, impl: none}
-    ClassResolver: {type: var, status: todo, impl: none}
-    Reflector: {type: var, status: todo, impl: none}
-    TypeReference: {type: var, status: todo, impl: none}
-    "do-reflect": {type: function, status: todo, impl: none}
-    "flag-descriptors": {type: var, status: todo, impl: none}
-    "map->Constructor": {type: function, status: todo, impl: none}
-    "map->Field": {type: function, status: todo, impl: none}
-    "map->Method": {type: function, status: todo, impl: none}
-    reflect: {type: function, status: todo, impl: none}
-    "resolve-class": {type: function, status: todo, impl: none}
-    "type-reflect": {type: function, status: todo, impl: none}
-    typename: {type: function, status: todo, impl: none}
+    "->AsmReflector": {type: function, status: todo}
+    "->Constructor": {type: function, status: todo}
+    "->Field": {type: function, status: todo}
+    "->JavaReflector": {type: function, status: todo}
+    "->Method": {type: function, status: todo}
+    ClassResolver: {type: var, status: todo}
+    Reflector: {type: var, status: todo}
+    TypeReference: {type: var, status: todo}
+    "do-reflect": {type: function, status: todo}
+    "flag-descriptors": {type: var, status: todo}
+    "map->Constructor": {type: function, status: todo}
+    "map->Field": {type: function, status: todo}
+    "map->Method": {type: function, status: todo}
+    reflect: {type: function, status: todo}
+    "resolve-class": {type: function, status: todo}
+    "type-reflect": {type: function, status: todo}
+    typename: {type: function, status: todo}
   clojure_repl:
-    apropos: {type: function, status: todo, impl: none}
-    demunge: {type: function, status: todo, impl: none}
-    dir: {type: macro, status: todo, impl: none}
-    "dir-fn": {type: function, status: todo, impl: none}
-    doc: {type: macro, status: todo, impl: none}
-    "find-doc": {type: function, status: todo, impl: none}
-    pst: {type: function, status: todo, impl: none}
-    "root-cause": {type: function, status: todo, impl: none}
-    "set-break-handler!": {type: function, status: todo, impl: none}
-    source: {type: macro, status: todo, impl: none}
-    "source-fn": {type: function, status: todo, impl: none}
-    "stack-element-str": {type: function, status: todo, impl: none}
-    "thread-stopper": {type: function, status: todo, impl: none}
+    apropos: {type: function, status: todo}
+    demunge: {type: function, status: todo}
+    dir: {type: macro, status: todo}
+    "dir-fn": {type: function, status: todo}
+    doc: {type: macro, status: todo}
+    "find-doc": {type: function, status: todo}
+    pst: {type: function, status: todo}
+    "root-cause": {type: function, status: todo}
+    "set-break-handler!": {type: function, status: todo}
+    source: {type: macro, status: todo}
+    "source-fn": {type: function, status: todo}
+    "stack-element-str": {type: function, status: todo}
+    "thread-stopper": {type: function, status: todo}
   clojure_set:
-    difference: {type: function, status: todo, impl: none}
-    index: {type: function, status: todo, impl: none}
-    intersection: {type: function, status: todo, impl: none}
-    join: {type: function, status: todo, impl: none}
-    "map-invert": {type: function, status: todo, impl: none}
-    project: {type: function, status: todo, impl: none}
-    rename: {type: function, status: todo, impl: none}
-    "rename-keys": {type: function, status: todo, impl: none}
-    select: {type: function, status: todo, impl: none}
-    "subset?": {type: function, status: todo, impl: none}
-    "superset?": {type: function, status: todo, impl: none}
-    union: {type: function, status: todo, impl: none}
+    difference: {type: function, status: todo}
+    index: {type: function, status: todo}
+    intersection: {type: function, status: todo}
+    join: {type: function, status: todo}
+    "map-invert": {type: function, status: todo}
+    project: {type: function, status: todo}
+    rename: {type: function, status: todo}
+    "rename-keys": {type: function, status: todo}
+    select: {type: function, status: todo}
+    "subset?": {type: function, status: todo}
+    "superset?": {type: function, status: todo}
+    union: {type: function, status: todo}
   clojure_spec_alpha:
-    "&": {type: macro, status: todo, impl: none}
-    "*": {type: macro, status: todo, impl: none}
-    "*coll-check-limit*": {type: dynamic-var, status: todo, impl: none}
-    "*coll-error-limit*": {type: dynamic-var, status: todo, impl: none}
-    "*compile-asserts*": {type: dynamic-var, status: todo, impl: none}
-    "*explain-out*": {type: function, status: todo, impl: none}
-    "*fspec-iterations*": {type: dynamic-var, status: todo, impl: none}
-    "*recursion-limit*": {type: dynamic-var, status: todo, impl: none}
-    "+": {type: macro, status: todo, impl: none}
-    "?": {type: macro, status: todo, impl: none}
-    Spec: {type: var, status: todo, impl: none}
-    Specize: {type: var, status: todo, impl: none}
-    abbrev: {type: function, status: todo, impl: none}
-    alt: {type: macro, status: todo, impl: none}
-    "alt-impl": {type: function, status: todo, impl: none}
-    "amp-impl": {type: function, status: todo, impl: none}
-    and: {type: macro, status: todo, impl: none}
-    "and-spec-impl": {type: function, status: todo, impl: none}
-    assert: {type: macro, status: todo, impl: none}
-    "assert*": {type: function, status: todo, impl: none}
-    cat: {type: macro, status: todo, impl: none}
-    "cat-impl": {type: function, status: todo, impl: none}
-    "check-asserts": {type: function, status: todo, impl: none}
-    "check-asserts?": {type: function, status: todo, impl: none}
-    "coll-of": {type: macro, status: todo, impl: none}
-    conform: {type: function, status: todo, impl: none}
-    "conform*": {type: function, status: todo, impl: none}
-    conformer: {type: macro, status: todo, impl: none}
-    def: {type: macro, status: todo, impl: none}
-    "def-impl": {type: function, status: todo, impl: none}
-    describe: {type: function, status: todo, impl: none}
-    "describe*": {type: function, status: todo, impl: none}
-    "double-in": {type: macro, status: todo, impl: none}
-    every: {type: macro, status: todo, impl: none}
-    "every-impl": {type: function, status: todo, impl: none}
-    "every-kv": {type: macro, status: todo, impl: none}
-    exercise: {type: function, status: todo, impl: none}
-    "exercise-fn": {type: function, status: todo, impl: none}
-    explain: {type: function, status: todo, impl: none}
-    "explain*": {type: function, status: todo, impl: none}
-    "explain-data": {type: function, status: todo, impl: none}
-    "explain-data*": {type: function, status: todo, impl: none}
-    "explain-out": {type: function, status: todo, impl: none}
-    "explain-printer": {type: function, status: todo, impl: none}
-    "explain-str": {type: function, status: todo, impl: none}
-    fdef: {type: macro, status: todo, impl: none}
-    form: {type: function, status: todo, impl: none}
-    fspec: {type: macro, status: todo, impl: none}
-    "fspec-impl": {type: function, status: todo, impl: none}
-    gen: {type: function, status: todo, impl: none}
-    "gen*": {type: function, status: todo, impl: none}
-    "get-spec": {type: function, status: todo, impl: none}
-    "inst-in": {type: macro, status: todo, impl: none}
-    "inst-in-range?": {type: function, status: todo, impl: none}
-    "int-in": {type: macro, status: todo, impl: none}
-    "int-in-range?": {type: function, status: todo, impl: none}
-    "invalid?": {type: function, status: todo, impl: none}
-    keys: {type: macro, status: todo, impl: none}
-    "keys*": {type: macro, status: todo, impl: none}
-    "map-of": {type: macro, status: todo, impl: none}
-    "map-spec-impl": {type: function, status: todo, impl: none}
-    "maybe-impl": {type: function, status: todo, impl: none}
-    merge: {type: macro, status: todo, impl: none}
-    "merge-spec-impl": {type: function, status: todo, impl: none}
-    "multi-spec": {type: macro, status: todo, impl: none}
-    "multi-spec-impl": {type: function, status: todo, impl: none}
-    nilable: {type: macro, status: todo, impl: none}
-    "nilable-impl": {type: function, status: todo, impl: none}
-    nonconforming: {type: function, status: todo, impl: none}
-    or: {type: macro, status: todo, impl: none}
-    "or-spec-impl": {type: function, status: todo, impl: none}
-    "regex-spec-impl": {type: function, status: todo, impl: none}
-    "regex?": {type: function, status: todo, impl: none}
-    registry: {type: function, status: todo, impl: none}
-    rep+impl: {type: function, status: todo, impl: none}
-    "rep-impl": {type: function, status: todo, impl: none}
-    spec: {type: macro, status: todo, impl: none}
-    "spec-impl": {type: function, status: todo, impl: none}
-    "spec?": {type: function, status: todo, impl: none}
-    "specize*": {type: function, status: todo, impl: none}
-    tuple: {type: macro, status: todo, impl: none}
-    "tuple-impl": {type: function, status: todo, impl: none}
-    unform: {type: function, status: todo, impl: none}
-    "unform*": {type: function, status: todo, impl: none}
-    "valid?": {type: function, status: todo, impl: none}
-    "with-gen": {type: function, status: todo, impl: none}
-    "with-gen*": {type: function, status: todo, impl: none}
+    "&": {type: macro, status: todo}
+    "*": {type: macro, status: todo}
+    "*coll-check-limit*": {type: dynamic-var, status: todo}
+    "*coll-error-limit*": {type: dynamic-var, status: todo}
+    "*compile-asserts*": {type: dynamic-var, status: todo}
+    "*explain-out*": {type: function, status: todo}
+    "*fspec-iterations*": {type: dynamic-var, status: todo}
+    "*recursion-limit*": {type: dynamic-var, status: todo}
+    "+": {type: macro, status: todo}
+    "?": {type: macro, status: todo}
+    Spec: {type: var, status: todo}
+    Specize: {type: var, status: todo}
+    abbrev: {type: function, status: todo}
+    alt: {type: macro, status: todo}
+    "alt-impl": {type: function, status: todo}
+    "amp-impl": {type: function, status: todo}
+    and: {type: macro, status: todo}
+    "and-spec-impl": {type: function, status: todo}
+    assert: {type: macro, status: todo}
+    "assert*": {type: function, status: todo}
+    cat: {type: macro, status: todo}
+    "cat-impl": {type: function, status: todo}
+    "check-asserts": {type: function, status: todo}
+    "check-asserts?": {type: function, status: todo}
+    "coll-of": {type: macro, status: todo}
+    conform: {type: function, status: todo}
+    "conform*": {type: function, status: todo}
+    conformer: {type: macro, status: todo}
+    def: {type: macro, status: todo}
+    "def-impl": {type: function, status: todo}
+    describe: {type: function, status: todo}
+    "describe*": {type: function, status: todo}
+    "double-in": {type: macro, status: todo}
+    every: {type: macro, status: todo}
+    "every-impl": {type: function, status: todo}
+    "every-kv": {type: macro, status: todo}
+    exercise: {type: function, status: todo}
+    "exercise-fn": {type: function, status: todo}
+    explain: {type: function, status: todo}
+    "explain*": {type: function, status: todo}
+    "explain-data": {type: function, status: todo}
+    "explain-data*": {type: function, status: todo}
+    "explain-out": {type: function, status: todo}
+    "explain-printer": {type: function, status: todo}
+    "explain-str": {type: function, status: todo}
+    fdef: {type: macro, status: todo}
+    form: {type: function, status: todo}
+    fspec: {type: macro, status: todo}
+    "fspec-impl": {type: function, status: todo}
+    gen: {type: function, status: todo}
+    "gen*": {type: function, status: todo}
+    "get-spec": {type: function, status: todo}
+    "inst-in": {type: macro, status: todo}
+    "inst-in-range?": {type: function, status: todo}
+    "int-in": {type: macro, status: todo}
+    "int-in-range?": {type: function, status: todo}
+    "invalid?": {type: function, status: todo}
+    keys: {type: macro, status: todo}
+    "keys*": {type: macro, status: todo}
+    "map-of": {type: macro, status: todo}
+    "map-spec-impl": {type: function, status: todo}
+    "maybe-impl": {type: function, status: todo}
+    merge: {type: macro, status: todo}
+    "merge-spec-impl": {type: function, status: todo}
+    "multi-spec": {type: macro, status: todo}
+    "multi-spec-impl": {type: function, status: todo}
+    nilable: {type: macro, status: todo}
+    "nilable-impl": {type: function, status: todo}
+    nonconforming: {type: function, status: todo}
+    or: {type: macro, status: todo}
+    "or-spec-impl": {type: function, status: todo}
+    "regex-spec-impl": {type: function, status: todo}
+    "regex?": {type: function, status: todo}
+    registry: {type: function, status: todo}
+    rep+impl: {type: function, status: todo}
+    "rep-impl": {type: function, status: todo}
+    spec: {type: macro, status: todo}
+    "spec-impl": {type: function, status: todo}
+    "spec?": {type: function, status: todo}
+    "specize*": {type: function, status: todo}
+    tuple: {type: macro, status: todo}
+    "tuple-impl": {type: function, status: todo}
+    unform: {type: function, status: todo}
+    "unform*": {type: function, status: todo}
+    "valid?": {type: function, status: todo}
+    "with-gen": {type: function, status: todo}
+    "with-gen*": {type: function, status: todo}
   clojure_spec_gen_alpha:
-    any: {type: function, status: todo, impl: none}
-    "any-printable": {type: function, status: todo, impl: none}
-    bind: {type: function, status: todo, impl: none}
-    boolean: {type: function, status: todo, impl: none}
-    bytes: {type: function, status: todo, impl: none}
-    cat: {type: function, status: todo, impl: none}
-    char: {type: function, status: todo, impl: none}
-    "char-alpha": {type: function, status: todo, impl: none}
-    "char-alphanumeric": {type: function, status: todo, impl: none}
-    "char-ascii": {type: function, status: todo, impl: none}
-    choose: {type: function, status: todo, impl: none}
-    delay: {type: macro, status: todo, impl: none}
-    "delay-impl": {type: function, status: todo, impl: none}
-    double: {type: function, status: todo, impl: none}
-    "double*": {type: function, status: todo, impl: none}
-    elements: {type: function, status: todo, impl: none}
-    fmap: {type: function, status: todo, impl: none}
-    "for-all*": {type: function, status: todo, impl: none}
-    frequency: {type: function, status: todo, impl: none}
-    "gen-for-name": {type: function, status: todo, impl: none}
-    "gen-for-pred": {type: function, status: todo, impl: none}
-    generate: {type: function, status: todo, impl: none}
-    "hash-map": {type: function, status: todo, impl: none}
-    int: {type: function, status: todo, impl: none}
-    keyword: {type: function, status: todo, impl: none}
-    "keyword-ns": {type: function, status: todo, impl: none}
-    "large-integer": {type: function, status: todo, impl: none}
-    "large-integer*": {type: function, status: todo, impl: none}
-    "lazy-combinator": {type: macro, status: todo, impl: none}
-    "lazy-combinators": {type: macro, status: todo, impl: none}
-    "lazy-prim": {type: macro, status: todo, impl: none}
-    "lazy-prims": {type: macro, status: todo, impl: none}
-    list: {type: function, status: todo, impl: none}
-    map: {type: function, status: todo, impl: none}
-    "not-empty": {type: function, status: todo, impl: none}
-    "one-of": {type: function, status: todo, impl: none}
-    "quick-check": {type: function, status: todo, impl: none}
-    ratio: {type: function, status: todo, impl: none}
-    return: {type: function, status: todo, impl: none}
-    sample: {type: function, status: todo, impl: none}
-    set: {type: function, status: todo, impl: none}
-    shuffle: {type: function, status: todo, impl: none}
-    "simple-type": {type: function, status: todo, impl: none}
-    "simple-type-printable": {type: function, status: todo, impl: none}
-    string: {type: function, status: todo, impl: none}
-    "string-alphanumeric": {type: function, status: todo, impl: none}
-    "string-ascii": {type: function, status: todo, impl: none}
-    "such-that": {type: function, status: todo, impl: none}
-    symbol: {type: function, status: todo, impl: none}
-    "symbol-ns": {type: function, status: todo, impl: none}
-    tuple: {type: function, status: todo, impl: none}
-    uuid: {type: function, status: todo, impl: none}
-    vector: {type: function, status: todo, impl: none}
-    "vector-distinct": {type: function, status: todo, impl: none}
+    any: {type: function, status: todo}
+    "any-printable": {type: function, status: todo}
+    bind: {type: function, status: todo}
+    boolean: {type: function, status: todo}
+    bytes: {type: function, status: todo}
+    cat: {type: function, status: todo}
+    char: {type: function, status: todo}
+    "char-alpha": {type: function, status: todo}
+    "char-alphanumeric": {type: function, status: todo}
+    "char-ascii": {type: function, status: todo}
+    choose: {type: function, status: todo}
+    delay: {type: macro, status: todo}
+    "delay-impl": {type: function, status: todo}
+    double: {type: function, status: todo}
+    "double*": {type: function, status: todo}
+    elements: {type: function, status: todo}
+    fmap: {type: function, status: todo}
+    "for-all*": {type: function, status: todo}
+    frequency: {type: function, status: todo}
+    "gen-for-name": {type: function, status: todo}
+    "gen-for-pred": {type: function, status: todo}
+    generate: {type: function, status: todo}
+    "hash-map": {type: function, status: todo}
+    int: {type: function, status: todo}
+    keyword: {type: function, status: todo}
+    "keyword-ns": {type: function, status: todo}
+    "large-integer": {type: function, status: todo}
+    "large-integer*": {type: function, status: todo}
+    "lazy-combinator": {type: macro, status: todo}
+    "lazy-combinators": {type: macro, status: todo}
+    "lazy-prim": {type: macro, status: todo}
+    "lazy-prims": {type: macro, status: todo}
+    list: {type: function, status: todo}
+    map: {type: function, status: todo}
+    "not-empty": {type: function, status: todo}
+    "one-of": {type: function, status: todo}
+    "quick-check": {type: function, status: todo}
+    ratio: {type: function, status: todo}
+    return: {type: function, status: todo}
+    sample: {type: function, status: todo}
+    set: {type: function, status: todo}
+    shuffle: {type: function, status: todo}
+    "simple-type": {type: function, status: todo}
+    "simple-type-printable": {type: function, status: todo}
+    string: {type: function, status: todo}
+    "string-alphanumeric": {type: function, status: todo}
+    "string-ascii": {type: function, status: todo}
+    "such-that": {type: function, status: todo}
+    symbol: {type: function, status: todo}
+    "symbol-ns": {type: function, status: todo}
+    tuple: {type: function, status: todo}
+    uuid: {type: function, status: todo}
+    vector: {type: function, status: todo}
+    "vector-distinct": {type: function, status: todo}
   clojure_stacktrace:
-    e: {type: function, status: todo, impl: none}
-    "print-cause-trace": {type: function, status: todo, impl: none}
-    "print-stack-trace": {type: function, status: todo, impl: none}
-    "print-throwable": {type: function, status: todo, impl: none}
-    "print-trace-element": {type: function, status: todo, impl: none}
-    "root-cause": {type: function, status: todo, impl: none}
+    e: {type: function, status: todo}
+    "print-cause-trace": {type: function, status: todo}
+    "print-stack-trace": {type: function, status: todo}
+    "print-throwable": {type: function, status: todo}
+    "print-trace-element": {type: function, status: todo}
+    "root-cause": {type: function, status: todo}
   clojure_string:
-    "blank?": {type: function, status: todo, impl: none}
-    capitalize: {type: function, status: todo, impl: none}
-    "ends-with?": {type: function, status: todo, impl: none}
-    escape: {type: function, status: todo, impl: none}
-    "includes?": {type: function, status: todo, impl: none}
-    "index-of": {type: function, status: todo, impl: none}
-    join: {type: function, status: todo, impl: none}
-    "last-index-of": {type: function, status: todo, impl: none}
-    "lower-case": {type: function, status: todo, impl: none}
-    "re-quote-replacement": {type: function, status: todo, impl: none}
-    replace: {type: function, status: todo, impl: none}
-    "replace-first": {type: function, status: todo, impl: none}
-    reverse: {type: function, status: todo, impl: none}
-    split: {type: function, status: todo, impl: none}
-    "split-lines": {type: function, status: todo, impl: none}
-    "starts-with?": {type: function, status: todo, impl: none}
-    trim: {type: function, status: todo, impl: none}
-    "trim-newline": {type: function, status: todo, impl: none}
-    triml: {type: function, status: todo, impl: none}
-    trimr: {type: function, status: todo, impl: none}
-    "upper-case": {type: function, status: todo, impl: none}
+    "blank?": {type: function, status: todo}
+    capitalize: {type: function, status: todo}
+    "ends-with?": {type: function, status: todo}
+    escape: {type: function, status: todo}
+    "includes?": {type: function, status: todo}
+    "index-of": {type: function, status: todo}
+    join: {type: function, status: todo}
+    "last-index-of": {type: function, status: todo}
+    "lower-case": {type: function, status: todo}
+    "re-quote-replacement": {type: function, status: todo}
+    replace: {type: function, status: todo}
+    "replace-first": {type: function, status: todo}
+    reverse: {type: function, status: todo}
+    split: {type: function, status: todo}
+    "split-lines": {type: function, status: todo}
+    "starts-with?": {type: function, status: todo}
+    trim: {type: function, status: todo}
+    "trim-newline": {type: function, status: todo}
+    triml: {type: function, status: todo}
+    trimr: {type: function, status: todo}
+    "upper-case": {type: function, status: todo}
   clojure_template:
-    "apply-template": {type: function, status: todo, impl: none}
-    "do-template": {type: macro, status: todo, impl: none}
+    "apply-template": {type: function, status: todo}
+    "do-template": {type: macro, status: todo}
   clojure_test:
-    "*initial-report-counters*": {type: dynamic-var, status: todo, impl: none}
-    "*load-tests*": {type: dynamic-var, status: todo, impl: none}
-    "*report-counters*": {type: dynamic-var, status: todo, impl: none}
-    "*stack-trace-depth*": {type: dynamic-var, status: todo, impl: none}
-    "*test-out*": {type: dynamic-var, status: todo, impl: none}
-    "*testing-contexts*": {type: dynamic-var, status: todo, impl: none}
-    "*testing-vars*": {type: dynamic-var, status: todo, impl: none}
-    are: {type: macro, status: todo, impl: none}
-    "assert-any": {type: function, status: todo, impl: none}
-    "assert-expr": {type: var, status: todo, impl: none}
-    "assert-predicate": {type: function, status: todo, impl: none}
-    "compose-fixtures": {type: function, status: todo, impl: none}
-    deftest: {type: macro, status: todo, impl: none}
-    "deftest-": {type: macro, status: todo, impl: none}
-    "do-report": {type: function, status: todo, impl: none}
-    "file-position": {type: function, status: todo, impl: none}
-    "function?": {type: function, status: todo, impl: none}
-    "get-possibly-unbound-var": {type: function, status: todo, impl: none}
-    "inc-report-counter": {type: function, status: todo, impl: none}
-    is: {type: macro, status: todo, impl: none}
-    "join-fixtures": {type: function, status: todo, impl: none}
-    report: {type: dynamic-var, status: todo, impl: none}
-    "run-all-tests": {type: function, status: todo, impl: none}
-    "run-test": {type: macro, status: todo, impl: none}
-    "run-test-var": {type: function, status: todo, impl: none}
-    "run-tests": {type: function, status: todo, impl: none}
-    "set-test": {type: macro, status: todo, impl: none}
-    "successful?": {type: function, status: todo, impl: none}
-    "test-all-vars": {type: function, status: todo, impl: none}
-    "test-ns": {type: function, status: todo, impl: none}
-    "test-var": {type: function, status: todo, impl: none}
-    "test-vars": {type: function, status: todo, impl: none}
-    testing: {type: macro, status: todo, impl: none}
-    "testing-contexts-str": {type: function, status: todo, impl: none}
-    "testing-vars-str": {type: function, status: todo, impl: none}
-    "try-expr": {type: macro, status: todo, impl: none}
-    "use-fixtures": {type: var, status: todo, impl: none}
-    "with-test": {type: macro, status: todo, impl: none}
-    "with-test-out": {type: macro, status: todo, impl: none}
+    "*initial-report-counters*": {type: dynamic-var, status: todo}
+    "*load-tests*": {type: dynamic-var, status: todo}
+    "*report-counters*": {type: dynamic-var, status: todo}
+    "*stack-trace-depth*": {type: dynamic-var, status: todo}
+    "*test-out*": {type: dynamic-var, status: todo}
+    "*testing-contexts*": {type: dynamic-var, status: todo}
+    "*testing-vars*": {type: dynamic-var, status: todo}
+    are: {type: macro, status: todo}
+    "assert-any": {type: function, status: todo}
+    "assert-expr": {type: var, status: todo}
+    "assert-predicate": {type: function, status: todo}
+    "compose-fixtures": {type: function, status: todo}
+    deftest: {type: macro, status: todo}
+    "deftest-": {type: macro, status: todo}
+    "do-report": {type: function, status: todo}
+    "file-position": {type: function, status: todo}
+    "function?": {type: function, status: todo}
+    "get-possibly-unbound-var": {type: function, status: todo}
+    "inc-report-counter": {type: function, status: todo}
+    is: {type: macro, status: todo}
+    "join-fixtures": {type: function, status: todo}
+    report: {type: dynamic-var, status: todo}
+    "run-all-tests": {type: function, status: todo}
+    "run-test": {type: macro, status: todo}
+    "run-test-var": {type: function, status: todo}
+    "run-tests": {type: function, status: todo}
+    "set-test": {type: macro, status: todo}
+    "successful?": {type: function, status: todo}
+    "test-all-vars": {type: function, status: todo}
+    "test-ns": {type: function, status: todo}
+    "test-var": {type: function, status: todo}
+    "test-vars": {type: function, status: todo}
+    testing: {type: macro, status: todo}
+    "testing-contexts-str": {type: function, status: todo}
+    "testing-vars-str": {type: function, status: todo}
+    "try-expr": {type: macro, status: todo}
+    "use-fixtures": {type: var, status: todo}
+    "with-test": {type: macro, status: todo}
+    "with-test-out": {type: macro, status: todo}
   clojure_uuid:
   clojure_walk:
-    "keywordize-keys": {type: function, status: todo, impl: none}
-    "macroexpand-all": {type: function, status: todo, impl: none}
-    postwalk: {type: function, status: todo, impl: none}
-    "postwalk-demo": {type: function, status: todo, impl: none}
-    "postwalk-replace": {type: function, status: todo, impl: none}
-    prewalk: {type: function, status: todo, impl: none}
-    "prewalk-demo": {type: function, status: todo, impl: none}
-    "prewalk-replace": {type: function, status: todo, impl: none}
-    "stringify-keys": {type: function, status: todo, impl: none}
-    walk: {type: function, status: todo, impl: none}
+    "keywordize-keys": {type: function, status: todo}
+    "macroexpand-all": {type: function, status: todo}
+    postwalk: {type: function, status: todo}
+    "postwalk-demo": {type: function, status: todo}
+    "postwalk-replace": {type: function, status: todo}
+    prewalk: {type: function, status: todo}
+    "prewalk-demo": {type: function, status: todo}
+    "prewalk-replace": {type: function, status: todo}
+    "stringify-keys": {type: function, status: todo}
+    walk: {type: function, status: todo}
   clojure_zip:
-    "append-child": {type: function, status: todo, impl: none}
-    "branch?": {type: function, status: todo, impl: none}
-    children: {type: function, status: todo, impl: none}
-    down: {type: function, status: todo, impl: none}
-    edit: {type: function, status: todo, impl: none}
-    "end?": {type: function, status: todo, impl: none}
-    "insert-child": {type: function, status: todo, impl: none}
-    "insert-left": {type: function, status: todo, impl: none}
-    "insert-right": {type: function, status: todo, impl: none}
-    left: {type: function, status: todo, impl: none}
-    leftmost: {type: function, status: todo, impl: none}
-    lefts: {type: function, status: todo, impl: none}
-    "make-node": {type: function, status: todo, impl: none}
-    next: {type: function, status: todo, impl: none}
-    node: {type: function, status: todo, impl: none}
-    path: {type: function, status: todo, impl: none}
-    prev: {type: function, status: todo, impl: none}
-    remove: {type: function, status: todo, impl: none}
-    replace: {type: function, status: todo, impl: none}
-    right: {type: function, status: todo, impl: none}
-    rightmost: {type: function, status: todo, impl: none}
-    rights: {type: function, status: todo, impl: none}
-    root: {type: function, status: todo, impl: none}
-    "seq-zip": {type: function, status: todo, impl: none}
-    up: {type: function, status: todo, impl: none}
-    "vector-zip": {type: function, status: todo, impl: none}
-    "xml-zip": {type: function, status: todo, impl: none}
-    zipper: {type: function, status: todo, impl: none}
+    "append-child": {type: function, status: todo}
+    "branch?": {type: function, status: todo}
+    children: {type: function, status: todo}
+    down: {type: function, status: todo}
+    edit: {type: function, status: todo}
+    "end?": {type: function, status: todo}
+    "insert-child": {type: function, status: todo}
+    "insert-left": {type: function, status: todo}
+    "insert-right": {type: function, status: todo}
+    left: {type: function, status: todo}
+    leftmost: {type: function, status: todo}
+    lefts: {type: function, status: todo}
+    "make-node": {type: function, status: todo}
+    next: {type: function, status: todo}
+    node: {type: function, status: todo}
+    path: {type: function, status: todo}
+    prev: {type: function, status: todo}
+    remove: {type: function, status: todo}
+    replace: {type: function, status: todo}
+    right: {type: function, status: todo}
+    rightmost: {type: function, status: todo}
+    rights: {type: function, status: todo}
+    root: {type: function, status: todo}
+    "seq-zip": {type: function, status: todo}
+    up: {type: function, status: todo}
+    "vector-zip": {type: function, status: todo}
+    "xml-zip": {type: function, status: todo}
+    zipper: {type: function, status: todo}

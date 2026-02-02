@@ -4,8 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.6 mapv, filterv, reduce-kv
+- Current task: T9.6 mapv, filterv, reduce-kv (next)
 - Task file: (none)
+- Last completed: VarKind removal + vars.yaml impl field removal (D31)
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 

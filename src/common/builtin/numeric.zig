@@ -131,7 +131,6 @@ fn compareNum(a: Value, b: Value) !i2 {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "abs",
-        .kind = .runtime_fn,
         .func = &absFn,
         .doc = "Returns the absolute value of a.",
         .arglists = "([a])",
@@ -139,7 +138,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "max",
-        .kind = .runtime_fn,
         .func = &maxFn,
         .doc = "Returns the greatest of the nums.",
         .arglists = "([x] [x y] [x y & more])",
@@ -147,7 +145,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "min",
-        .kind = .runtime_fn,
         .func = &minFn,
         .doc = "Returns the least of the nums.",
         .arglists = "([x] [x y] [x y & more])",
@@ -155,7 +152,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "quot",
-        .kind = .runtime_fn,
         .func = &quotFn,
         .doc = "quot[ient] of dividing numerator by denominator.",
         .arglists = "([num div])",
@@ -163,7 +159,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "rand",
-        .kind = .runtime_fn,
         .func = &randFn,
         .doc = "Returns a random floating point number between 0 (inclusive) and 1 (exclusive).",
         .arglists = "([])",
@@ -171,7 +166,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "rand-int",
-        .kind = .runtime_fn,
         .func = &randIntFn,
         .doc = "Returns a random integer between 0 (inclusive) and n (exclusive).",
         .arglists = "([n])",

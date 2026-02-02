@@ -209,7 +209,7 @@ not as string comparisons in if-else chains.
 
 - Beta had special forms as hardcoded string comparisons in analyze.zig
 - comptime table enables: exhaustiveness checking, automatic `(doc if)` support,
-  VarKind tagging, and mechanical enumeration
+  metadata tagging, and mechanical enumeration
 - Adding a new special form requires exactly one table entry (not hunting through code)
 
 **Initial special forms** (7): if, do, let, fn, def, quote, defmacro
@@ -300,21 +300,16 @@ native/ and wasm_rt/ at build time. common/ holds all shared code.
 
 ## D8: VarKind Classification
 
-**Decision**: Every Var is tagged with a VarKind indicating its dependency layer.
+**Status**: **Superseded by D31** — VarKind enum removed. Layer tracking
+moved to `note` field in vars.yaml (free text).
 
-```
-special_form  -> Compiler layer (if, do, let, fn, def, quote, defmacro, ...)
-vm_intrinsic  -> VM layer (+, -, first, rest, conj, assoc, get, nth, ...)
-runtime_fn    -> Runtime/OS layer (slurp, spit, re-find, atom, swap!, ...)
-core_fn       -> Pure (core.clj AOT) (map, filter, take, drop, str, ...)
-core_macro    -> Pure (core.clj AOT) (defn, when, cond, ->, and, or, ...)
-user_fn       -> User-defined
-user_macro    -> User-defined
-```
+**Original decision**: Every Var was tagged with a VarKind indicating its
+dependency layer (special_form, vm_intrinsic, runtime_fn, core_fn,
+core_macro, user_fn, user_macro).
 
-**Rationale** (future.md SS10): Enables tracking what layer each function
-depends on, which is critical for: impact analysis during refactoring,
-migration progress from Zig to core.clj, and compatibility testing priority.
+**Why superseded**: VarKind was only used in tests, not in production
+code paths. The same information is captured by existing Var metadata
+fields (macro, dynamic) and vars.yaml `note`.
 
 ---
 
@@ -626,7 +621,7 @@ implementation progress and benchmarks.
 | `bench.yaml` | Benchmark results and optimization history |
 | `README.md`  | Schema definitions, yq query examples      |
 
-**Schema** (vars.yaml):
+**Schema** (vars.yaml — updated by D31):
 
 ```yaml
 vars:
@@ -634,30 +629,17 @@ vars:
     "+":
       type: function # upstream Clojure classification
       status: done # todo | wip | partial | done | skip
-      impl: intrinsic # special_form | intrinsic | host | bridge | clj | none
-      note: "optional"
+      note: "VM intrinsic opcode" # optional free text
 ```
 
-**`impl` field** (unified from former `impl_type` + `layer`):
+Three fields: `type` (upstream classification), `status` (implementation
+state), `note` (optional developer notes for deviations, constraints, etc.).
 
-| impl           | Meaning                                        |
-| -------------- | ---------------------------------------------- |
-| `special_form` | Analyzer direct dispatch                       |
-| `intrinsic`    | VM opcode fast path                            |
-| `host`         | Zig BuiltinFn — Zig required (Value internals) |
-| `bridge`       | Zig BuiltinFn — .clj migration candidate       |
-| `clj`          | Defined in .clj source                         |
-| `none`         | Not yet implemented                            |
-
-The former `impl_type` + `layer` two-field system was consolidated because
-most combinations were fixed (intrinsic→host, special_form→host, clj→pure).
-Only `builtin` had a meaningful host/bridge split, now expressed directly.
+The former `impl` field (special_form, intrinsic, host, bridge, clj, none)
+was removed in D31. Useful information migrated to `note`.
 
 **Differences from Beta's status/vars.yaml**:
 
-- `impl: intrinsic` — new (VM opcode direct execution; Beta lumped into builtin)
-- `impl: clj` — new (Clojure source definitions; Beta was all-Zig)
-- `impl: bridge` — explicit .clj migration candidates (Beta had no such distinction)
 - 29 namespaces (Beta had ~15), including JVM-specific ones marked as skip
 - All comments and notes in English (D10 compliance)
 
@@ -1042,3 +1024,38 @@ copies. Fixed wrapping operators to non-wrapping (`+`, `-`, `*`).
 **Impact**: ~50 lines removed from VM. Semantics unified across
 all evaluation paths. Wrapping arithmetic bug in first-class usage
 (e.g., `(reduce + ...)`) is fixed.
+
+---
+
+## D31: VarKind Removal + vars.yaml impl Field Removal
+
+**Date**: 2026-02-02
+**Context**: VarKind (7-value enum) was only used in tests, not in
+production code paths. The vars.yaml `impl` field (7 values) had
+undocumented categories that kept growing. Upstream Clojure classifies
+vars with only `:macro`, `:special-form`, and `:dynamic` metadata.
+
+**Decision**: Remove VarKind enum entirely. Remove `impl` field from
+vars.yaml. Useful implementation details move to `note` (free text).
+
+**Changes**:
+
+- `VarKind` enum deleted from `var.zig`
+- `BuiltinDef.kind` and `Var.kind` fields removed
+- All `BuiltinDef` definitions (97 occurrences) updated
+- `vars.yaml` reduced to 3 fields: `type`, `status`, `note`
+- `impl` values migrated to `note` where they add value:
+  - `intrinsic` -> `"VM intrinsic opcode"` (12 entries)
+  - `special_form` + `type: macro` -> `"analyzer special form in CW"` (8 entries)
+  - `bridge` -> `"portable to clj"` (3 entries)
+  - `host`, `clj`, `core_clj`, `zig_builtin` -> no note (standard, no deviation)
+
+**Rationale**: Metadata like `macro`, `dynamic`, `doc`, `arglists`
+already exists as explicit Var fields. VarKind added no runtime value.
+The `impl` field in vars.yaml served a similar tracking purpose but
+with categories that didn't map cleanly to upstream Clojure concepts.
+Free-text `note` is more flexible and easier to maintain.
+
+**Future**: Generic metadata map (T9.4) will handle arbitrary user
+metadata. The remaining Var fields (macro, dynamic, doc, arglists,
+added, since_cw) are sufficient for the Clojure metadata protocol.

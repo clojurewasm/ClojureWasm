@@ -78,7 +78,6 @@ pub fn prnFn(_: Allocator, args: []const Value) anyerror!Value {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "println",
-        .kind = .runtime_fn,
         .func = &printlnFn,
         .doc = "Same as print followed by (newline).",
         .arglists = "([& more])",
@@ -86,7 +85,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "prn",
-        .kind = .runtime_fn,
         .func = &prnFn,
         .doc = "Same as pr followed by (newline). Observes *print-readably*.",
         .arglists = "([& more])",

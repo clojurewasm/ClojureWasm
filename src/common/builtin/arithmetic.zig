@@ -15,7 +15,6 @@ const Value = @import("../value.zig").Value;
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "+",
-        .kind = .vm_intrinsic,
         .func = &addFn,
         .doc = "Returns the sum of nums. (+) returns 0. Does not auto-promote longs, will throw on overflow.",
         .arglists = "([] [x] [x y] [x y & more])",
@@ -23,7 +22,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "-",
-        .kind = .vm_intrinsic,
         .func = &subFn,
         .doc = "If no ys are supplied, returns the negation of x, else subtracts the ys from x and returns the result.",
         .arglists = "([x] [x y] [x y & more])",
@@ -31,7 +29,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "*",
-        .kind = .vm_intrinsic,
         .func = &mulFn,
         .doc = "Returns the product of nums. (*) returns 1. Does not auto-promote longs, will throw on overflow.",
         .arglists = "([] [x] [x y] [x y & more])",
@@ -39,7 +36,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "/",
-        .kind = .vm_intrinsic,
         .func = &divFn,
         .doc = "If no denominators are supplied, returns 1/numerator, else returns numerator divided by all of the denominators.",
         .arglists = "([x] [x y] [x y & more])",
@@ -47,7 +43,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "mod",
-        .kind = .vm_intrinsic,
         .func = &modFn,
         .doc = "Modulus of num and div. Truncates toward negative infinity.",
         .arglists = "([num div])",
@@ -55,7 +50,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "rem",
-        .kind = .vm_intrinsic,
         .func = &remFn,
         .doc = "Remainder of dividing numerator by denominator.",
         .arglists = "([num div])",
@@ -63,7 +57,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "=",
-        .kind = .vm_intrinsic,
         .func = &eqFn,
         .doc = "Equality. Returns true if x equals y, false if not.",
         .arglists = "([x] [x y] [x y & more])",
@@ -71,7 +64,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "not=",
-        .kind = .vm_intrinsic,
         .func = &neqFn,
         .doc = "Same as (not (= obj1 obj2)).",
         .arglists = "([x] [x y] [x y & more])",
@@ -79,7 +71,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "<",
-        .kind = .vm_intrinsic,
         .func = &ltFn,
         .doc = "Returns non-nil if nums are in monotonically increasing order, otherwise false.",
         .arglists = "([x] [x y] [x y & more])",
@@ -87,7 +78,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = ">",
-        .kind = .vm_intrinsic,
         .func = &gtFn,
         .doc = "Returns non-nil if nums are in monotonically decreasing order, otherwise false.",
         .arglists = "([x] [x y] [x y & more])",
@@ -95,7 +85,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "<=",
-        .kind = .vm_intrinsic,
         .func = &leFn,
         .doc = "Returns non-nil if nums are in monotonically non-decreasing order, otherwise false.",
         .arglists = "([x] [x y] [x y & more])",
@@ -103,7 +92,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = ">=",
-        .kind = .vm_intrinsic,
         .func = &geFn,
         .doc = "Returns non-nil if nums are in monotonically non-increasing order, otherwise false.",
         .arglists = "([x] [x y] [x y & more])",
@@ -269,9 +257,9 @@ test "arithmetic builtins table has 12 entries" {
     try std.testing.expectEqual(12, builtins.len);
 }
 
-test "arithmetic builtins are all vm_intrinsic" {
+test "arithmetic builtins all have func" {
     for (builtins) |b| {
-        try std.testing.expect(b.kind == .vm_intrinsic);
+        try std.testing.expect(b.func != null);
     }
 }
 
@@ -291,7 +279,7 @@ test "arithmetic builtins comptime name lookup" {
         @compileError("+ not found");
     };
     try std.testing.expectEqualStrings("+", found.name);
-    try std.testing.expect(found.kind == .vm_intrinsic);
+    try std.testing.expect(found.func != null);
 }
 
 test "arithmetic builtins no duplicate names" {

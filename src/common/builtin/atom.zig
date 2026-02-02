@@ -74,7 +74,6 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "atom",
-        .kind = .runtime_fn,
         .func = &atomFn,
         .doc = "Creates and returns an Atom with an initial value of x.",
         .arglists = "([x])",
@@ -82,7 +81,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "deref",
-        .kind = .runtime_fn,
         .func = &derefFn,
         .doc = "Returns the current value of atom.",
         .arglists = "([ref])",
@@ -90,7 +88,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "reset!",
-        .kind = .runtime_fn,
         .func = &resetBangFn,
         .doc = "Sets the value of atom to newval. Returns newval.",
         .arglists = "([atom newval])",
@@ -98,7 +95,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "swap!",
-        .kind = .runtime_fn,
         .func = &swapBangFn,
         .doc = "Atomically swaps the value of atom to be: (apply f current-value-of-atom args).",
         .arglists = "([atom f] [atom f x] [atom f x y] [atom f x y & args])",

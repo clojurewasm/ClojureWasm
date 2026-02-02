@@ -15,7 +15,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 - future.md SS5 (GC modular design)
 - future.md SS8 (architecture, directory structure)
 - future.md SS9 (Beta lessons)
-- future.md SS10 (VarKind, BuiltinDef, metadata)
+- future.md SS10 (BuiltinDef, metadata — VarKind removed in D31)
 - future.md SS17 (directory structure — wasm/ file layout)
 - Beta docs/agent_guide_en.md (wasm/ file structure detail)
 - Beta src/reader/ (tokenizer.zig 832L, reader.zig 1134L, form.zig 264L)

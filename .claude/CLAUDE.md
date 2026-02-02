@@ -82,7 +82,7 @@ This matches Zig standard library conventions and keeps files readable.
 1. Move task file from `active/` to `archive/`
 2. Update roadmap.md Archive column
 3. Advance memo.md to next task (clear Task file path)
-4. If new Vars were implemented, update `.dev/status/vars.yaml` (status/impl)
+4. If new Vars were implemented, update `.dev/status/vars.yaml` (status/note)
 5. If any deferred item was resolved or became relevant, update `.dev/checklist.md`
 6. `git add` + `git commit` — **single commit covering plan + impl + status**
 7. Verify commit succeeded before proceeding to the next task
@@ -159,11 +159,11 @@ yq '.vars | keys' .dev/status/vars.yaml
 # Unimplemented functions
 yq '.vars.clojure_core | to_entries[] | select(.value.status == "todo" and .value.type == "function") | .key' .dev/status/vars.yaml
 
-# impl distribution
-yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.impl] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
+# Entries with notes
+yq '.vars.clojure_core | to_entries[] | select(.value.note) | .key + " -> " + .value.note' .dev/status/vars.yaml
 
-# Provisional special forms
-yq '.vars.clojure_core | to_entries[] | select(.value.type == "function" and .value.impl == "special_form") | .key' .dev/status/vars.yaml
+# Count by type (done only)
+yq '[.vars.clojure_core | to_entries[] | select(.value.status == "done") | .value.type] | group_by(.) | map({(.[0]): length})' .dev/status/vars.yaml
 ```
 
 ### When to Update

@@ -769,7 +769,6 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
-        .kind = .runtime_fn,
         .func = &firstFn,
         .doc = "Returns the first item in the collection. Calls seq on its argument. If coll is nil, returns nil.",
         .arglists = "([coll])",
@@ -777,7 +776,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "rest",
-        .kind = .runtime_fn,
         .func = &restFn,
         .doc = "Returns a possibly empty seq of the items after the first. Calls seq on its argument.",
         .arglists = "([coll])",
@@ -785,7 +783,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "cons",
-        .kind = .runtime_fn,
         .func = &consFn,
         .doc = "Returns a new seq where x is the first element and seq is the rest.",
         .arglists = "([x seq])",
@@ -793,7 +790,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "conj",
-        .kind = .runtime_fn,
         .func = &conjFn,
         .doc = "conj[oin]. Returns a new collection with the xs 'added'.",
         .arglists = "([coll x] [coll x & xs])",
@@ -801,7 +797,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "assoc",
-        .kind = .runtime_fn,
         .func = &assocFn,
         .doc = "assoc[iate]. When applied to a map, returns a new map that contains the mapping of key(s) to val(s).",
         .arglists = "([map key val] [map key val & kvs])",
@@ -809,7 +804,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "get",
-        .kind = .runtime_fn,
         .func = &getFn,
         .doc = "Returns the value mapped to key, not-found or nil if key not present.",
         .arglists = "([map key] [map key not-found])",
@@ -817,7 +811,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "nth",
-        .kind = .runtime_fn,
         .func = &nthFn,
         .doc = "Returns the value at the index.",
         .arglists = "([coll index] [coll index not-found])",
@@ -825,7 +818,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "count",
-        .kind = .runtime_fn,
         .func = &countFn,
         .doc = "Returns the number of items in the collection.",
         .arglists = "([coll])",
@@ -833,7 +825,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "list",
-        .kind = .runtime_fn,
         .func = &listFn,
         .doc = "Creates a new list containing the items.",
         .arglists = "([& items])",
@@ -841,7 +832,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "seq",
-        .kind = .runtime_fn,
         .func = &seqFn,
         .doc = "Returns a seq on the collection. If the collection is empty, returns nil.",
         .arglists = "([coll])",
@@ -849,7 +839,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "concat",
-        .kind = .runtime_fn,
         .func = &concatFn,
         .doc = "Returns a lazy seq representing the concatenation of the elements in the supplied colls.",
         .arglists = "([] [x] [x y] [x y & zs])",
@@ -857,7 +846,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "reverse",
-        .kind = .runtime_fn,
         .func = &reverseFn,
         .doc = "Returns a seq of the items in coll in reverse order.",
         .arglists = "([coll])",
@@ -865,7 +853,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "into",
-        .kind = .runtime_fn,
         .func = &intoFn,
         .doc = "Returns a new coll consisting of to-coll with all of the items of from-coll conjoined.",
         .arglists = "([to from])",
@@ -873,7 +860,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "apply",
-        .kind = .runtime_fn,
         .func = &applyFn,
         .doc = "Applies fn f to the argument list formed by prepending intervening arguments to args.",
         .arglists = "([f args] [f x args] [f x y args] [f x y z args])",
@@ -881,7 +867,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "vector",
-        .kind = .runtime_fn,
         .func = &vectorFn,
         .doc = "Creates a new vector containing the args.",
         .arglists = "([& args])",
@@ -889,7 +874,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "hash-map",
-        .kind = .runtime_fn,
         .func = &hashMapFn,
         .doc = "Returns a new hash map with supplied mappings.",
         .arglists = "([& keyvals])",
@@ -897,7 +881,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "merge",
-        .kind = .runtime_fn,
         .func = &mergeFn,
         .doc = "Returns a map that consists of the rest of the maps conj-ed onto the first. If a key occurs in more than one map, the mapping from the latter will be the mapping in the result.",
         .arglists = "([& maps])",
@@ -905,7 +888,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "merge-with",
-        .kind = .runtime_fn,
         .func = &mergeWithFn,
         .doc = "Returns a map that consists of the rest of the maps conj-ed onto the first. If a key occurs in more than one map, the mapping(s) from the latter will be combined with the mapping in the result by calling (f val-in-result val-in-latter).",
         .arglists = "([f & maps])",
@@ -913,7 +895,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "zipmap",
-        .kind = .runtime_fn,
         .func = &zipmapFn,
         .doc = "Returns a map with the keys mapped to the corresponding vals.",
         .arglists = "([keys vals])",
@@ -921,7 +902,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "compare",
-        .kind = .runtime_fn,
         .func = &compareFn,
         .doc = "Comparator. Returns a negative number, zero, or a positive number when x is logically 'less than', 'equal to', or 'greater than' y.",
         .arglists = "([x y])",
@@ -929,7 +909,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "sort",
-        .kind = .runtime_fn,
         .func = &sortFn,
         .doc = "Returns a sorted sequence of the items in coll.",
         .arglists = "([coll] [comp coll])",
@@ -937,7 +916,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "sort-by",
-        .kind = .runtime_fn,
         .func = &sortByFn,
         .doc = "Returns a sorted sequence of the items in coll, where the sort order is determined by comparing (keyfn item).",
         .arglists = "([keyfn coll] [keyfn comp coll])",
@@ -945,7 +923,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "vec",
-        .kind = .runtime_fn,
         .func = &vecFn,
         .doc = "Creates a new vector containing the contents of coll.",
         .arglists = "([coll])",
@@ -953,7 +930,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "set",
-        .kind = .runtime_fn,
         .func = &setCoerceFn,
         .doc = "Returns a set of the distinct elements of coll.",
         .arglists = "([coll])",
@@ -961,7 +937,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "list*",
-        .kind = .runtime_fn,
         .func = &listStarFn,
         .doc = "Creates a new seq containing the items prepended to the rest, the last of which will be treated as a sequence.",
         .arglists = "([args] [a args] [a b args] [a b c args])",
@@ -1490,6 +1465,5 @@ test "list* creates list" {
 test "builtins all have func" {
     for (builtins) |b| {
         try testing.expect(b.func != null);
-        try testing.expect(b.kind == .runtime_fn);
     }
 }

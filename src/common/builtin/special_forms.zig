@@ -12,91 +12,78 @@ const BuiltinDef = var_mod.BuiltinDef;
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "if",
-        .kind = .special_form,
         .doc = "Evaluates test. If not the singular values nil or false, evaluates and yields then, otherwise evaluates and yields else. If else is not supplied it defaults to nil.",
         .arglists = "([test then] [test then else])",
         .added = "1.0",
     },
     .{
         .name = "do",
-        .kind = .special_form,
         .doc = "Evaluates the expressions in order and returns the value of the last. If no expressions are supplied, returns nil.",
         .arglists = "([& exprs])",
         .added = "1.0",
     },
     .{
         .name = "let*",
-        .kind = .special_form,
         .doc = "binding => binding-form init-expr. Evaluates the exprs in a lexical context in which the symbols in the binding-forms are bound to their respective init-exprs or parts therein.",
         .arglists = "([bindings & body])",
         .added = "1.0",
     },
     .{
         .name = "fn*",
-        .kind = .special_form,
         .doc = "params => positional-params*, or positional-params* & rest-param. Defines a function (fn).",
         .arglists = "([& sigs])",
         .added = "1.0",
     },
     .{
         .name = "def",
-        .kind = .special_form,
         .doc = "Creates and interns a global var with the name of symbol in the current namespace.",
         .arglists = "([symbol] [symbol init] [symbol doc-string init])",
         .added = "1.0",
     },
     .{
         .name = "quote",
-        .kind = .special_form,
         .doc = "Yields the unevaluated form.",
         .arglists = "([form])",
         .added = "1.0",
     },
     .{
         .name = "var",
-        .kind = .special_form,
         .doc = "The symbol must resolve to a var, and the Var object itself (not its value) is returned.",
         .arglists = "([symbol])",
         .added = "1.0",
     },
     .{
         .name = "loop*",
-        .kind = .special_form,
         .doc = "Evaluates the exprs in a lexical context in which the symbols in the binding-forms are bound to their respective init-exprs or parts therein. Acts as a recur target.",
         .arglists = "([bindings & body])",
         .added = "1.0",
     },
     .{
         .name = "recur",
-        .kind = .special_form,
         .doc = "Evaluates the exprs in order, then, in parallel, rebinds the bindings of the recursion point to the values of the exprs.",
         .arglists = "([& exprs])",
         .added = "1.0",
     },
     .{
         .name = "throw",
-        .kind = .special_form,
         .doc = "Throw an exception.",
         .arglists = "([expr])",
         .added = "1.0",
     },
     .{
         .name = "try",
-        .kind = .special_form,
         .doc = "catch-clause => (catch classname name expr*). finally-clause => (finally expr*). Catches and handles exceptions.",
         .arglists = "([expr* catch-clause* finally-clause?])",
         .added = "1.0",
     },
     .{
         .name = "set!",
-        .kind = .special_form,
         .doc = "Assignment special form. Sets the value of a thread-local binding.",
         .arglists = "([var-symbol expr])",
         .added = "1.0",
     },
     .{
         .name = "defmacro",
-        .kind = .special_form,
         .doc = "Like defn, but the resulting function name is declared as a macro and will be used as a macro by the compiler when it is called.",
         .arglists = "([name doc-string? attr-map? [params*] body] [name doc-string? attr-map? ([params*] body) + attr-map?])",
         .added = "1.0",
@@ -111,9 +98,9 @@ test "special_forms table has 13 entries" {
     try std.testing.expectEqual(13, builtins.len);
 }
 
-test "special_forms are all special_form kind" {
+test "special_forms all have no func (compiler-handled)" {
     for (builtins) |b| {
-        try std.testing.expect(b.kind == .special_form);
+        try std.testing.expect(b.func == null);
     }
 }
 
@@ -144,5 +131,5 @@ test "special_forms comptime lookup for if" {
         @compileError("if not found");
     };
     try std.testing.expectEqualStrings("if", found.name);
-    try std.testing.expect(found.kind == .special_form);
+    try std.testing.expect(found.func == null);
 }

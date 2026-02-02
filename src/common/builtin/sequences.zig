@@ -180,7 +180,6 @@ fn allIntegers(args: []const Value) bool {
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "empty?",
-        .kind = .runtime_fn,
         .func = &emptyFn,
         .doc = "Returns true if coll has no items - same as (not (seq coll)). Please use the idiom (seq x) rather than (not (empty? x)).",
         .arglists = "([coll])",
@@ -188,7 +187,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "range",
-        .kind = .runtime_fn,
         .func = &rangeFn,
         .doc = "Returns a list of nums from start (inclusive) to end (exclusive), by step.",
         .arglists = "([end] [start end] [start end step])",
@@ -196,7 +194,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "repeat",
-        .kind = .runtime_fn,
         .func = &repeatFn,
         .doc = "Returns a list of xs repeated n times.",
         .arglists = "([n x])",
@@ -204,7 +201,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "contains?",
-        .kind = .runtime_fn,
         .func = &containsFn,
         .doc = "Returns true if key is present in the given collection, otherwise returns false.",
         .arglists = "([coll key])",
@@ -212,7 +208,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "keys",
-        .kind = .runtime_fn,
         .func = &keysFn,
         .doc = "Returns a sequence of the map's keys, in the same order as (seq map).",
         .arglists = "([map])",
@@ -220,7 +215,6 @@ pub const builtins = [_]BuiltinDef{
     },
     .{
         .name = "vals",
-        .kind = .runtime_fn,
         .func = &valsFn,
         .doc = "Returns a sequence of the map's values, in the same order as (seq map).",
         .arglists = "([map])",

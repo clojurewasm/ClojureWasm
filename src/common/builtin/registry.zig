@@ -103,13 +103,13 @@ test "all_builtins count" {
 test "comptime lookup finds +" {
     const def = comptime comptimeLookup("+");
     try std.testing.expectEqualStrings("+", def.name);
-    try std.testing.expect(def.kind == .vm_intrinsic);
+    try std.testing.expect(def.func != null);
 }
 
 test "comptime lookup finds if" {
     const def = comptime comptimeLookup("if");
     try std.testing.expectEqualStrings("if", def.name);
-    try std.testing.expect(def.kind == .special_form);
+    try std.testing.expect(def.func == null);
 }
 
 test "runtime lookup" {
@@ -138,15 +138,13 @@ test "registerBuiltins creates core namespace with Vars" {
     // + Var exists with correct metadata
     const plus_var = core.?.resolve("+");
     try std.testing.expect(plus_var != null);
-    try std.testing.expect(plus_var.?.kind == .vm_intrinsic);
     try std.testing.expectEqualStrings("Returns the sum of nums. (+) returns 0. Does not auto-promote longs, will throw on overflow.", plus_var.?.doc.?);
     try std.testing.expectEqualStrings("([] [x] [x y] [x y & more])", plus_var.?.arglists.?);
     try std.testing.expectEqualStrings("1.0", plus_var.?.added.?);
 
-    // if Var exists as special_form
+    // if Var exists
     const if_var = core.?.resolve("if");
     try std.testing.expect(if_var != null);
-    try std.testing.expect(if_var.?.kind == .special_form);
 }
 
 test "registerBuiltins creates user namespace with refers" {
@@ -166,7 +164,6 @@ test "registerBuiltins creates user namespace with refers" {
     // + is resolvable in user (via refer)
     const plus_var = user.?.resolve("+");
     try std.testing.expect(plus_var != null);
-    try std.testing.expect(plus_var.?.kind == .vm_intrinsic);
     try std.testing.expectEqualStrings("clojure.core", plus_var.?.ns_name);
 }
 
@@ -183,6 +180,5 @@ test "registerBuiltins all builtins resolvable in core" {
     for (all_builtins) |b| {
         const v = core.resolve(b.name);
         try std.testing.expect(v != null);
-        try std.testing.expect(v.?.kind == b.kind);
     }
 }
