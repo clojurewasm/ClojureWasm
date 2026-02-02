@@ -263,7 +263,7 @@ vars:
     doubles: {type: function, status: todo}
     drop: {type: function, status: done}
     "drop-last": {type: function, status: todo}
-    "drop-while": {type: function, status: todo}
+    "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
     eduction: {type: function, status: todo}
     empty: {type: function, status: todo}
     "empty?": {type: function, status: done}
@@ -460,7 +460,7 @@ vars:
     "parse-uuid": {type: function, status: todo}
     partial: {type: function, status: done}
     partition: {type: function, status: done}
-    "partition-all": {type: function, status: todo}
+    "partition-all": {type: function, status: done, note: "core.clj like partition but includes trailing"}
     "partition-by": {type: function, status: done}
     partitionv: {type: function, status: todo}
     "partitionv-all": {type: function, status: todo}
@@ -631,7 +631,7 @@ vars:
     take: {type: function, status: done}
     "take-last": {type: function, status: todo}
     "take-nth": {type: function, status: todo}
-    "take-while": {type: function, status: todo}
+    "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
     test: {type: function, status: todo}
     "the-ns": {type: function, status: todo}
@@ -746,7 +746,7 @@ vars:
     reducer: {type: function, status: todo}
     remove: {type: function, status: todo}
     take: {type: function, status: todo}
-    "take-while": {type: function, status: todo}
+    "take-while": {type: function, status: done, note: "core.clj loop+pred"}
   clojure_core_server:
     "*session*": {type: dynamic-var, status: todo}
     "io-prepl": {type: function, status: todo}

@@ -454,6 +454,29 @@
 (defn filterv [pred coll]
   (vec (filter pred coll)))
 
+(defn partition-all [n coll]
+  (loop [s (seq coll) acc (list)]
+    (let [chunk (take n s)]
+      (if (seq chunk)
+        (recur (drop n s) (cons chunk acc))
+        (reverse acc)))))
+
+(defn take-while [pred coll]
+  (loop [s (seq coll) acc (list)]
+    (if s
+      (if (pred (first s))
+        (recur (next s) (cons (first s) acc))
+        (reverse acc))
+      (reverse acc))))
+
+(defn drop-while [pred coll]
+  (loop [s (seq coll)]
+    (if s
+      (if (pred (first s))
+        (recur (next s))
+        s)
+      (list))))
+
 (defn reduce-kv [f init m]
   (let [ks (keys m)]
     (loop [s (seq ks) acc init]

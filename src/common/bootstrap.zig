@@ -1959,6 +1959,67 @@ test "core.clj - filterv" {
     try std.testing.expectEqual(Value{ .integer = 6 }, result.vector.items[2]);
 }
 
+test "core.clj - partition-all" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // partition-all includes trailing incomplete chunk
+    const result = try evalString(alloc, &env, "(partition-all 3 [1 2 3 4 5])");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
+    // First chunk: (1 2 3)
+    const chunk1 = result.list.items[0];
+    try std.testing.expect(chunk1 == .list);
+    try std.testing.expectEqual(@as(usize, 3), chunk1.list.items.len);
+    // Second chunk: (4 5) — incomplete
+    const chunk2 = result.list.items[1];
+    try std.testing.expect(chunk2 == .list);
+    try std.testing.expectEqual(@as(usize, 2), chunk2.list.items.len);
+}
+
+test "core.clj - take-while" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
+    const result = try evalString(alloc, &env, "(take-while pos? [3 2 1 0 -1])");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try std.testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
+    try std.testing.expectEqual(Value{ .integer = 2 }, result.list.items[1]);
+    try std.testing.expectEqual(Value{ .integer = 1 }, result.list.items[2]);
+}
+
+test "core.clj - drop-while" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
+    const result = try evalString(alloc, &env, "(drop-while pos? [3 2 1 0 -1])");
+    try std.testing.expect(result == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.list.items[0]);
+    try std.testing.expectEqual(Value{ .integer = -1 }, result.list.items[1]);
+}
+
 // VM test for `for` deferred: the `for` expansion generates inline fn nodes
 // that the VM compiles to FnProto-based fn_vals. When core.clj `map` (a TreeWalk
 // closure) calls back into these fn_vals via macroEvalBridge, the TreeWalk

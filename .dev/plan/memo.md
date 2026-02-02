@@ -4,9 +4,9 @@
 
 - Phase: 9 (Core Library Expansion III)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T9.7 partition-all, take-while, drop-while (next)
+- Current task: T9.8 butlast, last, second, nfirst, fnext (next)
 - Task file: (none)
-- Last completed: T9.6 mapv, filterv, reduce-kv
+- Last completed: T9.7 partition-all, take-while, drop-while
 - Note: T4.7 (AOT bytecode startup) deferred — needs macro serialization
 - Blockers: none
 
