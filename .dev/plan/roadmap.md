@@ -297,7 +297,7 @@ can evaluate basic Clojure expressions with `--compare` mode.
 | #    | Task                                            | Archive                       | Notes                             |
 | ---- | ----------------------------------------------- | ----------------------------- | --------------------------------- |
 | 9.13 | boolean, true?, false?, some?, any?             | task_0079_basic_predicates.md | Basic predicates (core.clj)       |
-| 9.14 | bit-and, bit-or, bit-xor, bit-not, bit-shift-\* | --                            | Bitwise operations (Zig builtins) |
+| 9.14 | bit-and, bit-or, bit-xor, bit-not, bit-shift-\* | task_0080_bitwise.md          | Bitwise operations (Zig builtins) |
 | 9.15 | type, class, instance?, isa?                    | --                            | Type introspection                |
 
 ## Risk Mitigations

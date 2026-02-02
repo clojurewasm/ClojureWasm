@@ -148,17 +148,17 @@ vars:
     bigint: {type: function, status: todo}
     biginteger: {type: function, status: todo}
     binding: {type: macro, status: todo}
-    "bit-and": {type: function, status: todo}
+    "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: todo}
     "bit-clear": {type: function, status: todo}
     "bit-flip": {type: function, status: todo}
-    "bit-not": {type: function, status: todo}
-    "bit-or": {type: function, status: todo}
+    "bit-not": {type: function, status: done, note: "Zig builtin"}
+    "bit-or": {type: function, status: done, note: "Zig builtin"}
     "bit-set": {type: function, status: todo}
-    "bit-shift-left": {type: function, status: todo}
-    "bit-shift-right": {type: function, status: todo}
+    "bit-shift-left": {type: function, status: done, note: "Zig builtin"}
+    "bit-shift-right": {type: function, status: done, note: "Zig builtin"}
     "bit-test": {type: function, status: todo}
-    "bit-xor": {type: function, status: todo}
+    "bit-xor": {type: function, status: done, note: "Zig builtin"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
     "boolean?": {type: function, status: done}

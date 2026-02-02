@@ -125,6 +125,68 @@ fn compareNum(a: Value, b: Value) !i2 {
 }
 
 // ============================================================
+// Bitwise operations
+// ============================================================
+
+fn requireInt(v: Value) !i64 {
+    return switch (v) {
+        .integer => |i| i,
+        else => error.TypeError,
+    };
+}
+
+/// (bit-and x y) — bitwise AND
+pub fn bitAndFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = try requireInt(args[0]);
+    const b = try requireInt(args[1]);
+    return Value{ .integer = a & b };
+}
+
+/// (bit-or x y) — bitwise OR
+pub fn bitOrFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = try requireInt(args[0]);
+    const b = try requireInt(args[1]);
+    return Value{ .integer = a | b };
+}
+
+/// (bit-xor x y) — bitwise XOR
+pub fn bitXorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = try requireInt(args[0]);
+    const b = try requireInt(args[1]);
+    return Value{ .integer = a ^ b };
+}
+
+/// (bit-not x) — bitwise complement
+pub fn bitNotFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const a = try requireInt(args[0]);
+    return Value{ .integer = ~a };
+}
+
+/// (bit-shift-left x n) — left shift
+pub fn bitShiftLeftFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .integer = x << shift };
+}
+
+/// (bit-shift-right x n) — arithmetic right shift
+pub fn bitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .integer = x >> shift };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -169,6 +231,48 @@ pub const builtins = [_]BuiltinDef{
         .func = &randIntFn,
         .doc = "Returns a random integer between 0 (inclusive) and n (exclusive).",
         .arglists = "([n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-and",
+        .func = &bitAndFn,
+        .doc = "Bitwise and.",
+        .arglists = "([x y])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-or",
+        .func = &bitOrFn,
+        .doc = "Bitwise or.",
+        .arglists = "([x y])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-xor",
+        .func = &bitXorFn,
+        .doc = "Bitwise exclusive or.",
+        .arglists = "([x y])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-not",
+        .func = &bitNotFn,
+        .doc = "Bitwise complement.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-shift-left",
+        .func = &bitShiftLeftFn,
+        .doc = "Bitwise shift left.",
+        .arglists = "([x n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-shift-right",
+        .func = &bitShiftRightFn,
+        .doc = "Bitwise shift right.",
+        .arglists = "([x n])",
         .added = "1.0",
     },
 };
@@ -227,6 +331,31 @@ test "quot negative truncates toward zero" {
 
 test "quot division by zero" {
     try testing.expectError(error.ArithmeticError, quotFn(test_alloc, &.{ Value{ .integer = 10 }, Value{ .integer = 0 } }));
+}
+
+test "bit-and" {
+    try testing.expectEqual(Value{ .integer = 0b1000 }, try bitAndFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 0b1100 } }));
+}
+
+test "bit-or" {
+    try testing.expectEqual(Value{ .integer = 0b1110 }, try bitOrFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 0b1100 } }));
+}
+
+test "bit-xor" {
+    try testing.expectEqual(Value{ .integer = 0b0110 }, try bitXorFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 0b1100 } }));
+}
+
+test "bit-not" {
+    const result = try bitNotFn(test_alloc, &.{Value{ .integer = 0 }});
+    try testing.expectEqual(Value{ .integer = -1 }, result);
+}
+
+test "bit-shift-left" {
+    try testing.expectEqual(Value{ .integer = 8 }, try bitShiftLeftFn(test_alloc, &.{ Value{ .integer = 1 }, Value{ .integer = 3 } }));
+}
+
+test "bit-shift-right" {
+    try testing.expectEqual(Value{ .integer = 2 }, try bitShiftRightFn(test_alloc, &.{ Value{ .integer = 8 }, Value{ .integer = 2 } }));
 }
 
 test "rand returns float in [0, 1)" {
