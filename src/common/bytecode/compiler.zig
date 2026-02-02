@@ -334,10 +334,17 @@ pub const Compiler = struct {
         }
 
         // Add parameters as locals
+        const params_base = fn_compiler.stack_depth;
         for (arity.params) |param| {
             fn_compiler.stack_depth += 1;
             try fn_compiler.addLocal(param);
         }
+
+        // Enable fn-level recur: set loop context so recur in fn body
+        // jumps back to body start and rebinds params.
+        fn_compiler.loop_start = fn_compiler.chunk.currentOffset();
+        fn_compiler.loop_locals_base = params_base;
+        fn_compiler.loop_binding_count = @intCast(arity.params.len);
 
         // Compile body
         try fn_compiler.compile(arity.body);

@@ -281,6 +281,9 @@ pub const TreeWalk = struct {
             self.local_count += 1;
         }
 
+        // Track param base for fn-level recur rebinding (before binding params)
+        const params_base = self.local_count;
+
         // Bind params after captured locals (and fn name)
         if (arity.variadic) {
             // Variadic: bind fixed params, collect rest into a list
@@ -313,18 +316,41 @@ pub const TreeWalk = struct {
             }
         }
 
-        const result = try self.run(arity.body);
+        const params_count = arity.params.len;
 
-        // Restore caller's local frame
-        @memcpy(self.locals[0..saved_count], saved_locals);
-        self.local_count = saved_count;
+        // Execute body with fn-level recur support (like loop)
+        while (true) {
+            self.recur_pending = false;
+            const result = self.run(arity.body) catch |e| {
+                // Restore caller's local frame on error
+                @memcpy(self.locals[0..saved_count], saved_locals);
+                self.local_count = saved_count;
+                self.recur_pending = saved_recur_pending;
+                self.recur_arg_count = saved_recur_arg_count;
+                @memcpy(&self.recur_args, saved_recur_args);
+                return e;
+            };
 
-        // Restore recur state
-        self.recur_pending = saved_recur_pending;
-        self.recur_arg_count = saved_recur_arg_count;
-        @memcpy(&self.recur_args, saved_recur_args);
+            if (self.recur_pending) {
+                // Rebind params with recur args
+                for (0..self.recur_arg_count) |i| {
+                    self.locals[params_base + i] = self.recur_args[i];
+                }
+                self.local_count = params_base + params_count;
+                continue;
+            }
 
-        return result;
+            // Restore caller's local frame
+            @memcpy(self.locals[0..saved_count], saved_locals);
+            self.local_count = saved_count;
+
+            // Restore recur state
+            self.recur_pending = saved_recur_pending;
+            self.recur_arg_count = saved_recur_arg_count;
+            @memcpy(&self.recur_args, saved_recur_args);
+
+            return result;
+        }
     }
 
     fn findArity(arities: []const FnArity, arg_count: usize) ?*const FnArity {

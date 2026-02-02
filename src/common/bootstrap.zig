@@ -1157,6 +1157,34 @@ test "evalStringVM - loop/recur multi-binding (fib)" {
         "(loop [i 0 sum 0] (if (= i 10) sum (recur (+ i 1) (+ sum i))))", 45);
 }
 
+test "evalStringVM - fn-level recur" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // (fn [n] (if (> n 0) (recur (dec n)) n)) called with 3 => 0
+    try expectVMEvalInt(alloc, &env,
+        "((fn [n] (if (> n 0) (recur (dec n)) n)) 3)", 0);
+}
+
+test "evalString - fn-level recur (TreeWalk)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env,
+        "((fn [n] (if (> n 0) (recur (dec n)) n)) 3)");
+    try testing.expectEqual(Value{ .integer = 0 }, result);
+}
+
 test "evalStringVM - higher-order fn (map via dispatcher)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
