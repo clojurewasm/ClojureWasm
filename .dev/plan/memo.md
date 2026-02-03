@@ -2,52 +2,61 @@
 
 ## Current State
 
-- Phase: 12 (Zig Foundation Completion + SCI Test Port)
+- Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.9 — SCI test port + triage (DONE)
-- Task file: .dev/plan/active/task_0106_sci_test_port.md
+- Current task: T13.1 — list?, int?, reduce/2, set-as-fn, deref-delay
+- Task file: (none — create on start)
 - Last completed: T12.9 — SCI test port + triage
 - Blockers: none
-- Next: Check roadmap for Phase 12 completion / Phase 13 planning
+- Next: T13.1
 
 ## Technical Notes
 
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### Phase 12 complete — Tier 1 Zig Builtins + SCI Test Port
+### Phase 13 — SCI Fix-ups + clojure.string + Core Expansion
 
-All 9 tasks in Phase 12 are done:
+**Goal**: Fix remaining SCI test failures (4 skipped, 15 skipped assertions),
+add clojure.string namespace, and expand core.clj. Target: 74/74 SCI tests pass.
 
-- T12.1: dissoc, disj, find, peek, pop, empty
-- T12.2: subvec, array-map, hash-set, sorted-map
-- T12.3: hash, identical?, ==
-- T12.4: reduced, reduced?, unreduced, ensure-reduced
-- T12.5: eval, macroexpand, macroexpand-1, read-string
-- T12.6: all-ns, find-ns, ns-name, create-ns, the-ns
-- T12.7: ns-map, ns-publics, ns-interns
-- T12.8: gensym, compare-and-set!, format
-- T12.9: SCI test port — 70/74 tests pass (248 assertions)
+### T13.1 — Missing Zig Builtins (SCI fix-ups)
 
-Registry: 152 builtins, 267/702 vars done
+Items to implement:
 
-### SCI Test Port Results (T12.9)
+1. **list?** — predicate, crashes on call (macroexpand-detail-test skip)
+   - Add to predicates.zig, register in registry
+   - Check: `.list` variant in Value
 
-Test file: `test/upstream/sci/core_test.clj` (820 lines, TreeWalk-only)
-Tracking: `.dev/status/compat_test.yaml`
+2. **int?** — predicate, not implemented (basic-predicates-test, type-predicates-test)
+   - Alias for `integer?` or separate implementation
+   - Clojure: `int?` checks for fixed-precision integer
 
-Missing features discovered:
+3. **reduce/2** — 2-arity reduce without init value
+   - Current: `(defn reduce [f init coll] ...)` — 3 args only
+   - Need: `(reduce f coll)` — uses `(first coll)` as init, `(rest coll)` as coll
+   - Update core.clj with multi-arity
 
-- **Tier 1** (Zig builtin): list?, int?, reduce/2, set-as-function, deref delay, into map from pairs
-- **Tier 2** (core.clj): clojure.string namespace, {:keys [:a]} destructuring
-- **Behavioral**: named fn self-ref, fn param shadow, var :name meta
+4. **set-as-function** — `(#{:a :b} :a)` → `:a`
+   - Sets should implement IFn (lookup)
+   - In tree_walk.zig callValue, handle set type
+
+5. **deref on delay** — `@(delay expr)` should work
+   - Currently `deref` handles atoms only
+   - Need to detect delay maps and call `force`
+   - Or implement Delay as proper Value variant
+
+### Registry count: 152 builtins, 267/702 vars done
+
+### Files to modify (T13.1)
+
+- `src/common/builtin/predicates.zig` — add list?, int?
+- `src/common/builtin/registry.zig` — register new builtins
+- `src/clj/core.clj` — update reduce to multi-arity
+- `src/native/evaluator/tree_walk.zig` — set-as-function in callValue
+- `src/common/builtin/collections.zig` — deref delay handling (or deref.zig)
 
 ### Deferred items to watch
 
 - **F24**: vars.yaml status refinement — deferred until stub functions appear
 - **F13/F14**: VM opcodes for defmulti/defmethod/lazy-seq — when VM-only mode needed
-
-### Builtin Count
-
-152 builtins registered
-267/702 vars done

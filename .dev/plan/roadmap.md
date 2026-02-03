@@ -438,6 +438,41 @@ high-priority gaps in the core library.
 | 12.11 | Core.clj batch 2: every?, not-every?, some, not-any? | --      | Predicate sequence ops         |
 | 12.12 | Core.clj batch 3: map-indexed, keep, keep-indexed    | --      | Advanced sequence transforms   |
 
+## Phase 13: SCI Fix-ups + clojure.string + Core Expansion
+
+Fix remaining SCI test failures, add clojure.string namespace, and expand
+core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
+
+### Phase 13a: SCI Fix-ups (Zig builtins)
+
+| #    | Task                                            | Archive | Notes                                                                 |
+| ---- | ----------------------------------------------- | ------- | --------------------------------------------------------------------- |
+| 13.1 | list?, int?, reduce/2, set-as-fn, deref-delay   | --      | Fix 4 skipped SCI tests + 15 skipped assertions. Zig-level fixes      |
+| 13.2 | Named fn self-reference + fn param shadow fixes | --      | Behavioral fixes: self-ref-test + variable-can-shadow-test assertions |
+
+### Phase 13b: clojure.string namespace
+
+| #    | Task                                                         | Archive | Notes                                                      |
+| ---- | ------------------------------------------------------------ | ------- | ---------------------------------------------------------- |
+| 13.3 | clojure.string: join, split, upper-case, lower-case, trim    | --      | Core string ops. Zig builtins in new namespace             |
+| 13.4 | clojure.string: includes?, starts-with?, ends-with?, replace | --      | Search/replace ops. Unlocks SCI gensym-test workaround fix |
+| 13.5 | clojure.string: blank?, reverse, trim-newline, triml, trimr  | --      | Remaining commonly-used string functions                   |
+
+### Phase 13c: Core.clj Expansion (from Phase 12c)
+
+| #    | Task                                    | Archive | Notes                                           |
+| ---- | --------------------------------------- | ------- | ----------------------------------------------- |
+| 13.6 | key, val, keys, vals, MapEntry ops      | --      | Unlocks map iteration patterns (was T12.10)     |
+| 13.7 | map-indexed, keep, keep-indexed, remove | --      | Advanced sequence transforms (was T12.12 + 9.5) |
+| 13.8 | {:keys [:a]} keyword destructuring      | --      | Tier 2 feature from SCI triage                  |
+
+### Phase 13d: Validation + Upstream Alignment
+
+| #     | Task                                       | Archive | Notes                                                                |
+| ----- | ------------------------------------------ | ------- | -------------------------------------------------------------------- |
+| 13.9  | SCI test re-run: target 74/74 pass         | --      | Re-enable skipped tests, verify all 74 pass                          |
+| 13.10 | Upstream alignment (UPSTREAM-DIFF cleanup) | --      | Replace simplified defs with upstream verbatim (memoize, trampoline) |
+
 ## Future Considerations
 
 ### Phase 12 Strategy (Reference)
@@ -570,18 +605,20 @@ Details deferred — decide architecture when the IO/system phase is planned.
 
 ## Task Count Summary
 
-| Phase     | Tasks   | Status          | Scope                      |
-| --------- | ------- | --------------- | -------------------------- |
-| 1 (a-c)   | 12      | Complete        | Value + Reader + Analyzer  |
-| 2 (a-b)   | 10      | Complete        | Runtime + Compiler + VM    |
-| 3 (a-c)   | 17      | Complete        | Builtins + core.clj + CLI  |
-| 4 (a-f)   | 16      | Complete        | VM parity + lang features  |
-| 5         | 6       | Complete        | Benchmark system           |
-| 6 (a-c)   | 12      | Partial         | Core library expansion     |
-| 7 (a-c)   | 9       | Complete        | Robustness + nREPL         |
-| 8         | 3       | Complete        | Refactoring                |
-| 9 (a-d)   | 15      | Complete        | Core library expansion III |
-| 9.5 (a-c) | 5       | Complete        | VM fixes + data model      |
-| 10 (a-c)  | 4       | Complete        | VM correctness + interop   |
-| 11 (a-d)  | 7       | Planned         | Metadata + core lib IV     |
-| **Total** | **116** | **94 archived** |                            |
+| Phase     | Tasks   | Status           | Scope                      |
+| --------- | ------- | ---------------- | -------------------------- |
+| 1 (a-c)   | 12      | Complete         | Value + Reader + Analyzer  |
+| 2 (a-b)   | 10      | Complete         | Runtime + Compiler + VM    |
+| 3 (a-c)   | 17      | Complete         | Builtins + core.clj + CLI  |
+| 4 (a-f)   | 16      | Complete         | VM parity + lang features  |
+| 5         | 6       | Complete         | Benchmark system           |
+| 6 (a-c)   | 12      | Partial          | Core library expansion     |
+| 7 (a-c)   | 9       | Complete         | Robustness + nREPL         |
+| 8         | 3       | Complete         | Refactoring                |
+| 9 (a-d)   | 15      | Complete         | Core library expansion III |
+| 9.5 (a-c) | 5       | Complete         | VM fixes + data model      |
+| 10 (a-c)  | 4       | Complete         | VM correctness + interop   |
+| 11 (a-d)  | 7       | Complete         | Metadata + core lib IV     |
+| 12 (a-b)  | 9       | Complete         | Zig foundation + SCI port  |
+| 13 (a-d)  | 10      | Active           | SCI fix-ups + clj.string   |
+| **Total** | **126** | **103 archived** |                            |
