@@ -6,74 +6,7 @@
 ;;   tu/native? branch       -> take true branch
 ;;   eval-string / sci/init / JVM imports / permission tests -> skip
 ;;
-;; Test framework is inlined (no load-file yet).
-
-;; ========== Inline test framework ==========
-
-(def __ct-tests (atom []))
-(def __ct-pass (atom 0))
-(def __ct-fail (atom 0))
-(def __ct-error (atom 0))
-(def __ct-context (atom []))
-
-(defn __str-join [sep coll]
-  (loop [s (seq coll) acc "" started false]
-    (if s
-      (if started
-        (recur (next s) (str acc sep (first s)) true)
-        (recur (next s) (str acc (first s)) true))
-      acc)))
-
-(defn __ct-is [result]
-  (if result
-    (do (swap! __ct-pass inc) true)
-    (do
-      (swap! __ct-fail inc)
-      (println
-       (str "  FAIL in " (__str-join " > " @__ct-context)))
-      false)))
-
-(defn __ct-testing [desc body-fn]
-  (swap! __ct-context conj desc)
-  (body-fn)
-  (swap! __ct-context pop))
-
-(defn __ct-register [name test-fn]
-  (swap! __ct-tests conj {:name name :fn test-fn}))
-
-(defmacro deftest [tname & body]
-  `(do
-     (defn ~tname [] ~@body)
-     (__ct-register ~(str tname) ~tname)))
-
-(defmacro is [expr]
-  `(__ct-is ~expr))
-
-(defmacro testing [desc & body]
-  `(__ct-testing ~desc (fn [] ~@body)))
-
-(defn run-tests []
-  (reset! __ct-pass 0)
-  (reset! __ct-fail 0)
-  (reset! __ct-error 0)
-  (let [tests @__ct-tests]
-    (doseq [t tests]
-      (reset! __ct-context [(:name t)])
-      (println (str "\nTesting " (:name t)))
-      (try
-        ((:fn t))
-        (catch Exception e
-          (swap! __ct-error inc)
-          (println (str "  ERROR in " (:name t) ": " e)))))
-    (println "")
-    (let [total (+ @__ct-pass @__ct-fail @__ct-error)]
-      (println (str "Ran " (count tests) " tests containing " total " assertions"))
-      (println (str @__ct-pass " passed, " @__ct-fail " failed, " @__ct-error " errors")))
-    (let [total-problems (+ @__ct-fail @__ct-error)]
-      (if (= 0 total-problems)
-        (println "ALL TESTS PASSED")
-        (println (str total-problems " problem(s) found")))
-      (= 0 total-problems))))
+;; Uses clojure.test (auto-referred from bootstrap).
 
 (println "[sci/core_test] running...")
 

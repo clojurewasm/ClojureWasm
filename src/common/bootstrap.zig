@@ -32,6 +32,9 @@ pub const BootstrapError = error{
 /// Embedded core.clj source (compiled into binary).
 const core_clj_source = @embedFile("../clj/core.clj");
 
+/// Embedded clojure/test.clj source (compiled into binary).
+const test_clj_source = @embedFile("../clj/clojure/test.clj");
+
 /// Load and evaluate core.clj in the given Env.
 /// Called after registerBuiltins to define core macros (defn, when, etc.).
 /// Temporarily switches to clojure.core namespace so macros are defined there,
@@ -50,6 +53,37 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = saved_ns;
     if (saved_ns) |user_ns| {
         var iter = core_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+}
+
+/// Load and evaluate clojure/test.clj in the given Env.
+/// Creates the clojure.test namespace and defines test macros (deftest, is, etc.).
+/// Re-refers test bindings into user namespace for convenience.
+pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.test namespace
+    const test_ns = env.findOrCreateNamespace("clojure.test") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.test so core functions are available
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Save current namespace and switch to clojure.test
+    const saved_ns = env.current_ns;
+    env.current_ns = test_ns;
+
+    // Evaluate clojure/test.clj (defines macros/functions in clojure.test)
+    _ = try evalString(allocator, env, test_clj_source);
+
+    // Restore user namespace and re-refer test bindings
+    env.current_ns = saved_ns;
+    if (saved_ns) |user_ns| {
+        var iter = test_ns.mappings.iterator();
         while (iter.next()) |entry| {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }

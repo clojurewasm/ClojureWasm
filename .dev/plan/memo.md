@@ -2,11 +2,11 @@
 
 ## Current State
 
-- Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
+- Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: Phase 14 planning
-- Task file: (none)
-- Last completed: T13.10 — Upstream alignment (memoize, trampoline)
+- Current task: T14.2 — clojure.test/are, run-tests 移植
+- Task file: (none — create on start)
+- Last completed: T14.1 — clojure.test/deftest, is, testing 移植
 - Blockers: none
 - Next: T13.7
 
@@ -15,28 +15,25 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### Phase 13 Progress
+### Phase 14 Progress
 
-- T13.1: list?, int?, reduce/2, set-as-fn, deref-delay, conj-map-vector-pairs
-- T13.2: Named fn self-ref (identity preserved), fn param shadow (D49)
-- T13.3: clojure.string — join, split, upper-case, lower-case, trim
-- T13.4: clojure.string — includes?, starts-with?, ends-with?, replace
-- T13.5: clojure.string — blank?, reverse, trim-newline, triml, trimr (14 builtins)
-- T13.6: key, val builtins added to sequences.zig (156 builtins + 14 clojure.string)
-- T13.7: Skipped — all 4 functions already implemented
-- T13.8: {:keys [:a]} keyword destructuring — analyzer accepts keywords in :keys vector
-- T13.9: SCI validation — 72/72 tests, 267 assertions
-- T13.10: Upstream alignment — memoize (if-let/find/val), trampoline (let+recur)
-  - Both UPSTREAM-DIFF notes removed from vars.yaml
-- SCI: 72/72 tests, 267 assertions
-- Vars: 284/702 done
-- Phase 13 complete
+- T14.1: clojure.test/deftest, is, testing implemented
+  - Created src/clj/clojure/test.clj (minimal framework)
+  - Added loadTest to bootstrap.zig
+  - SCI core_test.clj now uses clojure.test (inline framework removed)
+  - 72/72 tests, 267 assertions pass (TreeWalk)
+  - VM backend issue: SCI tests fail on VM — needs investigation
 
-### Next: Phase 14 — Clojure本家テスト基盤
+### Next: T14.2 — clojure.test/are, run-tests 移植
 
-Phase 14 が roadmap.md に追加済み。最初のタスクは:
+- `are` macro needs clojure.template or custom template expansion
+- May need to enhance run-tests with more reporting options
 
-- T14.1: clojure.test/deftest, is, testing 移植
+### Known Issues
+
+- **VM SCI tests failure**: SCI tests pass on TreeWalk but fail early on VM
+  - Simple deftest works on VM, issue is with large file or specific constructs
+  - Low priority — TreeWalk is current primary backend
 
 ### Deferred items to watch
 

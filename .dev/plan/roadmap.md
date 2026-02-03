@@ -498,11 +498,11 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 14a: clojure.test フレームワーク
 
-| #    | Task                                   | Archive | Notes                                  |
-| ---- | -------------------------------------- | ------- | -------------------------------------- |
-| 14.1 | clojure.test/deftest, is, testing 移植 | --      | 最小限のテストフレームワーク           |
-| 14.2 | clojure.test/are, run-tests 移植       | --      | テンプレート展開 (are)、テスト実行統合 |
-| 14.3 | test-ns-hook / fixtures (optional)     | --      | 必要に応じて後回し                     |
+| #    | Task                                   | Archive                         | Notes                                  |
+| ---- | -------------------------------------- | ------------------------------- | -------------------------------------- |
+| 14.1 | clojure.test/deftest, is, testing 移植 | task_0116_clojure_test_basic.md | 最小限のテストフレームワーク           |
+| 14.2 | clojure.test/are, run-tests 移植       | --                              | テンプレート展開 (are)、テスト実行統合 |
+| 14.3 | test-ns-hook / fixtures (optional)     | --                              | 必要に応じて後回し                     |
 
 ### Phase 14b: 等価テスト作成 (Java依存度: 低)
 

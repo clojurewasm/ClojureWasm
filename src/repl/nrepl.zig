@@ -60,6 +60,10 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
         std.debug.print("Error: failed to load core.clj\n", .{});
         return;
     };
+    bootstrap.loadTest(alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.test\n", .{});
+        return;
+    };
 
     // Define REPL vars (*1, *2, *3, *e)
     _ = bootstrap.evalString(alloc, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
