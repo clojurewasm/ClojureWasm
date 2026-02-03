@@ -370,7 +370,7 @@ pub const Analyzer = struct {
     }
 
     fn analyzeFn(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (fn name? [params] body...) or (fn name? ([params] body...) ...)
+        // (fn name? docstring? [params] body...) or (fn name? docstring? ([params] body...) ...)
         if (items.len < 2) {
             return self.analysisError(.arity_error, "fn requires parameter vector", form);
         }
@@ -381,6 +381,15 @@ pub const Analyzer = struct {
         // Optional name
         if (items[idx].data == .symbol) {
             name = items[idx].data.symbol.name;
+            idx += 1;
+        }
+
+        if (idx >= items.len) {
+            return self.analysisError(.arity_error, "fn requires parameter vector", form);
+        }
+
+        // Optional docstring (skip it, metadata support deferred)
+        if (items[idx].data == .string) {
             idx += 1;
         }
 
@@ -598,7 +607,7 @@ pub const Analyzer = struct {
     }
 
     fn analyzeDefmacro(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (defmacro name [params] body...) - treated like def + fn with is_macro flag
+        // (defmacro name docstring? [params] body...) - treated like def + fn with is_macro flag
         if (items.len < 3) {
             return self.analysisError(.arity_error, "defmacro requires name and body", form);
         }
@@ -609,9 +618,19 @@ pub const Analyzer = struct {
 
         const sym_name = items[1].data.symbol.name;
 
-        // Build fn node from remaining forms (items[2..] = params + body)
+        // Skip optional docstring
+        var body_start: usize = 2;
+        if (items[body_start].data == .string) {
+            body_start += 1;
+        }
+
+        if (body_start >= items.len) {
+            return self.analysisError(.arity_error, "defmacro requires parameter vector", form);
+        }
+
+        // Build fn node from remaining forms (params + body)
         // Synthesize a fn form: (fn [params] body...)
-        const fn_node = try self.analyzeFnBody(items[2..], form);
+        const fn_node = try self.analyzeFnBody(items[body_start..], form);
 
         const def_data = self.allocator.create(node_mod.DefNode) catch return error.OutOfMemory;
         def_data.* = .{

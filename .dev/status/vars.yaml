@@ -342,7 +342,7 @@ vars:
     "if-some": {type: macro, status: done, note: "core.clj macro"}
     "ifn?": {type: function, status: todo}
     import: {type: macro, status: todo}
-    "in-ns": {type: var, status: todo}
+    "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
     inc: {type: function, status: done}
     "inc'": {type: function, status: todo}
     "indexed?": {type: function, status: todo}
@@ -433,7 +433,7 @@ vars:
     "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
     "not-every?": {type: function, status: done}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
-    ns: {type: macro, status: todo}
+    ns: {type: macro, status: done, note: 'UPSTREAM-DIFF: minimal impl, no :require/:use/:import'}
     "ns-aliases": {type: function, status: todo}
     "ns-imports": {type: function, status: todo}
     "ns-interns": {type: function, status: done}

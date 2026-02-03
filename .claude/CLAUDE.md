@@ -127,6 +127,18 @@ via `./zig-out/bin/cljw file.clj`. Never use `-e` for these.
 When editing `compiler.zig`, PostToolUse hook will remind you.
 Run `/compiler-check` before commit to verify stack_depth/scope/backend sync.
 
+### Test Evaluation Policy
+
+Always run tests on **both backends** to catch backend-specific bugs:
+
+```bash
+./zig-out/bin/cljw test.clj              # VM (default)
+./zig-out/bin/cljw --tree-walk test.clj  # TreeWalk
+```
+
+Testing only one backend may hide bugs in the other. When porting tests or
+verifying fixes, confirm behavior matches on both VM and TreeWalk.
+
 ## Status Tracking
 
 | File         | Content                   | Update When                     |

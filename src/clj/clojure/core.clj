@@ -96,6 +96,12 @@
 (defmacro defn- [name & fdecl]
   `(def ~name (fn ~name ~@fdecl)))
 
+;; Namespace declaration (minimal)
+;; UPSTREAM-DIFF: Only supports (ns name), no :require/:use/:import
+
+(defmacro ns [name & _references]
+  `(in-ns '~name))
+
 ;; Threading macros
 
 (defmacro -> [x & forms]

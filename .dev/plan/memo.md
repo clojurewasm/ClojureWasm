@@ -84,6 +84,29 @@ When porting tests from `test/clojure/test_clojure/`, follow these rules.
 - `.dev/status/compat_test.yaml` — test tracking
 - `.dev/checklist.md` — F## deferred items
 
+#### Root Cause Resolution Policy
+
+**Goal**: Run upstream tests and .clj implementations **unmodified**.
+
+**When tests fail or bugs appear:**
+
+1. Investigate the root cause fully
+2. Fix the implementation (.zig or .clj) or implement missing features
+3. If fixing reveals additional bugs, fix those too
+4. Never work around implementation gaps by modifying tests
+
+**Upstream .clj files:**
+
+- Use upstream source verbatim whenever possible
+- If modification is unavoidable, add `UPSTREAM-DIFF:` comment explaining why
+- Check "Zig Implementation First" policy before deciding something is impossible
+
+**Test modifications:**
+
+- Only allowed for truly JVM-specific code with no portable equivalent
+- Add SKIP comment with F## reference and clear reason
+- Exhaust all implementation options before skipping
+
 ---
 
 ## Technical Notes

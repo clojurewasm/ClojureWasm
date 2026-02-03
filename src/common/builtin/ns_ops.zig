@@ -113,6 +113,36 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// in-ns
+// ============================================================
+
+/// (in-ns name)
+/// Switches to the namespace named by symbol (creating it if needed).
+/// Also refers all clojure.core vars into the new namespace.
+pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len != 1) return error.InvalidNumberOfArguments;
+    const name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return error.TypeError,
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const ns = try env.findOrCreateNamespace(name);
+
+    // Refer clojure.core bindings into the new namespace
+    if (env.findNamespace("clojure.core")) |core_ns| {
+        var iter = core_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+
+    // Switch current namespace
+    env.current_ns = ns;
+    return .{ .symbol = .{ .ns = null, .name = ns.name } };
+}
+
+// ============================================================
 // Helpers
 // ============================================================
 
@@ -262,6 +292,13 @@ pub const builtins = [_]BuiltinDef{
         .func = createNsFn,
         .doc = "Create a new namespace named by the symbol if one doesn't already exist, returns it or the already-existing namespace of the same name.",
         .arglists = "([sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "in-ns",
+        .func = inNsFn,
+        .doc = "Sets *ns* to the namespace named by the symbol, creating it if needed.",
+        .arglists = "([name])",
         .added = "1.0",
     },
     .{

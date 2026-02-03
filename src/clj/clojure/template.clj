@@ -5,8 +5,6 @@
 
 (ns clojure.template)
 
-;; Note: clojure.walk functions are referred by bootstrap before loading this file
-
 (defn apply-template
   "For use in macros. argv is an argument list, as in defn. expr is
   a quoted expression using the symbols in argv. values is a sequence

@@ -15,7 +15,7 @@
   (cond
     (list? form) (outer (apply list (map inner form)))
     (vector? form) (outer (vec (map inner form)))
-    (map? form) (outer (into {} (map (fn [[k v]] [(inner k) (inner v)]) form)))
+    (map? form) (outer (into {} (map inner form)))
     (set? form) (outer (set (map inner form)))
     (seq? form) (outer (doall (map inner form)))
     :else (outer form)))
