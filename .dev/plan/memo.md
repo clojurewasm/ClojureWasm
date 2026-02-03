@@ -2,13 +2,72 @@
 
 ## Current State
 
-- Phase: 15.0 (vars.yaml監査) — complete
+- Phase: 15 (Test-driven core library expansion)
 - Roadmap: .dev/plan/roadmap.md
 - Current task: (none)
 - Task file: N/A
 - Last completed: T15.0 — vars.yaml Audit
 - Blockers: none
-- Next: Phase 15 planning (high-priority test files)
+- Next: Port high-priority test files (Batch 1: macros.clj, special.clj, etc.)
+
+## Long-term Reference (DO NOT DELETE until core library stabilizes)
+
+### Test Porting Policy — JVM Dependency Handling
+
+When porting tests from `test/clojure/test_clojure/`, follow these rules.
+**Do NOT simply skip Java-dependent tests** — extract the intent and write equivalent tests.
+
+#### JVM Dependency Categories
+
+| Category         | Examples                       | Action                                |
+| ---------------- | ------------------------------ | ------------------------------------- |
+| Direct InterOp   | `.method`, `Class/static`      | Write equivalent test without Java    |
+| Java Types       | `BigDecimal`, `Ratio`, `^long` | Test with ClojureWasm types only      |
+| Exceptions       | `IllegalArgumentException`     | Test with ex-info/ex-data instead     |
+| Threading        | `future`, `agent`, `pmap`      | Skip + record as F##                  |
+| Java Collections | `into-array`, `aget`           | Skip (no equivalent)                  |
+| Class Loader     | `compile`, `import`            | Partial test (basic require/use only) |
+| Reflection       | `supers`, `bases`              | Skip (JVM-specific)                   |
+| Implicit JVM     | overflow, interning            | Write explicit behavior tests         |
+
+#### Porting Rules
+
+1. **Read the test intent** — what behavior is being verified?
+2. **Write equivalent test** — same intent, no Java dependency
+   ```clojure
+   ;; Original (JVM)
+   (is (= 5 (.length "hello")))
+   ;; Equivalent (ClojureWasm)
+   (is (= 5 (count "hello")))
+   ```
+3. **Record skips with F## and reason**
+   ```clojure
+   ;; SKIP: F## - requires Java threading (agent)
+   ;; Original: (is (= @(agent 0) 0))
+   ```
+4. **Document partial ports**
+   ```clojure
+   ;; PARTIAL: 12/20 assertions ported
+   ;; SKIP: 8 assertions (BigDecimal, Thread)
+   ```
+
+#### Implicit JVM Assumptions (easy to miss)
+
+| Pattern                | JVM Behavior       | ClojureWasm           |
+| ---------------------- | ------------------ | --------------------- |
+| `(instance? String x)` | Java class check   | Use `(string? x)`     |
+| `(class [])`           | Returns Java class | Returns type keyword  |
+| `(type 1)`             | `java.lang.Long`   | `:integer`            |
+| `(hash x)`             | JVM hashCode       | Own impl (may differ) |
+| `(identical? x y)`     | JVM reference eq   | Own impl              |
+
+#### Reference Files
+
+- `.dev/notes/test_file_priority.md` — prioritized file list
+- `.dev/status/compat_test.yaml` — test tracking
+- `.dev/checklist.md` — F## deferred items
+
+---
 
 ## Technical Notes
 
