@@ -4,9 +4,9 @@
 
 - Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.3 — test-ns-hook / fixtures (optional)
+- Current task: T14.5 — control.clj 等価テスト作成
 - Task file: (none — create on start)
-- Last completed: T14.2 — clojure.test/are, run-tests 移植
+- Last completed: T14.4 — for.clj 等価テスト作成
 - Blockers: none
 - Next: T13.7
 
@@ -28,10 +28,14 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
 
-### Next: T14.3 — test-ns-hook / fixtures (optional)
+### Next: T14.5 — control.clj 等価テスト作成
 
-- Can skip if not needed for Phase 14b (等価テスト作成)
-- Consider proceeding to T14.4 (for.clj) instead
+- if, when, cond, case, do, let tests
+
+### for macro issues (F25, F26)
+
+- F25: :while modifier not implemented — skips silently
+- F26: :let + :when combination fails — needs investigation
 
 ### Known Issues
 

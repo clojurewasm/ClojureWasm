@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 12 — T12.9 done)
+Last updated: 2026-02-03 (Phase 14 — T14.4 for.clj tests)
 
 ## Invariants (always enforce)
 
@@ -33,6 +33,8 @@ Last updated: 2026-02-03 (Phase 12 — T12.9 done)
 | ~~F22~~ | ~~compat_test.yaml introduction~~                | ~~Resolved: T12.9 — .dev/status/compat_test.yaml (70/74 SCI tests pass)~~              | SS10   |
 | ~~F23~~ | ~~comptime Value variant verification~~          | ~~Resolved: T12.4 — Zig exhaustive switch IS the comptime verification (D46)~~         | SS3    |
 | F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (currently done/todo/skip sufficient)                       | SS10   |
+| F25     | for macro :while modifier                        | for.clj tests (currently excluded)                                                     | T14.4  |
+| F26     | for macro :let + :when combination               | for.clj tests (currently excluded) — :let followed by :when fails                      | T14.4  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

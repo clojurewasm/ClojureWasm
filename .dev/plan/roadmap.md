@@ -506,10 +506,10 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 14b: 等価テスト作成 (Java依存度: 低)
 
-| #    | Task                       | Archive | Notes                                       |
-| ---- | -------------------------- | ------- | ------------------------------------------- |
-| 14.4 | for.clj 等価テスト作成     | --      | Java依存ほぼ0、for/:when/:while/:let テスト |
-| 14.5 | control.clj 等価テスト作成 | --      | if, when, cond, case, do, let 等            |
+| #    | Task                       | Archive                      | Notes                                          |
+| ---- | -------------------------- | ---------------------------- | ---------------------------------------------- |
+| 14.4 | for.clj 等価テスト作成     | task_0118_for_equiv_tests.md | 4 tests, 12 assertions (:while/combo excluded) |
+| 14.5 | control.clj 等価テスト作成 | --                           | if, when, cond, case, do, let 等               |
 
 ### Phase 14c: 等価テスト作成 (Java依存度: 中)
 
