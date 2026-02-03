@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 12 — T12.4 done, T12.5 next)
+Last updated: 2026-02-03 (Phase 12 — T12.9 done)
 
 ## Invariants (always enforce)
 
@@ -30,9 +30,9 @@ Last updated: 2026-02-03 (Phase 12 — T12.4 done, T12.5 next)
 | ~~F19~~ | ~~Reader input validation (depth/size limits)~~  | ~~Resolved: T11.1b — Reader.Limits (depth/string/collection) + nREPL/CLI size checks~~ | SS14   |
 | F20     | Safe point GC design                             | Real GC (F2) implementation start                                                      | SS5    |
 | F21     | 3-layer separation (Memory/Exec/Opt)             | Introduction of fused reduce or optimization pass                                      | SS5    |
-| F22     | compat_test.yaml introduction                    | SCI/upstream test mass porting (Phase 12b)                                             | SS10   |
+| ~~F22~~ | ~~compat_test.yaml introduction~~                | ~~Resolved: T12.9 — .dev/status/compat_test.yaml (70/74 SCI tests pass)~~              | SS10   |
 | ~~F23~~ | ~~comptime Value variant verification~~          | ~~Resolved: T12.4 — Zig exhaustive switch IS the comptime verification (D46)~~         | SS3    |
-| F24     | vars.yaml status refinement (stub/defer/partial) | Phase 12b SCI triage (need stub vs skip distinction)                                   | SS10   |
+| F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (currently done/todo/skip sufficient)                       | SS10   |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

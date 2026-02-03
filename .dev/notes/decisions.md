@@ -1412,3 +1412,31 @@ a list of symbols.
 returns false (symbol comparison, not reference equality). Acceptable for current
 usage patterns. Can upgrade to a real Value variant later if protocols/records
 need namespace objects.
+
+## D48: SCI Test Port Methodology + compat_test.yaml (T12.9)
+
+**Context**: Porting SCI core_test.cljc to ClojureWasm for compatibility validation.
+
+**Decision**: Port SCI tests with inline test framework (no separate test.clj),
+TreeWalk-only execution, and YAML-based test tracking.
+
+**Key methodology**:
+
+1. Inline test framework in test file (deftest/is/testing macros + run-tests)
+2. Porting rules: `eval*` -> direct expr, `tu/native?` -> true branch, skip JVM-only
+3. Helper functions defined outside `deftest` bodies (workaround for var resolution)
+4. Binary search to find crash-causing tests in large file
+5. Skip/workaround pattern for missing features rather than blocking on them
+
+**Results**: 70/74 tests pass (248 assertions), 4 tests skipped.
+
+**Missing features categorized**:
+
+- Tier 1 (Zig builtin): list?, int?, reduce/2, set-as-function, deref delay,
+  into map from pairs
+- Tier 2 (core.clj): clojure.string namespace, {:keys [:a]} destructuring
+- Behavioral: named fn self-ref identity, fn param shadowing, var :name meta
+
+**F22 resolved**: `.dev/status/compat_test.yaml` introduced for test tracking.
+**F24 deferred**: vars.yaml status refinement (stub/defer) not needed yet —
+current `done/todo/skip` is sufficient. Will add when stub functions appear.
