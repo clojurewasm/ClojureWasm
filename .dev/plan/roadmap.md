@@ -413,16 +413,16 @@ high-priority gaps in the core library.
 
 ### Phase 12a: Tier 1 Zig Builtins
 
-| #    | Task                                                  | Archive                      | Notes                                                                                                         |
-| ---- | ----------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 12.1 | Collection gaps: dissoc, disj, find, peek, pop, empty | task_0098_collection_gaps.md | Map/set removal, stack ops, empty collection constructor                                                      |
-| 12.2 | subvec, array-map, hash-set, sorted-map               | --                           | Vector slice + collection constructors                                                                        |
-| 12.3 | Hash & identity: hash, identical?, ==                 | --                           | hash-combine deferred; == is numeric cross-type equality                                                      |
-| 12.4 | Reduced: reduced, reduced?, unreduced, ensure-reduced | --                           | Early-termination for reduce; Reduced Value variant. **F23 trigger**: implement comptime variant verification |
-| 12.5 | eval, macroexpand, macroexpand-1, read-string         | --                           | Runtime eval pipeline; load-string deferred                                                                   |
-| 12.6 | Namespace ops I: all-ns, find-ns, ns-name, create-ns  | --                           | Namespace introspection basics                                                                                |
-| 12.7 | Namespace ops II: ns-map, ns-publics, ns-interns      | --                           | Namespace Var mapping                                                                                         |
-| 12.8 | gensym, compare-and-set!, format                      | --                           | Misc Tier 1 utilities                                                                                         |
+| #    | Task                                                  | Archive                                        | Notes                                                                                                         |
+| ---- | ----------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 12.1 | Collection gaps: dissoc, disj, find, peek, pop, empty | task_0098_collection_gaps.md                   | Map/set removal, stack ops, empty collection constructor                                                      |
+| 12.2 | subvec, array-map, hash-set, sorted-map               | task_0099_subvec_arraymap_hashset_sortedmap.md | Vector slice + collection constructors (D45: sorted-map not tree-based)                                       |
+| 12.3 | Hash & identity: hash, identical?, ==                 | --                                             | hash-combine deferred; == is numeric cross-type equality                                                      |
+| 12.4 | Reduced: reduced, reduced?, unreduced, ensure-reduced | --                                             | Early-termination for reduce; Reduced Value variant. **F23 trigger**: implement comptime variant verification |
+| 12.5 | eval, macroexpand, macroexpand-1, read-string         | --                                             | Runtime eval pipeline; load-string deferred                                                                   |
+| 12.6 | Namespace ops I: all-ns, find-ns, ns-name, create-ns  | --                                             | Namespace introspection basics                                                                                |
+| 12.7 | Namespace ops II: ns-map, ns-publics, ns-interns      | --                                             | Namespace Var mapping                                                                                         |
+| 12.8 | gensym, compare-and-set!, format                      | --                                             | Misc Tier 1 utilities                                                                                         |
 
 ### Phase 12b: SCI Test Port
 

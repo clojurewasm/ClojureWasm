@@ -4,8 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.2 — subvec, array-map, hash-set, sorted-map
+- Current task: T12.3 — Hash & identity: hash, identical?, ==
 - Task file: (none)
+- Last completed: T12.2 — subvec, array-map, hash-set, sorted-map
 - Blockers: none
 
 ## Technical Notes
@@ -13,19 +14,24 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.1 completed — collection gaps
+### T12.2 completed — collection constructors
 
-Added 6 builtins: dissoc, disj, find, peek, pop, empty
-Registry: 126 builtins, 237/702 vars implemented
+Added 4 builtins: subvec, array-map, hash-set, sorted-map
 
-### T12.2 scope
+- subvec: copy-based vector slice (not view-based)
+- array-map: identical to hash-map (PersistentArrayMap already preserves order)
+- hash-set: deduplicating set constructor
+- sorted-map: entries sorted by key at construction (D45: not tree-based)
 
-4 collection constructors/utilities:
+Registry: 130 builtins, 245/702 vars implemented (was 126/237 before Phase 12)
 
-- `subvec` — vector slice: (subvec v start) or (subvec v start end)
-- `array-map` — create map from key-value pairs (like hash-map but preserves order)
-- `hash-set` — create set from values
-- `sorted-map` — create sorted map (need to decide on implementation approach)
+### T12.3 scope
+
+3 builtins: hash, identical?, ==
+
+- `hash` — return hash code for any Value
+- `identical?` — pointer/value identity check (not structural equality)
+- `==` — numeric cross-type equality (different from `=` which is structural)
 
 ### Deferred items to watch
 
@@ -38,5 +44,5 @@ Registry: 126 builtins, 237/702 vars implemented
 
 ### Builtin Count
 
-126 builtins registered
-237/702 vars implemented
+130 builtins registered
+245/702 vars implemented

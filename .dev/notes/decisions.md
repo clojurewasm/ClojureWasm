@@ -1348,3 +1348,21 @@ Only ICollection types return an empty collection.
 **Decision**: `emptyFn` returns `.nil` for all non-collection types (string,
 integer, etc.) rather than TypeError. This matches Clojure semantics where
 `empty` is defined on `IPersistentCollection` and returns nil for others.
+
+---
+
+## D45: sorted-map — Sorted PersistentArrayMap, Not Tree (T12.2)
+
+**Context**: Clojure's `sorted-map` returns a `PersistentTreeMap` (red-black tree)
+that maintains key ordering for all operations (assoc, dissoc, seq).
+
+**Decision**: Implement `sorted-map` as a `PersistentArrayMap` with entries
+sorted by key at construction time using insertion sort + `compareValues`.
+Not a tree-based structure — subsequent `assoc` will append (not maintain
+sort order). This matches Beta's approach and is sufficient for current needs.
+
+**Trade-off**: `(assoc (sorted-map :b 2 :a 1) :aa 0)` won't maintain sort
+order. A full `PersistentTreeMap` is deferred until SCI tests or user code
+require sorted-map invariants across mutations.
+
+**Ref**: Beta `src/lib/core/eval.zig:sortedMapFn` — same approach.

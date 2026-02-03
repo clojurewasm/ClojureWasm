@@ -122,7 +122,7 @@ vars:
     "any?": {type: function, status: done, note: "core.clj always true"}
     apply: {type: function, status: done}
     areduce: {type: macro, status: todo}
-    "array-map": {type: function, status: todo}
+    "array-map": {type: function, status: done}
     "as->": {type: macro, status: done}
     aset: {type: function, status: todo}
     "aset-boolean": {type: function, status: todo}
@@ -332,7 +332,7 @@ vars:
     "hash-combine": {type: function, status: todo}
     "hash-map": {type: function, status: done}
     "hash-ordered-coll": {type: function, status: todo}
-    "hash-set": {type: function, status: todo}
+    "hash-set": {type: function, status: done}
     "hash-unordered-coll": {type: function, status: todo}
     "ident?": {type: function, status: todo}
     "identical?": {type: function, status: todo}
@@ -599,7 +599,7 @@ vars:
     "some?": {type: function, status: done, note: "core.clj (not (nil? x))"}
     sort: {type: function, status: done}
     "sort-by": {type: function, status: done}
-    "sorted-map": {type: function, status: todo}
+    "sorted-map": {type: function, status: done}
     "sorted-map-by": {type: function, status: todo}
     "sorted-set": {type: function, status: todo}
     "sorted-set-by": {type: function, status: todo}
@@ -619,7 +619,7 @@ vars:
     "struct-map": {type: function, status: todo}
     subs: {type: function, status: done}
     subseq: {type: function, status: todo}
-    subvec: {type: function, status: todo}
+    subvec: {type: function, status: done}
     supers: {type: function, status: todo}
     "swap!": {type: function, status: done, note: "builtin-fn only (D8)"}
     "swap-vals!": {type: function, status: todo}

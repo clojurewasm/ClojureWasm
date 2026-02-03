@@ -927,6 +927,93 @@ pub fn popFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
+/// (subvec v start) or (subvec v start end) — returns a subvector of v from start (inclusive) to end (exclusive).
+pub fn subvecFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args[0] != .vector) return error.TypeError;
+    if (args[1] != .integer) return error.TypeError;
+    const v = args[0].vector;
+    const start: usize = if (args[1].integer < 0) return error.IndexOutOfBounds else @intCast(args[1].integer);
+    const end: usize = if (args.len == 3) blk: {
+        if (args[2] != .integer) return error.TypeError;
+        break :blk if (args[2].integer < 0) return error.IndexOutOfBounds else @intCast(args[2].integer);
+    } else v.items.len;
+
+    if (start > end or end > v.items.len) return error.IndexOutOfBounds;
+    const result = try allocator.create(PersistentVector);
+    result.* = .{ .items = try allocator.dupe(Value, v.items[start..end]) };
+    return Value{ .vector = result };
+}
+
+/// (array-map & kvs) — creates an array map from key-value pairs.
+/// Like hash-map but guarantees insertion order (which our PersistentArrayMap already preserves).
+pub fn arrayMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len % 2 != 0) return error.ArityError;
+    const entries = try allocator.alloc(Value, args.len);
+    @memcpy(entries, args);
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries };
+    return Value{ .map = map };
+}
+
+/// (hash-set & vals) — creates a set from the given values, deduplicating.
+pub fn hashSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    // Deduplicate: build list of unique items
+    var items = std.ArrayList(Value).empty;
+    for (args) |arg| {
+        var found = false;
+        for (items.items) |existing| {
+            if (existing.eql(arg)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            try items.append(allocator, arg);
+        }
+    }
+    const set = try allocator.create(PersistentHashSet);
+    set.* = .{ .items = try allocator.dupe(Value, items.items) };
+    items.deinit(allocator);
+    return Value{ .set = set };
+}
+
+/// (sorted-map & kvs) — creates a map with entries sorted by key.
+/// Uses natural ordering (compareValues).
+pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len % 2 != 0) return error.ArityError;
+    if (args.len == 0) {
+        const map = try allocator.create(PersistentArrayMap);
+        map.* = .{ .entries = &.{} };
+        return Value{ .map = map };
+    }
+    // Copy entries then sort key-value pairs by key
+    const n_pairs = args.len / 2;
+    const entries = try allocator.alloc(Value, args.len);
+    @memcpy(entries, args);
+
+    // Sort pairs using insertion sort (stable, simple for small maps)
+    var i: usize = 1;
+    while (i < n_pairs) : (i += 1) {
+        const key_i = entries[i * 2];
+        const val_i = entries[i * 2 + 1];
+        var j: usize = i;
+        while (j > 0) {
+            const ord = compareValues(entries[(j - 1) * 2], key_i) catch .eq;
+            if (ord != .gt) break;
+            entries[j * 2] = entries[(j - 1) * 2];
+            entries[j * 2 + 1] = entries[(j - 1) * 2 + 1];
+            j -= 1;
+        }
+        entries[j * 2] = key_i;
+        entries[j * 2 + 1] = val_i;
+    }
+
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries };
+    return Value{ .map = map };
+}
+
 /// (empty coll) — empty collection of same type, or nil.
 pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -1178,6 +1265,34 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([coll])",
         .added = "1.0",
     },
+    .{
+        .name = "subvec",
+        .func = &subvecFn,
+        .doc = "Returns a persistent vector of the items in vector from start (inclusive) to end (exclusive). If end is not supplied, defaults to (count vector).",
+        .arglists = "([v start] [v start end])",
+        .added = "1.0",
+    },
+    .{
+        .name = "array-map",
+        .func = &arrayMapFn,
+        .doc = "Constructs an array-map. If any keys are equal, they are handled as if by repeated uses of assoc.",
+        .arglists = "([& keyvals])",
+        .added = "1.0",
+    },
+    .{
+        .name = "hash-set",
+        .func = &hashSetFn,
+        .doc = "Returns a new hash set with supplied keys. Any equal keys are handled as if by repeated uses of conj.",
+        .arglists = "([& keys])",
+        .added = "1.0",
+    },
+    .{
+        .name = "sorted-map",
+        .func = &sortedMapFn,
+        .doc = "keyval => key val. Returns a new sorted map with supplied mappings.",
+        .arglists = "([& keyvals])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -1394,8 +1509,8 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 31 entries" {
-    try testing.expectEqual(31, builtins.len);
+test "builtins table has 35 entries" {
+    try testing.expectEqual(35, builtins.len);
 }
 
 test "reverse list" {
@@ -1947,4 +2062,152 @@ test "empty on nil returns nil" {
 test "empty on string returns nil" {
     const result = try emptyFn(test_alloc, &.{Value{ .string = "abc" }});
     try testing.expectEqual(Value.nil, result);
+}
+
+// --- subvec tests ---
+
+test "subvec with start and end" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 }, .{ .integer = 4 }, .{ .integer = 5 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+
+    const result = try subvecFn(alloc, &.{ Value{ .vector = vec }, Value{ .integer = 1 }, Value{ .integer = 4 } });
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.count());
+    try testing.expect(result.vector.nth(0).?.eql(.{ .integer = 2 }));
+    try testing.expect(result.vector.nth(1).?.eql(.{ .integer = 3 }));
+    try testing.expect(result.vector.nth(2).?.eql(.{ .integer = 4 }));
+}
+
+test "subvec with start only (end defaults to length)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+
+    const result = try subvecFn(alloc, &.{ Value{ .vector = vec }, Value{ .integer = 1 } });
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 2), result.vector.count());
+    try testing.expect(result.vector.nth(0).?.eql(.{ .integer = 20 }));
+}
+
+test "subvec out of bounds" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+
+    try testing.expectError(error.IndexOutOfBounds, subvecFn(alloc, &.{ Value{ .vector = vec }, Value{ .integer = 0 }, Value{ .integer = 5 } }));
+}
+
+test "subvec on non-vector is error" {
+    try testing.expectError(error.TypeError, subvecFn(test_alloc, &.{ Value{ .integer = 42 }, Value{ .integer = 0 } }));
+}
+
+// --- array-map tests ---
+
+test "array-map creates map from key-value pairs" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try arrayMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+    });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 2), result.map.count());
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 1 }));
+    try testing.expect(result.map.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 2 }));
+}
+
+test "array-map with no args returns empty map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try arrayMapFn(arena.allocator(), &.{});
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 0), result.map.count());
+}
+
+test "array-map with odd args is error" {
+    try testing.expectError(error.ArityError, arrayMapFn(test_alloc, &.{Value{ .keyword = .{ .name = "a", .ns = null } }}));
+}
+
+// --- hash-set tests ---
+
+test "hash-set creates set from values" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try hashSetFn(alloc, &.{ Value{ .integer = 1 }, Value{ .integer = 2 }, Value{ .integer = 3 } });
+    try testing.expect(result == .set);
+    try testing.expectEqual(@as(usize, 3), result.set.count());
+    try testing.expect(result.set.contains(.{ .integer = 1 }));
+    try testing.expect(result.set.contains(.{ .integer = 2 }));
+    try testing.expect(result.set.contains(.{ .integer = 3 }));
+}
+
+test "hash-set deduplicates" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try hashSetFn(alloc, &.{ Value{ .integer = 1 }, Value{ .integer = 1 }, Value{ .integer = 2 } });
+    try testing.expect(result == .set);
+    try testing.expectEqual(@as(usize, 2), result.set.count());
+}
+
+test "hash-set with no args returns empty set" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try hashSetFn(arena.allocator(), &.{});
+    try testing.expect(result == .set);
+    try testing.expectEqual(@as(usize, 0), result.set.count());
+}
+
+// --- sorted-map tests ---
+
+test "sorted-map creates map with sorted keys" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try sortedMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "c", .ns = null } }, Value{ .integer = 3 },
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+    });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 3), result.map.count());
+    // Keys should be sorted: :a, :b, :c
+    // Entries are [k1,v1,k2,v2,...] so sorted order means entries[0]=:a, entries[2]=:b, entries[4]=:c
+    try testing.expect(result.map.entries[0].eql(.{ .keyword = .{ .name = "a", .ns = null } }));
+    try testing.expect(result.map.entries[2].eql(.{ .keyword = .{ .name = "b", .ns = null } }));
+    try testing.expect(result.map.entries[4].eql(.{ .keyword = .{ .name = "c", .ns = null } }));
+}
+
+test "sorted-map with no args returns empty map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try sortedMapFn(arena.allocator(), &.{});
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 0), result.map.count());
+}
+
+test "sorted-map with odd args is error" {
+    try testing.expectError(error.ArityError, sortedMapFn(test_alloc, &.{Value{ .integer = 1 }}));
 }
