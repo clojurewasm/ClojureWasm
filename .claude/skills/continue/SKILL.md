@@ -1,10 +1,8 @@
 ---
 name: continue
 description: >
-  Resume autonomous development. Reads memo.md, finds the current task,
-  and executes tasks in a loop until all are done or context runs out.
-  Use when user says "continue", "keep going", "next tasks", or wants
-  unattended autonomous execution.
+  Resume autonomous development loop.
+  Use when you want unattended continuous execution.
 disable-model-invocation: true
 allowed-tools:
   - Read
@@ -15,130 +13,16 @@ allowed-tools:
   - Edit
 ---
 
-# Session Continue (Autonomous Loop)
+# Autonomous Development Loop
 
-**When this skill is invoked, keep progressing automatically.**
+Execute the **Autonomous Workflow** in `CLAUDE.md`.
 
-## 1. Orient (every iteration)
+Keep executing tasks until:
 
-```bash
-git log --oneline -3
-git status --short
-```
+- User requests stop
+- Phase queue empty AND next phase undefined
 
-Check implementation coverage (context for planning):
-
-```bash
-# clojure.core done count / total
-yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
-yq '.vars.clojure_core | to_entries | length' .dev/status/vars.yaml
-```
-
-Read with Read tool:
-
-- `CLAUDE.md` — project instructions
-- `.dev/plan/memo.md` — current task + task file path + technical notes
-
-## 2. Prepare
-
-- **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
-- **Task file MISSING** (Task file field is empty):
-  1. Get next task from `memo.md` "Phase X Task Queue" table
-  2. Read `.dev/plan/roadmap.md` Phase Notes for relevant context
-  3. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
-     check `.dev/future.md` for relevant SS section constraints
-  4. Read Beta reference code as needed
-  5. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  6. Do NOT commit yet — plan goes into the single task commit
-
-## 3. Execute
-
-### Development Workflow
-
-1. **TDD cycle**: Red -> Green -> Refactor (per CLAUDE.md)
-2. **Run tests**: `zig build test`
-3. Append progress to task file `## Log`
-4. Do NOT commit intermediate steps
-
-### Planning Tasks (no code)
-
-1. Read references, analyze, produce required document
-2. Write output to specified path
-3. Append progress to task file `## Log`
-
-### Continuation
-
-- After completing a task, proceed to the next pending task
-- If design decisions are needed, record in `.dev/notes/` and pick the most reasonable option
-- Build/test failures: investigate and fix before proceeding
-- **IMPORTANT**: do not stop — keep going to the next task
-
-## 4. Complete (per task)
-
-**CRITICAL: Always commit before moving to the next task.**
-
-### 4a. Finalize bookkeeping
-
-1. Move task file from `active/` to `archive/`
-2. Advance `memo.md`: update Current task, Task file, Last completed, Next task.
-   Update Technical Notes with context useful for the next task (root cause, key files, findings).
-
-### 4a.5. Commit Gate Checklist
-
-**MANDATORY** — run the Commit Gate Checklist defined in `CLAUDE.md` §Session Workflow.
-
-1. **decisions.md**: D## entry for design decisions
-2. **checklist.md**: F## updates (resolved/new)
-3. **vars.yaml**: Update status for any vars touched:
-   ```bash
-   # Check current status of a var
-   yq '.vars.clojure_core["var-name"]' .dev/status/vars.yaml
-   # Update status to done (use yq or direct edit)
-   yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
-   # Add note if implementation differs from upstream
-   yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .dev/status/vars.yaml
-   ```
-4. **memo.md**: Advance task, update Technical Notes
-
-### 4b. Pre-Commit Verification
-
-If `src/common/bytecode/compiler.zig` was modified during this task,
-run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
-
-### 4c. Git commit (gate)
-
-4. `git add` all changed files (plan + implementation + status)
-5. `git commit` — **single commit covering everything for this task**
-6. Verify commit succeeded before proceeding
-
-> Do NOT start the next task until the commit is done.
-> If design decisions were made, verify they are recorded in `.dev/notes/decisions.md`.
-
-## 5. Phase Completion
-
-When all tasks in the current phase queue are done:
-
-1. Check if the **next phase already exists** in `roadmap.md`
-   - **Yes**: Plan tasks and update `memo.md` Task Queue
-   - **No**: Plan the next phase (see below)
-
-### Planning a new phase
-
-1. Read `roadmap.md` (completed phases, Phase Notes for upcoming phase)
-2. Read `.dev/future.md` — scan SS sections relevant to the new phase:
-   - Architecture (SS8), Beta lessons (SS9), compatibility (SS10)
-   - Security (SS14) for eval/IO/load tasks, GC/optimization (SS5) for perf tasks
-3. Read `checklist.md` (bugs, deferred items — prioritize these)
-4. Evaluate: **bugs > blockers > deferred items > feature expansion**
-5. Update `memo.md`:
-   - Phase → new phase number and name
-   - Add "Phase X Task Queue" table with numbered tasks
-   - Current task → (none)
-   - Next → first task of new phase
-   - Technical Notes → context for the first task
-6. Commit: `git commit -m "Plan Phase X: [phase name]"`
-7. Then start the first task normally
-
-## 6. User Instructions
+Do NOT stop between tasks. Do NOT ask for confirmation.
+When in doubt, pick the most reasonable option and proceed.
 
 $ARGUMENTS

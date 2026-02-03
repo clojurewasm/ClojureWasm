@@ -25,39 +25,75 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 - **D6 exceptions**: TreeWalk-only features need both a D## entry AND an F## in `.dev/checklist.md`.
 - **Update `.dev/checklist.md`** when deferred items are resolved or added.
 
-## Session Workflow
+## Autonomous Workflow
 
-Autonomous task execution uses `/next` (single task) or `/continue` (loop).
-**On invocation, read the full skill file** for the detailed workflow:
+**Default mode: Continuous autonomous execution.**
+Use `/next` for single task, `/continue` for explicit loop start.
+After session resume, continue automatically from where you left off.
 
-- `/next`: @.claude/skills/next/SKILL.md
-- `/continue`: @.claude/skills/continue/SKILL.md
+### Loop: Orient → Execute → Commit → Repeat
 
-### Commit Gate Checklist (mandatory for every task commit)
+**1. Orient** (every iteration)
 
-This checklist applies to **all** commits — autonomous (`/next`, `/continue`) and manual:
+```bash
+git log --oneline -3 && git status --short
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+```
 
-1. **decisions.md**: Any design decisions made? (New Value variant, error type,
-   architectural choice, API design) → append D## entry to `.dev/notes/decisions.md`
-2. **checklist.md**: Any deferred items resolved or created?
-   → Strike through resolved F##, add new F## with trigger condition
-   → Update "Last updated" line to current phase/task
-3. **vars.yaml**: Any new vars implemented? → mark `done`
-4. **memo.md**: Advance current task, update Technical Notes with context for next session
+Read: `.dev/plan/memo.md` (current task, next task, technical notes)
 
-### Manual Work
+**2. Prepare**
 
-1. Read `.dev/plan/memo.md` first — the single source of "what to do next"
-2. TDD cycle during development; append progress to task file `## Log`
-3. On completion: move task file to archive, advance memo.md, **run Commit Gate above**, single git commit
+- **Task file exists** in `.dev/plan/active/`: resume from `## Log`
+- **Task file missing**: create from `memo.md` Task Queue
+  1. Read `roadmap.md` Phase Notes for context
+  2. Check `.dev/future.md` if task touches new subsystem (IO, GC, etc.)
+  3. Write task file: `## Plan` + empty `## Log`
 
-### Phase Planning
+**3. Execute**
 
-When creating a new phase, read **all three**:
+- TDD cycle: Red → Green → Refactor
+- Run tests: `zig build test`
+- Append progress to task file `## Log`
+- If `compiler.zig` modified: run `/compiler-check`
 
-1. `.dev/plan/roadmap.md` — completed phases, future considerations
-2. `.dev/future.md` — SS sections relevant to new phase (architecture, security, compatibility)
-3. `.dev/checklist.md` — deferred items that may now be triggered
+**4. Complete** (per task)
+
+1. Move task file: `active/` → `archive/`
+2. Run **Commit Gate Checklist** (below)
+3. Single git commit
+4. **Loop back to Orient** — do NOT stop
+
+### When to Stop
+
+Stop **only** when:
+
+- User explicitly requests stop
+- Ambiguous requirements with multiple valid directions (rare)
+- Phase queue empty AND next phase undefined in `roadmap.md`
+
+When in doubt, **continue** — pick the most reasonable option and proceed.
+
+### Commit Gate Checklist
+
+Run before every commit:
+
+1. **decisions.md**: D## entry for design decisions
+2. **checklist.md**: Strike resolved F##, add new F##
+3. **vars.yaml**: Mark implemented vars `done`
+4. **memo.md**: Advance task, update Technical Notes
+
+### Phase Completion
+
+When Task Queue empty:
+
+1. If next phase exists in `roadmap.md`: create Task Queue in `memo.md`
+2. If not: plan new phase:
+   - Read `roadmap.md` Phase Notes, `.dev/future.md`, `checklist.md`
+   - Priority: bugs > blockers > deferred items > features
+   - Update `memo.md` with new Task Queue
+   - Commit: `Plan Phase X: [name]`
+3. Continue to first task
 
 ## Build & Test
 
