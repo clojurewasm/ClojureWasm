@@ -309,7 +309,7 @@ vars:
     fnil: {type: function, status: done, note: "core.clj nil-replacement wrapper"}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
     force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
-    format: {type: function, status: todo}
+    format: {type: function, status: done}
     frequencies: {type: function, status: done}
     future: {type: macro, status: todo}
     "future-call": {type: function, status: todo}
@@ -319,7 +319,7 @@ vars:
     "future?": {type: function, status: todo}
     "gen-class": {type: macro, status: todo}
     "gen-interface": {type: macro, status: todo}
-    gensym: {type: function, status: todo}
+    gensym: {type: function, status: done}
     get: {type: function, status: done}
     "get-in": {type: function, status: done}
     "get-method": {type: function, status: todo}
@@ -721,6 +721,8 @@ vars:
       status: done
       note: 'Zig builtin: replaces atom metadata'
       type: function
+    compare-and-set\!:
+      status: done
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

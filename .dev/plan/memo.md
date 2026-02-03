@@ -4,9 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.8 — gensym, compare-and-set!, format
+- Current task: T12.9 — SCI test port + triage
 - Task file: (none — create on start)
-- Last completed: T12.7 — Namespace ops II: ns-map, ns-publics, ns-interns
+- Last completed: T12.8 — gensym, compare-and-set!, format
 - Blockers: none
 
 ## Technical Notes
@@ -14,24 +14,33 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.7 completed — Namespace ops II
+### Phase 12a complete — Tier 1 Zig Builtins
 
-Added 3 builtins to `src/common/builtin/ns_ops.zig`:
+All 8 tasks in Phase 12a are done:
 
-- `ns-interns`: Returns map of interned Vars (Namespace.mappings)
-- `ns-publics`: Same as ns-interns (no private vars yet)
-- `ns-map`: Returns map of all mappings (interned + referred)
-- Helper: `resolveNs()` for symbol->Namespace resolution
-- Helper: `varMapToValue()` for VarMap->{symbol->var_ref} conversion
-- Registry: 149 builtins, 264/702 vars done
+- T12.1: dissoc, disj, find, peek, pop, empty
+- T12.2: subvec, array-map, hash-set, sorted-map
+- T12.3: hash, identical?, ==
+- T12.4: reduced, reduced?, unreduced, ensure-reduced
+- T12.5: eval, macroexpand, macroexpand-1, read-string
+- T12.6: all-ns, find-ns, ns-name, create-ns, the-ns
+- T12.7: ns-map, ns-publics, ns-interns
+- T12.8: gensym, compare-and-set!, format
 
-### T12.8 scope
+Registry: 152 builtins, 267/702 vars done
 
-Misc Tier 1 utilities: gensym, compare-and-set!, format
+### T12.9 scope — SCI Test Port
 
-- `gensym` — generate unique symbol (needs global counter)
-- `compare-and-set!` — CAS on atom (needs Atom access)
-- `format` — string formatting (Clojure's java.lang.String/format equivalent)
+Run SCI tests, categorize failures into:
+
+- Missing Tier 1 (Zig builtin needed)
+- Missing Tier 2 (core.clj needed)
+- JVM-specific (skip)
+
+**F22 trigger**: introduce compat_test.yaml for test tracking
+**F24 trigger**: refine vars.yaml status values (stub/defer/partial)
+
+Reference: roadmap.md Phase 12b, Future Considerations section
 
 ### Deferred items to watch
 
@@ -41,5 +50,5 @@ Misc Tier 1 utilities: gensym, compare-and-set!, format
 
 ### Builtin Count
 
-149 builtins registered
-264/702 vars done
+152 builtins registered
+267/702 vars done
