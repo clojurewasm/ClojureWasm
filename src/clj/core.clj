@@ -704,17 +704,17 @@
 (defn memoize [f]
   (let [mem (atom {})]
     (fn [& args]
-      (if (contains? (deref mem) args)
-        (get (deref mem) args)
+      (if-let [e (find (deref mem) args)]
+        (val e)
         (let [ret (apply f args)]
           (swap! mem assoc args ret)
           ret)))))
 
 (defn trampoline
   ([f]
-   (loop [ret (f)]
+   (let [ret (f)]
      (if (fn? ret)
-       (recur (ret))
+       (recur ret)
        ret)))
   ([f & args]
    (trampoline (fn [] (apply f args)))))

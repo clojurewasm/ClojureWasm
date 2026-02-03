@@ -4,9 +4,9 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.10 — Upstream alignment (UPSTREAM-DIFF cleanup)
-- Task file: (none — create on start)
-- Last completed: T13.9 — SCI test validation: 72/72, 267 assertions
+- Current task: Phase 14 planning
+- Task file: (none)
+- Last completed: T13.10 — Upstream alignment (memoize, trampoline)
 - Blockers: none
 - Next: T13.7
 
@@ -26,15 +26,15 @@ Overwrite freely — this is scratchpad, not permanent record.
 - T13.7: Skipped — all 4 functions already implemented
 - T13.8: {:keys [:a]} keyword destructuring — analyzer accepts keywords in :keys vector
 - T13.9: SCI validation — 72/72 tests, 267 assertions
-  - Total was 72 all along (not 74 — miscount)
-  - Added clojure.string tests to string-operations-test (+6 assertions)
-  - Enabled gensym starts-with? assertion (+1)
-  - Only remaining skip: var :name metadata in meta-test
+- T13.10: Upstream alignment — memoize (if-let/find/val), trampoline (let+recur)
+  - Both UPSTREAM-DIFF notes removed from vars.yaml
+- SCI: 72/72 tests, 267 assertions
 - Vars: 284/702 done
+- Phase 13 complete
 
-### T13.10 — Upstream alignment (UPSTREAM-DIFF cleanup)
+### Next: Phase 14 planning
 
-Replace simplified defs with upstream verbatim where possible.
+Read roadmap.md future considerations and checklist.md for deferred items.
 
 ### Deferred items to watch
 
