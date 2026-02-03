@@ -6,9 +6,9 @@
 - Roadmap: .dev/plan/roadmap.md
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.0 — vars.yaml Audit
+- Last completed: T15.1 — Port macros.clj (10 tests, 27 assertions)
 - Blockers: none
-- Next: T15.1 — Port macros.clj (threading macros: ->, ->>, etc.)
+- Next: T15.2 — Port special.clj (let, letfn, quote, var, fn)
 
 ### Phase 15 Task Queue
 

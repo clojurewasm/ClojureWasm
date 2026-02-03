@@ -130,13 +130,34 @@ sci_core_test:
 
 clojure_test_clojure:
   summary:
-    total: 106          # total deftests across all files
-    active: 106         # running deftests
-    pass: 106           # all assertions pass
+    total: 116          # total deftests across all files
+    active: 116         # running deftests
+    pass: 116           # all assertions pass
     fail: 0             # assertion failures
     skip: 0             # none
-    assertions: 731     # total is-assertions in active tests
-    files: 7            # test files ported
+    assertions: 758     # total is-assertions in active tests
+    files: 8            # test files ported
+
+  # --------------------------------------------------------------------------
+  # macros.clj - Threading macro tests
+  # --------------------------------------------------------------------------
+  macros:
+    file: test/clojure/macros.clj
+    tests: 10
+    assertions: 27
+    status: pass
+    excluded_features: []
+    tests_detail:
+      ->test:               { status: pass }
+      ->>test:              { status: pass }
+      ->metadata-test:      { status: pass }
+      ->>metadata-test:     { status: pass }
+      some->test:           { status: pass }
+      some->>test:          { status: pass }
+      cond->test:           { status: pass }
+      cond->>test:          { status: pass }
+      as->test:             { status: pass }
+      threading-loop-recur: { status: pass }
 
   # --------------------------------------------------------------------------
   # for.clj - List comprehension tests
