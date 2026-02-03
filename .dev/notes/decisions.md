@@ -1440,3 +1440,14 @@ TreeWalk-only execution, and YAML-based test tracking.
 **F22 resolved**: `.dev/status/compat_test.yaml` introduced for test tracking.
 **F24 deferred**: vars.yaml status refinement (stub/defer) not needed yet —
 current `done/todo/skip` is sufficient. Will add when stub functions appear.
+
+## D49: Local Bindings Shadow Special Forms (T13.2)
+
+In Clojure, local bindings (fn params, let bindings) shadow special forms.
+`(fn [if] (if 1))` treats `if` as the parameter value, not the special form.
+
+**Implementation**: In `analyzer.zig:analyzeList`, check `findLocal(sym_name)`
+before `special_forms.get(sym_name)`. If the head symbol is a local binding,
+skip the special form handler and treat it as a regular function call.
+
+This matches Clojure's behavior where locals always take priority.

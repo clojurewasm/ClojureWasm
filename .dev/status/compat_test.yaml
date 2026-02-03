@@ -13,12 +13,12 @@
 sci_core_test:
   summary:
     total: 74           # total deftests (including skipped)
-    active: 71          # running deftests
-    pass: 71            # all assertions pass
+    active: 72          # running deftests
+    pass: 72            # all assertions pass
     fail: 0             # assertion failures
-    skip: 3             # commented out (self-ref-test, 2 partial skips)
-    assertions: 257     # total is-assertions in active tests
-    skipped_assertions: 7   # individual (is ...) commented within active tests
+    skip: 2             # remaining: {:keys [:a]}, var :name metadata
+    assertions: 259     # total is-assertions in active tests
+    skipped_assertions: 4   # individual (is ...) commented within active tests
 
   tests:
     do-test:                    { status: pass }
@@ -52,9 +52,9 @@ sci_core_test:
     ifs-and-whens-test:         { status: pass }
     trampoline-test:            { status: pass }
     try-catch-test:             { status: pass }
-    variable-can-shadow-test:   { status: pass, note: "1 assertion skipped: fn as param name shadows special" }
+    variable-can-shadow-test:   { status: pass }
     delay-and-defn-private-test: { status: pass }
-    self-ref-test:              { status: skip, reason: "named fn self-reference returns different value" }
+    self-ref-test:              { status: pass }
     regex-test:                 { status: pass }
     some-threading-test:        { status: pass, note: "uses str instead of clojure.string/lower-case" }
     macroexpand-test:           { status: pass }
@@ -100,9 +100,10 @@ sci_core_test:
       - "clojure.string namespace (upper-case, lower-case, trim, includes?, split, join, starts-with?)"
       - "{:keys [:a]} — keyword in :keys destructuring vector"
     behavioral:
-      - "named fn self-reference — (fn foo [] foo) returns different identity"
-      - "fn as param name — shadows special form, crashes"
       - "var :name metadata — (meta #'x) :name not populated"
+  # Resolved by T13.2:
+  # - named fn self-reference (identity preserved via callee_fn_val)
+  # - fn as param name shadows special form (local check before special_forms)
   # Resolved by T13.1:
   # - list? (now implemented)
   # - int? (now implemented)

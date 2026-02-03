@@ -410,9 +410,7 @@
                   (defn __vs-bar [foo] foo)
                   (__vs-bar true))))
   (is (= true (do (defn __vs-foo3 [comment] comment) (__vs-foo3 true))))
-  ;; SKIP: fn as parameter name shadows special form — not supported
-  ;; (is (= 2 (do (defn __vs-foo4 [fn] (fn 1)) (__vs-foo4 inc))))
-  )
+  (is (= 2 (do (defn __vs-foo4 [fn] (fn 1)) (__vs-foo4 inc)))))
 
 ;; =========================================================================
 ;; delay / defn-
@@ -425,9 +423,8 @@
 ;; =========================================================================
 ;; self-referential functions
 ;; =========================================================================
-;; SKIP: named fn self-reference returns different value
-;; (deftest self-ref-test
-;;   (is (true? (do (def __sr-f (fn foo [] foo)) (= __sr-f (__sr-f))))))
+(deftest self-ref-test
+  (is (true? (do (def __sr-f (fn foo [] foo)) (= __sr-f (__sr-f))))))
 
 ;; =========================================================================
 ;; regex

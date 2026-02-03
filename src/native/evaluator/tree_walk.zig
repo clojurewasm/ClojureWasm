@@ -171,7 +171,7 @@ pub const TreeWalk = struct {
                     return @errorCast(bootstrap.callFnVal(self.allocator, callee, args));
                 }
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
-                return self.callClosure(closure, args);
+                return self.callClosure(closure, callee, args);
             },
             .keyword => {
                 // Keyword-as-function: (:key map) => (get map :key)
@@ -246,10 +246,10 @@ pub const TreeWalk = struct {
 
         // TreeWalk closure
         const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
-        return self.callClosure(closure, arg_vals);
+        return self.callClosure(closure, callee, arg_vals);
     }
 
-    fn callClosure(self: *TreeWalk, closure: *const Closure, args: []const Value) TreeWalkError!Value {
+    fn callClosure(self: *TreeWalk, closure: *const Closure, callee_fn_val: Value, args: []const Value) TreeWalkError!Value {
         // Stack overflow protection
         if (self.call_depth >= MAX_CALL_DEPTH) return error.StackOverflow;
         self.call_depth += 1;
@@ -284,12 +284,10 @@ pub const TreeWalk = struct {
         }
 
         // Bind fn name for self-recursion (Analyzer allocates a local slot for it)
+        // Use the caller's fn_val directly to preserve identity
         if (fn_n.name != null) {
             if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
-            // Reconstruct fn_val pointing back to this closure
-            const fn_obj = self.allocator.create(value_mod.Fn) catch return error.OutOfMemory;
-            fn_obj.* = .{ .proto = @ptrCast(@constCast(closure)), .kind = .treewalk };
-            self.locals[self.local_count] = Value{ .fn_val = fn_obj };
+            self.locals[self.local_count] = callee_fn_val;
             self.local_count += 1;
         }
 

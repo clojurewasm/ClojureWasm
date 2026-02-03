@@ -213,12 +213,15 @@ pub const Analyzer = struct {
             return self.makeConstant(.nil);
         }
 
-        // Check for special form
+        // Check for special form (but locals shadow special forms)
         if (items[0].data == .symbol) {
             const sym_name = items[0].data.symbol.name;
             if (items[0].data.symbol.ns == null) {
-                if (special_forms.get(sym_name)) |handler| {
-                    return handler(self, items, form);
+                // Local bindings take priority over special forms
+                if (self.findLocal(sym_name) == null) {
+                    if (special_forms.get(sym_name)) |handler| {
+                        return handler(self, items, form);
+                    }
                 }
             }
         }
