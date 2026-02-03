@@ -2,33 +2,35 @@
 
 ## Current State
 
-- Phase: 14 (Clojure本家テスト基盤) — in progress
+- Phase: 14 (Clojure本家テスト基盤) — complete
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.12 — 優先度付きファイルリスト作成
-- Task file: (none — create on start)
-- Last completed: T14.11 — compat_test.yaml拡張 (178 tests, 998 assertions)
+- Current task: (none — Phase 14 complete)
+- Task file: N/A
+- Last completed: T14.12 — テストファイル優先度リスト作成
 - Blockers: none
-- Next: T14.12 then Phase 15 planning
+- Next: Phase 15 planning
 
 ## Technical Notes
 
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T14.11 Complete — compat_test.yaml Extended
+### Phase 14 Complete
 
-- Added `clojure_test_clojure:` section tracking 7 test files
-- Total: 106 tests, 731 assertions (Clojure JVM equivalent)
-- Combined: 178 tests, 998 assertions (SCI + Clojure JVM)
-- All excluded features documented with F## references
+- T14.11: compat_test.yaml extended with Clojure JVM tests (178 tests, 998 assertions)
+- T14.12: Test file priority list created (.dev/notes/test_file_priority.md)
+  - High Priority (low Java dep): 12 files (macros, special, walk, set, string, etc.)
+  - Medium Priority (moderate Java): 13 files
+  - Low Priority (high Java): 27 files
+  - Skip (JVM infrastructure): 9 files
 
-### T14.12 Context
+### Phase 15 Direction
 
-Goal: Create a prioritized list of remaining Clojure JVM test files to port.
+Next phase should focus on:
 
-Reference: Clojure JVM test suite has 67 files in test/clojure/test_clojure/.
-Already ported: for, control, logic, predicates, atoms, sequences, data_structures (7 files).
-Remaining: 60 files — need to categorize by Java dependency and usefulness.
+1. Porting high-priority test files (Batch 1: macros, special, walk, etc.)
+2. Implementing missing features as tests reveal gaps
+3. TDD approach: write test, fail, implement, pass
 
 ### Phase 14 Progress
 
