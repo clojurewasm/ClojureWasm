@@ -284,6 +284,15 @@ pub const Compiler = struct {
         const has_self_ref = node.name != null;
         const capture_count: u16 = @intCast(self.locals.items.len);
 
+        // Calculate capture_base: the stack slot of the first captured local.
+        // This is needed because the closure may be emitted when other values
+        // are on the stack (e.g., function being called in argument position).
+        // If no captures, capture_base is 0 (unused).
+        const capture_base: u16 = if (capture_count > 0)
+            self.locals.items[0].slot
+        else
+            0;
+
         // Compile the primary arity (first one)
         const primary_proto = try self.compileArity(node, node.arities[0], capture_count, has_self_ref);
 
@@ -305,7 +314,12 @@ pub const Compiler = struct {
 
         const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
             return error.TooManyConstants;
-        try self.chunk.emit(.closure, idx);
+
+        // Encode closure operand: (capture_base << 8) | const_idx
+        // VM uses capture_base to find where captured values are on the stack.
+        if (idx > 0xFF) return error.TooManyConstants; // const_idx must fit in 8 bits
+        const operand: u16 = (capture_base << 8) | @as(u16, @intCast(idx));
+        try self.chunk.emit(.closure, operand);
         self.stack_depth += 1; // closure pushes fn_val
     }
 

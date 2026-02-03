@@ -225,20 +225,22 @@ pub const VM = struct {
                     try self.push(result);
                 },
                 .closure => {
-                    // Load the fn_val template from constants and push it.
-                    // Runtime capture (closure_bindings) is handled by
-                    // copying values from the current frame's stack.
-                    const template = frame.constants[instr.operand];
+                    // Operand encoding: (capture_base << 8) | const_idx
+                    // capture_base: stack offset from frame.base for captured values
+                    const const_idx: u16 = instr.operand & 0xFF;
+                    const capture_base: u16 = (instr.operand >> 8) & 0xFF;
+
+                    const template = frame.constants[const_idx];
                     if (template != .fn_val) return error.TypeError;
                     const fn_obj = template.fn_val;
                     const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
 
                     if (proto.capture_count > 0) {
-                        // Capture values from current frame's stack
+                        // Capture values from stack at capture_base offset
                         const bindings = self.allocator.alloc(Value, proto.capture_count) catch
                             return error.OutOfMemory;
                         for (0..proto.capture_count) |i| {
-                            bindings[i] = self.stack[frame.base + i];
+                            bindings[i] = self.stack[frame.base + capture_base + i];
                         }
                         const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
                         new_fn.* = .{
@@ -458,6 +460,21 @@ pub const VM = struct {
             const result = callee.builtin_fn(self.allocator, args) catch |e| {
                 return @as(VMError, @errorCast(e));
             };
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
+        }
+
+        // Keyword-as-function: (:key map) => (get map :key)
+        if (callee == .keyword) {
+            if (arg_count < 1) return error.ArityError;
+            const map_arg = self.stack[fn_idx + 1];
+            const result = if (map_arg == .map)
+                map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
+            else if (arg_count >= 2)
+                self.stack[fn_idx + 2] // default value
+            else
+                Value.nil;
             self.sp = fn_idx;
             try self.push(result);
             return;

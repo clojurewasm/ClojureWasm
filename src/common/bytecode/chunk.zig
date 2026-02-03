@@ -182,10 +182,13 @@ fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writ
             try w.print(" pairs={d}", .{instr.operand});
         },
         .closure => {
-            try w.print(" #{d}", .{instr.operand});
-            if (instr.operand < constants.len) {
+            // Operand encoding: (capture_base << 8) | const_idx
+            const const_idx: u16 = instr.operand & 0xFF;
+            const capture_base: u16 = (instr.operand >> 8) & 0xFF;
+            try w.print(" #{d} base={d}", .{ const_idx, capture_base });
+            if (const_idx < constants.len) {
                 try w.writeAll("  ; ");
-                try dumpValue(constants[instr.operand], w);
+                try dumpValue(constants[const_idx], w);
             }
         },
         else => {},

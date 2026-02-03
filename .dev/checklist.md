@@ -15,78 +15,79 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 
 ## Blocked until needed
 
-| ID      | Item                                             | Trigger                                                                                | Source |
-| ------- | ------------------------------------------------ | -------------------------------------------------------------------------------------- | ------ |
-| F1      | NaN boxing (Value optimization)                  | fib(30) < 500ms target or memory pressure                                              | D1     |
-| F2      | Real GC (replace arena)                          | Long-running REPL or memory benchmarks exceed bounds                                   | D2     |
-| F3      | Ratio type (`1/3`)                               | SCI tests fail on float precision loss                                                 | D12    |
-| F4      | Persistent data structures (HAMT, RRB-Tree)      | Collection benchmarks show bottleneck                                                  | D9     |
-| ~~F5~~  | ~~swap! with fn_val (closure dispatch)~~         | ~~Resolved: T9.5.2 — atom.call_fn dispatcher~~                                         | D8     |
-| F6      | Multi-thread dynamic bindings                    | Native multi-thread target                                                             | D11    |
-| F7      | Macro body serialization (AOT blocker)           | T4.7 AOT bytecode startup                                                              | D18    |
-| ~~F8~~  | ~~TreeWalk→VM reverse dispatch~~                 | ~~Resolved: T10.2 — bytecodeCallBridge in bootstrap.zig~~                              | D22    |
-| F13     | VM opcodes for defmulti/defmethod                | VM-only mode needs multimethod dispatch                                                | D28    |
-| F14     | VM opcodes for lazy-seq/realize                  | VM-only mode needs lazy evaluation                                                     | D28    |
-| ~~F19~~ | ~~Reader input validation (depth/size limits)~~  | ~~Resolved: T11.1b — Reader.Limits (depth/string/collection) + nREPL/CLI size checks~~ | SS14   |
-| F20     | Safe point GC design                             | Real GC (F2) implementation start                                                      | SS5    |
-| F21     | 3-layer separation (Memory/Exec/Opt)             | Introduction of fused reduce or optimization pass                                      | SS5    |
-| ~~F22~~ | ~~compat_test.yaml introduction~~                | ~~Resolved: T12.9 — .dev/status/compat_test.yaml (70/74 SCI tests pass)~~              | SS10   |
-| ~~F23~~ | ~~comptime Value variant verification~~          | ~~Resolved: T12.4 — Zig exhaustive switch IS the comptime verification (D46)~~         | SS3    |
-| F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (T15.0 audit: done/todo/skip accurate, 269 done)            | SS10   |
-| F25     | for macro :while modifier                        | for.clj tests (currently excluded)                                                     | T14.4  |
-| F26     | for macro :let + :when combination               | for.clj tests (currently excluded) — :let followed by :when fails                      | T14.4  |
-| F27     | case multiple test values syntax                 | control.clj tests (excluded) — (case x (1 2 3) :match :default) fails                  | T14.5  |
-| F28     | case symbol matching                             | control.clj tests (excluded) — (case 'sym sym :match :default) fails                   | T14.5  |
-| F29     | Empty list () truthy behavior                    | control.clj tests (excluded) — JVM: () is truthy, ClojureWasm: () is falsy             | T14.5  |
-| F30     | if-let / if-not optional else clause             | control.clj tests (3-arg only) — JVM allows 2-arg, ClojureWasm requires 3-arg          | T14.5  |
-| F31     | (and) returns true                               | logic.clj tests (excluded) — JVM: true, ClojureWasm: nil                               | T14.6  |
-| F32     | reverse nil/[] returns empty list                | logic.clj tests (adjusted) — JVM: empty list (truthy), ClojureWasm: nil (falsy)        | T14.6  |
-| F33     | Empty list () type predicates                    | predicates.clj tests (excluded) — list?/coll?/seq? return false for ()                 | T14.7  |
-| F34     | seq returns proper seq type                      | predicates.clj tests (excluded) — (seq [1 2 3]) returns vector, not seq                | T14.7  |
-| F35     | sequential? predicate                            | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
-| F36     | associative? predicate                           | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
-| F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
-| F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
-| F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
-| F40     | first/rest on set                                | sequences.clj tests (excluded) — (first #{1}) fails                                    | T14.9  |
-| F41     | first/rest on string                             | sequences.clj tests (excluded) — (first "a") fails                                     | T14.9  |
-| F43     | ffirst function                                  | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F44     | nnext function                                   | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F45     | interleave 0-1 args                              | sequences.clj tests (excluded) — (interleave) and (interleave [1]) fail                | T14.9  |
-| F46     | drop-last function                               | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F47     | split-at / split-with                            | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F48     | (range) infinite sequence                        | sequences.clj tests (excluded) — infinite range not supported                          | T14.9  |
-| F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9  |
-| F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
-| ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
-| ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
-| F58     | Nested map destructuring                         | `{{x :x} :b}` pattern in let/fn args — workaround: use sequential let bindings         | T14.10 |
-| F67     | Rest args + map destructuring                    | `(fn [& {:keys [x]}] x)` — keyword args pattern not supported                          | T15.2  |
-| F68     | {:as x} on empty list returns ()                 | JVM: `(let [{:as x} '()] x)` → `{}`, ClojureWasm: `()` (not coerced to map)            | T15.2  |
-| F69     | Keywords in :keys vector                         | `{:keys [:a :b]}` syntax — keywords in :keys not supported (use symbols)               | T15.2  |
-| F70     | Namespaced keywords in :keys                     | `{:keys [:a/b]}` — namespaced keywords in :keys not supported                          | T15.2  |
-| F71     | Namespaced symbols in :keys                      | `{:keys [a/b]}` — namespaced symbols for namespaced key lookup not supported           | T15.2  |
-| F72     | Namespaced :syms destructuring                   | `{:syms [a/b]}` — namespaced symbol lookup in :syms not supported                      | T15.2  |
-| F73     | Namespace-qualified :keys syntax                 | `{:a/keys [b]}` — shorthand for `{:keys [:a/b]}` not supported                         | T15.2  |
-| F74     | Namespace-qualified :syms syntax                 | `{:a/syms [b]}` — shorthand for `{:syms [a/b]}` not supported                          | T15.2  |
-| ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
-| ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
-| ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |
-| ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                     | T14.10 |
-| ~~F63~~ | ~~(set map) fails~~                              | ~~Resolved: T14.5.3 — added map support to setCoerceFn~~                               | T14.10 |
-| ~~F64~~ | ~~(set string) fails~~                           | ~~Resolved: T14.5.3 — added string support to setCoerceFn~~                            | T14.10 |
-| ~~F65~~ | ~~postwalk-replace on set literal fails~~        | ~~Resolved: T14.5.2 — fixed by adding set support to seqFn~~                           | T14.10 |
-| ~~F66~~ | ~~assoc on vectors fails~~                       | ~~Resolved: T14.5.1 — added vector support to assocFn~~                                | T14.10 |
-| ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
-| ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
-| ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |
-| ~~F12~~ | ~~`str` fixed 4KB buffer~~                       | ~~Resolved: T7.2 — Writer.Allocating (dynamic)~~                                       | bench  |
-| ~~F15~~ | ~~VM evalStringVM fn_val use-after-free~~        | ~~Resolved: T9.5.1 — Compiler.detachFnAllocations~~                                    | D32    |
-| ~~F16~~ | ~~seq on map (MapEntry)~~                        | ~~Resolved: T9.5.3 — seqFn + firstFn/restFn map support~~                              | D32    |
-| ~~F17~~ | ~~VM loop/recur wrong results~~                  | ~~Resolved: T10.1 — emitLoop used pop instead of pop_under~~                           | T9.5.4 |
-| ~~F18~~ | ~~Nested fn use-after-free in compiler~~         | ~~Resolved: T10.3 — detachFnAllocations in compileArity~~                              | D35    |
+| ID      | Item                                             | Trigger                                                                                                 | Source |
+| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------ |
+| F1      | NaN boxing (Value optimization)                  | fib(30) < 500ms target or memory pressure                                                               | D1     |
+| F2      | Real GC (replace arena)                          | Long-running REPL or memory benchmarks exceed bounds                                                    | D2     |
+| F3      | Ratio type (`1/3`)                               | SCI tests fail on float precision loss                                                                  | D12    |
+| F4      | Persistent data structures (HAMT, RRB-Tree)      | Collection benchmarks show bottleneck                                                                   | D9     |
+| ~~F5~~  | ~~swap! with fn_val (closure dispatch)~~         | ~~Resolved: T9.5.2 — atom.call_fn dispatcher~~                                                          | D8     |
+| F6      | Multi-thread dynamic bindings                    | Native multi-thread target                                                                              | D11    |
+| F7      | Macro body serialization (AOT blocker)           | T4.7 AOT bytecode startup                                                                               | D18    |
+| ~~F8~~  | ~~TreeWalk→VM reverse dispatch~~                 | ~~Resolved: T10.2 — bytecodeCallBridge in bootstrap.zig~~                                               | D22    |
+| F13     | VM opcodes for defmulti/defmethod                | VM-only mode needs multimethod dispatch                                                                 | D28    |
+| F14     | VM opcodes for lazy-seq/realize                  | VM-only mode needs lazy evaluation                                                                      | D28    |
+| ~~F19~~ | ~~Reader input validation (depth/size limits)~~  | ~~Resolved: T11.1b — Reader.Limits (depth/string/collection) + nREPL/CLI size checks~~                  | SS14   |
+| F20     | Safe point GC design                             | Real GC (F2) implementation start                                                                       | SS5    |
+| F21     | 3-layer separation (Memory/Exec/Opt)             | Introduction of fused reduce or optimization pass                                                       | SS5    |
+| ~~F22~~ | ~~compat_test.yaml introduction~~                | ~~Resolved: T12.9 — .dev/status/compat_test.yaml (70/74 SCI tests pass)~~                               | SS10   |
+| ~~F23~~ | ~~comptime Value variant verification~~          | ~~Resolved: T12.4 — Zig exhaustive switch IS the comptime verification (D46)~~                          | SS3    |
+| F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (T15.0 audit: done/todo/skip accurate, 269 done)                             | SS10   |
+| F25     | for macro :while modifier                        | for.clj tests (currently excluded)                                                                      | T14.4  |
+| F26     | for macro :let + :when combination               | for.clj tests (currently excluded) — :let followed by :when fails                                       | T14.4  |
+| F27     | case multiple test values syntax                 | control.clj tests (excluded) — (case x (1 2 3) :match :default) fails                                   | T14.5  |
+| F28     | case symbol matching                             | control.clj tests (excluded) — (case 'sym sym :match :default) fails                                    | T14.5  |
+| F29     | Empty list () truthy behavior                    | control.clj tests (excluded) — JVM: () is truthy, ClojureWasm: () is falsy                              | T14.5  |
+| F30     | if-let / if-not optional else clause             | control.clj tests (3-arg only) — JVM allows 2-arg, ClojureWasm requires 3-arg                           | T14.5  |
+| F31     | (and) returns true                               | logic.clj tests (excluded) — JVM: true, ClojureWasm: nil                                                | T14.6  |
+| F32     | reverse nil/[] returns empty list                | logic.clj tests (adjusted) — JVM: empty list (truthy), ClojureWasm: nil (falsy)                         | T14.6  |
+| F33     | Empty list () type predicates                    | predicates.clj tests (excluded) — list?/coll?/seq? return false for ()                                  | T14.7  |
+| F34     | seq returns proper seq type                      | predicates.clj tests (excluded) — (seq [1 2 3]) returns vector, not seq                                 | T14.7  |
+| F35     | sequential? predicate                            | predicates.clj tests (excluded) — not implemented                                                       | T14.7  |
+| F36     | associative? predicate                           | predicates.clj tests (excluded) — not implemented                                                       | T14.7  |
+| F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                                       | T14.7  |
+| F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                                            | T14.8  |
+| F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                                            | T14.8  |
+| F40     | first/rest on set                                | sequences.clj tests (excluded) — (first #{1}) fails                                                     | T14.9  |
+| F41     | first/rest on string                             | sequences.clj tests (excluded) — (first "a") fails                                                      | T14.9  |
+| F43     | ffirst function                                  | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| F44     | nnext function                                   | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| F45     | interleave 0-1 args                              | sequences.clj tests (excluded) — (interleave) and (interleave [1]) fail                                 | T14.9  |
+| F46     | drop-last function                               | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| F47     | split-at / split-with                            | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| F48     | (range) infinite sequence                        | sequences.clj tests (excluded) — infinite range not supported                                           | T14.9  |
+| F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                                     | T14.9  |
+| F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                                        | T14.9  |
+| ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                                   | T14.10 |
+| ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                                   | T14.10 |
+| ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                                   | T14.10 |
+| F58     | Nested map destructuring                         | `{{x :x} :b}` pattern in let/fn args — workaround: use sequential let bindings                          | T14.10 |
+| F67     | Rest args + map destructuring                    | `(fn [& {:keys [x]}] x)` — keyword args pattern not supported                                           | T15.2  |
+| F68     | {:as x} on empty list returns ()                 | JVM: `(let [{:as x} '()] x)` → `{}`, ClojureWasm: `()` (not coerced to map)                             | T15.2  |
+| F69     | Keywords in :keys vector                         | `{:keys [:a :b]}` syntax — keywords in :keys not supported (use symbols)                                | T15.2  |
+| F70     | Namespaced keywords in :keys                     | `{:keys [:a/b]}` — namespaced keywords in :keys not supported                                           | T15.2  |
+| F71     | Namespaced symbols in :keys                      | `{:keys [a/b]}` — namespaced symbols for namespaced key lookup not supported                            | T15.2  |
+| F72     | Namespaced :syms destructuring                   | `{:syms [a/b]}` — namespaced symbol lookup in :syms not supported                                       | T15.2  |
+| F73     | Namespace-qualified :keys syntax                 | `{:a/keys [b]}` — shorthand for `{:keys [:a/b]}` not supported                                          | T15.2  |
+| F74     | Namespace-qualified :syms syntax                 | `{:a/syms [b]}` — shorthand for `{:syms [a/b]}` not supported                                           | T15.2  |
+| F75     | VM closure capture with named fn self-ref        | Named fn (defn) captures self-ref + let binding, but slots not contiguous; needs free variable analysis | T15.4  |
+| ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                                       | T14.10 |
+| ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                                              | T14.10 |
+| ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                                 | T14.10 |
+| ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                                      | T14.10 |
+| ~~F63~~ | ~~(set map) fails~~                              | ~~Resolved: T14.5.3 — added map support to setCoerceFn~~                                                | T14.10 |
+| ~~F64~~ | ~~(set string) fails~~                           | ~~Resolved: T14.5.3 — added string support to setCoerceFn~~                                             | T14.10 |
+| ~~F65~~ | ~~postwalk-replace on set literal fails~~        | ~~Resolved: T14.5.2 — fixed by adding set support to seqFn~~                                            | T14.10 |
+| ~~F66~~ | ~~assoc on vectors fails~~                       | ~~Resolved: T14.5.1 — added vector support to assocFn~~                                                 | T14.10 |
+| ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                                      | bench  |
+| ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                                      | bench  |
+| ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                                    | bench  |
+| ~~F12~~ | ~~`str` fixed 4KB buffer~~                       | ~~Resolved: T7.2 — Writer.Allocating (dynamic)~~                                                        | bench  |
+| ~~F15~~ | ~~VM evalStringVM fn_val use-after-free~~        | ~~Resolved: T9.5.1 — Compiler.detachFnAllocations~~                                                     | D32    |
+| ~~F16~~ | ~~seq on map (MapEntry)~~                        | ~~Resolved: T9.5.3 — seqFn + firstFn/restFn map support~~                                               | D32    |
+| ~~F17~~ | ~~VM loop/recur wrong results~~                  | ~~Resolved: T10.1 — emitLoop used pop instead of pop_under~~                                            | T9.5.4 |
+| ~~F18~~ | ~~Nested fn use-after-free in compiler~~         | ~~Resolved: T10.3 — detachFnAllocations in compileArity~~                                               | D35    |
 
 ## Phase 4 task priorities (historical — all complete)
 
