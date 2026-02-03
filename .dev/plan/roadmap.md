@@ -692,9 +692,50 @@ When implementing IO and system functionality, decide on namespace design:
 
 Details deferred — decide architecture when the IO/system phase is planned.
 
-### Wasm InterOp (FFI) — After GC Stabilizes
+### Optimization Phase — After GC Stabilizes
 
 **Prerequisite**: Phase 18 (Production GC) complete
+
+Performance optimization pass. Benchmark-driven, guided by `bench/run_bench.sh`
+results recorded in `.dev/status/bench.yaml`.
+
+**Deferred items to address**:
+
+| ID  | Item                     | Trigger / Target                        | Reference |
+| --- | ------------------------ | --------------------------------------- | --------- |
+| F1  | NaN boxing               | fib(30) < 500ms or memory pressure      | D1, SS5   |
+| F21 | 3-layer separation       | Enable fused reduce without GC coupling | SS5       |
+| F4  | Persistent DS (HAMT/RRB) | Collection benchmarks show bottleneck   | D9        |
+
+**Optimization targets** (from .dev/future.md SS5):
+
+1. **NaN boxing** — Value representation optimization (f64 bit tricks)
+   - Reduces memory footprint, improves cache locality
+   - Native track only (Wasm JIT doesn't benefit)
+
+2. **Fused reduce** — Collapse map/filter/reduce chains to single loop
+   - Beta achieved 27GB -> 2MB for map_filter benchmark
+   - Implement as VM opcode-level optimization
+
+3. **Inline caching** — Speed up dynamic dispatch
+   - Protocol method calls, keyword lookup
+   - Monomorphic/polymorphic call site optimization
+
+**Benchmark baseline** (Phase 10, TreeWalk vs VM):
+
+| Benchmark         | TreeWalk | VM    | Notes                    |
+| ----------------- | -------- | ----- | ------------------------ |
+| fib_recursive     | 494ms    | 54ms  | VM 9x faster             |
+| arith_loop        | 840ms    | 213ms | VM 4x faster             |
+| map_filter_reduce | 381ms    | 623ms | VM slower (hybrid issue) |
+
+Target: VM should outperform TreeWalk on all benchmarks after optimization.
+
+**References**: .dev/future.md SS5 (GC, Bytecode, Optimization), bench/README.md
+
+### Wasm InterOp (FFI) — After Optimization
+
+**Prerequisite**: Optimization phase complete
 
 FFI for calling Wasm modules from native track. Distinct from wasm_rt (entire
 runtime compiled to Wasm). Beta has working implementation to reference.
