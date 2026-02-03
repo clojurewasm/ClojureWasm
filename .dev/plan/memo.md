@@ -6,7 +6,7 @@
 - Roadmap: .dev/plan/roadmap.md
 - Current task: (none - Phase 14.5 complete)
 - Task file: N/A
-- Last completed: T14.5.3 — postwalk-replace on set literal (F65)
+- Last completed: T14.5.5 — pop nil + set map/string (F59, F63, F64)
 - Blockers: none
 - Next: Continue Phase 14 (T14.11+) or move to Phase 15
 
@@ -39,8 +39,15 @@ Overwrite freely — this is scratchpad, not permanent record.
   - reduce/map/filter now work on sets directly
 - T14.5.3: postwalk-replace on set literal (F65 resolved)
   - Fixed automatically by T14.5.2 (walk uses seq internally)
-  - Removed workarounds from data_structures.clj
-- data_structures.clj: 17 tests, 203 assertions (was 201)
+- T14.5.4: Empty list () self-evaluation (F55, F56, F57, F60 resolved)
+  - analyzer.zig: empty list returns empty list, not nil
+  - () now evaluates to () (self-evaluating in Clojure)
+- T14.5.5: pop nil + set coercion (F59, F63, F64 resolved)
+  - (pop nil) returns nil (matches JVM Clojure 1.12.4)
+  - (set {}) and (set {:a 1}) work (map entries become vectors)
+  - (set "") and (set "abc") work (string becomes set of chars)
+- F61: Not a bug — JVM Clojure also throws on (keys [1 2])
+- Remaining: F58 (nested map destructuring) — deferred as feature
 
 ### Completed: T14.10 — data_structures.clj
 
@@ -48,9 +55,7 @@ Overwrite freely — this is scratchpad, not permanent record.
 - Covers: equality, count, conj, peek, pop, list, find
 - contains?, keys, vals, key, val, get/get-in
 - hash-set, set, disj, assoc
-- Discovered bugs: F55-F64 (F65/F66 resolved in Phase 14.5)
-- Remaining workarounds:
-  - F57/F60: use empty? instead of = on empty lists
+- All bugs resolved in Phase 14.5 except F58 (nested map destructuring)
 
 ### Completed: T14.9 — sequences.clj
 
