@@ -513,11 +513,11 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 14c: 等価テスト作成 (Java依存度: 中)
 
-| #    | Task                          | Archive | Notes                                 |
-| ---- | ----------------------------- | ------- | ------------------------------------- |
-| 14.6 | logic.clj 等価テスト作成      | --      | and, or, not, boolean論理             |
-| 14.7 | predicates.clj 等価テスト作成 | --      | 型述語テスト (Java型除外)             |
-| 14.8 | atoms.clj 等価テスト作成      | --      | atom, swap!, reset!, compare-and-set! |
+| #    | Task                          | Archive                        | Notes                                 |
+| ---- | ----------------------------- | ------------------------------ | ------------------------------------- |
+| 14.6 | logic.clj 等価テスト作成      | --                             | and, or, not, boolean論理             |
+| 14.7 | predicates.clj 等価テスト作成 | --                             | 型述語テスト (Java型除外)             |
+| 14.8 | atoms.clj 等価テスト作成      | task_0119_atoms_equiv_tests.md | atom, swap!, reset!, compare-and-set! |
 
 ### Phase 14d: 等価テスト作成 (Java依存度: 高 — 選別)
 

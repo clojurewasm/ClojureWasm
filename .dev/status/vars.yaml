@@ -199,7 +199,7 @@ vars:
     comp: {type: function, status: done}
     comparator: {type: function, status: todo}
     compare: {type: function, status: done}
-    "compare-and-set!": {type: function, status: todo}
+    "compare-and-set!": {type: function, status: done}
     compile: {type: function, status: todo}
     complement: {type: function, status: done}
     completing: {type: function, status: todo}

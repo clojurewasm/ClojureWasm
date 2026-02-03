@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.7 predicates.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.8 atoms.clj tests)
 
 ## Invariants (always enforce)
 
@@ -46,6 +46,8 @@ Last updated: 2026-02-03 (Phase 14 — T14.7 predicates.clj tests)
 | F35     | sequential? predicate                            | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
 | F36     | associative? predicate                           | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
 | F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
+| F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
+| F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

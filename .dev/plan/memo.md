@@ -4,9 +4,9 @@
 
 - Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.8 — atoms.clj 等価テスト作成
+- Current task: T14.9 — sequences.clj 等価テスト作成
 - Task file: (to be created)
-- Last completed: T14.7 — predicates.clj 等価テスト作成
+- Last completed: T14.8 — atoms.clj 等価テスト作成 (14 tests, 39 assertions)
 - Blockers: none
 - Next: T13.7
 
@@ -28,9 +28,16 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
 
-### Next: T14.8 — atoms.clj 等価テスト作成
+### Next: T14.9 — sequences.clj 等価テスト作成
 
-- atom, swap!, reset!, compare-and-set!
+- Java配列部分除外、純Clojure部分のみ
+- first, rest, cons, seq, take, drop, map, filter, reduce等
+
+### Completed: T14.8 — atoms.clj
+
+- 14 tests, 39 assertions
+- atom creation, deref, swap!, reset!, compare-and-set!
+- vars.yaml: compare-and-set! done に更新
 
 ### for macro issues (F25, F26)
 
