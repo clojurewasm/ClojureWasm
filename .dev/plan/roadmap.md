@@ -521,10 +521,10 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 14d: 等価テスト作成 (Java依存度: 高 — 選別)
 
-| #     | Task                           | Archive | Notes                               |
-| ----- | ------------------------------ | ------- | ----------------------------------- |
-| 14.9  | sequences.clj 等価テスト作成   | --      | Java配列部分除外、純Clojure部分のみ |
-| 14.10 | data_structures.clj 等価テスト | --      | transient除外、persistent構造テスト |
+| #     | Task                           | Archive                            | Notes                               |
+| ----- | ------------------------------ | ---------------------------------- | ----------------------------------- |
+| 14.9  | sequences.clj 等価テスト作成   | task_0120_sequences_equiv_tests.md | 33 tests, 188 assertions            |
+| 14.10 | data_structures.clj 等価テスト | --                                 | transient除外、persistent構造テスト |
 
 ### Phase 14e: テストトラッキング拡張
 

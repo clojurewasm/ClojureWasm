@@ -4,11 +4,11 @@
 
 - Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.9 — sequences.clj 等価テスト作成
+- Current task: T14.10 — data_structures.clj 等価テスト作成
 - Task file: (to be created)
-- Last completed: T14.8 — atoms.clj 等価テスト作成 (14 tests, 39 assertions)
+- Last completed: T14.9 — sequences.clj 等価テスト作成 (33 tests, 188 assertions)
 - Blockers: none
-- Next: T13.7
+- Next: T13.7 or Phase 14 completion
 
 ## Technical Notes
 
@@ -28,10 +28,19 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
 
-### Next: T14.9 — sequences.clj 等価テスト作成
+### Completed: T14.9 — sequences.clj
 
-- Java配列部分除外、純Clojure部分のみ
-- first, rest, cons, seq, take, drop, map, filter, reduce等
+- 33 tests, 188 assertions (TreeWalk)
+- Covers: first/rest/next/cons, fnext/nfirst, last, nth, distinct
+- interpose, interleave, zipmap, concat, cycle, iterate
+- reverse, take/drop, take-while/drop-while, butlast
+- repeat, range, partition, partition-all
+- every?/not-every?/not-any?/some, flatten, group-by
+- partition-by, frequencies
+- Excluded: set/string sequences (F40/F41), ffirst/nnext (F43/F44)
+- Excluded: drop-last/split-at/split-with (F46/F47)
+- Excluded: infinite range (F48), partition with step (F49)
+- Excluded: reductions/shuffle (F50/F51)
 
 ### Completed: T14.8 — atoms.clj
 

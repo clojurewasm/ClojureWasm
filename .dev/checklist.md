@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.8 atoms.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.9 sequences.clj tests)
 
 ## Invariants (always enforce)
 
@@ -48,6 +48,17 @@ Last updated: 2026-02-03 (Phase 14 — T14.8 atoms.clj tests)
 | F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
 | F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
+| F40     | first/rest on set                                | sequences.clj tests (excluded) — (first #{1}) fails                                    | T14.9  |
+| F41     | first/rest on string                             | sequences.clj tests (excluded) — (first "a") fails                                     | T14.9  |
+| F43     | ffirst function                                  | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F44     | nnext function                                   | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F45     | interleave 0-1 args                              | sequences.clj tests (excluded) — (interleave) and (interleave [1]) fail                | T14.9  |
+| F46     | drop-last function                               | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F47     | split-at / split-with                            | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F48     | (range) infinite sequence                        | sequences.clj tests (excluded) — infinite range not supported                          | T14.9  |
+| F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9  |
+| F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |
