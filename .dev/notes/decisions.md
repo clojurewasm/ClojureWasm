@@ -1391,3 +1391,24 @@ statements that didn't have `else =>` catch-alls, forcing explicit handling:
 **F23 resolution**: No separate comptime test needed. Zig's type system already
 provides exhaustive verification. The 8 compile errors prove it works.
 Mark F23 as resolved in checklist.
+
+## D47: Namespace as Symbol in Value (T12.6)
+
+**Context**: Implementing `all-ns`, `find-ns`, `ns-name`, `create-ns`, `the-ns`.
+Clojure returns namespace objects from these functions, but ClojureWasm has
+no `namespace` Value variant.
+
+**Options considered**:
+
+1. Add `.namespace` as 22nd Value variant — requires 8+ exhaustive switch updates
+2. Represent namespace as symbol (its name) — simple, no structural changes
+
+**Decision**: Option 2 — represent namespaces as symbols. Since namespace names
+are unique in Env, a symbol unambiguously identifies a namespace. `find-ns`
+returns a symbol or nil, `ns-name` returns its input symbol, `all-ns` returns
+a list of symbols.
+
+**Limitation**: No namespace identity — `(identical? (find-ns 'user) (find-ns 'user))`
+returns false (symbol comparison, not reference equality). Acceptable for current
+usage patterns. Can upgrade to a real Value variant later if protocols/records
+need namespace objects.

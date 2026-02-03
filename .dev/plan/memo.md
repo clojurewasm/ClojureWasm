@@ -4,9 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.6 — Namespace ops I: all-ns, find-ns, ns-name, create-ns
+- Current task: T12.7 — Namespace ops II: ns-map, ns-publics, ns-interns
 - Task file: (none — create on start)
-- Last completed: T12.5 — eval, macroexpand, macroexpand-1, read-string
+- Last completed: T12.6 — Namespace ops I: all-ns, find-ns, ns-name, create-ns, the-ns
 - Blockers: none
 
 ## Technical Notes
@@ -14,27 +14,28 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.5 completed — eval/macroexpand/read-string builtins
+### T12.6 completed — Namespace ops I
 
-Added 4 builtins in `src/common/builtin/eval.zig`:
+Added 5 builtins in `src/common/builtin/ns_ops.zig`:
 
-- `read-string`: Reader -> Form -> Value pipeline
-- `eval`: Value -> Form -> Analyzer -> TreeWalk eval (uses `bootstrap.macro_eval_env`)
-- `macroexpand-1`: Single macro expansion via Var resolution + callFnVal
-- `macroexpand`: Repeated expansion until stable (eql fixpoint, max 1000 iters)
-- `bootstrap.macro_eval_env` made pub for eval builtin access
-- Registry: 141 builtins, 256/702 vars done (+ 4 new)
+- `the-ns`: Validate and return namespace symbol (error if not found)
+- `all-ns`: Return list of all namespace name symbols
+- `find-ns`: Look up namespace by symbol, return symbol or nil
+- `ns-name`: Return namespace name as symbol (identity)
+- `create-ns`: Find or create namespace, return symbol
+- D47: Namespace represented as symbol, not a new Value variant
+- Registry: 146 builtins, 261/702 vars done
 
-### T12.6 scope
+### T12.7 scope
 
-Namespace introspection basics: all-ns, find-ns, ns-name, create-ns
+Namespace Var mapping: ns-map, ns-publics, ns-interns
 
-- `all-ns` — return list of all namespaces in Env
-- `find-ns` — find namespace by symbol name
-- `ns-name` — return name of namespace as symbol
-- `create-ns` — create or find namespace
-- These need access to Env (same pattern as eval.zig — use `bootstrap.macro_eval_env`)
-- Reference: `src/common/env.zig` for Env.namespaces, `src/common/namespace.zig`
+- `ns-map` — return map of all mappings (interned + referred) in namespace
+- `ns-publics` — return map of public Var mappings
+- `ns-interns` — return map of interned Vars (not referred)
+- These return maps of {symbol -> var_ref}
+- Need to access Namespace.mappings and Namespace.refers
+- Same file: `src/common/builtin/ns_ops.zig`
 
 ### Deferred items to watch
 
@@ -44,5 +45,5 @@ Namespace introspection basics: all-ns, find-ns, ns-name, create-ns
 
 ### Builtin Count
 
-141 builtins registered
-256/702 vars done
+146 builtins registered
+261/702 vars done

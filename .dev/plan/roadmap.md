@@ -420,7 +420,7 @@ high-priority gaps in the core library.
 | 12.3 | Hash & identity: hash, identical?, ==                 | task_0100_hash_identity.md                     | hash-combine deferred; == is numeric cross-type equality                                 |
 | 12.4 | Reduced: reduced, reduced?, unreduced, ensure-reduced | task_0101_reduced.md                           | Reduced Value variant (D46). F23 resolved: Zig exhaustive switch = comptime verification |
 | 12.5 | eval, macroexpand, macroexpand-1, read-string         | task_0102_eval_macroexpand_readstring.md       | Runtime eval pipeline; load-string deferred                                              |
-| 12.6 | Namespace ops I: all-ns, find-ns, ns-name, create-ns  | --                                             | Namespace introspection basics                                                           |
+| 12.6 | Namespace ops I: all-ns, find-ns, ns-name, create-ns  | task_0103_namespace_ops_1.md                   | Namespace introspection basics (D47: ns as symbol)                                       |
 | 12.7 | Namespace ops II: ns-map, ns-publics, ns-interns      | --                                             | Namespace Var mapping                                                                    |
 | 12.8 | gensym, compare-and-set!, format                      | --                                             | Misc Tier 1 utilities                                                                    |
 

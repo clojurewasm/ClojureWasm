@@ -112,7 +112,7 @@ vars:
     aget: {type: function, status: todo}
     alength: {type: function, status: todo}
     alias: {type: function, status: todo}
-    "all-ns": {type: function, status: todo}
+    "all-ns": {type: function, status: done}
     alter: {type: function, status: todo}
     "alter-meta!": {type: function, status: todo}
     "alter-var-root": {type: function, status: todo}
@@ -216,7 +216,7 @@ vars:
     "contains?": {type: function, status: done}
     count: {type: function, status: done}
     "counted?": {type: function, status: todo}
-    "create-ns": {type: function, status: todo}
+    "create-ns": {type: function, status: done}
     "create-struct": {type: function, status: todo}
     cycle: {type: function, status: done}
     dec: {type: function, status: done}
@@ -292,7 +292,7 @@ vars:
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
     find: {type: function, status: done}
     "find-keyword": {type: function, status: todo}
-    "find-ns": {type: function, status: todo}
+    "find-ns": {type: function, status: done}
     "find-protocol-impl": {type: function, status: todo}
     "find-protocol-method": {type: function, status: todo}
     "find-var": {type: function, status: todo}
@@ -438,7 +438,7 @@ vars:
     "ns-imports": {type: function, status: todo}
     "ns-interns": {type: function, status: todo}
     "ns-map": {type: function, status: todo}
-    "ns-name": {type: function, status: todo}
+    "ns-name": {type: function, status: done}
     "ns-publics": {type: function, status: todo}
     "ns-refers": {type: function, status: todo}
     "ns-resolve": {type: function, status: todo}
@@ -634,7 +634,7 @@ vars:
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
     test: {type: function, status: todo}
-    "the-ns": {type: function, status: todo}
+    "the-ns": {type: function, status: done}
     "thread-bound?": {type: function, status: todo}
     time: {type: macro, status: todo}
     "to-array": {type: function, status: todo}
