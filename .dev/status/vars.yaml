@@ -91,7 +91,7 @@ vars:
     "<": {type: function, status: done, note: "VM intrinsic opcode"}
     "<=": {type: function, status: done, note: "VM intrinsic opcode"}
     "=": {type: function, status: done, note: "VM intrinsic opcode"}
-    "==": {type: function, status: todo}
+    "==": {type: function, status: done}
     ">": {type: function, status: done, note: "VM intrinsic opcode"}
     ">=": {type: function, status: done, note: "VM intrinsic opcode"}
     "EMPTY-NODE": {type: var, status: todo}
@@ -328,14 +328,14 @@ vars:
     "get-validator": {type: function, status: todo}
     "group-by": {type: function, status: done}
     "halt-when": {type: function, status: todo}
-    hash: {type: function, status: todo}
+    hash: {type: function, status: done}
     "hash-combine": {type: function, status: todo}
     "hash-map": {type: function, status: done}
     "hash-ordered-coll": {type: function, status: todo}
     "hash-set": {type: function, status: done}
     "hash-unordered-coll": {type: function, status: todo}
     "ident?": {type: function, status: todo}
-    "identical?": {type: function, status: todo}
+    "identical?": {type: function, status: done}
     identity: {type: function, status: done}
     "if-let": {type: macro, status: done}
     "if-not": {type: macro, status: done}

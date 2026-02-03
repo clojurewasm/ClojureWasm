@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 12 — T12.2 done, T12.3 next)
+Last updated: 2026-02-03 (Phase 12 — T12.3 done, T12.4 next)
 
 ## Invariants (always enforce)
 

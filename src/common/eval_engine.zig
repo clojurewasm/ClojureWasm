@@ -2074,3 +2074,46 @@ test "EvalEngine compare sorted-map" {
     try std.testing.expect(result.tw_value.? == .map);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.map.count());
 }
+
+test "EvalEngine compare hash" {
+    // (hash 42) => 42
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var arg = Node{ .constant = .{ .integer = 42 } };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "hash", .source = .{} } };
+    var call_args = [_]*Node{&arg};
+    var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
+    const n = Node{ .call_node = &call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.?.eql(.{ .integer = 42 }));
+}
+
+test "EvalEngine compare ==" {
+    // (== 1 1.0) => true
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var n1 = Node{ .constant = .{ .integer = 1 } };
+    var n2 = Node{ .constant = .{ .float = 1.0 } };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "==", .source = .{} } };
+    var call_args = [_]*Node{ &n1, &n2 };
+    var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
+    const n = Node{ .call_node = &call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.?.eql(.{ .boolean = true }));
+}

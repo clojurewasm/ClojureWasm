@@ -4,9 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.3 — Hash & identity: hash, identical?, ==
+- Current task: T12.4 — Reduced: reduced, reduced?, unreduced, ensure-reduced
 - Task file: (none)
-- Last completed: T12.2 — subvec, array-map, hash-set, sorted-map
+- Last completed: T12.3 — Hash & identity: hash, identical?, ==
 - Blockers: none
 
 ## Technical Notes
@@ -14,24 +14,23 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.2 completed — collection constructors
+### T12.3 completed — hash & identity
 
-Added 4 builtins: subvec, array-map, hash-set, sorted-map
+Added 3 builtins: hash, identical?, ==
 
-- subvec: copy-based vector slice (not view-based)
-- array-map: identical to hash-map (PersistentArrayMap already preserves order)
-- hash-set: deduplicating set constructor
-- sorted-map: entries sorted by key at construction (D45: not tree-based)
+- hash: polynomial rolling hash (x31) for strings/keywords/symbols, int=itself, nil=0
+- identical?: value-type bit equality, pointer equality for collections, name equality for keywords/symbols
+- ==: numeric-only equality (TypeError on non-numbers, unlike = which is structural)
 
-Registry: 130 builtins, 245/702 vars implemented (was 126/237 before Phase 12)
+Registry: 133 builtins, 248/702 vars implemented
 
-### T12.3 scope
+### T12.4 scope
 
-3 builtins: hash, identical?, ==
+4 builtins: reduced, reduced?, unreduced, ensure-reduced
 
-- `hash` — return hash code for any Value
-- `identical?` — pointer/value identity check (not structural equality)
-- `==` — numeric cross-type equality (different from `=` which is structural)
+- Needs new Value variant (.reduced) — triggers F23 (comptime variant verification)
+- reduced wraps a value for early termination in reduce
+- This is a significant change: adding a new Value variant
 
 ### Deferred items to watch
 

@@ -276,6 +276,103 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Hash & identity functions
+// ============================================================
+
+/// (hash x) — returns the hash code of x.
+pub fn hashFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .integer = computeHash(args[0]) };
+}
+
+fn computeHash(v: Value) i64 {
+    return switch (v) {
+        .nil => 0,
+        .boolean => |b| if (b) @as(i64, 1231) else @as(i64, 1237),
+        .integer => |n| n,
+        .float => |f| @as(i64, @intFromFloat(f * 1000003)),
+        .char => |c| @as(i64, @intCast(c)),
+        .string => |s| stringHash(s),
+        .keyword => |kw| blk: {
+            var h: i64 = 0x9e3779b9;
+            if (kw.ns) |ns| {
+                h = h *% 31 +% stringHash(ns);
+            }
+            h = h *% 31 +% stringHash(kw.name);
+            break :blk h;
+        },
+        .symbol => |sym| blk: {
+            var h: i64 = 0x517cc1b7;
+            if (sym.ns) |ns| {
+                h = h *% 31 +% stringHash(ns);
+            }
+            h = h *% 31 +% stringHash(sym.name);
+            break :blk h;
+        },
+        else => 42,
+    };
+}
+
+fn stringHash(s: []const u8) i64 {
+    var h: i64 = 0;
+    for (s) |c| {
+        h = h *% 31 +% @as(i64, c);
+    }
+    return h;
+}
+
+/// (identical? x y) — tests if x and y are the same object.
+pub fn identicalPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = args[0];
+    const b = args[1];
+
+    const a_tag = std.meta.activeTag(a);
+    const b_tag = std.meta.activeTag(b);
+    if (a_tag != b_tag) return Value{ .boolean = false };
+
+    const result: bool = switch (a) {
+        .nil => true,
+        .boolean => |av| av == b.boolean,
+        .integer => |av| av == b.integer,
+        .float => |av| av == b.float,
+        .char => |av| av == b.char,
+        .string => |av| av.ptr == b.string.ptr and av.len == b.string.len,
+        .keyword => |av| std.mem.eql(u8, av.name, b.keyword.name) and eqlOptNs(av.ns, b.keyword.ns),
+        .symbol => |av| std.mem.eql(u8, av.name, b.symbol.name) and eqlOptNs(av.ns, b.symbol.ns),
+        .vector => |av| av == b.vector,
+        .list => |av| av == b.list,
+        .map => |av| av == b.map,
+        .set => |av| av == b.set,
+        .fn_val => |av| av == b.fn_val,
+        .atom => |av| av == b.atom,
+        else => false,
+    };
+    return Value{ .boolean = result };
+}
+
+fn eqlOptNs(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    return std.mem.eql(u8, a.?, b.?);
+}
+
+/// (== x y) — numeric equality. Returns true if x and y are numerically equal.
+/// Both arguments must be numbers; otherwise throws TypeError.
+pub fn numericEqFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = args[0];
+    const b = args[1];
+
+    if ((a != .integer and a != .float) or (b != .integer and b != .float))
+        return error.TypeError;
+
+    const fa: f64 = if (a == .integer) @floatFromInt(a.integer) else a.float;
+    const fb: f64 = if (b == .integer) @floatFromInt(b.integer) else b.float;
+    return Value{ .boolean = fa == fb };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -308,6 +405,9 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "var?", .func = &varPred, .doc = "Returns true if v is of type clojure.lang.Var.", .arglists = "([v])", .added = "1.0" },
     .{ .name = "var-get", .func = &varGetFn, .doc = "Gets the value in the var object.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "var-set", .func = &varSetFn, .doc = "Sets the value in the var object to val.", .arglists = "([x val])", .added = "1.0" },
+    .{ .name = "hash", .func = &hashFn, .doc = "Returns the hash code of its argument. Note this is the hash code consistent with =, and thus is different than .hashCode for Integer, Short, Byte and Clojure collections.", .arglists = "([x])", .added = "1.6" },
+    .{ .name = "identical?", .func = &identicalPred, .doc = "Tests if 2 arguments are the same object.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "==", .func = &numericEqFn, .doc = "Returns non-nil if nums all have the equivalent value, otherwise false.", .arglists = "([x] [x y] [x y & more])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -393,8 +493,96 @@ test "odd? predicate" {
     try testing.expectEqual(Value{ .boolean = false }, try oddPred(test_alloc, &.{Value{ .integer = 2 }}));
 }
 
-test "builtins table has 28 entries" {
-    try testing.expectEqual(28, builtins.len);
+// --- hash tests ---
+
+test "hash of integer returns itself" {
+    const result = try hashFn(test_alloc, &.{Value{ .integer = 42 }});
+    try testing.expect(result == .integer);
+    try testing.expectEqual(@as(i64, 42), result.integer);
+}
+
+test "hash of nil returns 0" {
+    const result = try hashFn(test_alloc, &.{Value.nil});
+    try testing.expect(result == .integer);
+    try testing.expectEqual(@as(i64, 0), result.integer);
+}
+
+test "hash of boolean" {
+    const t = try hashFn(test_alloc, &.{Value{ .boolean = true }});
+    const f = try hashFn(test_alloc, &.{Value{ .boolean = false }});
+    try testing.expect(t.integer != f.integer);
+}
+
+test "hash of string is deterministic" {
+    const h1 = try hashFn(test_alloc, &.{Value{ .string = "hello" }});
+    const h2 = try hashFn(test_alloc, &.{Value{ .string = "hello" }});
+    try testing.expectEqual(h1.integer, h2.integer);
+}
+
+test "hash of different strings differ" {
+    const h1 = try hashFn(test_alloc, &.{Value{ .string = "hello" }});
+    const h2 = try hashFn(test_alloc, &.{Value{ .string = "world" }});
+    try testing.expect(h1.integer != h2.integer);
+}
+
+test "hash arity check" {
+    try testing.expectError(error.ArityError, hashFn(test_alloc, &.{}));
+    try testing.expectError(error.ArityError, hashFn(test_alloc, &.{ Value.nil, Value.nil }));
+}
+
+// --- identical? tests ---
+
+test "identical? same integer" {
+    const result = try identicalPred(test_alloc, &.{ Value{ .integer = 42 }, Value{ .integer = 42 } });
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "identical? different integers" {
+    const result = try identicalPred(test_alloc, &.{ Value{ .integer = 1 }, Value{ .integer = 2 } });
+    try testing.expectEqual(Value{ .boolean = false }, result);
+}
+
+test "identical? different types" {
+    const result = try identicalPred(test_alloc, &.{ Value{ .integer = 1 }, Value{ .string = "1" } });
+    try testing.expectEqual(Value{ .boolean = false }, result);
+}
+
+test "identical? nil" {
+    const result = try identicalPred(test_alloc, &.{ Value.nil, Value.nil });
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "identical? same keyword" {
+    const result = try identicalPred(test_alloc, &.{
+        Value{ .keyword = .{ .name = "a", .ns = null } },
+        Value{ .keyword = .{ .name = "a", .ns = null } },
+    });
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+// --- == tests ---
+
+test "== numeric equality integers" {
+    const result = try numericEqFn(test_alloc, &.{ Value{ .integer = 3 }, Value{ .integer = 3 } });
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "== numeric cross-type" {
+    const result = try numericEqFn(test_alloc, &.{ Value{ .integer = 1 }, Value{ .float = 1.0 } });
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "== numeric inequality" {
+    const result = try numericEqFn(test_alloc, &.{ Value{ .integer = 1 }, Value{ .integer = 2 } });
+    try testing.expectEqual(Value{ .boolean = false }, result);
+}
+
+test "== non-numeric is error" {
+    try testing.expectError(error.TypeError, numericEqFn(test_alloc, &.{ Value{ .string = "a" }, Value{ .string = "a" } }));
+}
+
+test "builtins table has 31 entries" {
+    try testing.expectEqual(31, builtins.len);
 }
 
 test "builtins all have func" {
