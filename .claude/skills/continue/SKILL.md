@@ -36,9 +36,11 @@ Read with Read tool:
 - **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
 - **Task file MISSING** (Task file field is empty):
   1. Read `.dev/plan/roadmap.md` for context + Notes
-  2. Read Beta reference code as needed
-  3. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  4. Do NOT commit yet — plan goes into the single task commit
+  2. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
+     check `.dev/future.md` for relevant SS section constraints
+  3. Read Beta reference code as needed
+  4. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
+  5. Do NOT commit yet — plan goes into the single task commit
 
 ## 3. Execute
 
@@ -110,16 +112,20 @@ When all tasks in a phase are done:
 ### Planning a new phase
 
 1. Read `roadmap.md` (completed phases, future considerations)
-2. Read `checklist.md` (bugs, deferred items — prioritize these)
-3. Evaluate: **bugs > blockers > deferred items > feature expansion**
-4. Create a new phase section in `roadmap.md` with numbered task table
-5. Update `memo.md`:
+2. Read `.dev/future.md` — scan SS sections relevant to the new phase:
+   - Architecture (SS8), Beta lessons (SS9), compatibility (SS10)
+   - Security (SS14) for eval/IO/load tasks, GC/optimization (SS5) for perf tasks
+   - Extract any design constraints or requirements into task Notes
+3. Read `checklist.md` (bugs, deferred items — prioritize these)
+4. Evaluate: **bugs > blockers > deferred items > feature expansion**
+5. Create a new phase section in `roadmap.md` with numbered task table
+6. Update `memo.md`:
    - Current task → first task of new phase
    - Task file → "(none — create on start)"
    - Technical Notes → context for the first task
    - Clear completed-phase notes
-6. Commit: `git commit -m "Add Phase X.Y to roadmap"`
-7. Then start the first task normally
+7. Commit: `git commit -m "Add Phase X.Y to roadmap"`
+8. Then start the first task normally
 
 ## 6. User Instructions
 

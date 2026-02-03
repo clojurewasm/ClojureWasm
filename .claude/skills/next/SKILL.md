@@ -35,9 +35,11 @@ Read with Read tool:
 - **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
 - **Task file MISSING** (Task file field is empty):
   1. Read `.dev/plan/roadmap.md` for context + Notes
-  2. Read Beta reference code as needed
-  3. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  4. Do NOT commit yet — plan goes into the single task commit
+  2. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
+     check `.dev/future.md` for relevant SS section constraints
+  3. Read Beta reference code as needed
+  4. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
+  5. Do NOT commit yet — plan goes into the single task commit
 
 ## 3. Execute
 
