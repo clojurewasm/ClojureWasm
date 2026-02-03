@@ -209,8 +209,10 @@ pub const Analyzer = struct {
 
     fn analyzeList(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         if (items.len == 0) {
-            // Empty list () -> nil constant (Clojure: empty list evaluates to empty list)
-            return self.makeConstant(.nil);
+            // Empty list () -> empty list (self-evaluating in Clojure)
+            const empty_list = self.allocator.create(value_mod.PersistentList) catch return error.OutOfMemory;
+            empty_list.* = .{ .items = &.{} };
+            return self.makeConstant(.{ .list = empty_list });
         }
 
         // Check for special form (but locals shadow special forms)
@@ -2372,7 +2374,7 @@ test "macro expansion - builtin_fn macro" {
     try std.testing.expect(result.* == .do_node);
 }
 
-test "analyze empty list -> nil" {
+test "analyze empty list -> empty list" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     var a = Analyzer.init(arena.allocator(), &test_error_ctx);
@@ -2380,5 +2382,7 @@ test "analyze empty list -> nil" {
 
     const items = [_]Form{};
     const result = try a.analyze(.{ .data = .{ .list = &items } });
-    try std.testing.expect(result.constant.isNil());
+    // Empty list () is self-evaluating in Clojure
+    try std.testing.expect(result.constant == .list);
+    try std.testing.expectEqual(@as(usize, 0), result.constant.list.items.len);
 }

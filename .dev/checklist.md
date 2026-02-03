@@ -59,12 +59,12 @@ Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 | F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9  |
 | F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
 | F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F55     | (= nil ()) returns true                          | data_structures.clj tests (excluded) — () should not equal nil                         | T14.10 |
-| F56     | (conj () ()) returns (nil)                       | data_structures.clj tests (excluded) — should return (())                              | T14.10 |
-| F57     | Empty list comparison (= (first '(())) ())       | data_structures.clj tests (workaround: use empty?)                                     | T14.10 |
+| ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
+| ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
+| ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | F58     | Nested map destructuring                         | data_structures.clj tests (excluded) — not supported                                   | T14.10 |
 | F59     | (pop nil) throws error                           | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
-| F60     | () evaluates to nil                              | data_structures.clj tests (workaround: use '() or (list))                              | T14.10 |
+| ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
 | F61     | keys/vals on non-maps throws error               | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
 | ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                     | T14.10 |
 | F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |

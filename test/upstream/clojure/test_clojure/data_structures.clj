@@ -1,6 +1,6 @@
 ;; data_structures.clj - ClojureWasm equivalent tests
 ;; Based on Clojure JVM data_structures.clj
-;; Known bugs: F55-F64 (see checklist.md) — F65, F66 resolved in T14.5
+;; Known bugs: F58-F59, F61, F63-F64 (see checklist.md)
 
 (println "[test/data_structures] running...")
 
