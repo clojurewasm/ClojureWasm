@@ -468,10 +468,10 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 13d: Validation + Upstream Alignment
 
-| #     | Task                                       | Archive | Notes                                                                |
-| ----- | ------------------------------------------ | ------- | -------------------------------------------------------------------- |
-| 13.9  | SCI test re-run: target 74/74 pass         | --      | Re-enable skipped tests, verify all 74 pass                          |
-| 13.10 | Upstream alignment (UPSTREAM-DIFF cleanup) | --      | Replace simplified defs with upstream verbatim (memoize, trampoline) |
+| #     | Task                                       | Archive                             | Notes                                                                |
+| ----- | ------------------------------------------ | ----------------------------------- | -------------------------------------------------------------------- |
+| 13.9  | SCI test validation: 72/72 pass            | archive/task_0114_sci_validation.md | 72/72 tests, 267 assertions. 1 skip remains (var :name meta)         |
+| 13.10 | Upstream alignment (UPSTREAM-DIFF cleanup) | --                                  | Replace simplified defs with upstream verbatim (memoize, trampoline) |
 
 ## Future Considerations
 

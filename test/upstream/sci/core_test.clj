@@ -278,11 +278,15 @@
 ;; =========================================================================
 ;; string operations
 ;; =========================================================================
-;; SKIP: string-operations-test — clojure.string namespace not implemented
-;; Missing: clojure.string/upper-case, lower-case, trim, includes?, split, join
 (deftest string-operations-test
   (is (= "hello world" (str "hello" " " "world")))
-  (is (= "" (str))))
+  (is (= "" (str)))
+  (is (= "HELLO" (clojure.string/upper-case "hello")))
+  (is (= "hello" (clojure.string/lower-case "HELLO")))
+  (is (= "hello" (clojure.string/trim "  hello  ")))
+  (is (clojure.string/includes? "hello world" "world"))
+  (is (= "a, b, c" (clojure.string/join ", " ["a" "b" "c"])))
+  (is (= ["a" "b" "c"] (clojure.string/split "a,b,c" #","))))
 
 ;; =========================================================================
 ;; atoms
@@ -609,8 +613,7 @@
 (deftest gensym-test
   (is (symbol? (gensym)))
   (is (not= (gensym) (gensym)))
-  ;; SKIP: clojure.string/starts-with? not available
-  ;; workaround: check prefix manually
+  (is (clojure.string/starts-with? (str (gensym "foo")) "foo"))
   (is (let [s (str (gensym "foo"))]
         (= "foo" (subs s 0 3)))))
 

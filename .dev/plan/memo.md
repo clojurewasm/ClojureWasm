@@ -4,9 +4,9 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.9 — SCI test re-run: target 74/74 pass
+- Current task: T13.10 — Upstream alignment (UPSTREAM-DIFF cleanup)
 - Task file: (none — create on start)
-- Last completed: T13.8 — {:keys [:a]} keyword destructuring
+- Last completed: T13.9 — SCI test validation: 72/72, 267 assertions
 - Blockers: none
 - Next: T13.7
 
@@ -25,12 +25,16 @@ Overwrite freely — this is scratchpad, not permanent record.
 - T13.6: key, val builtins added to sequences.zig (156 builtins + 14 clojure.string)
 - T13.7: Skipped — all 4 functions already implemented
 - T13.8: {:keys [:a]} keyword destructuring — analyzer accepts keywords in :keys vector
-- SCI: 72/74 tests pass, 260 assertions
+- T13.9: SCI validation — 72/72 tests, 267 assertions
+  - Total was 72 all along (not 74 — miscount)
+  - Added clojure.string tests to string-operations-test (+6 assertions)
+  - Enabled gensym starts-with? assertion (+1)
+  - Only remaining skip: var :name metadata in meta-test
 - Vars: 284/702 done
 
-### T13.9 — SCI test re-run: target 74/74 pass
+### T13.10 — Upstream alignment (UPSTREAM-DIFF cleanup)
 
-Check remaining 2 skipped tests and attempt to enable them.
+Replace simplified defs with upstream verbatim where possible.
 
 ### Deferred items to watch
 

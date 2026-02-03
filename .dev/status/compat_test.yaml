@@ -12,13 +12,13 @@
 
 sci_core_test:
   summary:
-    total: 74           # total deftests (including skipped)
+    total: 72           # total deftests
     active: 72          # running deftests
     pass: 72            # all assertions pass
     fail: 0             # assertion failures
-    skip: 2             # remaining: {:keys [:a]}, var :name metadata
-    assertions: 260     # total is-assertions in active tests
-    skipped_assertions: 3   # individual (is ...) commented within active tests
+    skip: 0             # none
+    assertions: 267     # total is-assertions in active tests
+    skipped_assertions: 1   # var :name metadata (meta-test)
 
   tests:
     do-test:                    { status: pass }
