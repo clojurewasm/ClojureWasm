@@ -5,7 +5,7 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 
 ## Language Policy
 
-- **All code in English**: identifiers, comments, docstrings, commit messages
+- **All code in English**: identifiers, comments, docstrings, commit messages, markdown
 - Agent response language: configure in `~/.claude/CLAUDE.md`
 
 ## TDD (t-wada style)
@@ -168,13 +168,18 @@ yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .
 
 Query reference: `.claude/references/yq-queries.md`
 
-### core.clj Upstream Deviation Rule
+### Clojure Implementation Rule
 
-When adding a function/macro to `src/clj/core.clj`:
+When adding a function/macro to any `.clj` file:
 
-1. **Read upstream** (`src/clj/clojure/core.clj`) first
-2. **Use upstream verbatim** if no Java interop / JVM-specific code
-3. **If simplified**: add `UPSTREAM-DIFF:` note to vars.yaml
+1. **Place in correct namespace** — see `.claude/references/impl-tiers.md` for mapping
+   - `clojure.core` → `src/clj/core.clj`
+   - `clojure.walk` → `src/clj/clojure/walk.clj`
+   - `clojure.set` → `src/clj/clojure/set.clj`
+   - `clojure.string` → `src/clj/clojure/string.clj`
+2. **Read upstream** first (e.g., `src/clj/clojure/core.clj` for core functions)
+3. **Use upstream verbatim** if no Java interop / JVM-specific code
+4. **If simplified**: add `UPSTREAM-DIFF:` note to vars.yaml
    - Format: `UPSTREAM-DIFF: <what changed>; missing: <dep list>`
 
 ## IDE Tools

@@ -90,6 +90,34 @@ When porting tests from `test/clojure/test_clojure/`, follow these rules.
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
+### Phase 15 Core Policies
+
+**1. Namespace Compatibility**
+
+Maintain namespace compatibility with upstream Clojure. Functions temporarily
+placed in `core.clj` for bootstrap order (e.g., walk functions) should be
+moved to their proper namespaces.
+
+- `clojure.walk` → walk, prewalk, postwalk, etc.
+- `clojure.set` → union, intersection, difference, etc.
+- `clojure.string` → split, join, trim, etc.
+
+When test porting reveals namespace mismatches, fix them on the spot.
+
+**2. Zig Implementation First**
+
+Do NOT skip features just because they appear "JVM-specific". Evaluate in order:
+
+1. **Zig-implementable** — defrecord, defmethod, sorted-set-by, etc.
+   ClojureWasmBeta has proven Zig implementations. Implement with behavioral equivalence.
+
+2. **Pure Clojure implementable** — in core.clj or namespace-specific .clj files
+
+3. **Skip** — only truly JVM-specific features (Java threading, reflection, etc.)
+
+Before marking something as "JVM-dependent", check if Zig/Clojure implementation
+is possible. Refer to ClojureWasmBeta for guidance when uncertain.
+
 ### Phase 15 Starting Point
 
 - vars.yaml: 269 done, 428 todo, 7 skip (total 704)
