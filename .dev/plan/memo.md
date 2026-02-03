@@ -6,9 +6,9 @@
 - Roadmap: .dev/plan/roadmap.md
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.1 — Port macros.clj (10 tests, 27 assertions)
+- Last completed: T15.2 — Port special.clj (9 tests, 22 assertions)
 - Blockers: none
-- Next: T15.2 — Port special.clj (let, letfn, quote, var, fn)
+- Next: T15.3 — Port clojure_walk.clj (walk, postwalk, prewalk)
 
 ### Phase 15 Task Queue
 

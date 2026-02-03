@@ -63,6 +63,14 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | F58     | Nested map destructuring                         | `{{x :x} :b}` pattern in let/fn args — workaround: use sequential let bindings         | T14.10 |
+| F67     | Rest args + map destructuring                    | `(fn [& {:keys [x]}] x)` — keyword args pattern not supported                          | T15.2  |
+| F68     | {:as x} on empty list returns ()                 | JVM: `(let [{:as x} '()] x)` → `{}`, ClojureWasm: `()` (not coerced to map)            | T15.2  |
+| F69     | Keywords in :keys vector                         | `{:keys [:a :b]}` syntax — keywords in :keys not supported (use symbols)               | T15.2  |
+| F70     | Namespaced keywords in :keys                     | `{:keys [:a/b]}` — namespaced keywords in :keys not supported                          | T15.2  |
+| F71     | Namespaced symbols in :keys                      | `{:keys [a/b]}` — namespaced symbols for namespaced key lookup not supported           | T15.2  |
+| F72     | Namespaced :syms destructuring                   | `{:syms [a/b]}` — namespaced symbol lookup in :syms not supported                      | T15.2  |
+| F73     | Namespace-qualified :keys syntax                 | `{:a/keys [b]}` — shorthand for `{:keys [:a/b]}` not supported                         | T15.2  |
+| F74     | Namespace-qualified :syms syntax                 | `{:a/syms [b]}` — shorthand for `{:syms [a/b]}` not supported                          | T15.2  |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |

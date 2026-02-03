@@ -130,13 +130,43 @@ sci_core_test:
 
 clojure_test_clojure:
   summary:
-    total: 116          # total deftests across all files
-    active: 116         # running deftests
-    pass: 116           # all assertions pass
+    total: 125          # total deftests across all files
+    active: 125         # running deftests
+    pass: 125           # all assertions pass
     fail: 0             # assertion failures
     skip: 0             # none
-    assertions: 758     # total is-assertions in active tests
-    files: 8            # test files ported
+    assertions: 780     # total is-assertions in active tests
+    files: 9            # test files ported
+
+  # --------------------------------------------------------------------------
+  # special.clj - Special forms and destructuring tests
+  # --------------------------------------------------------------------------
+  special:
+    file: test/clojure/special.clj
+    tests: 9
+    assertions: 22
+    status: pass
+    excluded_features:
+      - "F67: rest args + map destructuring (& {:keys})"
+      - "F68: {:as x} on empty list returns ()"
+      - "F69: keywords in :keys vector"
+      - "F70: namespaced keywords in :keys"
+      - "F71: namespaced symbols in :keys"
+      - "F72: namespaced :syms destructuring"
+      - "F73: namespace-qualified :keys syntax"
+      - "F74: namespace-qualified :syms syntax"
+      - "JVM exception tests (thrown-with-cause-msg)"
+      - "JVM reflection test (should-not-reflect)"
+    tests_detail:
+      basic-keys-destructuring:      { status: pass }
+      keys-with-or-destructuring:    { status: pass }
+      strs-destructuring:            { status: pass }
+      syms-destructuring:            { status: pass }
+      as-destructuring:              { status: pass }
+      combined-destructuring:        { status: pass }
+      sequential-as-destructuring:   { status: pass }
+      nested-sequential-destructuring: { status: pass }
+      rest-destructuring:            { status: pass }
 
   # --------------------------------------------------------------------------
   # macros.clj - Threading macro tests
