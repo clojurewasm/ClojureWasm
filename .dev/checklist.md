@@ -69,7 +69,7 @@ Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 | ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                     | T14.10 |
 | F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |
 | F64     | (set string) fails                               | data_structures.clj tests (excluded) — (set "") and (set "abc") fail                   | T14.10 |
-| F65     | postwalk-replace on set literal fails            | data_structures.clj tests (workaround: use is) — are macro with #{x} template          | T14.10 |
+| ~~F65~~ | ~~postwalk-replace on set literal fails~~        | ~~Resolved: T14.5.2 — fixed by adding set support to seqFn~~                           | T14.10 |
 | ~~F66~~ | ~~assoc on vectors fails~~                       | ~~Resolved: T14.5.1 — added vector support to assocFn~~                                | T14.10 |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |

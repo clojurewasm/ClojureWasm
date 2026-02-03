@@ -1,6 +1,6 @@
 ;; data_structures.clj - ClojureWasm equivalent tests
 ;; Based on Clojure JVM data_structures.clj
-;; Known bugs: F55-F65 (see checklist.md) — F66 resolved in T14.5.1
+;; Known bugs: F55-F64 (see checklist.md) — F65, F66 resolved in T14.5
 
 (println "[test/data_structures] running...")
 
@@ -270,23 +270,18 @@
       [] [1 2]
       #{} #{1 2}))
 
-  ;; F65: postwalk-replace cannot handle set literal #{x} in are template
-  ;; Workaround: use is instead of are for set literal comparisons
   (testing "set uniqueness"
-    (is (= (set [nil nil]) #{nil}))
-    (is (= (set [false false]) #{false}))
-    (is (= (set [true true]) #{true}))
-    (is (= (set [0 0]) #{0}))
-    (is (= (set [42 42]) #{42}))
-    (is (= (set [:kw :kw]) #{:kw})))
+    (are [x] (= (set [x x]) #{x})
+      nil false true 0 42 :kw))
 
   (testing "set conversion"
-    (is (= (set '()) #{}))
-    (is (= (set '(1 2)) #{1 2}))
-    (is (= (set []) #{}))
-    (is (= (set [1 2]) #{1 2}))
-    (is (= (set #{}) #{}))
-    (is (= (set #{1 2}) #{1 2}))))
+    (are [x y] (= (set x) y)
+      '() #{}
+      '(1 2) #{1 2}
+      [] #{}
+      [1 2] #{1 2}
+      #{} #{}
+      #{1 2} #{1 2})))
 
 (deftest test-disj
   (testing "disj identity"

@@ -4,7 +4,7 @@
 
 - Phase: 14.5 (Bug Fix Round)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.5.2 — reduce on set (F62)
+- Current task: T14.5.3 — postwalk-replace on set literal (F65)
 - Task file: (to be created)
 - Last completed: T14.10 — data_structures.clj 等価テスト作成 (17 tests, 201 assertions)
 - Blockers: none
