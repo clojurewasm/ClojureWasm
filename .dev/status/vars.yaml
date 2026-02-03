@@ -1153,8 +1153,8 @@ vars:
     trimr: {type: function, status: done}
     "upper-case": {type: function, status: done}
   clojure_template:
-    "apply-template": {type: function, status: todo}
-    "do-template": {type: macro, status: todo}
+    "apply-template": {type: function, status: done}
+    "do-template": {type: macro, status: done}
   clojure_test:
     "*initial-report-counters*": {type: dynamic-var, status: todo}
     "*load-tests*": {type: dynamic-var, status: todo}
@@ -1163,32 +1163,32 @@ vars:
     "*test-out*": {type: dynamic-var, status: todo}
     "*testing-contexts*": {type: dynamic-var, status: todo}
     "*testing-vars*": {type: dynamic-var, status: todo}
-    are: {type: macro, status: todo}
+    are: {type: macro, status: done}
     "assert-any": {type: function, status: todo}
     "assert-expr": {type: var, status: todo}
     "assert-predicate": {type: function, status: todo}
     "compose-fixtures": {type: function, status: todo}
-    deftest: {type: macro, status: todo}
+    deftest: {type: macro, status: done}
     "deftest-": {type: macro, status: todo}
     "do-report": {type: function, status: todo}
     "file-position": {type: function, status: todo}
     "function?": {type: function, status: todo}
     "get-possibly-unbound-var": {type: function, status: todo}
     "inc-report-counter": {type: function, status: todo}
-    is: {type: macro, status: todo}
+    is: {type: macro, status: done}
     "join-fixtures": {type: function, status: todo}
     report: {type: dynamic-var, status: todo}
     "run-all-tests": {type: function, status: todo}
     "run-test": {type: macro, status: todo}
     "run-test-var": {type: function, status: todo}
-    "run-tests": {type: function, status: todo}
+    "run-tests": {type: function, status: done}
     "set-test": {type: macro, status: todo}
     "successful?": {type: function, status: todo}
     "test-all-vars": {type: function, status: todo}
     "test-ns": {type: function, status: todo}
     "test-var": {type: function, status: todo}
     "test-vars": {type: function, status: todo}
-    testing: {type: macro, status: todo}
+    testing: {type: macro, status: done}
     "testing-contexts-str": {type: function, status: todo}
     "testing-vars-str": {type: function, status: todo}
     "try-expr": {type: macro, status: todo}
@@ -1199,14 +1199,14 @@ vars:
   clojure_walk:
     "keywordize-keys": {type: function, status: todo}
     "macroexpand-all": {type: function, status: todo}
-    postwalk: {type: function, status: todo}
+    postwalk: {type: function, status: done}
     "postwalk-demo": {type: function, status: todo}
-    "postwalk-replace": {type: function, status: todo}
-    prewalk: {type: function, status: todo}
+    "postwalk-replace": {type: function, status: done}
+    prewalk: {type: function, status: done}
     "prewalk-demo": {type: function, status: todo}
-    "prewalk-replace": {type: function, status: todo}
+    "prewalk-replace": {type: function, status: done}
     "stringify-keys": {type: function, status: todo}
-    walk: {type: function, status: todo}
+    walk: {type: function, status: done}
   clojure_zip:
     "append-child": {type: function, status: todo}
     "branch?": {type: function, status: todo}

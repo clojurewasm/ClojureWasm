@@ -87,6 +87,14 @@
 (defmacro testing [desc & body]
   `(do-testing ~desc (fn [] ~@body)))
 
+;; Check multiple assertions with a template expression.
+;; Example: (are [x y] (= x y) 2 (+ 1 1) 4 (* 2 2))
+;; Expands to: (do (is (= 2 (+ 1 1))) (is (= 4 (* 2 2))))
+(defmacro are [argv expr & args]
+  (let [c (count argv)
+        groups (partition c args)]
+    `(do ~@(map (fn [g] `(is ~(postwalk-replace (zipmap argv g) expr))) groups))))
+
 ;; ========== Test runner ==========
 
 ;; Run all registered tests. Returns true if all tests pass.
