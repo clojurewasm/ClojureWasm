@@ -473,6 +473,76 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 | 13.9  | SCI test validation: 72/72 pass            | archive/task_0114_sci_validation.md | 72/72 tests, 267 assertions. 1 skip remains (var :name meta) |
 | 13.10 | Upstream alignment (UPSTREAM-DIFF cleanup) | archive/task_0115_upstream_align.md | memoize → if-let/find/val, trampoline → let+recur            |
 
+---
+
+## Phase 14: Clojure本家テスト基盤
+
+**Goal**: Clojure JVM本家のテストスイート (test/clojure/test_clojure/) を参考に、
+等価なテストを手書きで作成する基盤を整備する。互換性担保の重要な柱。
+
+**Background (調査結果)**:
+
+- 本家テストは67個の.cljファイル (test/clojure/test_clojure/)
+- ほぼ全てが clojure.test フレームワークを使用
+- Java interop依存度が高い — そのままコピーは不可
+- Javaテスト (test/java/) はテストフィクスチャのみ — Zig移植不要
+- **方針**: 等価テストを手書きで作成 (Java部分除外)
+
+**Java依存度によるファイル分類**:
+
+| 依存度 | ファイル例                           | 移植難易度 |
+| ------ | ------------------------------------ | ---------- |
+| 低     | for.clj, control.clj                 | 容易       |
+| 中     | logic.clj, predicates.clj, atoms.clj | 中程度     |
+| 高     | numbers.clj, sequences.clj           | 要選別     |
+
+### Phase 14a: clojure.test フレームワーク
+
+| #    | Task                                   | Archive | Notes                                  |
+| ---- | -------------------------------------- | ------- | -------------------------------------- |
+| 14.1 | clojure.test/deftest, is, testing 移植 | --      | 最小限のテストフレームワーク           |
+| 14.2 | clojure.test/are, run-tests 移植       | --      | テンプレート展開 (are)、テスト実行統合 |
+| 14.3 | test-ns-hook / fixtures (optional)     | --      | 必要に応じて後回し                     |
+
+### Phase 14b: 等価テスト作成 (Java依存度: 低)
+
+| #    | Task                       | Archive | Notes                                       |
+| ---- | -------------------------- | ------- | ------------------------------------------- |
+| 14.4 | for.clj 等価テスト作成     | --      | Java依存ほぼ0、for/:when/:while/:let テスト |
+| 14.5 | control.clj 等価テスト作成 | --      | if, when, cond, case, do, let 等            |
+
+### Phase 14c: 等価テスト作成 (Java依存度: 中)
+
+| #    | Task                          | Archive | Notes                                 |
+| ---- | ----------------------------- | ------- | ------------------------------------- |
+| 14.6 | logic.clj 等価テスト作成      | --      | and, or, not, boolean論理             |
+| 14.7 | predicates.clj 等価テスト作成 | --      | 型述語テスト (Java型除外)             |
+| 14.8 | atoms.clj 等価テスト作成      | --      | atom, swap!, reset!, compare-and-set! |
+
+### Phase 14d: 等価テスト作成 (Java依存度: 高 — 選別)
+
+| #     | Task                           | Archive | Notes                               |
+| ----- | ------------------------------ | ------- | ----------------------------------- |
+| 14.9  | sequences.clj 等価テスト作成   | --      | Java配列部分除外、純Clojure部分のみ |
+| 14.10 | data_structures.clj 等価テスト | --      | transient除外、persistent構造テスト |
+
+### Phase 14e: テストトラッキング拡張
+
+| #     | Task                         | Archive | Notes                                      |
+| ----- | ---------------------------- | ------- | ------------------------------------------ |
+| 14.11 | compat_test.yaml 拡張        | --      | clojure/test_clojure/\* 追跡セクション追加 |
+| 14.12 | 優先度付きファイルリスト作成 | --      | 残りテストファイルの移植優先度決定         |
+
+---
+
+**継続的拡充** (Phase 15+):
+
+Phase 14以降、機能実装と並行してテストを追加していく:
+
+- 新機能追加時 → 対応する本家テストから等価テスト作成
+- 残りのファイル (numbers.clj, string.clj, macros.clj 等) を順次移植
+- vars.yaml の done 比率向上に合わせてテストカバレッジ拡大
+
 ## Future Considerations
 
 ### Phase 12 Strategy (Reference)
@@ -620,5 +690,6 @@ Details deferred — decide architecture when the IO/system phase is planned.
 | 10 (a-c)  | 4       | Complete         | VM correctness + interop   |
 | 11 (a-d)  | 7       | Complete         | Metadata + core lib IV     |
 | 12 (a-b)  | 9       | Complete         | Zig foundation + SCI port  |
-| 13 (a-d)  | 10      | Active           | SCI fix-ups + clj.string   |
-| **Total** | **126** | **103 archived** |                            |
+| 13 (a-d)  | 10      | Complete         | SCI fix-ups + clj.string   |
+| 14 (a-e)  | 12      | Planned          | Clojure本家テスト基盤      |
+| **Total** | **138** | **113 archived** |                            |

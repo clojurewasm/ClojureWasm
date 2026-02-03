@@ -32,9 +32,11 @@ Overwrite freely — this is scratchpad, not permanent record.
 - Vars: 284/702 done
 - Phase 13 complete
 
-### Next: Phase 14 planning
+### Next: Phase 14 — Clojure本家テスト基盤
 
-Read roadmap.md future considerations and checklist.md for deferred items.
+Phase 14 が roadmap.md に追加済み。最初のタスクは:
+
+- T14.1: clojure.test/deftest, is, testing 移植
 
 ### Deferred items to watch
 
