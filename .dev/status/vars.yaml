@@ -272,7 +272,7 @@ vars:
     "enumeration-seq": {type: function, status: todo}
     "error-handler": {type: function, status: todo}
     "error-mode": {type: function, status: todo}
-    eval: {type: function, status: todo}
+    eval: {type: function, status: done}
     "even?": {type: function, status: done}
     "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}
     "every?": {type: function, status: done}
@@ -393,8 +393,8 @@ vars:
     "long-array": {type: function, status: todo}
     longs: {type: function, status: todo}
     loop: {type: special-form, status: todo}
-    macroexpand: {type: function, status: todo}
-    "macroexpand-1": {type: function, status: todo}
+    macroexpand: {type: function, status: done}
+    "macroexpand-1": {type: function, status: done}
     "make-array": {type: function, status: todo}
     "make-hierarchy": {type: function, status: todo}
     map: {type: function, status: done, note: "eager (no lazy seq)"}
@@ -519,7 +519,7 @@ vars:
     read: {type: function, status: todo}
     read+string: {type: function, status: todo}
     "read-line": {type: function, status: todo}
-    "read-string": {type: function, status: todo}
+    "read-string": {type: function, status: done}
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}
     "realized?": {type: function, status: done, note: "core.clj checks delay :realized atom"}

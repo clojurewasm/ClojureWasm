@@ -271,7 +271,8 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 }
 
 /// Env reference for macro expansion bridge. Set during evalString.
-var macro_eval_env: ?*Env = null;
+/// Public so eval builtins (eval.zig) can access the current Env.
+pub var macro_eval_env: ?*Env = null;
 
 // === Tests ===
 
@@ -2768,4 +2769,122 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
     // reduce with fn callback
     const r3 = try evalStringVM(alloc, &env, "(reduce (fn [acc x] (+ acc x)) 0 [1 2 3 4 5])");
     try testing.expectEqual(Value{ .integer = 15 }, r3);
+}
+
+// === eval / read-string / macroexpand integration tests ===
+
+test "read-string builtin via evalString" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(read-string \"42\")", 42);
+}
+
+test "read-string returns vector" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    const result = try evalString(alloc, &env, "(read-string \"[1 2 3]\")");
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+}
+
+test "eval builtin - (eval '(+ 1 2))" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(eval '(+ 1 2))", 3);
+}
+
+test "eval builtin - eval constant" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(eval 42)", 42);
+}
+
+test "eval + read-string combined" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    try expectEvalInt(alloc, &env, "(eval (read-string \"(+ 10 20)\"))", 30);
+}
+
+test "macroexpand-1 on non-macro returns unchanged" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Non-macro form should return unchanged
+    try expectEvalInt(alloc, &env, "(macroexpand-1 42)", 42);
+}
+
+test "macroexpand-1 expands when macro" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // (when true 1) should expand to (if true (do 1))
+    const result = try evalString(alloc, &env, "(macroexpand-1 '(when true 1))");
+    try testing.expect(result == .list);
+    // First element should be 'if' symbol
+    try testing.expect(result.list.items[0] == .symbol);
+    try testing.expectEqualStrings("if", result.list.items[0].symbol.name);
+}
+
+test "macroexpand fully expands nested macros" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // (when true 1) -> macroexpand should fully expand
+    const result = try evalString(alloc, &env, "(macroexpand '(when true 1))");
+    try testing.expect(result == .list);
+    try testing.expect(result.list.items[0] == .symbol);
+    try testing.expectEqualStrings("if", result.list.items[0].symbol.name);
 }

@@ -22,13 +22,14 @@ const sequences_mod = @import("sequences.zig");
 const numeric_mod = @import("numeric.zig");
 const metadata_mod = @import("metadata.zig");
 const regex_mod = @import("regex_builtins.zig");
+const eval_mod = @import("eval.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -99,7 +100,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
 test "all_builtins count" {
     // Was 116, +4 (re-pattern, re-find, re-matches, re-seq)
-    try std.testing.expectEqual(137, builtin_count);
+    try std.testing.expectEqual(141, builtin_count);
 }
 
 test "comptime lookup finds +" {

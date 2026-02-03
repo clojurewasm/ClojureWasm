@@ -4,9 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.5 — eval, macroexpand, macroexpand-1, read-string
-- Task file: (none)
-- Last completed: T12.4 — Reduced: reduced, reduced?, unreduced, ensure-reduced
+- Current task: T12.6 — Namespace ops I: all-ns, find-ns, ns-name, create-ns
+- Task file: (none — create on start)
+- Last completed: T12.5 — eval, macroexpand, macroexpand-1, read-string
 - Blockers: none
 
 ## Technical Notes
@@ -14,23 +14,27 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.4 completed — Reduced value variant
+### T12.5 completed — eval/macroexpand/read-string builtins
 
-Added `.reduced` as 21st Value variant + 4 builtins.
+Added 4 builtins in `src/common/builtin/eval.zig`:
 
-- F23 resolved: Zig exhaustive switch IS the comptime verification (D46)
-- 8 files needed `.reduced` handler added
-- core.clj `reduce` updated to check `reduced?` for early termination
-- Registry: 137 builtins, 252/702 vars implemented
+- `read-string`: Reader -> Form -> Value pipeline
+- `eval`: Value -> Form -> Analyzer -> TreeWalk eval (uses `bootstrap.macro_eval_env`)
+- `macroexpand-1`: Single macro expansion via Var resolution + callFnVal
+- `macroexpand`: Repeated expansion until stable (eql fixpoint, max 1000 iters)
+- `bootstrap.macro_eval_env` made pub for eval builtin access
+- Registry: 141 builtins, 256/702 vars done (+ 4 new)
 
-### T12.5 scope
+### T12.6 scope
 
-eval, macroexpand, macroexpand-1, read-string
+Namespace introspection basics: all-ns, find-ns, ns-name, create-ns
 
-- `eval` — runtime eval pipeline: read -> analyze -> evaluate
-- `macroexpand` / `macroexpand-1` — expand macros
-- `read-string` — parse string to form
-- These require hooking into the existing reader/analyzer/evaluator pipeline
+- `all-ns` — return list of all namespaces in Env
+- `find-ns` — find namespace by symbol name
+- `ns-name` — return name of namespace as symbol
+- `create-ns` — create or find namespace
+- These need access to Env (same pattern as eval.zig — use `bootstrap.macro_eval_env`)
+- Reference: `src/common/env.zig` for Env.namespaces, `src/common/namespace.zig`
 
 ### Deferred items to watch
 
@@ -40,5 +44,5 @@ eval, macroexpand, macroexpand-1, read-string
 
 ### Builtin Count
 
-137 builtins registered
-252/702 vars implemented
+141 builtins registered
+256/702 vars done
