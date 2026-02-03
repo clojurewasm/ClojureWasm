@@ -807,6 +807,57 @@ pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (set coll) — coerce a collection to a set (removing duplicates).
 pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
+
+    // Handle map: convert to set of [k v] vectors
+    if (args[0] == .map) {
+        const m = args[0].map;
+        const n = m.count();
+        if (n == 0) {
+            const new_set = try allocator.create(PersistentHashSet);
+            new_set.* = .{ .items = &.{} };
+            return Value{ .set = new_set };
+        }
+        var result = std.ArrayList(Value).empty;
+        var i: usize = 0;
+        while (i < m.entries.len) : (i += 2) {
+            const pair = try allocator.alloc(Value, 2);
+            pair[0] = m.entries[i];
+            pair[1] = m.entries[i + 1];
+            const vec = try allocator.create(PersistentVector);
+            vec.* = .{ .items = pair };
+            try result.append(allocator, Value{ .vector = vec });
+        }
+        const new_set = try allocator.create(PersistentHashSet);
+        new_set.* = .{ .items = result.items };
+        return Value{ .set = new_set };
+    }
+
+    // Handle string: convert to set of characters
+    if (args[0] == .string) {
+        const s = args[0].string;
+        if (s.len == 0) {
+            const new_set = try allocator.create(PersistentHashSet);
+            new_set.* = .{ .items = &.{} };
+            return Value{ .set = new_set };
+        }
+        var result = std.ArrayList(Value).empty;
+        for (s) |c| {
+            const char_val = Value{ .char = c };
+            // Deduplicate
+            var dup = false;
+            for (result.items) |existing| {
+                if (existing.eql(char_val)) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) try result.append(allocator, char_val);
+        }
+        const new_set = try allocator.create(PersistentHashSet);
+        new_set.* = .{ .items = result.items };
+        return Value{ .set = new_set };
+    }
+
     const items = switch (args[0]) {
         .set => return args[0], // already a set
         .list => |lst| lst.items,
@@ -992,7 +1043,7 @@ pub fn popFn(allocator: Allocator, args: []const Value) anyerror!Value {
             new_lst.* = .{ .items = lst.items[1..], .meta = lst.meta };
             return Value{ .list = new_lst };
         },
-        .nil => return error.IllegalState,
+        .nil => return .nil,
         else => return error.TypeError,
     };
 }
@@ -2171,9 +2222,9 @@ test "pop on empty vector is error" {
     try testing.expectError(error.IllegalState, result);
 }
 
-test "pop on nil is error" {
-    const result = popFn(test_alloc, &.{Value.nil});
-    try testing.expectError(error.IllegalState, result);
+test "pop on nil returns nil" {
+    const result = try popFn(test_alloc, &.{Value.nil});
+    try testing.expectEqual(Value.nil, result);
 }
 
 // --- empty tests ---

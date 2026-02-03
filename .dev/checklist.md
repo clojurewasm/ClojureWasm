@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
+Last updated: 2026-02-03 (Phase 14.5 — Bug Fix Round F59, F63, F64)
 
 ## Invariants (always enforce)
 
@@ -63,12 +63,12 @@ Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | F58     | Nested map destructuring                         | data_structures.clj tests (excluded) — not supported                                   | T14.10 |
-| F59     | (pop nil) throws error                           | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
+| ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
-| F61     | keys/vals on non-maps throws error               | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
+| ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |
 | ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                     | T14.10 |
-| F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |
-| F64     | (set string) fails                               | data_structures.clj tests (excluded) — (set "") and (set "abc") fail                   | T14.10 |
+| ~~F63~~ | ~~(set map) fails~~                              | ~~Resolved: T14.5.3 — added map support to setCoerceFn~~                               | T14.10 |
+| ~~F64~~ | ~~(set string) fails~~                           | ~~Resolved: T14.5.3 — added string support to setCoerceFn~~                            | T14.10 |
 | ~~F65~~ | ~~postwalk-replace on set literal fails~~        | ~~Resolved: T14.5.2 — fixed by adding set support to seqFn~~                           | T14.10 |
 | ~~F66~~ | ~~assoc on vectors fails~~                       | ~~Resolved: T14.5.1 — added vector support to assocFn~~                                | T14.10 |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
