@@ -28,14 +28,36 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 ## Session Workflow
 
 Autonomous task execution uses `/next` (single task) or `/continue` (loop).
-Both skills read memo.md and handle the full orient → prepare → execute → commit cycle.
+**On invocation, read the full skill file** for the detailed workflow:
 
-For manual work, the essential rules:
+- `/next`: @.claude/skills/next/SKILL.md
+- `/continue`: @.claude/skills/continue/SKILL.md
+
+### Commit Gate Checklist (mandatory for every task commit)
+
+This checklist applies to **all** commits — autonomous (`/next`, `/continue`) and manual:
+
+1. **decisions.md**: Any design decisions made? (New Value variant, error type,
+   architectural choice, API design) → append D## entry to `.dev/notes/decisions.md`
+2. **checklist.md**: Any deferred items resolved or created?
+   → Strike through resolved F##, add new F## with trigger condition
+   → Update "Last updated" line to current phase/task
+3. **vars.yaml**: Any new vars implemented? → mark `done`
+4. **memo.md**: Advance current task, update Technical Notes with context for next session
+
+### Manual Work
 
 1. Read `.dev/plan/memo.md` first — the single source of "what to do next"
 2. TDD cycle during development; append progress to task file `## Log`
-3. On completion: move task file to archive, advance memo.md, update vars.yaml/checklist, single git commit
-4. If phase planning needed: read roadmap.md + checklist.md, create new phase section
+3. On completion: move task file to archive, advance memo.md, **run Commit Gate above**, single git commit
+
+### Phase Planning
+
+When creating a new phase, read **all three**:
+
+1. `.dev/plan/roadmap.md` — completed phases, future considerations
+2. `.dev/future.md` — SS sections relevant to new phase (architecture, security, compatibility)
+3. `.dev/checklist.md` — deferred items that may now be triggered
 
 ## Build & Test
 

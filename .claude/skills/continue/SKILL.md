@@ -75,17 +75,10 @@ Read with Read tool:
 3. Advance `memo.md`: update Current task, Task file, Last completed.
    Update Technical Notes with context useful for the next task (root cause, key files, findings).
 
-### 4a.5. Decision & Checklist gate
+### 4a.5. Commit Gate Checklist
 
-**MANDATORY** — review before every commit:
-
-1. **decisions.md**: Were any design decisions made during this task?
-   (New Value variant, new error type, architectural choice, API design)
-   → If yes, append D## entry to `.dev/notes/decisions.md`
-2. **checklist.md**: Were any deferred items resolved or created?
-   → If resolved, strike through the F## entry
-   → If new deferral, add F## entry with trigger condition
-3. Update `checklist.md` "Last updated" line to current phase/task
+**MANDATORY** — run the Commit Gate Checklist defined in `CLAUDE.md` §Session Workflow.
+(decisions.md D## entry, checklist.md F## updates, vars.yaml, memo.md)
 
 ### 4b. Pre-Commit Verification
 
