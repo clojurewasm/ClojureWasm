@@ -692,6 +692,58 @@ When implementing IO and system functionality, decide on namespace design:
 
 Details deferred — decide architecture when the IO/system phase is planned.
 
+### Wasm InterOp (FFI) — After GC Stabilizes
+
+**Prerequisite**: Phase 18 (Production GC) complete
+
+FFI for calling Wasm modules from native track. Distinct from wasm_rt (entire
+runtime compiled to Wasm). Beta has working implementation to reference.
+
+**SS1 Phases** (from .dev/future.md):
+
+| Phase | Content                       | Implementation                             |
+| ----- | ----------------------------- | ------------------------------------------ |
+| 1     | Type-safe boundary            | `wasm/load`, `wasm/fn`, signature verify   |
+| 2a    | WIT parse + module objects    | WIT parser (Zig), ILookup for field access |
+| 2b    | require-wasm macro (optional) | ns system integration                      |
+| 3     | Component Model (v1.0+)       | After WASI 1.0 stabilizes                  |
+
+**Code examples**:
+
+```clojure
+;; Phase 1: Manual signature
+(def mod (wasm/load "math.wasm"))
+(def add (wasm/fn mod "add" {:params [:i32 :i32] :results [:i32]}))
+(add 1 2)  ;=> 3
+
+;; Phase 2a: WIT auto-resolution
+(def img (wasm/load-wit "resize.wasm"))
+(img/resize-image buf 800 600)
+```
+
+**File layout**: `src/wasm/` (see .dev/future.md SS17.2)
+
+**References**: .dev/future.md SS1, SS4 (WIT type mapping), SS15 (FFI strategy)
+
+### wasm_rt Track — After Wasm InterOp
+
+**Prerequisite**: Wasm InterOp (SS1 Phase 1-2) complete
+
+Compile entire runtime to `.wasm`, run on WasmEdge/Wasmtime. GC delegated to
+WasmGC, NaN boxing not used.
+
+**Current status**: Stub (T4.13 verified 207KB wasm32-wasi binary)
+
+**Key differences from native**:
+
+| Aspect     | native               | wasm_rt                    |
+| ---------- | -------------------- | -------------------------- |
+| GC         | Self-impl semi-space | WasmGC delegate            |
+| NaN boxing | Yes                  | No (Wasm JIT incompatible) |
+| Distribute | Single binary        | .wasm file                 |
+
+**References**: .dev/future.md SS7 (Native vs Wasm Runtime Tracks)
+
 ## Task Count Summary
 
 | Phase     | Tasks   | Status           | Scope                      |
