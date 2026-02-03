@@ -183,6 +183,66 @@ pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = try aw.toOwnedSlice() };
 }
 
+/// (clojure.string/blank? s)
+/// True if s is nil, empty, or contains only whitespace.
+pub fn blankFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .nil => Value{ .boolean = true },
+        .string => |s| Value{ .boolean = std.mem.trim(u8, s, " \t\n\r\x0b\x0c").len == 0 },
+        else => error.TypeError,
+    };
+}
+
+/// (clojure.string/reverse s)
+/// Returns s with its characters reversed.
+pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+    if (s.len == 0) return args[0];
+    const result = try allocator.alloc(u8, s.len);
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        const end = @min(i + cp_len, s.len);
+        // Copy the bytes of this codepoint in original order to preserve UTF-8
+        @memcpy(result[s.len - end .. s.len - i], s[i..end]);
+        i = end;
+    }
+    return Value{ .string = result };
+}
+
+/// (clojure.string/trim-newline s)
+/// Removes all trailing newline (\n) and carriage return (\r) characters from s.
+pub fn trimNewlineFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+    const trimmed = std.mem.trimRight(u8, s, "\r\n");
+    return Value{ .string = trimmed };
+}
+
+/// (clojure.string/triml s)
+/// Removes whitespace from the left side of s.
+pub fn trimlFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+    const trimmed = std.mem.trimLeft(u8, s, " \t\n\r\x0b\x0c");
+    return Value{ .string = trimmed };
+}
+
+/// (clojure.string/trimr s)
+/// Removes whitespace from the right side of s.
+pub fn trimrFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+    const trimmed = std.mem.trimRight(u8, s, " \t\n\r\x0b\x0c");
+    return Value{ .string = trimmed };
+}
+
 const Writer = std.Io.Writer;
 
 // Helper: convert a Value to its string representation for join
@@ -213,6 +273,11 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "starts-with?", .func = &startsWithFn, .doc = "True if s starts with substr.", .arglists = "([s substr])", .added = "1.8" },
     .{ .name = "ends-with?", .func = &endsWithFn, .doc = "True if s ends with substr.", .arglists = "([s substr])", .added = "1.8" },
     .{ .name = "replace", .func = &replaceFn, .doc = "Replaces all instance of match with replacement in s.", .arglists = "([s match replacement])", .added = "1.2" },
+    .{ .name = "blank?", .func = &blankFn, .doc = "True if s is nil, empty, or contains only whitespace.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "reverse", .func = &reverseFn, .doc = "Returns s with its characters reversed.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "trim-newline", .func = &trimNewlineFn, .doc = "Removes all trailing newline \\n and carriage return \\r characters from s.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "triml", .func = &trimlFn, .doc = "Removes whitespace from the left side of string.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "trimr", .func = &trimrFn, .doc = "Removes whitespace from the right side of string.", .arglists = "([s])", .added = "1.2" },
 };
 
 // ============================================================
@@ -322,6 +387,38 @@ test "replace all occurrences" {
     try testing.expectEqualStrings("xxbxx", result.string);
 }
 
-test "builtins table has 9 entries" {
-    try testing.expectEqual(9, builtins.len);
+test "blank? true cases" {
+    try testing.expectEqual(true, (try blankFn(undefined, &.{.nil})).boolean);
+    try testing.expectEqual(true, (try blankFn(undefined, &.{.{ .string = "" }})).boolean);
+    try testing.expectEqual(true, (try blankFn(undefined, &.{.{ .string = "  \t\n" }})).boolean);
+}
+
+test "blank? false" {
+    try testing.expectEqual(false, (try blankFn(undefined, &.{.{ .string = "a" }})).boolean);
+}
+
+test "reverse" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try reverseFn(arena.allocator(), &.{.{ .string = "hello" }});
+    try testing.expectEqualStrings("olleh", result.string);
+}
+
+test "trim-newline" {
+    const result = try trimNewlineFn(undefined, &.{.{ .string = "hello\r\n" }});
+    try testing.expectEqualStrings("hello", result.string);
+}
+
+test "triml" {
+    const result = try trimlFn(undefined, &.{.{ .string = "  hello  " }});
+    try testing.expectEqualStrings("hello  ", result.string);
+}
+
+test "trimr" {
+    const result = try trimrFn(undefined, &.{.{ .string = "  hello  " }});
+    try testing.expectEqualStrings("  hello", result.string);
+}
+
+test "builtins table has 14 entries" {
+    try testing.expectEqual(14, builtins.len);
 }

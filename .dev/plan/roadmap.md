@@ -456,7 +456,7 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 | ---- | ------------------------------------------------------------ | -------------------------------------- | ---------------------------------------------- |
 | 13.3 | clojure.string: join, split, upper-case, lower-case, trim    | task_0109_clojure_string.md            | Core string ops. Zig builtins in new namespace |
 | 13.4 | clojure.string: includes?, starts-with?, ends-with?, replace | archive/task_0110_clj_string_search.md | Search/replace ops                             |
-| 13.5 | clojure.string: blank?, reverse, trim-newline, triml, trimr  | --                                     | Remaining commonly-used string functions       |
+| 13.5 | clojure.string: blank?, reverse, trim-newline, triml, trimr  | archive/task_0111_clj_string_misc.md   | Remaining commonly-used string functions       |
 
 ### Phase 13c: Core.clj Expansion (from Phase 12c)
 

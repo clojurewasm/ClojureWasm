@@ -1131,7 +1131,7 @@ vars:
     "print-trace-element": {type: function, status: todo}
     "root-cause": {type: function, status: todo}
   clojure_string:
-    "blank?": {type: function, status: todo}
+    "blank?": {type: function, status: done}
     capitalize: {type: function, status: todo}
     "ends-with?": {type: function, status: done}
     escape: {type: function, status: todo}
@@ -1143,14 +1143,14 @@ vars:
     "re-quote-replacement": {type: function, status: todo}
     replace: {type: function, status: done}
     "replace-first": {type: function, status: todo}
-    reverse: {type: function, status: todo}
+    reverse: {type: function, status: done}
     split: {type: function, status: done}
     "split-lines": {type: function, status: todo}
     "starts-with?": {type: function, status: done}
     trim: {type: function, status: done}
-    "trim-newline": {type: function, status: todo}
-    triml: {type: function, status: todo}
-    trimr: {type: function, status: todo}
+    "trim-newline": {type: function, status: done}
+    triml: {type: function, status: done}
+    trimr: {type: function, status: done}
     "upper-case": {type: function, status: done}
   clojure_template:
     "apply-template": {type: function, status: todo}

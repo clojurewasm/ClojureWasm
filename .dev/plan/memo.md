@@ -4,9 +4,9 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
+- Current task: T13.6 — key, val, keys, vals, MapEntry ops
 - Task file: (none — create on start)
-- Last completed: T13.4 — clojure.string: includes?, starts-with?, ends-with?, replace
+- Last completed: T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
 - Blockers: none
 - Next: T13.4
 
@@ -26,18 +26,20 @@ Overwrite freely — this is scratchpad, not permanent record.
 - T13.4: clojure.string — includes?, starts-with?, ends-with?, replace
   - Added 4 functions to clj_string.zig
   - Value boolean type: `Value{ .boolean = ... }` (not .true/.false)
+- T13.5: clojure.string — blank?, reverse, trim-newline, triml, trimr
+  - Added 5 functions to clj_string.zig (total 14 builtins)
+  - reverse handles UTF-8 codepoint boundaries
 - SCI: 72/74 tests pass, 259 assertions
-- Registry: 154 builtins + 9 clojure.string, 277/702 vars done
+- Registry: 154 builtins + 14 clojure.string, 282/702 vars done
 
-### T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
+### T13.6 — key, val, keys, vals, MapEntry ops
 
-Add to clj_string.zig:
+Phase 13c (Core.clj Expansion). Unlocks map iteration patterns.
+Add to core.clj or builtins:
 
-- blank? (s) → boolean — true if nil, empty, or only whitespace
-- reverse (s) → string
-- trim-newline (s) → string — remove trailing \\n \\r
-- triml (s) → string — trim left
-- trimr (s) → string — trim right
+- key, val — extract from MapEntry
+- keys, vals — from map
+- May need MapEntry value type or use vector pairs
 
 ### Deferred items to watch
 
