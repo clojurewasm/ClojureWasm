@@ -13,12 +13,12 @@
 sci_core_test:
   summary:
     total: 74           # total deftests (including skipped)
-    active: 70          # running deftests
-    pass: 70            # all assertions pass
+    active: 71          # running deftests
+    pass: 71            # all assertions pass
     fail: 0             # assertion failures
-    skip: 4             # commented out
-    assertions: 248     # total is-assertions in active tests
-    skipped_assertions: 15  # individual (is ...) commented within active tests
+    skip: 3             # commented out (self-ref-test, 2 partial skips)
+    assertions: 257     # total is-assertions in active tests
+    skipped_assertions: 7   # individual (is ...) commented within active tests
 
   tests:
     do-test:                    { status: pass }
@@ -34,10 +34,10 @@ sci_core_test:
     core-hof-test:              { status: pass }
     literals-test:              { status: pass }
     quoting-test:               { status: pass }
-    calling-ifns-test:          { status: pass, note: "1 assertion skipped: set-as-function" }
+    calling-ifns-test:          { status: pass }
     arithmetic-test:            { status: pass }
     comparisons-test:           { status: pass }
-    sequences-test:             { status: pass, note: "reduce without init workaround (uses init val 0)" }
+    sequences-test:             { status: pass }
     string-operations-test:     { status: pass, note: "minimal — clojure.string not implemented" }
     atoms-test:                 { status: pass }
     loop-recur-test:            { status: pass }
@@ -53,14 +53,14 @@ sci_core_test:
     trampoline-test:            { status: pass }
     try-catch-test:             { status: pass }
     variable-can-shadow-test:   { status: pass, note: "1 assertion skipped: fn as param name shadows special" }
-    delay-and-defn-private-test: { status: pass, note: "@(delay) deref not supported, uses force" }
+    delay-and-defn-private-test: { status: pass }
     self-ref-test:              { status: skip, reason: "named fn self-reference returns different value" }
     regex-test:                 { status: pass }
     some-threading-test:        { status: pass, note: "uses str instead of clojure.string/lower-case" }
     macroexpand-test:           { status: pass }
     while-test:                 { status: pass }
     collections-test:           { status: pass }
-    higher-order-fns-test:      { status: pass, note: "reduce without init workaround" }
+    higher-order-fns-test:      { status: pass }
     partition-group-test:       { status: pass }
     distinct-frequencies-test:  { status: pass }
     interleave-interpose-test:  { status: pass }
@@ -75,8 +75,8 @@ sci_core_test:
     namespace-ops-test:         { status: pass }
     gensym-test:                { status: pass, note: "uses subs workaround (no clojure.string/starts-with?)" }
     eval-read-string-test:      { status: pass }
-    macroexpand-detail-test:    { status: skip, reason: "list? crashes" }
-    basic-predicates-test:      { status: pass, note: "int? skipped (not implemented)" }
+    macroexpand-detail-test:    { status: pass }
+    basic-predicates-test:      { status: pass }
     memoize-test:               { status: pass }
     format-test:                { status: pass }
     compare-and-set-test:       { status: pass }
@@ -88,21 +88,14 @@ sci_core_test:
     lazy-seq-test:              { status: pass }
     ex-info-test:               { status: pass }
     multimethod-test:           { status: pass }
-    type-predicates-test:       { status: pass, note: "int? skipped" }
+    type-predicates-test:       { status: pass }
     bitwise-test:               { status: pass }
     sort-test:                  { status: pass }
     merge-test:                 { status: pass }
-    type-coercion-test:         { status: pass, note: "(into {} pairs) skipped" }
+    type-coercion-test:         { status: pass }
 
-  # Missing features discovered during triage
+  # Missing features (remaining after T13.1)
   missing_features:
-    tier1_zig_builtin:
-      - "list? — crashes on call"
-      - "int? — not implemented"
-      - "reduce without init value — 2-arity reduce"
-      - "set-as-function — #{:a :b} as callable"
-      - "@(delay) — deref on delay object"
-      - "(into {} [[:a 1]]) — into map from vector pairs"
     tier2_core_clj:
       - "clojure.string namespace (upper-case, lower-case, trim, includes?, split, join, starts-with?)"
       - "{:keys [:a]} — keyword in :keys destructuring vector"
@@ -110,3 +103,10 @@ sci_core_test:
       - "named fn self-reference — (fn foo [] foo) returns different identity"
       - "fn as param name — shadows special form, crashes"
       - "var :name metadata — (meta #'x) :name not populated"
+  # Resolved by T13.1:
+  # - list? (now implemented)
+  # - int? (now implemented)
+  # - reduce/2 (2-arity reduce)
+  # - set-as-function
+  # - deref on delay
+  # - (into {} [[:a 1]]) — conj map with vector pairs

@@ -22,14 +22,51 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .atom = a };
 }
 
-/// (deref ref) => val  — works on atoms and volatiles
-pub fn derefFn(_: Allocator, args: []const Value) anyerror!Value {
+/// (deref ref) => val  — works on atoms, volatiles, and delay maps
+pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
     return switch (args[0]) {
         .atom => |a| a.value,
         .volatile_ref => |v| v.value,
+        .map => |m| {
+            // Delay map: {:__delay true, :thunk fn, :value atom, :realized atom}
+            const delay_key = Value{ .keyword = .{ .name = "__delay", .ns = null } };
+            if (m.get(delay_key)) |_| {
+                return derefDelay(allocator, m);
+            }
+            return error.TypeError;
+        },
         else => error.TypeError,
     };
+}
+
+/// Force a delay map: if not realized, call thunk and cache result
+fn derefDelay(allocator: Allocator, m: *const value_mod.PersistentArrayMap) anyerror!Value {
+    const realized_key = Value{ .keyword = .{ .name = "realized", .ns = null } };
+    const value_key = Value{ .keyword = .{ .name = "value", .ns = null } };
+    const thunk_key = Value{ .keyword = .{ .name = "thunk", .ns = null } };
+
+    const realized_atom = (m.get(realized_key) orelse return error.TypeError);
+    if (realized_atom != .atom) return error.TypeError;
+
+    if (realized_atom.atom.value.eql(Value{ .boolean = true })) {
+        // Already realized — return cached value
+        const value_atom = (m.get(value_key) orelse return error.TypeError);
+        if (value_atom != .atom) return error.TypeError;
+        return value_atom.atom.value;
+    }
+
+    // Not yet realized — call thunk
+    const thunk = (m.get(thunk_key) orelse return error.TypeError);
+    const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| return e;
+
+    // Cache the result
+    const value_atom = (m.get(value_key) orelse return error.TypeError);
+    if (value_atom != .atom) return error.TypeError;
+    value_atom.atom.value = result;
+    realized_atom.atom.value = Value{ .boolean = true };
+
+    return result;
 }
 
 /// (reset! atom new-val) => new-val

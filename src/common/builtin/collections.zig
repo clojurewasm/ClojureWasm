@@ -151,6 +151,26 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             new_set.* = .{ .items = new_items };
             return Value{ .set = new_set };
         },
+        .map => {
+            // (conj map [k v]) => (assoc map k v)
+            if (x == .vector) {
+                const pair = x.vector;
+                if (pair.items.len != 2) return error.IllegalArgument;
+                const assoc_args = [_]Value{ coll, pair.items[0], pair.items[1] };
+                return assocFn(allocator, &assoc_args);
+            } else if (x == .map) {
+                // (conj map1 map2) => merge map2 into map1
+                var result = coll;
+                const entries = x.map.entries;
+                var i: usize = 0;
+                while (i < entries.len) : (i += 2) {
+                    const assoc_args = [_]Value{ result, entries[i], entries[i + 1] };
+                    result = try assocFn(allocator, &assoc_args);
+                }
+                return result;
+            }
+            return error.TypeError;
+        },
         .nil => {
             // (conj nil x) => (x) — returns a list
             const new_items = try allocator.alloc(Value, 1);

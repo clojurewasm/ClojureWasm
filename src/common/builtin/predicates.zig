@@ -66,6 +66,9 @@ fn isSet(v: Value) bool {
 fn isColl(v: Value) bool {
     return v == .list or v == .vector or v == .map or v == .set;
 }
+fn isList(v: Value) bool {
+    return v == .list;
+}
 fn isChar(v: Value) bool {
     return v == .char;
 }
@@ -113,6 +116,12 @@ pub fn setPred(_: Allocator, args: []const Value) anyerror!Value {
 }
 pub fn collPred(_: Allocator, args: []const Value) anyerror!Value {
     return predicate(args, isColl);
+}
+pub fn listPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isList);
+}
+pub fn intPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isInteger);
 }
 pub fn charPred(_: Allocator, args: []const Value) anyerror!Value {
     return predicate(args, isChar);
@@ -431,6 +440,8 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "fn?", .func = &fnPred, .doc = "Return true if x is a function.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "set?", .func = &setPred, .doc = "Returns true if x implements IPersistentSet.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "coll?", .func = &collPred, .doc = "Returns true if x implements IPersistentCollection.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "list?", .func = &listPred, .doc = "Returns true if x implements IPersistentList.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "int?", .func = &intPred, .doc = "Return true if x is a fixed precision integer.", .arglists = "([x])", .added = "1.9" },
     .{ .name = "char?", .func = &charPred, .doc = "Return true if x is a Character.", .arglists = "([x])", .added = "1.5" },
     .{ .name = "zero?", .func = &zeroPred, .doc = "Returns true if num is zero, else false.", .arglists = "([num])", .added = "1.0" },
     .{ .name = "pos?", .func = &posPred, .doc = "Returns true if num is greater than zero, else false.", .arglists = "([num])", .added = "1.0" },
@@ -678,8 +689,8 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
 }
 
-test "builtins table has 35 entries" {
-    try testing.expectEqual(35, builtins.len);
+test "builtins table has 37 entries" {
+    try testing.expectEqual(37, builtins.len);
 }
 
 test "builtins all have func" {

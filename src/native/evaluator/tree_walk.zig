@@ -182,6 +182,11 @@ pub const TreeWalk = struct {
                 }
                 return if (args.len == 2) args[1] else .nil;
             },
+            .set => |set| {
+                // Set-as-function: (#{:a :b} :a) => :a, (#{:a :b} :c) => nil
+                if (args.len < 1 or args.len > 2) return error.ArityError;
+                return if (set.contains(args[0])) args[0] else if (args.len == 2) args[1] else .nil;
+            },
             else => return error.TypeError,
         };
     }
@@ -213,6 +218,13 @@ pub const TreeWalk = struct {
                     if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
             }
             return if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+        }
+
+        // Set-as-function: (#{:a :b} :a) => :a
+        if (callee == .set) {
+            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            const target = try self.run(call_n.args[0]);
+            return if (callee.set.contains(target)) target else if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
         // Closure call

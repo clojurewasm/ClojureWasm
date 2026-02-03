@@ -354,7 +354,7 @@ vars:
     "instance?": {type: function, status: done, note: "core.clj (= t (type x))"}
     int: {type: function, status: todo}
     "int-array": {type: function, status: todo}
-    "int?": {type: function, status: todo}
+    "int?": {type: function, status: done}
     "integer?": {type: function, status: done}
     interleave: {type: function, status: done}
     intern: {type: function, status: todo}

@@ -34,13 +34,19 @@
         (recur (next s) acc))
       (reverse acc))))
 
-(defn reduce [f init coll]
-  (loop [acc init s (seq coll)]
-    (if (reduced? acc)
-      (unreduced acc)
-      (if s
-        (recur (f acc (first s)) (next s))
-        acc))))
+(defn reduce
+  ([f coll]
+   (let [s (seq coll)]
+     (if s
+       (reduce f (first s) (next s))
+       (f))))
+  ([f init coll]
+   (loop [acc init s (seq coll)]
+     (if (reduced? acc)
+       (unreduced acc)
+       (if s
+         (recur (f acc (first s)) (next s))
+         acc)))))
 
 (defn take [n coll]
   (loop [i n s (seq coll) acc (list)]

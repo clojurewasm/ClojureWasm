@@ -222,17 +222,14 @@
 (defn __ifn-h2 [] (get {:a 1} :a 3))
 (defn __ifn-h3 [] (:a {:a 1 :b 2}))
 (defn __ifn-h4 [] (:c {:a 1} :default))
-;; SKIP: set-as-function not supported
-;; (defn __ifn-h5 [] (#{:a :b :c} :a))
+(defn __ifn-h5 [] (#{:a :b :c} :a))
 
 (deftest calling-ifns-test
   (is (= 3 (__ifn-h1)))
   (is (= 1 (__ifn-h2)))
   (is (= 1 (__ifn-h3)))
   (is (= :default (__ifn-h4)))
-  ;; SKIP: set-as-function not supported
-  ;; (is (= :a (__ifn-h5)))
-  )
+  (is (= :a (__ifn-h5))))
 
 ;; =========================================================================
 ;; arithmetic
@@ -264,8 +261,7 @@
 (deftest sequences-test
   (is (= '(2 3 4) (map inc [1 2 3])))
   (is (= '(2 4) (filter even? [1 2 3 4 5])))
-  ;; SKIP: reduce without init not supported
-  ;; (is (= 10 (reduce + [1 2 3 4])))
+  (is (= 10 (reduce + [1 2 3 4])))
   (is (= 10 (reduce + 0 [1 2 3 4])))
   (is (= 15 (reduce + 5 [1 2 3 4])))
   (is (= 1 (first [1 2 3])))
@@ -422,8 +418,7 @@
 ;; delay / defn-
 ;; =========================================================================
 (deftest delay-and-defn-private-test
-  ;; SKIP: @(delay ...) deref not supported; use force instead
-  ;; (is (= 1 @(delay 1)))
+  (is (= 1 (deref (delay 1))))
   (is (= 1 (force (delay 1))))
   (is (= 1 (do (defn- __dp-foo [] 1) (__dp-foo)))))
 
@@ -494,8 +489,7 @@
 ;; =========================================================================
 (deftest higher-order-fns-test
   (is (= '(2 4 6) (filter even? (range 1 8))))
-  ;; SKIP: reduce without init not supported
-  ;; (is (= 15 (reduce + (range 1 6))))
+  (is (= 15 (reduce + (range 1 6))))
   (is (= 15 (reduce + 0 (range 1 6))))
   (is (= [1 1 2 2 3 3] (into [] (mapcat #(list % %) [1 2 3]))))
   (is (= '(0 1 2) (map-indexed (fn [i x] i) [:a :b :c])))
@@ -637,10 +631,9 @@
 ;; =========================================================================
 ;; macroexpand / macroexpand-1
 ;; =========================================================================
-;; SKIP: list? crashes
-;; (deftest macroexpand-detail-test
-;;   (is (list? (macroexpand-1 '(when true 1))))
-;;   (is (list? (macroexpand '(when true 1)))))
+(deftest macroexpand-detail-test
+  (is (list? (macroexpand-1 '(when true 1))))
+  (is (list? (macroexpand '(when true 1)))))
 
 ;; =========================================================================
 ;; boolean, true?, false?, some?, any?
@@ -771,9 +764,8 @@
   (is (true? (vector? [1 2])))
   (is (true? (seq? '(1 2))))
   (is (true? (fn? inc)))
-  ;; SKIP: int? not implemented
-  ;; (is (true? (int? 42)))
-  ;; (is (false? (int? 1.5)))
+  (is (true? (int? 42)))
+  (is (false? (int? 1.5)))
   (is (true? (integer? 42)))
   (is (true? (float? 1.5)))
   (is (false? (float? 42))))
@@ -812,9 +804,7 @@
   (is (= [1 2 3] (vec '(1 2 3))))
   (is (= #{1 2 3} (set [1 2 3 2 1])))
   (is (= [1 2 3] (into [] '(1 2 3))))
-  ;; SKIP: (into {} ...) from vector pairs not supported
-  ;; (is (= {:a 1 :b 2} (into {} [[:a 1] [:b 2]])))
-  )
+  (is (= {:a 1 :b 2} (into {} [[:a 1] [:b 2]]))))
 
 ;; --- run tests ---
 (run-tests)

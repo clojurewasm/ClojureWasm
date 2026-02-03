@@ -445,10 +445,10 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 13a: SCI Fix-ups (Zig builtins)
 
-| #    | Task                                            | Archive | Notes                                                                 |
-| ---- | ----------------------------------------------- | ------- | --------------------------------------------------------------------- |
-| 13.1 | list?, int?, reduce/2, set-as-fn, deref-delay   | --      | Fix 4 skipped SCI tests + 15 skipped assertions. Zig-level fixes      |
-| 13.2 | Named fn self-reference + fn param shadow fixes | --      | Behavioral fixes: self-ref-test + variable-can-shadow-test assertions |
+| #    | Task                                            | Archive                 | Notes                                                                 |
+| ---- | ----------------------------------------------- | ----------------------- | --------------------------------------------------------------------- |
+| 13.1 | list?, int?, reduce/2, set-as-fn, deref-delay   | task_0107_sci_fixups.md | Fix 4 skipped SCI tests + 15 skipped assertions. Zig-level fixes      |
+| 13.2 | Named fn self-reference + fn param shadow fixes | --                      | Behavioral fixes: self-ref-test + variable-can-shadow-test assertions |
 
 ### Phase 13b: clojure.string namespace
 
