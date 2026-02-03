@@ -201,6 +201,7 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .lazy_seq => "lazy-seq",
         .cons => "cons",
         .var_ref => "var",
+        .reduced => "reduced",
     };
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
@@ -271,6 +272,7 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .lazy_seq => "lazy_seq",
         .cons => "cons",
         .var_ref => "var",
+        .reduced => "reduced",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
 }
@@ -373,6 +375,44 @@ pub fn numericEqFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Reduced functions (early termination for reduce)
+// ============================================================
+
+const Reduced = value_mod.Reduced;
+
+/// (reduced x) — wraps x so that reduce will terminate with the value x.
+pub fn reducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const r = try allocator.create(Reduced);
+    r.* = .{ .value = args[0] };
+    return Value{ .reduced = r };
+}
+
+/// (reduced? x) — returns true if x is the result of a call to reduced.
+pub fn isReducedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = args[0] == .reduced };
+}
+
+/// (unreduced x) — if x is reduced, returns the value that was wrapped, else returns x.
+pub fn unreducedFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .reduced => |r| r.value,
+        else => args[0],
+    };
+}
+
+/// (ensure-reduced x) — if x is already reduced, returns it, else wraps in reduced.
+pub fn ensureReducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] == .reduced) return args[0];
+    const r = try allocator.create(Reduced);
+    r.* = .{ .value = args[0] };
+    return Value{ .reduced = r };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -408,6 +448,10 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "hash", .func = &hashFn, .doc = "Returns the hash code of its argument. Note this is the hash code consistent with =, and thus is different than .hashCode for Integer, Short, Byte and Clojure collections.", .arglists = "([x])", .added = "1.6" },
     .{ .name = "identical?", .func = &identicalPred, .doc = "Tests if 2 arguments are the same object.", .arglists = "([x y])", .added = "1.0" },
     .{ .name = "==", .func = &numericEqFn, .doc = "Returns non-nil if nums all have the equivalent value, otherwise false.", .arglists = "([x] [x y] [x y & more])", .added = "1.0" },
+    .{ .name = "reduced", .func = &reducedFn, .doc = "Wraps x in a way such that a reduce will terminate with the value x.", .arglists = "([x])", .added = "1.5" },
+    .{ .name = "reduced?", .func = &isReducedPred, .doc = "Returns true if x is the result of a call to reduced.", .arglists = "([x])", .added = "1.5" },
+    .{ .name = "unreduced", .func = &unreducedFn, .doc = "If x is reduced?, returns (deref x), else returns x.", .arglists = "([x])", .added = "1.7" },
+    .{ .name = "ensure-reduced", .func = &ensureReducedFn, .doc = "If x is already reduced?, returns it, else returns (reduced x).", .arglists = "([x])", .added = "1.7" },
 };
 
 // === Tests ===
@@ -581,8 +625,61 @@ test "== non-numeric is error" {
     try testing.expectError(error.TypeError, numericEqFn(test_alloc, &.{ Value{ .string = "a" }, Value{ .string = "a" } }));
 }
 
-test "builtins table has 31 entries" {
-    try testing.expectEqual(31, builtins.len);
+// --- reduced tests ---
+
+test "reduced wraps a value" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try reducedFn(arena.allocator(), &.{Value{ .integer = 42 }});
+    try testing.expect(result == .reduced);
+    try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
+}
+
+test "reduced? returns true for reduced values" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const r = try reducedFn(arena.allocator(), &.{Value{ .integer = 1 }});
+    const result = try isReducedPred(test_alloc, &.{r});
+    try testing.expectEqual(Value{ .boolean = true }, result);
+}
+
+test "reduced? returns false for normal values" {
+    const result = try isReducedPred(test_alloc, &.{Value{ .integer = 1 }});
+    try testing.expectEqual(Value{ .boolean = false }, result);
+}
+
+test "unreduced unwraps reduced" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const r = try reducedFn(arena.allocator(), &.{Value{ .integer = 42 }});
+    const result = try unreducedFn(test_alloc, &.{r});
+    try testing.expect(result.eql(.{ .integer = 42 }));
+}
+
+test "unreduced passes through normal values" {
+    const result = try unreducedFn(test_alloc, &.{Value{ .integer = 42 }});
+    try testing.expect(result.eql(.{ .integer = 42 }));
+}
+
+test "ensure-reduced wraps non-reduced" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try ensureReducedFn(arena.allocator(), &.{Value{ .integer = 42 }});
+    try testing.expect(result == .reduced);
+    try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
+}
+
+test "ensure-reduced passes through reduced" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const r = try reducedFn(arena.allocator(), &.{Value{ .integer = 42 }});
+    const result = try ensureReducedFn(arena.allocator(), &.{r});
+    try testing.expect(result == .reduced);
+    try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
+}
+
+test "builtins table has 35 entries" {
+    try testing.expectEqual(35, builtins.len);
 }
 
 test "builtins all have func" {

@@ -268,7 +268,7 @@ vars:
     empty: {type: function, status: done}
     "empty?": {type: function, status: done}
     ensure: {type: function, status: todo}
-    "ensure-reduced": {type: function, status: todo}
+    "ensure-reduced": {type: function, status: done}
     "enumeration-seq": {type: function, status: todo}
     "error-handler": {type: function, status: todo}
     "error-mode": {type: function, status: todo}
@@ -526,8 +526,8 @@ vars:
     "record?": {type: function, status: todo}
     reduce: {type: function, status: done}
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
-    reduced: {type: function, status: todo}
-    "reduced?": {type: function, status: todo}
+    reduced: {type: function, status: done}
+    "reduced?": {type: function, status: done}
     reductions: {type: function, status: todo}
     ref: {type: function, status: todo}
     "ref-history-count": {type: function, status: todo}
@@ -669,7 +669,7 @@ vars:
     underive: {type: function, status: todo}
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
-    unreduced: {type: function, status: todo}
+    unreduced: {type: function, status: done}
     "unsigned-bit-shift-right": {type: function, status: todo}
     update: {type: function, status: done}
     "update-in": {type: function, status: done}

@@ -47,6 +47,12 @@ pub const Volatile = struct {
     value: Value,
 };
 
+/// Reduced — wrapper for early termination in reduce.
+/// (reduced x) wraps x; reduce checks for Reduced to stop iteration.
+pub const Reduced = struct {
+    value: Value,
+};
+
 /// Compiled regex pattern.
 pub const Pattern = struct {
     source: []const u8, // original pattern string
@@ -172,6 +178,9 @@ pub const Value = union(enum) {
 
     // Var reference — first-class Var value (#'foo)
     var_ref: *Var,
+
+    // Reduced — early termination wrapper for reduce
+    reduced: *const Reduced,
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -304,6 +313,7 @@ pub const Value = union(enum) {
                 try w.writeAll("/");
                 try w.writeAll(v.sym.name);
             },
+            .reduced => |r| try r.value.formatPrStr(w),
             .cons => |c| {
                 try w.writeAll("(");
                 try c.first.formatPrStr(w);
@@ -413,6 +423,7 @@ pub const Value = union(enum) {
             .lazy_seq => unreachable, // handled by early return above
             .var_ref => |a| a == other.var_ref, // identity equality
             .cons => |a| a == other.cons, // identity equality (full comparison needs realization)
+            .reduced => |a| a.value.eql(other.reduced.value), // compare inner values
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;

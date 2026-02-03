@@ -2117,3 +2117,25 @@ test "EvalEngine compare ==" {
     try std.testing.expect(result.match);
     try std.testing.expect(result.tw_value.?.eql(.{ .boolean = true }));
 }
+
+test "EvalEngine compare reduced" {
+    // (reduced 42) => 42 (prints as inner value)
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+
+    var arg = Node{ .constant = .{ .integer = 42 } };
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "reduced", .source = .{} } };
+    var call_args = [_]*Node{&arg};
+    var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
+    const n = Node{ .call_node = &call };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expect(result.tw_value.? == .reduced);
+    try std.testing.expect(result.tw_value.?.reduced.value.eql(.{ .integer = 42 }));
+}

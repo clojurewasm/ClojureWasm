@@ -36,9 +36,11 @@
 
 (defn reduce [f init coll]
   (loop [acc init s (seq coll)]
-    (if s
-      (recur (f acc (first s)) (next s))
-      acc)))
+    (if (reduced? acc)
+      (unreduced acc)
+      (if s
+        (recur (f acc (first s)) (next s))
+        acc))))
 
 (defn take [n coll]
   (loop [i n s (seq coll) acc (list)]

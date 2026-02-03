@@ -1366,3 +1366,28 @@ order. A full `PersistentTreeMap` is deferred until SCI tests or user code
 require sorted-map invariants across mutations.
 
 **Ref**: Beta `src/lib/core/eval.zig:sortedMapFn` — same approach.
+
+---
+
+## D46: Reduced Value Variant + F23 Verification (T12.4)
+
+**Context**: Adding `.reduced` as the 21st Value variant for early termination
+in `reduce`. F23 required comptime verification that all critical switch
+statements handle every variant.
+
+**Decision**: Zig's exhaustive switch enforcement IS the comptime verification.
+Adding `.reduced` to the Value union caused 8 compile errors at all switch
+statements that didn't have `else =>` catch-alls, forcing explicit handling:
+
+- `value.zig:formatPrStr` — print inner value (transparent)
+- `value.zig:eql` — compare inner values
+- `predicates.zig:typeFn` — returns `:reduced`
+- `predicates.zig:satisfiesPred` — type key "reduced"
+- `tree_walk.zig:valueTypeKey` — "reduced"
+- `macro.zig:valueToForm` — maps to nil (non-data)
+- `nrepl.zig:writeValue` — print inner value
+- `main.zig:writeValue` — print inner value
+
+**F23 resolution**: No separate comptime test needed. Zig's type system already
+provides exhaustive verification. The 8 compile errors prove it works.
+Mark F23 as resolved in checklist.
