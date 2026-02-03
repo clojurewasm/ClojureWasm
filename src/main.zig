@@ -38,6 +38,14 @@ pub fn main() !void {
             std.debug.print("Error: failed to load core.clj\n", .{});
             std.process.exit(1);
         };
+        bootstrap.loadWalk(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.walk\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadTemplate(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.template\n", .{});
+            std.process.exit(1);
+        };
         bootstrap.loadTest(alloc, &env) catch {
             std.debug.print("Error: failed to load clojure.test\n", .{});
             std.process.exit(1);
@@ -231,6 +239,14 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
     };
     bootstrap.loadCore(allocator, &env) catch {
         std.debug.print("Error: failed to load core.clj\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadWalk(allocator, &env) catch {
+        std.debug.print("Error: failed to load clojure.walk\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadTemplate(allocator, &env) catch {
+        std.debug.print("Error: failed to load clojure.template\n", .{});
         std.process.exit(1);
     };
     bootstrap.loadTest(allocator, &env) catch {

@@ -19,15 +19,16 @@ Prioritized list of namespaces to implement. Source: `.dev/status/vars.yaml`
 
 Core functionality, high demand, Zig/Clojure implementable.
 
-| Namespace       | Done | Total | Implementation     | File                       |
-| --------------- | ---- | ----- | ------------------ | -------------------------- |
-| clojure.core    | 270  | 705   | Zig builtin + .clj | `src/clj/core.clj`         |
-| clojure.string  | 14   | 21    | Zig builtin        | (builtin)                  |
-| clojure.walk    | 5    | 10    | Pure Clojure       | `src/clj/clojure/walk.clj` |
-| clojure.set     | 0    | 12    | Pure Clojure       | `src/clj/clojure/set.clj`  |
-| clojure.java.io | 0    | 19    | Zig std.fs         | (builtin)                  |
-| clojure.math    | 0    | 45    | Zig std.math       | (builtin)                  |
-| clojure.edn     | 0    | 2     | Existing reader    | `src/clj/clojure/edn.clj`  |
+| Namespace        | Done | Total | Implementation     | File                           |
+| ---------------- | ---- | ----- | ------------------ | ------------------------------ |
+| clojure.core     | 270  | 705   | Zig builtin + .clj | `src/clj/clojure/core.clj`     |
+| clojure.string   | 14   | 21    | Zig builtin        | (builtin)                      |
+| clojure.walk     | 5    | 10    | Pure Clojure       | `src/clj/clojure/walk.clj`     |
+| clojure.template | 2    | 2     | Pure Clojure       | `src/clj/clojure/template.clj` |
+| clojure.set      | 0    | 12    | Pure Clojure       | `src/clj/clojure/set.clj`      |
+| clojure.java.io  | 0    | 19    | Zig std.fs         | (builtin)                      |
+| clojure.math     | 0    | 45    | Zig std.math       | (builtin)                      |
+| clojure.edn      | 0    | 2     | Existing reader    | `src/clj/clojure/edn.clj`      |
 
 ### Tier B (Medium Priority)
 
@@ -62,7 +63,7 @@ True JVM dependencies, no portable equivalent.
 | clojure.datafy           | Java class navigation |
 | clojure.instant          | Java Date/Timestamp   |
 | clojure.main             | JVM entry point       |
-| clojure.template         | Already done (2/2)    |
+| (clojure.template)       | Moved to Tier A       |
 | clojure.uuid             | Empty namespace       |
 
 ## Decision Flow

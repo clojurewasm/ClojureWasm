@@ -6,9 +6,9 @@
 - Roadmap: .dev/plan/roadmap.md
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.2 — Port special.clj (9 tests, 22 assertions)
+- Last completed: T15.3 — Namespace separation (D54: walk, template)
 - Blockers: none
-- Next: T15.3 — Port clojure_walk.clj (walk, postwalk, prewalk)
+- Next: T15.4 — Port clojure_walk.clj (walk, postwalk, prewalk)
 
 ### Phase 15 Task Queue
 
@@ -19,12 +19,13 @@ One test file = one task. TDD: port test → fail → implement → pass.
 | ----- | ------------------- | -------------------------- |
 | T15.1 | macros.clj          | ->, ->>, threading macros  |
 | T15.2 | special.clj         | let, letfn, quote, var, fn |
-| T15.3 | clojure_walk.clj    | walk, postwalk, prewalk    |
-| T15.4 | clojure_set.clj     | union, intersection, diff  |
-| T15.5 | string.clj          | clojure.string tests       |
-| T15.6 | keywords.clj        | keyword ops                |
-| T15.7 | other_functions.clj | identity, fnil, constantly |
-| T15.8 | metadata.clj        | meta, with-meta            |
+| T15.3 | namespace refactor  | D54: walk, template files  |
+| T15.4 | clojure_walk.clj    | walk, postwalk, prewalk    |
+| T15.5 | clojure_set.clj     | union, intersection, diff  |
+| T15.6 | string.clj          | clojure.string tests       |
+| T15.7 | keywords.clj        | keyword ops                |
+| T15.8 | other_functions.clj | identity, fnil, constantly |
+| T15.9 | metadata.clj        | meta, with-meta            |
 
 ## Long-term Reference (DO NOT DELETE until core library stabilizes)
 

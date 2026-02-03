@@ -173,7 +173,7 @@ Query reference: `.claude/references/yq-queries.md`
 When adding a function/macro to any `.clj` file:
 
 1. **Place in correct namespace** — see `.claude/references/impl-tiers.md` for mapping
-   - `clojure.core` → `src/clj/core.clj`
+   - `clojure.core` → `src/clj/clojure/core.clj`
    - `clojure.walk` → `src/clj/clojure/walk.clj`
    - `clojure.set` → `src/clj/clojure/set.clj`
    - `clojure.string` → `src/clj/clojure/string.clj`

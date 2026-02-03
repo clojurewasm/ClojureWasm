@@ -1452,7 +1452,6 @@ skip the special form handler and treat it as a regular function call.
 
 This matches Clojure's behavior where locals always take priority.
 
-
 ## D50: Nested Map Destructuring Limitation (T14.5)
 
 ClojureWasm destructuring supports single-level map patterns but not nested:
@@ -1471,6 +1470,7 @@ ClojureWasm destructuring supports single-level map patterns but not nested:
 function in core.clj. The limitation applies to both contexts.
 
 **Workaround**: Use sequential bindings:
+
 ```clojure
 (let [{b :b} m
       {x :x} b]
@@ -1480,3 +1480,32 @@ function in core.clj. The limitation applies to both contexts.
 **Implementation path**: Modify `destructure` in core.clj to recursively process
 map patterns when a binding form is itself a map. Requires detecting map patterns
 vs symbol bindings during the binding pair iteration.
+
+## D54: Namespace Separation — clojure.walk, clojure.template (T15.3)
+
+Separated walk and template functions from core.clj into proper namespaces,
+matching upstream Clojure directory structure:
+
+| File                         | Content                             |
+| ---------------------------- | ----------------------------------- |
+| src/clj/clojure/core.clj     | (moved from src/clj/core.clj)       |
+| src/clj/clojure/walk.clj     | walk, postwalk, prewalk, \*-replace |
+| src/clj/clojure/template.clj | apply-template, do-template         |
+
+**Bootstrap order** (in main.zig and bootstrap.zig):
+
+1. loadCore() — clojure.core
+2. loadWalk() — clojure.walk (depends on core)
+3. loadTemplate() — clojure.template (depends on core + walk)
+4. loadTest() — clojure.test (depends on core + walk for `are` macro)
+
+**Design**: Each load function:
+
+- Creates the namespace via `findOrCreateNamespace`
+- Refers required bindings (core, and walk for template)
+- Evaluates the embedded .clj source
+- Re-refers new bindings into user namespace for convenience
+
+**Limitation**: Fully-qualified references (`clojure.walk/postwalk`) do not work
+without explicit require. This is a namespace resolution issue to address later.
+Current workaround: Functions are auto-referred to user namespace at bootstrap.

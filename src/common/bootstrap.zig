@@ -30,10 +30,16 @@ pub const BootstrapError = error{
 };
 
 /// Embedded core.clj source (compiled into binary).
-const core_clj_source = @embedFile("../clj/core.clj");
+const core_clj_source = @embedFile("../clj/clojure/core.clj");
 
 /// Embedded clojure/test.clj source (compiled into binary).
 const test_clj_source = @embedFile("../clj/clojure/test.clj");
+
+/// Embedded clojure/walk.clj source (compiled into binary).
+const walk_clj_source = @embedFile("../clj/clojure/walk.clj");
+
+/// Embedded clojure/template.clj source (compiled into binary).
+const template_clj_source = @embedFile("../clj/clojure/template.clj");
 
 /// Load and evaluate core.clj in the given Env.
 /// Called after registerBuiltins to define core macros (defn, when, etc.).
@@ -53,6 +59,75 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = saved_ns;
     if (saved_ns) |user_ns| {
         var iter = core_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+}
+
+/// Load and evaluate clojure/walk.clj in the given Env.
+/// Creates the clojure.walk namespace and defines tree walker functions.
+/// Re-refers walk bindings into user namespace for convenience.
+pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.walk namespace
+    const walk_ns = env.findOrCreateNamespace("clojure.walk") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.walk so core functions are available
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        walk_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Save current namespace and switch to clojure.walk
+    const saved_ns = env.current_ns;
+    env.current_ns = walk_ns;
+
+    // Evaluate clojure/walk.clj (defines functions in clojure.walk)
+    _ = try evalString(allocator, env, walk_clj_source);
+
+    // Restore user namespace and re-refer walk bindings
+    env.current_ns = saved_ns;
+    if (saved_ns) |user_ns| {
+        var iter = walk_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+}
+
+/// Load and evaluate clojure/template.clj in the given Env.
+/// Creates the clojure.template namespace and defines template macros.
+/// Depends on clojure.walk being loaded first.
+pub fn loadTemplate(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.template namespace
+    const template_ns = env.findOrCreateNamespace("clojure.template") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.template
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Refer clojure.walk bindings into clojure.template (for postwalk-replace)
+    const walk_ns = env.findNamespace("clojure.walk") orelse return error.EvalError;
+    var walk_iter = walk_ns.mappings.iterator();
+    while (walk_iter.next()) |entry| {
+        template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Save current namespace and switch to clojure.template
+    const saved_ns = env.current_ns;
+    env.current_ns = template_ns;
+
+    // Evaluate clojure/template.clj
+    _ = try evalString(allocator, env, template_clj_source);
+
+    // Restore user namespace and re-refer template bindings
+    env.current_ns = saved_ns;
+    if (saved_ns) |user_ns| {
+        var iter = template_ns.mappings.iterator();
         while (iter.next()) |entry| {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
