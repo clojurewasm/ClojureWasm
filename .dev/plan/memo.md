@@ -4,11 +4,11 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.6 — key, val, keys, vals, MapEntry ops
+- Current task: T13.7 — map-indexed, keep, keep-indexed, remove
 - Task file: (none — create on start)
-- Last completed: T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
+- Last completed: T13.6 — key, val, keys, vals, MapEntry ops
 - Blockers: none
-- Next: T13.4
+- Next: T13.7
 
 ## Technical Notes
 
@@ -19,27 +19,19 @@ Overwrite freely — this is scratchpad, not permanent record.
 
 - T13.1: list?, int?, reduce/2, set-as-fn, deref-delay, conj-map-vector-pairs
 - T13.2: Named fn self-ref (identity preserved), fn param shadow (D49)
-- T13.3: clojure.string namespace — join, split, upper-case, lower-case, trim
-  - New file: src/common/builtin/clj_string.zig
-  - Registered in registry.zig registerBuiltins
-  - Fixed resolveVar for full namespace name lookup
+- T13.3: clojure.string — join, split, upper-case, lower-case, trim
 - T13.4: clojure.string — includes?, starts-with?, ends-with?, replace
-  - Added 4 functions to clj_string.zig
-  - Value boolean type: `Value{ .boolean = ... }` (not .true/.false)
-- T13.5: clojure.string — blank?, reverse, trim-newline, triml, trimr
-  - Added 5 functions to clj_string.zig (total 14 builtins)
-  - reverse handles UTF-8 codepoint boundaries
+- T13.5: clojure.string — blank?, reverse, trim-newline, triml, trimr (14 builtins)
+- T13.6: key, val — MapEntry ops as vector pair first/second
+  - keys/vals already done; added key/val builtins to sequences.zig
+  - Registry: 156 builtins + 14 clojure.string
 - SCI: 72/74 tests pass, 259 assertions
-- Registry: 154 builtins + 14 clojure.string, 282/702 vars done
+- Vars: 284/702 done
 
-### T13.6 — key, val, keys, vals, MapEntry ops
+### T13.7 — map-indexed, keep, keep-indexed, remove
 
-Phase 13c (Core.clj Expansion). Unlocks map iteration patterns.
-Add to core.clj or builtins:
-
-- key, val — extract from MapEntry
-- keys, vals — from map
-- May need MapEntry value type or use vector pairs
+Phase 13c. Advanced sequence transforms.
+Implement in core.clj (depends on map, filter, etc. already present).
 
 ### Deferred items to watch
 

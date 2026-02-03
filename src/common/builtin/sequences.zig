@@ -115,6 +115,28 @@ pub fn containsFn(_: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
+/// (key e) — returns the key of the map entry (vector pair).
+pub fn keyFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const vec = switch (args[0]) {
+        .vector => |v| v,
+        else => return error.TypeError,
+    };
+    if (vec.items.len != 2) return error.IllegalArgument;
+    return vec.items[0];
+}
+
+/// (val e) — returns the val of the map entry (vector pair).
+pub fn valFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const vec = switch (args[0]) {
+        .vector => |v| v,
+        else => return error.TypeError,
+    };
+    if (vec.items.len != 2) return error.IllegalArgument;
+    return vec.items[1];
+}
+
 /// (keys map) — returns a list of the map's keys.
 pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -204,6 +226,20 @@ pub const builtins = [_]BuiltinDef{
         .func = &containsFn,
         .doc = "Returns true if key is present in the given collection, otherwise returns false.",
         .arglists = "([coll key])",
+        .added = "1.0",
+    },
+    .{
+        .name = "key",
+        .func = &keyFn,
+        .doc = "Returns the key of the map entry.",
+        .arglists = "([e])",
+        .added = "1.0",
+    },
+    .{
+        .name = "val",
+        .func = &valFn,
+        .doc = "Returns the value in the map entry.",
+        .arglists = "([e])",
         .added = "1.0",
     },
     .{
@@ -454,4 +490,27 @@ test "vals on map" {
 test "vals on nil returns nil" {
     const result = try valsFn(test_alloc, &.{Value.nil});
     try testing.expect(result == .nil);
+}
+
+test "key on map entry vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const items = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+    const result = try keyFn(alloc, &.{Value{ .vector = vec }});
+    try testing.expect(result == .keyword);
+    try testing.expectEqualStrings("a", result.keyword.name);
+}
+
+test "val on map entry vector" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const items = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 42 } };
+    const vec = try alloc.create(PersistentVector);
+    vec.* = .{ .items = &items };
+    const result = try valFn(alloc, &.{Value{ .vector = vec }});
+    try testing.expectEqual(Value{ .integer = 42 }, result);
 }

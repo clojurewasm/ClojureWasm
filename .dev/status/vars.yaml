@@ -370,7 +370,7 @@ vars:
     juxt: {type: function, status: done}
     keep: {type: function, status: done}
     "keep-indexed": {type: function, status: done}
-    key: {type: function, status: todo}
+    key: {type: function, status: done}
     keys: {type: function, status: done}
     keyword: {type: function, status: done}
     "keyword?": {type: function, status: done}
@@ -679,7 +679,7 @@ vars:
     "uri?": {type: function, status: todo}
     use: {type: function, status: todo}
     "uuid?": {type: function, status: todo}
-    val: {type: function, status: todo}
+    val: {type: function, status: done}
     vals: {type: function, status: done}
     "var-get": {type: function, status: done, note: T11.2}
     "var-set": {type: function, status: done, note: T11.2}
