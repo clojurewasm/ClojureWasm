@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.9 sequences.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 
 ## Invariants (always enforce)
 
@@ -59,6 +59,18 @@ Last updated: 2026-02-03 (Phase 14 — T14.9 sequences.clj tests)
 | F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9  |
 | F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
 | F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| F55     | (= nil ()) returns true                          | data_structures.clj tests (excluded) — () should not equal nil                         | T14.10 |
+| F56     | (conj () ()) returns (nil)                       | data_structures.clj tests (excluded) — should return (())                              | T14.10 |
+| F57     | Empty list comparison (= (first '(())) ())       | data_structures.clj tests (workaround: use empty?)                                     | T14.10 |
+| F58     | Nested map destructuring                         | data_structures.clj tests (excluded) — not supported                                   | T14.10 |
+| F59     | (pop nil) throws error                           | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
+| F60     | () evaluates to nil                              | data_structures.clj tests (workaround: use '() or (list))                              | T14.10 |
+| F61     | keys/vals on non-maps throws error               | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
+| F62     | reduce cannot iterate over set                   | data_structures.clj tests (workaround: use seq) — (reduce f #{}) fails                 | T14.10 |
+| F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |
+| F64     | (set string) fails                               | data_structures.clj tests (excluded) — (set "") and (set "abc") fail                   | T14.10 |
+| F65     | postwalk-replace on set literal fails            | data_structures.clj tests (workaround: use is) — are macro with #{x} template          | T14.10 |
+| F66     | assoc on vectors fails                           | data_structures.clj tests (excluded) — (assoc [] 0 4) fails, maps work                 | T14.10 |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

@@ -4,11 +4,11 @@
 
 - Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.10 — data_structures.clj 等価テスト作成
+- Current task: T14.11 (next task TBD)
 - Task file: (to be created)
-- Last completed: T14.9 — sequences.clj 等価テスト作成 (33 tests, 188 assertions)
+- Last completed: T14.10 — data_structures.clj 等価テスト作成 (17 tests, 201 assertions)
 - Blockers: none
-- Next: T13.7 or Phase 14 completion
+- Next: Phase 14 complete or additional test coverage
 
 ## Technical Notes
 
@@ -27,6 +27,18 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Implemented apply-template, do-template in core.clj
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
+
+### Completed: T14.10 — data_structures.clj
+
+- 17 tests, 201 assertions (TreeWalk)
+- Covers: equality, count, conj, peek, pop, list, find
+- contains?, keys, vals, key, val, get/get-in
+- hash-set, set, disj, assoc
+- Discovered bugs: F55-F66 (see checklist.md)
+- Key workarounds:
+  - F57/F60: use empty? instead of = on empty lists
+  - F65: use `is` instead of `are` for set literal #{x} templates
+  - F66: assoc only on maps, not vectors
 
 ### Completed: T14.9 — sequences.clj
 
