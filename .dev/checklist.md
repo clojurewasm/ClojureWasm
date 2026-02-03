@@ -66,7 +66,7 @@ Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 | F59     | (pop nil) throws error                           | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
 | F60     | () evaluates to nil                              | data_structures.clj tests (workaround: use '() or (list))                              | T14.10 |
 | F61     | keys/vals on non-maps throws error               | data_structures.clj tests (excluded) — should return nil                               | T14.10 |
-| F62     | reduce cannot iterate over set                   | data_structures.clj tests (workaround: use seq) — (reduce f #{}) fails                 | T14.10 |
+| ~~F62~~ | ~~reduce cannot iterate over set~~               | ~~Resolved: T14.5.2 — added set support to seqFn~~                                     | T14.10 |
 | F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |
 | F64     | (set string) fails                               | data_structures.clj tests (excluded) — (set "") and (set "abc") fail                   | T14.10 |
 | F65     | postwalk-replace on set literal fails            | data_structures.clj tests (workaround: use is) — are macro with #{x} template          | T14.10 |

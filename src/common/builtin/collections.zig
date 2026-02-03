@@ -368,6 +368,13 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             lst.* = .{ .items = entry_vecs };
             return Value{ .list = lst };
         },
+        .set => |s| {
+            if (s.items.len == 0) return .nil;
+            // Convert set items to list
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = s.items };
+            return Value{ .list = lst };
+        },
         .lazy_seq => |ls| {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
@@ -1964,6 +1971,28 @@ test "seq on empty map returns nil" {
     m.* = .{ .entries = &.{} };
 
     const result = try seqFn(alloc, &.{Value{ .map = m }});
+    try testing.expectEqual(Value.nil, result);
+}
+
+test "seq on set returns list of elements" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var s = PersistentHashSet{ .items = &items };
+    const result = try seqFn(alloc, &.{Value{ .set = &s }});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+}
+
+test "seq on empty set returns nil" {
+    const alloc = testing.allocator;
+    const s = try alloc.create(PersistentHashSet);
+    defer alloc.destroy(s);
+    s.* = .{ .items = &.{} };
+
+    const result = try seqFn(alloc, &.{Value{ .set = s }});
     try testing.expectEqual(Value.nil, result);
 }
 

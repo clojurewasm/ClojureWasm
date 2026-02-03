@@ -4,7 +4,7 @@
 
 - Phase: 14.5 (Bug Fix Round)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.5.1 — assoc on vectors (F66)
+- Current task: T14.5.2 — reduce on set (F62)
 - Task file: (to be created)
 - Last completed: T14.10 — data_structures.clj 等価テスト作成 (17 tests, 201 assertions)
 - Blockers: none
