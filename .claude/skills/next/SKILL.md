@@ -65,7 +65,13 @@ run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
 2. Update `roadmap.md` Archive column
 3. Advance `memo.md`: update Current task, Task file, Last completed.
    Update Technical Notes with context useful for the next task.
-4. **Single git commit** covering plan + implementation + status update
+4. **Decision & Checklist gate** (MANDATORY before commit):
+   - **decisions.md**: Any design decisions made? (New Value variant, error type,
+     architectural choice, API design) → append D## entry
+   - **checklist.md**: Any deferred items resolved or created?
+     → Strike through resolved F##, add new F## with trigger
+   - Update `checklist.md` "Last updated" line
+5. **Single git commit** covering plan + implementation + status update
 
 ## 6. Report & Stop
 

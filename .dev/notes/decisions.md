@@ -1298,3 +1298,53 @@ returning TypeError for closures (`.fn_val`).
 handles both bytecode and treewalk closures via the appropriate bridge.
 This is the same dispatch mechanism used by VM performCall and TreeWalk
 callValue.
+
+---
+
+## D42: Regex Engine — Port from Beta + Analysis-Time Compilation (T11.5)
+
+**Context**: Zig has no stdlib regex. Clojure regex literals `#"..."` need
+a compiled regex engine for `re-find`, `re-matches`, `re-seq`.
+
+**Decision**:
+
+1. Port Beta's hand-rolled regex engine (recursive descent parser +
+   backtracking matcher) into `src/common/regex/`.
+2. Add `Pattern` struct to Value: `{ source, compiled (*const anyopaque), group_count }`.
+   New Value variant `regex: *Pattern`.
+3. Compile regex at **analysis time** (not runtime): `Form.regex` → `analyzeRegex` →
+   Pattern constant. This means `#"\d+"` is compiled once during analysis,
+   not on each evaluation.
+
+**Rationale**:
+
+- PCRE/POSIX dependency adds external C dep — unacceptable for Wasm target
+- Beta's engine is proven and covers Java regex subset (classes, quantifiers,
+  groups, backreferences, lookahead, inline flags)
+- Analysis-time compilation matches Clojure semantics (regex literals are compiled once)
+
+**Consequence**: New Value variant requires exhaustive switch updates across
+10+ files. `anyopaque` for compiled field avoids circular imports between
+value.zig and matcher.zig.
+
+---
+
+## D43: pop on Empty / nil — IllegalState Error (T12.1)
+
+**Context**: Clojure `(pop [])` and `(pop nil)` throw IllegalStateException.
+`(peek [])` and `(peek nil)` return nil.
+
+**Decision**: `popFn` returns `error.IllegalState` for empty collections and
+nil. `peekFn` returns `.nil` for the same cases. This asymmetry matches
+Clojure's behavior: peek is safe (returns nil), pop is unsafe (throws).
+
+---
+
+## D44: empty on Non-Collection — Return nil (T12.1)
+
+**Context**: Clojure `(empty "abc")` returns nil, `(empty 42)` returns nil.
+Only ICollection types return an empty collection.
+
+**Decision**: `emptyFn` returns `.nil` for all non-collection types (string,
+integer, etc.) rather than TypeError. This matches Clojure semantics where
+`empty` is defined on `IPersistentCollection` and returns nil for others.
