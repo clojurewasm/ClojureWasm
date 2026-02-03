@@ -1451,3 +1451,32 @@ before `special_forms.get(sym_name)`. If the head symbol is a local binding,
 skip the special form handler and treat it as a regular function call.
 
 This matches Clojure's behavior where locals always take priority.
+
+
+## D50: Nested Map Destructuring Limitation (T14.5)
+
+ClojureWasm destructuring supports single-level map patterns but not nested:
+
+```clojure
+;; Works
+(let [{a :a b :b} m] ...)
+(defn f [{x :x}] ...)
+
+;; Not supported (F58)
+(let [{{x :x} :b} m] ...)
+(defn f [{{x :x} :nested}] ...)
+```
+
+**Scope**: Both `let` bindings and function arguments use the same `destructure`
+function in core.clj. The limitation applies to both contexts.
+
+**Workaround**: Use sequential bindings:
+```clojure
+(let [{b :b} m
+      {x :x} b]
+  x)
+```
+
+**Implementation path**: Modify `destructure` in core.clj to recursively process
+map patterns when a binding form is itself a map. Requires detecting map patterns
+vs symbol bindings during the binding pair iteration.

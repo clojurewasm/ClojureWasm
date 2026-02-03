@@ -62,7 +62,7 @@ Last updated: 2026-02-03 (Phase 14.5 — Bug Fix Round F59, F63, F64)
 | ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
 | ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10 |
-| F58     | Nested map destructuring                         | data_structures.clj tests (excluded) — not supported                                   | T14.10 |
+| F58     | Nested map destructuring                         | `{{x :x} :b}` pattern in let/fn args — workaround: use sequential let bindings         | T14.10 |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |
