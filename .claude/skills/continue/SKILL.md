@@ -43,12 +43,13 @@ Read with Read tool:
 
 - **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
 - **Task file MISSING** (Task file field is empty):
-  1. Read `.dev/plan/roadmap.md` for context + Notes
-  2. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
+  1. Get next task from `memo.md` "Phase X Task Queue" table
+  2. Read `.dev/plan/roadmap.md` Phase Notes for relevant context
+  3. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
      check `.dev/future.md` for relevant SS section constraints
-  3. Read Beta reference code as needed
-  4. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  5. Do NOT commit yet — plan goes into the single task commit
+  4. Read Beta reference code as needed
+  5. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
+  6. Do NOT commit yet — plan goes into the single task commit
 
 ## 3. Execute
 
@@ -79,8 +80,7 @@ Read with Read tool:
 ### 4a. Finalize bookkeeping
 
 1. Move task file from `active/` to `archive/`
-2. Update `roadmap.md` Archive column
-3. Advance `memo.md`: update Current task, Task file, Last completed.
+2. Advance `memo.md`: update Current task, Task file, Last completed, Next task.
    Update Technical Notes with context useful for the next task (root cause, key files, findings).
 
 ### 4a.5. Commit Gate Checklist
@@ -116,29 +116,28 @@ run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
 
 ## 5. Phase Completion
 
-When all tasks in a phase are done:
+When all tasks in the current phase queue are done:
 
 1. Check if the **next phase already exists** in `roadmap.md`
-   - **Yes**: Update `memo.md` to point to the first task of the next phase, continue
+   - **Yes**: Plan tasks and update `memo.md` Task Queue
    - **No**: Plan the next phase (see below)
 
 ### Planning a new phase
 
-1. Read `roadmap.md` (completed phases, future considerations)
+1. Read `roadmap.md` (completed phases, Phase Notes for upcoming phase)
 2. Read `.dev/future.md` — scan SS sections relevant to the new phase:
    - Architecture (SS8), Beta lessons (SS9), compatibility (SS10)
    - Security (SS14) for eval/IO/load tasks, GC/optimization (SS5) for perf tasks
-   - Extract any design constraints or requirements into task Notes
 3. Read `checklist.md` (bugs, deferred items — prioritize these)
 4. Evaluate: **bugs > blockers > deferred items > feature expansion**
-5. Create a new phase section in `roadmap.md` with numbered task table
-6. Update `memo.md`:
-   - Current task → first task of new phase
-   - Task file → "(none — create on start)"
+5. Update `memo.md`:
+   - Phase → new phase number and name
+   - Add "Phase X Task Queue" table with numbered tasks
+   - Current task → (none)
+   - Next → first task of new phase
    - Technical Notes → context for the first task
-   - Clear completed-phase notes
-7. Commit: `git commit -m "Add Phase X.Y to roadmap"`
-8. Then start the first task normally
+6. Commit: `git commit -m "Plan Phase X: [phase name]"`
+7. Then start the first task normally
 
 ## 6. User Instructions
 

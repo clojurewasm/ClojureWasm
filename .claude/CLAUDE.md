@@ -154,12 +154,13 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 
 ## References
 
-| Topic              | Location                                   |
-| ------------------ | ------------------------------------------ |
-| Zig tips/pitfalls  | `.claude/references/zig-tips.md`           |
-| yq query examples  | `.claude/references/yq-queries.md`         |
-| IDE usage patterns | `.claude/references/ide-patterns.md`       |
-| Debugging bytecode | `.claude/references/debugging-bytecode.md` |
-| Benchmark suite    | `bench/README.md`                          |
-| Design document    | `.dev/future.md`                           |
-| Zig 0.15.2 guide   | Beta's `docs/reference/zig_guide.md`       |
+| Topic              | Location                                   | When to read                                    |
+| ------------------ | ------------------------------------------ | ----------------------------------------------- |
+| Zig tips/pitfalls  | `.claude/references/zig-tips.md`           | Before writing Zig code, on compile errors      |
+| yq query examples  | `.claude/references/yq-queries.md`         | When querying vars.yaml or other YAML files     |
+| IDE usage patterns | `.claude/references/ide-patterns.md`       | When exploring Zig code structure               |
+| Debugging bytecode | `.claude/references/debugging-bytecode.md` | When VM tests fail or bytecode looks wrong      |
+| Impl tier guide    | `.claude/references/impl-tiers.md`         | When implementing a new function (Zig vs .clj?) |
+| Benchmark suite    | `bench/README.md`                          | Before/after performance optimization           |
+| Design document    | `.dev/future.md`                           | When planning new phases or major features      |
+| Zig 0.15.2 guide   | Beta's `docs/reference/zig_guide.md`       | When Zig 0.15 API is unclear                    |

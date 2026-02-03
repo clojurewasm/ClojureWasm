@@ -42,12 +42,13 @@ Read with Read tool:
 
 - **Task file exists** in `.dev/plan/active/`: read it, resume from `## Log`
 - **Task file MISSING** (Task file field is empty):
-  1. Read `.dev/plan/roadmap.md` for context + Notes
-  2. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
+  1. Get next task from `memo.md` "Phase X Task Queue" table
+  2. Read `.dev/plan/roadmap.md` Phase Notes for relevant context
+  3. If the task touches a new subsystem (eval, IO, regex, GC, etc.),
      check `.dev/future.md` for relevant SS section constraints
-  3. Read Beta reference code as needed
-  4. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
-  5. Do NOT commit yet — plan goes into the single task commit
+  4. Read Beta reference code as needed
+  5. Write task file in `.dev/plan/active/` with detailed `## Plan` + empty `## Log`
+  6. Do NOT commit yet — plan goes into the single task commit
 
 ## 3. Execute
 
@@ -72,10 +73,9 @@ run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
 ## 5. Complete
 
 1. Move task file from `active/` to `archive/`
-2. Update `roadmap.md` Archive column
-3. Advance `memo.md`: update Current task, Task file, Last completed.
+2. Advance `memo.md`: update Current task, Task file, Last completed, Next task.
    Update Technical Notes with context useful for the next task.
-4. **Commit Gate Checklist** — run the checklist defined in `CLAUDE.md` §Session Workflow:
+3. **Commit Gate Checklist** — run the checklist defined in `CLAUDE.md` §Session Workflow:
    - decisions.md D## entry
    - checklist.md F## updates
    - vars.yaml: update status for any vars touched (use yq)
@@ -83,7 +83,7 @@ run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
      yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
      ```
    - memo.md: advance task
-5. **Single git commit** covering plan + implementation + status update
+4. **Single git commit** covering plan + implementation + status update
 
 ## 6. Report & Stop
 
