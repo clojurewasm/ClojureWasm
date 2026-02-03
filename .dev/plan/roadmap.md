@@ -460,11 +460,11 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 
 ### Phase 13c: Core.clj Expansion (from Phase 12c)
 
-| #    | Task                                    | Archive                      | Notes                                              |
-| ---- | --------------------------------------- | ---------------------------- | -------------------------------------------------- |
-| 13.6 | key, val, keys, vals, MapEntry ops      | archive/task_0112_key_val.md | key/val as vector pair ops; keys/vals already done |
-| 13.7 | map-indexed, keep, keep-indexed, remove | --                           | Advanced sequence transforms (was T12.12 + 9.5)    |
-| 13.8 | {:keys [:a]} keyword destructuring      | --                           | Tier 2 feature from SCI triage                     |
+| #    | Task                                    | Archive                      | Notes                                                |
+| ---- | --------------------------------------- | ---------------------------- | ---------------------------------------------------- |
+| 13.6 | key, val, keys, vals, MapEntry ops      | archive/task_0112_key_val.md | key/val as vector pair ops; keys/vals already done   |
+| 13.7 | map-indexed, keep, keep-indexed, remove | (already done in core.clj)   | All 4 functions already implemented + vars.yaml done |
+| 13.8 | {:keys [:a]} keyword destructuring      | archive/task_0113_keys_kw.md | Analyzer accepts keywords in :keys vector            |
 
 ### Phase 13d: Validation + Upstream Alignment
 

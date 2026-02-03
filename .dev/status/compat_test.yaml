@@ -17,8 +17,8 @@ sci_core_test:
     pass: 72            # all assertions pass
     fail: 0             # assertion failures
     skip: 2             # remaining: {:keys [:a]}, var :name metadata
-    assertions: 259     # total is-assertions in active tests
-    skipped_assertions: 4   # individual (is ...) commented within active tests
+    assertions: 260     # total is-assertions in active tests
+    skipped_assertions: 3   # individual (is ...) commented within active tests
 
   tests:
     do-test:                    { status: pass }

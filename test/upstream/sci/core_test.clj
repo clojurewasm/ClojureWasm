@@ -169,16 +169,13 @@
 (defn __ds-h1 [] (let [{:keys [a]} {:a 1}] a))
 (defn __ds-h2 [] ((fn [{:keys [a]}] a) {:a 1}))
 (defn __ds-h3 [] (let [{:keys [a] :or {a false}} {:b 1}] a))
-;; SKIP: __ds-h4 — {:keys [:a]} with keyword in keys vector not supported
-;; (defn __ds-h4 [] ((fn [{:keys [:a]}] a) {:a 1}))
+(defn __ds-h4 [] ((fn [{:keys [:a]}] a) {:a 1}))
 
 (deftest destructure-test
   (is (= 1 (__ds-h1)))
   (is (= 1 (__ds-h2)))
   (is (false? (__ds-h3)))
-  ;; SKIP: {:keys [:a]} — keyword in :keys vector
-  ;; (is (= 1 (__ds-h4)))
-  )
+  (is (= 1 (__ds-h4))))
 
 ;; =========================================================================
 ;; closure

@@ -4,9 +4,9 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.7 — map-indexed, keep, keep-indexed, remove
+- Current task: T13.9 — SCI test re-run: target 74/74 pass
 - Task file: (none — create on start)
-- Last completed: T13.6 — key, val, keys, vals, MapEntry ops
+- Last completed: T13.8 — {:keys [:a]} keyword destructuring
 - Blockers: none
 - Next: T13.7
 
@@ -22,16 +22,15 @@ Overwrite freely — this is scratchpad, not permanent record.
 - T13.3: clojure.string — join, split, upper-case, lower-case, trim
 - T13.4: clojure.string — includes?, starts-with?, ends-with?, replace
 - T13.5: clojure.string — blank?, reverse, trim-newline, triml, trimr (14 builtins)
-- T13.6: key, val — MapEntry ops as vector pair first/second
-  - keys/vals already done; added key/val builtins to sequences.zig
-  - Registry: 156 builtins + 14 clojure.string
-- SCI: 72/74 tests pass, 259 assertions
+- T13.6: key, val builtins added to sequences.zig (156 builtins + 14 clojure.string)
+- T13.7: Skipped — all 4 functions already implemented
+- T13.8: {:keys [:a]} keyword destructuring — analyzer accepts keywords in :keys vector
+- SCI: 72/74 tests pass, 260 assertions
 - Vars: 284/702 done
 
-### T13.7 — map-indexed, keep, keep-indexed, remove
+### T13.9 — SCI test re-run: target 74/74 pass
 
-Phase 13c. Advanced sequence transforms.
-Implement in core.clj (depends on map, filter, etc. already present).
+Check remaining 2 skipped tests and attempt to enable them.
 
 ### Deferred items to watch
 

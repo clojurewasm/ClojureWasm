@@ -1538,10 +1538,12 @@ pub const Analyzer = struct {
                         return self.analysisError(.value_error, ":keys must be followed by a vector", val);
                     }
                     for (val.data.vector) |sym_form| {
-                        if (sym_form.data != .symbol) {
-                            return self.analysisError(.value_error, ":keys elements must be symbols", sym_form);
-                        }
-                        const sym_name = sym_form.data.symbol.name;
+                        const sym_name = if (sym_form.data == .symbol)
+                            sym_form.data.symbol.name
+                        else if (sym_form.data == .keyword)
+                            sym_form.data.keyword.name
+                        else
+                            return self.analysisError(.value_error, ":keys elements must be symbols or keywords", sym_form);
                         const get_init = try self.makeGetKeywordCall(temp_ref, sym_name, defaults);
                         const bind_idx: u32 = @intCast(self.locals.items.len);
                         self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
