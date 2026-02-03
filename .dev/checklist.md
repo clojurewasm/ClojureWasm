@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.5 control.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.6 logic.clj tests)
 
 ## Invariants (always enforce)
 
@@ -39,6 +39,8 @@ Last updated: 2026-02-03 (Phase 14 — T14.5 control.clj tests)
 | F28     | case symbol matching                             | control.clj tests (excluded) — (case 'sym sym :match :default) fails                   | T14.5  |
 | F29     | Empty list () truthy behavior                    | control.clj tests (excluded) — JVM: () is truthy, ClojureWasm: () is falsy             | T14.5  |
 | F30     | if-let / if-not optional else clause             | control.clj tests (3-arg only) — JVM allows 2-arg, ClojureWasm requires 3-arg          | T14.5  |
+| F31     | (and) returns true                               | logic.clj tests (excluded) — JVM: true, ClojureWasm: nil                               | T14.6  |
+| F32     | reverse nil/[] returns empty list                | logic.clj tests (adjusted) — JVM: empty list (truthy), ClojureWasm: nil (falsy)        | T14.6  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

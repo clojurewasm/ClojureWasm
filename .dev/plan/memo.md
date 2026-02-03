@@ -4,9 +4,9 @@
 
 - Phase: 14 (Clojure本家テスト基盤)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.6 — logic.clj 等価テスト作成
+- Current task: T14.7 — predicates.clj 等価テスト作成
 - Task file: (to be created)
-- Last completed: T14.5 — control.clj 等価テスト作成
+- Last completed: T14.6 — logic.clj 等価テスト作成
 - Blockers: none
 - Next: T13.7
 
@@ -28,9 +28,9 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
 
-### Next: T14.6 — logic.clj 等価テスト作成
+### Next: T14.7 — predicates.clj 等価テスト作成
 
-- and, or, not tests
+- Type predicates (nil?, true?, false?, number?, string?, etc.)
 
 ### for macro issues (F25, F26)
 
