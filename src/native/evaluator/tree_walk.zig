@@ -27,6 +27,7 @@ pub const TreeWalkError = error{
     UserException,
     OutOfMemory,
     StackOverflow,
+    IndexOutOfBounds,
 };
 
 const MAX_LOCALS: usize = 256;

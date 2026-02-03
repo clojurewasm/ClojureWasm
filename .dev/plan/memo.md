@@ -2,13 +2,13 @@
 
 ## Current State
 
-- Phase: 14 (Clojure本家テスト基盤)
+- Phase: 14.5 (Bug Fix Round)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.11 (next task TBD)
+- Current task: T14.5.1 — assoc on vectors (F66)
 - Task file: (to be created)
 - Last completed: T14.10 — data_structures.clj 等価テスト作成 (17 tests, 201 assertions)
 - Blockers: none
-- Next: Phase 14 complete or additional test coverage
+- Next: T14.5.2 (reduce on set), T14.5.3 (postwalk-replace on set literal)
 
 ## Technical Notes
 

@@ -533,6 +533,25 @@ core.clj with missing functions. Subsumes Phase 12c (T12.10-12.12).
 | 14.11 | compat_test.yaml 拡張        | --      | clojure/test_clojure/\* 追跡セクション追加 |
 | 14.12 | 優先度付きファイルリスト作成 | --      | 残りテストファイルの移植優先度決定         |
 
+## Phase 14.5: Bug Fix Round
+
+upstreamテスト作成 (T14.3-T14.10) で発見したバグのうち、基本機能に影響が大きいものを修正。
+既存テストのworkaroundを除去し、テスト品質を向上させる。
+
+### Phase 14.5a: Collection/HOF Foundations
+
+| #      | Task                                  | Archive | Notes                                          |
+| ------ | ------------------------------------- | ------- | ---------------------------------------------- |
+| 14.5.1 | assoc on vectors (F66)                | --      | (assoc [] 0 4) fails; maps work, vectors don't |
+| 14.5.2 | reduce on set (F62)                   | --      | (reduce f #{}) fails; workaround is (seq #{})  |
+| 14.5.3 | postwalk-replace on set literal (F65) | --      | are macro with #{x} template fails             |
+
+### Phase 14.5b: Test Cleanup
+
+| #      | Task                                   | Archive | Notes                                           |
+| ------ | -------------------------------------- | ------- | ----------------------------------------------- |
+| 14.5.4 | Remove workarounds from upstream tests | --      | data_structures.clj: restore are, add assoc vec |
+
 ---
 
 **継続的拡充** (Phase 15+):

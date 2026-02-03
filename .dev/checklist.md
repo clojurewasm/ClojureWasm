@@ -70,7 +70,7 @@ Last updated: 2026-02-03 (Phase 14 — T14.10 data_structures.clj tests)
 | F63     | (set map) fails                                  | data_structures.clj tests (excluded) — (set {}) and (set {:a 1}) fail                  | T14.10 |
 | F64     | (set string) fails                               | data_structures.clj tests (excluded) — (set "") and (set "abc") fail                   | T14.10 |
 | F65     | postwalk-replace on set literal fails            | data_structures.clj tests (workaround: use is) — are macro with #{x} template          | T14.10 |
-| F66     | assoc on vectors fails                           | data_structures.clj tests (excluded) — (assoc [] 0 4) fails, maps work                 | T14.10 |
+| ~~F66~~ | ~~assoc on vectors fails~~                       | ~~Resolved: T14.5.1 — added vector support to assocFn~~                                | T14.10 |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |

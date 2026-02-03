@@ -1,6 +1,6 @@
 ;; data_structures.clj - ClojureWasm equivalent tests
 ;; Based on Clojure JVM data_structures.clj
-;; Known bugs: F55-F66 (see checklist.md)
+;; Known bugs: F55-F65 (see checklist.md) — F66 resolved in T14.5.1
 
 (println "[test/data_structures] running...")
 
@@ -306,9 +306,10 @@
       (disj #{#{}} #{}) #{})))
 
 (deftest test-assoc
-  ;; F66: assoc on vectors fails (only maps supported)
-  (testing "assoc on maps"
+  (testing "assoc on vectors and maps"
     (are [x y] (= x y)
+      [4] (assoc [] 0 4)
+      [5 -7] (assoc [] 0 5 1 -7)
       {:a 1} (assoc {} :a 1)
       {nil 1} (assoc {} nil 1)
       {:a 2 :b -2} (assoc {} :b -2 :a 2))))

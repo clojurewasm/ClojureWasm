@@ -183,10 +183,19 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
     }
 }
 
-/// (assoc map key val & kvs) — associate key(s) with val(s) in map.
+/// (assoc map key val & kvs) — associate key(s) with val(s) in map or vector.
+/// For maps: (assoc {:a 1} :b 2) => {:a 1 :b 2}
+/// For vectors: (assoc [1 2 3] 1 99) => [1 99 3] (index must be <= count)
 pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 3 or (args.len - 1) % 2 != 0) return error.ArityError;
     const base = args[0];
+
+    // Handle vector case
+    if (base == .vector) {
+        return assocVector(allocator, base.vector, args[1..]);
+    }
+
+    // Handle map/nil case
     const base_entries = switch (base) {
         .map => |m| m.entries,
         .nil => @as([]const Value, &.{}),
@@ -197,10 +206,10 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var entries = std.ArrayList(Value).empty;
     try entries.appendSlice(allocator, base_entries);
 
-    var i: usize = 1;
-    while (i < args.len) : (i += 2) {
-        const key = args[i];
-        const val = args[i + 1];
+    var i: usize = 0;
+    while (i < args.len - 1) : (i += 2) {
+        const key = args[i + 1];
+        const val = args[i + 2];
         // Try to find existing key and replace
         var found = false;
         var j: usize = 0;
@@ -220,6 +229,40 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const new_map = try allocator.create(PersistentArrayMap);
     new_map.* = .{ .entries = entries.items };
     return Value{ .map = new_map };
+}
+
+/// Helper for assoc on vectors
+fn assocVector(allocator: Allocator, vec: *const PersistentVector, kvs: []const Value) anyerror!Value {
+    // Copy original items
+    var items = std.ArrayList(Value).empty;
+    try items.appendSlice(allocator, vec.items);
+
+    var i: usize = 0;
+    while (i < kvs.len) : (i += 2) {
+        const idx_val = kvs[i];
+        const val = kvs[i + 1];
+
+        // Index must be integer
+        const idx = switch (idx_val) {
+            .integer => |n| if (n >= 0) @as(usize, @intCast(n)) else return error.IndexOutOfBounds,
+            else => return error.TypeError,
+        };
+
+        // Index must be <= count (allows appending at exactly count position)
+        if (idx > items.items.len) return error.IndexOutOfBounds;
+
+        if (idx == items.items.len) {
+            // Append at end
+            try items.append(allocator, val);
+        } else {
+            // Replace at index
+            items.items[idx] = val;
+        }
+    }
+
+    const new_vec = try allocator.create(PersistentVector);
+    new_vec.* = .{ .items = items.items };
+    return Value{ .vector = new_vec };
 }
 
 /// (get map key) or (get map key not-found) — lookup in map or set.
@@ -1451,6 +1494,52 @@ test "assoc replaces existing key" {
     try testing.expectEqual(@as(usize, 1), result.map.count());
     const v = result.map.get(.{ .keyword = .{ .name = "a", .ns = null } });
     try testing.expect(v.?.eql(.{ .integer = 99 }));
+}
+
+test "assoc on vector replaces at index" {
+    // (assoc [1 2 3] 1 99) => [1 99 3]
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    var v = PersistentVector{ .items = &items };
+    const result = try assocFn(arena.allocator(), &.{
+        Value{ .vector = &v },
+        Value{ .integer = 1 },
+        Value{ .integer = 99 },
+    });
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expect(result.vector.items[0].eql(.{ .integer = 1 }));
+    try testing.expect(result.vector.items[1].eql(.{ .integer = 99 }));
+    try testing.expect(result.vector.items[2].eql(.{ .integer = 3 }));
+}
+
+test "assoc on empty vector at index 0" {
+    // (assoc [] 0 4) => [4]
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var v = PersistentVector{ .items = &.{} };
+    const result = try assocFn(arena.allocator(), &.{
+        Value{ .vector = &v },
+        Value{ .integer = 0 },
+        Value{ .integer = 4 },
+    });
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 1), result.vector.items.len);
+    try testing.expect(result.vector.items[0].eql(.{ .integer = 4 }));
+}
+
+test "assoc on vector out of bounds fails" {
+    // (assoc [] 1 4) => error (index must be <= count)
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var v = PersistentVector{ .items = &.{} };
+    const result = assocFn(arena.allocator(), &.{
+        Value{ .vector = &v },
+        Value{ .integer = 1 },
+        Value{ .integer = 4 },
+    });
+    try testing.expectError(error.IndexOutOfBounds, result);
 }
 
 test "get from map" {
