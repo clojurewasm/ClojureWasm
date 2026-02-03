@@ -25,6 +25,7 @@ const regex_mod = @import("regex_builtins.zig");
 const eval_mod = @import("eval.zig");
 const ns_ops_mod = @import("ns_ops.zig");
 const misc_mod = @import("misc.zig");
+const clj_string_mod = @import("clj_string.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -92,6 +93,16 @@ pub fn registerBuiltins(env: *Env) !void {
     for (all_builtins) |b| {
         if (core_ns.resolve(b.name)) |v| {
             try user_ns.refer(b.name, v);
+        }
+    }
+
+    // Register clojure.string namespace builtins
+    const str_ns = try env.findOrCreateNamespace("clojure.string");
+    for (clj_string_mod.builtins) |b| {
+        const v = try str_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(.{ .builtin_fn = f });
         }
     }
 

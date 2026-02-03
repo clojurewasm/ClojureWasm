@@ -4,11 +4,11 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.3 — clojure.string: join, split, upper-case, lower-case, trim
+- Current task: T13.4 — clojure.string: includes?, starts-with?, ends-with?, replace
 - Task file: (none — create on start)
-- Last completed: T13.2 — Named fn self-reference + fn param shadow fixes
+- Last completed: T13.3 — clojure.string: join, split, upper-case, lower-case, trim
 - Blockers: none
-- Next: T13.3
+- Next: T13.4
 
 ## Technical Notes
 
@@ -19,26 +19,23 @@ Overwrite freely — this is scratchpad, not permanent record.
 
 - T13.1: list?, int?, reduce/2, set-as-fn, deref-delay, conj-map-vector-pairs
 - T13.2: Named fn self-ref (identity preserved), fn param shadow (D49)
+- T13.3: clojure.string namespace — join, split, upper-case, lower-case, trim
+  - New file: src/common/builtin/clj_string.zig
+  - Registered in registry.zig registerBuiltins
+  - Fixed resolveVar for full namespace name lookup
 - SCI: 72/74 tests pass, 259 assertions
-- Registry: 154 builtins, 268/702 vars done
+- Registry: 154 builtins + 5 clojure.string, 273/702 vars done
 
-### T13.3 — clojure.string namespace
+### T13.4 — clojure.string search/replace ops
 
-Need to implement a new namespace `clojure.string` with Zig builtins.
-This is the first non-clojure.core namespace.
+Add to clj_string.zig:
 
-Key decisions:
+- includes? (s substr) → boolean
+- starts-with? (s substr) → boolean
+- ends-with? (s substr) → boolean
+- replace (s match replacement) → string
 
-- How to register builtins in a non-core namespace
-- Whether to create a separate .zig file for string namespace builtins
-- Current namespace mechanism: env.zig findOrCreateNamespace
-
-Functions to implement:
-
-- join, split, upper-case, lower-case, trim
-- These are Zig-level string operations
-
-Reference: Beta may have clojure.string implementation.
+These unlock the SCI gensym-test workaround fix (uses subs instead of starts-with?).
 
 ### Deferred items to watch
 

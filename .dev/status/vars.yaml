@@ -1137,21 +1137,21 @@ vars:
     escape: {type: function, status: todo}
     "includes?": {type: function, status: todo}
     "index-of": {type: function, status: todo}
-    join: {type: function, status: todo}
+    join: {type: function, status: done}
     "last-index-of": {type: function, status: todo}
-    "lower-case": {type: function, status: todo}
+    "lower-case": {type: function, status: done}
     "re-quote-replacement": {type: function, status: todo}
     replace: {type: function, status: todo}
     "replace-first": {type: function, status: todo}
     reverse: {type: function, status: todo}
-    split: {type: function, status: todo}
+    split: {type: function, status: done}
     "split-lines": {type: function, status: todo}
     "starts-with?": {type: function, status: todo}
-    trim: {type: function, status: todo}
+    trim: {type: function, status: done}
     "trim-newline": {type: function, status: todo}
     triml: {type: function, status: todo}
     trimr: {type: function, status: todo}
-    "upper-case": {type: function, status: todo}
+    "upper-case": {type: function, status: done}
   clojure_template:
     "apply-template": {type: function, status: todo}
     "do-template": {type: macro, status: todo}

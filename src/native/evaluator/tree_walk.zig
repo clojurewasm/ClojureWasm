@@ -145,8 +145,15 @@ pub const TreeWalk = struct {
         if (self.env) |env| {
             if (env.current_ns) |cur_ns| {
                 if (ns) |ns_name| {
+                    // Try alias/own namespace first
                     if (cur_ns.resolveQualified(ns_name, name)) |v| {
                         return v.deref();
+                    }
+                    // Fall back to full namespace name lookup in env
+                    if (env.findNamespace(ns_name)) |target_ns| {
+                        if (target_ns.resolve(name)) |v| {
+                            return v.deref();
+                        }
                     }
                 } else {
                     if (cur_ns.resolve(name)) |v| {
