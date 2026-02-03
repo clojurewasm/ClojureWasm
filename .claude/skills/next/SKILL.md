@@ -25,6 +25,14 @@ git log --oneline -3
 git status --short
 ```
 
+Check implementation coverage (context for planning):
+
+```bash
+# clojure.core done count / total
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+yq '.vars.clojure_core | to_entries | length' .dev/status/vars.yaml
+```
+
 Read with Read tool:
 
 - `CLAUDE.md` — project instructions
@@ -67,8 +75,14 @@ run `/compiler-check` to verify stack_depth, scope, and dual-backend compliance.
 2. Update `roadmap.md` Archive column
 3. Advance `memo.md`: update Current task, Task file, Last completed.
    Update Technical Notes with context useful for the next task.
-4. **Commit Gate Checklist** — run the checklist defined in `CLAUDE.md` §Session Workflow.
-   (decisions.md D## entry, checklist.md F## updates, vars.yaml, memo.md)
+4. **Commit Gate Checklist** — run the checklist defined in `CLAUDE.md` §Session Workflow:
+   - decisions.md D## entry
+   - checklist.md F## updates
+   - vars.yaml: update status for any vars touched (use yq)
+     ```bash
+     yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
+     ```
+   - memo.md: advance task
 5. **Single git commit** covering plan + implementation + status update
 
 ## 6. Report & Stop

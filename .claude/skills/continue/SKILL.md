@@ -26,6 +26,14 @@ git log --oneline -3
 git status --short
 ```
 
+Check implementation coverage (context for planning):
+
+```bash
+# clojure.core done count / total
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+yq '.vars.clojure_core | to_entries | length' .dev/status/vars.yaml
+```
+
 Read with Read tool:
 
 - `CLAUDE.md` — project instructions
@@ -78,7 +86,19 @@ Read with Read tool:
 ### 4a.5. Commit Gate Checklist
 
 **MANDATORY** — run the Commit Gate Checklist defined in `CLAUDE.md` §Session Workflow.
-(decisions.md D## entry, checklist.md F## updates, vars.yaml, memo.md)
+
+1. **decisions.md**: D## entry for design decisions
+2. **checklist.md**: F## updates (resolved/new)
+3. **vars.yaml**: Update status for any vars touched:
+   ```bash
+   # Check current status of a var
+   yq '.vars.clojure_core["var-name"]' .dev/status/vars.yaml
+   # Update status to done (use yq or direct edit)
+   yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
+   # Add note if implementation differs from upstream
+   yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .dev/status/vars.yaml
+   ```
+4. **memo.md**: Advance task, update Technical Notes
 
 ### 4b. Pre-Commit Verification
 

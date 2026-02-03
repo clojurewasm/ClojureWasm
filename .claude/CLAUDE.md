@@ -98,7 +98,39 @@ Run `/compiler-check` before commit to verify stack_depth/scope/backend sync.
 | `vars.yaml`  | Var implementation status | After implementing new Vars     |
 | `bench.yaml` | Benchmark results         | After performance optimizations |
 
-Query examples: `.claude/references/yq-queries.md`
+### vars.yaml Usage
+
+**Check implementation status** (use at session start):
+
+```bash
+# Coverage summary
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+yq '.vars.clojure_core | to_entries | length' .dev/status/vars.yaml
+
+# Check specific var
+yq '.vars.clojure_core["var-name"]' .dev/status/vars.yaml
+```
+
+**Update after implementation**:
+
+```bash
+# Set status to done
+yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
+
+# Add note for non-upstream implementation
+yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .dev/status/vars.yaml
+```
+
+**Status values**: `done`, `todo`, `skip`
+
+**Note conventions**:
+
+- `"JVM interop"` — JVM-specific, not applicable
+- `"builtin (upstream is pure clj)"` — Zig builtin, upstream is pure Clojure
+- `"VM intrinsic opcode"` — Optimized VM instruction
+- `"UPSTREAM-DIFF: <what>; missing: <deps>"` — Simplified implementation
+
+Query reference: `.claude/references/yq-queries.md`
 
 ### core.clj Upstream Deviation Rule
 
