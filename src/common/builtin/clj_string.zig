@@ -124,6 +124,65 @@ pub fn trimFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = trimmed };
 }
 
+/// (clojure.string/includes? s substr)
+/// True if s includes substr.
+pub fn includesFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    return Value{ .boolean = std.mem.indexOf(u8, args[0].string, args[1].string) != null };
+}
+
+/// (clojure.string/starts-with? s substr)
+/// True if s starts with substr.
+pub fn startsWithFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    return Value{ .boolean = std.mem.startsWith(u8, args[0].string, args[1].string) };
+}
+
+/// (clojure.string/ends-with? s substr)
+/// True if s ends with substr.
+pub fn endsWithFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    return Value{ .boolean = std.mem.endsWith(u8, args[0].string, args[1].string) };
+}
+
+/// (clojure.string/replace s match replacement)
+/// Replaces all instances of match with replacement in s.
+pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    if (args[2] != .string) return error.TypeError;
+
+    const s = args[0].string;
+    const match = args[1].string;
+    const replacement = args[2].string;
+
+    if (match.len == 0) return args[0]; // no-op for empty match
+
+    var aw: Writer.Allocating = .init(allocator);
+    var start: usize = 0;
+    while (start < s.len) {
+        if (std.mem.indexOfPos(u8, s, start, match)) |pos| {
+            try aw.writer.writeAll(s[start..pos]);
+            try aw.writer.writeAll(replacement);
+            start = pos + match.len;
+        } else {
+            try aw.writer.writeAll(s[start..]);
+            break;
+        }
+    } else {
+        // If start == s.len exactly after last match, nothing left to write
+    }
+
+    return Value{ .string = try aw.toOwnedSlice() };
+}
+
 const Writer = std.Io.Writer;
 
 // Helper: convert a Value to its string representation for join
@@ -150,6 +209,10 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "upper-case", .func = &upperCaseFn, .doc = "Converts string to all upper-case.", .arglists = "([s])", .added = "1.2" },
     .{ .name = "lower-case", .func = &lowerCaseFn, .doc = "Converts string to all lower-case.", .arglists = "([s])", .added = "1.2" },
     .{ .name = "trim", .func = &trimFn, .doc = "Removes whitespace from both ends of string.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "includes?", .func = &includesFn, .doc = "True if s includes substr.", .arglists = "([s substr])", .added = "1.8" },
+    .{ .name = "starts-with?", .func = &startsWithFn, .doc = "True if s starts with substr.", .arglists = "([s substr])", .added = "1.8" },
+    .{ .name = "ends-with?", .func = &endsWithFn, .doc = "True if s ends with substr.", .arglists = "([s substr])", .added = "1.8" },
+    .{ .name = "replace", .func = &replaceFn, .doc = "Replaces all instance of match with replacement in s.", .arglists = "([s match replacement])", .added = "1.2" },
 };
 
 // ============================================================
@@ -221,6 +284,44 @@ test "split basic" {
     try testing.expectEqualStrings("c", result.vector.items[2].string);
 }
 
-test "builtins table has 5 entries" {
-    try testing.expectEqual(5, builtins.len);
+test "includes? found" {
+    const result = try includesFn(undefined, &.{ .{ .string = "hello world" }, .{ .string = "world" } });
+    try testing.expectEqual(true, result.boolean);
+}
+
+test "includes? not found" {
+    const result = try includesFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "xyz" } });
+    try testing.expectEqual(false, result.boolean);
+}
+
+test "starts-with?" {
+    const t = try startsWithFn(undefined, &.{ .{ .string = "hello world" }, .{ .string = "hello" } });
+    try testing.expectEqual(true, t.boolean);
+    const f = try startsWithFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "xyz" } });
+    try testing.expectEqual(false, f.boolean);
+}
+
+test "ends-with?" {
+    const t = try endsWithFn(undefined, &.{ .{ .string = "hello world" }, .{ .string = "world" } });
+    try testing.expectEqual(true, t.boolean);
+    const f = try endsWithFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "xyz" } });
+    try testing.expectEqual(false, f.boolean);
+}
+
+test "replace string" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try replaceFn(arena.allocator(), &.{ .{ .string = "hello world" }, .{ .string = "world" }, .{ .string = "zig" } });
+    try testing.expectEqualStrings("hello zig", result.string);
+}
+
+test "replace all occurrences" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try replaceFn(arena.allocator(), &.{ .{ .string = "aabaa" }, .{ .string = "a" }, .{ .string = "x" } });
+    try testing.expectEqualStrings("xxbxx", result.string);
+}
+
+test "builtins table has 9 entries" {
+    try testing.expectEqual(9, builtins.len);
 }

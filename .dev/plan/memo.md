@@ -4,9 +4,9 @@
 
 - Phase: 13 (SCI Fix-ups + clojure.string + Core Expansion)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T13.4 — clojure.string: includes?, starts-with?, ends-with?, replace
+- Current task: T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
 - Task file: (none — create on start)
-- Last completed: T13.3 — clojure.string: join, split, upper-case, lower-case, trim
+- Last completed: T13.4 — clojure.string: includes?, starts-with?, ends-with?, replace
 - Blockers: none
 - Next: T13.4
 
@@ -23,19 +23,21 @@ Overwrite freely — this is scratchpad, not permanent record.
   - New file: src/common/builtin/clj_string.zig
   - Registered in registry.zig registerBuiltins
   - Fixed resolveVar for full namespace name lookup
+- T13.4: clojure.string — includes?, starts-with?, ends-with?, replace
+  - Added 4 functions to clj_string.zig
+  - Value boolean type: `Value{ .boolean = ... }` (not .true/.false)
 - SCI: 72/74 tests pass, 259 assertions
-- Registry: 154 builtins + 5 clojure.string, 273/702 vars done
+- Registry: 154 builtins + 9 clojure.string, 277/702 vars done
 
-### T13.4 — clojure.string search/replace ops
+### T13.5 — clojure.string: blank?, reverse, trim-newline, triml, trimr
 
 Add to clj_string.zig:
 
-- includes? (s substr) → boolean
-- starts-with? (s substr) → boolean
-- ends-with? (s substr) → boolean
-- replace (s match replacement) → string
-
-These unlock the SCI gensym-test workaround fix (uses subs instead of starts-with?).
+- blank? (s) → boolean — true if nil, empty, or only whitespace
+- reverse (s) → string
+- trim-newline (s) → string — remove trailing \\n \\r
+- triml (s) → string — trim left
+- trimr (s) → string — trim right
 
 ### Deferred items to watch
 
