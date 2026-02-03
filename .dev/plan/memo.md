@@ -2,18 +2,33 @@
 
 ## Current State
 
-- Phase: 14.5 (Bug Fix Round) — complete
+- Phase: 14 (Clojure本家テスト基盤) — in progress
 - Roadmap: .dev/plan/roadmap.md
-- Current task: (none - Phase 14.5 complete)
-- Task file: N/A
-- Last completed: T14.5.5 — pop nil + set map/string (F59, F63, F64)
+- Current task: T14.12 — 優先度付きファイルリスト作成
+- Task file: (none — create on start)
+- Last completed: T14.11 — compat_test.yaml拡張 (178 tests, 998 assertions)
 - Blockers: none
-- Next: Continue Phase 14 (T14.11+) or move to Phase 15
+- Next: T14.12 then Phase 15 planning
 
 ## Technical Notes
 
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
+
+### T14.11 Complete — compat_test.yaml Extended
+
+- Added `clojure_test_clojure:` section tracking 7 test files
+- Total: 106 tests, 731 assertions (Clojure JVM equivalent)
+- Combined: 178 tests, 998 assertions (SCI + Clojure JVM)
+- All excluded features documented with F## references
+
+### T14.12 Context
+
+Goal: Create a prioritized list of remaining Clojure JVM test files to port.
+
+Reference: Clojure JVM test suite has 67 files in test/clojure/test_clojure/.
+Already ported: for, control, logic, predicates, atoms, sequences, data_structures (7 files).
+Remaining: 60 files — need to categorize by Java dependency and usefulness.
 
 ### Phase 14 Progress
 
