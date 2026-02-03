@@ -436,10 +436,10 @@ vars:
     ns: {type: macro, status: todo}
     "ns-aliases": {type: function, status: todo}
     "ns-imports": {type: function, status: todo}
-    "ns-interns": {type: function, status: todo}
-    "ns-map": {type: function, status: todo}
+    "ns-interns": {type: function, status: done}
+    "ns-map": {type: function, status: done}
     "ns-name": {type: function, status: done}
-    "ns-publics": {type: function, status: todo}
+    "ns-publics": {type: function, status: done}
     "ns-refers": {type: function, status: todo}
     "ns-resolve": {type: function, status: todo}
     "ns-unalias": {type: function, status: todo}

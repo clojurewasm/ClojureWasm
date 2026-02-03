@@ -113,6 +113,118 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Helpers
+// ============================================================
+
+const Namespace = @import("../namespace.zig").Namespace;
+const Var = var_mod.Var;
+
+/// Resolve a symbol arg to a Namespace via Env.
+fn resolveNs(args: []const Value) !*Namespace {
+    if (args.len != 1) return error.InvalidNumberOfArguments;
+    const name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return error.TypeError,
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    return env.findNamespace(name) orelse return error.NamespaceNotFound;
+}
+
+/// Build a {symbol -> var_ref} map from a VarMap (symbol name -> *Var).
+fn varMapToValue(allocator: Allocator, map: anytype) !Value {
+    var count: usize = 0;
+    {
+        var iter = map.iterator();
+        while (iter.next()) |_| count += 1;
+    }
+
+    // Map entries are key/value pairs flattened: [k1, v1, k2, v2, ...]
+    const entries = try allocator.alloc(Value, count * 2);
+    var iter = map.iterator();
+    var i: usize = 0;
+    while (iter.next()) |entry| {
+        entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+        i += 2;
+    }
+
+    const m = try allocator.create(collections.PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return .{ .map = m };
+}
+
+// ============================================================
+// ns-interns
+// ============================================================
+
+/// (ns-interns ns)
+/// Returns a map of the intern mappings for the namespace.
+pub fn nsInternsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const ns = try resolveNs(args);
+    return varMapToValue(allocator, ns.mappings);
+}
+
+// ============================================================
+// ns-publics
+// ============================================================
+
+/// (ns-publics ns)
+/// Returns a map of the public intern mappings for the namespace.
+/// (Currently all interned vars are public — no private vars yet.)
+pub fn nsPublicsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const ns = try resolveNs(args);
+    return varMapToValue(allocator, ns.mappings);
+}
+
+// ============================================================
+// ns-map
+// ============================================================
+
+/// (ns-map ns)
+/// Returns a map of all the mappings for the namespace (interned + referred).
+pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const ns = try resolveNs(args);
+
+    // Count total entries from both maps
+    var count: usize = 0;
+    {
+        var iter = ns.mappings.iterator();
+        while (iter.next()) |_| count += 1;
+    }
+    {
+        var iter = ns.refers.iterator();
+        while (iter.next()) |_| count += 1;
+    }
+
+    const entries = try allocator.alloc(Value, count * 2);
+    var i: usize = 0;
+
+    // Interned vars first
+    {
+        var iter = ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+            entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+            i += 2;
+        }
+    }
+
+    // Referred vars
+    {
+        var iter = ns.refers.iterator();
+        while (iter.next()) |entry| {
+            entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+            entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+            i += 2;
+        }
+    }
+
+    const m = try allocator.create(collections.PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return .{ .map = m };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -150,6 +262,27 @@ pub const builtins = [_]BuiltinDef{
         .func = createNsFn,
         .doc = "Create a new namespace named by the symbol if one doesn't already exist, returns it or the already-existing namespace of the same name.",
         .arglists = "([sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-interns",
+        .func = nsInternsFn,
+        .doc = "Returns a map of the intern mappings for the namespace.",
+        .arglists = "([ns])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-publics",
+        .func = nsPublicsFn,
+        .doc = "Returns a map of the public intern mappings for the namespace.",
+        .arglists = "([ns])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-map",
+        .func = nsMapFn,
+        .doc = "Returns a map of all the mappings for the namespace.",
+        .arglists = "([ns])",
         .added = "1.0",
     },
 };
@@ -289,4 +422,75 @@ test "the-ns - nonexistent namespace errors" {
 
     const result = theNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "nonexistent" } }});
     try testing.expectError(error.NamespaceNotFound, result);
+}
+
+test "ns-interns - returns map with interned vars" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+
+    // clojure.core has interned vars (from registerBuiltins)
+    const result = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
+    try testing.expect(result == .map);
+    // Should have entries (at least the builtins)
+    try testing.expect(result.map.entries.len > 0);
+    // Entries are key-value pairs, so length is even
+    try testing.expect(result.map.entries.len % 2 == 0);
+}
+
+test "ns-publics - same as ns-interns (no private vars)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+
+    const interns = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
+    const publics = try nsPublicsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
+    try testing.expectEqual(interns.map.entries.len, publics.map.entries.len);
+}
+
+test "ns-map - includes interns and refers" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+
+    // user namespace has refers from clojure.core
+    const result = try nsMapFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
+    try testing.expect(result == .map);
+    // user namespace should have referred vars (from registerBuiltins)
+    try testing.expect(result.map.entries.len > 0);
+}
+
+test "ns-interns - user namespace is initially empty" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+
+    // user namespace has no interned vars (only refers)
+    const result = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 0), result.map.entries.len);
 }

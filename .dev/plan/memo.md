@@ -4,9 +4,9 @@
 
 - Phase: 12 (Zig Foundation Completion + SCI Test Port)
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T12.7 — Namespace ops II: ns-map, ns-publics, ns-interns
+- Current task: T12.8 — gensym, compare-and-set!, format
 - Task file: (none — create on start)
-- Last completed: T12.6 — Namespace ops I: all-ns, find-ns, ns-name, create-ns, the-ns
+- Last completed: T12.7 — Namespace ops II: ns-map, ns-publics, ns-interns
 - Blockers: none
 
 ## Technical Notes
@@ -14,28 +14,24 @@
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
 
-### T12.6 completed — Namespace ops I
+### T12.7 completed — Namespace ops II
 
-Added 5 builtins in `src/common/builtin/ns_ops.zig`:
+Added 3 builtins to `src/common/builtin/ns_ops.zig`:
 
-- `the-ns`: Validate and return namespace symbol (error if not found)
-- `all-ns`: Return list of all namespace name symbols
-- `find-ns`: Look up namespace by symbol, return symbol or nil
-- `ns-name`: Return namespace name as symbol (identity)
-- `create-ns`: Find or create namespace, return symbol
-- D47: Namespace represented as symbol, not a new Value variant
-- Registry: 146 builtins, 261/702 vars done
+- `ns-interns`: Returns map of interned Vars (Namespace.mappings)
+- `ns-publics`: Same as ns-interns (no private vars yet)
+- `ns-map`: Returns map of all mappings (interned + referred)
+- Helper: `resolveNs()` for symbol->Namespace resolution
+- Helper: `varMapToValue()` for VarMap->{symbol->var_ref} conversion
+- Registry: 149 builtins, 264/702 vars done
 
-### T12.7 scope
+### T12.8 scope
 
-Namespace Var mapping: ns-map, ns-publics, ns-interns
+Misc Tier 1 utilities: gensym, compare-and-set!, format
 
-- `ns-map` — return map of all mappings (interned + referred) in namespace
-- `ns-publics` — return map of public Var mappings
-- `ns-interns` — return map of interned Vars (not referred)
-- These return maps of {symbol -> var_ref}
-- Need to access Namespace.mappings and Namespace.refers
-- Same file: `src/common/builtin/ns_ops.zig`
+- `gensym` — generate unique symbol (needs global counter)
+- `compare-and-set!` — CAS on atom (needs Atom access)
+- `format` — string formatting (Clojure's java.lang.String/format equivalent)
 
 ### Deferred items to watch
 
@@ -45,5 +41,5 @@ Namespace Var mapping: ns-map, ns-publics, ns-interns
 
 ### Builtin Count
 
-146 builtins registered
-261/702 vars done
+149 builtins registered
+264/702 vars done
