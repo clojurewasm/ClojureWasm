@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.6 logic.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.7 predicates.clj tests)
 
 ## Invariants (always enforce)
 
@@ -41,6 +41,11 @@ Last updated: 2026-02-03 (Phase 14 — T14.6 logic.clj tests)
 | F30     | if-let / if-not optional else clause             | control.clj tests (3-arg only) — JVM allows 2-arg, ClojureWasm requires 3-arg          | T14.5  |
 | F31     | (and) returns true                               | logic.clj tests (excluded) — JVM: true, ClojureWasm: nil                               | T14.6  |
 | F32     | reverse nil/[] returns empty list                | logic.clj tests (adjusted) — JVM: empty list (truthy), ClojureWasm: nil (falsy)        | T14.6  |
+| F33     | Empty list () type predicates                    | predicates.clj tests (excluded) — list?/coll?/seq? return false for ()                 | T14.7  |
+| F34     | seq returns proper seq type                      | predicates.clj tests (excluded) — (seq [1 2 3]) returns vector, not seq                | T14.7  |
+| F35     | sequential? predicate                            | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
+| F36     | associative? predicate                           | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
+| F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |
