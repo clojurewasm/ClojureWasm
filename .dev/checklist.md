@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14.5 — Bug Fix Round F59, F63, F64)
+Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 
 ## Invariants (always enforce)
 
@@ -32,7 +32,7 @@ Last updated: 2026-02-03 (Phase 14.5 — Bug Fix Round F59, F63, F64)
 | F21     | 3-layer separation (Memory/Exec/Opt)             | Introduction of fused reduce or optimization pass                                      | SS5    |
 | ~~F22~~ | ~~compat_test.yaml introduction~~                | ~~Resolved: T12.9 — .dev/status/compat_test.yaml (70/74 SCI tests pass)~~              | SS10   |
 | ~~F23~~ | ~~comptime Value variant verification~~          | ~~Resolved: T12.4 — Zig exhaustive switch IS the comptime verification (D46)~~         | SS3    |
-| F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (currently done/todo/skip sufficient)                       | SS10   |
+| F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (T15.0 audit: done/todo/skip accurate, 269 done)            | SS10   |
 | F25     | for macro :while modifier                        | for.clj tests (currently excluded)                                                     | T14.4  |
 | F26     | for macro :let + :when combination               | for.clj tests (currently excluded) — :let followed by :when fails                      | T14.4  |
 | F27     | case multiple test values syntax                 | control.clj tests (excluded) — (case x (1 2 3) :match :default) fails                  | T14.5  |

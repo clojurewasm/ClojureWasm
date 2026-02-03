@@ -2,18 +2,26 @@
 
 ## Current State
 
-- Phase: 14 (Clojure本家テスト基盤) — complete
+- Phase: 15.0 (vars.yaml監査) — complete
 - Roadmap: .dev/plan/roadmap.md
-- Current task: (none — Phase 14 complete)
+- Current task: (none)
 - Task file: N/A
-- Last completed: T14.12 — テストファイル優先度リスト作成
+- Last completed: T15.0 — vars.yaml Audit
 - Blockers: none
-- Next: Phase 15 planning
+- Next: Phase 15 planning (high-priority test files)
 
 ## Technical Notes
 
 Context for the current/next task that a new session needs to know.
 Overwrite freely — this is scratchpad, not permanent record.
+
+### T15.0 vars.yaml Audit Complete
+
+- vars.yaml: 269 done, 428 todo, 7 skip (total 704)
+- Actual implemented (clojure.core): 267 unique (builtins + core.clj + special forms)
+- catch/finally correctly done (part of try)
+- Fixed during audit: fn, let, loop changed to done (were todo)
+- No discrepancies remain — vars.yaml accurately reflects implementation
 
 ### Phase 14 Complete
 

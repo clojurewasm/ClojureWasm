@@ -303,7 +303,7 @@ vars:
     "float?": {type: function, status: done}
     floats: {type: function, status: todo}
     flush: {type: function, status: todo}
-    fn: {type: special-form, status: todo}
+    fn: {type: special-form, status: done}
     "fn?": {type: function, status: done}
     fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
     fnil: {type: function, status: done, note: "core.clj nil-replacement wrapper"}
@@ -377,7 +377,7 @@ vars:
     last: {type: function, status: done, note: "core.clj loop to end"}
     "lazy-cat": {type: macro, status: todo}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
-    let: {type: special-form, status: todo}
+    let: {type: special-form, status: done}
     letfn: {type: special-form, status: todo}
     "line-seq": {type: function, status: todo}
     list: {type: function, status: done}
@@ -392,7 +392,7 @@ vars:
     long: {type: function, status: todo}
     "long-array": {type: function, status: todo}
     longs: {type: function, status: todo}
-    loop: {type: special-form, status: todo}
+    loop: {type: special-form, status: done}
     macroexpand: {type: function, status: done}
     "macroexpand-1": {type: function, status: done}
     "make-array": {type: function, status: todo}
