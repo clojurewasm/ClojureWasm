@@ -2,13 +2,13 @@
 
 ## Current State
 
-- Phase: 14.5 (Bug Fix Round)
+- Phase: 14.5 (Bug Fix Round) — complete
 - Roadmap: .dev/plan/roadmap.md
-- Current task: T14.5.3 — postwalk-replace on set literal (F65)
-- Task file: (to be created)
-- Last completed: T14.10 — data_structures.clj 等価テスト作成 (17 tests, 201 assertions)
+- Current task: (none - Phase 14.5 complete)
+- Task file: N/A
+- Last completed: T14.5.3 — postwalk-replace on set literal (F65)
 - Blockers: none
-- Next: T14.5.2 (reduce on set), T14.5.3 (postwalk-replace on set literal)
+- Next: Continue Phase 14 (T14.11+) or move to Phase 15
 
 ## Technical Notes
 
@@ -28,17 +28,29 @@ Overwrite freely — this is scratchpad, not permanent record.
   - Added `are` macro to clojure/test.clj
   - 72/72 tests, 267 assertions pass (TreeWalk)
 
+### Completed: Phase 14.5 — Bug Fix Round
+
+- T14.5.1: assoc on vectors (F66 resolved)
+  - Added vector support to assocFn
+  - (assoc [1 2 3] 1 99) => [1 99 3]
+- T14.5.2: seq/reduce on set (F62 resolved)
+  - Added set support to seqFn
+  - (seq #{1 2 3}) => (1 2 3)
+  - reduce/map/filter now work on sets directly
+- T14.5.3: postwalk-replace on set literal (F65 resolved)
+  - Fixed automatically by T14.5.2 (walk uses seq internally)
+  - Removed workarounds from data_structures.clj
+- data_structures.clj: 17 tests, 203 assertions (was 201)
+
 ### Completed: T14.10 — data_structures.clj
 
-- 17 tests, 201 assertions (TreeWalk)
+- 17 tests, 203 assertions (TreeWalk)
 - Covers: equality, count, conj, peek, pop, list, find
 - contains?, keys, vals, key, val, get/get-in
 - hash-set, set, disj, assoc
-- Discovered bugs: F55-F66 (see checklist.md)
-- Key workarounds:
+- Discovered bugs: F55-F64 (F65/F66 resolved in Phase 14.5)
+- Remaining workarounds:
   - F57/F60: use empty? instead of = on empty lists
-  - F65: use `is` instead of `are` for set literal #{x} templates
-  - F66: assoc only on maps, not vectors
 
 ### Completed: T14.9 — sequences.clj
 
