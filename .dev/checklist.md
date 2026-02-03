@@ -3,7 +3,7 @@
 Compact list of deferred items extracted from `.dev/notes/decisions.md`.
 Check this at session start to catch items that become relevant.
 
-Last updated: 2026-02-03 (Phase 14 — T14.4 for.clj tests)
+Last updated: 2026-02-03 (Phase 14 — T14.5 control.clj tests)
 
 ## Invariants (always enforce)
 
@@ -35,6 +35,10 @@ Last updated: 2026-02-03 (Phase 14 — T14.4 for.clj tests)
 | F24     | vars.yaml status refinement (stub/defer/partial) | When stub functions appear (currently done/todo/skip sufficient)                       | SS10   |
 | F25     | for macro :while modifier                        | for.clj tests (currently excluded)                                                     | T14.4  |
 | F26     | for macro :let + :when combination               | for.clj tests (currently excluded) — :let followed by :when fails                      | T14.4  |
+| F27     | case multiple test values syntax                 | control.clj tests (excluded) — (case x (1 2 3) :match :default) fails                  | T14.5  |
+| F28     | case symbol matching                             | control.clj tests (excluded) — (case 'sym sym :match :default) fails                   | T14.5  |
+| F29     | Empty list () truthy behavior                    | control.clj tests (excluded) — JVM: () is truthy, ClojureWasm: () is falsy             | T14.5  |
+| F30     | if-let / if-not optional else clause             | control.clj tests (3-arg only) — JVM allows 2-arg, ClojureWasm requires 3-arg          | T14.5  |
 | ~~F9~~  | ~~`empty?` builtin~~                             | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F10~~ | ~~`range` builtin~~                              | ~~Resolved: T6.1~~                                                                     | bench  |
 | ~~F11~~ | ~~TreeWalk stack depth limit~~                   | ~~Resolved: T7.1 — MAX_CALL_DEPTH=512 + heap alloc~~                                   | bench  |
