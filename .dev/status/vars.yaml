@@ -729,6 +729,9 @@ vars:
     reset-vals\!:
       status: done
       note: builtin (upstream is pure clj)
+    vswap\!:
+      status: done
+      note: macro in core.clj (upstream)
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}
