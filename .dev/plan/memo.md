@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: B0 (test.clj enhancement)
+- Next task: B1 (Core Semantics fixes)
 - Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
@@ -14,7 +14,6 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| B0   | test.clj enhancement              | is pattern dispatch, thrown?                                                  |
 | B1   | Core Semantics fixes               | F29/F33, F34, F30, F31, F32                                                   |
 | B2   | Macro Enhancement                  | F27/F28, F93, F92, F25/F26                                                    |
 | B3   | Seq/String Operations              | F41, F45, F48, F49                                                            |
@@ -22,18 +21,19 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-B0: test.clj enhancement.
-is pattern dispatch, thrown? implementation.
+B1: Core Semantics fixes.
+F29/F33, F34, F30, F31, F32.
 
 ## Previous Task
 
-BE4 completed: Integration verification + macro child source preservation.
-- Root cause: formToValue→valueToForm roundtrip lost per-child source positions
-- Fix: child_lines/child_columns on PersistentList/PersistentVector
-- formToValue stores child Form positions, valueToForm restores them
-- Result: defn body errors now point to exact bad argument, not just `(+`
-- Verified: defn, nested defn, let, custom macro — both backends consistent
-- E2E tests added for defn body error and let body error positions
+B0 completed: test.clj enhancement.
+- `is` macro now dispatches on first symbol of expression
+- `(is (thrown? ExType body...))` — exception assertion with class check
+- `(is (thrown-with-msg? ExType re body...))` — exception + message regex
+- `(is expr msg)` — optional message argument for all patterns
+- Failure reporting includes message and expected expression
+- Standalone `thrown?` macro kept for backward compat
+- All 22 test files pass, no regressions
 
 ## Handover Notes
 

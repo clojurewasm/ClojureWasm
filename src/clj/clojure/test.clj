@@ -33,19 +33,28 @@
   true)
 
 ;; Record a failing assertion and print context.
-(defn- do-report-fail [expr]
+(defn- do-report-fail [expr msg]
   (swap! fail-count inc)
   (println (str "  FAIL in " (join-str " > " @testing-contexts)))
+  (when msg (println (str "    message: " msg)))
   (println (str "    expected: " expr))
   false)
+
+;; Record a failing thrown? assertion (no exception was thrown).
+(defn- do-report-fail-thrown [expr msg]
+  (swap! fail-count inc)
+  (println (str "  FAIL in " (join-str " > " @testing-contexts)))
+  (when msg (println (str "    message: " msg)))
+  (println (str "    expected exception in: " expr))
+  nil)
 
 ;; ========== Core assertion ==========
 
 ;; Internal assertion handler.
-(defn- do-is [result expr-str]
+(defn- do-is [result expr-str msg]
   (if result
     (do-report-pass)
-    (do-report-fail expr-str)))
+    (do-report-fail expr-str msg)))
 
 ;; ========== Context management ==========
 
@@ -79,9 +88,41 @@
      (defn ~tname [] ~@body)
      (register-test ~(str tname) ~tname)))
 
-;; Assert that expr is truthy. Returns the result of expr.
-(defmacro is [expr]
-  `(do-is ~expr ~(str expr)))
+;; Assert macro with pattern dispatch.
+;; (is expr), (is expr msg)
+;; (is (thrown? ExType body...))
+;; (is (thrown-with-msg? ExType re body...))
+(defmacro is [& args]
+  (let [expr (first args)
+        msg (second args)]
+    (cond
+      (and (seq? expr) (= (first expr) 'thrown?))
+      ;; thrown? dispatch: try body, catch expected class
+      (let [klass (second expr)
+            body (rest (rest expr))]
+        `(try
+           (do ~@body)
+           (do-report-fail-thrown ~(str expr) ~msg)
+           (catch ~klass e#
+             (do-report-pass)
+             e#)))
+
+      (and (seq? expr) (= (first expr) 'thrown-with-msg?))
+      ;; thrown-with-msg? dispatch: catch + message regex match
+      (let [klass (second expr)
+            re (nth expr 2)
+            body (rest (rest (rest expr)))]
+        `(try
+           (do ~@body)
+           (do-report-fail-thrown ~(str expr) ~msg)
+           (catch ~klass e#
+             (if (re-find ~re (str e#))
+               (do (do-report-pass) e#)
+               (do (do-report-fail ~(str expr) ~msg) e#)))))
+
+      :else
+      ;; default: evaluate and check truthiness
+      `(do-is ~expr ~(str expr) ~msg))))
 
 ;; Group assertions under a descriptive string.
 (defmacro testing [desc & body]
