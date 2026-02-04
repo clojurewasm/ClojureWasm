@@ -4,71 +4,52 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 15.5 (Test Re-port with Dual-Backend Verification)
+- Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.5.2-11 — All test files pass dual-backend; ns :require/:use added
+- Last completed: Phase 15.5 complete — 196 tests/1046 assertions dual-backend
 - Blockers: none
-- Next: Phase 15.5 complete — plan Phase 16
+- Next: T16.1 (clojure.set namespace + test)
 
-## Current Phase: 15.5
+## Current Phase: 16
 
-**Background**: Phase 14-15 test porting verified TreeWalk only, skipping VM.
-This led to SKIP + F## workarounds accumulating instead of root cause fixes.
+**Background**: Phase 15.5 verified all existing tests on both backends (196 tests,
+1046 assertions). 4 new F## items discovered (F76-F79). Test Batch 1 has 5 unported
+files. Many F## items from earlier phases remain open.
 
-**Goal**: Re-port Clojure tests from scratch, running both VM and TreeWalk,
-fixing issues properly instead of working around them.
+**Goal**: Expand test coverage via Batch 1 remaining files + fix high-priority bugs.
+Continue dual-backend policy from Phase 15.5.
 
 ### Rules
 
+Same as Phase 15.5:
+
 1. **Dual-Backend Execution**: Run every test on both backends
-
-   ```bash
-   ./zig-out/bin/cljw test.clj              # VM
-   ./zig-out/bin/cljw --tree-walk test.clj  # TreeWalk
-   ```
-
-2. **SKIP is Last Resort**: Only for truly JVM-specific features (threading, reflection)
-   - Failure → investigate root cause
-   - Missing feature → implement it
-   - Bug → fix it
-
+2. **SKIP is Last Resort**: Only for JVM-specific features
 3. **Use `--dump-bytecode`**: Debug VM failures
-
-   ```bash
-   echo '(failing-expr)' > /tmp/debug.clj
-   ./zig-out/bin/cljw --dump-bytecode /tmp/debug.clj
-   ```
-
 4. **Discovery → Implementation**: Tests reveal gaps, fill them
-   - Missing function → implement
-   - Latent bug → fix
-   - Workaround → normalize
 
 ### Task Queue
 
-Re-verify tests in original porting order. One file = one task.
-Run both VM and TreeWalk, fix issues before moving to next.
-
-| Task     | File                                    | Notes               |
-| -------- | --------------------------------------- | ------------------- |
-| T15.5.1  | `test/upstream/sci/core_test.clj`       | SCI tests (70/74)   |
-| T15.5.2  | `test/upstream/clojure/for.clj`         | for macro           |
-| T15.5.3  | `test/upstream/clojure/control.clj`     | if-let, case, cond  |
-| T15.5.4  | `test/upstream/clojure/logic.clj`       | and, or, not        |
-| T15.5.5  | `test/upstream/clojure/predicates.clj`  | type predicates     |
-| T15.5.6  | `test/upstream/clojure/atoms.clj`       | atom, swap!, reset! |
-| T15.5.7  | `test/upstream/clojure/sequences.clj`   | seq functions       |
-| T15.5.8  | `test/upstream/clojure/data_struct.clj` | destructuring       |
-| T15.5.9  | `test/clojure/macros.clj`               | threading macros    |
-| T15.5.10 | `test/clojure/special.clj`              | special forms       |
-| T15.5.11 | `test/clojure/clojure_walk.clj`         | walk (partial)      |
+| Task   | Type    | Description                                     | Notes                                   |
+| ------ | ------- | ----------------------------------------------- | --------------------------------------- |
+| T16.1  | test    | Port clojure_set.clj + implement clojure.set ns | union, intersection, difference, etc.   |
+| T16.2  | test    | Port string.clj (clojure.string tests)          | Already have clojure.string ns          |
+| T16.3  | test    | Port keywords.clj                               | keyword ops, find-keyword               |
+| T16.4  | test    | Port other_functions.clj                        | identity, fnil, constantly, comp, juxt  |
+| T16.5  | test    | Port metadata.clj                               | meta, with-meta, vary-meta              |
+| T16.6  | bugfix  | Fix F77: VM user-defined macro expansion        | -> threading with user defmacro         |
+| T16.7  | bugfix  | Fix F76: VM stack_depth underflow with recur    | recur inside when-not/cond->            |
+| T16.8  | feature | Implement missing predicates (F35-F37)          | sequential?, associative?, ifn?         |
+| T16.9  | feature | Implement missing seq fns (F43-F44, F46-F47)    | ffirst, nnext, drop-last, split-at/with |
+| T16.10 | feature | Implement swap-vals!/reset-vals! (F38-F39)      | Atom operations returning [old new]     |
 
 ### Completion Criteria
 
-- All ported tests pass on both VM and TreeWalk
-- High priority F## items resolved
-- Resolved items struck through in `checklist.md`
+- Batch 1 test files all ported and passing dual-backend
+- F76, F77 VM bugs fixed
+- F35-F39, F43-F44, F46-F47 implemented
+- Total test count significantly higher than 196
 
 ---
 
