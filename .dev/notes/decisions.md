@@ -1649,3 +1649,24 @@ which works for both VM and TreeWalk closures.
 **Supersedes**: D28 lazy-seq TreeWalk-only restriction.
 
 **Impact**: F14 + F95 resolved. tree-seq enabled. All lazy-seq operations work on both backends.
+
+## D62: Transducer Foundation
+
+**Context**: Transducers require map/filter to support 1-arity (transducer) form, conj to
+support 0/1-arity, and deref to support reduced values. None of these were implemented.
+
+**Decision**:
+
+1. Added transducer (1-arity) forms to `map` and `filter` in core.clj.
+2. Extended `conjFn` to support 0-arity (returns []) and 1-arity (returns coll).
+3. Extended `derefFn` to support `.reduced` values (returns inner value).
+4. Added `transduce` (pure Clojure, uses `reduce` instead of protocol-based coll-reduce).
+5. Added `into` override in core.clj for 3-arity transducer support.
+6. Added `cat`, `halt-when`, `dedupe`, `preserving-reduced`, `sequence` (1-arity).
+7. `halt-when` uses `:__halt` instead of `::halt` (auto-qualified keywords not supported).
+
+**Rationale**: Transducers are fundamental to Clojure's composable data transformation model.
+The simplified `transduce` (plain reduce) works because our reduce already handles `reduced?`
+early termination. The `into` override in core.clj shadows the Zig builtin to add 3-arity.
+
+**Impact**: 383 done vars. Foundation for further transducer-returning functions.

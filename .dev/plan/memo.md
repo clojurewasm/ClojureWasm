@@ -6,17 +6,17 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
 - Phase: 18.6 (Core Coverage Sprint)
-- Current task: T18.6.2
+- Current task: T18.6.3
 - Task file: N/A
-- Last completed: T18.6.1 (rseq, shuffle, bit-and-not, 17 unchecked/promoting aliases)
+- Last completed: T18.6.2 (transduce, cat, dedupe, halt-when, sequence, map/filter xf, conj 0/1-arity, deref reduced)
 - Blockers: none
-- Next: Transducer basics → pure Clojure additions → coverage
+- Next: Pure Clojure additions → coverage
 
 ## Current Phase: 18
 
 **Background**: Phase 18.5 completed: lazy-seq VM opcode (D61), 22 new functions,
 8 numeric coercions, 10 type predicates, 4 seq utilities, test expansion.
-Total: 14 test files, 355 done clojure.core vars, 207 Zig builtins, 971 assertions.
+Total: 14 test files, 383 done clojure.core vars, 210 Zig builtins, 971 assertions.
 
 **Goal**: Sprint to 380+ done vars. Quick-win functions, transducer basics,
 collection utilities (rseq, shuffle), and bit-and-not.
@@ -33,7 +33,7 @@ collection utilities (rseq, shuffle), and bit-and-not.
 | Task    | Type | Description                              | Notes                                   |
 | ------- | ---- | ---------------------------------------- | --------------------------------------- |
 | T18.6.1 | done | Quick-win Zig builtins + aliases         | 3 builtins + 17 aliases, 375 done vars  |
-| T18.6.2 | impl | Transducer basics (transduce, cat, etc.) | transduce, cat, dedupe, halt-when       |
+| T18.6.2 | done | Transducer basics (transduce, cat, etc.) | +map/filter xf, conj arity, 383 vars    |
 | T18.6.3 | impl | Pure Clojure additions                   | random-sample, not=, unchecked-\*, etc. |
 | T18.6.4 | test | Coverage expansion                       | Tests for T18.6.1-3 features            |
 

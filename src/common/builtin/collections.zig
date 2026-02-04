@@ -129,7 +129,14 @@ pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (conj coll x) — add to collection (front for list, back for vector).
 pub fn conjFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len == 0) {
+        // (conj) => []
+        const empty = try allocator.alloc(Value, 0);
+        const vec = try allocator.create(PersistentVector);
+        vec.* = .{ .items = empty };
+        return Value{ .vector = vec };
+    }
+    if (args.len == 1) return args[0]; // (conj coll) => coll
     const coll = args[0];
     // conj adds remaining args one at a time
     var current = coll;

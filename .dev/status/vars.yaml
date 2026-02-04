@@ -174,7 +174,7 @@ vars:
     "bytes?": {type: function, status: todo}
     case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
     cast: {type: function, status: todo}
-    cat: {type: function, status: todo}
+    cat: {type: function, status: done}
     char: {type: function, status: done, note: builtin (upstream is pure clj)}
     "char-array": {type: function, status: todo}
     "char-escape-string": {type: var, status: todo}
@@ -223,7 +223,7 @@ vars:
     "dec'": {type: function, status: done}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
-    dedupe: {type: function, status: todo}
+    dedupe: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity uses (into [] (dedupe) coll) instead of sequence'}
     "default-data-readers": {type: var, status: todo}
     definline: {type: macro, status: todo}
     definterface: {type: macro, status: todo}
@@ -327,7 +327,7 @@ vars:
     "get-thread-bindings": {type: function, status: todo}
     "get-validator": {type: function, status: todo}
     "group-by": {type: function, status: done}
-    "halt-when": {type: function, status: todo}
+    "halt-when": {type: function, status: done, note: 'UPSTREAM-DIFF: uses :__halt instead of ::halt'}
     hash: {type: function, status: done}
     "hash-combine": {type: function, status: todo}
     "hash-map": {type: function, status: done}
@@ -574,7 +574,7 @@ vars:
     "seq?": {type: function, status: done}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: todo}
-    sequence: {type: function, status: todo}
+    sequence: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity only (no transducer arities)'}
     "sequential?": {type: function, status: done}
     set: {type: function, status: done}
     "set-agent-send-executor!": {type: function, status: todo}
@@ -640,7 +640,7 @@ vars:
     "to-array": {type: function, status: todo}
     "to-array-2d": {type: function, status: todo}
     trampoline: {type: function, status: done}
-    transduce: {type: function, status: todo}
+    transduce: {type: function, status: done, note: 'UPSTREAM-DIFF: uses reduce instead of coll-reduce protocol'}
     transient: {type: function, status: todo}
     "tree-seq": {type: function, status: done}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
@@ -732,6 +732,15 @@ vars:
     vswap\!:
       status: done
       note: macro in core.clj (upstream)
+    preserving-reduced:
+      status: done
+      note: private helper for cat
+    volatile\!:
+      status: done
+      note: builtin (upstream is pure clj)
+    vreset\!:
+      status: done
+      note: builtin (upstream is pure clj)
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

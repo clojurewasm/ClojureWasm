@@ -21,19 +21,37 @@
 (defn next [coll]
   (seq (rest coll)))
 
-(defn map [f coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (recur (next s) (cons (f (first s)) acc))
-      (reverse acc))))
+(defn map
+  ([f]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result] (rf result))
+       ([result input]
+        (rf result (f input))))))
+  ([f coll]
+   (loop [s (seq coll) acc (list)]
+     (if s
+       (recur (next s) (cons (f (first s)) acc))
+       (reverse acc)))))
 
-(defn filter [pred coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (if (pred (first s))
-        (recur (next s) (cons (first s) acc))
-        (recur (next s) acc))
-      (reverse acc))))
+(defn filter
+  ([pred]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result] (rf result))
+       ([result input]
+        (if (pred input)
+          (rf result input)
+          result)))))
+  ([pred coll]
+   (loop [s (seq coll) acc (list)]
+     (if s
+       (if (pred (first s))
+         (recur (next s) (cons (first s) acc))
+         (recur (next s) acc))
+       (reverse acc)))))
 
 (defn reduce
   ([f coll]
@@ -1095,3 +1113,95 @@
 (defn +' ([] 0) ([x] x) ([x y] (+ x y)) ([x y & more] (apply + x y more)))
 (defn -' ([x] (- x)) ([x y] (- x y)) ([x y & more] (apply - x y more)))
 (defn *' ([] 1) ([x] x) ([x y] (* x y)) ([x y & more] (apply * x y more)))
+
+;; === Transducer basics ===
+
+(defn transduce
+  "reduce with a transformation of f (xf). If init is not
+  supplied, (f) will be called to produce it."
+  ([xform f coll] (transduce xform f (f) coll))
+  ([xform f init coll]
+   (let [xf (xform f)
+         ret (reduce xf init coll)]
+     (xf ret))))
+
+;; UPSTREAM-DIFF: simplified from clojure.core.protocols/coll-reduce to plain reduce
+
+;; Override builtin into to support 3-arity (transducer)
+(defn into
+  "Returns a new coll consisting of to with all of the items of
+  from conjoined. A transducer may be supplied."
+  ([] [])
+  ([to] to)
+  ([to from] (reduce conj to from))
+  ([to xform from]
+   (transduce xform conj to from)))
+
+(defn- preserving-reduced
+  [rf]
+  (fn [a b]
+    (let [ret (rf a b)]
+      (if (reduced? ret)
+        (reduced ret)
+        ret))))
+
+(defn cat
+  "A transducer which concatenates the contents of each input, which must be a
+  collection, into the reduction."
+  [rf]
+  (let [rrf (preserving-reduced rf)]
+    (fn
+      ([] (rf))
+      ([result] (rf result))
+      ([result input]
+       (reduce rrf result input)))))
+
+(defn halt-when
+  "Returns a transducer that ends transduction when pred returns true
+  for an input. When retf is supplied it must be a fn of 2 arguments -
+  it will be passed the (completed) result so far and the input that
+  triggered the predicate, and its return value (if it does not throw
+  an exception) will be the return value of the transducer. If retf
+  is not supplied, the input that triggered the predicate will be
+  returned. If the predicate never returns true the transduction is
+  unaffected."
+  ([pred] (halt-when pred nil))
+  ([pred retf]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result]
+        (if (and (map? result) (contains? result :__halt))
+          (:__halt result)
+          (rf result)))
+       ([result input]
+        (if (pred input)
+          (reduced {:__halt (if retf (retf (rf result) input) input)})
+          (rf result input)))))))
+
+;; UPSTREAM-DIFF: uses :__halt instead of ::halt (no ns-qualified auto-keywords)
+
+(defn dedupe
+  "Returns a transducer that removes consecutive duplicates."
+  ([]
+   (fn [rf]
+     (let [pv (volatile! :__none)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [prior @pv]
+            (vreset! pv input)
+            (if (= prior input)
+              result
+              (rf result input))))))))
+  ([coll] (into [] (dedupe) coll)))
+
+;; UPSTREAM-DIFF: 1-arity uses (into [] (dedupe) coll) instead of (sequence (dedupe) coll)
+
+(defn sequence
+  "Coerces coll to a (possibly empty) sequence, if it is not already
+  one. Will not force a lazy seq. (sequence nil) yields ()."
+  ([coll]
+   (if (seq? coll) coll
+       (or (seq coll) ()))))
