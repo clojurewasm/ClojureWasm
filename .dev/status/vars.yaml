@@ -322,7 +322,7 @@ vars:
     gensym: {type: function, status: done}
     get: {type: function, status: done}
     "get-in": {type: function, status: done}
-    "get-method": {type: function, status: todo}
+    "get-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "get-proxy-class": {type: function, status: todo}
     "get-thread-bindings": {type: function, status: todo}
     "get-validator": {type: function, status: todo}
@@ -411,7 +411,7 @@ vars:
     "merge-with": {type: function, status: done}
     meta: {type: function, status: done, note: 'Zig builtin: returns metadata map from collections, fn, atom'}
     "method-sig": {type: function, status: todo}
-    methods: {type: function, status: todo}
+    methods: {type: function, status: done, note: builtin (upstream is pure clj)}
     min: {type: function, status: done}
     "min-key": {type: function, status: done}
     "mix-collection-hash": {type: function, status: todo}
@@ -540,8 +540,8 @@ vars:
     "release-pending-sends": {type: function, status: todo}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
     remove: {type: function, status: done}
-    "remove-all-methods": {type: function, status: todo}
-    "remove-method": {type: function, status: todo}
+    "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
+    "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-ns": {type: function, status: todo}
     "remove-tap": {type: function, status: todo}
     "remove-watch": {type: function, status: todo}

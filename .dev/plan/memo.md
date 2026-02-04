@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16.5 (Test Batch 2 Port)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.10 — Implement swap-vals!/reset-vals! (F38-F39)
+- Last completed: T16.5.1 — Port multimethods.clj (9 tests, 26 assertions)
 - Blockers: none
-- Next: T16.5.1 (Port multimethods.clj)
+- Next: T16.5.2 (Port vars.clj)
 
 ## Current Phase: 16.5
 
