@@ -829,7 +829,7 @@
                    pairs)
          ~@(if default
              (list true default)
-             nil)))))
+             (list true `(throw (str "No matching clause: " ~gexpr))))))))
 
 (defmacro condp [pred expr & clauses]
   (let [gpred '__condp_pred__
@@ -1008,9 +1008,10 @@
 ;; Nil-safe conditionals
 
 ;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
-(defmacro if-some [bindings then else]
+(defmacro if-some [bindings then & more]
   (let [sym (first bindings)
-        val (first (rest bindings))]
+        val (first (rest bindings))
+        else (first more)]
     `(let [temp# ~val]
        (if (nil? temp#)
          ~else
