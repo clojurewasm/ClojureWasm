@@ -4,6 +4,7 @@
 ;; Builtins (def, defmacro, fn, if, do, let, +, -, etc.) are already registered
 ;; in the Env by registry.registerBuiltins before this file is loaded.
 
+;; UPSTREAM-DIFF: Simplified defn; no docstring, metadata, pre/post, inline support
 (defmacro defn [name & fdecl]
   `(def ~name (fn ~name ~@fdecl)))
 
@@ -67,6 +68,7 @@
 
 (defmacro comment [& body] nil)
 
+;; UPSTREAM-DIFF: No even-number-of-forms error check
 (defmacro cond [& clauses]
   (when (seq clauses)
     (let [test (first clauses)
@@ -136,6 +138,7 @@
 
 ;; Iteration
 
+;; UPSTREAM-DIFF: No assert-args, uses + instead of unchecked-inc
 (defmacro dotimes [bindings & body]
   (let [i (first bindings)
         n (first (rest bindings))]
@@ -378,6 +381,7 @@
 
 ;; Utility macros
 
+;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
 (defmacro if-let [bindings then else]
   (let [sym (first bindings)
         val (first (rest bindings))]
@@ -386,6 +390,7 @@
          (let [~sym temp#] ~then)
          ~else))))
 
+;; UPSTREAM-DIFF: No assert-args validation
 (defmacro when-let [bindings & body]
   (let [sym (first bindings)
         val (first (rest bindings))]
@@ -699,6 +704,7 @@
 
 ;; Control flow macros
 
+;; UPSTREAM-DIFF: cond-based, no case* optimization, no multi-value test (F27), no symbol match (F28)
 (defmacro case [expr & clauses]
   (let [pairs (partition 2 clauses)
         default (if (= (* 2 (count pairs)) (count clauses))
@@ -715,6 +721,7 @@
              (list true default)
              nil)))))
 
+;; UPSTREAM-DIFF: No :>> modifier support, no error on no-match without default
 (defmacro condp [pred expr & clauses]
   (let [pairs (partition 2 clauses)
         default (if (= (* 2 (count pairs)) (count clauses))
@@ -744,6 +751,7 @@
        ~@body
        (recur))))
 
+;; UPSTREAM-DIFF: Single binding only; no :let/:when/:while, no chunked-seq, no nesting
 (defmacro doseq [bindings & body]
   (let [sym (first bindings)
         coll (first (rest bindings))]
@@ -764,6 +772,7 @@
 
 ;; Delayed evaluation
 
+;; UPSTREAM-DIFF: Map-based delay (upstream uses clojure.lang.Delay Java class)
 (defmacro delay [& body]
   `{:__delay true
     :thunk (fn [] ~@body)
@@ -837,6 +846,7 @@
 
 ;; Nil-safe conditionals
 
+;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
 (defmacro if-some [bindings then else]
   (let [sym (first bindings)
         val (first (rest bindings))]
@@ -845,6 +855,7 @@
          ~else
          (let [~sym temp#] ~then)))))
 
+;; UPSTREAM-DIFF: No assert-args validation
 (defmacro when-some [bindings & body]
   (let [sym (first bindings)
         val (first (rest bindings))]

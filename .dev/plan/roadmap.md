@@ -114,6 +114,27 @@ existing test files with assertions previously SKIPed in Phase 17.5.
 **Prerequisite**: Phase 17.5 (try/catch and destructuring available)
 **Reference**: `.dev/notes/test_file_priority.md` Batch 3
 
+### Phase 18.5: Upstream Alignment
+
+Replace simplified `UPSTREAM-DIFF` implementations with verbatim upstream Clojure
+when all dependencies are available. Close gap between ClojureWasm and JVM Clojure.
+
+**Scope**:
+
+1. **Macro alignment** (F90, F92, F93, F94) — defn, doseq, condp, case, etc.
+2. **Analyzer rewrite** (F89) — Route `System/`, `Math/` syntax to `__` builtins
+3. **Delay proper type** (F91) — Map-based → dedicated Value type
+4. **Remaining F## items** — Resolve items unblocked by Phase 17.5 infrastructure
+
+**Procedure**:
+
+1. `grep UPSTREAM-DIFF .dev/status/vars.yaml` — list all simplified vars
+2. For each: check if deps now available → copy upstream → test → remove note
+3. For Analyzer rewrite: add `System/` and `Math/` pattern matching in analyzer
+
+**Prerequisite**: Phase 18 (tests provide regression safety)
+**Reference**: F89-F94 in checklist.md, `.dev/notes/java_interop_todo.md` P2
+
 ### Phase 19: Production GC
 
 Replace arena allocator with real garbage collector.
@@ -181,11 +202,9 @@ When implementing IO/system functionality:
 
 ### Upstream Alignment
 
-After Tier 1-2 implementation stabilizes, replace `UPSTREAM-DIFF` tagged
-definitions in core.clj with verbatim upstream Clojure definitions.
+→ **Promoted to Phase 18.5**. See Phases section above.
 
-**Query**: `grep UPSTREAM-DIFF .dev/status/vars.yaml`
-**Procedure**: Verify deps available → copy upstream → test → remove UPSTREAM-DIFF note
+**Quick reference**: `grep UPSTREAM-DIFF .dev/status/vars.yaml`
 
 ### Optimization Phase
 

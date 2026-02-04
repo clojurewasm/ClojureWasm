@@ -172,7 +172,7 @@ vars:
     "byte-array": {type: function, status: todo}
     bytes: {type: function, status: todo}
     "bytes?": {type: function, status: todo}
-    case: {type: macro, status: done, note: "core.clj cond-based dispatch"}
+    case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
     cast: {type: function, status: todo}
     cat: {type: function, status: todo}
     char: {type: function, status: todo}
@@ -204,10 +204,10 @@ vars:
     complement: {type: function, status: done}
     completing: {type: function, status: todo}
     concat: {type: function, status: done}
-    cond: {type: macro, status: done}
+    cond: {type: macro, status: done, note: 'UPSTREAM-DIFF: no even-forms error check'}
     "cond->": {type: macro, status: done}
     "cond->>": {type: macro, status: done}
-    condp: {type: macro, status: done, note: "core.clj predicate dispatch"}
+    condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
     conj: {type: function, status: done}
     "conj!": {type: function, status: todo}
     cons: {type: function, status: done}
@@ -230,14 +230,14 @@ vars:
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
-    defn: {type: macro, status: done}
+    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: simplified, no docstring/metadata/pre-post/inline'}
     "defn-": {type: macro, status: done}
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: todo}
     deftype: {type: macro, status: todo}
-    delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
+    delay: {type: macro, status: done, note: "UPSTREAM-DIFF: map-based (upstream uses clojure.lang.Delay)"}
     "delay?": {type: function, status: done, note: clj in core.clj}
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
@@ -253,9 +253,9 @@ vars:
     "distinct?": {type: function, status: todo}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
-    doseq: {type: macro, status: done, note: "core.clj single-binding loop"}
+    doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: single binding only, no :let/:when/:while/nesting"}
     dosync: {type: macro, status: todo}
-    dotimes: {type: macro, status: done}
+    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, uses + not unchecked-inc'}
     doto: {type: macro, status: done}
     double: {type: function, status: todo}
     "double-array": {type: function, status: todo}
@@ -337,9 +337,9 @@ vars:
     "ident?": {type: function, status: todo}
     "identical?": {type: function, status: done}
     identity: {type: function, status: done}
-    "if-let": {type: macro, status: done}
+    "if-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, requires 3 args (F30)'}
     "if-not": {type: macro, status: done}
-    "if-some": {type: macro, status: done, note: "core.clj macro"}
+    "if-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args, requires 3 args"}
     "ifn?": {type: function, status: done}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
@@ -695,9 +695,9 @@ vars:
     "vswap!": {type: macro, status: done, note: "core.clj macro"}
     when: {type: macro, status: done}
     "when-first": {type: macro, status: todo}
-    "when-let": {type: macro, status: done}
+    "when-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args'}
     "when-not": {type: macro, status: done}
-    "when-some": {type: macro, status: done, note: "core.clj macro"}
+    "when-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args"}
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: todo}
     "with-bindings*": {type: function, status: todo}

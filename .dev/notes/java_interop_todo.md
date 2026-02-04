@@ -75,33 +75,37 @@ Organized based on discussion. Includes both done and todo items.
 
 ## Priority 2: System/Math Analyzer Rewrite
 
+**Status**: Builtins exist via `__` prefix names. Analyzer rewrite (F89) to route
+`(System/nanoTime)` → `(__nano-time)` and `(Math/sqrt x)` → `(__sqrt x)` is **pending**.
+Until F89, users must call internal `__` names directly.
+
 ### System/ Methods
 
-| Java Syntax                  | Internal Function         | Status | Note                        |
-| ---------------------------- | ------------------------- | ------ | --------------------------- |
-| `(System/nanoTime)`          | `(__nano-time)`           | done   | Zig std.time.nanoTimestamp  |
-| `(System/currentTimeMillis)` | `(__current-time-millis)` | done   | Zig std.time.milliTimestamp |
-| `(System/getenv k)`          | `(__getenv k)`            | done   | Zig std.posix.getenv        |
-| `(System/exit n)`            | `(__exit n)`              | done   | Zig std.process.exit        |
+| Java Syntax                  | Internal Function         | Status  | Note                                 |
+| ---------------------------- | ------------------------- | ------- | ------------------------------------ |
+| `(System/nanoTime)`          | `(__nano-time)`           | builtin | Zig builtin done; syntax rewrite F89 |
+| `(System/currentTimeMillis)` | `(__current-time-millis)` | builtin | Zig builtin done; syntax rewrite F89 |
+| `(System/getenv k)`          | `(__getenv k)`            | builtin | Zig builtin done; syntax rewrite F89 |
+| `(System/exit n)`            | `(__exit n)`              | builtin | Zig builtin done; syntax rewrite F89 |
 
 ### Math/ Methods
 
-| Java Syntax      | Internal Function | Status | Note             |
-| ---------------- | ----------------- | ------ | ---------------- |
-| `(Math/abs x)`   | `(abs x)`         | done   | Zig builtin      |
-| `(Math/ceil x)`  | `(__ceil x)`      | todo   | Zig @ceil        |
-| `(Math/floor x)` | `(__floor x)`     | todo   | Zig @floor       |
-| `(Math/round x)` | `(__round x)`     | todo   | Zig @round       |
-| `(Math/sqrt x)`  | `(__sqrt x)`      | todo   | Zig @sqrt        |
-| `(Math/pow x y)` | `(__pow x y)`     | todo   | Zig std.math.pow |
-| `(Math/sin x)`   | `(__sin x)`       | todo   | Zig @sin         |
-| `(Math/cos x)`   | `(__cos x)`       | todo   | Zig @cos         |
-| `(Math/tan x)`   | `(__tan x)`       | todo   | Zig @tan         |
-| `(Math/log x)`   | `(__log x)`       | todo   | Zig @log         |
-| `(Math/exp x)`   | `(__exp x)`       | todo   | Zig @exp         |
-| `Math/PI`        | constant          | todo   | 3.14159...       |
-| `Math/E`         | constant          | todo   | 2.71828...       |
-| `(Math/random)`  | `(rand)`          | done   | Zig builtin      |
+| Java Syntax      | Internal Function | Status  | Note                                 |
+| ---------------- | ----------------- | ------- | ------------------------------------ |
+| `(Math/abs x)`   | `(abs x)`         | builtin | Zig builtin done; syntax rewrite F89 |
+| `(Math/ceil x)`  | `(__ceil x)`      | todo    | Zig @ceil                            |
+| `(Math/floor x)` | `(__floor x)`     | todo    | Zig @floor                           |
+| `(Math/round x)` | `(__round x)`     | todo    | Zig @round                           |
+| `(Math/sqrt x)`  | `(__sqrt x)`      | todo    | Zig @sqrt                            |
+| `(Math/pow x y)` | `(__pow x y)`     | todo    | Zig std.math.pow                     |
+| `(Math/sin x)`   | `(__sin x)`       | todo    | Zig @sin                             |
+| `(Math/cos x)`   | `(__cos x)`       | todo    | Zig @cos                             |
+| `(Math/tan x)`   | `(__tan x)`       | todo    | Zig @tan                             |
+| `(Math/log x)`   | `(__log x)`       | todo    | Zig @log                             |
+| `(Math/exp x)`   | `(__exp x)`       | todo    | Zig @exp                             |
+| `Math/PI`        | constant          | todo    | 3.14159...                           |
+| `Math/E`         | constant          | todo    | 2.71828...                           |
+| `(Math/random)`  | `(rand)`          | builtin | Zig builtin done; syntax rewrite F89 |
 
 ---
 

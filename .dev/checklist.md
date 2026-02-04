@@ -84,6 +84,12 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F86     | bound? takes var_ref not symbol                  | ClojureWasm bound? takes symbol, JVM takes var_ref                                     | T16.5.2 |
 | F87     | #'var inside deftest body                        | Var quote resolves at analyze time, fails for deftest-local defs                       | T16.5.2 |
 | F88     | ^:dynamic / ^:meta on def                        | Reader metadata on def special form not supported                                      | T16.5.2 |
+| F89     | Analyzer rewrite for System/Math                 | `(System/nanoTime)` → `(__nano-time)` etc. — builtins exist but syntax routing missing | T17.6   |
+| F90     | defn full implementation                         | No docstring, metadata, pre/post conditions, inline support                            | T17     |
+| F91     | delay proper Value type                          | Map-based delay; upstream uses clojure.lang.Delay class                                | T17     |
+| F92     | doseq :let/:when/:while and nesting              | Single binding only, no modifiers, no nested bindings                                  | T17     |
+| F93     | condp :>> modifier                               | Result-fn routing via `:>>` not supported                                              | T17     |
+| F94     | Upstream Alignment pass                          | Replace UPSTREAM-DIFF implementations with upstream verbatim where deps available      | T17     |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10  |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10  |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10  |
