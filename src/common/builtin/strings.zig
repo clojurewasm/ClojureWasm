@@ -161,6 +161,52 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
     return error.ArityError;
 }
 
+/// (print-str) => ""
+/// (print-str x) => non-readable representation of x
+/// (print-str x y ...) => non-readable representations separated by space
+pub fn printStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return Value{ .string = "" };
+
+    var aw: Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    for (args, 0..) |arg, i| {
+        if (i > 0) try aw.writer.writeAll(" ");
+        try arg.formatStr(&aw.writer);
+    }
+    const owned = try aw.toOwnedSlice();
+    return Value{ .string = owned };
+}
+
+/// (prn-str) => "\n"
+/// (prn-str x) => readable representation of x + newline
+/// (prn-str x y ...) => readable representations separated by space + newline
+pub fn prnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    var aw: Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    for (args, 0..) |arg, i| {
+        if (i > 0) try aw.writer.writeAll(" ");
+        try arg.formatPrStr(&aw.writer);
+    }
+    try aw.writer.writeAll("\n");
+    const owned = try aw.toOwnedSlice();
+    return Value{ .string = owned };
+}
+
+/// (println-str) => "\n"
+/// (println-str x) => non-readable representation of x + newline
+/// (println-str x y ...) => non-readable representations separated by space + newline
+pub fn printlnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    var aw: Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    for (args, 0..) |arg, i| {
+        if (i > 0) try aw.writer.writeAll(" ");
+        try arg.formatStr(&aw.writer);
+    }
+    try aw.writer.writeAll("\n");
+    const owned = try aw.toOwnedSlice();
+    return Value{ .string = owned };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "str",
@@ -173,6 +219,27 @@ pub const builtins = [_]BuiltinDef{
         .name = "pr-str",
         .func = &prStrFn,
         .doc = "pr to a string, returning it. Prints any object to the string readable.",
+        .arglists = "([& xs])",
+        .added = "1.0",
+    },
+    .{
+        .name = "print-str",
+        .func = &printStrFn,
+        .doc = "print to a string, returning it.",
+        .arglists = "([& xs])",
+        .added = "1.0",
+    },
+    .{
+        .name = "prn-str",
+        .func = &prnStrFn,
+        .doc = "prn to a string, returning it.",
+        .arglists = "([& xs])",
+        .added = "1.0",
+    },
+    .{
+        .name = "println-str",
+        .func = &printlnStrFn,
+        .doc = "println to a string, returning it.",
         .arglists = "([& xs])",
         .added = "1.0",
     },
@@ -391,6 +458,80 @@ test "symbol with ns and name" {
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.symbol.name);
     try testing.expectEqualStrings("my.ns", result.symbol.ns.?);
+}
+
+// --- print-str tests ---
+
+test "print-str - no args returns empty string" {
+    const result = try printStrFn(testing.allocator, &.{});
+    try testing.expectEqualStrings("", result.string);
+}
+
+test "print-str - string is unquoted" {
+    const args = [_]Value{.{ .string = "hello" }};
+    const result = try printStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("hello", result.string);
+}
+
+test "print-str - multi-arg space separated" {
+    const args = [_]Value{
+        .{ .integer = 1 },
+        .{ .string = "hello" },
+    };
+    const result = try printStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("1 hello", result.string);
+}
+
+// --- prn-str tests ---
+
+test "prn-str - no args returns newline" {
+    const result = try prnStrFn(testing.allocator, &.{});
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("\n", result.string);
+}
+
+test "prn-str - string is quoted with newline" {
+    const args = [_]Value{.{ .string = "hello" }};
+    const result = try prnStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("\"hello\"\n", result.string);
+}
+
+test "prn-str - multi-arg space separated with newline" {
+    const args = [_]Value{
+        .{ .integer = 1 },
+        .nil,
+    };
+    const result = try prnStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("1 nil\n", result.string);
+}
+
+// --- println-str tests ---
+
+test "println-str - no args returns newline" {
+    const result = try printlnStrFn(testing.allocator, &.{});
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("\n", result.string);
+}
+
+test "println-str - string is unquoted with newline" {
+    const args = [_]Value{.{ .string = "hello" }};
+    const result = try printlnStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("hello\n", result.string);
+}
+
+test "println-str - multi-arg space separated with newline" {
+    const args = [_]Value{
+        .{ .integer = 1 },
+        .{ .string = "hello" },
+    };
+    const result = try printlnStrFn(testing.allocator, &args);
+    defer testing.allocator.free(result.string);
+    try testing.expectEqualStrings("1 hello\n", result.string);
 }
 
 test "str - large string over 4KB" {

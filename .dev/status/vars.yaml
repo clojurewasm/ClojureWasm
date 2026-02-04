@@ -483,12 +483,12 @@ vars:
     "print-dup": {type: var, status: todo}
     "print-method": {type: var, status: todo}
     "print-simple": {type: function, status: todo}
-    "print-str": {type: function, status: todo}
+    "print-str": {type: function, status: done}
     printf: {type: function, status: todo}
     println: {type: function, status: done}
-    "println-str": {type: function, status: todo}
+    "println-str": {type: function, status: done}
     prn: {type: function, status: done}
-    "prn-str": {type: function, status: todo}
+    "prn-str": {type: function, status: done}
     promise: {type: function, status: todo}
     proxy: {type: macro, status: todo}
     "proxy-call-with-super": {type: function, status: todo}

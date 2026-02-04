@@ -113,8 +113,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // Was 170, +4 (print, pr, newline, flush)
-    try std.testing.expectEqual(174, builtin_count);
+    // Was 174, +3 (print-str, prn-str, println-str)
+    try std.testing.expectEqual(177, builtin_count);
 }
 
 test "comptime lookup finds +" {

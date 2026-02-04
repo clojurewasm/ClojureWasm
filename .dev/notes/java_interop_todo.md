@@ -156,12 +156,12 @@ Organized based on discussion. Includes both done and todo items.
 
 ### String IO
 
-| Var           | Status | Note              |
-| ------------- | ------ | ----------------- |
-| `pr-str`      | todo   | readably → string |
-| `prn-str`     | todo   | pr-str + newline  |
-| `print-str`   | todo   | print → string    |
-| `println-str` | todo   | println → string  |
+| Var           | Status | Note        |
+| ------------- | ------ | ----------- |
+| `pr-str`      | done   | Zig builtin |
+| `prn-str`     | done   | Zig builtin |
+| `print-str`   | done   | Zig builtin |
+| `println-str` | done   | Zig builtin |
 
 ### clojure.java.io Equivalent
 
