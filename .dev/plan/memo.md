@@ -29,12 +29,15 @@ Compiler records source at emit time, VM annotates errors from debug info.
 
 ## Previous Task
 
-BE3a completed: Added `annotateLocation` to error.zig and wrapped
-TreeWalk's `run()` to annotate errors with Node's SourceInfo. Errors
-now show line/column + source context in TreeWalk backend. E.g.:
-  Location: <expr>:3:0
+BE3a completed: TreeWalk source location + file name + pointer message.
+- `annotateLocation()` in error.zig: fills SourceLocation on threadlocal error
+- TreeWalk `run()` wraps `runNode()` to annotate errors with Node SourceInfo
+- `setSourceFile/getSourceFile` threadlocal: threads file name from main → Analyzer
+- Error pointer shows message instead of generic "error here"
+- Example output:
+  Location: test.clj:3:0
   3 | (+ 1 "x")
-      ^--- error here
+      ^--- Cannot cast string to number
 
 ## Handover Notes
 
@@ -48,7 +51,8 @@ Notes that persist across sessions.
   - BE2b: Done — collections + sequences; IndexOutOfBounds→IndexError, IllegalState→ValueError
   - BE2c: Done — strings (strings.zig, clj_string.zig); IndexOutOfBounds→IndexError in subsFn
   - BE2d: Done — other builtins (atom, metadata, multimethods, io, system, regex, file_io, ns_ops, misc, eval, var.zig); legacy tags removed
-  - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces.
+  - BE3a: Done — TreeWalk source location (annotateLocation, file name, message pointer)
+  - BE3b: Next — VM source location (needs debug_info in Chunk/Compiler, IP→SourceInfo mapping)
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
   - Display: `reportError()` in main.zig, babashka-style format
