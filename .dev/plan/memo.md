@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C7 (def.clj)
+- Next task: C8 (vars.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -21,7 +21,7 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C4: Re-port for.clj~~ done (49 assertions, lazy seq infrastructure D65)
 - ~~C5: Re-port atoms.clj~~ done (12 assertions, *warn-on-reflection* stub)
 - ~~C6: delays.clj~~ done (6 assertions, delay exception caching)
-- C7: def.clj (84 lines, partial — spec tests JVM-only)
+- ~~C7: def.clj~~ done (2 assertions, eval do sequential fix)
 - C8: vars.clj (109 lines, partial — threading/promise JVM-only)
 - C9: Re-port control.clj (upstream faithful)
 - C10: Re-port predicates.clj (upstream faithful)
@@ -38,14 +38,13 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C7: def.clj — faithful from upstream with CLJW markers.
+C8: vars.clj — faithful from upstream with CLJW markers.
 
 ## Previous Task
 
-C6 completed: Port delays.clj — 6 assertions (2 of 5 tests; 3 JVM interop).
-- Fixed nested try/catch VM handler bug (pop_handler opcode 0xA2)
-- Fixed cross-backend exception value propagation (bootstrap.last_thrown_exception)
-- Added delay exception caching (:error atom, force try/catch, deref override)
+C7 completed: Port def.clj — 2 assertions (2 of 4 tests; 2 JVM interop).
+- Fixed eval (do ...) to evaluate sub-forms sequentially (declare visible to later forms)
+- dynamic-redefinition and nested-dynamic-declaration tests pass
 
 ## Handover Notes
 

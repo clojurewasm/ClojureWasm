@@ -17,6 +17,7 @@ const Node = @import("../analyzer/node.zig").Node;
 const bootstrap = @import("../bootstrap.zig");
 const TreeWalk = @import("../../native/evaluator/tree_walk.zig").TreeWalk;
 const err = @import("../error.zig");
+const Env = @import("../env.zig").Env;
 
 // ============================================================
 // read-string
@@ -44,19 +45,50 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (eval form)
 /// Evaluates the form data structure and returns the result.
+/// For (do ...) forms, evaluates each sub-form sequentially so that
+/// side effects (def, declare) are visible to subsequent forms.
 pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to eval", .{args.len});
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
-    // Convert Value -> Form -> Node -> eval
+    // Convert Value -> Form
     const form = try macro.valueToForm(allocator, args[0]);
 
+    // Special case: (do ...) — evaluate each body form sequentially
+    // so that def/declare side effects are visible to later forms.
+    // This matches JVM Clojure's eval behavior.
+    if (isDoForm(form)) {
+        const body = form.data.list[1..]; // skip 'do symbol
+        var result: Value = .nil;
+        for (body) |sub_form| {
+            result = try evalOneForm(allocator, env, sub_form);
+        }
+        return result;
+    }
+
+    return evalOneForm(allocator, env, form);
+}
+
+fn evalOneForm(allocator: Allocator, env: *Env, form: Form) anyerror!Value {
     var analyzer = Analyzer.initWithEnv(allocator, env);
     defer analyzer.deinit();
     const node = analyzer.analyze(form) catch return error.AnalyzeError;
 
     var tw = TreeWalk.initWithEnv(allocator, env);
     return tw.run(node) catch return error.EvalError;
+}
+
+fn isDoForm(form: Form) bool {
+    const items = switch (form.data) {
+        .list => |l| l,
+        else => return false,
+    };
+    if (items.len == 0) return false;
+    const head = items[0].data;
+    return switch (head) {
+        .symbol => |s| s.ns == null and std.mem.eql(u8, s.name, "do"),
+        else => false,
+    };
 }
 
 // ============================================================
