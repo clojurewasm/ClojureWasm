@@ -1027,3 +1027,50 @@
                       (when (branch? node)
                         (mapcat walk (children node))))))]
     (walk root)))
+
+(defn completing
+  "Takes a reducing function f of 2 args and returns a fn suitable for
+  transduce by adding an arity-1 signature that calls cf (default -
+  identity) on the result argument."
+  ([f] (completing f identity))
+  ([f cf]
+   (fn
+     ([] (f))
+     ([x] (cf x))
+     ([x y] (f x y)))))
+
+(defn reductions
+  "Returns a lazy seq of the intermediate values of the reduction (as
+  per reduce) of coll by f, starting with init."
+  ([f coll]
+   (lazy-seq
+    (if-let [s (seq coll)]
+      (reductions f (first s) (rest s))
+      (list (f)))))
+  ([f init coll]
+   (if (reduced? init)
+     (list @init)
+     (cons init
+           (lazy-seq
+            (when-let [s (seq coll)]
+              (reductions f (f init (first s)) (rest s))))))))
+
+(defn take-nth
+  "Returns a lazy seq of every nth item in coll."
+  [n coll]
+  (lazy-seq
+   (when-let [s (seq coll)]
+     (cons (first s) (take-nth n (drop n s))))))
+
+(defn replace
+  "Given a map of replacement pairs and a vector/collection, returns a
+  vector/seq with any elements = a key in smap replaced with the
+  corresponding val in smap."
+  [smap coll]
+  (if (vector? coll)
+    (reduce (fn [v i]
+              (if-let [e (find smap (nth v i))]
+                (assoc v i (val e))
+                v))
+            coll (range (count coll)))
+    (map (fn [x] (if-let [e (find smap x)] (val e) x)) coll)))

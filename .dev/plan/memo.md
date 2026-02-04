@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
-- Current task: T18.5.4
+- Current task: T18.5.5
 - Task file: N/A
-- Last completed: T18.5.3 (10 type predicates + bounded-count)
+- Last completed: T18.5.4 (completing, reductions, take-nth, replace)
 - Blockers: none
-- Next: Seq utilities → coverage expansion
+- Next: Coverage expansion (un-SKIP tests)
 
 ## Current Phase: 18
 
@@ -35,7 +35,7 @@ numeric conversions (deferred T18.2), upstream macro alignment.
 | T18.5.1 | done | Fix F95 lazy-seq+cons TypeError          | D61: lazy_seq opcode + collectSeqItems     |
 | T18.5.2 | done | Numeric conversions (int, long, etc.)    | 8 builtins, 341 done vars                  |
 | T18.5.3 | done | Core expansion II (seqable?, counted?)   | 10 builtins, 351 done vars                 |
-| T18.5.4 | impl | Seq utilities (reductions, take-nth etc) | Pure Clojure seq functions                 |
+| T18.5.4 | done | Seq utilities (reductions, take-nth etc) | 4 functions, F50 resolved, 355 done vars   |
 | T18.5.5 | test | Coverage: un-SKIP newly enabled tests    | Tests enabled by F95 fix and new functions |
 
 ### Phase 18 Summary (completed)

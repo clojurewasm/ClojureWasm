@@ -202,7 +202,7 @@ vars:
     "compare-and-set!": {type: function, status: done}
     compile: {type: function, status: todo}
     complement: {type: function, status: done}
-    completing: {type: function, status: todo}
+    completing: {type: function, status: done}
     concat: {type: function, status: done}
     cond: {type: macro, status: done, note: 'UPSTREAM-DIFF: no even-forms error check'}
     "cond->": {type: macro, status: done}
@@ -528,7 +528,7 @@ vars:
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
     reduced: {type: function, status: done}
     "reduced?": {type: function, status: done}
-    reductions: {type: function, status: todo}
+    reductions: {type: function, status: done}
     ref: {type: function, status: todo}
     "ref-history-count": {type: function, status: todo}
     "ref-max-history": {type: function, status: todo}
@@ -547,7 +547,7 @@ vars:
     "remove-watch": {type: function, status: todo}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
     repeatedly: {type: function, status: done}
-    replace: {type: function, status: todo}
+    replace: {type: function, status: done}
     replicate: {type: function, status: todo}
     require: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "requiring-resolve": {type: function, status: todo}
@@ -630,7 +630,7 @@ vars:
     "tagged-literal?": {type: function, status: todo}
     take: {type: function, status: done}
     "take-last": {type: function, status: done}
-    "take-nth": {type: function, status: todo}
+    "take-nth": {type: function, status: done}
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
     test: {type: function, status: todo}

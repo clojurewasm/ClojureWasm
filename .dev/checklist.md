@@ -57,7 +57,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | ~~F47~~ | ~~split-at / split-with~~                        | ~~Resolved: T16.9 — vector of [take/drop] pairs in core.clj~~                          | T14.9   |
 | F48     | (range) infinite sequence                        | sequences.clj tests (excluded) — infinite range not supported                          | T14.9   |
 | F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9   |
-| F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9   |
+| ~~F50~~ | ~~reductions function~~                          | ~~Resolved: T18.5.4 — upstream pure Clojure with lazy-seq~~                            | T14.9   |
 | F51     | shuffle function                                 | sequences.clj tests (excluded) — not implemented                                       | T14.9   |
 | ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
