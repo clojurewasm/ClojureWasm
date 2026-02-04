@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.5 — Port metadata.clj (10 tests/21 assertions)
+- Last completed: T16.6 — Fix F77: VM def_macro opcode
 - Blockers: none
-- Next: T16.6 (Fix F77: VM user-defined macro expansion)
+- Next: T16.7 (Fix F76: VM stack_depth underflow with recur)
 
 ## Current Phase: 16
 

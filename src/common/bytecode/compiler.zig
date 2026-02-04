@@ -539,7 +539,9 @@ pub const Compiler = struct {
         }
 
         // Emit def: pops value, pushes symbol (net 0)
-        try self.chunk.emit(.def, idx);
+        // Use def_macro opcode to preserve macro flag at runtime
+        const op: OpCode = if (node.is_macro) .def_macro else .def;
+        try self.chunk.emit(op, idx);
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {

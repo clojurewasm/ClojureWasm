@@ -66,6 +66,8 @@ pub const OpCode = enum(u8) {
     var_load_dynamic = 0x41,
     /// def (operand: constant index u16 -> symbol name)
     def = 0x42,
+    /// def with macro flag (operand: constant index u16 -> symbol name)
+    def_macro = 0x43,
 
     // === [F] Control flow (0x50-0x5F) ===
 
@@ -217,6 +219,7 @@ test "OpCode category ranges" {
     try std.testing.expectEqual(@as(u8, 0x40), @intFromEnum(OpCode.var_load));
     try std.testing.expectEqual(@as(u8, 0x41), @intFromEnum(OpCode.var_load_dynamic));
     try std.testing.expectEqual(@as(u8, 0x42), @intFromEnum(OpCode.def));
+    try std.testing.expectEqual(@as(u8, 0x43), @intFromEnum(OpCode.def_macro));
 
     // Control flow (0x50-0x5F)
     try std.testing.expectEqual(@as(u8, 0x50), @intFromEnum(OpCode.jump));

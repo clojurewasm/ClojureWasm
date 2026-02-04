@@ -165,7 +165,7 @@ fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writ
         .upvalue_load, .upvalue_store => {
             try w.print(" upval={d}", .{instr.operand});
         },
-        .var_load, .var_load_dynamic, .def => {
+        .var_load, .var_load_dynamic, .def, .def_macro => {
             try w.print(" #{d}", .{instr.operand});
             if (instr.operand < constants.len) {
                 try w.writeAll("  ; ");

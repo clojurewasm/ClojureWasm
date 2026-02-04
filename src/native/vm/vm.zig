@@ -310,7 +310,7 @@ pub const VM = struct {
                         return error.UndefinedVar;
                     }
                 },
-                .def => {
+                .def, .def_macro => {
                     const val = self.pop();
                     const sym = frame.constants[instr.operand];
                     if (sym != .symbol) return error.InvalidInstruction;
@@ -318,6 +318,7 @@ pub const VM = struct {
                     const ns = env.current_ns orelse return error.UndefinedVar;
                     const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
                     v.bindRoot(val);
+                    if (instr.op == .def_macro) v.setMacro(true);
                     try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
                 },
 

@@ -1567,3 +1567,21 @@ is fundamental to idiomatic Clojure. The refers inheritance ensures that
 **Note**: The proper fix for macro symbol resolution (macros should resolve
 symbols in the namespace where they were defined) is a larger change.
 The refers inheritance is a pragmatic workaround that covers most cases.
+
+## D58: VM def_macro Opcode for User-Defined Macros (T16.6)
+
+**Problem**: VM `def` opcode didn't preserve `is_macro` flag from DefNode.
+User-defined macros registered via `defmacro` were stored as regular functions.
+When subsequently called, they returned their expansion (a list) instead of
+the expansion being evaluated.
+
+**Root Cause**: Compiler's `emitDef` emitted `.def` for both regular defs and
+macros. The `is_macro` flag was lost at compile time. TreeWalk handled this
+correctly in `runDef` by checking `def_n.is_macro`.
+
+**Fix**: Added `.def_macro` opcode (0x43) in the Var ops range. Compiler emits
+`.def_macro` when `node.is_macro == true`. VM handles both `.def` and
+`.def_macro` identically except `.def_macro` calls `v.setMacro(true)`.
+
+**Impact**: Fixes F77. User-defined macros now work in all contexts including
+threading macros (`->`, `->>`).
