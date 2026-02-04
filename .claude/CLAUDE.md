@@ -123,6 +123,14 @@ zig build test -- "X"  # Specific test only
 For expressions with `swap!`, `nil?` etc., **write a temp .clj file** and run
 via `./zig-out/bin/cljw file.clj`. Never use `-e` for these.
 
+**zsh `!` in yq/shell commands**: zsh performs history expansion on `!` even
+inside double quotes. This causes `yq -i` with `!`-containing YAML keys
+(e.g. `swap!`, `reset!`) to silently create duplicate entries with `\!`
+escaping instead of updating the original key. **Never use `yq -i` for
+keys containing `!`**. Instead, use the Edit tool to directly modify
+vars.yaml. If `yq` output shows `\!` in key names, the data is correct
+but comparison tools (diff, comm) may see them as different keys.
+
 ## Dual Backend (D6)
 
 | Backend    | Path                                 | Role                   |
