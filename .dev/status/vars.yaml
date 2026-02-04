@@ -723,6 +723,12 @@ vars:
       type: function
     compare-and-set\!:
       status: done
+    swap-vals\!:
+      status: done
+      note: builtin (upstream is pure clj)
+    reset-vals\!:
+      status: done
+      note: builtin (upstream is pure clj)
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

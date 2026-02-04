@@ -109,6 +109,58 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return new_val;
 }
 
+/// (reset-vals! atom new-val) => [old-val new-val]
+pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    return switch (args[0]) {
+        .atom => |a| {
+            const old = a.value;
+            a.value = args[1];
+            const items = try allocator.alloc(Value, 2);
+            items[0] = old;
+            items[1] = args[1];
+            const vec = try allocator.create(value_mod.PersistentVector);
+            vec.* = .{ .items = items };
+            return Value{ .vector = vec };
+        },
+        else => error.TypeError,
+    };
+}
+
+/// (swap-vals! atom f) => [old-val new-val]
+/// (swap-vals! atom f x y ...) => [old-val (f @atom x y ...)]
+pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return error.ArityError;
+    const atom_ptr = switch (args[0]) {
+        .atom => |a| a,
+        else => return error.TypeError,
+    };
+
+    const fn_val = args[1];
+    const extra_args = args[2..];
+
+    // Build call args: [current-val, extra-args...]
+    const total = 1 + extra_args.len;
+    var call_args: [256]Value = undefined;
+    if (total > call_args.len) return error.ArityError;
+    call_args[0] = atom_ptr.value;
+    for (extra_args, 0..) |arg, i| {
+        call_args[1 + i] = arg;
+    }
+
+    const old = atom_ptr.value;
+    const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
+
+    atom_ptr.value = new_val;
+
+    const items = try allocator.alloc(Value, 2);
+    items[0] = old;
+    items[1] = new_val;
+    const vec = try allocator.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+    return Value{ .vector = vec };
+}
+
 /// (volatile! val) => #<volatile val>
 pub fn volatileFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -163,6 +215,20 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Atomically swaps the value of atom to be: (apply f current-value-of-atom args).",
         .arglists = "([atom f] [atom f x] [atom f x y] [atom f x y & args])",
         .added = "1.0",
+    },
+    .{
+        .name = "reset-vals!",
+        .func = &resetValsFn,
+        .doc = "Sets the value of atom to newval. Returns [old new].",
+        .arglists = "([atom newval])",
+        .added = "1.9",
+    },
+    .{
+        .name = "swap-vals!",
+        .func = &swapValsFn,
+        .doc = "Atomically swaps the value of atom to be: (apply f current-value-of-atom args). Returns [old new].",
+        .arglists = "([atom f] [atom f x] [atom f x y] [atom f x y & args])",
+        .added = "1.9",
     },
     .{
         .name = "volatile!",
@@ -274,6 +340,58 @@ test "swap! - error on fn_val without env" {
     const args = [_]Value{ .{ .atom = &a }, .{ .fn_val = &fn_obj } };
     const result = swapBangFn(testing.allocator, &args);
     try testing.expectError(error.EvalError, result);
+}
+
+// === reset-vals! / swap-vals! tests ===
+
+test "reset-vals! - returns [old new]" {
+    var a = Atom{ .value = .{ .integer = 1 } };
+    const args = [_]Value{ .{ .atom = &a }, .{ .integer = 99 } };
+    const result = try resetValsFn(testing.allocator, &args);
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
+    try testing.expectEqual(Value{ .integer = 1 }, result.vector.items[0]);
+    try testing.expectEqual(Value{ .integer = 99 }, result.vector.items[1]);
+    try testing.expectEqual(Value{ .integer = 99 }, a.value);
+    testing.allocator.free(result.vector.items);
+    testing.allocator.destroy(result.vector);
+}
+
+test "reset-vals! - arity error" {
+    var a = Atom{ .value = .nil };
+    const args = [_]Value{.{ .atom = &a }};
+    const result = resetValsFn(testing.allocator, &args);
+    try testing.expectError(error.ArityError, result);
+}
+
+test "swap-vals! - with builtin_fn returns [old new]" {
+    const Helpers = struct {
+        fn incFn(_: Allocator, fn_args: []const Value) anyerror!Value {
+            if (fn_args.len != 1) return error.ArityError;
+            return switch (fn_args[0]) {
+                .integer => |n| Value{ .integer = n + 1 },
+                else => error.TypeError,
+            };
+        }
+    };
+
+    var a = Atom{ .value = .{ .integer = 10 } };
+    const args = [_]Value{ .{ .atom = &a }, .{ .builtin_fn = &Helpers.incFn } };
+    const result = try swapValsFn(testing.allocator, &args);
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
+    try testing.expectEqual(Value{ .integer = 10 }, result.vector.items[0]);
+    try testing.expectEqual(Value{ .integer = 11 }, result.vector.items[1]);
+    try testing.expectEqual(Value{ .integer = 11 }, a.value);
+    testing.allocator.free(result.vector.items);
+    testing.allocator.destroy(result.vector);
+}
+
+test "swap-vals! - arity error" {
+    var a = Atom{ .value = .nil };
+    const args = [_]Value{.{ .atom = &a }};
+    const result = swapValsFn(testing.allocator, &args);
+    try testing.expectError(error.ArityError, result);
 }
 
 // === Volatile tests ===
