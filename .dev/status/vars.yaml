@@ -35,7 +35,7 @@ vars:
     try: {type: special-form, status: done, note: special form}
     var: {type: special-form, status: done, note: special form}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
-    "*'": {type: function, status: done}
+    "*'": {type: function, status: done, note: "Zig builtin (upstream uses Math.multiplyExact)"}
     "*1": {type: dynamic-var, status: done}
     "*2": {type: dynamic-var, status: done}
     "*3": {type: dynamic-var, status: done}
@@ -74,9 +74,9 @@ vars:
     "*verbose-defrecords*": {type: dynamic-var, status: todo}
     "*warn-on-reflection*": {type: var, status: todo}
     "+": {type: function, status: done, note: "VM intrinsic opcode"}
-    "+'": {type: function, status: done}
+    "+'": {type: function, status: done, note: "Zig builtin (upstream uses Math.addExact)"}
     "-": {type: function, status: done, note: "VM intrinsic opcode"}
-    "-'": {type: function, status: done}
+    "-'": {type: function, status: done, note: "Zig builtin (upstream uses Math.subtractExact)"}
     "->": {type: macro, status: done}
     "->>": {type: macro, status: done}
     "->ArrayChunk": {type: function, status: todo}
@@ -91,16 +91,16 @@ vars:
     "<": {type: function, status: done, note: "VM intrinsic opcode"}
     "<=": {type: function, status: done, note: "VM intrinsic opcode"}
     "=": {type: function, status: done, note: "VM intrinsic opcode"}
-    "==": {type: function, status: done}
+    "==": {type: function, status: done, note: "builtin (upstream is pure clj via Numbers.equiv)"}
     ">": {type: function, status: done, note: "VM intrinsic opcode"}
     ">=": {type: function, status: done, note: "VM intrinsic opcode"}
     "EMPTY-NODE": {type: var, status: todo}
     Inst: {type: var, status: todo}
-    "NaN?": {type: function, status: done}
+    "NaN?": {type: function, status: done, note: "core.clj (upstream uses Double/isNaN)"}
     "PrintWriter-on": {type: function, status: todo}
     "StackTraceElement->vec": {type: function, status: todo}
     "Throwable->map": {type: function, status: todo}
-    abs: {type: function, status: done}
+    abs: {type: function, status: done, note: "Zig builtin"}
     accessor: {type: function, status: todo}
     aclone: {type: function, status: todo}
     "add-classpath": {type: function, status: todo}
@@ -150,14 +150,14 @@ vars:
     binding: {type: macro, status: todo}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "bit-clear": {type: function, status: done}
-    "bit-flip": {type: function, status: done}
+    "bit-clear": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
+    "bit-flip": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "bit-not": {type: function, status: done, note: "Zig builtin"}
     "bit-or": {type: function, status: done, note: "Zig builtin"}
-    "bit-set": {type: function, status: done}
+    "bit-set": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "bit-shift-left": {type: function, status: done, note: "Zig builtin"}
     "bit-shift-right": {type: function, status: done, note: "Zig builtin"}
-    "bit-test": {type: function, status: done}
+    "bit-test": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "bit-xor": {type: function, status: done, note: "Zig builtin"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
@@ -219,7 +219,7 @@ vars:
     "create-ns": {type: function, status: done}
     "create-struct": {type: function, status: todo}
     cycle: {type: function, status: done}
-    dec: {type: function, status: done}
+    dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "dec'": {type: function, status: done}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
@@ -259,8 +259,8 @@ vars:
     doto: {type: macro, status: done}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: todo}
-    "double?": {type: function, status: done}
-    doubles: {type: function, status: done}
+    "double?": {type: function, status: done, note: "Zig builtin"}
+    doubles: {type: function, status: skip, note: "JVM interop (double-array)"}
     drop: {type: function, status: done}
     "drop-last": {type: function, status: done}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
@@ -273,7 +273,7 @@ vars:
     "error-handler": {type: function, status: todo}
     "error-mode": {type: function, status: todo}
     eval: {type: function, status: done}
-    "even?": {type: function, status: done}
+    "even?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}
     "every?": {type: function, status: done}
     "ex-cause": {type: function, status: todo}
@@ -300,7 +300,7 @@ vars:
     flatten: {type: function, status: done}
     float: {type: function, status: done, note: builtin (upstream is pure clj)}
     "float-array": {type: function, status: todo}
-    "float?": {type: function, status: done}
+    "float?": {type: function, status: done, note: "Zig builtin"}
     floats: {type: function, status: todo}
     flush: {type: function, status: done}
     fn: {type: special-form, status: done, note: special form (analyzes as fn*)}
@@ -343,7 +343,7 @@ vars:
     "ifn?": {type: function, status: done}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
-    inc: {type: function, status: done}
+    inc: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "inc'": {type: function, status: done}
     "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "infinite?": {type: function, status: done}
@@ -355,7 +355,7 @@ vars:
     int: {type: function, status: done, note: builtin (upstream is pure clj)}
     "int-array": {type: function, status: todo}
     "int?": {type: function, status: done}
-    "integer?": {type: function, status: done}
+    "integer?": {type: function, status: done, note: "Zig builtin"}
     interleave: {type: function, status: done}
     intern: {type: function, status: todo}
     interpose: {type: function, status: done}
@@ -403,7 +403,7 @@ vars:
     "map?": {type: function, status: done}
     mapcat: {type: function, status: done}
     mapv: {type: function, status: done, note: "UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent\\!"}
-    max: {type: function, status: done}
+    max: {type: function, status: done, note: "Zig builtin"}
     "max-key": {type: function, status: done}
     memfn: {type: macro, status: todo}
     memoize: {type: function, status: done}
@@ -412,7 +412,7 @@ vars:
     meta: {type: function, status: done, note: 'Zig builtin: returns metadata map from collections, fn, atom'}
     "method-sig": {type: function, status: todo}
     methods: {type: function, status: done, note: builtin (upstream is pure clj)}
-    min: {type: function, status: done}
+    min: {type: function, status: done, note: "Zig builtin"}
     "min-key": {type: function, status: done}
     "mix-collection-hash": {type: function, status: todo}
     mod: {type: function, status: done, note: "VM intrinsic opcode"}
@@ -421,8 +421,8 @@ vars:
     namespace: {type: function, status: done}
     "namespace-munge": {type: function, status: todo}
     "nat-int?": {type: function, status: done}
-    "neg-int?": {type: function, status: done}
-    "neg?": {type: function, status: done}
+    "neg-int?": {type: function, status: done, note: "Zig builtin"}
+    "neg?": {type: function, status: done, note: "Zig builtin"}
     newline: {type: function, status: done}
     next: {type: function, status: done}
     nfirst: {type: function, status: done, note: "core.clj (next (first coll))"}
@@ -448,10 +448,10 @@ vars:
     nthnext: {type: function, status: done}
     nthrest: {type: function, status: done}
     num: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "number?": {type: function, status: done}
+    "number?": {type: function, status: done, note: "Zig builtin"}
     numerator: {type: function, status: todo}
     "object-array": {type: function, status: todo}
-    "odd?": {type: function, status: done}
+    "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     or: {type: macro, status: done}
     parents: {type: function, status: todo}
     "parse-boolean": {type: function, status: done}
@@ -471,8 +471,8 @@ vars:
     pop: {type: function, status: done}
     "pop!": {type: function, status: todo}
     "pop-thread-bindings": {type: function, status: todo}
-    "pos-int?": {type: function, status: done}
-    "pos?": {type: function, status: done}
+    "pos-int?": {type: function, status: done, note: "Zig builtin"}
+    "pos?": {type: function, status: done, note: "Zig builtin"}
     pr: {type: function, status: done}
     "pr-str": {type: function, status: done}
     "prefer-method": {type: function, status: todo}
@@ -500,7 +500,7 @@ vars:
     "qualified-ident?": {type: function, status: done}
     "qualified-keyword?": {type: function, status: done}
     "qualified-symbol?": {type: function, status: done}
-    quot: {type: function, status: done}
+    quot: {type: function, status: done, note: "Zig builtin"}
     rand: {type: function, status: done}
     "rand-int": {type: function, status: done}
     "rand-nth": {type: function, status: done}
@@ -645,27 +645,27 @@ vars:
     "tree-seq": {type: function, status: done}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
-    "unchecked-add": {type: function, status: done}
-    "unchecked-add-int": {type: function, status: done}
+    "unchecked-add": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-add-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-byte": {type: function, status: todo}
     "unchecked-char": {type: function, status: todo}
-    "unchecked-dec": {type: function, status: done}
-    "unchecked-dec-int": {type: function, status: done}
+    "unchecked-dec": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-dec-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-divide-int": {type: function, status: todo}
     "unchecked-double": {type: function, status: todo}
     "unchecked-float": {type: function, status: todo}
-    "unchecked-inc": {type: function, status: done}
-    "unchecked-inc-int": {type: function, status: done}
+    "unchecked-inc": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-inc-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-int": {type: function, status: todo}
     "unchecked-long": {type: function, status: todo}
-    "unchecked-multiply": {type: function, status: done}
-    "unchecked-multiply-int": {type: function, status: done}
-    "unchecked-negate": {type: function, status: done}
-    "unchecked-negate-int": {type: function, status: done}
+    "unchecked-multiply": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-multiply-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-negate": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-negate-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-remainder-int": {type: function, status: todo}
     "unchecked-short": {type: function, status: todo}
-    "unchecked-subtract": {type: function, status: done}
-    "unchecked-subtract-int": {type: function, status: done}
+    "unchecked-subtract": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
+    "unchecked-subtract-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     underive: {type: function, status: todo}
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
@@ -711,7 +711,7 @@ vars:
     "with-redefs": {type: macro, status: todo}
     "with-redefs-fn": {type: function, status: todo}
     "xml-seq": {type: function, status: done}
-    "zero?": {type: function, status: done}
+    "zero?": {type: function, status: done, note: "Zig builtin"}
     zipmap: {type: function, status: done}
     alter-meta\!:
       status: done
