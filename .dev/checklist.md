@@ -63,7 +63,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
 | ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
 | ~~F58~~ | ~~Nested map destructuring~~                     | ~~Resolved: T17.5.2 — recursive expandBindingPattern in analyzer~~                     | T14.10  |
-| F67     | Rest args + map destructuring                    | `(fn [& {:keys [x]}] x)` — keyword args pattern not supported                          | T15.2   |
+| ~~F67~~ | ~~Rest args + map destructuring~~                | ~~Resolved: T17.5.3 — apply hash-map conversion for & {:keys} pattern~~                | T15.2   |
 | F68     | {:as x} on empty list returns ()                 | JVM: `(let [{:as x} '()] x)` → `{}`, ClojureWasm: `()` (not coerced to map)            | T15.2   |
 | ~~F69~~ | ~~Keywords in :keys vector~~                     | ~~Resolved: already working — :keys accepts keywords and symbols~~                     | T15.2   |
 | F70     | Namespaced keywords in :keys                     | `{:keys [:a/b]}` — namespaced keywords in :keys not supported                          | T15.2   |
