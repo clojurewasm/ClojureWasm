@@ -448,6 +448,54 @@ pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .list = lst };
 }
 
+/// (rseq rev) — returns a seq of items in reverse order, nil if empty.
+pub fn rseqFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const items = switch (args[0]) {
+        .nil => return .nil,
+        .vector => |vec| vec.items,
+        else => return error.TypeError,
+    };
+    if (items.len == 0) return .nil;
+
+    const new_items = try allocator.alloc(Value, items.len);
+    for (items, 0..) |item, i| {
+        new_items[items.len - 1 - i] = item;
+    }
+
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = new_items };
+    return Value{ .list = lst };
+}
+
+/// (shuffle coll) — returns a random permutation of coll as a vector.
+pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const items = try collectSeqItems(allocator, args[0]);
+    if (items.len == 0) {
+        const vec = try allocator.create(PersistentVector);
+        vec.* = .{ .items = &.{} };
+        return Value{ .vector = vec };
+    }
+
+    // Fisher-Yates shuffle
+    const mutable = try allocator.alloc(Value, items.len);
+    @memcpy(mutable, items);
+    var prng = std.Random.DefaultPrng.init(@truncate(@as(u128, @bitCast(std.time.nanoTimestamp()))));
+    const random = prng.random();
+    var i: usize = mutable.len - 1;
+    while (i > 0) : (i -= 1) {
+        const j = random.intRangeAtMost(usize, 0, i);
+        const tmp = mutable[i];
+        mutable[i] = mutable[j];
+        mutable[j] = tmp;
+    }
+
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = mutable };
+    return Value{ .vector = vec };
+}
+
 /// (into to from) — returns a new coll with items from `from` conj'd onto `to`.
 pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
@@ -1461,6 +1509,20 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([& keyvals])",
         .added = "1.0",
     },
+    .{
+        .name = "rseq",
+        .func = &rseqFn,
+        .doc = "Returns, in constant time, a seq of the items in rev (which can be a vector), in reverse order. If rev is empty returns nil.",
+        .arglists = "([rev])",
+        .added = "1.0",
+    },
+    .{
+        .name = "shuffle",
+        .func = &shuffleFn,
+        .doc = "Returns a random permutation of coll.",
+        .arglists = "([coll])",
+        .added = "1.2",
+    },
 };
 
 // === Tests ===
@@ -1723,8 +1785,9 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 35 entries" {
-    try testing.expectEqual(35, builtins.len);
+test "builtins table has 37 entries" {
+    // 35 + 2 (rseq, shuffle)
+    try testing.expectEqual(37, builtins.len);
 }
 
 test "reverse list" {

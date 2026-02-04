@@ -159,6 +159,14 @@ pub fn bitXorFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .integer = a ^ b };
 }
 
+/// (bit-and-not x y) — bitwise AND with complement of y
+pub fn bitAndNotFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const a = try requireInt(args[0]);
+    const b = try requireInt(args[1]);
+    return Value{ .integer = a & ~b };
+}
+
 /// (bit-not x) — bitwise complement
 pub fn bitNotFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
@@ -414,6 +422,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &bitTestFn,
         .doc = "Test bit at index n.",
         .arglists = "([x n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-and-not",
+        .func = &bitAndNotFn,
+        .doc = "Bitwise and with complement.",
+        .arglists = "([x y])",
         .added = "1.0",
     },
     .{

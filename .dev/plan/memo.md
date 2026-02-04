@@ -6,11 +6,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
 - Phase: 18.6 (Core Coverage Sprint)
-- Current task: T18.6.1
+- Current task: T18.6.2
 - Task file: N/A
-- Last completed: Phase 18.5 (5 tasks, lazy-seq opcode, 22 new functions, 355 done vars)
+- Last completed: T18.6.1 (rseq, shuffle, bit-and-not, 17 unchecked/promoting aliases)
 - Blockers: none
-- Next: Quick-win functions → transducer support → coverage
+- Next: Transducer basics → pure Clojure additions → coverage
 
 ## Current Phase: 18
 
@@ -32,7 +32,7 @@ collection utilities (rseq, shuffle), and bit-and-not.
 
 | Task    | Type | Description                              | Notes                                   |
 | ------- | ---- | ---------------------------------------- | --------------------------------------- |
-| T18.6.1 | impl | Quick-win Zig builtins                   | rseq, shuffle, bit-and-not, re-groups   |
+| T18.6.1 | done | Quick-win Zig builtins + aliases         | 3 builtins + 17 aliases, 375 done vars  |
 | T18.6.2 | impl | Transducer basics (transduce, cat, etc.) | transduce, cat, dedupe, halt-when       |
 | T18.6.3 | impl | Pure Clojure additions                   | random-sample, not=, unchecked-\*, etc. |
 | T18.6.4 | test | Coverage expansion                       | Tests for T18.6.1-3 features            |

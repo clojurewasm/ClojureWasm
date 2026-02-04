@@ -35,7 +35,7 @@ vars:
     try: {type: special-form, status: done}
     var: {type: special-form, status: done}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
-    "*'": {type: function, status: todo}
+    "*'": {type: function, status: done}
     "*1": {type: dynamic-var, status: todo}
     "*2": {type: dynamic-var, status: todo}
     "*3": {type: dynamic-var, status: todo}
@@ -74,9 +74,9 @@ vars:
     "*verbose-defrecords*": {type: dynamic-var, status: todo}
     "*warn-on-reflection*": {type: var, status: todo}
     "+": {type: function, status: done, note: "VM intrinsic opcode"}
-    "+'": {type: function, status: todo}
+    "+'": {type: function, status: done}
     "-": {type: function, status: done, note: "VM intrinsic opcode"}
-    "-'": {type: function, status: todo}
+    "-'": {type: function, status: done}
     "->": {type: macro, status: done}
     "->>": {type: macro, status: done}
     "->ArrayChunk": {type: function, status: todo}
@@ -149,7 +149,7 @@ vars:
     biginteger: {type: function, status: todo}
     binding: {type: macro, status: todo}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
-    "bit-and-not": {type: function, status: todo}
+    "bit-and-not": {type: function, status: done, note: builtin (upstream is pure clj)}
     "bit-clear": {type: function, status: done}
     "bit-flip": {type: function, status: done}
     "bit-not": {type: function, status: done, note: "Zig builtin"}
@@ -220,7 +220,7 @@ vars:
     "create-struct": {type: function, status: todo}
     cycle: {type: function, status: done}
     dec: {type: function, status: done}
-    "dec'": {type: function, status: todo}
+    "dec'": {type: function, status: done}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: todo}
@@ -344,7 +344,7 @@ vars:
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
     inc: {type: function, status: done}
-    "inc'": {type: function, status: todo}
+    "inc'": {type: function, status: done}
     "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "infinite?": {type: function, status: done}
     "init-proxy": {type: function, status: todo}
@@ -560,7 +560,7 @@ vars:
     "resultset-seq": {type: function, status: todo}
     reverse: {type: function, status: done, note: "portable to clj"}
     "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    rseq: {type: function, status: todo}
+    rseq: {type: function, status: done, note: builtin (upstream is pure clj)}
     rsubseq: {type: function, status: todo}
     "run!": {type: function, status: done}
     "satisfies?": {type: function, status: done}
@@ -586,7 +586,7 @@ vars:
     short: {type: function, status: done, note: builtin (upstream is pure clj)}
     "short-array": {type: function, status: todo}
     shorts: {type: function, status: todo}
-    shuffle: {type: function, status: todo}
+    shuffle: {type: function, status: done, note: builtin (upstream is pure clj)}
     "shutdown-agents": {type: function, status: todo}
     "simple-ident?": {type: function, status: done}
     "simple-keyword?": {type: function, status: done}
@@ -645,27 +645,27 @@ vars:
     "tree-seq": {type: function, status: done}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
-    "unchecked-add": {type: function, status: todo}
-    "unchecked-add-int": {type: function, status: todo}
+    "unchecked-add": {type: function, status: done}
+    "unchecked-add-int": {type: function, status: done}
     "unchecked-byte": {type: function, status: todo}
     "unchecked-char": {type: function, status: todo}
-    "unchecked-dec": {type: function, status: todo}
-    "unchecked-dec-int": {type: function, status: todo}
+    "unchecked-dec": {type: function, status: done}
+    "unchecked-dec-int": {type: function, status: done}
     "unchecked-divide-int": {type: function, status: todo}
     "unchecked-double": {type: function, status: todo}
     "unchecked-float": {type: function, status: todo}
-    "unchecked-inc": {type: function, status: todo}
-    "unchecked-inc-int": {type: function, status: todo}
+    "unchecked-inc": {type: function, status: done}
+    "unchecked-inc-int": {type: function, status: done}
     "unchecked-int": {type: function, status: todo}
     "unchecked-long": {type: function, status: todo}
-    "unchecked-multiply": {type: function, status: todo}
-    "unchecked-multiply-int": {type: function, status: todo}
-    "unchecked-negate": {type: function, status: todo}
-    "unchecked-negate-int": {type: function, status: todo}
+    "unchecked-multiply": {type: function, status: done}
+    "unchecked-multiply-int": {type: function, status: done}
+    "unchecked-negate": {type: function, status: done}
+    "unchecked-negate-int": {type: function, status: done}
     "unchecked-remainder-int": {type: function, status: todo}
     "unchecked-short": {type: function, status: todo}
-    "unchecked-subtract": {type: function, status: todo}
-    "unchecked-subtract-int": {type: function, status: todo}
+    "unchecked-subtract": {type: function, status: done}
+    "unchecked-subtract-int": {type: function, status: done}
     underive: {type: function, status: todo}
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
