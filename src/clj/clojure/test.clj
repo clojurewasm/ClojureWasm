@@ -1,6 +1,6 @@
 ;; clojure.test — minimal test framework for ClojureWasm
 ;;
-;; Provides: deftest, is, testing, run-tests
+;; Provides: deftest, is, testing, run-tests, are, thrown?
 ;; Based on the inline framework from SCI core_test.clj
 
 ;; ========== Test state management ==========
@@ -94,6 +94,15 @@
   (let [c (count argv)
         groups (partition c args)]
     `(do ~@(map (fn [g] `(is ~(postwalk-replace (zipmap argv g) expr))) groups))))
+
+;; Assert that body throws an exception of the given class.
+;; Usage: (is (thrown? Exception (/ 1 0)))
+;; UPSTREAM-DIFF: standalone macro (upstream uses assert-expr multimethod in is)
+(defmacro thrown? [klass & body]
+  `(try
+     (do ~@body)
+     false
+     (catch ~klass ~'e true)))
 
 ;; ========== Test runner ==========
 

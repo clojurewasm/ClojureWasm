@@ -1585,3 +1585,24 @@ correctly in `runDef` by checking `def_n.is_macro`.
 
 **Impact**: Fixes F77. User-defined macros now work in all contexts including
 threading macros (`->`, `->>`).
+
+---
+
+## D59: VM/TreeWalk Runtime Error → Exception Routing (T17.5.1)
+
+**Problem**: try/catch only handled explicit `throw` (UserException). Zig runtime errors
+(DivisionByZero, TypeError, ArityError) from builtins/arithmetic propagated through Zig error
+mechanism, bypassing the VM/TreeWalk exception handler entirely.
+
+**Solution**: Two-part fix:
+1. **VM**: Extract `execute` loop body into `stepInstruction`, catch errors at loop level.
+   `isUserError()` filter + `dispatchErrorToHandler()` synthesizes ex-info map and jumps to
+   catch handler. Also fixed catch cleanup: `pop` → `pop_under` for correct body result.
+2. **TreeWalk**: `runTry` checks `isUserError()` instead of only `error.UserException`.
+   `createRuntimeException()` synthesizes ex-info map for non-throw errors.
+
+**Error categories**:
+- Catchable: TypeError, ArityError, UndefinedVar, DivisionByZero, Overflow, UserException
+- Non-catchable: StackOverflow, OutOfMemory, InvalidInstruction
+
+**Impact**: Unblocks `thrown?` macro, enables proper exception testing in test suite.

@@ -151,246 +151,318 @@ pub const VM = struct {
 
     pub fn execute(self: *VM) VMError!Value {
         while (true) {
-            const frame = &self.frames[self.frame_count - 1];
-            if (frame.ip >= frame.code.len) {
-                return if (self.sp > 0) self.pop() else .nil;
-            }
-
-            const instr = frame.code[frame.ip];
-            frame.ip += 1;
-
-            switch (instr.op) {
-                // [A] Constants
-                .const_load => try self.push(frame.constants[instr.operand]),
-                .nil => try self.push(.nil),
-                .true_val => try self.push(.{ .boolean = true }),
-                .false_val => try self.push(.{ .boolean = false }),
-
-                // [B] Stack
-                .pop => _ = self.pop(),
-                .dup => {
-                    const val = self.peek(0);
-                    try self.push(val);
-                },
-                .pop_under => {
-                    // Keep top, remove N values below it
-                    const count = instr.operand;
-                    const top = self.pop();
-                    var i: u16 = 0;
-                    while (i < count) : (i += 1) {
-                        _ = self.pop();
-                    }
-                    try self.push(top);
-                },
-
-                // [C] Locals
-                .local_load => {
-                    const idx = frame.base + instr.operand;
-                    if (idx >= self.sp) return error.StackUnderflow;
-                    try self.push(self.stack[idx]);
-                },
-                .local_store => {
-                    const idx = frame.base + instr.operand;
-                    self.stack[idx] = self.pop();
-                },
-
-                // [F] Control flow
-                .jump => {
-                    const offset = instr.signedOperand();
-                    if (offset < 0) {
-                        frame.ip -= @intCast(-offset);
-                    } else {
-                        frame.ip += @intCast(offset);
-                    }
-                },
-                .jump_if_false => {
-                    const val = self.pop();
-                    if (!val.isTruthy()) {
-                        frame.ip += instr.operand;
-                    }
-                },
-                .jump_back => {
-                    frame.ip -= instr.operand;
-                },
-
-                // [G] Functions
-                .call, .tail_call => try self.performCall(instr.operand),
-                .ret => {
-                    const result = self.pop();
-                    const base = frame.base;
-                    self.frame_count -= 1;
-                    if (self.frame_count == 0) return result;
-                    // Restore caller's stack: base-1 removes the fn_val slot
-                    self.sp = base - 1;
-                    try self.push(result);
-                },
-                .closure => {
-                    // Operand: constant pool index of fn template
-                    const const_idx: u16 = instr.operand;
-
-                    const template = frame.constants[const_idx];
-                    if (template != .fn_val) return error.TypeError;
-                    const fn_obj = template.fn_val;
-                    const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
-
-                    if (proto.capture_count > 0) {
-                        // Capture values using per-slot offsets from capture_slots
-                        const bindings = self.allocator.alloc(Value, proto.capture_count) catch
-                            return error.OutOfMemory;
-                        for (0..proto.capture_count) |i| {
-                            const slot = proto.capture_slots[i];
-                            bindings[i] = self.stack[frame.base + slot];
-                        }
-                        const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
-                        new_fn.* = .{
-                            .proto = fn_obj.proto,
-                            .closure_bindings = bindings,
-                            .extra_arities = fn_obj.extra_arities,
-                        };
-                        self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
-                        try self.push(.{ .fn_val = new_fn });
-                    } else {
-                        // No capture needed, push the template directly
-                        try self.push(template);
-                    }
-                },
-
-                // [H] Loop/recur
-                .recur => {
-                    // Operand: (base_offset << 8) | arg_count
-                    const arg_count: u16 = instr.operand & 0xFF;
-                    const base_offset: u16 = (instr.operand >> 8) & 0xFF;
-
-                    // Pop recur args into temp buffer (reverse order)
-                    var temp_buf: [16]Value = undefined;
-                    var i: u16 = arg_count;
-                    while (i > 0) {
-                        i -= 1;
-                        temp_buf[i] = self.pop();
-                    }
-
-                    // Write new values to loop binding slots
-                    for (0..arg_count) |idx| {
-                        self.stack[frame.base + base_offset + idx] = temp_buf[idx];
-                    }
-
-                    // Reset sp to just after loop bindings
-                    self.sp = frame.base + base_offset + arg_count;
-
-                    // Next instruction is jump_back which loops
-                },
-
-                // [I] Collections
-                .list_new => try self.buildCollection(instr.operand, .list),
-                .vec_new => try self.buildCollection(instr.operand, .vec),
-                .map_new => try self.buildCollection(instr.operand, .map),
-                .set_new => try self.buildCollection(instr.operand, .set),
-
-                // [E] Var operations
-                .var_load, .var_load_dynamic => {
-                    const sym = frame.constants[instr.operand];
-                    if (sym != .symbol) return error.InvalidInstruction;
-                    const env = self.env orelse return error.UndefinedVar;
-                    const ns = env.current_ns orelse return error.UndefinedVar;
-                    var v = if (sym.symbol.ns) |ns_name|
-                        ns.resolveQualified(ns_name, sym.symbol.name)
-                    else
-                        ns.resolve(sym.symbol.name);
-                    // Fallback: look up namespace by full name in env registry
-                    if (v == null) {
-                        if (sym.symbol.ns) |ns_name| {
-                            if (env.namespaces.get(ns_name)) |target_ns| {
-                                v = target_ns.resolve(sym.symbol.name);
-                            }
-                        }
-                    }
-                    if (v) |resolved| {
-                        try self.push(resolved.deref());
-                    } else {
-                        return error.UndefinedVar;
-                    }
-                },
-                .def, .def_macro => {
-                    const val = self.pop();
-                    const sym = frame.constants[instr.operand];
-                    if (sym != .symbol) return error.InvalidInstruction;
-                    const env = self.env orelse return error.UndefinedVar;
-                    const ns = env.current_ns orelse return error.UndefinedVar;
-                    const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
-                    v.bindRoot(val);
-                    if (instr.op == .def_macro) v.setMacro(true);
-                    try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
-                },
-
-                // [K] Exceptions
-                .try_begin => {
-                    // Register exception handler
-                    if (self.handler_count >= HANDLERS_MAX) return error.StackOverflow;
-                    const catch_ip = frame.ip + instr.operand;
-                    self.handlers[self.handler_count] = .{
-                        .catch_ip = catch_ip,
-                        .saved_sp = self.sp,
-                        .saved_frame_count = self.frame_count,
-                        .frame_idx = self.frame_count - 1,
-                    };
-                    self.handler_count += 1;
-                },
-                .catch_begin => {
-                    // Normal flow reached catch — pop handler (try body succeeded)
-                    if (self.handler_count > 0) {
-                        self.handler_count -= 1;
-                    }
-                },
-                .try_end => {
-                    // Marker only — no-op
-                },
-                .throw_ex => {
-                    const thrown = self.pop();
-                    if (self.handler_count > 0) {
-                        self.handler_count -= 1;
-                        const handler = self.handlers[self.handler_count];
-                        // Restore state
-                        self.sp = handler.saved_sp;
-                        self.frame_count = handler.saved_frame_count;
-                        // Push exception value (becomes the catch binding)
-                        try self.push(thrown);
-                        // Jump to catch handler
-                        self.frames[handler.frame_idx].ip = handler.catch_ip;
-                    } else {
-                        return error.UserException;
-                    }
-                },
-
-                // [M] Arithmetic
-                .add => try self.vmBinaryArith(.add),
-                .sub => try self.vmBinaryArith(.sub),
-                .mul => try self.vmBinaryArith(.mul),
-                .div => try self.vmBinaryDivLike(arith.binaryDiv),
-                .lt => try self.vmBinaryCompare(.lt),
-                .le => try self.vmBinaryCompare(.le),
-                .gt => try self.vmBinaryCompare(.gt),
-                .ge => try self.vmBinaryCompare(.ge),
-                .mod => try self.vmBinaryDivLike(arith.binaryMod),
-                .rem_ => try self.vmBinaryDivLike(arith.binaryRem),
-                .eq => {
-                    const b = self.pop();
-                    const a = self.pop();
-                    try self.push(.{ .boolean = a.eql(b) });
-                },
-                .neq => {
-                    const b = self.pop();
-                    const a = self.pop();
-                    try self.push(.{ .boolean = !a.eql(b) });
-                },
-
-                // [Z] Debug
-                .nop => {},
-                .debug_print => _ = self.pop(),
-
-                // Upvalues (deferred to Task 2.8)
-                .upvalue_load, .upvalue_store => return error.InvalidInstruction,
+            if (self.stepInstruction()) |maybe_result| {
+                if (maybe_result) |result| return result;
+            } else |e| {
+                if (self.handler_count > 0 and isUserError(e)) {
+                    self.dispatchErrorToHandler(e) catch |e2| return e2;
+                    continue;
+                }
+                return e;
             }
         }
+    }
+
+    /// Execute one instruction. Returns a Value when execution is complete
+    /// (ret from top-level or end-of-code), null to continue.
+    fn stepInstruction(self: *VM) VMError!?Value {
+        const frame = &self.frames[self.frame_count - 1];
+        if (frame.ip >= frame.code.len) {
+            return if (self.sp > 0) self.pop() else .nil;
+        }
+
+        const instr = frame.code[frame.ip];
+        frame.ip += 1;
+
+        switch (instr.op) {
+            // [A] Constants
+            .const_load => try self.push(frame.constants[instr.operand]),
+            .nil => try self.push(.nil),
+            .true_val => try self.push(.{ .boolean = true }),
+            .false_val => try self.push(.{ .boolean = false }),
+
+            // [B] Stack
+            .pop => _ = self.pop(),
+            .dup => {
+                const val = self.peek(0);
+                try self.push(val);
+            },
+            .pop_under => {
+                // Keep top, remove N values below it
+                const count = instr.operand;
+                const top = self.pop();
+                var i: u16 = 0;
+                while (i < count) : (i += 1) {
+                    _ = self.pop();
+                }
+                try self.push(top);
+            },
+
+            // [C] Locals
+            .local_load => {
+                const idx = frame.base + instr.operand;
+                if (idx >= self.sp) return error.StackUnderflow;
+                try self.push(self.stack[idx]);
+            },
+            .local_store => {
+                const idx = frame.base + instr.operand;
+                self.stack[idx] = self.pop();
+            },
+
+            // [F] Control flow
+            .jump => {
+                const offset = instr.signedOperand();
+                if (offset < 0) {
+                    frame.ip -= @intCast(-offset);
+                } else {
+                    frame.ip += @intCast(offset);
+                }
+            },
+            .jump_if_false => {
+                const val = self.pop();
+                if (!val.isTruthy()) {
+                    frame.ip += instr.operand;
+                }
+            },
+            .jump_back => {
+                frame.ip -= instr.operand;
+            },
+
+            // [G] Functions
+            .call, .tail_call => try self.performCall(instr.operand),
+            .ret => {
+                const result = self.pop();
+                const base = frame.base;
+                self.frame_count -= 1;
+                if (self.frame_count == 0) return result;
+                // Restore caller's stack: base-1 removes the fn_val slot
+                self.sp = base - 1;
+                try self.push(result);
+            },
+            .closure => {
+                // Operand: constant pool index of fn template
+                const const_idx: u16 = instr.operand;
+
+                const template = frame.constants[const_idx];
+                if (template != .fn_val) return error.TypeError;
+                const fn_obj = template.fn_val;
+                const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+
+                if (proto.capture_count > 0) {
+                    // Capture values using per-slot offsets from capture_slots
+                    const bindings = self.allocator.alloc(Value, proto.capture_count) catch
+                        return error.OutOfMemory;
+                    for (0..proto.capture_count) |i| {
+                        const slot = proto.capture_slots[i];
+                        bindings[i] = self.stack[frame.base + slot];
+                    }
+                    const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
+                    new_fn.* = .{
+                        .proto = fn_obj.proto,
+                        .closure_bindings = bindings,
+                        .extra_arities = fn_obj.extra_arities,
+                    };
+                    self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
+                    try self.push(.{ .fn_val = new_fn });
+                } else {
+                    // No capture needed, push the template directly
+                    try self.push(template);
+                }
+            },
+
+            // [H] Loop/recur
+            .recur => {
+                // Operand: (base_offset << 8) | arg_count
+                const arg_count: u16 = instr.operand & 0xFF;
+                const base_offset: u16 = (instr.operand >> 8) & 0xFF;
+
+                // Pop recur args into temp buffer (reverse order)
+                var temp_buf: [16]Value = undefined;
+                var i: u16 = arg_count;
+                while (i > 0) {
+                    i -= 1;
+                    temp_buf[i] = self.pop();
+                }
+
+                // Write new values to loop binding slots
+                for (0..arg_count) |idx| {
+                    self.stack[frame.base + base_offset + idx] = temp_buf[idx];
+                }
+
+                // Reset sp to just after loop bindings
+                self.sp = frame.base + base_offset + arg_count;
+
+                // Next instruction is jump_back which loops
+            },
+
+            // [I] Collections
+            .list_new => try self.buildCollection(instr.operand, .list),
+            .vec_new => try self.buildCollection(instr.operand, .vec),
+            .map_new => try self.buildCollection(instr.operand, .map),
+            .set_new => try self.buildCollection(instr.operand, .set),
+
+            // [E] Var operations
+            .var_load, .var_load_dynamic => {
+                const sym = frame.constants[instr.operand];
+                if (sym != .symbol) return error.InvalidInstruction;
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+                var v = if (sym.symbol.ns) |ns_name|
+                    ns.resolveQualified(ns_name, sym.symbol.name)
+                else
+                    ns.resolve(sym.symbol.name);
+                // Fallback: look up namespace by full name in env registry
+                if (v == null) {
+                    if (sym.symbol.ns) |ns_name| {
+                        if (env.namespaces.get(ns_name)) |target_ns| {
+                            v = target_ns.resolve(sym.symbol.name);
+                        }
+                    }
+                }
+                if (v) |resolved| {
+                    try self.push(resolved.deref());
+                } else {
+                    return error.UndefinedVar;
+                }
+            },
+            .def, .def_macro => {
+                const val = self.pop();
+                const sym = frame.constants[instr.operand];
+                if (sym != .symbol) return error.InvalidInstruction;
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+                const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
+                v.bindRoot(val);
+                if (instr.op == .def_macro) v.setMacro(true);
+                try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
+            },
+
+            // [K] Exceptions
+            .try_begin => {
+                // Register exception handler
+                if (self.handler_count >= HANDLERS_MAX) return error.StackOverflow;
+                const catch_ip = frame.ip + instr.operand;
+                self.handlers[self.handler_count] = .{
+                    .catch_ip = catch_ip,
+                    .saved_sp = self.sp,
+                    .saved_frame_count = self.frame_count,
+                    .frame_idx = self.frame_count - 1,
+                };
+                self.handler_count += 1;
+            },
+            .catch_begin => {
+                // Normal flow reached catch — pop handler (try body succeeded)
+                if (self.handler_count > 0) {
+                    self.handler_count -= 1;
+                }
+            },
+            .try_end => {
+                // Marker only — no-op
+            },
+            .throw_ex => {
+                const thrown = self.pop();
+                if (self.handler_count > 0) {
+                    self.handler_count -= 1;
+                    const handler = self.handlers[self.handler_count];
+                    // Restore state
+                    self.sp = handler.saved_sp;
+                    self.frame_count = handler.saved_frame_count;
+                    // Push exception value (becomes the catch binding)
+                    try self.push(thrown);
+                    // Jump to catch handler
+                    self.frames[handler.frame_idx].ip = handler.catch_ip;
+                } else {
+                    return error.UserException;
+                }
+            },
+
+            // [M] Arithmetic
+            .add => try self.vmBinaryArith(.add),
+            .sub => try self.vmBinaryArith(.sub),
+            .mul => try self.vmBinaryArith(.mul),
+            .div => try self.vmBinaryDivLike(arith.binaryDiv),
+            .lt => try self.vmBinaryCompare(.lt),
+            .le => try self.vmBinaryCompare(.le),
+            .gt => try self.vmBinaryCompare(.gt),
+            .ge => try self.vmBinaryCompare(.ge),
+            .mod => try self.vmBinaryDivLike(arith.binaryMod),
+            .rem_ => try self.vmBinaryDivLike(arith.binaryRem),
+            .eq => {
+                const b = self.pop();
+                const a = self.pop();
+                try self.push(.{ .boolean = a.eql(b) });
+            },
+            .neq => {
+                const b = self.pop();
+                const a = self.pop();
+                try self.push(.{ .boolean = !a.eql(b) });
+            },
+
+            // [Z] Debug
+            .nop => {},
+            .debug_print => _ = self.pop(),
+
+            // Upvalues (deferred to Task 2.8)
+            .upvalue_load, .upvalue_store => return error.InvalidInstruction,
+        }
+        return null;
+    }
+
+    /// Check if a VMError is a user-catchable runtime error.
+    fn isUserError(err: VMError) bool {
+        return switch (err) {
+            error.TypeError, error.ArityError, error.UndefinedVar,
+            error.DivisionByZero, error.Overflow, error.UserException => true,
+            error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
+            error.InvalidInstruction => false,
+        };
+    }
+
+    /// Create an ex-info style exception Value from a Zig error.
+    fn createRuntimeException(self: *VM, err: VMError) VMError!Value {
+        const msg: []const u8 = switch (err) {
+            error.TypeError => "Type error",
+            error.ArityError => "Wrong number of arguments",
+            error.UndefinedVar => "Var not found",
+            error.DivisionByZero => "Divide by zero",
+            error.Overflow => "Arithmetic overflow",
+            error.UserException => "Exception",
+            else => "Runtime error",
+        };
+
+        // Build {:__ex_info true :message msg :data {} :cause nil}
+        const entries = self.allocator.alloc(Value, 8) catch return error.OutOfMemory;
+        self.allocated_slices.append(self.allocator, entries) catch return error.OutOfMemory;
+
+        const empty_map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
+        empty_map.* = .{ .entries = &.{} };
+        self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
+
+        entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
+        entries[1] = .{ .boolean = true };
+        entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
+        entries[3] = .{ .string = msg };
+        entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
+        entries[5] = .{ .map = empty_map };
+        entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
+        entries[7] = .nil;
+
+        const map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
+        map.* = .{ .entries = entries };
+        self.allocated_maps.append(self.allocator, map) catch return error.OutOfMemory;
+
+        return .{ .map = map };
+    }
+
+    /// Dispatch a runtime error to the nearest exception handler.
+    fn dispatchErrorToHandler(self: *VM, err: VMError) VMError!void {
+        self.handler_count -= 1;
+        const handler = self.handlers[self.handler_count];
+        self.sp = handler.saved_sp;
+        self.frame_count = handler.saved_frame_count;
+        const ex = try self.createRuntimeException(err);
+        try self.push(ex);
+        self.frames[handler.frame_idx].ip = handler.catch_ip;
     }
 
     pub fn push(self: *VM, val: Value) VMError!void {

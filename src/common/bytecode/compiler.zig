@@ -592,11 +592,11 @@ pub const Compiler = struct {
 
             try self.compile(catch_clause.body); // +1
 
-            // Clean up catch local
-            const to_pop = self.locals.items.len - base;
-            for (0..to_pop) |_| {
-                try self.chunk.emitOp(.pop);
-                self.stack_depth -= 1;
+            // Clean up catch local: keep body result, remove binding below it
+            const locals_to_pop = self.locals.items.len - base;
+            if (locals_to_pop > 0) {
+                try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
+                self.stack_depth -= @intCast(locals_to_pop);
             }
             self.locals.shrinkRetainingCapacity(base);
             self.scope_depth -= 1;

@@ -4,53 +4,60 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 17 (IO / Print Functions)
-- Current task: (none)
+- Phase: 17.5 (Infrastructure Fix)
+- Current task: (none — planning needed)
 - Task file: N/A
-- Last completed: T17.6 — System functions (**nano-time, **current-time-millis, **getenv, **exit)
+- Last completed: Phase 17 complete (IO/Print/System functions, 306 vars, 184 builtins)
 - Blockers: none
-- Next: Phase 17 complete — transition to Phase 17.5 (Infrastructure Fix)
+- Next: Plan Phase 17.5 Task Queue (try/catch/throw → destructuring → VM defmulti)
 
-## Current Phase: 17
+## Current Phase: 17.5
 
-**Background**: Phase 16.5 completed Batch 2 test ports (multimethods, vars, volatiles, delays).
-Total ported: 12 test files, 105 tests, 414 assertions on TreeWalk; 96 tests, 388 assertions on VM.
-Plus SCI tests: 72 tests, 267 assertions on TreeWalk. Total: 296 done vars, 170 builtins.
+**Background**: Phase 17 completed IO/print/system functions (14 new builtins).
+Total: 13 test files, 115 tests, 442 assertions on TreeWalk; 106 tests on VM.
+306 done vars, 184 Zig builtins.
 
-**Goal**: Implement IO/print functions. File I/O (slurp/spit), stdin (read-line),
-missing print variants (print, pr, newline, flush), string IO functions.
+**Goal**: Fix cross-cutting infrastructure gaps blocking ~35+ test SKIPs.
+Three priority areas in order.
 
 ### Rules
 
-1. **TDD**: Test each function before/after implementation
-2. **Dual-Backend**: All new builtins work on both VM and TreeWalk
-3. **Zig std.fs/std.io**: Use Zig stdlib for file and IO operations
-4. **No dynamic vars yet**: _out_/_err_/_in_ deferred until binding (F85) is implemented
+1. **TDD**: Failing test first, then implement
+2. **Dual-Backend**: All fixes must pass both VM and TreeWalk
+3. **Test SKIPs**: Un-SKIP tests as infrastructure becomes available
+4. **checklist.md**: Resolve F## items, strike from list
+
+### Priority Areas
+
+1. **try/catch/throw** (~15 SKIPs) — Analyzer special forms, VM opcodes,
+   TreeWalk handling. Largest single blocker.
+2. **Destructuring fixes** (~10 SKIPs) — F58, F67-F74, F79.
+   Concentrated in Analyzer destructuring code.
+3. **VM defmulti/defmethod opcodes** (F13) — Compiler + VM opcodes.
 
 ### Task Queue
 
-| Task  | Type | Description                               | Notes                                 |
-| ----- | ---- | ----------------------------------------- | ------------------------------------- |
-| T17.1 | impl | Basic print functions                     | print, pr, newline, flush (io.zig)    |
-| T17.2 | impl | String IO functions                       | print-str, prn-str, println-str       |
-| T17.3 | impl | File IO: slurp and spit                   | Zig std.fs, encoding: UTF-8 only      |
-| T17.4 | impl | Standard input: read-line                 | Zig stdin reader                      |
-| T17.5 | test | Port printer.clj (partial)                | print-length, print-level if feasible |
-| T17.6 | impl | System functions: nano-time, exit, getenv | Zig std.time, std.process, std.posix  |
+| Task    | Type | Description                             | Notes                                   |
+| ------- | ---- | --------------------------------------- | --------------------------------------- |
+| T17.5.1 | fix  | VM try/catch body evaluation bug        | Catch returns exception instead of body |
+| T17.5.2 | fix  | Destructuring: F58 nested map           | `{{x :x} :b}` pattern in let/fn         |
+| T17.5.3 | fix  | Destructuring: F67 rest args + map      | `(fn [& {:keys [x]}] x)` keyword args   |
+| T17.5.4 | fix  | Destructuring: F69 keywords in :keys    | `{:keys [:a :b]}` syntax                |
+| T17.5.5 | fix  | Destructuring: F79 :syms basic          | `{:syms [a b]}` symbol key lookup       |
+| T17.5.6 | impl | VM defmulti/defmethod opcodes (F13)     | Compiler + VM opcodes for multimethod   |
+| T17.5.7 | impl | clojure.string expansion                | capitalize, split-lines, index-of, etc. |
+| T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass      |
 
-### Completion Criteria
+### Phase 17 Summary (completed)
 
-- print/pr/newline/flush working on both backends
-- print-str/prn-str/println-str available
-- slurp/spit functional for file read/write
-- read-line working from stdin
-- Test file for IO functions ported/created
-
-### After Phase 17
-
-Phase 17.5 (Infrastructure Fix) before further test porting. See `roadmap.md`.
-Priority: try/catch/throw > destructuring (F58,F67-F74,F79) > VM defmulti (F13).
-This unblocks ~35+ of ~60 remaining test SKIPs.
+| Task  | Status | Description                              |
+| ----- | ------ | ---------------------------------------- |
+| T17.1 | done   | print, pr, newline, flush                |
+| T17.2 | done   | print-str, prn-str, println-str          |
+| T17.3 | done   | slurp, spit                              |
+| T17.4 | done   | read-line                                |
+| T17.5 | skip   | printer.clj (needs binding F85)          |
+| T17.6 | done   | **nano-time, **current-time-millis, etc. |
 
 ---
 

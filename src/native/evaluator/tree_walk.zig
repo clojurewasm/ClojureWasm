@@ -755,9 +755,12 @@ pub const TreeWalk = struct {
 
     fn runTry(self: *TreeWalk, try_n: *const node_mod.TryNode) TreeWalkError!Value {
         const result = self.run(try_n.body) catch |e| {
-            if (e == error.UserException) {
+            if (isUserError(e)) {
                 if (try_n.catch_clause) |catch_c| {
-                    const ex_val = self.exception orelse .nil;
+                    const ex_val = if (e == error.UserException)
+                        (self.exception orelse .nil)
+                    else
+                        self.createRuntimeException(e);
                     self.exception = null;
 
                     const saved = self.local_count;
@@ -790,6 +793,46 @@ pub const TreeWalk = struct {
             _ = self.run(finally) catch {};
         }
         return result;
+    }
+
+    /// Check if a TreeWalkError is a user-catchable runtime error.
+    fn isUserError(err: TreeWalkError) bool {
+        return switch (err) {
+            error.TypeError, error.ArityError, error.UndefinedVar,
+            error.DivisionByZero, error.UserException, error.IndexOutOfBounds,
+            error.IllegalState => true,
+            error.StackOverflow, error.OutOfMemory => false,
+        };
+    }
+
+    /// Create an ex-info style exception Value from a Zig error.
+    fn createRuntimeException(self: *TreeWalk, err: TreeWalkError) Value {
+        const msg: []const u8 = switch (err) {
+            error.TypeError => "Type error",
+            error.ArityError => "Wrong number of arguments",
+            error.UndefinedVar => "Var not found",
+            error.DivisionByZero => "Divide by zero",
+            error.IndexOutOfBounds => "Index out of bounds",
+            error.IllegalState => "Illegal state",
+            else => "Runtime error",
+        };
+
+        // Build {:__ex_info true :message msg :data {} :cause nil}
+        const entries = self.allocator.alloc(Value, 8) catch return .nil;
+        const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return .nil;
+        empty_map.* = .{ .entries = &.{} };
+        entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
+        entries[1] = .{ .boolean = true };
+        entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
+        entries[3] = .{ .string = msg };
+        entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
+        entries[5] = .{ .map = empty_map };
+        entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
+        entries[7] = .nil;
+
+        const map = self.allocator.create(value_mod.PersistentArrayMap) catch return .nil;
+        map.* = .{ .entries = entries };
+        return .{ .map = map };
     }
 
     // --- Builtin function dispatch (runtime_fn) ---
