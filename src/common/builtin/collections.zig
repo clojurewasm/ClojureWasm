@@ -14,6 +14,7 @@ const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../bootstrap.zig");
+const err = @import("../error.zig");
 
 // ============================================================
 // Implementations
@@ -21,7 +22,7 @@ const bootstrap = @import("../bootstrap.zig");
 
 /// (first coll) — returns the first element, or nil if empty/nil.
 pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to first", .{args.len});
     return switch (args[0]) {
         .list => |lst| lst.first(),
         .vector => |vec| if (vec.items.len > 0) vec.items[0] else .nil,
@@ -44,13 +45,13 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized_args = [1]Value{realized};
             return firstFn(allocator, &realized_args);
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "first not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (rest coll) — returns everything after first, or empty list.
 pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rest", .{args.len});
     return switch (args[0]) {
         .list => |lst| blk: {
             const r = lst.rest();
@@ -94,14 +95,14 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized_args = [1]Value{realized};
             return restFn(allocator, &realized_args);
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "rest not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (cons x seq) — prepend x to seq, returns a list or cons cell.
 /// Returns a Cons cell when rest is lazy_seq or cons (preserves laziness).
 pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to cons", .{args.len});
     const x = args[0];
 
     // For lazy_seq or cons rest, return a Cons cell to preserve laziness
@@ -115,7 +116,7 @@ pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq, got {s}", .{@tagName(args[1])}),
     };
 
     const new_items = try allocator.alloc(Value, seq_items.len + 1);
@@ -178,7 +179,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             // (conj map [k v]) => (assoc map k v)
             if (x == .vector) {
                 const pair = x.vector;
-                if (pair.items.len != 2) return error.IllegalArgument;
+                if (pair.items.len != 2) return err.setErrorFmt(.eval, .value_error, .{}, "conj on map expects vector of 2 elements, got {d}", .{pair.items.len});
                 const assoc_args = [_]Value{ coll, pair.items[0], pair.items[1] };
                 return assocFn(allocator, &assoc_args);
             } else if (x == .map) {
@@ -192,7 +193,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                 }
                 return result;
             }
-            return error.TypeError;
+            return err.setErrorFmt(.eval, .type_error, .{}, "conj on map expects vector or map, got {s}", .{@tagName(x)});
         },
         .nil => {
             // (conj nil x) => (x) — returns a list
@@ -202,7 +203,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             new_list.* = .{ .items = new_items };
             return Value{ .list = new_list };
         },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "conj not supported on {s}", .{@tagName(coll)}),
     }
 }
 
@@ -210,7 +211,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
 /// For maps: (assoc {:a 1} :b 2) => {:a 1 :b 2}
 /// For vectors: (assoc [1 2 3] 1 99) => [1 99 3] (index must be <= count)
 pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 3 or (args.len - 1) % 2 != 0) return error.ArityError;
+    if (args.len < 3 or (args.len - 1) % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to assoc", .{args.len});
     const base = args[0];
 
     // Handle vector case
@@ -222,7 +223,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const base_entries = switch (base) {
         .map => |m| m.entries,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "assoc expects a map, vector, or nil, got {s}", .{@tagName(base)}),
     };
 
     // Build new entries: copy base, then override/add pairs
@@ -267,12 +268,12 @@ fn assocVector(allocator: Allocator, vec: *const PersistentVector, kvs: []const 
 
         // Index must be integer
         const idx = switch (idx_val) {
-            .integer => |n| if (n >= 0) @as(usize, @intCast(n)) else return error.IndexOutOfBounds,
-            else => return error.TypeError,
+            .integer => |n| if (n >= 0) @as(usize, @intCast(n)) else return err.setErrorFmt(.eval, .index_error, .{}, "assoc index out of bounds: {d}", .{n}),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "assoc expects integer index, got {s}", .{@tagName(idx_val)}),
         };
 
         // Index must be <= count (allows appending at exactly count position)
-        if (idx > items.items.len) return error.IndexOutOfBounds;
+        if (idx > items.items.len) return err.setErrorFmt(.eval, .index_error, .{}, "assoc index {d} out of bounds for vector of size {d}", .{ idx, items.items.len });
 
         if (idx == items.items.len) {
             // Append at end
@@ -290,7 +291,7 @@ fn assocVector(allocator: Allocator, vec: *const PersistentVector, kvs: []const 
 
 /// (get map key) or (get map key not-found) — lookup in map or set.
 pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get", .{args.len});
     const not_found: Value = if (args.len == 3) args[2] else .nil;
     return switch (args[0]) {
         .map => |m| m.get(args[1]) orelse not_found,
@@ -308,27 +309,27 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (nth coll index) or (nth coll index not-found) — indexed access.
 pub fn nthFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nth", .{args.len});
     const idx_val = args[1];
-    if (idx_val != .integer) return error.TypeError;
+    if (idx_val != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nth expects integer index, got {s}", .{@tagName(idx_val)});
     const idx = idx_val.integer;
     if (idx < 0) {
         if (args.len == 3) return args[2];
-        return error.IndexOutOfBounds;
+        return err.setErrorFmt(.eval, .index_error, .{}, "nth index out of bounds: {d}", .{idx});
     }
     const uidx: usize = @intCast(idx);
 
     return switch (args[0]) {
-        .vector => |vec| vec.nth(uidx) orelse if (args.len == 3) args[2] else error.IndexOutOfBounds,
-        .list => |lst| if (uidx < lst.items.len) lst.items[uidx] else if (args.len == 3) args[2] else error.IndexOutOfBounds,
-        .nil => if (args.len == 3) args[2] else error.IndexOutOfBounds,
-        else => error.TypeError,
+        .vector => |vec| vec.nth(uidx) orelse if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for vector of size {d}", .{ uidx, vec.items.len }),
+        .list => |lst| if (uidx < lst.items.len) lst.items[uidx] else if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for list of size {d}", .{ uidx, lst.items.len }),
+        .nil => if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth on nil", .{}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "nth not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (count coll) — number of elements.
 pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to count", .{args.len});
     if (args[0] == .lazy_seq) {
         const realized = try args[0].lazy_seq.realize(allocator);
         const realized_args = [1]Value{realized};
@@ -354,7 +355,7 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .set => |s| s.count(),
         .nil => @as(usize, 0),
         .string => |s| s.len,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "count not supported on {s}", .{@tagName(args[0])}),
     }) };
 }
 
@@ -369,7 +370,7 @@ pub fn listFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (seq coll) — returns a seq on the collection. Returns nil if empty.
 pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to seq", .{args.len});
     return switch (args[0]) {
         .nil => .nil,
         .list => |lst| if (lst.items.len == 0) .nil else args[0],
@@ -409,7 +410,7 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized_args = [1]Value{realized};
             return seqFn(allocator, &realized_args);
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "seq not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
@@ -436,12 +437,12 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (reverse coll) — returns a list of items in reverse order.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
     const items = switch (args[0]) {
         .nil => return .nil,
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "reverse not supported on {s}", .{@tagName(args[0])}),
     };
     if (items.len == 0) return .nil;
 
@@ -457,11 +458,11 @@ pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (rseq rev) — returns a seq of items in reverse order, nil if empty.
 pub fn rseqFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rseq", .{args.len});
     const items = switch (args[0]) {
         .nil => return .nil,
         .vector => |vec| vec.items,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "rseq not supported on {s}", .{@tagName(args[0])}),
     };
     if (items.len == 0) return .nil;
 
@@ -477,7 +478,7 @@ pub fn rseqFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (shuffle coll) — returns a random permutation of coll as a vector.
 pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to shuffle", .{args.len});
     const items = try collectSeqItems(allocator, args[0]);
     if (items.len == 0) {
         const vec = try allocator.create(PersistentVector);
@@ -505,7 +506,7 @@ pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (into to from) — returns a new coll with items from `from` conj'd onto `to`.
 pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to into", .{args.len});
     if (args[1] == .nil) return args[0];
     const from_items = try collectSeqItems(allocator, args[1]);
     if (from_items.len == 0) return args[0];
@@ -519,7 +520,7 @@ pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (apply f args) / (apply f x y args) — calls f with args from final collection.
 pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to apply", .{args.len});
 
     const f = args[0];
     const last_arg = args[args.len - 1];
@@ -547,7 +548,7 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .fn_val => bootstrap.callFnVal(allocator, f, call_args),
         .keyword => |kw| blk: {
             // keyword as function: (:kw map) or (:kw map default)
-            if (call_args.len < 1 or call_args.len > 2) return error.ArityError;
+            if (call_args.len < 1 or call_args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keyword lookup", .{call_args.len});
             const m = switch (call_args[0]) {
                 .map => |mp| mp,
                 else => break :blk if (call_args.len == 2) call_args[1] else .nil,
@@ -557,16 +558,16 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .map => |m| blk: {
             // map as function: ({:a 1} :a) or ({:a 1} :a default)
-            if (call_args.len < 1 or call_args.len > 2) return error.ArityError;
+            if (call_args.len < 1 or call_args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to map lookup", .{call_args.len});
             break :blk m.get(call_args[0]) orelse
                 if (call_args.len == 2) call_args[1] else .nil;
         },
         .set => |s| blk: {
             // set as function: (#{:a :b} :a)
-            if (call_args.len != 1) return error.ArityError;
+            if (call_args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set lookup", .{call_args.len});
             break :blk if (s.contains(call_args[0])) call_args[0] else .nil;
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "apply expects a function, got {s}", .{@tagName(f)}),
     };
 }
 
@@ -581,7 +582,7 @@ pub fn vectorFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (hash-map & kvs) — creates a map from key-value pairs.
 pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len % 2 != 0) return error.ArityError;
+    if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "hash-map requires even number of args, got {d}", .{args.len});
     const entries = try allocator.alloc(Value, args.len);
     @memcpy(entries, args);
     const map = try allocator.create(PersistentArrayMap);
@@ -600,14 +601,14 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (start >= args.len) return .nil;
 
     // Start with entries from first map
-    if (args[start] != .map) return error.TypeError;
+    if (args[start] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(args[start])});
     var entries = std.ArrayList(Value).empty;
     try entries.appendSlice(allocator, args[start].map.entries);
 
     // Merge remaining maps left-to-right
     for (args[start + 1 ..]) |arg| {
         if (arg == .nil) continue;
-        if (arg != .map) return error.TypeError;
+        if (arg != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(arg)});
         const src = arg.map.entries;
         var i: usize = 0;
         while (i < src.len) : (i += 2) {
@@ -636,7 +637,7 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (merge-with f & maps) — merge maps, calling (f old new) on key conflicts.
 pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.ArityError;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to merge-with", .{args.len});
 
     const f = args[0];
     const maps = args[1..];
@@ -648,13 +649,13 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
     while (start < maps.len and maps[start] == .nil) : (start += 1) {}
     if (start >= maps.len) return .nil;
 
-    if (maps[start] != .map) return error.TypeError;
+    if (maps[start] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(maps[start])});
     var entries = std.ArrayList(Value).empty;
     try entries.appendSlice(allocator, maps[start].map.entries);
 
     for (maps[start + 1 ..]) |arg| {
         if (arg == .nil) continue;
-        if (arg != .map) return error.TypeError;
+        if (arg != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(arg)});
         const src = arg.map.entries;
         var i: usize = 0;
         while (i < src.len) : (i += 2) {
@@ -667,7 +668,7 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     // Key conflict: call f(old_val, new_val)
                     entries.items[j + 1] = switch (f) {
                         .builtin_fn => |func| try func(allocator, &.{ entries.items[j + 1], val }),
-                        else => return error.TypeError,
+                        else => return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a function, got {s}", .{@tagName(f)}),
                     };
                     found = true;
                     break;
@@ -730,12 +731,12 @@ pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
         return std.mem.order(u8, a.symbol.name, b.symbol.name);
     }
 
-    return error.TypeError;
+    return err.setErrorFmt(.eval, .type_error, .{}, "compare: cannot compare {s} and {s}", .{ @tagName(a), @tagName(b) });
 }
 
 /// (compare x y) — comparator returning negative, zero, or positive integer.
 pub fn compareFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to compare", .{args.len});
     const ord = try compareValues(args[0], args[1]);
     return Value{ .integer = switch (ord) {
         .lt => -1,
@@ -748,7 +749,7 @@ pub fn compareFn(_: Allocator, args: []const Value) anyerror!Value {
 /// With 1 arg: sorts using natural ordering (compare).
 /// With 2 args: first arg is comparator function (not yet supported in unit tests).
 pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1 or args.len > 2) return error.ArityError;
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to sort", .{args.len});
 
     // Get the collection (last arg)
     const coll = args[args.len - 1];
@@ -756,7 +757,7 @@ pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "sort not supported on {s}", .{@tagName(coll)}),
     };
 
     // Copy items so we can sort in place
@@ -775,7 +776,7 @@ pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
         // Custom comparator (builtin_fn only in unit tests)
         // For now, only support builtin_fn comparators
         // Full fn_val support requires evaluator context
-        return error.TypeError;
+        return err.setErrorFmt(.eval, .type_error, .{}, "sort with custom comparator not yet supported", .{});
     }
 
     const lst = try allocator.create(PersistentList);
@@ -785,7 +786,7 @@ pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (sort-by keyfn coll) or (sort-by keyfn comp coll) — sort by key extraction.
 pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to sort-by", .{args.len});
 
     const keyfn = args[0];
     const coll = args[args.len - 1];
@@ -793,7 +794,7 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "sort-by not supported on {s}", .{@tagName(coll)}),
     };
 
     if (items.len == 0) {
@@ -807,7 +808,7 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
     for (items, 0..) |item, i| {
         keys[i] = switch (keyfn) {
             .builtin_fn => |func| try func(allocator, &.{item}),
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "sort-by expects a function as keyfn, got {s}", .{@tagName(keyfn)}),
         };
     }
 
@@ -836,19 +837,19 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (zipmap keys vals) — returns a map with keys mapped to corresponding vals.
 pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to zipmap", .{args.len});
 
     const key_items = switch (args[0]) {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "zipmap expects a collection for keys, got {s}", .{@tagName(args[0])}),
     };
     const val_items = switch (args[1]) {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "zipmap expects a collection for vals, got {s}", .{@tagName(args[1])}),
     };
 
     const pair_count = @min(key_items.len, val_items.len);
@@ -890,7 +891,7 @@ fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
                 break;
             },
             .nil => break,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "don't know how to create seq from {s}", .{@tagName(current)}),
         }
     }
     return items.toOwnedSlice(allocator);
@@ -898,7 +899,7 @@ fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
 
 /// (vec coll) — coerce a collection to a vector.
 pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vec", .{args.len});
     if (args[0] == .vector) return args[0];
     const items = try collectSeqItems(allocator, args[0]);
     const vec = try allocator.create(PersistentVector);
@@ -908,7 +909,7 @@ pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (set coll) — coerce a collection to a set (removing duplicates).
 pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set", .{args.len});
 
     // Handle map: convert to set of [k v] vectors
     if (args[0] == .map) {
@@ -965,7 +966,7 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set not supported on {s}", .{@tagName(args[0])}),
     };
 
     // Deduplicate
@@ -988,7 +989,7 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (list* args... coll) — creates a list with args prepended to the final collection.
 pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return error.ArityError;
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to list*", .{args.len});
     if (args.len == 1) {
         // (list* coll) — just return as seq
         return switch (args[0]) {
@@ -999,7 +1000,7 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 break :blk Value{ .list = lst };
             },
             .nil => .nil,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "list* not supported on {s}", .{@tagName(args[0])}),
         };
     }
 
@@ -1008,7 +1009,7 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "list* expects a collection as last arg, got {s}", .{@tagName(args[args.len - 1])}),
     };
 
     const prefix_count = args.len - 1;
@@ -1024,19 +1025,19 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (dissoc map key & ks) — remove key(s) from map.
 pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.ArityError;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dissoc", .{args.len});
     if (args.len == 1) {
         // (dissoc map) — identity
         return switch (args[0]) {
             .map => args[0],
             .nil => .nil,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "dissoc expects a map, got {s}", .{@tagName(args[0])}),
         };
     }
     const base_entries = switch (args[0]) {
         .map => |m| m.entries,
         .nil => return .nil,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "dissoc expects a map, got {s}", .{@tagName(args[0])}),
     };
 
     var entries = std.ArrayList(Value).empty;
@@ -1065,18 +1066,18 @@ pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (disj set val & vals) — remove value(s) from set.
 pub fn disjFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.ArityError;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to disj", .{args.len});
     if (args.len == 1) {
         return switch (args[0]) {
             .set => args[0],
             .nil => .nil,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "disj expects a set, got {s}", .{@tagName(args[0])}),
         };
     }
     const base_items = switch (args[0]) {
         .set => |s| s.items,
         .nil => return .nil,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "disj expects a set, got {s}", .{@tagName(args[0])}),
     };
 
     var items = std.ArrayList(Value).empty;
@@ -1102,7 +1103,7 @@ pub fn disjFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (find map key) — returns [key value] (MapEntry) or nil.
 pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find", .{args.len});
     return switch (args[0]) {
         .map => |m| {
             const v = m.get(args[1]) orelse return .nil;
@@ -1114,55 +1115,55 @@ pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return Value{ .vector = vec };
         },
         .nil => .nil,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find expects a map, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (peek coll) — stack top: last of vector, first of list.
 pub fn peekFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to peek", .{args.len});
     return switch (args[0]) {
         .vector => |vec| if (vec.items.len > 0) vec.items[vec.items.len - 1] else .nil,
         .list => |lst| if (lst.items.len > 0) lst.items[0] else .nil,
         .nil => .nil,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "peek not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (pop coll) — stack pop: vector without last, list without first.
 pub fn popFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to pop", .{args.len});
     return switch (args[0]) {
         .vector => |vec| {
-            if (vec.items.len == 0) return error.IllegalState;
+            if (vec.items.len == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Can't pop empty vector", .{});
             const new_vec = try allocator.create(PersistentVector);
             new_vec.* = .{ .items = vec.items[0 .. vec.items.len - 1], .meta = vec.meta };
             return Value{ .vector = new_vec };
         },
         .list => |lst| {
-            if (lst.items.len == 0) return error.IllegalState;
+            if (lst.items.len == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Can't pop empty list", .{});
             const new_lst = try allocator.create(PersistentList);
             new_lst.* = .{ .items = lst.items[1..], .meta = lst.meta };
             return Value{ .list = new_lst };
         },
         .nil => return .nil,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "pop not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (subvec v start) or (subvec v start end) — returns a subvector of v from start (inclusive) to end (exclusive).
 pub fn subvecFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
-    if (args[0] != .vector) return error.TypeError;
-    if (args[1] != .integer) return error.TypeError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to subvec", .{args.len});
+    if (args[0] != .vector) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects a vector, got {s}", .{@tagName(args[0])});
+    if (args[1] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer start, got {s}", .{@tagName(args[1])});
     const v = args[0].vector;
-    const start: usize = if (args[1].integer < 0) return error.IndexOutOfBounds else @intCast(args[1].integer);
+    const start: usize = if (args[1].integer < 0) return err.setErrorFmt(.eval, .index_error, .{}, "subvec start index out of bounds: {d}", .{args[1].integer}) else @intCast(args[1].integer);
     const end: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return error.TypeError;
-        break :blk if (args[2].integer < 0) return error.IndexOutOfBounds else @intCast(args[2].integer);
+        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer end, got {s}", .{@tagName(args[2])});
+        break :blk if (args[2].integer < 0) return err.setErrorFmt(.eval, .index_error, .{}, "subvec end index out of bounds: {d}", .{args[2].integer}) else @intCast(args[2].integer);
     } else v.items.len;
 
-    if (start > end or end > v.items.len) return error.IndexOutOfBounds;
+    if (start > end or end > v.items.len) return err.setErrorFmt(.eval, .index_error, .{}, "subvec index out of bounds: start={d}, end={d}, size={d}", .{ start, end, v.items.len });
     const result = try allocator.create(PersistentVector);
     result.* = .{ .items = try allocator.dupe(Value, v.items[start..end]) };
     return Value{ .vector = result };
@@ -1171,7 +1172,7 @@ pub fn subvecFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (array-map & kvs) — creates an array map from key-value pairs.
 /// Like hash-map but guarantees insertion order (which our PersistentArrayMap already preserves).
 pub fn arrayMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len % 2 != 0) return error.ArityError;
+    if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "array-map requires even number of args, got {d}", .{args.len});
     const entries = try allocator.alloc(Value, args.len);
     @memcpy(entries, args);
     const map = try allocator.create(PersistentArrayMap);
@@ -1204,7 +1205,7 @@ pub fn hashSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (sorted-map & kvs) — creates a map with entries sorted by key.
 /// Uses natural ordering (compareValues).
 pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len % 2 != 0) return error.ArityError;
+    if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-map requires even number of args, got {d}", .{args.len});
     if (args.len == 0) {
         const map = try allocator.create(PersistentArrayMap);
         map.* = .{ .entries = &.{} };
@@ -1239,7 +1240,7 @@ pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (empty coll) — empty collection of same type, or nil.
 pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to empty", .{args.len});
     return switch (args[0]) {
         .vector => blk: {
             const new_vec = try allocator.create(PersistentVector);
@@ -1713,7 +1714,7 @@ test "assoc on vector out of bounds fails" {
         Value{ .integer = 1 },
         Value{ .integer = 4 },
     });
-    try testing.expectError(error.IndexOutOfBounds, result);
+    try testing.expectError(error.IndexError, result);
 }
 
 test "get from map" {
@@ -1764,7 +1765,7 @@ test "nth on vector" {
 test "nth out of bounds" {
     const items = [_]Value{ .{ .integer = 10 } };
     var vec = PersistentVector{ .items = &items };
-    try testing.expectError(error.IndexOutOfBounds, nthFn(test_alloc, &.{
+    try testing.expectError(error.IndexError, nthFn(test_alloc, &.{
         Value{ .vector = &vec },
         Value{ .integer = 5 },
     }));
@@ -2336,7 +2337,7 @@ test "pop on list removes first element" {
 test "pop on empty vector is error" {
     const vec = PersistentVector{ .items = &.{} };
     const result = popFn(test_alloc, &.{Value{ .vector = &vec }});
-    try testing.expectError(error.IllegalState, result);
+    try testing.expectError(error.ValueError, result);
 }
 
 test "pop on nil returns nil" {
@@ -2413,7 +2414,7 @@ test "subvec out of bounds" {
     const vec = try alloc.create(PersistentVector);
     vec.* = .{ .items = &items };
 
-    try testing.expectError(error.IndexOutOfBounds, subvecFn(alloc, &.{ Value{ .vector = vec }, Value{ .integer = 0 }, Value{ .integer = 5 } }));
+    try testing.expectError(error.IndexError, subvecFn(alloc, &.{ Value{ .vector = vec }, Value{ .integer = 0 }, Value{ .integer = 5 } }));
 }
 
 test "subvec on non-vector is error" {

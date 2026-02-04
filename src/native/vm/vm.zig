@@ -39,6 +39,11 @@ pub const VMError = error{
     Overflow,
     UserException,
     ArithmeticError,
+    IndexError,
+    ValueError,
+    // Legacy (kept until BE2c/d migrates strings.zig, var.zig)
+    IndexOutOfBounds,
+    IllegalState,
 };
 
 const STACK_MAX: usize = 256 * 128;
@@ -471,7 +476,8 @@ pub const VM = struct {
         return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.Overflow, error.UserException,
-            error.ArithmeticError => true,
+            error.ArithmeticError, error.IndexError, error.ValueError,
+            error.IndexOutOfBounds, error.IllegalState => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
             error.InvalidInstruction => false,
         };
@@ -485,6 +491,8 @@ pub const VM = struct {
             error.ArityError => "Wrong number of arguments",
             error.Overflow => "Arithmetic overflow",
             error.ArithmeticError => "Arithmetic error",
+            error.IndexError => "Index out of bounds",
+            error.ValueError => "Value error",
             error.UndefinedVar => "Var not found",
             error.UserException => "Exception",
             else => "Runtime error",

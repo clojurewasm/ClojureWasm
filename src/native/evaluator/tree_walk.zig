@@ -28,9 +28,12 @@ pub const TreeWalkError = error{
     UserException,
     OutOfMemory,
     StackOverflow,
+    IndexError,
+    ValueError,
+    ArithmeticError,
+    // Legacy (kept until BE2c/d migrates strings.zig, var.zig)
     IndexOutOfBounds,
     IllegalState,
-    ArithmeticError,
 };
 
 const MAX_LOCALS: usize = 256;
@@ -801,8 +804,9 @@ pub const TreeWalk = struct {
     fn isUserError(e: TreeWalkError) bool {
         return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
-            error.UserException, error.IndexOutOfBounds,
-            error.IllegalState, error.ArithmeticError => true,
+            error.UserException, error.IndexError,
+            error.ValueError, error.ArithmeticError,
+            error.IndexOutOfBounds, error.IllegalState => true,
             error.StackOverflow, error.OutOfMemory => false,
         };
     }
@@ -814,8 +818,8 @@ pub const TreeWalk = struct {
             error.TypeError => "Type error",
             error.ArityError => "Wrong number of arguments",
             error.ArithmeticError => "Arithmetic error",
-            error.IndexOutOfBounds => "Index out of bounds",
-            error.IllegalState => "Illegal state",
+            error.IndexError => "Index out of bounds",
+            error.ValueError => "Illegal state",
             error.UndefinedVar => "Var not found",
             else => "Runtime error",
         };

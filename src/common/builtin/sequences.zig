@@ -13,6 +13,7 @@ const PersistentArrayMap = value_mod.PersistentArrayMap;
 const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 // ============================================================
 // Implementations
@@ -20,7 +21,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 
 /// (empty? coll) — returns true if coll has no items, or coll is nil.
 pub fn emptyFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to empty?", .{args.len});
     return switch (args[0]) {
         .nil => Value{ .boolean = true },
         .list => |lst| Value{ .boolean = lst.count() == 0 },
@@ -28,21 +29,21 @@ pub fn emptyFn(_: Allocator, args: []const Value) anyerror!Value {
         .map => |m| Value{ .boolean = m.count() == 0 },
         .set => |s| Value{ .boolean = s.count() == 0 },
         .string => |s| Value{ .boolean = s.len == 0 },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "empty? not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (range n), (range start end), (range start end step) — returns a list of numbers.
 /// Eager implementation (not lazy). All-integer args produce integer results.
 pub fn rangeFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0 or args.len > 3) return error.ArityError;
+    if (args.len == 0 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to range", .{args.len});
 
     // Extract numeric values as f64 for uniform handling
     const start_val: f64 = if (args.len == 1) 0.0 else try toFloat(args[0]);
     const end_val: f64 = if (args.len == 1) try toFloat(args[0]) else try toFloat(args[1]);
     const step_val: f64 = if (args.len == 3) try toFloat(args[2]) else 1.0;
 
-    if (step_val == 0.0) return error.ArithmeticError;
+    if (step_val == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "range step must not be zero", .{});
 
     // Determine if all inputs are integers (for integer output)
     const all_int = allIntegers(args);
@@ -82,10 +83,10 @@ pub fn rangeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (repeat n x) — returns a list of x repeated n times.
 pub fn repeatFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to repeat", .{args.len});
     const n = switch (args[0]) {
-        .integer => |i| if (i < 0) return error.ArithmeticError else @as(usize, @intCast(i)),
-        else => return error.TypeError,
+        .integer => |i| if (i < 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "repeat count must be non-negative, got {d}", .{i}) else @as(usize, @intCast(i)),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "repeat expects integer count, got {s}", .{@tagName(args[0])}),
     };
     if (n > 1_000_000) return error.OutOfMemory;
 
@@ -102,7 +103,7 @@ pub fn repeatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (contains? coll key) — true if key is present in coll.
 /// For maps: key lookup. For sets: membership. For vectors: index in range.
 pub fn containsFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to contains?", .{args.len});
     return switch (args[0]) {
         .map => |m| Value{ .boolean = m.get(args[1]) != null },
         .set => |s| Value{ .boolean = s.contains(args[1]) },
@@ -111,39 +112,39 @@ pub fn containsFn(_: Allocator, args: []const Value) anyerror!Value {
             else => Value{ .boolean = false },
         },
         .nil => Value{ .boolean = false },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "contains? not supported on {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (key e) — returns the key of the map entry (vector pair).
 pub fn keyFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to key", .{args.len});
     const vec = switch (args[0]) {
         .vector => |v| v,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "key expects a map entry (vector), got {s}", .{@tagName(args[0])}),
     };
-    if (vec.items.len != 2) return error.IllegalArgument;
+    if (vec.items.len != 2) return err.setErrorFmt(.eval, .value_error, .{}, "key expects a 2-element map entry, got {d} elements", .{vec.items.len});
     return vec.items[0];
 }
 
 /// (val e) — returns the val of the map entry (vector pair).
 pub fn valFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to val", .{args.len});
     const vec = switch (args[0]) {
         .vector => |v| v,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "val expects a map entry (vector), got {s}", .{@tagName(args[0])}),
     };
-    if (vec.items.len != 2) return error.IllegalArgument;
+    if (vec.items.len != 2) return err.setErrorFmt(.eval, .value_error, .{}, "val expects a 2-element map entry, got {d} elements", .{vec.items.len});
     return vec.items[1];
 }
 
 /// (keys map) — returns a list of the map's keys.
 pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keys", .{args.len});
     if (args[0] == .nil) return Value.nil;
     const m = switch (args[0]) {
         .map => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "keys expects a map, got {s}", .{@tagName(args[0])}),
     };
     const n = m.count();
     if (n == 0) return Value.nil;
@@ -159,11 +160,11 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (vals map) — returns a list of the map's values.
 pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vals", .{args.len});
     if (args[0] == .nil) return Value.nil;
     const m = switch (args[0]) {
         .map => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "vals expects a map, got {s}", .{@tagName(args[0])}),
     };
     const n = m.count();
     if (n == 0) return Value.nil;
@@ -181,7 +182,7 @@ fn toFloat(v: Value) !f64 {
     return switch (v) {
         .integer => |i| @floatFromInt(i),
         .float => |f| f,
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v)}),
     };
 }
 

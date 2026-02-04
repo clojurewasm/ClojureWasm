@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE2b (Collections + Sequences error messages)
+- Next task: BE2c (Strings error messages)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -24,18 +24,19 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-Write task design here at iteration start.
-On next task, move this content to Previous Task below.
+BE2c: Add descriptive error messages to string builtins
+(strings.zig, clj_string.zig — ~63 sites). Migrate IndexOutOfBounds →
+IndexError, IllegalState → ValueError. After this + BE2d, remove legacy
+tags from VMError/TreeWalkError.
 
 ## Previous Task
 
-BE2a completed: Added descriptive error messages to core builtins
-(arithmetic.zig, numeric.zig, predicates.zig — ~85 sites). Consolidated
-DivisionByZero into ArithmeticError (removed from VMError/TreeWalkError).
-Updated VM/TreeWalk createRuntimeException to prefer threadlocal message.
-Error messages now include function name and type info, e.g.
-"Wrong number of args (0) passed to -", "Cannot cast string to number",
-"Divide by zero".
+BE2b completed: Added descriptive error messages to collections.zig
+(~88 sites) and sequences.zig (~15 sites). Migrated IndexOutOfBounds →
+IndexError (.index_error), IllegalState → ValueError (.value_error).
+Added IndexError/ValueError to VMError/TreeWalkError. Legacy tags
+(IndexOutOfBounds, IllegalState) kept temporarily for unmigrated files
+(strings.zig, var.zig). Both backends verified with E2E tests.
 
 ## Handover Notes
 
@@ -46,8 +47,10 @@ Notes that persist across sessions.
 - Phase BE: Error System Overhaul
   - BE1: Done — threadlocal + reportError() + showSourceContext()
   - BE2a: Done — core builtins (arithmetic, numeric, predicates); DivisionByZero removed
-  - BE2b-d: Next — collections, strings, other builtins (~260 sites remaining)
-  - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig
+  - BE2b: Done — collections + sequences; IndexOutOfBounds→IndexError, IllegalState→ValueError
+  - BE2c-d: Next — strings, other builtins (~174 sites remaining)
+  - Legacy error tags: IndexOutOfBounds/IllegalState in VMError/TreeWalkError — remove after BE2d migrates all files
+  - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces.
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
   - Display: `reportError()` in main.zig, babashka-style format
