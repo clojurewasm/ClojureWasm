@@ -28,7 +28,6 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 ## Autonomous Workflow
 
 **Default mode: Continuous autonomous execution.**
-Use `/next` for single task, `/continue` for explicit loop start.
 After session resume, continue automatically from where you left off.
 
 ### Loop: Orient → Execute → Commit → Repeat
