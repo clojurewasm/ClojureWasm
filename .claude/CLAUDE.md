@@ -58,7 +58,8 @@ Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 1. Run **Commit Gate Checklist** (below)
 2. Single git commit
 3. Update memo.md: advance Current State and Task Queue
-4. **Loop back to Orient** — do NOT stop
+4. **Immediately loop back to Orient** — do NOT stop, do NOT summarize,
+   do NOT ask for confirmation. The next task starts now.
 
 ### No-Workaround Rule (Phase B/C)
 
@@ -89,11 +90,22 @@ When working on test files under test/upstream/:
 
 ### When to Stop
 
+**Current goal: Complete through Phase C (upstream test porting).**
+Do NOT stop between tasks, between phases, or at phase boundaries.
+Phase BE → Phase B → Phase C is one continuous run.
+
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- Task Queue empty AND next phase undefined in `roadmap.md`
+- **Phase C is complete** (all upstream test files ported and verified)
+
+Do NOT stop for:
+
+- Task Queue becoming empty (plan next phase and continue)
+- Phase boundary crossings (BE→B→C are continuous)
+- Session context getting large (compress and continue)
+- "Good stopping points" — there are none until Phase C is done
 
 When in doubt, **continue** — pick the most reasonable option and proceed.
 
