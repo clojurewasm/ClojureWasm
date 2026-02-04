@@ -28,13 +28,14 @@ const misc_mod = @import("misc.zig");
 const clj_string_mod = @import("clj_string.zig");
 const multimethods_mod = @import("multimethods.zig");
 const file_io_mod = @import("file_io.zig");
+const system_mod = @import("system.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ file_io_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ file_io_mod.builtins ++ system_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -114,8 +115,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // Was 179, +1 (read-line)
-    try std.testing.expectEqual(180, builtin_count);
+    // Was 180, +4 (__nano-time, __current-time-millis, __getenv, __exit)
+    try std.testing.expectEqual(184, builtin_count);
 }
 
 test "comptime lookup finds +" {

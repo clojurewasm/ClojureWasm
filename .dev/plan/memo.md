@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 17 (IO / Print Functions)
-- Current task: T17.5
+- Current task: (none)
 - Task file: N/A
-- Last completed: T17.4 — read-line (stdin input)
+- Last completed: T17.6 — System functions (**nano-time, **current-time-millis, **getenv, **exit)
 - Blockers: none
-- Next: T17.5 — Port printer.clj (partial)
+- Next: Phase 17 complete — transition to Phase 17.5 (Infrastructure Fix)
 
 ## Current Phase: 17
 

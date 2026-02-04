@@ -79,10 +79,10 @@ Organized based on discussion. Includes both done and todo items.
 
 | Java Syntax                  | Internal Function         | Status | Note                        |
 | ---------------------------- | ------------------------- | ------ | --------------------------- |
-| `(System/nanoTime)`          | `(__nano-time)`           | todo   | Zig std.time.nanoTimestamp  |
-| `(System/currentTimeMillis)` | `(__current-time-millis)` | todo   | Zig std.time.milliTimestamp |
-| `(System/getenv k)`          | `(__getenv k)`            | todo   | Zig std.process.getEnvMap   |
-| `(System/exit n)`            | `(__exit n)`              | todo   | Zig std.process.exit        |
+| `(System/nanoTime)`          | `(__nano-time)`           | done   | Zig std.time.nanoTimestamp  |
+| `(System/currentTimeMillis)` | `(__current-time-millis)` | done   | Zig std.time.milliTimestamp |
+| `(System/getenv k)`          | `(__getenv k)`            | done   | Zig std.posix.getenv        |
+| `(System/exit n)`            | `(__exit n)`              | done   | Zig std.process.exit        |
 
 ### Math/ Methods
 
