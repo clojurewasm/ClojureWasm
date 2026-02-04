@@ -364,7 +364,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 /// Routes by Fn.kind: treewalk closures go to TreeWalk, bytecode closures
 /// go to a new VM instance, builtin_fn is called directly.
 ///
-/// This replaces 5 separate dispatch mechanisms (D34/D36/T10.4):
+/// This replaces 5 separate dispatch mechanisms (D36/T10.4):
 ///   vm.zig, tree_walk.zig, atom.zig, value.zig, analyzer.zig
 /// all import bootstrap.callFnVal directly (no more callback wiring).
 pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {

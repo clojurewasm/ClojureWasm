@@ -21,8 +21,8 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 ## Critical Rules
 
 - **One task = one commit**. Never batch multiple tasks.
-- **Design decisions → `.dev/notes/decisions.md` immediately** (D## entry).
-- **D6 exceptions**: TreeWalk-only features need both a D## entry AND an F## in `.dev/checklist.md`.
+- **Architectural decisions only** → `.dev/notes/decisions.md` (D## entry).
+  Bug fixes and one-time migrations do NOT need D## entries.
 - **Update `.dev/checklist.md`** when deferred items are resolved or added.
 
 ## Autonomous Workflow
@@ -77,7 +77,7 @@ When in doubt, **continue** — pick the most reasonable option and proceed.
 
 Run before every commit:
 
-1. **decisions.md**: D## entry for design decisions
+1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 2. **checklist.md**: Strike resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
 4. **memo.md**: Advance task, update Technical Notes
@@ -194,20 +194,8 @@ When adding a function/macro to any `.clj` file:
 
 ### Java Interop Policy
 
-When encountering Java interop patterns (`System/`, `Math/`, `.method`, etc.):
-
-1. **Check `.dev/notes/java_interop_todo.md`** — comprehensive list of interop features
-2. **If listed as "todo"**: implement using Zig equivalent (Analyzer rewrite or builtin)
-3. **If listed as "skip"**: document why and use alternative approach
-4. **If not listed**: evaluate if Zig equivalent exists, add to list if implementable
-
-**Common patterns to handle**:
-
-- `(System/nanoTime)` → `(__nano-time)` (Analyzer rewrite)
-- `(Math/sqrt x)` → `(__sqrt x)` (Analyzer rewrite)
-- `(.getMessage e)` → `(ex-message e)` (use Clojure equivalent)
-
-**Do NOT skip** items in the todo list — attempt implementation first.
+Java interop patterns → `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
+Do NOT skip features that look JVM-specific — implement Zig equivalents first.
 
 ## Zig 0.15.2 Pitfalls
 
@@ -221,7 +209,7 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 | ----------------- | ------------------------------------ | ------------------------------------------ |
 | Zig tips/pitfalls | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
 | Impl tier guide   | `.claude/references/impl-tiers.md`   | When implementing a new function           |
-| Java interop list | `.dev/notes/java_interop_todo.md`    | When encountering System/, Math/, .method  |
+| Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | Zig 0.15.2 guide  | Beta's `docs/reference/zig_guide.md` | When Zig 0.15 API is unclear               |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

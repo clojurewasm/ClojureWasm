@@ -1,9 +1,7 @@
 # Design Decisions
 
-Key design decisions for ClojureWasm production version.
-Each decision references .dev/future.md sections and Beta lessons.
-
-These will eventually be promoted to formal ADRs in `docs/adr/` at release time.
+Architectural decisions for ClojureWasm. Append-only; reference by searching `## D##`.
+Only architectural decisions (new Value variant, subsystem design, etc.) — not bug fixes.
 
 ---
 
@@ -298,21 +296,6 @@ native/ and wasm_rt/ at build time. common/ holds all shared code.
 
 ---
 
-## D8: VarKind Classification
-
-**Status**: **Superseded by D31** — VarKind enum removed. Layer tracking
-moved to `note` field in vars.yaml (free text).
-
-**Original decision**: Every Var was tagged with a VarKind indicating its
-dependency layer (special_form, vm_intrinsic, runtime_fn, core_fn,
-core_macro, user_fn, user_macro).
-
-**Why superseded**: VarKind was only used in tests, not in production
-code paths. The same information is captured by existing Var metadata
-fields (macro, dynamic) and vars.yaml `note`.
-
----
-
 ## D9: Collection Implementation — Array-Based Initially
 
 **Decision**: Start with array-based collections (like Beta), add persistent
@@ -435,7 +418,8 @@ shared opcodes. Category ranges are preserved identically.
 0x10-0x1F  Stack        pop=0x10, dup=0x11
 0x20-0x2F  Locals       local_load=0x20, local_store=0x21
 0x30-0x3F  Upvalues     upvalue_load=0x30, upvalue_store=0x31
-0x40-0x4F  Vars         var_load=0x40, var_load_dynamic=0x41, def=0x42
+0x40-0x4F  Vars         var_load=0x40, var_load_dynamic=0x41, def=0x42, def_macro=0x43,
+                        defmulti=0x44, defmethod=0x45, lazy_seq=0x46
 0x50-0x5F  Control      jump=0x50, jump_if_false=0x51, jump_back=0x54
 0x60-0x6F  Functions    call=0x60, tail_call=0x65, ret=0x67, closure=0x68
 0x70-0x7F  Loop/recur   recur=0x71
@@ -486,73 +470,14 @@ This is simpler and avoids the signed/unsigned confusion.
 
 ---
 
-## D14: Phase 3a Roadmap Revision — VM Parity Block
-
-**Decision**: Restructure Phase 3a to address VM implementation gaps before
-adding builtins. Delete redundant T3.2 (comparison intrinsics), add VM parity
-tasks, and reorder BuiltinDef registry earlier.
-
-**Problem** (discovered after T3.1 completion):
-
-1. T3.2 (comparison intrinsics) was redundant — =, not=, <, >, <=, >= were
-   all implemented as part of T3.1 alongside arithmetic intrinsics.
-2. VM coverage was only 55% (21/38 opcodes). The Compiler can emit bytecode
-   for all 13 Node types, but the VM cannot execute many of them.
-3. Non-intrinsic builtins (first, rest, nil?, etc.) rely on `var_load` + `call`,
-   but `var_load` was not implemented in the VM — D6 rule violation risk.
-4. BuiltinDef registry (T3.7) was positioned after builtin implementations,
-   but it is the registration infrastructure they depend on.
-
-**Changes**:
-
-| Action  | Task                      | Detail                                              |
-| ------- | ------------------------- | --------------------------------------------------- |
-| DELETE  | T3.2 (old)                | Comparison intrinsics — already done in T3.1        |
-| ADD     | T3.2 (new)                | VM var/def opcodes: var_load, var_load_dynamic, def |
-| ADD     | T3.3 (new)                | VM recur + tail_call opcodes                        |
-| ADD     | T3.4 (new)                | VM collection + exception opcodes                   |
-| REORDER | T3.7 -> T3.5              | BuiltinDef registry moved before builtins           |
-| RENUM   | T3.3-T3.6 -> T3.6-T3.9    | Remaining builtins renumbered                       |
-| RENUM   | T3.8-T3.15 -> T3.10-T3.17 | Phases 3b, 3c shifted by +2                         |
-
-**upvalue_load/upvalue_store note**: These opcodes exist in opcodes.zig but
-are unused — the VM uses closure_bindings (stack injection) instead, and
-captured variables are accessed via local_load. Removal is out of scope for
-this revision but noted as future cleanup.
-
-**Total task count**: 37 -> 39 (added 3, deleted 1)
-
----
-
-## D8: swap! — Builtin-only Function Dispatch (T3.9)
-
-**Decision**: `swap!` currently only supports calling `builtin_fn` values.
-Calling user-defined `fn_val` (closures) returns TypeError.
-
-**Rationale**:
-
-- BuiltinFn signature is `fn(Allocator, []const Value) anyerror!Value` — no
-  access to the evaluator context (VM or TreeWalk)
-- Calling fn_val requires the VM to push a call frame or TreeWalk to invoke
-  `runCall`, which BuiltinFn cannot do
-- Beta solved this with a global `defs.call_fn` function pointer, but that
-  couples builtins to the evaluator and is not compatible with instantiated VM
-
-**Future path** (Phase 3b+):
-
-- When higher-order functions (map, filter, reduce) are implemented in core.clj,
-  they will be Clojure-level functions that the compiler can emit call opcodes for
-- For swap! with user-defined functions, options:
-  (a) Add EvaluatorContext parameter to BuiltinFn (breaking change)
-  (b) Compile swap! as a special form (compiler handles the call)
-  (c) Implement swap! in core.clj using lower-level atom primitives
-
----
-
 ## D15: Macro Expansion Architecture (T3.10)
 
+**Note**: Partially superseded by D36. `macro_eval_fn` callback and
+`initWithMacroEval` removed. Analyzer now imports `bootstrap.callFnVal` directly.
+The `env: ?*Env` field and macro expansion via TreeWalk bridge remain valid.
+
 **Decision**: Macro expansion happens in the Analyzer via Env lookup + TreeWalk
-execution bridge. fn_val macros are executed through a `macro_eval_fn` callback.
+execution bridge. fn_val macros are executed through `bootstrap.callFnVal`.
 
 **Key design choices**:
 
@@ -815,20 +740,6 @@ Analyzer is more straightforward than generating Forms in a core.clj macro.
 - `:when test` -> `(if test (list body) (list))` + flatten via apply/concat
 - `:let [binds]` -> `(let [binds] body)` wrapping
 
-## D22: TreeWalk callClosure must save/restore recur state
-
-**Bug**: Nested fn calls that internally use loop/recur (e.g., `map`
-calling a fn that itself calls `map`) corrupted the outer loop's
-`recur_args` buffer. The outer recur partially writes args, then a nested
-fn call's inner loop overwrites `recur_args[0..N]`. When the outer recur
-resumes, its earlier arg values are gone.
-
-**Fix**: `callClosure` now saves/restores `recur_pending`, `recur_arg_count`,
-and the entire `recur_args` array, same as it already did for `locals`.
-
-**Impact**: This was blocking nested `map`, `reduce`, and any higher-order
-fn that uses loop/recur internally when called from within another such fn.
-
 ## D23: Protocol dispatch via type-keyed PersistentArrayMap
 
 **Decision**: Protocols use PersistentArrayMap for implementation dispatch.
@@ -895,7 +806,7 @@ to track performance regressions and guide optimization.
 - `clj_warm_bench.clj` for JIT-warmed JVM comparison
 - `.clj` files shared between ClojureWasm, Clojure JVM, and Babashka runners
 - `range` not available in ClojureWasm, so all benchmarks use loop/recur
-- `swap!` limited to builtins (D8), so atom_swap uses reset!/deref pattern
+- atom_swap originally used reset!/deref pattern (swap! fn_val support added later)
 
 **Categories**: computation (4), collections (4), HOF (2), state (1)
 
@@ -909,46 +820,10 @@ hyperfine statistical measurement rather than wall-clock timing of long runs.
 
 ---
 
-## D27: Lazy Sequence Global realize_fn Callback (T7.6)
-
-**Date**: 2026-02-02
-**Context**: T7.6 — implementing lazy sequences
-
-**Problem**: LazySeq thunks need to be realized (evaluated) by builtins like
-`first`, `rest`, `seq`. But builtins are `fn(Allocator, []Value) !Value` —
-they have no access to the evaluator (TreeWalk/VM). How can a builtin
-trigger evaluation of a zero-arg closure?
-
-**Decision**: Use a module-level `pub var realize_fn` in value.zig. The host
-(bootstrap.zig) sets this to `macroEvalBridge` before evaluation begins.
-Builtins call `lazy_seq.realize(allocator)` which delegates to `realize_fn`.
-
-**D3 tension**: This introduces a global mutable variable, which conflicts
-with D3 (no threadlocal/global state). The precedent is D15's `macro_eval_env`
-module-level variable, which was accepted for single-threaded execution.
-
-**Alternatives considered**:
-
-1. **Pass evaluator context to builtins**: Would require changing BuiltinFn
-   signature to include EvaluatorContext. Invasive change affecting all 40+
-   builtins, and creates coupling between common/ and native/.
-2. **Realize in evaluator only**: TreeWalk/VM would realize before calling
-   builtins. Would require wrapping every builtin call site with realization
-   logic, and breaks composition (a builtin returning a lazy seq to another
-   builtin wouldn't realize).
-3. **Eager realization at cons boundary**: Defeats the purpose of laziness.
-
-**Consequence**: The global callback works for single-threaded use. For future
-multi-VM embedding (D3), realize_fn would need to be per-Env or per-context.
-This is consistent with the D15 approach and can be refactored when needed.
-
-**Additional design**: Added `Cons` value type (linked cell with first+rest)
-to preserve laziness when `cons` is called with a lazy-seq rest. Without this,
-`consFn` would realize the entire lazy chain eagerly.
-
----
-
 ## D28: VM Deferred for defmulti, defmethod, lazy-seq (T7.4, T7.6)
+
+**Status**: **Superseded** — defmulti/defmethod implemented in VM (D60),
+lazy-seq implemented in VM (D61). All three features now work on both backends.
 
 **Date**: 2026-02-02
 **Context**: T7.4 (Multimethod) and T7.6 (Lazy sequences) — TreeWalk only
@@ -1084,77 +959,6 @@ Phase 10 (next var expansion). Fix foundations first, measure VM perf second.
 **Impact**: Delays var count growth temporarily but improves velocity afterward.
 All 5 items are small, focused fixes rather than architectural changes.
 
-## D33: atom.call_fn Module-Level Dispatcher (T9.5.2)
-
-**Context**: swap! needed fn_val support but BuiltinFn has no evaluator context.
-
-**Decision**: Added `atom.call_fn` module-level function pointer, set by
-`setupMacroEnv` alongside `macro_eval_env` and `realize_fn`. Same D3
-known-exception pattern (single-thread only).
-
-**Alternatives considered**:
-
-- (a) Add evaluator context to BuiltinFn signature — breaking change to all builtins
-- (b) Make swap! a special form — overkill, adds AST complexity
-- (c) Redefine swap! in core.clj using atom primitives — viable but deferred
-
-**Impact**: Minimal. One more module-level var in the D3 exception set.
-Pattern can extend to apply, merge-with, sort-by if needed.
-
-## D34: Bidirectional VM↔TreeWalk fn_val Dispatch (T10.2)
-
-**Date**: 2026-02-02
-**Context**: VM-compiled code calls core.clj HOFs (map, filter, reduce) which are
-TreeWalk closures. These HOFs call back the VM-compiled callback fn, but TreeWalk
-had no mechanism to execute bytecode fn_vals → segfault.
-
-**Decision**: Symmetric dispatcher callbacks in both directions:
-
-- VM → TreeWalk: `fn_val_dispatcher` → `macroEvalBridge` (existing since Phase 2)
-- TreeWalk → VM: `bytecode_dispatcher` → `bytecodeCallBridge` (new)
-
-`bytecodeCallBridge` creates a temporary VM, pushes fn+args onto stack, calls
-`performCall` + `execute`, and returns the result. VM's `push`, `performCall`,
-and `execute` were made public to support this.
-
-**Alternatives considered**:
-
-- (a) Compile core.clj with VM compiler so everything is bytecode — too large a change
-- (b) Create temporary VM in TreeWalk directly — couples TreeWalk to VM internals
-- (c) **Chosen**: Callback-based dispatch — maintains clean separation, symmetric with existing pattern
-
-**Side fix**: Named fn self-reference in `callClosure` was creating fn_val with
-default `kind=.bytecode` instead of `.treewalk`, which was harmless before but
-broke with the new kind check. Fixed by explicitly setting `.kind = .treewalk`.
-
-**Impact**: Resolves F8. All 11 benchmarks now work with VM backend.
-
-**Follow-up (T10.4)**: The callback-based approach works but creates a 5th
-dispatch mechanism. fn_val dispatch is now scattered across vm.zig (fn_val_dispatcher),
-tree_walk.zig (bytecode_dispatcher), atom.zig (call_fn), value.zig (realize_fn),
-and analyzer.zig (macroEvalBridge). All do the same thing: call an fn_val with args.
-T10.4 will unify these into a single `callFnVal` entry point and remove Fn.kind
-default footgun.
-
-## D35: Nested fn compilation use-after-free fix
-
-**Context**: T10.3 (VM benchmark re-run). sieve benchmark crashed with
-"switch on corrupt value" when running with VM backend.
-
-**Problem**: `compileArity` in compiler.zig creates a child `fn_compiler` for each
-function body. If the body contains nested fns (e.g., `(fn [x] ...)`), those nested
-fns' FnProto and Fn objects are allocated by `fn_compiler`. The parent copies
-`fn_compiler.chunk.constants` (which contains `.fn_val` pointers to those objects),
-then `fn_compiler.deinit()` frees the objects — use-after-free.
-
-**Fix**: Before `fn_compiler.deinit()`, call `detachFnAllocations()` on the child
-compiler and transfer all nested fn_protos/fn_objects to the parent compiler's
-tracking lists. The parent (or `evalStringVM`) then manages their lifetime.
-
-**File**: `src/common/bytecode/compiler.zig` (compileArity)
-
-**Impact**: Fixes all VM benchmarks involving defn + nested closures (sieve, etc.).
-
 ## D36: Unified fn_val dispatch via callFnVal (T10.4)
 
 **Context**: T10.4 (fn_val dispatch unification). Follow-up to D34.
@@ -1267,37 +1071,6 @@ in the current Env and returns a constant node with `.var_ref` value.
    how var_ref works, but unnecessary since Analyzer already has Env access.
 2. **Chosen**: constant node with .var_ref value — simpler, works with both
    TreeWalk and VM (constant load opcode handles it automatically).
-
----
-
-## D40: VM bytecodeCallBridge — No deinit (T11.3)
-
-**Context**: When VM executes a bytecode closure via bytecodeCallBridge
-(e.g., TreeWalk calls a bytecode fn_val during trampoline execution),
-the VM creates new Fn objects (closures) that may be returned as values.
-
-**Problem**: `defer vm.deinit()` destroys these Fn objects, causing
-use-after-free when the caller tries to use the returned fn_val.
-
-**Decision**: bytecodeCallBridge does NOT deinit the VM. Memory is owned
-by the arena allocator and freed in bulk. This matches treewalkCallBridge
-which already skips deinit for the same reason.
-
-Additionally, evalStringVM detaches VM-created Fn objects into a retained
-list (via VM.detachFnAllocations) so closures stored in Vars survive
-across form boundaries within the same evalStringVM call.
-
----
-
-## D41: apply fn_val Dispatch via callFnVal (T11.3)
-
-**Context**: The `apply` builtin only handled `.builtin_fn` callees,
-returning TypeError for closures (`.fn_val`).
-
-**Decision**: Route `.fn_val` through `bootstrap.callFnVal`, which
-handles both bytecode and treewalk closures via the appropriate bridge.
-This is the same dispatch mechanism used by VM performCall and TreeWalk
-callValue.
 
 ---
 

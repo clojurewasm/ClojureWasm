@@ -74,8 +74,7 @@ Policies that persist across phases. Do not delete.
 
 | File                               | Content                     |
 | ---------------------------------- | --------------------------- |
-| `.dev/notes/test_file_priority.md` | Test file priority list     |
-| `.dev/notes/java_interop_todo.md`  | Java interop implementation |
+| `.claude/rules/java-interop.md`    | Java interop patterns/policy (auto-loads) |
 | `.dev/status/vars.yaml`            | Var implementation status   |
 | `.dev/checklist.md`                | F## deferred items          |
 | `.dev/notes/decisions.md`          | D## design decisions        |

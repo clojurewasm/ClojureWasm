@@ -741,6 +741,8 @@ vars:
     vreset\!:
       status: done
       note: builtin (upstream is pure clj)
+    swap\!:
+      note: builtin
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}
