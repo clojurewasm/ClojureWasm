@@ -10,6 +10,7 @@ const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Env = @import("../env.zig").Env;
+const err = @import("../error.zig");
 
 /// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
 /// Module-level (D3 known exception, single-thread only).
@@ -20,7 +21,7 @@ pub var current_env: ?*Env = null;
 // ============================================================
 
 fn predicate(args: []const Value, comptime check: fn (Value) bool) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to predicate", .{args.len});
     return Value{ .boolean = check(args[0]) };
 }
 
@@ -198,13 +199,13 @@ pub fn oddPred(_: Allocator, args: []const Value) anyerror!Value {
 
 // not is not a type predicate but a core function
 pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not", .{args.len});
     return Value{ .boolean = !args[0].isTruthy() };
 }
 
 /// (type x) — returns a keyword indicating the runtime type of x.
 pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to type", .{args.len});
     const name: []const u8 = switch (args[0]) {
         .nil => "nil",
         .boolean => "boolean",
@@ -236,8 +237,8 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (bound? sym) — true if the symbol resolves to a Var with a binding.
 /// Takes a quoted symbol, resolves in current namespace.
 pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .symbol) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bound?", .{args.len});
+    if (args[0] != .symbol) return err.setErrorFmt(.eval, .type_error, .{}, "bound? expects a symbol, got {s}", .{@tagName(args[0])});
     const sym_name = args[0].symbol.name;
     const env = current_env orelse return Value{ .boolean = false };
     const ns = env.current_ns orelse return Value{ .boolean = false };
@@ -252,29 +253,29 @@ pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (var? x) — true if x is a Var reference.
 pub fn varPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var?", .{args.len});
     return Value{ .boolean = args[0] == .var_ref };
 }
 
 /// (var-get v) — returns the value of the Var.
 pub fn varGetFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .var_ref) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-get", .{args.len});
+    if (args[0] != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-get expects a Var, got {s}", .{@tagName(args[0])});
     return args[0].var_ref.deref();
 }
 
 /// (var-set v val) — sets the root binding of the Var. Returns val.
 pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .var_ref) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-set", .{args.len});
+    if (args[0] != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-set expects a Var, got {s}", .{@tagName(args[0])});
     args[0].var_ref.bindRoot(args[1]);
     return args[1];
 }
 
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
 pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .protocol) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to satisfies?", .{args.len});
+    if (args[0] != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "satisfies? expects a protocol, got {s}", .{@tagName(args[0])});
     const protocol = args[0].protocol;
     const type_key: Value = .{ .string = switch (args[1]) {
         .nil => "nil",
@@ -310,7 +311,7 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (hash x) — returns the hash code of x.
 pub fn hashFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash", .{args.len});
     return Value{ .integer = computeHash(args[0]) };
 }
 
@@ -352,7 +353,7 @@ fn stringHash(s: []const u8) i64 {
 
 /// (identical? x y) — tests if x and y are the same object.
 pub fn identicalPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to identical?", .{args.len});
     const a = args[0];
     const b = args[1];
 
@@ -389,11 +390,11 @@ fn eqlOptNs(a: ?[]const u8, b: ?[]const u8) bool {
 /// (== x y & more) — numeric equality. Returns true if all nums are numerically equal.
 /// All arguments must be numbers; otherwise throws TypeError.
 pub fn numericEqFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return error.ArityError;
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ==", .{args.len});
     if (args.len == 1) return Value{ .boolean = true };
 
     for (args) |a| {
-        if (a != .integer and a != .float) return error.TypeError;
+        if (a != .integer and a != .float) return err.setErrorFmt(.eval, .type_error, .{}, "== expects a number, got {s}", .{@tagName(a)});
     }
 
     const first: f64 = if (args[0] == .integer) @floatFromInt(args[0].integer) else args[0].float;
@@ -412,7 +413,7 @@ const Reduced = value_mod.Reduced;
 
 /// (reduced x) — wraps x so that reduce will terminate with the value x.
 pub fn reducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduced", .{args.len});
     const r = try allocator.create(Reduced);
     r.* = .{ .value = args[0] };
     return Value{ .reduced = r };
@@ -420,13 +421,13 @@ pub fn reducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (reduced? x) — returns true if x is the result of a call to reduced.
 pub fn isReducedPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduced?", .{args.len});
     return Value{ .boolean = args[0] == .reduced };
 }
 
 /// (unreduced x) — if x is reduced, returns the value that was wrapped, else returns x.
 pub fn unreducedFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unreduced", .{args.len});
     return switch (args[0]) {
         .reduced => |r| r.value,
         else => args[0],
@@ -435,7 +436,7 @@ pub fn unreducedFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (ensure-reduced x) — if x is already reduced, returns it, else wraps in reduced.
 pub fn ensureReducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ensure-reduced", .{args.len});
     if (args[0] == .reduced) return args[0];
     const r = try allocator.create(Reduced);
     r.* = .{ .value = args[0] };
@@ -448,7 +449,7 @@ pub fn ensureReducedFn(allocator: Allocator, args: []const Value) anyerror!Value
 
 /// (seqable? x) — Returns true if (seq x) would succeed.
 fn seqablePred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to seqable?", .{args.len});
     return Value{ .boolean = switch (args[0]) {
         .nil, .list, .vector, .map, .set, .string, .cons, .lazy_seq => true,
         else => false,
@@ -457,7 +458,7 @@ fn seqablePred(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (counted? x) — Returns true if (count x) is O(1).
 fn countedPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to counted?", .{args.len});
     return Value{ .boolean = switch (args[0]) {
         .list, .vector, .map, .set, .string => true,
         else => false,
@@ -466,7 +467,7 @@ fn countedPred(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (indexed? x) — Returns true if coll supports nth in O(1).
 fn indexedPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to indexed?", .{args.len});
     return Value{ .boolean = switch (args[0]) {
         .vector, .string => true,
         else => false,
@@ -475,51 +476,51 @@ fn indexedPred(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (reversible? x) — Returns true if coll supports rseq.
 fn reversiblePred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reversible?", .{args.len});
     return Value{ .boolean = args[0] == .vector };
 }
 
 /// (sorted? x) — Returns true if coll implements Sorted.
 fn sortedPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to sorted?", .{args.len});
     // No sorted collections in ClojureWasm yet
     return Value{ .boolean = false };
 }
 
 /// (record? x) — Returns true if x is a record.
 fn recordPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to record?", .{args.len});
     // No defrecord in ClojureWasm yet
     return Value{ .boolean = false };
 }
 
 /// (ratio? x) — Returns true if x is a Ratio.
 fn ratioPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ratio?", .{args.len});
     // No ratio type in ClojureWasm
     return Value{ .boolean = false };
 }
 
 /// (rational? x) — Returns true if x is a rational number.
 fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rational?", .{args.len});
     // integer is rational; no ratio type so only integer qualifies
     return Value{ .boolean = args[0] == .integer };
 }
 
 /// (decimal? x) — Returns true if x is a BigDecimal.
 fn decimalPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to decimal?", .{args.len});
     // No BigDecimal in ClojureWasm
     return Value{ .boolean = false };
 }
 
 /// (bounded-count n coll) — If coll is counted? returns its count, else counts up to n.
 fn boundedCountFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bounded-count", .{args.len});
     const limit = switch (args[0]) {
-        .integer => |i| if (i >= 0) @as(usize, @intCast(i)) else return error.ArithmeticError,
-        else => return error.TypeError,
+        .integer => |i| if (i >= 0) @as(usize, @intCast(i)) else return err.setErrorFmt(.eval, .arithmetic_error, .{}, "bounded-count limit must be non-negative, got {d}", .{i}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "bounded-count expects integer limit, got {s}", .{@tagName(args[0])}),
     };
     const coll = args[1];
     // Counted collections: return count directly
@@ -546,14 +547,14 @@ fn boundedCountFn(_: Allocator, args: []const Value) anyerror!Value {
             }
             break :blk n;
         },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "bounded-count expects a collection, got {s}", .{@tagName(coll)}),
     };
     return Value{ .integer = @intCast(@min(count, limit)) };
 }
 
 /// (special-symbol? s) — Returns true if s names a special form.
 fn specialSymbolPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to special-symbol?", .{args.len});
     const name = switch (args[0]) {
         .symbol => |sym| sym.name,
         else => return Value{ .boolean = false },

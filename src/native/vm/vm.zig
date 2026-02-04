@@ -26,6 +26,8 @@ const arith = @import("../../common/builtin/arithmetic.zig");
 const bootstrap = @import("../../common/bootstrap.zig");
 
 /// VM execution errors.
+const err_mod = @import("../../common/error.zig");
+
 pub const VMError = error{
     StackOverflow,
     StackUnderflow,
@@ -34,7 +36,6 @@ pub const VMError = error{
     UndefinedVar,
     OutOfMemory,
     InvalidInstruction,
-    DivisionByZero,
     Overflow,
     UserException,
     ArithmeticError,
@@ -466,10 +467,10 @@ pub const VM = struct {
     }
 
     /// Check if a VMError is a user-catchable runtime error.
-    fn isUserError(err: VMError) bool {
-        return switch (err) {
+    fn isUserError(e: VMError) bool {
+        return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
-            error.DivisionByZero, error.Overflow, error.UserException,
+            error.Overflow, error.UserException,
             error.ArithmeticError => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
             error.InvalidInstruction => false,
@@ -477,14 +478,14 @@ pub const VM = struct {
     }
 
     /// Create an ex-info style exception Value from a Zig error.
-    fn createRuntimeException(self: *VM, err: VMError) VMError!Value {
-        const msg: []const u8 = switch (err) {
+    fn createRuntimeException(self: *VM, e: VMError) VMError!Value {
+        // Prefer threadlocal error message (set by builtins via err.setErrorFmt)
+        const msg: []const u8 = if (err_mod.getLastError()) |info| info.message else switch (e) {
             error.TypeError => "Type error",
             error.ArityError => "Wrong number of arguments",
-            error.UndefinedVar => "Var not found",
-            error.DivisionByZero => "Divide by zero",
             error.Overflow => "Arithmetic overflow",
             error.ArithmeticError => "Arithmetic error",
+            error.UndefinedVar => "Var not found",
             error.UserException => "Exception",
             else => "Runtime error",
         };
@@ -782,12 +783,12 @@ pub const VM = struct {
         try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
     }
 
-    /// Binary op that may produce DivisionByZero (div, mod, rem).
+    /// Binary op that may produce ArithmeticError (div, mod, rem).
     fn vmBinaryDivLike(self: *VM, comptime func: fn (Value, Value) anyerror!Value) VMError!void {
         const b = self.pop();
         const a = self.pop();
         try self.push(func(a, b) catch |e| switch (e) {
-            error.DivisionByZero => return error.DivisionByZero,
+            error.ArithmeticError => return error.ArithmeticError,
             else => return error.TypeError,
         });
     }

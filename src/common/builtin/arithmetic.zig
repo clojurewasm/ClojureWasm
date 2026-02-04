@@ -10,6 +10,7 @@ const Allocator = std.mem.Allocator;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
+const err = @import("../error.zig");
 
 /// Arithmetic and comparison intrinsics registered in clojure.core.
 pub const builtins = [_]BuiltinDef{
@@ -105,7 +106,7 @@ pub fn toFloat(v: Value) !f64 {
     return switch (v) {
         .integer => |i| @floatFromInt(i),
         .float => |f| f,
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v)}),
     };
 }
 
@@ -136,7 +137,7 @@ fn addFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn subFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return error.ArityError;
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to -", .{args.len});
     if (args.len == 1) return binaryArith(.{ .integer = 0 }, args[0], .sub);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryArith(result, arg, .sub);
@@ -151,7 +152,7 @@ fn mulFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn divFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return error.ArityError;
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to /", .{args.len});
     if (args.len == 1) return binaryDiv(.{ .integer = 1 }, args[0]);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryDiv(result, arg);
@@ -159,18 +160,18 @@ fn divFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn modFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to mod", .{args.len});
     return binaryMod(args[0], args[1]);
 }
 
 fn remFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rem", .{args.len});
     return binaryRem(args[0], args[1]);
 }
 
 fn eqFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = true };
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to =", .{args.len});
     for (args[1..]) |arg| {
         if (!args[0].eql(arg)) return .{ .boolean = false };
     }
@@ -179,7 +180,7 @@ fn eqFn(_: Allocator, args: []const Value) anyerror!Value {
 
 fn neqFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = false };
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not=", .{args.len});
     return .{ .boolean = !args[0].eql(args[1]) };
 }
 
@@ -187,29 +188,29 @@ pub fn binaryDiv(a: Value, b: Value) !Value {
     const fa = try toFloat(a);
     const fb = try toFloat(b);
     if (std.math.isNan(fa) or std.math.isNan(fb)) return .{ .float = std.math.nan(f64) };
-    if (fb == 0.0) return error.DivisionByZero;
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
     return .{ .float = fa / fb };
 }
 
 pub fn binaryMod(a: Value, b: Value) !Value {
     if (a == .integer and b == .integer) {
-        if (b.integer == 0) return error.DivisionByZero;
+        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
         return .{ .integer = @mod(a.integer, b.integer) };
     }
     const fa = try toFloat(a);
     const fb = try toFloat(b);
-    if (fb == 0.0) return error.DivisionByZero;
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
     return .{ .float = @mod(fa, fb) };
 }
 
 pub fn binaryRem(a: Value, b: Value) !Value {
     if (a == .integer and b == .integer) {
-        if (b.integer == 0) return error.DivisionByZero;
+        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
         return .{ .integer = @rem(a.integer, b.integer) };
     }
     const fa = try toFloat(a);
     const fb = try toFloat(b);
-    if (fb == 0.0) return error.DivisionByZero;
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
     return .{ .float = @rem(fa, fb) };
 }
 
@@ -235,10 +236,16 @@ pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
 }
 
 fn makeCompareFn(comptime op: CompareOp) fn (Allocator, []const Value) anyerror!Value {
+    const op_name = comptime switch (op) {
+        .lt => "<",
+        .le => "<=",
+        .gt => ">",
+        .ge => ">=",
+    };
     return struct {
         fn func(_: Allocator, args: []const Value) anyerror!Value {
             if (args.len == 1) return .{ .boolean = true };
-            if (args.len < 2) return error.ArityError;
+            if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to " ++ op_name, .{args.len});
             for (args[0 .. args.len - 1], args[1..]) |a, b| {
                 if (!try compareFn(a, b, op)) return .{ .boolean = false };
             }

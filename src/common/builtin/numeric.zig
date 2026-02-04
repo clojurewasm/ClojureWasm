@@ -9,6 +9,7 @@ const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 // ============================================================
 // Implementations
@@ -16,17 +17,17 @@ const BuiltinDef = var_mod.BuiltinDef;
 
 /// (abs n) — returns the absolute value of n.
 pub fn absFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to abs", .{args.len});
     return switch (args[0]) {
         .integer => |i| Value{ .integer = if (i < 0) -i else i },
         .float => |f| Value{ .float = @abs(f) },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0])}),
     };
 }
 
 /// (max x y & more) — returns the greatest of the nums.
 pub fn maxFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.ArityError;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to max", .{args.len});
     var best = args[0];
     for (args[1..]) |a| {
         if (try compareNum(a, best) > 0) {
@@ -38,7 +39,7 @@ pub fn maxFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (min x y & more) — returns the least of the nums.
 pub fn minFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.ArityError;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to min", .{args.len});
     var best = args[0];
     for (args[1..]) |a| {
         if (try compareNum(a, best) < 0) {
@@ -50,33 +51,33 @@ pub fn minFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (quot num div) — returns the quotient of dividing num by div (truncated).
 pub fn quotFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to quot", .{args.len});
     return switch (args[0]) {
         .integer => |a| switch (args[1]) {
             .integer => |b| blk: {
-                if (b == 0) return error.ArithmeticError;
+                if (b == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
                 break :blk Value{ .integer = @divTrunc(a, b) };
             },
             .float => |b| blk: {
-                if (b == 0.0) return error.ArithmeticError;
+                if (b == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
                 const fa: f64 = @floatFromInt(a);
                 break :blk Value{ .float = @trunc(fa / b) };
             },
-            else => error.TypeError,
+            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[1])}),
         },
         .float => |a| switch (args[1]) {
             .integer => |b| blk: {
-                if (b == 0) return error.ArithmeticError;
+                if (b == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
                 const fb: f64 = @floatFromInt(b);
                 break :blk Value{ .float = @trunc(a / fb) };
             },
             .float => |b| blk: {
-                if (b == 0.0) return error.ArithmeticError;
+                if (b == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
                 break :blk Value{ .float = @trunc(a / b) };
             },
-            else => error.TypeError,
+            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[1])}),
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0])}),
     };
 }
 
@@ -90,19 +91,19 @@ pub fn setSeed(seed: u64) void {
 
 /// (rand) — returns a random float between 0 (inclusive) and 1 (exclusive).
 pub fn randFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rand", .{args.len});
     const f = prng.random().float(f64);
     return Value{ .float = f };
 }
 
 /// (rand-int n) — returns a random integer between 0 (inclusive) and n (exclusive).
 pub fn randIntFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rand-int", .{args.len});
     const n = switch (args[0]) {
         .integer => |i| i,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to integer", .{@tagName(args[0])}),
     };
-    if (n <= 0) return error.ArithmeticError;
+    if (n <= 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "rand-int argument must be positive, got {d}", .{n});
     const un: u64 = @intCast(n);
     const result = prng.random().intRangeLessThan(u64, 0, un);
     return Value{ .integer = @intCast(result) };
@@ -112,12 +113,12 @@ fn compareNum(a: Value, b: Value) !i2 {
     const fa = switch (a) {
         .integer => |i| @as(f64, @floatFromInt(i)),
         .float => |f| f,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(a)}),
     };
     const fb = switch (b) {
         .integer => |i| @as(f64, @floatFromInt(i)),
         .float => |f| f,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(b)}),
     };
     if (fa < fb) return -1;
     if (fa > fb) return 1;
@@ -131,13 +132,13 @@ fn compareNum(a: Value, b: Value) !i2 {
 fn requireInt(v: Value) !i64 {
     return switch (v) {
         .integer => |i| i,
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to integer", .{@tagName(v)}),
     };
 }
 
 /// (bit-and x y) — bitwise AND
 pub fn bitAndFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-and", .{args.len});
     const a = try requireInt(args[0]);
     const b = try requireInt(args[1]);
     return Value{ .integer = a & b };
@@ -145,7 +146,7 @@ pub fn bitAndFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (bit-or x y) — bitwise OR
 pub fn bitOrFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-or", .{args.len});
     const a = try requireInt(args[0]);
     const b = try requireInt(args[1]);
     return Value{ .integer = a | b };
@@ -153,7 +154,7 @@ pub fn bitOrFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (bit-xor x y) — bitwise XOR
 pub fn bitXorFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-xor", .{args.len});
     const a = try requireInt(args[0]);
     const b = try requireInt(args[1]);
     return Value{ .integer = a ^ b };
@@ -161,7 +162,7 @@ pub fn bitXorFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (bit-and-not x y) — bitwise AND with complement of y
 pub fn bitAndNotFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-and-not", .{args.len});
     const a = try requireInt(args[0]);
     const b = try requireInt(args[1]);
     return Value{ .integer = a & ~b };
@@ -169,37 +170,37 @@ pub fn bitAndNotFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (bit-not x) — bitwise complement
 pub fn bitNotFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-not", .{args.len});
     const a = try requireInt(args[0]);
     return Value{ .integer = ~a };
 }
 
 /// (bit-shift-left x n) — left shift
 pub fn bitShiftLeftFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-shift-left", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .integer = x << shift };
 }
 
 /// (bit-shift-right x n) — arithmetic right shift
 pub fn bitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-shift-right", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .integer = x >> shift };
 }
 
 /// (unsigned-bit-shift-right x n) — logical (unsigned) right shift
 pub fn unsignedBitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unsigned-bit-shift-right", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     const ux: u64 = @bitCast(x);
     return Value{ .integer = @bitCast(ux >> shift) };
@@ -207,40 +208,40 @@ pub fn unsignedBitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value
 
 /// (bit-set x n) — set bit n
 pub fn bitSetFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-set", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Bit index {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .integer = x | (@as(i64, 1) << shift) };
 }
 
 /// (bit-clear x n) — clear bit n
 pub fn bitClearFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-clear", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Bit index {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .integer = x & ~(@as(i64, 1) << shift) };
 }
 
 /// (bit-flip x n) — flip bit n
 pub fn bitFlipFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-flip", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Bit index {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .integer = x ^ (@as(i64, 1) << shift) };
 }
 
 /// (bit-test x n) — test bit n, returns boolean
 pub fn bitTestFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-test", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return error.ArithmeticError;
+    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Bit index {d} out of range [0, 63]", .{n});
     const shift: u6 = @intCast(n);
     return Value{ .boolean = (x & (@as(i64, 1) << shift)) != 0 };
 }
@@ -251,58 +252,58 @@ pub fn bitTestFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (int x) — Coerce to integer (truncate float).
 fn intCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to int", .{args.len});
     return switch (args[0]) {
         .integer => args[0],
         .float => |f| Value{ .integer = @intFromFloat(f) },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to integer", .{@tagName(args[0])}),
     };
 }
 
 /// (float x) — Coerce to float.
 fn floatCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to float", .{args.len});
     return switch (args[0]) {
         .float => args[0],
         .integer => |i| Value{ .float = @floatFromInt(i) },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to float", .{@tagName(args[0])}),
     };
 }
 
 /// (num x) — Coerce to Number (identity for numbers).
 fn numFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to num", .{args.len});
     return switch (args[0]) {
         .integer, .float => args[0],
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0])}),
     };
 }
 
 /// (char x) — Coerce int to character string.
 fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to char", .{args.len});
     const code: u21 = switch (args[0]) {
         .integer => |i| if (i >= 0 and i <= 0x10FFFF)
             @intCast(i)
         else
-            return error.ArithmeticError,
+            return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Value {d} out of Unicode range", .{i}),
         .string => |s| blk: {
-            if (s.len == 0) return error.ArithmeticError;
+            if (s.len == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Cannot convert empty string to char", .{});
             const view = std.unicode.Utf8View.initUnchecked(s);
             var it = view.iterator();
-            break :blk it.nextCodepoint() orelse return error.ArithmeticError;
+            break :blk it.nextCodepoint() orelse return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Cannot convert string to char", .{});
         },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to char", .{@tagName(args[0])}),
     };
     var buf: [4]u8 = undefined;
-    const len = std.unicode.utf8Encode(code, &buf) catch return error.ArithmeticError;
+    const len = std.unicode.utf8Encode(code, &buf) catch return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Invalid Unicode codepoint", .{});
     const str = allocator.dupe(u8, buf[0..len]) catch return error.OutOfMemory;
     return Value{ .string = str };
 }
 
 /// (parse-long s) — Parses string to integer, returns nil if not valid.
 fn parseLongFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-long", .{args.len});
     const s = switch (args[0]) {
         .string => |s| s,
         else => return Value.nil,
@@ -313,7 +314,7 @@ fn parseLongFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (parse-double s) — Parses string to double, returns nil if not valid.
 fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-double", .{args.len});
     const s = switch (args[0]) {
         .string => |s| s,
         else => return Value.nil,

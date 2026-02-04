@@ -18,12 +18,13 @@ const env_mod = @import("../../common/env.zig");
 const Env = env_mod.Env;
 const bootstrap = @import("../../common/bootstrap.zig");
 
+const err_mod = @import("../../common/error.zig");
+
 /// TreeWalk execution errors.
 pub const TreeWalkError = error{
     UndefinedVar,
     TypeError,
     ArityError,
-    DivisionByZero,
     UserException,
     OutOfMemory,
     StackOverflow,
@@ -797,25 +798,25 @@ pub const TreeWalk = struct {
     }
 
     /// Check if a TreeWalkError is a user-catchable runtime error.
-    fn isUserError(err: TreeWalkError) bool {
-        return switch (err) {
+    fn isUserError(e: TreeWalkError) bool {
+        return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
-            error.DivisionByZero, error.UserException, error.IndexOutOfBounds,
+            error.UserException, error.IndexOutOfBounds,
             error.IllegalState, error.ArithmeticError => true,
             error.StackOverflow, error.OutOfMemory => false,
         };
     }
 
     /// Create an ex-info style exception Value from a Zig error.
-    fn createRuntimeException(self: *TreeWalk, err: TreeWalkError) Value {
-        const msg: []const u8 = switch (err) {
+    fn createRuntimeException(self: *TreeWalk, e: TreeWalkError) Value {
+        // Prefer threadlocal error message (set by builtins via err.setErrorFmt)
+        const msg: []const u8 = if (err_mod.getLastError()) |info| info.message else switch (e) {
             error.TypeError => "Type error",
             error.ArityError => "Wrong number of arguments",
-            error.UndefinedVar => "Var not found",
-            error.DivisionByZero => "Divide by zero",
             error.ArithmeticError => "Arithmetic error",
             error.IndexOutOfBounds => "Index out of bounds",
             error.IllegalState => "Illegal state",
+            error.UndefinedVar => "Var not found",
             else => "Runtime error",
         };
 
