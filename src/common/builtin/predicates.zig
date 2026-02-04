@@ -72,6 +72,15 @@ fn isList(v: Value) bool {
 fn isChar(v: Value) bool {
     return v == .char;
 }
+fn isSequential(v: Value) bool {
+    return v == .list or v == .vector;
+}
+fn isAssociative(v: Value) bool {
+    return v == .map or v == .vector;
+}
+fn isIFn(v: Value) bool {
+    return v == .fn_val or v == .builtin_fn or v == .keyword or v == .map or v == .set or v == .vector or v == .symbol;
+}
 
 // Builtin wrappers (matching BuiltinFn signature)
 
@@ -125,6 +134,15 @@ pub fn intPred(_: Allocator, args: []const Value) anyerror!Value {
 }
 pub fn charPred(_: Allocator, args: []const Value) anyerror!Value {
     return predicate(args, isChar);
+}
+pub fn sequentialPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isSequential);
+}
+pub fn associativePred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isAssociative);
+}
+pub fn ifnPred(_: Allocator, args: []const Value) anyerror!Value {
+    return predicate(args, isIFn);
 }
 
 // Numeric predicates
@@ -443,6 +461,9 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "list?", .func = &listPred, .doc = "Returns true if x implements IPersistentList.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "int?", .func = &intPred, .doc = "Return true if x is a fixed precision integer.", .arglists = "([x])", .added = "1.9" },
     .{ .name = "char?", .func = &charPred, .doc = "Return true if x is a Character.", .arglists = "([x])", .added = "1.5" },
+    .{ .name = "sequential?", .func = &sequentialPred, .doc = "Return true if coll implements Sequential.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "associative?", .func = &associativePred, .doc = "Returns true if coll implements Associative.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "ifn?", .func = &ifnPred, .doc = "Returns true if x implements IFn. Note that many data structures (e.g. sets and maps) implement IFn.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "zero?", .func = &zeroPred, .doc = "Returns true if num is zero, else false.", .arglists = "([num])", .added = "1.0" },
     .{ .name = "pos?", .func = &posPred, .doc = "Returns true if num is greater than zero, else false.", .arglists = "([num])", .added = "1.0" },
     .{ .name = "neg?", .func = &negPred, .doc = "Returns true if num is less than zero, else false.", .arglists = "([num])", .added = "1.0" },
@@ -689,8 +710,8 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
 }
 
-test "builtins table has 37 entries" {
-    try testing.expectEqual(37, builtins.len);
+test "builtins table has 40 entries" {
+    try testing.expectEqual(40, builtins.len);
 }
 
 test "builtins all have func" {

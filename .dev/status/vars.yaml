@@ -137,7 +137,7 @@ vars:
     assoc: {type: function, status: done}
     "assoc!": {type: function, status: todo}
     "assoc-in": {type: function, status: done}
-    "associative?": {type: function, status: todo}
+    "associative?": {type: function, status: done}
     atom: {type: function, status: done}
     await: {type: function, status: todo}
     "await-for": {type: function, status: todo}
@@ -340,7 +340,7 @@ vars:
     "if-let": {type: macro, status: done}
     "if-not": {type: macro, status: done}
     "if-some": {type: macro, status: done, note: "core.clj macro"}
-    "ifn?": {type: function, status: todo}
+    "ifn?": {type: function, status: done}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
     inc: {type: function, status: done}
@@ -575,7 +575,7 @@ vars:
     "seqable?": {type: function, status: todo}
     seque: {type: function, status: todo}
     sequence: {type: function, status: todo}
-    "sequential?": {type: function, status: todo}
+    "sequential?": {type: function, status: done}
     set: {type: function, status: done}
     "set-agent-send-executor!": {type: function, status: todo}
     "set-agent-send-off-executor!": {type: function, status: todo}

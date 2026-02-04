@@ -43,9 +43,9 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F32     | reverse nil/[] returns empty list                | logic.clj tests (adjusted) — JVM: empty list (truthy), ClojureWasm: nil (falsy)        | T14.6  |
 | F33     | Empty list () type predicates                    | predicates.clj tests (excluded) — list?/coll?/seq? return false for ()                 | T14.7  |
 | F34     | seq returns proper seq type                      | predicates.clj tests (excluded) — (seq [1 2 3]) returns vector, not seq                | T14.7  |
-| F35     | sequential? predicate                            | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
-| F36     | associative? predicate                           | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
-| F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
+| ~~F35~~ | ~~sequential? predicate~~                        | ~~Resolved: T16.8 — Zig builtin: list or vector~~                                      | T14.7  |
+| ~~F36~~ | ~~associative? predicate~~                       | ~~Resolved: T16.8 — Zig builtin: map or vector~~                                       | T14.7  |
+| ~~F37~~ | ~~ifn? predicate~~                               | ~~Resolved: T16.8 — Zig builtin: fn/keyword/map/set/vector/symbol~~                    | T14.7  |
 | F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | ~~F40~~ | ~~first/rest on set~~                            | ~~Resolved: T16.1 — added .set case to firstFn/restFn~~                                | T14.9  |

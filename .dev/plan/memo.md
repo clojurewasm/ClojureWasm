@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.7 — F76 no longer reproducible (marked resolved)
+- Last completed: T16.8 — Implement sequential?, associative?, ifn?
 - Blockers: none
-- Next: T16.8 (Implement missing predicates F35-F37)
+- Next: T16.9 (Implement missing seq fns F43-F44, F46-F47)
 
 ## Current Phase: 16
 
