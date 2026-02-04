@@ -9,6 +9,7 @@ allowed-tools:
   - Read
   - Glob
   - Grep
+  - Bash
 ---
 
 # Compiler.zig Modification Checklist
@@ -27,23 +28,35 @@ Verify recent changes to `src/common/bytecode/compiler.zig` against this checkli
 
 Every emit method must maintain correct `self.stack_depth`:
 
-- [ ] **Push (+1)**: any instruction that places a value on the stack
-  - `emitOp(.nil)`, `.true_val`, `.false_val`, `emit(.const_load, _)`,
-    `emit(.local_load, _)`, `emit(.var_load, _)`, `emit(.closure, _)`
-- [ ] **Pop (-1)**: any instruction that consumes a value
-  - `emitOp(.pop)`, `emitOp(.throw_ex)`, `jump_if_false` (consumes test)
-- [ ] **Binary ops (2 -> 1)**: `add`, `sub`, `mul`, `div`, `mod`, `rem_`,
+- [ ] **Push (+1)**: instructions that place a value on the stack
+  - `emitOp(.nil)`, `.true_val`, `.false_val`
+  - `emit(.const_load, _)`, `emit(.local_load, _)`, `emit(.var_load, _)`
+  - `emit(.upvalue_load, _)`
+  - `emit(.closure, _)` — also needs `capture_slots` (see Closures below)
+  - `emitOp(.dup)`
+- [ ] **Pop (-1)**: instructions that consume a value
+  - `emitOp(.pop)`, `emitOp(.throw_ex)`
+  - `jump_if_false` (consumes test value)
+- [ ] **Binary ops (2 → 1)**: `add`, `sub`, `mul`, `div`, `mod`, `rem_`,
       `lt`, `le`, `gt`, `ge`, `eq`, `neq` — net effect is `-= 1`
-- [ ] **Call**: `emit(.call, N)` — net effect is `-= N` (pops callee + N args, pushes 1 result)
-- [ ] **Recur**: `emit(.recur, _)` — pops arg_count values
+- [ ] **Call**: `emit(.call, N)` — pops callee + N args, pushes 1 result.
+      Net: `-= N`
+- [ ] **Recur**: `emit(.recur, N)` — pops N arg values, jumps back
 - [ ] **pop_under(N)**: removes N values below top — `-= N`
-- [ ] **def**: replaces top value with symbol — net 0, no depth change needed
+- [ ] **def / def_macro**: replaces top value with Var — net 0
+- [ ] **Collection literals**: `list_new(N)`, `vec_new(N)`, `set_new(N)` pop
+      N elements, push 1. `map_new(N)` pops 2N elements, pushes 1
+- [ ] **defmulti**: stack [dispatch_fn] → [multi_fn] — net 0
+- [ ] **defmethod**: stack [dispatch_val, method_fn] → [method_fn] — net -1
+- [ ] **lazy_seq**: stack [thunk_fn] → [lazy_seq_value] — net 0
 
 ### Branch Balance
 
 - [ ] **if-then-else**: both branches produce identical net stack effect.
       Save `branch_base` before branches, reset `stack_depth` for else path.
-- [ ] **try/catch**: normal and exception paths converge to same depth (`body_depth`).
+- [ ] **try/catch**: `try_begin` → body → `try_end` / `catch_begin` → handler → `try_end`.
+      Normal and exception paths must converge to same depth.
+      Exception path: catch_begin pushes exception value (+1 local).
 
 ### Scope Management
 
@@ -56,8 +69,10 @@ Every emit method must maintain correct `self.stack_depth`:
 - [ ] **Save/restore**: `loop_start`, `loop_binding_count`, `loop_locals_base`
       must be saved before and restored after any construct that sets them.
 
-### Sub-Compiler (fn compilation)
+### Closures
 
+- [ ] **capture_slots**: per-slot array mapping captured variables to parent
+      stack slots (D56). All arities share the same `capture_slots`.
 - [ ] **Allocation transfer**: call `detachFnAllocations()` on sub-compiler
       and transfer results to parent before sub-compiler `deinit()`.
 
@@ -76,7 +91,11 @@ Every emit method must maintain correct `self.stack_depth`:
 
 ```bash
 zig build test -- "EvalEngine"
+./zig-out/bin/cljw --dump-bytecode -e '(your-expression)'
 ```
+
+Use `--dump-bytecode` to visually inspect compiled bytecode when stack
+depth or control flow looks wrong.
 
 ## User Instructions
 
