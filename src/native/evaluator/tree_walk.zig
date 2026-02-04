@@ -88,6 +88,14 @@ pub const TreeWalk = struct {
 
     /// Evaluate a Node to a Value.
     pub fn run(self: *TreeWalk, n: *const Node) TreeWalkError!Value {
+        return self.runNode(n) catch |e| {
+            const src = n.source();
+            err_mod.annotateLocation(.{ .line = src.line, .column = src.column, .file = src.file });
+            return e;
+        };
+    }
+
+    fn runNode(self: *TreeWalk, n: *const Node) TreeWalkError!Value {
         return switch (n.*) {
             .constant => |val| val,
             .local_ref => |ref| {

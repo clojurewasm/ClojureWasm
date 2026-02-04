@@ -112,6 +112,16 @@ pub fn clearSourceText() void {
     source_text_cache = null;
 }
 
+/// Annotate the current threadlocal error with source location.
+/// Only updates if location is not already set (line == 0).
+pub fn annotateLocation(loc: SourceLocation) void {
+    if (last_error) |*info| {
+        if (info.location.line == 0 and loc.line > 0) {
+            info.location = loc;
+        }
+    }
+}
+
 pub fn kindToError(kind: Kind) Error {
     return switch (kind) {
         .syntax_error => error.SyntaxError,

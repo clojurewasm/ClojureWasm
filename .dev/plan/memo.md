@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE3 (Runtime source location)
+- Next task: BE3b (VM source location)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -23,19 +23,18 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-BE3: Add runtime source location tracking to error messages.
-vm.zig and tree_walk.zig need to capture source code locations and
-original code before macro expansion, enabling proper stack traces.
+BE3b: Add runtime source location tracking to VM backend.
+VM needs debug info table (instruction → SourceInfo mapping) in Chunk,
+Compiler records source at emit time, VM annotates errors from debug info.
 
 ## Previous Task
 
-BE2d completed: Added descriptive error messages to atom.zig,
-metadata.zig, multimethods.zig, io.zig, system.zig, regex_builtins.zig,
-file_io.zig, ns_ops.zig, misc.zig, eval.zig (~73 sites), and var.zig
-(1 site). Migrated InvalidNumberOfArguments → ArityError, IllegalState →
-ValueError. Removed legacy tags (IndexOutOfBounds, IllegalState) from
-VMError/TreeWalkError. BE2 sub-phase complete (~314 sites total across
-BE2a-d).
+BE3a completed: Added `annotateLocation` to error.zig and wrapped
+TreeWalk's `run()` to annotate errors with Node's SourceInfo. Errors
+now show line/column + source context in TreeWalk backend. E.g.:
+  Location: <expr>:3:0
+  3 | (+ 1 "x")
+      ^--- error here
 
 ## Handover Notes
 
