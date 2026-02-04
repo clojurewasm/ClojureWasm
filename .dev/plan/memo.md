@@ -1,169 +1,95 @@
 # ClojureWasm Development Memo
 
+Read this at session start. Roadmap: `.dev/plan/roadmap.md`
+
 ## Current State
 
-- Phase: 15 (Test-driven core library expansion)
-- Roadmap: .dev/plan/roadmap.md
+- Phase: 15.5 (Test Re-port with Dual-Backend Verification)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.3 — Namespace separation (D54: walk, template)
+- Last completed: T15.4b — in-ns builtin, ns macro, docstring support
 - Blockers: none
-- Next: T15.4 — Port clojure_walk.clj (walk, postwalk, prewalk)
+- Next: T15.5.1 — Re-run existing tests on both VM and TreeWalk
 
-### Phase 15 Task Queue
+## Current Phase: 15.5
 
-Port high-priority test files from `.dev/notes/test_file_priority.md` Batch 1.
-One test file = one task. TDD: port test → fail → implement → pass.
+**Background**: Phase 14-15 test porting verified TreeWalk only, skipping VM.
+This led to SKIP + F## workarounds accumulating instead of root cause fixes.
 
-| Task  | File                | Focus                      |
-| ----- | ------------------- | -------------------------- |
-| T15.1 | macros.clj          | ->, ->>, threading macros  |
-| T15.2 | special.clj         | let, letfn, quote, var, fn |
-| T15.3 | namespace refactor  | D54: walk, template files  |
-| T15.4 | clojure_walk.clj    | walk, postwalk, prewalk    |
-| T15.5 | clojure_set.clj     | union, intersection, diff  |
-| T15.6 | string.clj          | clojure.string tests       |
-| T15.7 | keywords.clj        | keyword ops                |
-| T15.8 | other_functions.clj | identity, fnil, constantly |
-| T15.9 | metadata.clj        | meta, with-meta            |
+**Goal**: Re-port Clojure tests from scratch, running both VM and TreeWalk,
+fixing issues properly instead of working around them.
 
-## Long-term Reference (DO NOT DELETE until core library stabilizes)
+### Rules
 
-### Test Porting Policy — JVM Dependency Handling
+1. **Dual-Backend Execution**: Run every test on both backends
 
-When porting tests from `test/clojure/test_clojure/`, follow these rules.
-**Do NOT simply skip Java-dependent tests** — extract the intent and write equivalent tests.
-
-#### JVM Dependency Categories
-
-| Category         | Examples                       | Action                                |
-| ---------------- | ------------------------------ | ------------------------------------- |
-| Direct InterOp   | `.method`, `Class/static`      | Write equivalent test without Java    |
-| Java Types       | `BigDecimal`, `Ratio`, `^long` | Test with ClojureWasm types only      |
-| Exceptions       | `IllegalArgumentException`     | Test with ex-info/ex-data instead     |
-| Threading        | `future`, `agent`, `pmap`      | Skip + record as F##                  |
-| Java Collections | `into-array`, `aget`           | Skip (no equivalent)                  |
-| Class Loader     | `compile`, `import`            | Partial test (basic require/use only) |
-| Reflection       | `supers`, `bases`              | Skip (JVM-specific)                   |
-| Implicit JVM     | overflow, interning            | Write explicit behavior tests         |
-
-#### Porting Rules
-
-1. **Read the test intent** — what behavior is being verified?
-2. **Write equivalent test** — same intent, no Java dependency
-   ```clojure
-   ;; Original (JVM)
-   (is (= 5 (.length "hello")))
-   ;; Equivalent (ClojureWasm)
-   (is (= 5 (count "hello")))
-   ```
-3. **Record skips with F## and reason**
-   ```clojure
-   ;; SKIP: F## - requires Java threading (agent)
-   ;; Original: (is (= @(agent 0) 0))
-   ```
-4. **Document partial ports**
-   ```clojure
-   ;; PARTIAL: 12/20 assertions ported
-   ;; SKIP: 8 assertions (BigDecimal, Thread)
+   ```bash
+   ./zig-out/bin/cljw test.clj              # VM
+   ./zig-out/bin/cljw --tree-walk test.clj  # TreeWalk
    ```
 
-#### Implicit JVM Assumptions (easy to miss)
+2. **SKIP is Last Resort**: Only for truly JVM-specific features (threading, reflection)
+   - Failure → investigate root cause
+   - Missing feature → implement it
+   - Bug → fix it
 
-| Pattern                | JVM Behavior       | ClojureWasm           |
-| ---------------------- | ------------------ | --------------------- |
-| `(instance? String x)` | Java class check   | Use `(string? x)`     |
-| `(class [])`           | Returns Java class | Returns type keyword  |
-| `(type 1)`             | `java.lang.Long`   | `:integer`            |
-| `(hash x)`             | JVM hashCode       | Own impl (may differ) |
-| `(identical? x y)`     | JVM reference eq   | Own impl              |
+3. **Use `--dump-bytecode`**: Debug VM failures
 
-#### Reference Files
+   ```bash
+   echo '(failing-expr)' > /tmp/debug.clj
+   ./zig-out/bin/cljw --dump-bytecode /tmp/debug.clj
+   ```
 
-- `.dev/notes/test_file_priority.md` — prioritized file list
-- `.dev/notes/java_interop_todo.md` — Java interop implementation list
-- `.dev/status/compat_test.yaml` — test tracking
-- `.dev/checklist.md` — F## deferred items
+4. **Discovery → Implementation**: Tests reveal gaps, fill them
+   - Missing function → implement
+   - Latent bug → fix
+   - Workaround → normalize
 
-#### Root Cause Resolution Policy
+### Task Queue
 
-**Goal**: Run upstream tests and .clj implementations **unmodified**.
+Re-verify tests in original porting order. One file = one task.
+Run both VM and TreeWalk, fix issues before moving to next.
 
-**When tests fail or bugs appear:**
+| Task     | File                                    | Notes               |
+| -------- | --------------------------------------- | ------------------- |
+| T15.5.1  | `test/upstream/sci/core_test.clj`       | SCI tests (70/74)   |
+| T15.5.2  | `test/upstream/clojure/for.clj`         | for macro           |
+| T15.5.3  | `test/upstream/clojure/control.clj`     | if-let, case, cond  |
+| T15.5.4  | `test/upstream/clojure/logic.clj`       | and, or, not        |
+| T15.5.5  | `test/upstream/clojure/predicates.clj`  | type predicates     |
+| T15.5.6  | `test/upstream/clojure/atoms.clj`       | atom, swap!, reset! |
+| T15.5.7  | `test/upstream/clojure/sequences.clj`   | seq functions       |
+| T15.5.8  | `test/upstream/clojure/data_struct.clj` | destructuring       |
+| T15.5.9  | `test/clojure/macros.clj`               | threading macros    |
+| T15.5.10 | `test/clojure/special.clj`              | special forms       |
+| T15.5.11 | `test/clojure/clojure_walk.clj`         | walk (partial)      |
 
-1. Investigate the root cause fully
-2. Fix the implementation (.zig or .clj) or implement missing features
-3. If fixing reveals additional bugs, fix those too
-4. Never work around implementation gaps by modifying tests
+### Completion Criteria
 
-**Upstream .clj files:**
-
-- Use upstream source verbatim whenever possible
-- If modification is unavoidable, add `UPSTREAM-DIFF:` comment explaining why
-- Check "Zig Implementation First" policy before deciding something is impossible
-
-**Test modifications:**
-
-- Only allowed for truly JVM-specific code with no portable equivalent (e.g., Java interop)
-- Exhaust all implementation options before skipping
-
-**F## Deferred Items:**
-
-- Previously skipped tests (with F## reference) should now be **resolved**
-- When porting upstream tests, fix F## issues that block those tests
-- Update `.dev/checklist.md` to strike resolved F## items
-- Goal: reduce deferred items while expanding test coverage
+- All ported tests pass on both VM and TreeWalk
+- High priority F## items resolved
+- Resolved items struck through in `checklist.md`
 
 ---
 
-## Technical Notes
+## Permanent Reference
 
-Context for the current/next task that a new session needs to know.
-Overwrite freely — this is scratchpad, not permanent record.
+Policies that persist across phases. Do not delete.
 
-### Phase 15 Core Policies
+### Implementation Policy
 
-**1. Namespace Compatibility**
+1. **Implement in Zig or .clj** — do not skip features that appear "JVM-specific"
+2. **Keep .clj files unchanged from upstream** — if modification needed, add `UPSTREAM-DIFF:` comment
+3. **Check `.dev/notes/java_interop_todo.md`** before skipping anything Java-like
+   - Many Java patterns (`System/`, `Math/`) have Zig equivalents listed there
+   - SKIP only if not listed AND truly impossible
 
-Maintain namespace compatibility with upstream Clojure. Functions temporarily
-placed in `core.clj` for bootstrap order (e.g., walk functions) should be
-moved to their proper namespaces.
+### Reference Files
 
-- `clojure.walk` → walk, prewalk, postwalk, etc.
-- `clojure.set` → union, intersection, difference, etc.
-- `clojure.string` → split, join, trim, etc.
-
-When test porting reveals namespace mismatches, fix them on the spot.
-
-**2. Zig Implementation First**
-
-Do NOT skip features just because they appear "JVM-specific". Evaluate in order:
-
-1. **Zig-implementable** — defrecord, defmethod, sorted-set-by, etc.
-   ClojureWasmBeta has proven Zig implementations. Implement with behavioral equivalence.
-
-2. **Pure Clojure implementable** — in core.clj or namespace-specific .clj files
-
-3. **Skip** — only truly JVM-specific features (Java threading, reflection, etc.)
-
-Before marking something as "JVM-dependent", check if Zig/Clojure implementation
-is possible. Refer to ClojureWasmBeta for guidance when uncertain.
-
-### Phase 15 Starting Point
-
-- vars.yaml: 269 done, 428 todo, 7 skip (total 704)
-- Test coverage: 72 tests, 267 assertions (TreeWalk)
-- compat_test.yaml: 178 tests tracked
-
-### Test File Locations
-
-- Upstream tests: `/Users/shota.508/Documents/OSS/clojure/test/clojure/test_clojure/`
-- Ported tests: `test/clojure/`
-- Priority list: `.dev/notes/test_file_priority.md`
-
-### Known Issues (carry forward)
-
-- **VM SCI tests failure**: TreeWalk primary backend, VM tests low priority
-- **F25/F26**: for macro :while and :let+:when — deferred
-- **F58**: Nested map destructuring — workaround: sequential let bindings
-- **F13/F14**: VM opcodes for defmulti/defmethod/lazy-seq — deferred
+| File                               | Content                     |
+| ---------------------------------- | --------------------------- |
+| `.dev/notes/test_file_priority.md` | Test file priority list     |
+| `.dev/notes/java_interop_todo.md`  | Java interop implementation |
+| `.dev/status/vars.yaml`            | Var implementation status   |
+| `.dev/checklist.md`                | F## deferred items          |
+| `.dev/notes/decisions.md`          | D## design decisions        |

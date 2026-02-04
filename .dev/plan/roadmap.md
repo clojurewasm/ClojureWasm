@@ -45,6 +45,21 @@ TDD approach: port test → fail → implement → pass.
 **Scope**: High-priority test files (macros, special, walk, set, string, keywords, etc.)
 **Reference**: `.dev/notes/test_file_priority.md` (Batch 1-3 ordering)
 
+### Phase 15.5: Test Re-port with Dual-Backend Verification
+
+Phase 14-15 test porting verified TreeWalk only, leading to SKIP + F## accumulation.
+Re-port tests from scratch, running both VM and TreeWalk, fixing root causes.
+
+**Policy**:
+
+- Run all tests on both VM and TreeWalk (no single-backend verification)
+- SKIP only for JVM-specific features (threading, reflection)
+- Failure → investigate root cause → implement/fix (no workarounds)
+- Use `--dump-bytecode` for VM debugging
+
+**Scope**: Tests ported in Phase 14-15 (up to walk)
+**Reference**: `.dev/plan/memo.md` Current Phase section
+
 ### Phase 16: IO / System Namespace
 
 File I/O, system functions via Zig std library.
