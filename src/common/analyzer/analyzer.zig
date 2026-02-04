@@ -88,7 +88,13 @@ pub const Analyzer = struct {
 
     fn makeConstant(self: *Analyzer, val: Value) AnalyzeError!*Node {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
-        n.* = .{ .constant = val };
+        n.* = .{ .constant = .{ .value = val } };
+        return n;
+    }
+
+    fn makeConstantFrom(self: *Analyzer, val: Value, form: Form) AnalyzeError!*Node {
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .constant = .{ .value = val, .source = self.sourceFromForm(form) } };
         return n;
     }
 
@@ -174,13 +180,13 @@ pub const Analyzer = struct {
     /// Analyze a Form, producing a Node.
     pub fn analyze(self: *Analyzer, form: Form) AnalyzeError!*Node {
         return switch (form.data) {
-            .nil => self.makeConstant(.nil),
-            .boolean => |b| self.makeConstant(.{ .boolean = b }),
-            .integer => |n| self.makeConstant(.{ .integer = n }),
-            .float => |n| self.makeConstant(.{ .float = n }),
-            .char => |c| self.makeConstant(.{ .char = c }),
-            .string => |s| self.makeConstant(.{ .string = s }),
-            .keyword => |sym| self.makeConstant(.{ .keyword = .{ .ns = sym.ns, .name = sym.name } }),
+            .nil => self.makeConstantFrom(.nil, form),
+            .boolean => |b| self.makeConstantFrom(.{ .boolean = b }, form),
+            .integer => |n| self.makeConstantFrom(.{ .integer = n }, form),
+            .float => |n| self.makeConstantFrom(.{ .float = n }, form),
+            .char => |c| self.makeConstantFrom(.{ .char = c }, form),
+            .string => |s| self.makeConstantFrom(.{ .string = s }, form),
+            .keyword => |sym| self.makeConstantFrom(.{ .keyword = .{ .ns = sym.ns, .name = sym.name } }, form),
             .symbol => |sym| self.analyzeSymbol(sym, form),
             .list => |items| self.analyzeList(items, form),
             .vector => |items| self.analyzeVector(items, form),
@@ -211,7 +217,7 @@ pub const Analyzer = struct {
             // Empty list () -> empty list (self-evaluating in Clojure)
             const empty_list = self.allocator.create(value_mod.PersistentList) catch return error.OutOfMemory;
             empty_list.* = .{ .items = &.{} };
-            return self.makeConstant(.{ .list = empty_list });
+            return self.makeConstantFrom(.{ .list = empty_list }, form);
         }
 
         // Check for special form (but locals shadow special forms)
@@ -1345,10 +1351,6 @@ pub const Analyzer = struct {
     // === Collection literals ===
 
     fn analyzeVector(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        _ = form;
-        // For Phase 1c, analyze each element; wrap as call to "vector" builtin.
-        // Since we don't have builtins yet, produce constant if all elements are constant,
-        // otherwise produce a call node with var_ref to "vector".
         var nodes = self.allocator.alloc(*Node, items.len) catch return error.OutOfMemory;
         var all_const = true;
         for (items, 0..) |item, i| {
@@ -1361,11 +1363,11 @@ pub const Analyzer = struct {
         if (all_const) {
             var values = self.allocator.alloc(Value, items.len) catch return error.OutOfMemory;
             for (nodes, 0..) |n, i| {
-                values[i] = n.constant;
+                values[i] = n.constant.value;
             }
             const vec = self.allocator.create(@import("../value.zig").PersistentVector) catch return error.OutOfMemory;
             vec.* = .{ .items = values };
-            return self.makeConstant(.{ .vector = vec });
+            return self.makeConstantFrom(.{ .vector = vec }, form);
         }
 
         // Non-constant: produce call to "vector"
@@ -1373,7 +1375,6 @@ pub const Analyzer = struct {
     }
 
     fn analyzeMap(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        _ = form;
         var nodes = self.allocator.alloc(*Node, items.len) catch return error.OutOfMemory;
         var all_const = true;
         for (items, 0..) |item, i| {
@@ -1386,18 +1387,17 @@ pub const Analyzer = struct {
         if (all_const) {
             var values = self.allocator.alloc(Value, items.len) catch return error.OutOfMemory;
             for (nodes, 0..) |n, i| {
-                values[i] = n.constant;
+                values[i] = n.constant.value;
             }
             const m = self.allocator.create(@import("../value.zig").PersistentArrayMap) catch return error.OutOfMemory;
             m.* = .{ .entries = values };
-            return self.makeConstant(.{ .map = m });
+            return self.makeConstantFrom(.{ .map = m }, form);
         }
 
         return self.makeBuiltinCall("hash-map", nodes);
     }
 
     fn analyzeSet(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        _ = form;
         var nodes = self.allocator.alloc(*Node, items.len) catch return error.OutOfMemory;
         var all_const = true;
         for (items, 0..) |item, i| {
@@ -1410,11 +1410,11 @@ pub const Analyzer = struct {
         if (all_const) {
             var values = self.allocator.alloc(Value, items.len) catch return error.OutOfMemory;
             for (nodes, 0..) |n, i| {
-                values[i] = n.constant;
+                values[i] = n.constant.value;
             }
             const s = self.allocator.create(@import("../value.zig").PersistentHashSet) catch return error.OutOfMemory;
             s.* = .{ .items = values };
-            return self.makeConstant(.{ .set = s });
+            return self.makeConstantFrom(.{ .set = s }, form);
         }
 
         return self.makeBuiltinCall("hash-set", nodes);
@@ -1816,7 +1816,7 @@ test "analyze nil literal" {
 
     const result = try a.analyze(.{ .data = .nil });
     try std.testing.expectEqualStrings("constant", result.kindName());
-    try std.testing.expect(result.constant.isNil());
+    try std.testing.expect(result.constant.value.isNil());
 }
 
 test "analyze boolean literals" {
@@ -1826,10 +1826,10 @@ test "analyze boolean literals" {
     defer a.deinit();
 
     const t = try a.analyze(.{ .data = .{ .boolean = true } });
-    try std.testing.expect(t.constant.eql(.{ .boolean = true }));
+    try std.testing.expect(t.constant.value.eql(.{ .boolean = true }));
 
     const f = try a.analyze(.{ .data = .{ .boolean = false } });
-    try std.testing.expect(f.constant.eql(.{ .boolean = false }));
+    try std.testing.expect(f.constant.value.eql(.{ .boolean = false }));
 }
 
 test "analyze integer literal" {
@@ -1839,7 +1839,7 @@ test "analyze integer literal" {
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .integer = 42 } });
-    try std.testing.expect(result.constant.eql(.{ .integer = 42 }));
+    try std.testing.expect(result.constant.value.eql(.{ .integer = 42 }));
 }
 
 test "analyze string literal" {
@@ -1849,7 +1849,7 @@ test "analyze string literal" {
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .string = "hello" } });
-    try std.testing.expect(result.constant.eql(.{ .string = "hello" }));
+    try std.testing.expect(result.constant.value.eql(.{ .string = "hello" }));
 }
 
 test "analyze keyword" {
@@ -2078,7 +2078,7 @@ test "analyze vector literal [1 2 3]" {
     const result = try a.analyze(.{ .data = .{ .vector = &items } });
     // All constants -> should be a constant vector
     try std.testing.expectEqualStrings("constant", result.kindName());
-    try std.testing.expect(result.constant == .vector);
+    try std.testing.expect(result.constant.value == .vector);
 }
 
 test "analyze error: if with wrong arity" {
@@ -2206,7 +2206,7 @@ test "analyze (throw \"error\")" {
     };
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     try std.testing.expectEqualStrings("throw", result.kindName());
-    try std.testing.expect(result.throw_node.expr.constant.eql(.{ .string = "error" }));
+    try std.testing.expect(result.throw_node.expr.constant.value.eql(.{ .string = "error" }));
 }
 
 test "analyze (try 1 (catch Exception e 2))" {
@@ -2233,7 +2233,7 @@ test "analyze (try 1 (catch Exception e 2))" {
     try std.testing.expectEqualStrings("e", result.try_node.catch_clause.?.binding_name);
     try std.testing.expect(result.try_node.finally_body == null);
     // body should be constant 1
-    try std.testing.expect(result.try_node.body.constant.eql(.{ .integer = 1 }));
+    try std.testing.expect(result.try_node.body.constant.value.eql(.{ .integer = 1 }));
 }
 
 test "analyze (try 1 (finally 3))" {
@@ -2453,6 +2453,6 @@ test "analyze empty list -> empty list" {
     const items = [_]Form{};
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     // Empty list () is self-evaluating in Clojure
-    try std.testing.expect(result.constant == .list);
-    try std.testing.expectEqual(@as(usize, 0), result.constant.list.items.len);
+    try std.testing.expect(result.constant.value == .list);
+    try std.testing.expectEqual(@as(usize, 0), result.constant.value.list.items.len);
 }

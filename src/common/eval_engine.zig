@@ -13,6 +13,9 @@ const Env = @import("env.zig").Env;
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
 const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
+const err_mod = @import("error.zig");
+const Reader = @import("reader/reader.zig").Reader;
+const Analyzer = @import("analyzer/analyzer.zig").Analyzer;
 
 /// Evaluation backend selector.
 pub const Backend = enum {
@@ -107,21 +110,21 @@ pub const EvalEngine = struct {
 
 test "EvalEngine runTreeWalk constant" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    const n = Node{ .constant = .{ .integer = 42 } };
+    const n = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     const result = try engine.runTreeWalk(&n);
     try std.testing.expectEqual(Value{ .integer = 42 }, result);
 }
 
 test "EvalEngine runVM constant" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    const n = Node{ .constant = .{ .integer = 42 } };
+    const n = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     const result = try engine.runVM(&n);
     try std.testing.expectEqual(Value{ .integer = 42 }, result);
 }
 
 test "EvalEngine compare matching constants" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    const n = Node{ .constant = .{ .integer = 42 } };
+    const n = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     try std.testing.expect(!result.tw_error);
@@ -132,14 +135,14 @@ test "EvalEngine compare matching constants" {
 
 test "EvalEngine compare nil" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    const n = Node{ .constant = .nil };
+    const n = Node{ .constant = .{ .value = .nil } };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
 }
 
 test "EvalEngine compare boolean" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    const t = Node{ .constant = .{ .boolean = true } };
+    const t = Node{ .constant = .{ .value = .{ .boolean = true } } };
     const result = engine.compare(&t);
     try std.testing.expect(result.match);
     try std.testing.expectEqual(Value{ .boolean = true }, result.tw_value.?);
@@ -148,9 +151,9 @@ test "EvalEngine compare boolean" {
 test "EvalEngine compare if_node" {
     // (if true 1 2) => 1 in both backends
     var engine = EvalEngine.init(std.testing.allocator, null);
-    var test_n = Node{ .constant = .{ .boolean = true } };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
-    var else_n = Node{ .constant = .{ .integer = 2 } };
+    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -165,8 +168,8 @@ test "EvalEngine compare if_node" {
 
 test "EvalEngine compare do_node" {
     var engine = EvalEngine.init(std.testing.allocator, null);
-    var stmt1 = Node{ .constant = .{ .integer = 1 } };
-    var stmt2 = Node{ .constant = .{ .integer = 2 } };
+    var stmt1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var stmt2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var stmts = [_]*Node{ &stmt1, &stmt2 };
     var do_data = node_mod.DoNode{
         .statements = &stmts,
@@ -181,7 +184,7 @@ test "EvalEngine compare do_node" {
 test "EvalEngine compare let_node" {
     // (let [x 10] x) => 10
     var engine = EvalEngine.init(std.testing.allocator, null);
-    var init_val = Node{ .constant = .{ .integer = 10 } };
+    var init_val = Node{ .constant = .{ .value = .{ .integer = 10 } } };
     var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
@@ -208,8 +211,8 @@ test "EvalEngine compare arithmetic intrinsic matches" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -230,8 +233,8 @@ test "EvalEngine compare division" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 10 } };
-    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -251,8 +254,8 @@ test "EvalEngine compare mod" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "mod", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 7 } };
-    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 7 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -272,8 +275,8 @@ test "EvalEngine compare equality" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "=", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 1 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -296,7 +299,7 @@ test "EvalEngine compare fn+call matches" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -331,7 +334,7 @@ test "EvalEngine compare multi-arity fn" {
     var fn_node = Node{ .fn_node = &fn_data };
 
     // Call with 1 arg
-    var arg1 = Node{ .constant = .{ .integer = 42 } };
+    var arg1 = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args1 = [_]*Node{&arg1};
     var call1 = node_mod.CallNode{ .callee = &fn_node, .args = &args1, .source = .{} };
     const n1 = Node{ .call_node = &call1 };
@@ -340,8 +343,8 @@ test "EvalEngine compare multi-arity fn" {
     try std.testing.expectEqual(Value{ .integer = 42 }, r1.tw_value.?);
 
     // Call with 2 args
-    var arg2a = Node{ .constant = .{ .integer = 10 } };
-    var arg2b = Node{ .constant = .{ .integer = 20 } };
+    var arg2a = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var arg2b = Node{ .constant = .{ .value = .{ .integer = 20 } } };
     var args2 = [_]*Node{ &arg2a, &arg2b };
     var call2 = node_mod.CallNode{ .callee = &fn_node, .args = &args2, .source = .{} };
     const n2 = Node{ .call_node = &call2 };
@@ -364,8 +367,8 @@ test "EvalEngine compare arithmetic with registry Env" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 3 } };
-    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -388,7 +391,7 @@ test "EvalEngine compare def+var_ref" {
 
     var engine = EvalEngine.init(alloc, &env);
 
-    var init_val = Node{ .constant = .{ .integer = 42 } };
+    var init_val = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var def_data = node_mod.DefNode{
         .sym_name = "x",
         .init = &init_val,
@@ -419,14 +422,14 @@ test "EvalEngine compare loop/recur" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var init_0 = Node{ .constant = .{ .integer = 0 } };
+    var init_0 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_0 },
     };
 
     // test: (< x 5)
     var x_ref1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var five = Node{ .constant = .{ .integer = 5 } };
+    var five = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var lt_args = [_]*Node{ &x_ref1, &five };
     var lt_call = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
@@ -434,7 +437,7 @@ test "EvalEngine compare loop/recur" {
 
     // then: (recur (+ x 1))
     var x_ref2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var one = Node{ .constant = .{ .integer = 1 } };
+    var one = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var add_args = [_]*Node{ &x_ref2, &one };
     var add_call = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
@@ -483,7 +486,7 @@ test "EvalEngine compare collection intrinsic (count)" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
-    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -510,7 +513,7 @@ test "EvalEngine compare first on vector" {
     const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "first", .source = .{} } };
-    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -534,7 +537,7 @@ test "EvalEngine compare nil? predicate" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "nil?", .source = .{} } };
-    var arg = Node{ .constant = .nil };
+    var arg = Node{ .constant = .{ .value = .nil } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -558,7 +561,7 @@ test "EvalEngine compare str builtin" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "str", .source = .{} } };
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -582,7 +585,7 @@ test "EvalEngine compare pr-str builtin" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "pr-str", .source = .{} } };
-    var arg = Node{ .constant = .{ .string = "hello" } };
+    var arg = Node{ .constant = .{ .value = .{ .string = "hello" } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -607,7 +610,7 @@ test "EvalEngine compare atom + deref" {
 
     // Build: (atom 42)
     var atom_callee = Node{ .var_ref = .{ .ns = null, .name = "atom", .source = .{} } };
-    var atom_arg = Node{ .constant = .{ .integer = 42 } };
+    var atom_arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var atom_args = [_]*Node{&atom_arg};
     var atom_call_data = node_mod.CallNode{ .callee = &atom_callee, .args = &atom_args, .source = .{} };
     var atom_node = Node{ .call_node = &atom_call_data };
@@ -640,14 +643,14 @@ test "EvalEngine compare reset!" {
 
     // Build: (atom 0)
     var atom_callee = Node{ .var_ref = .{ .ns = null, .name = "atom", .source = .{} } };
-    var atom_arg = Node{ .constant = .{ .integer = 0 } };
+    var atom_arg = Node{ .constant = .{ .value = .{ .integer = 0 } } };
     var atom_args = [_]*Node{&atom_arg};
     var atom_call_data = node_mod.CallNode{ .callee = &atom_callee, .args = &atom_args, .source = .{} };
     var atom_node = Node{ .call_node = &atom_call_data };
 
     // Build: (reset! <atom-expr> 99)
     var reset_callee = Node{ .var_ref = .{ .ns = null, .name = "reset!", .source = .{} } };
-    var reset_val = Node{ .constant = .{ .integer = 99 } };
+    var reset_val = Node{ .constant = .{ .value = .{ .integer = 99 } } };
     var reset_args = [_]*Node{ &atom_node, &reset_val };
     var reset_call_data = node_mod.CallNode{ .callee = &reset_callee, .args = &reset_args, .source = .{} };
     const n = Node{ .call_node = &reset_call_data };
@@ -669,9 +672,9 @@ test "EvalEngine compare variadic add 3 args" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
-    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -732,7 +735,7 @@ test "EvalEngine compare variadic add 1 arg" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 5 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -753,7 +756,7 @@ test "EvalEngine compare variadic sub 1 arg (negation)" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 5 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -774,7 +777,7 @@ test "EvalEngine compare variadic div 1 arg (reciprocal)" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -795,9 +798,9 @@ test "EvalEngine compare variadic mul 3 args" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 2 } };
-    var a2 = Node{ .constant = .{ .integer = 3 } };
-    var a3 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -818,9 +821,9 @@ test "EvalEngine compare variadic sub 3 args" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 10 } };
-    var a2 = Node{ .constant = .{ .integer = 3 } };
-    var a3 = Node{ .constant = .{ .integer = 2 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -841,9 +844,9 @@ test "EvalEngine compare variadic div 3 args" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 120 } };
-    var a2 = Node{ .constant = .{ .integer = 6 } };
-    var a3 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 120 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 6 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -864,11 +867,11 @@ test "EvalEngine compare variadic add 5 args" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
-    var a3 = Node{ .constant = .{ .integer = 3 } };
-    var a4 = Node{ .constant = .{ .integer = 4 } };
-    var a5 = Node{ .constant = .{ .integer = 5 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a4 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
+    var a5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var args = [_]*Node{ &a1, &a2, &a3, &a4, &a5 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -895,7 +898,7 @@ fn makePredicateCompareTest(pred_name: []const u8, arg_val: Value, expected: boo
             var engine = EvalEngine.init(alloc, &env);
 
             var callee = Node{ .var_ref = .{ .ns = null, .name = pred_name, .source = .{} } };
-            var arg = Node{ .constant = arg_val };
+            var arg = Node{ .constant = .{ .value = arg_val } };
             var args = [_]*Node{&arg};
             var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
             const n = Node{ .call_node = &call_data };
@@ -1045,7 +1048,7 @@ test "EvalEngine compare vector? true" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "vector?", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1072,7 +1075,7 @@ test "EvalEngine compare map? true" {
     const entries = [_]Value{ .{ .keyword = .{ .ns = null, .name = "a" } }, .{ .integer = 1 } };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "map?", .source = .{} } };
-    var arg = Node{ .constant = .{ .map = &m } };
+    var arg = Node{ .constant = .{ .value = .{ .map = &m } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1099,7 +1102,7 @@ test "EvalEngine compare set? true" {
     const items = [_]Value{.{ .integer = 1 }};
     var s = collections_mod.PersistentHashSet{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "set?", .source = .{} } };
-    var arg = Node{ .constant = .{ .set = &s } };
+    var arg = Node{ .constant = .{ .value = .{ .set = &s } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1126,7 +1129,7 @@ test "EvalEngine compare coll? vector" {
     const items = [_]Value{.{ .integer = 1 }};
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "coll?", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1153,7 +1156,7 @@ test "EvalEngine compare seq? list" {
     const items = [_]Value{.{ .integer = 1 }};
     var lst = collections_mod.PersistentList{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "seq?", .source = .{} } };
-    var arg = Node{ .constant = .{ .list = &lst } };
+    var arg = Node{ .constant = .{ .value = .{ .list = &lst } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1183,7 +1186,7 @@ test "EvalEngine compare rest on vector" {
     const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "rest", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1209,8 +1212,8 @@ test "EvalEngine compare cons" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "cons", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 0 } };
-    var a2 = Node{ .constant = .{ .vector = &vec } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1236,8 +1239,8 @@ test "EvalEngine compare conj vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "conj", .source = .{} } };
-    var a1 = Node{ .constant = .{ .vector = &vec } };
-    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .vector = &vec } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1265,8 +1268,8 @@ test "EvalEngine compare get on map" {
     };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "get", .source = .{} } };
-    var a1 = Node{ .constant = .{ .map = &m } };
-    var a2 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
+    var a1 = Node{ .constant = .{ .value = .{ .map = &m } } };
+    var a2 = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "a" } } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1290,8 +1293,8 @@ test "EvalEngine compare nth on vector" {
     const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "nth", .source = .{} } };
-    var a1 = Node{ .constant = .{ .vector = &vec } };
-    var a2 = Node{ .constant = .{ .integer = 1 } };
+    var a1 = Node{ .constant = .{ .value = .{ .vector = &vec } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1318,9 +1321,9 @@ test "EvalEngine compare assoc on map" {
     };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "assoc", .source = .{} } };
-    var a1 = Node{ .constant = .{ .map = &m } };
-    var a2 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "b" } } };
-    var a3 = Node{ .constant = .{ .integer = 2 } };
+    var a1 = Node{ .constant = .{ .value = .{ .map = &m } } };
+    var a2 = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "b" } } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1343,9 +1346,9 @@ test "EvalEngine compare list constructor" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "list", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
-    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1367,9 +1370,9 @@ test "EvalEngine compare vector constructor" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "vector", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
-    var a3 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1391,10 +1394,10 @@ test "EvalEngine compare hash-map constructor" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "hash-map", .source = .{} } };
-    var a1 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
-    var a2 = Node{ .constant = .{ .integer = 1 } };
-    var a3 = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "b" } } };
-    var a4 = Node{ .constant = .{ .integer = 2 } };
+    var a1 = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "a" } } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a3 = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "b" } } } };
+    var a4 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &a1, &a2, &a3, &a4 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1418,7 +1421,7 @@ test "EvalEngine compare seq on vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "seq", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1444,7 +1447,7 @@ test "EvalEngine compare seq on empty vector" {
     const items = [_]Value{};
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "seq", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1468,7 +1471,7 @@ test "EvalEngine compare reverse on vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "reverse", .source = .{} } };
-    var arg = Node{ .constant = .{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = .{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1525,7 +1528,7 @@ test "EvalEngine compare println returns nil" {
     defer io_mod.setOutputCapture(null, null);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "println", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 42 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1553,7 +1556,7 @@ test "EvalEngine compare prn returns nil" {
     defer io_mod.setOutputCapture(null, null);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "prn", .source = .{} } };
-    var a1 = Node{ .constant = .{ .string = "hello" } };
+    var a1 = Node{ .constant = .{ .value = .{ .string = "hello" } } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1575,9 +1578,9 @@ test "EvalEngine compare str multi-arg" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "str", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .string = "hello" } };
-    var a3 = Node{ .constant = .nil };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .string = "hello" } } };
+    var a3 = Node{ .constant = .{ .value = .nil } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1604,7 +1607,7 @@ test "EvalEngine compare meta on plain vector returns nil" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const vec = try alloc.create(@import("collections.zig").PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
     var meta_callee = Node{ .var_ref = .{ .ns = null, .name = "meta", .source = .{} } };
     var meta_args = [_]*Node{&vec_node};
     var meta_call = node_mod.CallNode{ .callee = &meta_callee, .args = &meta_args, .source = .{} };
@@ -1631,7 +1634,7 @@ test "EvalEngine compare with-meta attaches metadata" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const vec = try alloc.create(collections.PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
 
     const meta_entries = [_]Value{
         .{ .keyword = .{ .ns = null, .name = "tag" } },
@@ -1639,7 +1642,7 @@ test "EvalEngine compare with-meta attaches metadata" {
     };
     const meta_map = try alloc.create(collections.PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
-    var meta_node = Node{ .constant = .{ .map = meta_map } };
+    var meta_node = Node{ .constant = .{ .value = .{ .map = meta_map } } };
 
     var wm_callee = Node{ .var_ref = .{ .ns = null, .name = "with-meta", .source = .{} } };
     var wm_args = [_]*Node{ &vec_node, &meta_node };
@@ -1668,7 +1671,7 @@ test "EvalEngine compare meta retrieves attached metadata" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const vec = try alloc.create(collections.PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
 
     const meta_entries = [_]Value{
         .{ .keyword = .{ .ns = null, .name = "tag" } },
@@ -1676,7 +1679,7 @@ test "EvalEngine compare meta retrieves attached metadata" {
     };
     const meta_map = try alloc.create(collections.PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
-    var meta_node = Node{ .constant = .{ .map = meta_map } };
+    var meta_node = Node{ .constant = .{ .value = .{ .map = meta_map } } };
 
     var wm_callee = Node{ .var_ref = .{ .ns = null, .name = "with-meta", .source = .{} } };
     var wm_args = [_]*Node{ &vec_node, &meta_node };
@@ -1710,14 +1713,14 @@ test "EvalEngine compare re-find simple match" {
 
     // (re-pattern "\\d+")
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "\\d+" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     // (re-find <pattern> "abc123")
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "abc123" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "abc123" } } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1739,13 +1742,13 @@ test "EvalEngine compare re-find no match returns nil" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "\\d+" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "abc" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "abc" } } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1767,13 +1770,13 @@ test "EvalEngine compare re-matches full match" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "\\d+" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "123" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "123" } } };
     var rm_args = [_]*Node{ &rp_node, &input_str };
     var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
     const n = Node{ .call_node = &rm_call };
@@ -1795,13 +1798,13 @@ test "EvalEngine compare re-matches partial returns nil" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "\\d+" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "abc123" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "abc123" } } };
     var rm_args = [_]*Node{ &rp_node, &input_str };
     var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
     const n = Node{ .call_node = &rm_call };
@@ -1823,13 +1826,13 @@ test "EvalEngine compare re-seq all matches" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "\\d+" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "\\d+" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rs_callee = Node{ .var_ref = .{ .ns = null, .name = "re-seq", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "a1b22c333" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "a1b22c333" } } };
     var rs_args = [_]*Node{ &rp_node, &input_str };
     var rs_call = node_mod.CallNode{ .callee = &rs_callee, .args = &rs_args, .source = .{} };
     const n = Node{ .call_node = &rs_call };
@@ -1856,13 +1859,13 @@ test "EvalEngine compare re-find with capture groups" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .string = "(\\d+)-(\\d+)" } };
+    var pat_str = Node{ .constant = .{ .value = .{ .string = "(\\d+)-(\\d+)" } } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .string = "x12-34y" } };
+    var input_str = Node{ .constant = .{ .value = .{ .string = "x12-34y" } } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1897,10 +1900,10 @@ test "EvalEngine compare dissoc removes key" {
     };
     const m = try alloc.create(collections.PersistentArrayMap);
     m.* = .{ .entries = &entries };
-    var map_node = Node{ .constant = .{ .map = m } };
+    var map_node = Node{ .constant = .{ .value = .{ .map = m } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "dissoc", .source = .{} } };
-    var key_node = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
+    var key_node = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "a" } } } };
     var args = [_]*Node{ &map_node, &key_node };
     var call = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call };
@@ -1928,10 +1931,10 @@ test "EvalEngine compare find returns MapEntry" {
     };
     const m = try alloc.create(collections.PersistentArrayMap);
     m.* = .{ .entries = &entries };
-    var map_node = Node{ .constant = .{ .map = m } };
+    var map_node = Node{ .constant = .{ .value = .{ .map = m } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "find", .source = .{} } };
-    var key_node = Node{ .constant = .{ .keyword = .{ .ns = null, .name = "a" } } };
+    var key_node = Node{ .constant = .{ .value = .{ .keyword = .{ .ns = null, .name = "a" } } } };
     var args = [_]*Node{ &map_node, &key_node };
     var call = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call };
@@ -1956,7 +1959,7 @@ test "EvalEngine compare peek on vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
     const vec = try alloc.create(collections.PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "peek", .source = .{} } };
     var args = [_]*Node{&vec_node};
@@ -1983,7 +1986,7 @@ test "EvalEngine compare empty on vector" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
     const vec = try alloc.create(collections.PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "empty", .source = .{} } };
     var args = [_]*Node{&vec_node};
@@ -2010,9 +2013,9 @@ test "EvalEngine compare subvec" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 }, .{ .integer = 4 }, .{ .integer = 5 } };
     const vec = try alloc.create(collections.PersistentVector);
     vec.* = .{ .items = &items };
-    var vec_node = Node{ .constant = .{ .vector = vec } };
-    var start_node = Node{ .constant = .{ .integer = 1 } };
-    var end_node = Node{ .constant = .{ .integer = 3 } };
+    var vec_node = Node{ .constant = .{ .value = .{ .vector = vec } } };
+    var start_node = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var end_node = Node{ .constant = .{ .value = .{ .integer = 3 } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "subvec", .source = .{} } };
     var call_args = [_]*Node{ &vec_node, &start_node, &end_node };
@@ -2035,9 +2038,9 @@ test "EvalEngine compare hash-set" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var n1 = Node{ .constant = .{ .integer = 1 } };
-    var n2 = Node{ .constant = .{ .integer = 2 } };
-    var n3 = Node{ .constant = .{ .integer = 3 } };
+    var n1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var n2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var n3 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "hash-set", .source = .{} } };
     var call_args = [_]*Node{ &n1, &n2, &n3 };
@@ -2060,10 +2063,10 @@ test "EvalEngine compare sorted-map" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var kb = Node{ .constant = .{ .keyword = .{ .name = "b", .ns = null } } };
-    var v2 = Node{ .constant = .{ .integer = 2 } };
-    var ka = Node{ .constant = .{ .keyword = .{ .name = "a", .ns = null } } };
-    var v1 = Node{ .constant = .{ .integer = 1 } };
+    var kb = Node{ .constant = .{ .value = .{ .keyword = .{ .name = "b", .ns = null } } } };
+    var v2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var ka = Node{ .constant = .{ .value = .{ .keyword = .{ .name = "a", .ns = null } } } };
+    var v1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "sorted-map", .source = .{} } };
     var call_args = [_]*Node{ &kb, &v2, &ka, &v1 };
@@ -2086,7 +2089,7 @@ test "EvalEngine compare hash" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "hash", .source = .{} } };
     var call_args = [_]*Node{&arg};
     var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
@@ -2107,8 +2110,8 @@ test "EvalEngine compare ==" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var n1 = Node{ .constant = .{ .integer = 1 } };
-    var n2 = Node{ .constant = .{ .float = 1.0 } };
+    var n1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var n2 = Node{ .constant = .{ .value = .{ .float = 1.0 } } };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "==", .source = .{} } };
     var call_args = [_]*Node{ &n1, &n2 };
     var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
@@ -2129,7 +2132,7 @@ test "EvalEngine compare reduced" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "reduced", .source = .{} } };
     var call_args = [_]*Node{&arg};
     var call = node_mod.CallNode{ .callee = &callee, .args = &call_args, .source = .{} };
@@ -2138,4 +2141,121 @@ test "EvalEngine compare reduced" {
     try std.testing.expect(result.match);
     try std.testing.expect(result.tw_value.? == .reduced);
     try std.testing.expect(result.tw_value.?.reduced.value.eql(.{ .integer = 42 }));
+}
+
+// === E2E error location tests ===
+//
+// Full pipeline: source string → Reader → Analyzer → VM/TreeWalk → error location check.
+// Verifies that error carets point to the problematic argument, not the operator.
+
+/// Parse source, analyze, and evaluate via TreeWalk. Returns error info if eval fails.
+fn evalExpectErrorTW(source: []const u8) !err_mod.Info {
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var reader = Reader.init(alloc, source);
+    const forms = try reader.readAll();
+    var analyzer = Analyzer.initWithEnv(alloc, &env);
+    defer analyzer.deinit();
+    const node = try analyzer.analyze(forms[0]);
+
+    var tw = TreeWalk.initWithEnv(alloc, &env);
+    defer tw.deinit();
+    _ = tw.run(node) catch {
+        return err_mod.getLastError() orelse return error.NoError;
+    };
+    return error.NoError;
+}
+
+/// Parse source, analyze, and evaluate via VM. Returns error info if eval fails.
+fn evalExpectErrorVM(source: []const u8) !err_mod.Info {
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+
+    var reader = Reader.init(alloc, source);
+    const forms = try reader.readAll();
+    var analyzer = Analyzer.initWithEnv(alloc, &env);
+    defer analyzer.deinit();
+    const node = try analyzer.analyze(forms[0]);
+
+    var compiler = Compiler.init(alloc);
+    defer compiler.deinit();
+    try compiler.compile(node);
+    try compiler.chunk.emitOp(.ret);
+    var vm = VM.initWithEnv(alloc, &env);
+    defer vm.deinit();
+    _ = vm.run(&compiler.chunk) catch {
+        return err_mod.getLastError() orelse return error.NoError;
+    };
+    return error.NoError;
+}
+
+test "E2E error location: (+ 1 \"hello\") points to string arg" {
+    // "hello" is at column 5
+    const source = "(+ 1 \"hello\")";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 5), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 5), vm.location.column);
+}
+
+test "E2E error location: (+ \"hello\" 1) points to string arg" {
+    // "hello" is at column 3
+    const source = "(+ \"hello\" 1)";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 3), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 3), vm.location.column);
+}
+
+test "E2E error location: (+ 1 :foo) points to keyword arg" {
+    // :foo is at column 5
+    const source = "(+ 1 :foo)";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 5), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 5), vm.location.column);
+}
+
+test "E2E error location: (+ 1 nil) points to nil arg" {
+    // nil is at column 5
+    const source = "(+ 1 nil)";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 5), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 5), vm.location.column);
+}
+
+test "E2E error location: (+ 1 [2 3]) points to vector arg" {
+    // [2 3] is at column 5
+    const source = "(+ 1 [2 3])";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 5), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 5), vm.location.column);
 }

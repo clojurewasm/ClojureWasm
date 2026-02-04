@@ -108,7 +108,7 @@ pub const Compiler = struct {
         }
 
         switch (n.*) {
-            .constant => |val| try self.emitConstant(val),
+            .constant => |c| try self.emitConstant(c.value),
             .local_ref => |ref| try self.emitLocalRef(ref),
             .if_node => |node| try self.emitIf(node),
             .do_node => |node| try self.emitDo(node),
@@ -707,7 +707,7 @@ test "compile constant nil" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    const node = Node{ .constant = .nil };
+    const node = Node{ .constant = .{ .value = .nil } };
     try compiler.compile(&node);
 
     try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
@@ -720,7 +720,7 @@ test "compile constant true/false" {
     {
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        const node = Node{ .constant = .{ .boolean = true } };
+        const node = Node{ .constant = .{ .value = .{ .boolean = true } } };
         try compiler.compile(&node);
         try std.testing.expectEqual(OpCode.true_val, compiler.chunk.code.items[0].op);
     }
@@ -728,7 +728,7 @@ test "compile constant true/false" {
     {
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        const node = Node{ .constant = .{ .boolean = false } };
+        const node = Node{ .constant = .{ .value = .{ .boolean = false } } };
         try compiler.compile(&node);
         try std.testing.expectEqual(OpCode.false_val, compiler.chunk.code.items[0].op);
     }
@@ -739,7 +739,7 @@ test "compile constant integer" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    const node = Node{ .constant = .{ .integer = 42 } };
+    const node = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     try compiler.compile(&node);
 
     try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
@@ -754,9 +754,9 @@ test "compile if_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var test_n = Node{ .constant = .{ .boolean = true } };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
-    var else_n = Node{ .constant = .{ .integer = 2 } };
+    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
 
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
@@ -781,8 +781,8 @@ test "compile if_node without else" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var test_n = Node{ .constant = .{ .boolean = true } };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
+    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
 
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
@@ -806,8 +806,8 @@ test "compile do_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var stmt1 = Node{ .constant = .{ .integer = 1 } };
-    var stmt2 = Node{ .constant = .{ .integer = 2 } };
+    var stmt1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var stmt2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var stmts = [_]*Node{ &stmt1, &stmt2 };
 
     var do_data = node_mod.DoNode{
@@ -847,8 +847,8 @@ test "compile call_node" {
     defer compiler.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "f", .source = .{} } };
-    var arg1 = Node{ .constant = .{ .integer = 1 } };
-    var arg2 = Node{ .constant = .{ .integer = 2 } };
+    var arg1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var arg2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &arg1, &arg2 };
 
     var call_data = node_mod.CallNode{
@@ -872,7 +872,7 @@ test "compile def_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var init_expr = Node{ .constant = .{ .integer = 42 } };
+    var init_expr = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var def_data = node_mod.DefNode{
         .sym_name = "x",
         .init = &init_expr,
@@ -913,7 +913,7 @@ test "compile throw_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var expr = Node{ .constant = .{ .string = "error!" } };
+    var expr = Node{ .constant = .{ .value = .{ .string = "error!" } } };
     var throw_data = node_mod.ThrowNode{
         .expr = &expr,
         .source = .{},
@@ -932,7 +932,7 @@ test "compile let_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var init_val = Node{ .constant = .{ .integer = 1 } };
+    var init_val = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
     };

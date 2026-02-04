@@ -7,7 +7,7 @@ Session handover document. Read at session start.
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
 - Next task: BE4 (Integration verification)
-- Coverage: 399/712 clojure.core vars done (0 without notes)
+- Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -29,22 +29,17 @@ Verify BE1-BE6 improvements work together correctly.
 
 ## Previous Task
 
-BE6 completed: VM column tracking (Part A).
-- Added columns ArrayList parallel to lines in Chunk
-- Added current_column to Chunk, set by Compiler from node source
-- FnProto.columns parallel array for function bodies
-- CallFrame.columns for VM error annotation
-- VM annotateLocation now includes column from debug info
-- Both backends show exact expression-level source locations
-- Part B (arg-level source via threadlocal) deferred to F## item
-
-BE5 completed: Macro expansion source preservation.
-- Added source_line/source_column fields to PersistentList/PersistentVector
-- formToValue copies Form.line/column to collection source fields
-- valueToForm restores Form.line/column from collection source fields
-- expandMacro stamps original call source on expanded form when line=0
-- TreeWalk: exact sub-expression (e.g. (+ x y) at 1:16 inside defn)
-- VM: line-level precision through macros (column is call-site)
+BE6 Part B completed: Arg-level error source precision.
+- ConstantNode struct added to Node union (value + source)
+- Analyzer passes Form source to constants via makeConstantFrom
+- Collection constant optimizations (vector/map/set) preserve form source
+- Threadlocal arg_sources in error.zig (saveArgSource/getArgSource)
+- TreeWalk: generic callBuiltinFn saves arg source from Node.source()
+- VM: saveVmArgSources scans backward through bytecode columns
+- Arithmetic builtins use getArgSource for precise arg-level error pointing
+- (+ 1 "hello") → caret at "hello", (+ "hello" 1) → caret at "hello"
+- All literal types verified: string, keyword, boolean, nil, vector, char
+- Both backends produce identical error locations
 
 ## Handover Notes
 
@@ -63,7 +58,7 @@ Notes that persist across sessions.
   - BE4: Investigation done — identified 2 root causes, created BE5/BE6 tasks
   - BE5: Done — source_line/source_column on PersistentList/PersistentVector, formToValue/valueToForm roundtrip, expandMacro stamp (D64)
   - BE6: Done (Part A) — VM column tracking (Chunk.columns, Compiler.current_column, CallFrame.columns)
-  - BE6 Part B: Deferred — arg-level threadlocal source (F95)
+  - BE6 Part B: Done — arg-level source (ConstantNode, threadlocal arg sources, VM backward scan)
   - BE5/BE6 design: `.dev/notes/be5-be6-design.md` (read before implementing)
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`

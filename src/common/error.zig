@@ -123,6 +123,23 @@ pub fn clearSourceText() void {
     source_text_cache = null;
 }
 
+// --- Threadlocal arg source tracking ---
+
+threadlocal var arg_sources: [8]SourceLocation = @splat(SourceLocation{});
+
+/// Save source location for a specific argument index.
+pub fn saveArgSource(idx: u8, loc: SourceLocation) void {
+    if (idx < arg_sources.len) {
+        arg_sources[idx] = loc;
+    }
+}
+
+/// Retrieve source location for a specific argument index.
+pub fn getArgSource(idx: u8) SourceLocation {
+    if (idx < arg_sources.len) return arg_sources[idx];
+    return .{};
+}
+
 /// Annotate the current threadlocal error with source location.
 /// Only updates if location is not already set (line == 0).
 pub fn annotateLocation(loc: SourceLocation) void {
@@ -183,6 +200,23 @@ test "source text cache" {
     try std.testing.expectEqualStrings("(+ 1 2)", getSourceText().?);
     clearSourceText();
     try std.testing.expect(getSourceText() == null);
+}
+
+test "arg source save and retrieve" {
+    saveArgSource(0, .{ .line = 5, .column = 3 });
+    saveArgSource(1, .{ .line = 5, .column = 10 });
+
+    const s0 = getArgSource(0);
+    try std.testing.expectEqual(@as(u32, 5), s0.line);
+    try std.testing.expectEqual(@as(u32, 3), s0.column);
+
+    const s1 = getArgSource(1);
+    try std.testing.expectEqual(@as(u32, 5), s1.line);
+    try std.testing.expectEqual(@as(u32, 10), s1.column);
+
+    // Out of range returns empty
+    const s9 = getArgSource(9);
+    try std.testing.expectEqual(@as(u32, 0), s9.line);
 }
 
 test "kindToError 1:1 mapping" {

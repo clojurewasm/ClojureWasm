@@ -59,4 +59,3 @@ Check at session start for items that become actionable.
 | F92 | doseq :let/:when/:while and nesting         | Single binding only, no modifiers, no nested bindings              |
 | F93 | condp :>> modifier                          | Result-fn routing via `:>>` not supported                          |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
-| F95 | Arg-level error source (BE6 Part B)         | Threadlocal arg sources + builtins use getArgSource for precise arg pointing |

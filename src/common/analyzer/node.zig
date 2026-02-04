@@ -197,12 +197,18 @@ pub const DefMethodNode = struct {
     source: SourceInfo,
 };
 
+/// Constant literal with optional source location.
+pub const ConstantNode = struct {
+    value: Value,
+    source: SourceInfo = .{},
+};
+
 // === Node tagged union ===
 
 /// Executable AST node — output of the Analyzer.
 pub const Node = union(enum) {
     // Literals
-    constant: Value,
+    constant: ConstantNode,
 
     // References
     var_ref: VarRefNode,
@@ -243,7 +249,7 @@ pub const Node = union(enum) {
     /// Get source location info for error reporting.
     pub fn source(self: Node) SourceInfo {
         return switch (self) {
-            .constant => .{},
+            .constant => |c| c.source,
             .var_ref => |n| n.source,
             .local_ref => |n| n.source,
             .if_node => |n| n.source,
@@ -268,7 +274,7 @@ pub const Node = union(enum) {
     /// Return the node kind name for debugging.
     pub fn kindName(self: Node) []const u8 {
         return switch (self) {
-            .constant => "constant",
+            .constant => |_| "constant",
             .var_ref => "var-ref",
             .local_ref => "local-ref",
             .if_node => "if",
@@ -295,22 +301,27 @@ pub const Node = union(enum) {
 
 /// Create a constant node from a Value.
 pub fn constantNode(val: Value) Node {
-    return .{ .constant = val };
+    return .{ .constant = .{ .value = val } };
+}
+
+/// Create a constant node with source location.
+pub fn constantNodeWithSource(val: Value, src: SourceInfo) Node {
+    return .{ .constant = .{ .value = val, .source = src } };
 }
 
 /// nil constant node.
 pub fn nilNode() Node {
-    return .{ .constant = .nil };
+    return .{ .constant = .{ .value = .nil } };
 }
 
 /// true constant node.
 pub fn trueNode() Node {
-    return .{ .constant = .{ .boolean = true } };
+    return .{ .constant = .{ .value = .{ .boolean = true } } };
 }
 
 /// false constant node.
 pub fn falseNode() Node {
-    return .{ .constant = .{ .boolean = false } };
+    return .{ .constant = .{ .value = .{ .boolean = false } } };
 }
 
 // === Tests ===
@@ -319,8 +330,8 @@ test "constantNode creates a constant node" {
     const node = constantNode(.{ .integer = 42 });
     try std.testing.expectEqualStrings("constant", node.kindName());
     switch (node) {
-        .constant => |val| {
-            try std.testing.expect(val.eql(.{ .integer = 42 }));
+        .constant => |c| {
+            try std.testing.expect(c.value.eql(.{ .integer = 42 }));
         },
         else => unreachable,
     }
@@ -329,8 +340,8 @@ test "constantNode creates a constant node" {
 test "nilNode creates nil constant" {
     const node = nilNode();
     switch (node) {
-        .constant => |val| {
-            try std.testing.expect(val.isNil());
+        .constant => |c| {
+            try std.testing.expect(c.value.isNil());
         },
         else => unreachable,
     }
@@ -340,11 +351,11 @@ test "trueNode and falseNode" {
     const t = trueNode();
     const f = falseNode();
     switch (t) {
-        .constant => |val| try std.testing.expect(val.isTruthy()),
+        .constant => |c| try std.testing.expect(c.value.isTruthy()),
         else => unreachable,
     }
     switch (f) {
-        .constant => |val| try std.testing.expect(!val.isTruthy()),
+        .constant => |c| try std.testing.expect(!c.value.isTruthy()),
         else => unreachable,
     }
 }

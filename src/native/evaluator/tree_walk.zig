@@ -97,7 +97,7 @@ pub const TreeWalk = struct {
 
     fn runNode(self: *TreeWalk, n: *const Node) TreeWalkError!Value {
         return switch (n.*) {
-            .constant => |val| val,
+            .constant => |c| c.value,
             .local_ref => |ref| {
                 if (ref.idx < self.local_count) {
                     return self.locals[ref.idx];
@@ -856,6 +856,15 @@ pub const TreeWalk = struct {
         defer self.allocator.free(arg_vals);
         for (arg_nodes, 0..) |arg, i| {
             arg_vals[i] = try self.run(arg);
+            // Save arg source for error reporting in builtins
+            if (i < 8) {
+                const src = arg.source();
+                err_mod.saveArgSource(@intCast(i), .{
+                    .line = src.line,
+                    .column = src.column,
+                    .file = src.file,
+                });
+            }
         }
         const result = func(self.allocator, arg_vals);
         if (result) |v| {
@@ -871,30 +880,30 @@ pub const TreeWalk = struct {
 
 test "TreeWalk constant nil" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .nil };
+    const n = Node{ .constant = .{ .value = .nil } };
     const result = try tw.run(&n);
     try std.testing.expectEqual(Value.nil, result);
 }
 
 test "TreeWalk constant integer" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .integer = 42 } };
+    const n = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     const result = try tw.run(&n);
     try std.testing.expectEqual(Value{ .integer = 42 }, result);
 }
 
 test "TreeWalk constant boolean" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .boolean = true } };
+    const n = Node{ .constant = .{ .value = .{ .boolean = true } } };
     const result = try tw.run(&n);
     try std.testing.expectEqual(Value{ .boolean = true }, result);
 }
 
 test "TreeWalk if true branch" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .{ .boolean = true } };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
-    var else_n = Node{ .constant = .{ .integer = 2 } };
+    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -908,9 +917,9 @@ test "TreeWalk if true branch" {
 
 test "TreeWalk if false branch" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .{ .boolean = false } };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
-    var else_n = Node{ .constant = .{ .integer = 2 } };
+    var test_n = Node{ .constant = .{ .value = .{ .boolean = false } } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -924,8 +933,8 @@ test "TreeWalk if false branch" {
 
 test "TreeWalk if nil is falsy" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .nil };
-    var then_n = Node{ .constant = .{ .integer = 1 } };
+    var test_n = Node{ .constant = .{ .value = .nil } };
+    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -939,8 +948,8 @@ test "TreeWalk if nil is falsy" {
 
 test "TreeWalk do node" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var stmt1 = Node{ .constant = .{ .integer = 1 } };
-    var stmt2 = Node{ .constant = .{ .integer = 2 } };
+    var stmt1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var stmt2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var stmts = [_]*Node{ &stmt1, &stmt2 };
     var do_data = node_mod.DoNode{
         .statements = &stmts,
@@ -966,7 +975,7 @@ test "TreeWalk do empty" {
 test "TreeWalk let node" {
     // (let [x 10] x) => 10
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_val = Node{ .constant = .{ .integer = 10 } };
+    var init_val = Node{ .constant = .{ .value = .{ .integer = 10 } } };
     var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
@@ -984,8 +993,8 @@ test "TreeWalk let node" {
 test "TreeWalk let two bindings" {
     // (let [x 10 y 20] y) => 20
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_x = Node{ .constant = .{ .integer = 10 } };
-    var init_y = Node{ .constant = .{ .integer = 20 } };
+    var init_x = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var init_y = Node{ .constant = .{ .value = .{ .integer = 20 } } };
     var body = Node{ .local_ref = .{ .name = "y", .idx = 1, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_x },
@@ -1004,7 +1013,7 @@ test "TreeWalk let two bindings" {
 test "TreeWalk let restores locals" {
     // After let completes, locals are restored
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_val = Node{ .constant = .{ .integer = 10 } };
+    var init_val = Node{ .constant = .{ .value = .{ .integer = 10 } } };
     var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
@@ -1034,7 +1043,7 @@ test "TreeWalk quote node" {
 
 test "TreeWalk constant string" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .string = "hello" } };
+    const n = Node{ .constant = .{ .value = .{ .string = "hello" } } };
     const result = try tw.run(&n);
     try std.testing.expect(result.eql(.{ .string = "hello" }));
 }
@@ -1056,7 +1065,7 @@ test "TreeWalk fn and call" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1085,8 +1094,8 @@ test "TreeWalk fn with two params" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg1 = Node{ .constant = .{ .integer = 1 } };
-    var arg2 = Node{ .constant = .{ .integer = 2 } };
+    var arg1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var arg2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &arg1, &arg2 };
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1110,8 +1119,8 @@ test "TreeWalk arithmetic builtins" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 3 } };
-    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1130,8 +1139,8 @@ test "TreeWalk subtraction" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 10 } };
-    var a2 = Node{ .constant = .{ .integer = 3 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1150,8 +1159,8 @@ test "TreeWalk multiplication" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 6 } };
-    var a2 = Node{ .constant = .{ .integer = 7 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 6 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 7 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1170,8 +1179,8 @@ test "TreeWalk division returns float" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 10 } };
-    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1191,8 +1200,8 @@ test "TreeWalk comparison" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 1 } };
-    var a2 = Node{ .constant = .{ .integer = 2 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1214,7 +1223,7 @@ test "TreeWalk def and var_ref" {
     defer tw.deinit();
 
     // (def x 42)
-    var init_node = Node{ .constant = .{ .integer = 42 } };
+    var init_node = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var def_data = node_mod.DefNode{
         .sym_name = "x",
         .init = &init_node,
@@ -1242,7 +1251,7 @@ test "TreeWalk loop/recur" {
 
     // Build AST
     var i_ref = Node{ .local_ref = .{ .name = "i", .idx = 0, .source = .{} } };
-    var const_5 = Node{ .constant = .{ .integer = 5 } };
+    var const_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var lt_args = [_]*Node{ &i_ref, &const_5 };
     var lt_call_data = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
@@ -1250,7 +1259,7 @@ test "TreeWalk loop/recur" {
 
     // recur: (recur (+ i 1))
     var i_ref2 = Node{ .local_ref = .{ .name = "i", .idx = 0, .source = .{} } };
-    var const_1 = Node{ .constant = .{ .integer = 1 } };
+    var const_1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var add_args = [_]*Node{ &i_ref2, &const_1 };
     var add_call_data = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
@@ -1270,7 +1279,7 @@ test "TreeWalk loop/recur" {
     var body = Node{ .if_node = &if_data };
 
     // loop
-    var init_0 = Node{ .constant = .{ .integer = 0 } };
+    var init_0 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "i", .init = &init_0 },
     };
@@ -1315,7 +1324,7 @@ test "TreeWalk closure captures locals" {
     var fn_node = Node{ .fn_node = &fn_data };
 
     // ((fn [y] (+ x y)) 5)
-    var arg_5 = Node{ .constant = .{ .integer = 5 } };
+    var arg_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var call_args = [_]*Node{&arg_5};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1325,7 +1334,7 @@ test "TreeWalk closure captures locals" {
     var call_node = Node{ .call_node = &call_data };
 
     // (let [x 10] ...)
-    var init_10 = Node{ .constant = .{ .integer = 10 } };
+    var init_10 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_10 },
     };
@@ -1344,7 +1353,7 @@ test "TreeWalk throw and try" {
     var tw = TreeWalk.init(allocator);
 
     // (try (throw "oops") (catch e e))
-    var throw_expr = Node{ .constant = .{ .string = "oops" } };
+    var throw_expr = Node{ .constant = .{ .value = .{ .string = "oops" } } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var body = Node{ .throw_node = &throw_data };
 
@@ -1368,7 +1377,7 @@ test "TreeWalk throw without catch propagates" {
     const allocator = std.testing.allocator;
     var tw = TreeWalk.init(allocator);
 
-    var throw_expr = Node{ .constant = .{ .string = "error" } };
+    var throw_expr = Node{ .constant = .{ .value = .{ .string = "error" } } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     const n = Node{ .throw_node = &throw_data };
     try std.testing.expectError(error.UserException, tw.run(&n));
@@ -1391,7 +1400,7 @@ test "TreeWalk collection intrinsic via registry" {
     const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "first", .source = .{} } };
-    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1416,7 +1425,7 @@ test "TreeWalk count via registry" {
     const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
-    var arg = Node{ .constant = Value{ .vector = &vec } };
+    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1438,8 +1447,8 @@ test "TreeWalk arithmetic via registry-registered Env" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .integer = 3 } };
-    var a2 = Node{ .constant = .{ .integer = 4 } };
+    var a1 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };

@@ -120,8 +120,12 @@ pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
             .mul => a.integer * b.integer,
         } };
     }
-    const fa = try toFloat(a);
-    const fb = try toFloat(b);
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+    };
     return .{ .float = switch (op) {
         .add => fa + fb,
         .sub => fa - fb,
@@ -185,32 +189,44 @@ fn neqFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {
-    const fa = try toFloat(a);
-    const fb = try toFloat(b);
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+    };
     if (std.math.isNan(fa) or std.math.isNan(fb)) return .{ .float = std.math.nan(f64) };
-    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
     return .{ .float = fa / fb };
 }
 
 pub fn binaryMod(a: Value, b: Value) !Value {
     if (a == .integer and b == .integer) {
-        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
         return .{ .integer = @mod(a.integer, b.integer) };
     }
-    const fa = try toFloat(a);
-    const fb = try toFloat(b);
-    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+    };
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
     return .{ .float = @mod(fa, fb) };
 }
 
 pub fn binaryRem(a: Value, b: Value) !Value {
     if (a == .integer and b == .integer) {
-        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
         return .{ .integer = @rem(a.integer, b.integer) };
     }
-    const fa = try toFloat(a);
-    const fb = try toFloat(b);
-    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+    };
+    if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
     return .{ .float = @rem(fa, fb) };
 }
 
@@ -225,8 +241,12 @@ pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
             .ge => a.integer >= b.integer,
         };
     }
-    const fa = try toFloat(a);
-    const fb = try toFloat(b);
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+    };
     return switch (op) {
         .lt => fa < fb,
         .le => fa <= fb,

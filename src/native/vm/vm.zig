@@ -810,11 +810,13 @@ pub const VM = struct {
     fn vmBinaryArith(self: *VM, comptime op: arith.ArithOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
+        self.saveVmArgSources();
         try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
     }
 
     /// Binary op that may produce ArithmeticError (div, mod, rem).
     fn vmBinaryDivLike(self: *VM, comptime func: fn (Value, Value) anyerror!Value) VMError!void {
+        self.saveVmArgSources();
         const b = self.pop();
         const a = self.pop();
         try self.push(func(a, b) catch |e| switch (e) {
@@ -826,7 +828,38 @@ pub const VM = struct {
     fn vmBinaryCompare(self: *VM, comptime op: arith.CompareOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
+        self.saveVmArgSources();
         try self.push(.{ .boolean = arith.compareFn(a, b, op) catch return error.TypeError });
+    }
+
+    /// Save arg sources from VM debug info for the current binary op instruction.
+    /// Save arg sources from VM debug info for the current binary op instruction.
+    /// ip-1 = binary op. Its column is the second operand's (arg1) compile position.
+    /// Scan backward to find a different column for the first operand (arg0).
+    fn saveVmArgSources(self: *VM) void {
+        const f = &self.frames[self.frame_count - 1];
+        if (f.columns.len == 0 or f.ip == 0) return;
+        const file = err_mod.getSourceFile();
+        // arg1: column of the binary op instruction (= last compiled operand)
+        const arg1_col = f.columns[f.ip - 1];
+        const arg1_line: u32 = if (f.lines.len > 0) f.lines[f.ip - 1] else 0;
+        err_mod.saveArgSource(1, .{ .line = arg1_line, .column = arg1_col, .file = file });
+        // arg0: scan backward from ip-2 to find a distinct source column
+        var arg0_col = arg1_col;
+        var arg0_line = arg1_line;
+        if (f.ip >= 2) {
+            var i: usize = f.ip - 2;
+            while (true) {
+                if (f.columns[i] != arg1_col or (f.lines.len > 0 and f.lines[i] != arg1_line)) {
+                    arg0_col = f.columns[i];
+                    arg0_line = if (f.lines.len > 0) f.lines[i] else 0;
+                    break;
+                }
+                if (i == 0) break;
+                i -= 1;
+            }
+        }
+        err_mod.saveArgSource(0, .{ .line = arg0_line, .column = arg0_col, .file = file });
     }
 };
 
@@ -1258,7 +1291,7 @@ test "VM compiler+vm integration: (fn [x] x) called" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg = Node{ .constant = .{ .integer = 42 } };
+    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1312,7 +1345,7 @@ test "VM compiler+vm integration: closure capture via let" {
     var fn_node = Node{ .fn_node = &fn_data };
 
     // Call: ((fn [y] (+ x y)) 5)
-    var arg_5 = Node{ .constant = .{ .integer = 5 } };
+    var arg_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var call_args = [_]*Node{&arg_5};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1322,7 +1355,7 @@ test "VM compiler+vm integration: closure capture via let" {
     var call_node = Node{ .call_node = &call_data };
 
     // let: (let [x 10] ...)
-    var init_10 = Node{ .constant = .{ .integer = 10 } };
+    var init_10 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_10 },
     };
@@ -1524,14 +1557,14 @@ test "VM compiler+vm: loop/recur counts to 5" {
 
     // Build AST
     // loop binding: x = 0
-    var init_0 = Node{ .constant = .{ .integer = 0 } };
+    var init_0 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_0 },
     };
 
     // test: (< x 5)
     var x_ref1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var five = Node{ .constant = .{ .integer = 5 } };
+    var five = Node{ .constant = .{ .value = .{ .integer = 5 } } };
     var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var lt_args = [_]*Node{ &x_ref1, &five };
     var lt_call = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
@@ -1539,7 +1572,7 @@ test "VM compiler+vm: loop/recur counts to 5" {
 
     // then: (recur (+ x 1))
     var x_ref2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var one = Node{ .constant = .{ .integer = 1 } };
+    var one = Node{ .constant = .{ .value = .{ .integer = 1 } } };
     var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var add_args = [_]*Node{ &x_ref2, &one };
     var add_call = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
@@ -1669,7 +1702,7 @@ test "VM try/catch handles throw" {
     defer compiler.deinit();
 
     // AST: (try (throw "err") (catch e e))
-    var throw_expr = Node{ .constant = .{ .string = "err" } };
+    var throw_expr = Node{ .constant = .{ .value = .{ .string = "err" } } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var throw_node = Node{ .throw_node = &throw_data };
 
