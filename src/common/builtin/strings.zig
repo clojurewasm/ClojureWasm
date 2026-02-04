@@ -11,6 +11,7 @@ const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
+const err = @import("../error.zig");
 
 /// (str) => ""
 /// (str x) => string representation of x (non-readable)
@@ -65,24 +66,24 @@ pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (subs s start), (subs s start end) — returns substring.
 pub fn subsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to subs", .{args.len});
     const s = switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "subs expects a string, got {s}", .{@tagName(args[0])}),
     };
     const start_i = switch (args[1]) {
         .integer => |i| i,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "subs expects an integer start, got {s}", .{@tagName(args[1])}),
     };
-    if (start_i < 0 or @as(usize, @intCast(start_i)) > s.len) return error.IndexOutOfBounds;
+    if (start_i < 0 or @as(usize, @intCast(start_i)) > s.len) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{start_i});
     const start: usize = @intCast(start_i);
 
     const end: usize = if (args.len == 3) blk: {
         const end_i = switch (args[2]) {
             .integer => |i| i,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "subs expects an integer end, got {s}", .{@tagName(args[2])}),
         };
-        if (end_i < start_i or @as(usize, @intCast(end_i)) > s.len) return error.IndexOutOfBounds;
+        if (end_i < start_i or @as(usize, @intCast(end_i)) > s.len) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{end_i});
         break :blk @intCast(end_i);
     } else s.len;
 
@@ -94,22 +95,22 @@ pub fn subsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (name x) — returns the name part of a string, symbol, or keyword.
 pub fn nameFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to name", .{args.len});
     return switch (args[0]) {
         .string => args[0],
         .keyword => |k| Value{ .string = k.name },
         .symbol => |s| Value{ .string = s.name },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "name expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (namespace x) — returns the namespace part of a symbol or keyword, or nil.
 pub fn namespaceFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to namespace", .{args.len});
     return switch (args[0]) {
         .keyword => |k| if (k.ns) |ns| Value{ .string = ns } else Value.nil,
         .symbol => |s| if (s.ns) |ns| Value{ .string = ns } else Value.nil,
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "namespace expects a keyword or symbol, got {s}", .{@tagName(args[0])}),
     };
 }
 
@@ -120,21 +121,21 @@ pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
             .keyword => args[0],
             .string => |s| Value{ .keyword = .{ .name = s, .ns = null } },
             .symbol => |sym| Value{ .keyword = .{ .name = sym.name, .ns = sym.ns } },
-            else => error.TypeError,
+            else => err.setErrorFmt(.eval, .type_error, .{}, "keyword expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
         };
     } else if (args.len == 2) {
         const ns_str = switch (args[0]) {
             .string => |s| s,
             .nil => @as(?[]const u8, null),
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword namespace expects a string or nil, got {s}", .{@tagName(args[0])}),
         };
         const name_str = switch (args[1]) {
             .string => |s| s,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword name expects a string, got {s}", .{@tagName(args[1])}),
         };
         return Value{ .keyword = .{ .name = name_str, .ns = ns_str } };
     }
-    return error.ArityError;
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keyword", .{args.len});
 }
 
 /// (symbol x), (symbol ns name) — coerce to symbol.
@@ -144,21 +145,21 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
             .symbol => args[0],
             .string => |s| Value{ .symbol = .{ .name = s, .ns = null } },
             .keyword => |k| Value{ .symbol = .{ .name = k.name, .ns = k.ns } },
-            else => error.TypeError,
+            else => err.setErrorFmt(.eval, .type_error, .{}, "symbol expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
         };
     } else if (args.len == 2) {
         const ns_str = switch (args[0]) {
             .string => |s| s,
             .nil => @as(?[]const u8, null),
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "symbol namespace expects a string or nil, got {s}", .{@tagName(args[0])}),
         };
         const name_str = switch (args[1]) {
             .string => |s| s,
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "symbol name expects a string, got {s}", .{@tagName(args[1])}),
         };
         return Value{ .symbol = .{ .name = name_str, .ns = ns_str } };
     }
-    return error.ArityError;
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to symbol", .{args.len});
 }
 
 /// (print-str) => ""
@@ -396,7 +397,7 @@ test "subs with start and end" {
 }
 
 test "subs out of bounds" {
-    try testing.expectError(error.IndexOutOfBounds, subsFn(testing.allocator, &.{
+    try testing.expectError(error.IndexError, subsFn(testing.allocator, &.{
         Value{ .string = "hi" },
         Value{ .integer = 10 },
     }));

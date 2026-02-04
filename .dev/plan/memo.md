@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE2c (Strings error messages)
+- Next task: BE2d (Other builtins error messages)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -24,19 +24,17 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-BE2c: Add descriptive error messages to string builtins
-(strings.zig, clj_string.zig — ~63 sites). Migrate IndexOutOfBounds →
-IndexError, IllegalState → ValueError. After this + BE2d, remove legacy
-tags from VMError/TreeWalkError.
+BE2d: Add descriptive error messages to remaining builtin files
+(atom, metadata, multimethods, ns_ops, misc, io, file_io,
+regex_builtins, system, eval, var.zig). Migrate var.zig's IllegalState
+→ ValueError. After this, remove legacy tags (IndexOutOfBounds,
+IllegalState) from VMError/TreeWalkError.
 
 ## Previous Task
 
-BE2b completed: Added descriptive error messages to collections.zig
-(~88 sites) and sequences.zig (~15 sites). Migrated IndexOutOfBounds →
-IndexError (.index_error), IllegalState → ValueError (.value_error).
-Added IndexError/ValueError to VMError/TreeWalkError. Legacy tags
-(IndexOutOfBounds, IllegalState) kept temporarily for unmigrated files
-(strings.zig, var.zig). Both backends verified with E2E tests.
+BE2c completed: Added descriptive error messages to strings.zig
+(~18 sites) and clj_string.zig (~51 sites). Migrated IndexOutOfBounds →
+IndexError in subsFn. Both backends verified with E2E tests.
 
 ## Handover Notes
 
@@ -48,7 +46,8 @@ Notes that persist across sessions.
   - BE1: Done — threadlocal + reportError() + showSourceContext()
   - BE2a: Done — core builtins (arithmetic, numeric, predicates); DivisionByZero removed
   - BE2b: Done — collections + sequences; IndexOutOfBounds→IndexError, IllegalState→ValueError
-  - BE2c-d: Next — strings, other builtins (~174 sites remaining)
+  - BE2c: Done — strings (strings.zig, clj_string.zig); IndexOutOfBounds→IndexError in subsFn
+  - BE2d: Next — other builtins (~111 sites remaining)
   - Legacy error tags: IndexOutOfBounds/IllegalState in VMError/TreeWalkError — remove after BE2d migrates all files
   - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces.
   - Architecture: D3a superseded by D63 (threadlocal)

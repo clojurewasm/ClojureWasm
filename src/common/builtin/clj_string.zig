@@ -10,15 +10,16 @@ const PersistentList = value_mod.PersistentList;
 const PersistentVector = value_mod.PersistentVector;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 /// (clojure.string/join coll)
 /// (clojure.string/join separator coll)
 /// Returns a string of all elements in coll, separated by separator.
 pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1 or args.len > 2) return error.ArityError;
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to join", .{args.len});
 
     const sep: []const u8 = if (args.len == 2) blk: {
-        if (args[0] != .string) return error.TypeError;
+        if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "join separator expects a string, got {s}", .{@tagName(args[0])});
         break :blk args[0].string;
     } else "";
 
@@ -27,7 +28,7 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .vector => |v| v.items,
         .list => |l| l.items,
         .nil => return Value{ .string = "" },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "join expects a vector or list, got {s}", .{@tagName(coll)}),
     };
 
     if (items.len == 0) return Value{ .string = "" };
@@ -49,9 +50,9 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Splits string on a string pattern. Returns a vector of strings.
 /// (Simplified: string pattern only, not regex.)
 pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string and args[1] != .regex) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string and args[1] != .regex) return err.setErrorFmt(.eval, .type_error, .{}, "split pattern expects a string or regex, got {s}", .{@tagName(args[1])});
 
     const s = args[0].string;
     const pattern = if (args[1] == .string) args[1].string else args[1].regex.source;
@@ -93,8 +94,8 @@ pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/upper-case s)
 pub fn upperCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to upper-case", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "upper-case expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const result = try allocator.alloc(u8, s.len);
     for (s, 0..) |c, i| {
@@ -105,8 +106,8 @@ pub fn upperCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/lower-case s)
 pub fn lowerCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to lower-case", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "lower-case expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const result = try allocator.alloc(u8, s.len);
     for (s, 0..) |c, i| {
@@ -117,8 +118,8 @@ pub fn lowerCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/trim s)
 pub fn trimFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const trimmed = std.mem.trim(u8, s, " \t\n\r\x0b\x0c");
     return Value{ .string = trimmed };
@@ -127,37 +128,37 @@ pub fn trimFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/includes? s substr)
 /// True if s includes substr.
 pub fn includesFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to includes?", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? substring expects a string, got {s}", .{@tagName(args[1])});
     return Value{ .boolean = std.mem.indexOf(u8, args[0].string, args[1].string) != null };
 }
 
 /// (clojure.string/starts-with? s substr)
 /// True if s starts with substr.
 pub fn startsWithFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to starts-with?", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? substring expects a string, got {s}", .{@tagName(args[1])});
     return Value{ .boolean = std.mem.startsWith(u8, args[0].string, args[1].string) };
 }
 
 /// (clojure.string/ends-with? s substr)
 /// True if s ends with substr.
 pub fn endsWithFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ends-with?", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? substring expects a string, got {s}", .{@tagName(args[1])});
     return Value{ .boolean = std.mem.endsWith(u8, args[0].string, args[1].string) };
 }
 
 /// (clojure.string/replace s match replacement)
 /// Replaces all instances of match with replacement in s.
 pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 3) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
-    if (args[2] != .string) return error.TypeError;
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace match expects a string, got {s}", .{@tagName(args[1])});
+    if (args[2] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace replacement expects a string, got {s}", .{@tagName(args[2])});
 
     const s = args[0].string;
     const match = args[1].string;
@@ -186,10 +187,10 @@ pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/replace-first s match replacement)
 /// Replaces the first instance of match with replacement in s.
 pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 3) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
-    if (args[2] != .string) return error.TypeError;
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace-first", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first match expects a string, got {s}", .{@tagName(args[1])});
+    if (args[2] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first replacement expects a string, got {s}", .{@tagName(args[2])});
 
     const s = args[0].string;
     const match = args[1].string;
@@ -210,8 +211,8 @@ pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value 
 /// (clojure.string/capitalize s)
 /// Converts first character to upper-case, all other characters to lower-case.
 pub fn capitalizeFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to capitalize", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "capitalize expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     if (s.len == 0) return args[0];
     const result = try allocator.alloc(u8, s.len);
@@ -225,8 +226,8 @@ pub fn capitalizeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/split-lines s)
 /// Splits s on \n or \r\n. Returns a vector of strings.
 pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split-lines", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split-lines expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
 
     var parts = std.ArrayList(Value).empty;
@@ -262,13 +263,13 @@ pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/index-of s value from-index)
 /// Returns the index of value in s, optionally starting from from-index.
 pub fn indexOfFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to index-of", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[1])});
     const s = args[0].string;
     const sub = args[1].string;
     const from: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return error.TypeError;
+        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "index-of from-index expects an integer, got {s}", .{@tagName(args[2])});
         const idx = args[2].integer;
         break :blk if (idx < 0) 0 else @intCast(idx);
     } else 0;
@@ -283,13 +284,13 @@ pub fn indexOfFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/last-index-of s value from-index)
 /// Returns the last index of value in s, optionally searching backward from from-index.
 pub fn lastIndexOfFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2 or args.len > 3) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
-    if (args[1] != .string) return error.TypeError;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to last-index-of", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[1])});
     const s = args[0].string;
     const sub = args[1].string;
     const search_end: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return error.TypeError;
+        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of from-index expects an integer, got {s}", .{@tagName(args[2])});
         const idx = args[2].integer;
         const end: usize = if (idx < 0) 0 else @intCast(idx);
         break :blk @min(end + sub.len, s.len);
@@ -303,19 +304,19 @@ pub fn lastIndexOfFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/blank? s)
 /// True if s is nil, empty, or contains only whitespace.
 pub fn blankFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to blank?", .{args.len});
     return switch (args[0]) {
         .nil => Value{ .boolean = true },
         .string => |s| Value{ .boolean = std.mem.trim(u8, s, " \t\n\r\x0b\x0c").len == 0 },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "blank? expects a string or nil, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (clojure.string/reverse s)
 /// Returns s with its characters reversed.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "reverse expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     if (s.len == 0) return args[0];
     const result = try allocator.alloc(u8, s.len);
@@ -333,8 +334,8 @@ pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/trim-newline s)
 /// Removes all trailing newline (\n) and carriage return (\r) characters from s.
 pub fn trimNewlineFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim-newline", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim-newline expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const trimmed = std.mem.trimRight(u8, s, "\r\n");
     return Value{ .string = trimmed };
@@ -343,8 +344,8 @@ pub fn trimNewlineFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/triml s)
 /// Removes whitespace from the left side of s.
 pub fn trimlFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to triml", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "triml expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const trimmed = std.mem.trimLeft(u8, s, " \t\n\r\x0b\x0c");
     return Value{ .string = trimmed };
@@ -353,8 +354,8 @@ pub fn trimlFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/trimr s)
 /// Removes whitespace from the right side of s.
 pub fn trimrFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
-    if (args[0] != .string) return error.TypeError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trimr", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trimr expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
     const trimmed = std.mem.trimRight(u8, s, " \t\n\r\x0b\x0c");
     return Value{ .string = trimmed };
