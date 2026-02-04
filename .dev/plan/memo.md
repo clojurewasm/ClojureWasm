@@ -37,16 +37,16 @@ Three priority areas in order.
 
 ### Task Queue
 
-| Task    | Type | Description                             | Notes                                   |
-| ------- | ---- | --------------------------------------- | --------------------------------------- |
-| T17.5.1 | done | VM try/catch body evaluation bug        | D59: stepInstruction + error routing    |
-| T17.5.2 | done | Destructuring: F58 nested map           | Recursive expandBindingPattern          |
-| T17.5.3 | done | Destructuring: F67 rest args + map      | apply hash-map conversion               |
-| T17.5.4 | done | Destructuring: F69 keywords in :keys    | Already working                         |
-| T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer           |
-| T17.5.6 | done | VM defmulti/defmethod opcodes (F13)     | D60: opcodes + callFnVal IFn extension  |
-| T17.5.7 | impl | clojure.string expansion                | capitalize, split-lines, index-of, etc. |
-| T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass      |
+| Task    | Type | Description                             | Notes                                  |
+| ------- | ---- | --------------------------------------- | -------------------------------------- |
+| T17.5.1 | done | VM try/catch body evaluation bug        | D59: stepInstruction + error routing   |
+| T17.5.2 | done | Destructuring: F58 nested map           | Recursive expandBindingPattern         |
+| T17.5.3 | done | Destructuring: F67 rest args + map      | apply hash-map conversion              |
+| T17.5.4 | done | Destructuring: F69 keywords in :keys    | Already working                        |
+| T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer          |
+| T17.5.6 | done | VM defmulti/defmethod opcodes (F13)     | D60: opcodes + callFnVal IFn extension |
+| T17.5.7 | done | clojure.string expansion                | +5 fns: capitalize, split-lines, etc.  |
+| T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass     |
 
 ### Phase 17 Summary (completed)
 

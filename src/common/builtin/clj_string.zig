@@ -183,6 +183,123 @@ pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = try aw.toOwnedSlice() };
 }
 
+/// (clojure.string/replace-first s match replacement)
+/// Replaces the first instance of match with replacement in s.
+pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    if (args[2] != .string) return error.TypeError;
+
+    const s = args[0].string;
+    const match = args[1].string;
+    const replacement = args[2].string;
+
+    if (match.len == 0) return args[0];
+
+    if (std.mem.indexOf(u8, s, match)) |pos| {
+        var aw: Writer.Allocating = .init(allocator);
+        try aw.writer.writeAll(s[0..pos]);
+        try aw.writer.writeAll(replacement);
+        try aw.writer.writeAll(s[pos + match.len ..]);
+        return Value{ .string = try aw.toOwnedSlice() };
+    }
+    return args[0];
+}
+
+/// (clojure.string/capitalize s)
+/// Converts first character to upper-case, all other characters to lower-case.
+pub fn capitalizeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+    if (s.len == 0) return args[0];
+    const result = try allocator.alloc(u8, s.len);
+    result[0] = std.ascii.toUpper(s[0]);
+    for (s[1..], 1..) |c, i| {
+        result[i] = std.ascii.toLower(c);
+    }
+    return Value{ .string = result };
+}
+
+/// (clojure.string/split-lines s)
+/// Splits s on \n or \r\n. Returns a vector of strings.
+pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    const s = args[0].string;
+
+    var parts = std.ArrayList(Value).empty;
+    var start: usize = 0;
+    var i: usize = 0;
+    while (i < s.len) {
+        if (s[i] == '\n') {
+            const part = try allocator.dupe(u8, s[start..i]);
+            try parts.append(allocator, Value{ .string = part });
+            start = i + 1;
+        } else if (s[i] == '\r' and i + 1 < s.len and s[i + 1] == '\n') {
+            const part = try allocator.dupe(u8, s[start..i]);
+            try parts.append(allocator, Value{ .string = part });
+            start = i + 2;
+            i += 1; // skip \n
+        } else if (s[i] == '\r') {
+            const part = try allocator.dupe(u8, s[start..i]);
+            try parts.append(allocator, Value{ .string = part });
+            start = i + 1;
+        }
+        i += 1;
+    }
+    // Add remaining
+    const part = try allocator.dupe(u8, s[start..]);
+    try parts.append(allocator, Value{ .string = part });
+
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = try parts.toOwnedSlice(allocator) };
+    return Value{ .vector = vec };
+}
+
+/// (clojure.string/index-of s value)
+/// (clojure.string/index-of s value from-index)
+/// Returns the index of value in s, optionally starting from from-index.
+pub fn indexOfFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    const s = args[0].string;
+    const sub = args[1].string;
+    const from: usize = if (args.len == 3) blk: {
+        if (args[2] != .integer) return error.TypeError;
+        const idx = args[2].integer;
+        break :blk if (idx < 0) 0 else @intCast(idx);
+    } else 0;
+    if (from > s.len) return Value.nil;
+    if (std.mem.indexOfPos(u8, s, from, sub)) |pos| {
+        return Value{ .integer = @intCast(pos) };
+    }
+    return Value.nil;
+}
+
+/// (clojure.string/last-index-of s value)
+/// (clojure.string/last-index-of s value from-index)
+/// Returns the last index of value in s, optionally searching backward from from-index.
+pub fn lastIndexOfFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return error.ArityError;
+    if (args[0] != .string) return error.TypeError;
+    if (args[1] != .string) return error.TypeError;
+    const s = args[0].string;
+    const sub = args[1].string;
+    const search_end: usize = if (args.len == 3) blk: {
+        if (args[2] != .integer) return error.TypeError;
+        const idx = args[2].integer;
+        const end: usize = if (idx < 0) 0 else @intCast(idx);
+        break :blk @min(end + sub.len, s.len);
+    } else s.len;
+    if (std.mem.lastIndexOf(u8, s[0..search_end], sub)) |pos| {
+        return Value{ .integer = @intCast(pos) };
+    }
+    return Value.nil;
+}
+
 /// (clojure.string/blank? s)
 /// True if s is nil, empty, or contains only whitespace.
 pub fn blankFn(_: Allocator, args: []const Value) anyerror!Value {
@@ -278,6 +395,11 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "trim-newline", .func = &trimNewlineFn, .doc = "Removes all trailing newline \\n and carriage return \\r characters from s.", .arglists = "([s])", .added = "1.2" },
     .{ .name = "triml", .func = &trimlFn, .doc = "Removes whitespace from the left side of string.", .arglists = "([s])", .added = "1.2" },
     .{ .name = "trimr", .func = &trimrFn, .doc = "Removes whitespace from the right side of string.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "capitalize", .func = &capitalizeFn, .doc = "Converts first character of the string to upper-case, all other characters to lower-case.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "split-lines", .func = &splitLinesFn, .doc = "Splits s on \\n or \\r\\n.", .arglists = "([s])", .added = "1.2" },
+    .{ .name = "index-of", .func = &indexOfFn, .doc = "Return index of value (string) in s, optionally searching forward from from-index. Return nil if value not found.", .arglists = "([s value] [s value from-index])", .added = "1.8" },
+    .{ .name = "last-index-of", .func = &lastIndexOfFn, .doc = "Return last index of value (string) in s, optionally searching backward from from-index. Return nil if value not found.", .arglists = "([s value] [s value from-index])", .added = "1.8" },
+    .{ .name = "replace-first", .func = &replaceFirstFn, .doc = "Replaces the first instance of match with replacement in s.", .arglists = "([s match replacement])", .added = "1.2" },
 };
 
 // ============================================================
@@ -419,6 +541,56 @@ test "trimr" {
     try testing.expectEqualStrings("  hello", result.string);
 }
 
-test "builtins table has 14 entries" {
-    try testing.expectEqual(14, builtins.len);
+test "capitalize" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const r1 = try capitalizeFn(arena.allocator(), &.{.{ .string = "hello WORLD" }});
+    try testing.expectEqualStrings("Hello world", r1.string);
+    const r2 = try capitalizeFn(arena.allocator(), &.{.{ .string = "" }});
+    try testing.expectEqualStrings("", r2.string);
+    const r3 = try capitalizeFn(arena.allocator(), &.{.{ .string = "a" }});
+    try testing.expectEqualStrings("A", r3.string);
+}
+
+test "split-lines" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try splitLinesFn(alloc, &.{.{ .string = "a\nb\r\nc" }});
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expectEqualStrings("a", result.vector.items[0].string);
+    try testing.expectEqualStrings("b", result.vector.items[1].string);
+    try testing.expectEqualStrings("c", result.vector.items[2].string);
+}
+
+test "index-of" {
+    const r1 = try indexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "ll" } });
+    try testing.expectEqual(@as(i64, 2), r1.integer);
+    const r2 = try indexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "xyz" } });
+    try testing.expect(r2 == .nil);
+    const r3 = try indexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "l" }, .{ .integer = 3 } });
+    try testing.expectEqual(@as(i64, 3), r3.integer);
+}
+
+test "last-index-of" {
+    const r1 = try lastIndexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "l" } });
+    try testing.expectEqual(@as(i64, 3), r1.integer);
+    const r2 = try lastIndexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "xyz" } });
+    try testing.expect(r2 == .nil);
+    const r3 = try lastIndexOfFn(undefined, &.{ .{ .string = "hello" }, .{ .string = "l" }, .{ .integer = 2 } });
+    try testing.expectEqual(@as(i64, 2), r3.integer);
+}
+
+test "replace-first" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const r1 = try replaceFirstFn(arena.allocator(), &.{ .{ .string = "aabaa" }, .{ .string = "a" }, .{ .string = "x" } });
+    try testing.expectEqualStrings("xabaa", r1.string);
+    const r2 = try replaceFirstFn(arena.allocator(), &.{ .{ .string = "hello" }, .{ .string = "xyz" }, .{ .string = "!" } });
+    try testing.expectEqualStrings("hello", r2.string);
+}
+
+test "builtins table has 19 entries" {
+    try testing.expectEqual(19, builtins.len);
 }

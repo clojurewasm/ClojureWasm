@@ -1141,20 +1141,20 @@ vars:
     "root-cause": {type: function, status: todo}
   clojure_string:
     "blank?": {type: function, status: done}
-    capitalize: {type: function, status: todo}
+    capitalize: {type: function, status: done, note: builtin (upstream is pure clj)}
     "ends-with?": {type: function, status: done}
     escape: {type: function, status: todo}
     "includes?": {type: function, status: done}
-    "index-of": {type: function, status: todo}
+    "index-of": {type: function, status: done, note: builtin (upstream uses .indexOf)}
     join: {type: function, status: done}
-    "last-index-of": {type: function, status: todo}
+    "last-index-of": {type: function, status: done, note: builtin (upstream uses .lastIndexOf)}
     "lower-case": {type: function, status: done}
     "re-quote-replacement": {type: function, status: todo}
     replace: {type: function, status: done}
-    "replace-first": {type: function, status: todo}
+    "replace-first": {type: function, status: done, note: builtin (upstream is pure clj)}
     reverse: {type: function, status: done}
     split: {type: function, status: done}
-    "split-lines": {type: function, status: todo}
+    "split-lines": {type: function, status: done, note: builtin (upstream is pure clj)}
     "starts-with?": {type: function, status: done}
     trim: {type: function, status: done}
     "trim-newline": {type: function, status: done}
