@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C10 (Re-port predicates.clj)
+- Next task: C12 (Re-port sequences.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -24,8 +24,8 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C7: def.clj~~ done (2 assertions, eval do sequential fix)
 - ~~C8: vars.clj~~ done (1 assertion, zipmap lazy seq fix)
 - ~~C9: Re-port control.clj~~ done (155 assertions, was 66)
-- C10: Re-port predicates.clj (upstream faithful)
-- C11: Re-port data_structures.clj (upstream faithful)
+- ~~C10: Re-port predicates.clj~~ skip (already faithful, 143 assertions)
+- ~~C11: Re-port data_structures.clj~~ done (236 assertions, was 197, keys/vals nil-for-non-map fix)
 - C12: Re-port sequences.clj (upstream faithful)
 - C13: clojure_walk.clj (75 lines)
 - C14: string.clj (196 lines)
@@ -38,14 +38,13 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C10: Re-port predicates.clj — faithful from upstream with CLJW markers.
+C12: Re-port sequences.clj — faithful from upstream with CLJW markers.
 
 ## Previous Task
 
-C9 completed: Re-port control.clj — 155 assertions (was 66).
-- Added when-first, if-some, when-some tests from upstream
-- Fixed case no-match throw, if-some optional else
-- case symbol/multi-value matching now works
+C11 completed: Re-port data_structures.clj — 236 assertions (was 197).
+- Added nested-map-destructuring, array-map-arity, expanded contains?/keys/vals/assoc/hash-set
+- Fixed keys/vals to return nil for non-map types (match JVM RT.keys/RT.vals)
 
 ## Handover Notes
 
