@@ -6,27 +6,30 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE4 (Error caret precision)
+- Next task: BE5 (Macro expansion source preservation)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
 ## Task Queue
 
-| Task | Description             | Notes                                                                                                                                                                                                         |
-|------|-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| BE4  | Error caret precision   | Investigate nested expr errors, choose strategy (arg-level threadlocal, heuristic, etc.) to improve caret position NOTE: The reported error location does not match the actual location in the original code. |
-| B0   | test.clj enhancement    | is pattern dispatch, thrown?                                                                                                                                                                                  |
-| B1   | Core Semantics fixes    | F29/F33, F34, F30, F31, F32                                                                                                                                                                                   |
-| B2   | Macro Enhancement       | F27/F28, F93, F92, F25/F26                                                                                                                                                                                    |
-| B3   | Seq/String Operations   | F41, F45, F48, F49                                                                                                                                                                                            |
-| B4   | defn/ns Enhancement     | F90, F85                                                                                                                                                                                                      |
+| Task | Description                        | Notes                                                                        |
+|------|------------------------------------|------------------------------------------------------------------------------|
+| BE5  | Macro expansion source preservation | Collection source fields + formToValue/valueToForm. Design: be5-be6-design.md |
+| BE6  | Arg-level error source             | Column debug info + threadlocal arg sources. Design: be5-be6-design.md        |
+| BE4  | Integration verification           | Complex nesting tests, both backends, macro + nested errors                   |
+| B0   | test.clj enhancement              | is pattern dispatch, thrown?                                                  |
+| B1   | Core Semantics fixes               | F29/F33, F34, F30, F31, F32                                                   |
+| B2   | Macro Enhancement                  | F27/F28, F93, F92, F25/F26                                                    |
+| B3   | Seq/String Operations              | F41, F45, F48, F49                                                            |
+| B4   | defn/ns Enhancement                | F90, F85                                                                      |
 
 ## Current Task
 
-BE4: Error caret precision investigation.
-Investigate nested expression errors. Choose strategy for improving
-caret position (arg-level threadlocal, heuristic, etc.).
-Also: defn macro expansion loses source info — related issue.
+BE5: Macro expansion source preservation.
+Add source_line/source_column to PersistentList/PersistentVector.
+Modify formToValue/valueToForm to transfer source info through macro expansion.
+Stamp original call source on top-level expanded form.
+Design: `.dev/notes/be5-be6-design.md`
 
 ## Previous Task
 
@@ -52,6 +55,10 @@ Notes that persist across sessions.
   - BE2d: Done — other builtins (atom, metadata, multimethods, io, system, regex, file_io, ns_ops, misc, eval, var.zig); legacy tags removed
   - BE3a: Done — TreeWalk source location (annotateLocation, file name, message pointer)
   - BE3b: Done — VM source location (lines array in Chunk/FnProto, Compiler tracks current_line, VM annotates from lines[ip-1])
+  - BE4: Investigation done — identified 2 root causes, created BE5/BE6 tasks
+  - BE5: Next — macro expansion source preservation (collection source fields)
+  - BE6: Next — arg-level error source (column debug info + threadlocal arg sources)
+  - BE5/BE6 design: `.dev/notes/be5-be6-design.md` (read before implementing)
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
   - Display: `reportError()` in main.zig, babashka-style format
