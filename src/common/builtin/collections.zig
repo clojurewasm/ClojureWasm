@@ -45,6 +45,12 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized_args = [1]Value{realized};
             return firstFn(allocator, &realized_args);
         },
+        .string => |s| {
+            if (s.len == 0) return .nil;
+            const cp_len = std.unicode.utf8ByteSequenceLength(s[0]) catch 1;
+            const cp = std.unicode.utf8Decode(s[0..cp_len]) catch s[0];
+            return Value{ .char = cp };
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "first not supported on {s}", .{@tagName(args[0])}),
     };
 }
@@ -94,6 +100,27 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
             return restFn(allocator, &realized_args);
+        },
+        .string => |s| blk: {
+            if (s.len == 0) {
+                const empty = try allocator.create(PersistentList);
+                empty.* = .{ .items = &.{} };
+                break :blk Value{ .list = empty };
+            }
+            const cp_len = std.unicode.utf8ByteSequenceLength(s[0]) catch 1;
+            const rest_str = s[cp_len..];
+            // Convert remaining chars to list of characters
+            var chars: std.ArrayListUnmanaged(Value) = .empty;
+            var i: usize = 0;
+            while (i < rest_str.len) {
+                const cl = std.unicode.utf8ByteSequenceLength(rest_str[i]) catch 1;
+                const cp = std.unicode.utf8Decode(rest_str[i..][0..cl]) catch rest_str[i];
+                try chars.append(allocator, Value{ .char = cp });
+                i += cl;
+            }
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = try chars.toOwnedSlice(allocator) };
+            break :blk Value{ .list = lst };
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "rest not supported on {s}", .{@tagName(args[0])}),
     };
@@ -411,6 +438,20 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
             return seqFn(allocator, &realized_args);
+        },
+        .string => |s| {
+            if (s.len == 0) return .nil;
+            var chars: std.ArrayListUnmanaged(Value) = .empty;
+            var i: usize = 0;
+            while (i < s.len) {
+                const cl = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+                const cp = std.unicode.utf8Decode(s[i..][0..cl]) catch s[i];
+                try chars.append(allocator, Value{ .char = cp });
+                i += cl;
+            }
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = try chars.toOwnedSlice(allocator) };
+            return Value{ .list = lst };
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "seq not supported on {s}", .{@tagName(args[0])}),
     };

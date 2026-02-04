@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: B3 (Seq/String Operations)
+- Next task: B4 (defn/ns Enhancement)
 - Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
@@ -14,24 +14,21 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| B3   | Seq/String Operations              | F41, F45, F48, F49                                                            |
 | B4   | defn/ns Enhancement                | F90, F85                                                                      |
 
 ## Current Task
 
-B3: Seq/String Operations.
-F41, F45, F48, F49.
+B4: defn/ns Enhancement.
+F90, F85.
 
 ## Previous Task
 
-B2 completed: Macro Enhancement.
-- F27/F28: case — quote symbols, support (test1 test2 ...) grouping
-- F93: condp — rewritten with recursive emit, :>> modifier support, no-match throw
-- F92: doseq — rewritten with recursive step; :let/:when/:while and nesting
-- F25: for :while — implemented via take-while collection wrapping
-- F26: for :let+:when — fixed wrapping order (:when inner, :let outer)
-- TreeWalk bugfix: let/loop errdefer for local_count on throw
-- Resolved F25, F26, F27, F28, F92, F93 from checklist
+B3 completed: Seq/String Operations.
+- F41: first/rest/next/seq on string — UTF-8 decode to character list
+- F45: interleave multi-arity — 0-arg returns (), 1-arg returns lazy-seq, N-arg supported
+- F48: (range) infinite — wraps builtin with (iterate inc 0) for 0-arity
+- F49: partition step/pad — multi-arity with step and pad collection support
+- Resolved F41, F45, F48, F49 from checklist
 
 ## Handover Notes
 

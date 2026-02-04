@@ -23,10 +23,6 @@ Check at session start for items that become actionable.
 | F20 | Safe point GC design                        | Real GC (F2) implementation start                                  |
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
-| F41 | first/rest on string                        | (first "a") fails                                                  |
-| F45 | interleave 0-1 args                         | (interleave) and (interleave [1]) fail                             |
-| F48 | (range) infinite sequence                   | infinite range not supported                                       |
-| F49 | partition with step arg                     | (partition 2 3 coll) not supported                                 |
 | F51 | shuffle function                            | not implemented                                                    |
 | F68 | {:as x} on empty list returns ()            | JVM: `{}`, ClojureWasm: `()` (not coerced to map)                  |
 | F70 | Namespaced keywords in :keys                | `{:keys [:a/b]}` not supported                                     |

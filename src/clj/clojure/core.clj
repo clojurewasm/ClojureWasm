@@ -333,12 +333,23 @@
 
 ;; Sequence transforms
 
-(defn partition [n coll]
-  (loop [s (seq coll) acc (list)]
-    (let [chunk (take n s)]
-      (if (= (count chunk) n)
-        (recur (drop n s) (cons chunk acc))
-        (reverse acc)))))
+(defn partition
+  ([n coll]
+   (partition n n coll))
+  ([n step coll]
+   (loop [s (seq coll) acc (list)]
+     (let [chunk (take n s)]
+       (if (= (count chunk) n)
+         (recur (drop step s) (cons chunk acc))
+         (reverse acc)))))
+  ([n step pad coll]
+   (loop [s (seq coll) acc (list)]
+     (let [chunk (take n s)]
+       (if (= (count chunk) n)
+         (recur (drop step s) (cons chunk acc))
+         (if (seq chunk)
+           (reverse (cons (take n (concat chunk pad)) acc))
+           (reverse acc)))))))
 
 (defn partition-by [f coll]
   (loop [s (seq coll) acc (list) cur (list) prev nil started false]
@@ -369,11 +380,20 @@
           (recur (next s) (cons x acc))))
       (reverse acc))))
 
-(defn interleave [c1 c2]
-  (loop [s1 (seq c1) s2 (seq c2) acc (list)]
-    (if (if s1 s2 nil)
-      (recur (next s1) (next s2) (cons (first s2) (cons (first s1) acc)))
-      (reverse acc))))
+(defn interleave
+  ([] (list))
+  ([c1] (lazy-seq c1))
+  ([c1 c2]
+   (lazy-seq
+    (let [s1 (seq c1) s2 (seq c2)]
+      (when (and s1 s2)
+        (cons (first s1) (cons (first s2)
+                               (interleave (rest s1) (rest s2))))))))
+  ([c1 c2 & colls]
+   (lazy-seq
+    (let [ss (map seq (cons c1 (cons c2 colls)))]
+      (when (every? identity ss)
+        (concat (map first ss) (apply interleave (map rest ss))))))))
 
 (defn interpose [sep coll]
   (loop [s (seq coll) acc (list) started false]
@@ -512,6 +532,14 @@
 
 (defn iterate [f x]
   (lazy-seq (cons x (iterate f (f x)))))
+
+;; Shadow builtin range to add 0-arity infinite range
+(let [builtin-range range]
+  (defn range
+    ([] (iterate inc 0))
+    ([end] (builtin-range end))
+    ([start end] (builtin-range start end))
+    ([start end step] (builtin-range start end step))))
 
 (defn repeat
   ([x] (lazy-seq (cons x (repeat x))))
