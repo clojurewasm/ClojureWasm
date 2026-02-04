@@ -81,11 +81,11 @@ When implementing or fixing features:
 When working on test files under test/upstream/:
 
 1. **Implement, don't work around.** Test failure = implementation issue.
-   Never change expected values to make tests pass.
-2. **CLJW-SKIP requires F## reference.** Every skipped test needs a
-   checklist.md entry.
-3. **No assertion reduction.** Ported file assertion count must not be
-   less than upstream (excluding CLJW-SKIP).
+   Fix the implementation, never change expected values.
+2. **No skipping.** If a test fails, implement the missing feature or fix
+   the bug. The only exception is pure JVM interop (Java class hierarchy,
+   JMX, classloaders, etc.) which is physically impossible to implement.
+3. **No assertion reduction.** Ported file assertion count must match upstream.
 4. **Both backends.** Verify on VM + TreeWalk.
 
 ### When to Stop
@@ -121,8 +121,8 @@ Run before every commit:
    - Remove completed task from Task Queue
    - Update Handover Notes if status changed (done/architecture/new info)
 5. **test-porting.md**: When changing test/upstream/ files:
-   - All changes have CLJW/CLJW-SKIP markers
-   - No assertion deletions (except CLJW-SKIP)
+   - All changes have CLJW markers
+   - No assertion deletions — implement missing features instead
    - File header statistics updated
    - Both backends verified
 
@@ -248,7 +248,7 @@ When adding a function/macro to any `.clj` file:
 ### Java Interop Policy
 
 Java interop patterns → `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
-Do NOT skip features that look JVM-specific — implement Zig equivalents first.
+Do NOT skip features that look JVM-specific — try implement Zig equivalents first.
 
 ## Zig 0.15.2 Pitfalls
 
@@ -264,7 +264,7 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 | Impl tier guide   | `.claude/references/impl-tiers.md`   | When implementing a new function           |
 | Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
 | Roadmap           | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
-| Deferred items    | `.dev/checklist.md`                  | F## items to check before skipping         |
+| Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | Zig 0.15.2 guide  | Beta's `docs/reference/zig_guide.md` | When Zig 0.15 API is unclear               |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

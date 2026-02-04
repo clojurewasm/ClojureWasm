@@ -16,21 +16,19 @@ Auto-load paths: `test/**/*.clj`
 1. Preserve upstream `(ns ...)` form (mark changes with `;; CLJW:`)
 2. Preserve upstream copyright notices verbatim
 3. Mark ALL changes with `;; CLJW: <reason>` marker
-4. When skipping, keep upstream code as comment: `;; CLJW-SKIP: <F## reason>`
-5. Run both VM + TreeWalk before committing
+4. Run both VM + TreeWalk before committing
 
 ## On Test Failure
 
 1. Identify cause: unimplemented / bug / semantic diff / Java-only
-2. Unimplemented → create F## entry + CLJW-SKIP (impl goes to Phase B)
+2. Unimplemented → implement the missing feature or fix the bug
 3. Bug → fix in place
-4. Java-only → CLJW-SKIP: JVM interop
+4. Java-only (pure JVM interop: class hierarchy, JMX, classloaders) → mark with `;; CLJW: JVM interop`
 
 ## Marker Format
 
 ```
 ;; CLJW: <description>         — semantic change (Java→Zig equivalent)
-;; CLJW-SKIP: <F## reason>    — skip (F## reference required)
 ;; CLJW-ADD: <reason>          — test not in upstream
 ```
 
@@ -40,15 +38,14 @@ Auto-load paths: `test/**/*.clj`
 ;; Upstream: clojure/test/clojure/test_clojure/<name>.clj
 ;; Upstream lines: <N>
 ;; CLJW markers: <K>
-;; CLJW-SKIP count: <J>
 ```
 
 ## Guardrails
 
 - **Implement, don't work around.** Test failure = implementation issue.
-  Never change expected values.
-- **CLJW-SKIP requires F## reference.** Every skipped test needs a
-  checklist.md entry.
-- **No assertion reduction.** Ported file assertion count must not be
-  less than upstream (excluding CLJW-SKIP).
+  Fix the implementation, never change expected values.
+- **No skipping.** If a test fails, implement the missing feature or fix
+  the bug. The only exception is pure JVM interop (Java class hierarchy,
+  JMX, classloaders, etc.) which is physically impossible to implement.
+- **No assertion reduction.** Ported file assertion count must match upstream.
 - **Both backends.** Verify on VM + TreeWalk.
