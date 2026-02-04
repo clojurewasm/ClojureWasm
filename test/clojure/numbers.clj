@@ -263,7 +263,7 @@
   (is (false? (neg? 0.0)))
   (is (true? (neg? -7.0))))
 
-  ;; SKIP: byte/short/int/long coercion tests
+  ;; NOTE: byte/short/int/long coercion tests moved to end of file (T18.5.2)
   ;; SKIP: BigInt, BigDecimal, Ratio predicates
 
 (deftest test-even?

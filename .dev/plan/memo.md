@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
-- Current task: T18.5.5
+- Current task: (Phase 18.5 complete — plan next phase)
 - Task file: N/A
-- Last completed: T18.5.4 (completing, reductions, take-nth, replace)
+- Last completed: T18.5.5 (coverage expansion: +10 tests/+39 assertions)
 - Blockers: none
-- Next: Coverage expansion (un-SKIP tests)
+- Next: Plan Phase 19
 
 ## Current Phase: 18
 
@@ -30,13 +30,13 @@ numeric conversions (deferred T18.2), upstream macro alignment.
 
 ### Task Queue
 
-| Task    | Type | Description                              | Notes                                      |
-| ------- | ---- | ---------------------------------------- | ------------------------------------------ |
-| T18.5.1 | done | Fix F95 lazy-seq+cons TypeError          | D61: lazy_seq opcode + collectSeqItems     |
-| T18.5.2 | done | Numeric conversions (int, long, etc.)    | 8 builtins, 341 done vars                  |
-| T18.5.3 | done | Core expansion II (seqable?, counted?)   | 10 builtins, 351 done vars                 |
-| T18.5.4 | done | Seq utilities (reductions, take-nth etc) | 4 functions, F50 resolved, 355 done vars   |
-| T18.5.5 | test | Coverage: un-SKIP newly enabled tests    | Tests enabled by F95 fix and new functions |
+| Task    | Type | Description                              | Notes                                    |
+| ------- | ---- | ---------------------------------------- | ---------------------------------------- |
+| T18.5.1 | done | Fix F95 lazy-seq+cons TypeError          | D61: lazy_seq opcode + collectSeqItems   |
+| T18.5.2 | done | Numeric conversions (int, long, etc.)    | 8 builtins, 341 done vars                |
+| T18.5.3 | done | Core expansion II (seqable?, counted?)   | 10 builtins, 351 done vars               |
+| T18.5.4 | done | Seq utilities (reductions, take-nth etc) | 4 functions, F50 resolved, 355 done vars |
+| T18.5.5 | done | Coverage: un-SKIP newly enabled tests    | +10 tests, +39 assertions, 971 total     |
 
 ### Phase 18 Summary (completed)
 

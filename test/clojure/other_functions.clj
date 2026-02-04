@@ -244,4 +244,64 @@
   (is (nil? (parse-boolean "1")))
   (is (nil? (parse-boolean nil))))
 
+(deftest test-reductions
+  (is (= [1 3 6 10] (vec (reductions + [1 2 3 4]))))
+  (is (= [10 11 13 16] (vec (reductions + 10 [1 2 3]))))
+  (is (= [0] (vec (reductions + []))))
+  (is (= [1] (vec (reductions + [1])))))
+
+(deftest test-take-nth
+  (is (= [1 3 5] (vec (take-nth 2 [1 2 3 4 5 6]))))
+  (is (= [1 4 7] (vec (take-nth 3 [1 2 3 4 5 6 7 8 9]))))
+  (is (= [1 2 3] (vec (take-nth 1 [1 2 3]))))
+  (is (= [] (vec (take-nth 2 [])))))
+
+(deftest test-replace-fn
+  (is (= [:a :b 3 4] (replace {1 :a 2 :b} [1 2 3 4])))
+  (is (= [:a :b 3 4] (vec (replace {1 :a 2 :b} '(1 2 3 4)))))
+  (is (= [1 2 3] (replace {} [1 2 3])))
+  (is (= [:x :x :x] (replace {1 :x 2 :x 3 :x} [1 2 3]))))
+
+(deftest test-completing-fn
+  (is (= 7 (let [f (completing +)] (f 3 4))))
+  (is (= "42" (let [f (completing + str)] (f 42))))
+  (is (= 0 (let [f (completing +)] (f)))))
+
+(deftest test-tree-seq-fn
+  (is (= [[1 [2 3]] 1 [2 3] 2 3]
+         (vec (tree-seq vector? seq [1 [2 3]]))))
+  (is (= [1] (vec (tree-seq vector? seq 1))))
+  (is (= [[]] (vec (tree-seq vector? seq [])))))
+
+(deftest test-seqable-pred
+  (is (true? (seqable? [1 2])))
+  (is (true? (seqable? '(1))))
+  (is (true? (seqable? {:a 1})))
+  (is (true? (seqable? #{1})))
+  (is (true? (seqable? "hi")))
+  (is (true? (seqable? nil)))
+  (is (false? (seqable? 42)))
+  (is (false? (seqable? true))))
+
+(deftest test-counted-pred
+  (is (true? (counted? [1 2])))
+  (is (true? (counted? '(1))))
+  (is (true? (counted? {:a 1})))
+  (is (true? (counted? #{1})))
+  (is (false? (counted? nil))))
+
+(deftest test-bounded-count-fn
+  (is (= 3 (bounded-count 10 [1 2 3])))
+  (is (= 5 (bounded-count 5 [1 2 3 4 5 6 7])))
+  (is (= 0 (bounded-count 10 []))))
+
+(deftest test-indexed-pred
+  (is (true? (indexed? [1 2])))
+  (is (false? (indexed? '(1))))
+  (is (false? (indexed? #{1}))))
+
+(deftest test-reversible-pred
+  (is (true? (reversible? [1 2])))
+  (is (false? (reversible? '(1)))))
+
 (run-tests)
