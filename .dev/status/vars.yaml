@@ -150,14 +150,14 @@ vars:
     binding: {type: macro, status: todo}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: todo}
-    "bit-clear": {type: function, status: todo}
-    "bit-flip": {type: function, status: todo}
+    "bit-clear": {type: function, status: done}
+    "bit-flip": {type: function, status: done}
     "bit-not": {type: function, status: done, note: "Zig builtin"}
     "bit-or": {type: function, status: done, note: "Zig builtin"}
-    "bit-set": {type: function, status: todo}
+    "bit-set": {type: function, status: done}
     "bit-shift-left": {type: function, status: done, note: "Zig builtin"}
     "bit-shift-right": {type: function, status: done, note: "Zig builtin"}
-    "bit-test": {type: function, status: todo}
+    "bit-test": {type: function, status: done}
     "bit-xor": {type: function, status: done, note: "Zig builtin"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
@@ -670,7 +670,7 @@ vars:
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
     unreduced: {type: function, status: done}
-    "unsigned-bit-shift-right": {type: function, status: todo}
+    "unsigned-bit-shift-right": {type: function, status: done}
     update: {type: function, status: done}
     "update-in": {type: function, status: done}
     "update-keys": {type: function, status: done, note: core.clj reduce-kv based}

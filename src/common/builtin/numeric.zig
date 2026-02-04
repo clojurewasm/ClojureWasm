@@ -186,6 +186,57 @@ pub fn bitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .integer = x >> shift };
 }
 
+/// (unsigned-bit-shift-right x n) — logical (unsigned) right shift
+pub fn unsignedBitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    const ux: u64 = @bitCast(x);
+    return Value{ .integer = @bitCast(ux >> shift) };
+}
+
+/// (bit-set x n) — set bit n
+pub fn bitSetFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .integer = x | (@as(i64, 1) << shift) };
+}
+
+/// (bit-clear x n) — clear bit n
+pub fn bitClearFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .integer = x & ~(@as(i64, 1) << shift) };
+}
+
+/// (bit-flip x n) — flip bit n
+pub fn bitFlipFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .integer = x ^ (@as(i64, 1) << shift) };
+}
+
+/// (bit-test x n) — test bit n, returns boolean
+pub fn bitTestFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const x = try requireInt(args[0]);
+    const n = try requireInt(args[1]);
+    if (n < 0 or n > 63) return error.ArithmeticError;
+    const shift: u6 = @intCast(n);
+    return Value{ .boolean = (x & (@as(i64, 1) << shift)) != 0 };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -275,6 +326,41 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x n])",
         .added = "1.0",
     },
+    .{
+        .name = "unsigned-bit-shift-right",
+        .func = &unsignedBitShiftRightFn,
+        .doc = "Bitwise shift right, without sign-extension.",
+        .arglists = "([x n])",
+        .added = "1.6",
+    },
+    .{
+        .name = "bit-set",
+        .func = &bitSetFn,
+        .doc = "Set bit at index n.",
+        .arglists = "([x n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-clear",
+        .func = &bitClearFn,
+        .doc = "Clear bit at index n.",
+        .arglists = "([x n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-flip",
+        .func = &bitFlipFn,
+        .doc = "Flip bit at index n.",
+        .arglists = "([x n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bit-test",
+        .func = &bitTestFn,
+        .doc = "Test bit at index n.",
+        .arglists = "([x n])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -356,6 +442,29 @@ test "bit-shift-left" {
 
 test "bit-shift-right" {
     try testing.expectEqual(Value{ .integer = 2 }, try bitShiftRightFn(test_alloc, &.{ Value{ .integer = 8 }, Value{ .integer = 2 } }));
+}
+
+test "unsigned-bit-shift-right" {
+    // -1 is all 1s, unsigned shift fills with 0s
+    const result = try unsignedBitShiftRightFn(test_alloc, &.{ Value{ .integer = -1 }, Value{ .integer = 1 } });
+    try testing.expectEqual(Value{ .integer = std.math.maxInt(i64) }, result);
+}
+
+test "bit-set" {
+    try testing.expectEqual(Value{ .integer = 0b1010 }, try bitSetFn(test_alloc, &.{ Value{ .integer = 0b1000 }, Value{ .integer = 1 } }));
+}
+
+test "bit-clear" {
+    try testing.expectEqual(Value{ .integer = 0b1000 }, try bitClearFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 1 } }));
+}
+
+test "bit-flip" {
+    try testing.expectEqual(Value{ .integer = 0b1110 }, try bitFlipFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 2 } }));
+}
+
+test "bit-test" {
+    try testing.expectEqual(Value{ .boolean = true }, try bitTestFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 1 } }));
+    try testing.expectEqual(Value{ .boolean = false }, try bitTestFn(test_alloc, &.{ Value{ .integer = 0b1010 }, Value{ .integer = 2 } }));
 }
 
 test "rand returns float in [0, 1)" {

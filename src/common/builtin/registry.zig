@@ -115,8 +115,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // Was 180, +4 (__nano-time, __current-time-millis, __getenv, __exit)
-    try std.testing.expectEqual(184, builtin_count);
+    // 184 + 5 (unsigned-bit-shift-right, bit-set, bit-clear, bit-flip, bit-test)
+    try std.testing.expectEqual(189, builtin_count);
 }
 
 test "comptime lookup finds +" {
