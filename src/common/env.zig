@@ -1,11 +1,10 @@
-// Env — runtime environment (instantiated, no threadlocal).
+// Env — runtime environment.
 //
-// Owns the ErrorContext (D3a) and Namespace registry (Task 2.2).
+// Owns the Namespace registry (Task 2.2).
 // Each VM instance holds its own Env.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const err = @import("error.zig");
 const ns_mod = @import("namespace.zig");
 const Namespace = ns_mod.Namespace;
 
@@ -26,7 +25,6 @@ pub const NsMap = std.HashMapUnmanaged([]const u8, *Namespace, StrContext, 80);
 /// Runtime environment — instantiated per VM.
 pub const Env = struct {
     allocator: Allocator,
-    error_ctx: err.ErrorContext = .{},
     namespaces: NsMap = .empty,
 
     /// Current namespace (set during evaluation).
@@ -65,22 +63,6 @@ pub const Env = struct {
 };
 
 // === Tests ===
-
-test "Env init creates valid error context" {
-    var env = Env.init(std.heap.page_allocator);
-    defer env.deinit();
-
-    // ErrorContext should be usable
-    const e = env.error_ctx.setError(.{
-        .kind = .syntax_error,
-        .phase = .parse,
-        .message = "test error",
-    });
-    try std.testing.expectEqual(error.SyntaxError, e);
-
-    const info = env.error_ctx.getLastError().?;
-    try std.testing.expectEqualStrings("test error", info.message);
-}
 
 test "Env findOrCreateNamespace" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);

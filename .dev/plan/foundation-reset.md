@@ -36,6 +36,66 @@ appropriate notes. Currently ~269 vars have no note.
 
 **Completion**: All done vars annotated, new issues in checklist.md
 
+### Phase BE: Error System Overhaul
+
+Current error output is `"Error: evaluation failed"` with zero diagnostics.
+This blocks effective debugging of B0-B4 and Phase C test porting.
+ClojureWasmBeta has a comprehensive error reporting system (babashka-style)
+that we port here.
+
+**Target output** (after this phase):
+```
+----- Error -----------------------------------------------
+Type:     arity_error
+Message:  Wrong number of args (3) passed to my-fn
+Phase:    eval
+Location: test.clj:5:1
+
+   3 | (defn my-fn [x] x)
+   4 |
+   5 | (my-fn 1 2 3)
+       ^--- error here
+```
+
+**Architecture change**: ErrorContext switches from instance-based (D3a)
+to threadlocal — same pattern as Beta. This eliminates error info loss
+when errors propagate across scope boundaries.
+
+| Task | Description                           | Files             | Sites | Est. commits |
+|------|---------------------------------------|-------------------|-------|-------------|
+| BE1  | Threadlocal infrastructure + display  | error.zig, main.zig, bootstrap.zig, analyzer.zig, reader.zig, env.zig, nrepl.zig, eval.zig | ~30 | 2-3 |
+| BE2  | Builtin error messages                | 17 builtin/*.zig  | ~314  | 4-5          |
+| BE3  | Runtime source location propagation   | vm.zig, tree_walk.zig | ~27 | 2-3        |
+
+**BE1: Threadlocal infrastructure + display** (2-3 commits)
+- `error.zig`: Add threadlocal `last_error`, `source_text`, convenience
+  helpers (`evalError`, `evalErrorFmt`, `setTypeError`, `setArityError`)
+- `main.zig`: Add `reportError()` (babashka-style format), `showSourceContext()`
+  (±2 lines with column pointer), replace all generic catch messages
+- `bootstrap.zig`: Remove local `ErrorContext` vars, use threadlocal
+- `analyzer.zig`, `reader.zig`, `env.zig`, `nrepl.zig`, `eval.zig`:
+  Update to use threadlocal instead of `*ErrorContext` parameter
+
+**BE2: Builtin error messages** (4-5 commits, batch by group)
+- Each `return error.TypeError` → `return err.setTypeError("Expected number, got ...")`
+- Batch plan:
+  - BE2a: Core (arithmetic.zig, numeric.zig, predicates.zig) — ~85 sites
+  - BE2b: Collections + Sequences (collections.zig, sequences.zig) — ~86 sites
+  - BE2c: Strings (strings.zig, clj_string.zig) — ~63 sites
+  - BE2d: Other (atom, metadata, multimethods, ns_ops, misc, io,
+    file_io, regex, system, eval) — ~80 sites
+
+**BE3: Runtime source location propagation** (2-3 commits)
+- TreeWalk: When a Node evaluation fails, annotate error with Node's
+  SourceInfo (line/column) before propagating
+- VM: Map instruction pointer back to source location via debug info
+  stored at compile time (or capture current Node source in call frames)
+
+**Completion**: All error paths produce kind + message + location.
+`reportError()` displays diagnostics with source context.
+
+**Estimated total: 8-11 commits**
+
 ### Phase B: Fix Known Issues
 
 Fix checklist.md F## items in test-porting-impact order.

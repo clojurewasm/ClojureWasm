@@ -29,7 +29,6 @@ const regex_matcher = @import("../regex/matcher.zig");
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
     allocator: Allocator,
-    error_ctx: *err.ErrorContext,
 
     /// Optional runtime environment for macro expansion and var resolution.
     env: ?*Env = null,
@@ -47,12 +46,12 @@ pub const Analyzer = struct {
 
     pub const AnalyzeError = err.Error;
 
-    pub fn init(allocator: Allocator, error_ctx: *err.ErrorContext) Analyzer {
-        return .{ .allocator = allocator, .error_ctx = error_ctx };
+    pub fn init(allocator: Allocator) Analyzer {
+        return .{ .allocator = allocator };
     }
 
-    pub fn initWithEnv(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env) Analyzer {
-        return .{ .allocator = allocator, .error_ctx = error_ctx, .env = env };
+    pub fn initWithEnv(allocator: Allocator, env: *Env) Analyzer {
+        return .{ .allocator = allocator, .env = env };
     }
 
 
@@ -72,8 +71,8 @@ pub const Analyzer = struct {
 
     // === Error helpers ===
 
-    fn analysisError(self: *Analyzer, kind: err.Kind, message: []const u8, form: Form) AnalyzeError {
-        return self.error_ctx.setError(.{
+    fn analysisError(self: *const Analyzer, kind: err.Kind, message: []const u8, form: Form) AnalyzeError {
+        return err.setError(.{
             .kind = kind,
             .phase = .analysis,
             .message = message,
@@ -1803,12 +1802,10 @@ pub fn formToValue(form: Form) Value {
 
 // === Tests ===
 
-var test_error_ctx: err.ErrorContext = .{};
-
 test "analyze nil literal" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .nil });
@@ -1819,7 +1816,7 @@ test "analyze nil literal" {
 test "analyze boolean literals" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const t = try a.analyze(.{ .data = .{ .boolean = true } });
@@ -1832,7 +1829,7 @@ test "analyze boolean literals" {
 test "analyze integer literal" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .integer = 42 } });
@@ -1842,7 +1839,7 @@ test "analyze integer literal" {
 test "analyze string literal" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .string = "hello" } });
@@ -1852,7 +1849,7 @@ test "analyze string literal" {
 test "analyze keyword" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .keyword = .{ .ns = null, .name = "foo" } } });
@@ -1862,7 +1859,7 @@ test "analyze keyword" {
 test "analyze unresolved symbol -> var_ref" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .symbol = .{ .ns = null, .name = "+" } } });
@@ -1873,7 +1870,7 @@ test "analyze unresolved symbol -> var_ref" {
 test "analyze (if true 1 2)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -1890,7 +1887,7 @@ test "analyze (if true 1 2)" {
 test "analyze (if true 1) - no else" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -1906,7 +1903,7 @@ test "analyze (if true 1) - no else" {
 test "analyze (do 1 2 3)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -1923,7 +1920,7 @@ test "analyze (do 1 2 3)" {
 test "analyze (let [x 1] x)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const bindings = [_]Form{
@@ -1946,7 +1943,7 @@ test "analyze (let [x 1] x)" {
 test "analyze (fn [x] x)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const params = [_]Form{
@@ -1968,7 +1965,7 @@ test "analyze (fn [x] x)" {
 test "analyze (fn [x & rest] x) - variadic" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const params = [_]Form{
@@ -1989,7 +1986,7 @@ test "analyze (fn [x & rest] x) - variadic" {
 test "analyze (def x 42)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2007,7 +2004,7 @@ test "analyze (def x 42)" {
 test "analyze (quote foo)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2025,7 +2022,7 @@ test "analyze (quote foo)" {
 test "analyze (defmacro m [x] x)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const params = [_]Form{
@@ -2048,7 +2045,7 @@ test "analyze (defmacro m [x] x)" {
 test "analyze function call (+ 1 2)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2064,7 +2061,7 @@ test "analyze function call (+ 1 2)" {
 test "analyze vector literal [1 2 3]" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2081,7 +2078,7 @@ test "analyze vector literal [1 2 3]" {
 test "analyze error: if with wrong arity" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2095,7 +2092,7 @@ test "analyze error: if with wrong arity" {
 test "analyze let scoping - x not visible after let" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     // First, analyze (let [x 1] x) to verify x resolves
@@ -2119,7 +2116,7 @@ test "analyze let scoping - x not visible after let" {
 test "analyze named fn with self-reference" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const params = [_]Form{
@@ -2156,7 +2153,7 @@ test "formToValue converts primitives" {
 test "analyze (loop [x 0] x)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const bindings = [_]Form{
@@ -2178,7 +2175,7 @@ test "analyze (loop [x 0] x)" {
 test "analyze (recur 1 2)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2194,7 +2191,7 @@ test "analyze (recur 1 2)" {
 test "analyze (throw \"error\")" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2209,7 +2206,7 @@ test "analyze (throw \"error\")" {
 test "analyze (try 1 (catch Exception e 2))" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     // (catch Exception e 2)
@@ -2236,7 +2233,7 @@ test "analyze (try 1 (catch Exception e 2))" {
 test "analyze (try 1 (finally 3))" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const finally_items = [_]Form{
@@ -2257,7 +2254,7 @@ test "analyze (try 1 (finally 3))" {
 test "analyze (try 1 (catch Exception e 2) (finally 3))" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const catch_items = [_]Form{
@@ -2285,7 +2282,7 @@ test "analyze (try 1 (catch Exception e 2) (finally 3))" {
 test "analyze error: loop without binding vector" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2298,7 +2295,7 @@ test "analyze error: loop without binding vector" {
 test "analyze error: loop odd bindings" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const bindings = [_]Form{
@@ -2318,7 +2315,7 @@ test "analyze error: loop odd bindings" {
 test "analyze error: throw wrong arity" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{
@@ -2331,7 +2328,7 @@ test "analyze error: throw wrong arity" {
 test "analyze error: catch missing binding symbol" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const catch_items = [_]Form{
@@ -2352,7 +2349,7 @@ test "analyze error: catch missing binding symbol" {
 test "analyze catch scoping - e not visible after try" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     // (try 1 (catch Exception e e))
@@ -2379,7 +2376,7 @@ test "analyze catch scoping - e not visible after try" {
 test "analyze loop scoping - x not visible after loop" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const bindings = [_]Form{
@@ -2428,7 +2425,7 @@ test "macro expansion - builtin_fn macro" {
     v.setMacro(true);
     v.bindRoot(.{ .builtin_fn = &TestMacro.expandFn });
 
-    var a = Analyzer.initWithEnv(alloc, &test_error_ctx, &env);
+    var a = Analyzer.initWithEnv(alloc, &env);
     defer a.deinit();
 
     // (my-macro 42) should expand to (do 42), which analyzes as constant 42
@@ -2444,7 +2441,7 @@ test "macro expansion - builtin_fn macro" {
 test "analyze empty list -> empty list" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var a = Analyzer.init(arena.allocator(), &test_error_ctx);
+    var a = Analyzer.init(arena.allocator());
     defer a.deinit();
 
     const items = [_]Form{};

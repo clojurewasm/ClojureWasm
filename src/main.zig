@@ -12,6 +12,7 @@ const registry = @import("common/builtin/registry.zig");
 const bootstrap = @import("common/bootstrap.zig");
 const Value = @import("common/value.zig").Value;
 const nrepl = @import("repl/nrepl.zig");
+const err = @import("common/error.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -100,6 +101,7 @@ pub fn main() !void {
     }
 
     if (expr) |e| {
+        err.setSourceText(e);
         evalAndPrint(alloc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
         const max_file_size = 10 * 1024 * 1024; // 10MB
@@ -109,6 +111,7 @@ pub fn main() !void {
             std.process.exit(1);
         };
         defer allocator.free(source);
+        err.setSourceText(source);
         evalAndPrint(alloc, source, use_vm, dump_bytecode);
     }
 }
@@ -163,6 +166,7 @@ fn runRepl(allocator: Allocator, env: *Env) void {
 
         // Evaluate
         const source = input_buf[0..input_len];
+        err.setSourceText(source);
         const result = bootstrap.evalString(allocator, env, source);
 
         if (result) |val| {
@@ -170,8 +174,8 @@ fn runRepl(allocator: Allocator, env: *Env) void {
             const output = formatValue(&buf, val);
             _ = stdout.write(output) catch {};
             _ = stdout.write("\n") catch {};
-        } else |_| {
-            _ = stdout.write("Error: evaluation failed\n") catch {};
+        } else |eval_err| {
+            reportError(eval_err);
         }
 
         // Reset for next input
@@ -268,8 +272,8 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
             std.debug.print("Error: --dump-bytecode requires VM backend (not --tree-walk)\n", .{});
             std.process.exit(1);
         }
-        bootstrap.dumpBytecodeVM(allocator, &env, source) catch {
-            std.debug.print("Error: bytecode dump failed\n", .{});
+        bootstrap.dumpBytecodeVM(allocator, &env, source) catch |e| {
+            reportError(e);
             std.process.exit(1);
         };
         return;
@@ -277,13 +281,13 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
 
     // Evaluate using selected backend
     const result = if (use_vm)
-        bootstrap.evalStringVM(allocator, &env, source) catch {
-            std.debug.print("Error: VM evaluation failed\n", .{});
+        bootstrap.evalStringVM(allocator, &env, source) catch |e| {
+            reportError(e);
             std.process.exit(1);
         }
     else
-        bootstrap.evalString(allocator, &env, source) catch {
-            std.debug.print("Error: evaluation failed\n", .{});
+        bootstrap.evalString(allocator, &env, source) catch |e| {
+            reportError(e);
             std.process.exit(1);
         };
 
@@ -294,6 +298,123 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
     _ = stdout.write(output) catch {};
     _ = stdout.write("\n") catch {};
 }
+
+// === Error reporting (babashka-style) ===
+
+fn reportError(eval_err: anyerror) void {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    const w = stream.writer();
+
+    if (err.getLastError()) |info| {
+        w.writeAll("----- Error -----------------------------------------------\n") catch {};
+        w.print("Type:     {s}\n", .{@tagName(info.kind)}) catch {};
+        w.print("Message:  {s}\n", .{info.message}) catch {};
+        if (info.phase != .eval) {
+            w.print("Phase:    {s}\n", .{@tagName(info.phase)}) catch {};
+        }
+        if (info.location.line > 0) {
+            const file = info.location.file orelse "<expr>";
+            w.print("Location: {s}:{d}:{d}\n", .{ file, info.location.line, info.location.column }) catch {};
+        }
+        // Source context
+        if (info.location.line > 0) {
+            showSourceContext(w, info.location);
+        }
+    } else {
+        // No detailed error info — fallback to Zig error name
+        w.print("Error: {s}\n", .{@errorName(eval_err)}) catch {};
+    }
+
+    _ = stderr.write(stream.getWritten()) catch {};
+}
+
+fn showSourceContext(w: anytype, location: err.SourceLocation) void {
+    const source = getSourceForLocation(location) orelse return;
+    const error_line = location.line; // 1-based
+
+    // Split source into lines (max 512 lines for display)
+    var lines: [512][]const u8 = undefined;
+    var line_count: u32 = 0;
+    var iter = std.mem.splitScalar(u8, source, '\n');
+    while (iter.next()) |line| {
+        if (line_count >= lines.len) break;
+        lines[line_count] = line;
+        line_count += 1;
+    }
+
+    if (error_line == 0 or error_line > line_count) return;
+
+    // Display range: ±2 lines around error
+    const context: u32 = 2;
+    const start = if (error_line > context) error_line - context else 1;
+    const end = @min(error_line + context, line_count);
+    const max_digits = countDigits(end);
+
+    w.writeByte('\n') catch {};
+    var line_num: u32 = start;
+    while (line_num <= end) : (line_num += 1) {
+        const line_text = lines[line_num - 1];
+        writeLineNumber(w, line_num, max_digits);
+        w.print(" | {s}\n", .{line_text}) catch {};
+        if (line_num == error_line) {
+            writeErrorPointer(w, max_digits, location.column);
+        }
+    }
+    w.writeByte('\n') catch {};
+}
+
+fn writeLineNumber(w: anytype, line_num: u32, width: u32) void {
+    const digits = countDigits(line_num);
+    w.writeAll("  ") catch {};
+    var pad: u32 = 0;
+    while (pad + digits < width) : (pad += 1) {
+        w.writeByte(' ') catch {};
+    }
+    w.print("{d}", .{line_num}) catch {};
+}
+
+fn writeErrorPointer(w: anytype, max_digits: u32, column: u32) void {
+    // "  " + digits + " | " = 2 + max_digits + 3
+    const prefix_len = 2 + max_digits + 3;
+    var i: u32 = 0;
+    while (i < prefix_len + column) : (i += 1) {
+        w.writeByte(' ') catch {};
+    }
+    w.writeAll("^--- error here\n") catch {};
+}
+
+fn countDigits(n: u32) u32 {
+    if (n == 0) return 1;
+    var count: u32 = 0;
+    var v = n;
+    while (v > 0) : (v /= 10) {
+        count += 1;
+    }
+    return count;
+}
+
+fn getSourceForLocation(location: err.SourceLocation) ?[]const u8 {
+    // Try file path first
+    if (location.file) |file_path| {
+        if (readFileForError(file_path)) |content| {
+            return content;
+        }
+    }
+    // Fallback: cached source text (REPL / -e)
+    return err.getSourceText();
+}
+
+var file_read_buf: [64 * 1024]u8 = undefined;
+fn readFileForError(path: []const u8) ?[]const u8 {
+    const file = std.fs.cwd().openFile(path, .{}) catch return null;
+    defer file.close();
+    const bytes_read = file.readAll(&file_read_buf) catch return null;
+    return file_read_buf[0..bytes_read];
+}
+
+// === Value formatting ===
 
 fn formatValue(buf: []u8, val: Value) []const u8 {
     var stream = std.io.fixedBufferStream(buf);
@@ -374,10 +495,10 @@ fn writeValue(w: anytype, val: Value) void {
             w.print("#\"{s}\"", .{p.source}) catch {};
         },
         .char => |c| {
-            var buf: [4]u8 = undefined;
-            const len = std.unicode.utf8Encode(c, &buf) catch 0;
+            var char_buf: [4]u8 = undefined;
+            const len = std.unicode.utf8Encode(c, &char_buf) catch 0;
             _ = w.write("\\") catch {};
-            _ = w.write(buf[0..len]) catch {};
+            _ = w.write(char_buf[0..len]) catch {};
         },
         .protocol => |p| w.print("#<protocol {s}>", .{p.name}) catch {},
         .protocol_fn => |pf| w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {},

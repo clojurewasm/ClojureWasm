@@ -424,7 +424,8 @@ fn opEval(
         sendDone(stream, msg, allocator);
     } else |_| {
         // Error — bind *e
-        const err_msg = if (state.env.error_ctx.getLastError()) |info|
+        const err_import = @import("../common/error.zig");
+        const err_msg = if (err_import.getLastError()) |info|
             info.message
         else
             "evaluation failed";

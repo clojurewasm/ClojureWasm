@@ -12,7 +12,6 @@ const Value = @import("../value.zig").Value;
 const Reader = @import("../reader/reader.zig").Reader;
 const Form = @import("../reader/form.zig").Form;
 const macro = @import("../macro.zig");
-const err = @import("../error.zig");
 const Analyzer = @import("../analyzer/analyzer.zig").Analyzer;
 const Node = @import("../analyzer/node.zig").Node;
 const bootstrap = @import("../bootstrap.zig");
@@ -32,8 +31,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     if (s.len == 0) return .nil;
 
-    var error_ctx: err.ErrorContext = .{};
-    var reader = Reader.init(allocator, s, &error_ctx);
+    var reader = Reader.init(allocator, s);
     const form_opt = reader.read() catch return error.ReadError;
     const form = form_opt orelse return .nil;
     return macro.formToValue(allocator, form);
@@ -52,8 +50,7 @@ pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Convert Value -> Form -> Node -> eval
     const form = try macro.valueToForm(allocator, args[0]);
 
-    var error_ctx: err.ErrorContext = .{};
-    var analyzer = Analyzer.initWithEnv(allocator, &error_ctx, env);
+    var analyzer = Analyzer.initWithEnv(allocator, env);
     defer analyzer.deinit();
     const node = analyzer.analyze(form) catch return error.AnalyzeError;
 

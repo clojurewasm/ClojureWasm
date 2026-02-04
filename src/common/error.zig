@@ -1,7 +1,7 @@
 // Error types for ClojureWasm.
 //
 // Zig error unions carry no payload, so detailed error info is stored
-// in a thread-local Info struct and retrieved after catching the error.
+// in threadlocal state and retrieved after catching the error.
 //
 // Kind uses Python-style categories (12 values). Each Kind maps 1:1 to
 // an Error tag — no lossy collapse.
@@ -67,39 +67,52 @@ pub const Error = error{
     OutOfMemory,
 };
 
-/// Instance-based error context (D3a: no threadlocal).
-/// Reader, Analyzer, and VM each hold a pointer to ErrorContext.
-pub const ErrorContext = struct {
-    last_error: ?Info = null,
-    msg_buf: [512]u8 = undefined,
+// --- Threadlocal error state ---
 
-    pub fn setError(self: *ErrorContext, info: Info) Error {
-        self.last_error = info;
-        return kindToError(info.kind);
-    }
+threadlocal var last_error: ?Info = null;
+threadlocal var msg_buf: [512]u8 = undefined;
+threadlocal var source_text_cache: ?[]const u8 = null;
 
-    pub fn setErrorFmt(self: *ErrorContext, phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
-        const msg = std.fmt.bufPrint(&self.msg_buf, fmt, args) catch "error message too long";
-        return self.setError(.{
-            .kind = kind,
-            .phase = phase,
-            .message = msg,
-            .location = location,
-        });
-    }
+/// Store error info and return the corresponding Zig error tag.
+pub fn setError(info: Info) Error {
+    last_error = info;
+    return kindToError(info.kind);
+}
 
-    pub fn getLastError(self: *ErrorContext) ?Info {
-        const info = self.last_error;
-        self.last_error = null;
-        return info;
-    }
-};
+/// Store error info with formatted message.
+pub fn setErrorFmt(phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
+    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch "error message too long";
+    return setError(.{
+        .kind = kind,
+        .phase = phase,
+        .message = msg,
+        .location = location,
+    });
+}
 
-// Module-level convenience (no threadlocal — uses a file-scoped instance).
-// Only used by error.zig's own tests. Production code uses ErrorContext directly.
-var module_error_ctx: ErrorContext = .{};
+/// Retrieve and clear the last error. Returns null if no error is stored.
+pub fn getLastError() ?Info {
+    const info = last_error;
+    last_error = null;
+    return info;
+}
 
-fn kindToError(kind: Kind) Error {
+/// Cache source text for error context display (REPL/-e mode).
+pub fn setSourceText(text: []const u8) void {
+    source_text_cache = text;
+}
+
+/// Retrieve cached source text.
+pub fn getSourceText() ?[]const u8 {
+    return source_text_cache;
+}
+
+/// Clear cached source text.
+pub fn clearSourceText() void {
+    source_text_cache = null;
+}
+
+pub fn kindToError(kind: Kind) Error {
     return switch (kind) {
         .syntax_error => error.SyntaxError,
         .number_error => error.NumberError,
@@ -116,9 +129,8 @@ fn kindToError(kind: Kind) Error {
     };
 }
 
-test "ErrorContext setError and getLastError round-trip" {
-    var ctx = ErrorContext{};
-    const e = ctx.setError(.{
+test "setError and getLastError round-trip" {
+    const e = setError(.{
         .kind = .number_error,
         .phase = .parse,
         .message = "bad number",
@@ -126,52 +138,30 @@ test "ErrorContext setError and getLastError round-trip" {
     });
     try std.testing.expectEqual(error.NumberError, e);
 
-    const info = ctx.getLastError().?;
+    const info = getLastError().?;
     try std.testing.expectEqual(Kind.number_error, info.kind);
     try std.testing.expectEqual(Phase.parse, info.phase);
     try std.testing.expectEqualStrings("bad number", info.message);
     try std.testing.expectEqual(@as(u32, 5), info.location.line);
 
     // getLastError clears the error
-    try std.testing.expect(ctx.getLastError() == null);
+    try std.testing.expect(getLastError() == null);
 }
 
-test "ErrorContext setErrorFmt" {
-    var ctx = ErrorContext{};
-    const e = ctx.setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
+test "setErrorFmt" {
+    const e = setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
     try std.testing.expectEqual(error.SyntaxError, e);
 
-    const info = ctx.getLastError().?;
+    const info = getLastError().?;
     try std.testing.expectEqual(Kind.syntax_error, info.kind);
     try std.testing.expectEqualStrings("EOF in list", info.message);
 }
 
-test "setError and getLastError round-trip (module ctx)" {
-    const e = module_error_ctx.setError(.{
-        .kind = .number_error,
-        .phase = .parse,
-        .message = "bad number",
-        .location = .{ .line = 5, .column = 10 },
-    });
-    try std.testing.expectEqual(error.NumberError, e);
-
-    const info = module_error_ctx.getLastError().?;
-    try std.testing.expectEqual(Kind.number_error, info.kind);
-    try std.testing.expectEqual(Phase.parse, info.phase);
-    try std.testing.expectEqualStrings("bad number", info.message);
-    try std.testing.expectEqual(@as(u32, 5), info.location.line);
-
-    // getLastError clears the error
-    try std.testing.expect(module_error_ctx.getLastError() == null);
-}
-
-test "setErrorFmt convenience (module ctx)" {
-    const e = module_error_ctx.setErrorFmt(.parse, .syntax_error, .{ .line = 1 }, "EOF in {s}", .{"list"});
-    try std.testing.expectEqual(error.SyntaxError, e);
-
-    const info = module_error_ctx.getLastError().?;
-    try std.testing.expectEqual(Kind.syntax_error, info.kind);
-    try std.testing.expectEqualStrings("EOF in list", info.message);
+test "source text cache" {
+    setSourceText("(+ 1 2)");
+    try std.testing.expectEqualStrings("(+ 1 2)", getSourceText().?);
+    clearSourceText();
+    try std.testing.expect(getSourceText() == null);
 }
 
 test "kindToError 1:1 mapping" {

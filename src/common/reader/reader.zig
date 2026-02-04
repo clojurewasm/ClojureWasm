@@ -29,26 +29,23 @@ pub const Reader = struct {
     tokenizer: Tokenizer,
     source: []const u8,
     allocator: std.mem.Allocator,
-    error_ctx: *err.ErrorContext,
     peeked: ?Token = null,
     depth: u32 = 0,
     limits: Limits = .{},
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8, error_ctx: *err.ErrorContext) Reader {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8) Reader {
         return .{
             .tokenizer = Tokenizer.init(source),
             .source = source,
             .allocator = allocator,
-            .error_ctx = error_ctx,
         };
     }
 
-    pub fn initWithLimits(allocator: std.mem.Allocator, source: []const u8, error_ctx: *err.ErrorContext, limits: Limits) Reader {
+    pub fn initWithLimits(allocator: std.mem.Allocator, source: []const u8, limits: Limits) Reader {
         return .{
             .tokenizer = Tokenizer.init(source),
             .source = source,
             .allocator = allocator,
-            .error_ctx = error_ctx,
             .limits = limits,
         };
     }
@@ -337,7 +334,7 @@ pub const Reader = struct {
             const form = try self.readForm(tok);
             items.append(self.allocator, form) catch return error.OutOfMemory;
             if (items.items.len > self.limits.max_collection_count) {
-                return self.error_ctx.setError(.{
+                return err.setError(.{
                     .kind = .syntax_error,
                     .phase = .parse,
                     .message = "Collection literal exceeds maximum element count",
@@ -777,8 +774,8 @@ pub const Reader = struct {
 
     // --- Error helpers ---
 
-    fn makeError(self: *Reader, kind: err.Kind, message: []const u8, token: Token) ReadError {
-        return self.error_ctx.setError(.{
+    fn makeError(_: *Reader, kind: err.Kind, message: []const u8, token: Token) ReadError {
+        return err.setError(.{
             .kind = kind,
             .phase = .parse,
             .message = message,
@@ -799,7 +796,7 @@ pub const Reader = struct {
     fn enterDepth(self: *Reader, line: u32, column: u16) ReadError!void {
         self.depth += 1;
         if (self.depth > self.limits.max_depth) {
-            return self.error_ctx.setError(.{
+            return err.setError(.{
                 .kind = .syntax_error,
                 .phase = .parse,
                 .message = "Nesting depth exceeds maximum limit",
@@ -813,13 +810,11 @@ pub const Reader = struct {
 
 const testing = std.testing;
 
-var test_error_ctx: err.ErrorContext = .{};
-
 fn readOne(source: []const u8) ReadError!?Form {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     // Note: in tests we leak the arena for simplicity — test runner cleans up
     const allocator = arena.allocator();
-    var r = Reader.init(allocator, source, &test_error_ctx);
+    var r = Reader.init(allocator, source);
     return r.read();
 }
 
@@ -1045,7 +1040,7 @@ test "Reader - syntax quote simple symbol" {
 test "Reader - readAll" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var r = Reader.init(arena.allocator(), "1 2 3", &test_error_ctx);
+    var r = Reader.init(arena.allocator(), "1 2 3");
     const forms = try r.readAll();
     try testing.expectEqual(@as(usize, 3), forms.len);
     try testing.expectEqual(@as(i64, 1), forms[0].data.integer);
@@ -1097,7 +1092,7 @@ test "Reader - let pattern" {
 fn readOneWithLimits(source: []const u8, limits: Reader.Limits) ReadError!?Form {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = arena.allocator();
-    var r = Reader.initWithLimits(allocator, source, &test_error_ctx, limits);
+    var r = Reader.initWithLimits(allocator, source, limits);
     return r.read();
 }
 

@@ -200,8 +200,8 @@ pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
 }
 
 /// Parse source into top-level forms.
-fn readForms(allocator: Allocator, source: []const u8, error_ctx: *err.ErrorContext) BootstrapError![]Form {
-    var reader = Reader.init(allocator, source, error_ctx);
+fn readForms(allocator: Allocator, source: []const u8) BootstrapError![]Form {
+    var reader = Reader.init(allocator, source);
     return reader.readAll() catch return error.ReadError;
 }
 
@@ -228,8 +228,8 @@ fn restoreMacroEnv(prev: MacroEnvState) void {
 }
 
 /// Analyze a single form with macro expansion support.
-fn analyzeForm(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env, form: Form) BootstrapError!*Node {
-    var analyzer = Analyzer.initWithEnv(allocator, error_ctx, env);
+fn analyzeForm(allocator: Allocator, env: *Env, form: Form) BootstrapError!*Node {
+    var analyzer = Analyzer.initWithEnv(allocator, env);
     defer analyzer.deinit();
     return analyzer.analyze(form) catch return error.AnalyzeError;
 }
@@ -238,8 +238,7 @@ fn analyzeForm(allocator: Allocator, error_ctx: *err.ErrorContext, env: *Env, fo
 /// Reads, analyzes, and evaluates each top-level form sequentially.
 /// Returns the value of the last form, or nil if source is empty.
 pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
-    var error_ctx: err.ErrorContext = .{};
-    const forms = try readForms(allocator, source, &error_ctx);
+    const forms = try readForms(allocator, source);
     if (forms.len == 0) return .nil;
 
     const prev = setupMacroEnv(env);
@@ -251,7 +250,7 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 
     var last_value: Value = .nil;
     for (forms) |form| {
-        const node = try analyzeForm(allocator, &error_ctx, env, form);
+        const node = try analyzeForm(allocator, env, form);
         last_value = tw.run(node) catch return error.EvalError;
     }
     return last_value;
@@ -264,8 +263,7 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 /// Compile source to bytecode and dump to stderr without executing.
 /// Dumps top-level chunks and all nested FnProtos.
 pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!void {
-    var error_ctx: err.ErrorContext = .{};
-    const forms = try readForms(allocator, source, &error_ctx);
+    const forms = try readForms(allocator, source);
     if (forms.len == 0) return;
 
     const prev = setupMacroEnv(env);
@@ -276,7 +274,7 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
     var w = &aw.writer;
 
     for (forms, 0..) |form, form_idx| {
-        const node = try analyzeForm(allocator, &error_ctx, env, form);
+        const node = try analyzeForm(allocator, env, form);
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
@@ -299,8 +297,7 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 }
 
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
-    var error_ctx: err.ErrorContext = .{};
-    const forms = try readForms(allocator, source, &error_ctx);
+    const forms = try readForms(allocator, source);
     if (forms.len == 0) return .nil;
 
     const prev = setupMacroEnv(env);
@@ -327,7 +324,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
     var last_value: Value = .nil;
     for (forms) |form| {
-        const node = try analyzeForm(allocator, &error_ctx, env, form);
+        const node = try analyzeForm(allocator, env, form);
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();

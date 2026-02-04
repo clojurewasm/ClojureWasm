@@ -65,7 +65,7 @@ or threadlocal state anywhere.
 
 ## D3a: Error Module — ErrorContext Instance
 
-**Status**: Done (Phase 2a, Task 2.1).
+**Status**: Superseded by D63 (Phase 19, BE1).
 
 **Problem**: `src/common/error.zig` used `threadlocal var last_error` and
 `threadlocal var msg_buf` to pass error details alongside Zig error unions.
@@ -1443,3 +1443,30 @@ The simplified `transduce` (plain reduce) works because our reduce already handl
 early termination. The `into` override in core.clj shadows the Zig builtin to add 3-arity.
 
 **Impact**: 383 done vars. Foundation for further transducer-returning functions.
+
+---
+
+## D63: Error System — Threadlocal (Supersedes D3a)
+
+**Context**: D3a introduced instance-based ErrorContext to avoid threadlocal.
+However, this caused error info loss: ErrorContext lived on evalString()'s stack,
+and when errors propagated to main(), the context was out of scope. Users saw only
+"Error: evaluation failed" with zero diagnostics.
+
+**Decision**: Switch back to threadlocal error state (same pattern as Beta).
+
+1. `error.zig`: Replaced `ErrorContext` struct with threadlocal `last_error`,
+   `msg_buf`, `source_text_cache` and module-level functions `setError()`,
+   `setErrorFmt()`, `getLastError()`, `setSourceText()`, `getSourceText()`.
+2. Removed `*ErrorContext` parameter from Reader, Analyzer, bootstrap functions.
+3. Removed `error_ctx` field from Env.
+4. Added `reportError()` to main.zig — babashka-style error display with
+   Type, Message, Phase, Location, and source context (±2 lines with pointer).
+
+**Rationale**: Threadlocal eliminates the scope boundary problem. Error info survives
+across function call boundaries without needing explicit parameter threading. Single-
+threaded execution means no thread safety concerns. Zig test runner uses per-thread
+state so test isolation is preserved.
+
+**Impact**: Analysis and parse errors now display full diagnostics. Runtime errors
+still show fallback (BE2/BE3 will add error info to builtins and VM/TreeWalk).
