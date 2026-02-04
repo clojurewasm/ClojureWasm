@@ -234,12 +234,12 @@ Organized based on discussion. Includes both done and todo items.
 
 | Var       | Status | Note                        |
 | --------- | ------ | --------------------------- |
-| `ns`      | done   | → add :require/:use support |
+| `ns`      | done   | :require/:use support added |
 | `in-ns`   | done   | Zig builtin                 |
-| `require` | todo   | ClojureWasm bootstrap       |
-| `use`     | todo   | require + refer             |
-| `refer`   | todo   | import vars                 |
-| `alias`   | todo   | namespace alias             |
+| `require` | done   | Zig builtin (no file load)  |
+| `use`     | done   | Zig builtin (no file load)  |
+| `refer`   | done   | Zig builtin                 |
+| `alias`   | done   | Zig builtin                 |
 
 ---
 

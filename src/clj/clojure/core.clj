@@ -96,11 +96,23 @@
 (defmacro defn- [name & fdecl]
   `(def ~name (fn ~name ~@fdecl)))
 
-;; Namespace declaration (minimal)
-;; UPSTREAM-DIFF: Only supports (ns name), no :require/:use/:import
+;; Namespace declaration
+;; UPSTREAM-DIFF: Simplified ns macro; no :import, no docstring, no :gen-class
 
-(defmacro ns [name & _references]
-  `(in-ns '~name))
+(defmacro ns [name & references]
+  (let [process-ref (fn [ref-form]
+                      (let [kw (first ref-form)
+                            args (rest ref-form)]
+                        (cond
+                          (= kw :require)
+                          (map (fn [arg] `(require '~arg)) args)
+
+                          (= kw :use)
+                          (map (fn [arg] `(use '~arg)) args)
+
+                          :else nil)))
+        ref-forms (apply concat (map process-ref references))]
+    `(do (in-ns '~name) ~@ref-forms)))
 
 ;; Threading macros
 

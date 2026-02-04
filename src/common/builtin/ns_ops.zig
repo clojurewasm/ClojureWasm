@@ -255,6 +255,213 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// refer
+// ============================================================
+
+/// (refer ns-sym)
+/// Refers all public vars from the specified namespace into the current namespace.
+/// (refer ns-sym :only [sym1 sym2]) — refer only specified vars.
+pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len < 1) return error.InvalidNumberOfArguments;
+    const ns_name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return error.TypeError,
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+    const current_ns = env.current_ns orelse return error.EvalError;
+
+    // Check for :only filter
+    var only_list: ?[]const Value = null;
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        if (args[i] == .keyword) {
+            if (std.mem.eql(u8, args[i].keyword.name, "only")) {
+                if (args[i + 1] == .vector) {
+                    only_list = args[i + 1].vector.items;
+                }
+            }
+        }
+    }
+
+    if (only_list) |syms| {
+        // Refer only specified symbols
+        for (syms) |sym| {
+            if (sym == .symbol) {
+                if (source_ns.resolve(sym.symbol.name)) |v| {
+                    current_ns.refer(sym.symbol.name, v) catch {};
+                }
+            }
+        }
+    } else {
+        // Refer all public vars
+        var iter = source_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+
+    return .nil;
+}
+
+// ============================================================
+// alias
+// ============================================================
+
+/// (alias alias-sym ns-sym)
+/// Adds an alias in the current namespace to another namespace.
+pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len != 2) return error.InvalidNumberOfArguments;
+    const alias_name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return error.TypeError,
+    };
+    const ns_name = switch (args[1]) {
+        .symbol => |s| s.name,
+        else => return error.TypeError,
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const target_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+    const current_ns = env.current_ns orelse return error.EvalError;
+    try current_ns.setAlias(alias_name, target_ns);
+    return .nil;
+}
+
+// ============================================================
+// require
+// ============================================================
+
+/// (require '[ns-sym :as alias])
+/// (require '[ns-sym :refer [sym1 sym2]])
+/// (require '[ns-sym :refer :all])
+/// For already-loaded namespaces, sets up alias and/or refer.
+/// File loading is not supported — namespace must be pre-loaded at bootstrap.
+pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+
+    for (args) |arg| {
+        switch (arg) {
+            .symbol => |s| {
+                // Simple (require 'ns) — just verify it exists
+                if (env.findNamespace(s.name) == null) return error.NamespaceNotFound;
+            },
+            .vector => |v| {
+                // (require '[ns :as alias :refer [syms]])
+                if (v.items.len < 1) return error.InvalidNumberOfArguments;
+                const ns_name = switch (v.items[0]) {
+                    .symbol => |s| s.name,
+                    else => return error.TypeError,
+                };
+                const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+                const current_ns = env.current_ns orelse return error.EvalError;
+
+                var j: usize = 1;
+                while (j + 1 < v.items.len) : (j += 2) {
+                    if (v.items[j] == .keyword) {
+                        const kw = v.items[j].keyword.name;
+                        if (std.mem.eql(u8, kw, "as")) {
+                            // :as alias
+                            if (v.items[j + 1] == .symbol) {
+                                try current_ns.setAlias(v.items[j + 1].symbol.name, source_ns);
+                            }
+                        } else if (std.mem.eql(u8, kw, "refer")) {
+                            // :refer [syms] or :refer :all
+                            if (v.items[j + 1] == .vector) {
+                                for (v.items[j + 1].vector.items) |sym| {
+                                    if (sym == .symbol) {
+                                        if (source_ns.resolve(sym.symbol.name)) |var_ref| {
+                                            current_ns.refer(sym.symbol.name, var_ref) catch {};
+                                        }
+                                    }
+                                }
+                            } else if (v.items[j + 1] == .keyword) {
+                                if (std.mem.eql(u8, v.items[j + 1].keyword.name, "all")) {
+                                    var iter = source_ns.mappings.iterator();
+                                    while (iter.next()) |entry| {
+                                        current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            else => return error.TypeError,
+        }
+    }
+
+    return .nil;
+}
+
+// ============================================================
+// use
+// ============================================================
+
+/// (use 'ns-sym)
+/// (use '[ns-sym :only [sym1 sym2]])
+/// Equivalent to require + refer :all (or :only).
+pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const current_ns = env.current_ns orelse return error.EvalError;
+
+    for (args) |arg| {
+        switch (arg) {
+            .symbol => |s| {
+                // (use 'ns) — refer all public vars
+                const source_ns = env.findNamespace(s.name) orelse return error.NamespaceNotFound;
+                var iter = source_ns.mappings.iterator();
+                while (iter.next()) |entry| {
+                    current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+                }
+            },
+            .vector => |v| {
+                // (use '[ns :only [syms]])
+                if (v.items.len < 1) return error.InvalidNumberOfArguments;
+                const ns_name = switch (v.items[0]) {
+                    .symbol => |s| s.name,
+                    else => return error.TypeError,
+                };
+                const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+
+                var only_filter: ?[]const Value = null;
+                var j: usize = 1;
+                while (j + 1 < v.items.len) : (j += 2) {
+                    if (v.items[j] == .keyword) {
+                        if (std.mem.eql(u8, v.items[j].keyword.name, "only")) {
+                            if (v.items[j + 1] == .vector) {
+                                only_filter = v.items[j + 1].vector.items;
+                            }
+                        }
+                    }
+                }
+
+                if (only_filter) |syms| {
+                    for (syms) |sym| {
+                        if (sym == .symbol) {
+                            if (source_ns.resolve(sym.symbol.name)) |var_ref| {
+                                current_ns.refer(sym.symbol.name, var_ref) catch {};
+                            }
+                        }
+                    }
+                } else {
+                    var iter = source_ns.mappings.iterator();
+                    while (iter.next()) |entry| {
+                        current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+                    }
+                }
+            },
+            else => return error.TypeError,
+        }
+    }
+
+    return .nil;
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -320,6 +527,34 @@ pub const builtins = [_]BuiltinDef{
         .func = nsMapFn,
         .doc = "Returns a map of all the mappings for the namespace.",
         .arglists = "([ns])",
+        .added = "1.0",
+    },
+    .{
+        .name = "refer",
+        .func = referFn,
+        .doc = "Refers to all public vars of ns, subject to filters.",
+        .arglists = "([ns-sym & filters])",
+        .added = "1.0",
+    },
+    .{
+        .name = "alias",
+        .func = aliasFn,
+        .doc = "Add an alias in the current namespace to another namespace.",
+        .arglists = "([alias namespace-sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "require",
+        .func = requireFn,
+        .doc = "Loads libs, skipping any that are already loaded. For already-loaded namespaces, sets up aliases and refers.",
+        .arglists = "([& args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "use",
+        .func = useFn,
+        .doc = "Like require, but also refers to each lib's namespace.",
+        .arglists = "([& args])",
         .added = "1.0",
     },
 };

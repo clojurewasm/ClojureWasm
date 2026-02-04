@@ -72,6 +72,10 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F73     | Namespace-qualified :keys syntax                 | `{:a/keys [b]}` — shorthand for `{:keys [:a/b]}` not supported                         | T15.2  |
 | F74     | Namespace-qualified :syms syntax                 | `{:a/syms [b]}` — shorthand for `{:syms [a/b]}` not supported                          | T15.2  |
 | ~~F75~~ | ~~VM closure capture with named fn self-ref~~    | ~~Resolved: T15.5.1 — per-slot capture_slots array in FnProto (D56)~~                  | T15.4  |
+| F76     | VM compiler stack_depth underflow with recur     | recur inside when-not/some->/cond-> in deftest fn body causes panic                    | T15.5  |
+| F77     | VM user-defined macro expansion                  | defmacro `c` + `(-> a b c)` — VM compiles macro call without expanding                 | T15.5  |
+| F78     | with-meta on symbols                             | `(with-meta 'sym {:k v})` fails — symbol meta not supported                            | T15.5  |
+| F79     | :syms map destructuring                          | `{:syms [a b]}` basic symbol key destructuring not implemented                         | T15.5  |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |

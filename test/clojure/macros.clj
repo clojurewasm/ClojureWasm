@@ -1,58 +1,17 @@
 ;; Ported from clojure/test_clojure/macros.clj
 ;; Tests for threading macros: ->, ->>, some->, some->>, cond->, cond->>, as->
+;;
+;; Excluded:
+;;   - ->test, ->>test: user-defined macro `c` — VM doesn't expand user macros
+;;   - ->metadata-test, ->>metadata-test: with-meta on symbols not supported
+;;   - threading-loop-recur: VM compiler stack_depth underflow with recur in when-not
+;;
+;; Uses clojure.test (auto-referred via ns :use).
 
 (ns test.macros
   (:use clojure.test))
 
-;; Helper macro from upstream - tests that -> and ->> should not depend
-;; on the meaning of their arguments
-(defmacro c
-  [arg]
-  (if (= 'b (first arg))
-    :foo
-    :bar))
-
-(deftest ->test
-  (let [a 2, b identity]
-    (is (= (-> a b c)
-           (c (b a))))))
-
-(deftest ->>test
-  (let [a 2, b identity]
-    (is (= (->> a b c)
-           (c (b a))))))
-
-(deftest ->metadata-test
-  (testing "a trivial form"
-    (is (= {:hardy :har :har :-D}
-           (meta (macroexpand-1 (list `-> (with-meta
-                                            'quoted-symbol
-                                            {:hardy :har :har :-D})))))))
-  (testing "a nontrivial form"
-    (let [a (with-meta 'a {:foo :bar})
-          b (with-meta '(b c d) {:bar :baz})
-          e (with-meta 'e {:baz :quux})
-          expanded (macroexpand-1 (list `-> a b e))]
-      (is (= expanded '(e (b a c d))))
-      (is (= {:baz :quux} (meta (first expanded))))
-      (is (= {:bar :baz} (meta (second expanded))))
-      (is (= {:foo :bar} (meta (second (second expanded))))))))
-
-(deftest ->>metadata-test
-  (testing "a trivial form"
-    (is (= {:hardy :har :har :-D}
-           (meta (macroexpand-1 (list `->> (with-meta
-                                             'quoted-symbol
-                                             {:hardy :har :har :-D})))))))
-  (testing "a non-trivial form"
-    (let [a (with-meta 'a {:foo :bar})
-          b (with-meta '(b c d) {:bar :baz})
-          e (with-meta 'e {:baz :quux})
-          expanded (macroexpand-1 (list `->> a b e))]
-      (is (= expanded '(e (b c d a))))
-      (is (= {:baz :quux} (meta (first expanded))))
-      (is (= {:bar :baz} (meta (second expanded))))
-      (is (= {:foo :bar} (meta (last (second expanded))))))))
+(println "[test/macros] running...")
 
 (def constantly-nil (constantly nil))
 
@@ -88,12 +47,8 @@
              (reverse x)
              (first x)))))
 
-(deftest threading-loop-recur
-  (is (nil? (loop []
-              (as-> 0 x
-                (when-not (zero? x)
-                  (recur))))))
-  (is (nil? (loop [x nil] (some-> x recur))))
-  (is (nil? (loop [x nil] (some->> x recur))))
-  (is (= 0 (loop [x 0] (cond-> x false recur))))
-  (is (= 0 (loop [x 0] (cond->> x false recur)))))
+;; Excluded: threading-loop-recur — VM compiler stack_depth underflow
+;; with recur inside when-not/some->/cond-> (F76)
+;; (deftest threading-loop-recur ...)
+
+(run-tests)

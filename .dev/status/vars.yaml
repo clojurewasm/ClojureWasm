@@ -111,7 +111,7 @@ vars:
     "agent-errors": {type: function, status: todo}
     aget: {type: function, status: todo}
     alength: {type: function, status: todo}
-    alias: {type: function, status: todo}
+    alias: {type: function, status: done, note: builtin (upstream is pure clj)}
     "all-ns": {type: function, status: done}
     alter: {type: function, status: todo}
     "alter-meta!": {type: function, status: todo}
@@ -534,7 +534,7 @@ vars:
     "ref-max-history": {type: function, status: todo}
     "ref-min-history": {type: function, status: todo}
     "ref-set": {type: function, status: todo}
-    refer: {type: function, status: todo}
+    refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: todo}
     reify: {type: macro, status: todo}
     "release-pending-sends": {type: function, status: todo}
@@ -549,7 +549,7 @@ vars:
     repeatedly: {type: function, status: done}
     replace: {type: function, status: todo}
     replicate: {type: function, status: todo}
-    require: {type: function, status: todo}
+    require: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "requiring-resolve": {type: function, status: todo}
     "reset!": {type: function, status: done}
     "reset-meta!": {type: function, status: todo}
@@ -677,7 +677,7 @@ vars:
     "update-proxy": {type: function, status: todo}
     "update-vals": {type: function, status: todo}
     "uri?": {type: function, status: todo}
-    use: {type: function, status: todo}
+    use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "uuid?": {type: function, status: todo}
     val: {type: function, status: done}
     vals: {type: function, status: done}
