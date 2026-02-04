@@ -4,49 +4,38 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 17.5 (Infrastructure Fix)
-- Current task: (none — planning needed)
+- Phase: 18 (Test Batch 3 + Coverage Expansion)
+- Current task: T18.1
 - Task file: N/A
-- Last completed: Phase 17 complete (IO/Print/System functions, 306 vars, 184 builtins)
+- Last completed: Phase 17.5 (Infrastructure Fix — 8 tasks, D59/D60)
 - Blockers: none
-- Next: Plan Phase 17.5 Task Queue (try/catch/throw → destructuring → VM defmulti)
+- Next: Implement bit ops → port numbers.clj → coverage expansion
 
-## Current Phase: 17.5
+## Current Phase: 18
 
-**Background**: Phase 17 completed IO/print/system functions (14 new builtins).
-Total: 13 test files, 115 tests, 442 assertions on TreeWalk; 106 tests on VM.
-306 done vars, 184 Zig builtins.
+**Background**: Phase 17.5 completed infrastructure fixes (8 tasks, D59/D60).
+Total: 13 test files, 306 done vars (19 clojure.string), 189 Zig builtins.
+Phase 17.5 un-SKIPped 7 tests, resolved F13/F58/F67/F69/F79.
 
-**Goal**: Fix cross-cutting infrastructure gaps blocking ~35+ test SKIPs.
-Three priority areas in order.
+**Goal**: Port numbers.clj tests, implement missing bit/numeric functions,
+expand test coverage for existing files.
 
 ### Rules
 
 1. **TDD**: Failing test first, then implement
-2. **Dual-Backend**: All fixes must pass both VM and TreeWalk
-3. **Test SKIPs**: Un-SKIP tests as infrastructure becomes available
-4. **checklist.md**: Resolve F## items, strike from list
-
-### Priority Areas
-
-1. **try/catch/throw** (~15 SKIPs) — Analyzer special forms, VM opcodes,
-   TreeWalk handling. Largest single blocker.
-2. **Destructuring fixes** (~10 SKIPs) — F58, F67-F74, F79.
-   Concentrated in Analyzer destructuring code.
-3. **VM defmulti/defmethod opcodes** (F13) — Compiler + VM opcodes.
+2. **Dual-Backend**: All tests pass both VM and TreeWalk
+3. **Batch 3 pragmatism**: Only portable tests (no Java deps)
+4. **vars.yaml**: Mark implemented vars done
 
 ### Task Queue
 
-| Task    | Type | Description                             | Notes                                  |
-| ------- | ---- | --------------------------------------- | -------------------------------------- |
-| T17.5.1 | done | VM try/catch body evaluation bug        | D59: stepInstruction + error routing   |
-| T17.5.2 | done | Destructuring: F58 nested map           | Recursive expandBindingPattern         |
-| T17.5.3 | done | Destructuring: F67 rest args + map      | apply hash-map conversion              |
-| T17.5.4 | done | Destructuring: F69 keywords in :keys    | Already working                        |
-| T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer          |
-| T17.5.6 | done | VM defmulti/defmethod opcodes (F13)     | D60: opcodes + callFnVal IFn extension |
-| T17.5.7 | done | clojure.string expansion                | +5 fns: capitalize, split-lines, etc.  |
-| T17.5.8 | done | Un-SKIP tests enabled by infrastructure | +7 tests: 5 string, 2 destructuring    |
+| Task  | Type | Description                             | Notes                                   |
+| ----- | ---- | --------------------------------------- | --------------------------------------- |
+| T18.1 | impl | Missing bit ops (bit-set, -clear, etc.) | 5 builtins: set/clear/flip/test/ushiftr |
+| T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char     |
+| T18.3 | test | Port numbers.clj (partial)              | ~16 portable tests from upstream        |
+| T18.4 | impl | Core function expansion                 | Quick-win todo vars from vars.yaml      |
+| T18.5 | test | Coverage expansion in existing tests    | Expand assertions in current 13 files   |
 
 ### Phase 17 Summary (completed)
 
