@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.2 — Port string.clj (14 tests/36 assertions)
+- Last completed: T16.3 — Port keywords.clj (11 tests/32 assertions)
 - Blockers: none
-- Next: T16.3 (Port keywords.clj)
+- Next: T16.4 (Port other_functions.clj)
 
 ## Current Phase: 16
 

@@ -76,6 +76,8 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F77     | VM user-defined macro expansion                  | defmacro `c` + `(-> a b c)` — VM compiles macro call without expanding                 | T15.5  |
 | F78     | with-meta on symbols                             | `(with-meta 'sym {:k v})` fails — symbol meta not supported                            | T15.5  |
 | F79     | :syms map destructuring                          | `{:syms [a b]}` basic symbol key destructuring not implemented                         | T15.5  |
+| F80     | find-keyword function                            | Needs keyword intern table to distinguish existing vs absent keywords                  | T16.3  |
+| F81     | ::foo auto-resolved keyword                      | `::foo` should resolve to `:current-ns/foo` — reader needs Env access                  | T16.3  |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10 |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10 |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10 |
