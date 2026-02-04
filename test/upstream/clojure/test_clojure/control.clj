@@ -1,235 +1,353 @@
-;; clojure/test_clojure/control.clj — Equivalent tests for ClojureWasm
-;;
-;; Based on clojure/test_clojure/control.clj from Clojure JVM.
-;; Java-dependent tests excluded (Exception, Long., thrown?, BigDecimal, Ratio).
-;;
-;; Uses clojure.test (auto-referred from bootstrap).
+;; Upstream: clojure/test/clojure/test_clojure/control.clj
+;; Upstream lines: 446
+;; CLJW markers: 23
 
-(println "[clojure/test_clojure/control] running...")
+;   Copyright (c) Rich Hickey. All rights reserved.
+;   The use and distribution terms for this software are covered by the
+;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;   which can be found in the file epl-v10.html at the root of this distribution.
+;   By using this software in any fashion, you are agreeing to be bound by
+;   the terms of this license.
+;   You must not remove this notice, or any other, from this software.
 
-;; ========== do tests ==========
+; Author: Frantisek Sodomka, Mike Hinchey, Stuart Halloway
+
+;;
+;;  Test "flow control" constructs.
+;;
+
+;; CLJW: removed (:use clojure.test-helper)
+(ns clojure.test-clojure.control
+  (:use clojure.test))
+
+;; *** Helper functions ***
+
+;; CLJW: added — upstream uses (exception) from clojure.test-helper
+(defn exception [] (throw "test Exception"))
+
+;; CLJW: adapted — removed 2/3 (ratio), 0M 1M (BigDecimal) from value list
+(defn maintains-identity [f]
+  (are [x] (= (f x) x)
+    nil
+    false true
+    0 42
+    0.0 3.14
+    \c
+    "" "abc"
+    'sym
+    :kw
+    () '(1 2)
+    [] [1 2]
+    {} {:a 1 :b 2}
+    #{} #{1 2}))
+
+; http://clojure.org/special_forms
+; http://clojure.org/macros
 
 (deftest test-do
-  (testing "no params => nil"
-    (is (= (do) nil)))
+  (are [x y] (= x y)
+      ; no params => nil
+    (do) nil
 
-  (testing "return last"
-    (is (= (do 1) 1))
-    (is (= (do 1 2) 2))
-    (is (= (do 1 2 3 4 5) 5)))
+      ; return last
+    (do 1) 1
+    (do 1 2) 2
+    (do 1 2 3 4 5) 5
 
-  (testing "evaluate and return last"
-    (is (= (let [a (atom 0)]
-             (do (reset! a (+ @a 1))
-                 (reset! a (+ @a 1))
-                 (reset! a (+ @a 1))
-                 @a)) 3))))
+      ; evaluate and return last
+    (let [a (atom 0)]
+      (do (reset! a (+ @a 1))   ; 1
+          (reset! a (+ @a 1))   ; 2
+          (reset! a (+ @a 1))   ; 3
+          @a))  3)
 
-;; ========== loop/recur tests ==========
+  ; identity (= (do x) x)
+  (maintains-identity (fn [_] (do _))))
 
+;; loop/recur
 (deftest test-loop
-  (testing "basic loop"
-    (is (= 1 (loop [] 1))))
+  (are [x y] (= x y)
+    1 (loop []
+        1)
+    3 (loop [a 1]
+        (if (< a 3)
+          (recur (inc a))
+          a))
+    [2 4 6] (loop [a []
+                   b [1 2 3]]
+              (if (seq b)
+                (recur (conj a (* 2 (first b)))
+                       (next b))
+                a))
+    [6 4 2] (loop [a ()
+                   b [1 2 3]]
+              (if (seq b)
+                (recur (conj a (* 2 (first b)))
+                       (next b))
+                a))))
 
-  (testing "loop with single binding"
-    (is (= 3 (loop [a 1]
-               (if (< a 3)
-                 (recur (inc a))
-                 a)))))
+;; throw, try
 
-  (testing "loop building vector"
-    (is (= [2 4 6] (loop [a []
-                          b [1 2 3]]
-                     (if (seq b)
-                       (recur (conj a (* 2 (first b)))
-                              (next b))
-                       a)))))
-
-  (testing "loop building list"
-    (is (= '(6 4 2) (loop [a ()
-                           b [1 2 3]]
-                      (if (seq b)
-                        (recur (conj a (* 2 (first b)))
-                               (next b))
-                        a))))))
-
-;; ========== when tests ==========
+; if: see logic.clj
 
 (deftest test-when
-  (testing "basic when"
-    (is (= 1 (when true 1)))
-    (is (= nil (when true)))
-    (is (= nil (when false)))
-    (is (= nil (when false :unreachable)))))
-
-;; ========== when-not tests ==========
+  (are [x y] (= x y)
+    1 (when true 1)
+    nil (when true)
+    nil (when false)
+    nil (when false (exception))))
 
 (deftest test-when-not
-  (testing "basic when-not"
-    (is (= 1 (when-not false 1)))
-    (is (= nil (when-not true)))
-    (is (= nil (when-not false)))
-    (is (= nil (when-not true :unreachable)))))
-
-;; ========== if-not tests (3-arg only) ==========
+  (are [x y] (= x y)
+    1 (when-not false 1)
+    nil (when-not true)
+    nil (when-not false)
+    nil (when-not true (exception))))
 
 (deftest test-if-not
-  (testing "basic if-not with else"
-    (is (= 1 (if-not false 1 2)))
-    (is (= 2 (if-not true 1 2)))
-    (is (= 1 (if-not true :unreachable 1)))))
-
-;; ========== when-let tests ==========
+  (are [x y] (= x y)
+    1 (if-not false 1)
+    1 (if-not false 1 (exception))
+    nil (if-not true 1)
+    2 (if-not true 1 2)
+    nil (if-not true (exception))
+    1 (if-not true (exception) 1)))
 
 (deftest test-when-let
-  (testing "basic when-let"
-    (is (= 1 (when-let [a 1] a)))
-    (is (= 2 (when-let [[a b] '(1 2)] b)))
-    (is (= nil (when-let [a false] :unreachable)))))
-
-;; ========== if-let tests (3-arg only) ==========
-;; Note: ClojureWasm if-let requires else clause (JVM Clojure allows 2-arg)
+  (are [x y] (= x y)
+    1 (when-let [a 1]
+        a)
+    2 (when-let [[a b] '(1 2)]
+        b)
+    nil (when-let [a false]
+          (exception))))
 
 (deftest test-if-let
-  (testing "basic if-let with else"
-    (is (= 1 (if-let [a 1] a :not-reached)))
-    (is (= 2 (if-let [[a b] '(1 2)] b :not-reached)))
-    (is (= :else (if-let [a false] :unreachable :else)))
-    (is (= 1 (if-let [a false] a 1)))
-    (is (= 1 (if-let [[a b] nil] b 1)))
-    (is (= 1 (if-let [a false] :unreachable 1)))))
+  (are [x y] (= x y)
+    1 (if-let [a 1]
+        a)
+    2 (if-let [[a b] '(1 2)]
+        b)
+    nil (if-let [a false]
+          (exception))
+    1 (if-let [a false]
+        a 1)
+    1 (if-let [[a b] nil]
+        b 1)
+    1 (if-let [a false]
+        (exception)
+        1)))
 
-;; ========== cond tests ==========
+(deftest test-when-first
+  (are [x y] (= x y)
+    1 (when-first [a [1 2]]
+        a)
+    2 (when-first [[a b] '((1 2) 3)]
+        b)
+    nil (when-first [a nil]
+          (exception))))
+
+(deftest test-if-some
+  (are [x y] (= x y)
+    1 (if-some [a 1] a)
+    false (if-some [a false] a)
+    nil (if-some [a nil] (exception))
+    3 (if-some [[a b] [1 2]] (+ a b))
+    1 (if-some [[a b] nil] b 1)
+    1 (if-some [a nil] (exception) 1)))
+
+(deftest test-when-some
+  (are [x y] (= x y)
+    1 (when-some [a 1] a)
+    2 (when-some [[a b] [1 2]] b)
+    false (when-some [a false] a)
+    nil (when-some [a nil] (exception))))
 
 (deftest test-cond
-  (testing "empty cond"
-    (is (= (cond) nil)))
+  (are [x y] (= x y)
+    (cond) nil
 
-  (testing "false conditions"
-    (is (= (cond nil true) nil))
-    (is (= (cond false true) nil)))
+    (cond nil true) nil
+    (cond false true) nil
 
-  (testing "short-circuit"
-    (is (= (cond true 1 true :unreachable) 1))
-    (is (= (cond nil 1 false 2 true 3 true 4) 3))
-    (is (= (cond nil 1 false 2 true 3 true :unreachable) 3)))
+    (cond true 1 true (exception)) 1
+    (cond nil 1 false 2 true 3 true 4) 3
+    (cond nil 1 false 2 true 3 true (exception)) 3)
 
-  (testing "false values"
-    (is (= (cond nil :a true :b) :b))
-    (is (= (cond false :a true :b) :b)))
+  ; false
+  (are [x]  (= (cond x :a true :b) :b)
+    nil false)
 
-  ;; Note: ClojureWasm treats empty list () as falsy (JVM treats as truthy)
-  (testing "truthy values"
-    (is (= (cond true :a true :b) :a))
-    (is (= (cond 0 :a true :b) :a))
-    (is (= (cond "" :a true :b) :a))
-    (is (= (cond 'sym :a true :b) :a))
-    (is (= (cond :kw :a true :b) :a))
-    ;; (is (= (cond () :a true :b) :a))  ;; Excluded: empty list is falsy in ClojureWasm
-    (is (= (cond [] :a true :b) :a))
-    (is (= (cond {} :a true :b) :a))
-    (is (= (cond #{} :a true :b) :a)))
+  ;; CLJW: adapted — removed 2/3 (ratio), 0M 1M (BigDecimal) from truthy values
+  ; true
+  (are [x]  (= (cond x :a true :b) :a)
+    true
+    0 42
+    0.0 3.14
+    \c
+    "" "abc"
+    'sym
+    :kw
+    () '(1 2)
+    [] [1 2]
+    {} {:a 1 :b 2}
+    #{} #{1 2})
 
-  (testing "evaluation"
-    (is (= (cond (> 3 2) (+ 1 2) true :result true :unreachable) 3))
-    (is (= (cond (< 3 2) (+ 1 2) true :result true :unreachable) :result))))
+  ; evaluation
+  (are [x y] (= x y)
+    (cond (> 3 2) (+ 1 2) true :result true (exception)) 3
+    (cond (< 3 2) (+ 1 2) true :result true (exception)) :result)
 
-;; ========== condp tests (simplified) ==========
+  ; identity (= (cond true x) x)
+  (maintains-identity (fn [_] (cond true _))))
 
 (deftest test-condp
-  (testing "basic condp"
-    (is (= :pass (condp = 1
-                   1 :pass
-                   2 :fail)))
-    (is (= :pass (condp = 1
-                   2 :fail
-                   1 :pass)))
-    (is (= :pass (condp = 1
-                   2 :fail
-                   :pass)))
-    (is (= :pass (condp = 1
-                   :pass)))))
+  (are [x] (= :pass x)
+    (condp = 1
+      1 :pass
+      2 :fail)
+    (condp = 1
+      2 :fail
+      1 :pass)
+    (condp = 1
+      2 :fail
+      :pass)
+    (condp = 1
+      :pass)
+    (condp = 1
+      2 :fail
+         ;; doc of condp says result-expr is returned
+         ;; shouldn't it say similar to cond: "evaluates and returns
+         ;; the value of the corresponding expr and doesn't evaluate any of the
+         ;; other tests or exprs."
+      (identity :pass))
+    (condp + 1
+      1 :>> #(if (= % 2) :pass :fail))
+    (condp + 1
+      1 :>> #(if (= % 3) :fail :pass)))
+  ;; CLJW: adapted — IllegalArgumentException → Exception
+  (is (thrown? Exception
+               (condp = 1)))
+  (is (thrown? Exception
+               (condp = 1
+                 2 :fail))))
 
-;; ========== dotimes tests ==========
+; [for, doseq (for.clj)]
 
 (deftest test-dotimes
-  (testing "dotimes returns nil"
-    (is (= nil (dotimes [n 1] n))))
-
-  (testing "executes n times"
-    (is (= 3 (let [a (atom 0)]
-               (dotimes [n 3]
-                 (swap! a inc))
-               @a))))
-
-  (testing "all values of n"
-    (is (= [0 1 2] (let [a (atom [])]
-                     (dotimes [n 3]
-                       (swap! a conj n))
-                     @a)))
-    (is (= [] (let [a (atom [])]
-                (dotimes [n 0]
-                  (swap! a conj n))
-                @a)))))
-
-;; ========== while tests ==========
+  ;; dotimes always returns nil
+  (is (= nil (dotimes [n 1] n)))
+  ;; test using an atom since dotimes is for modifying
+  ;; test executes n times
+  (is (= 3
+         (let [a (atom 0)]
+           (dotimes [n 3]
+             (swap! a inc))
+           @a)))
+  ;; test all values of n
+  (is (= [0 1 2]
+         (let [a (atom [])]
+           (dotimes [n 3]
+             (swap! a conj n))
+           @a)))
+  (is (= []
+         (let [a (atom [])]
+           (dotimes [n 0]
+             (swap! a conj n))
+           @a))))
 
 (deftest test-while
-  (testing "while with false condition"
-    (is (= nil (while nil :unreachable))))
+  ;; CLJW: adapted — (throw (Exception. "never")) → (throw "never")
+  (is (= nil (while nil (throw "never"))))
+  (is (= [0 nil]
+         ;; a will dec to 0
+         ;; while always returns nil
+         (let [a (atom 3)
+               w (while (pos? @a)
+                   (swap! a dec))]
+           [@a w])))
+  ;; CLJW: adapted — Exception. → string throw
+  (is (thrown? Exception (while true (throw "expected to throw")))))
 
-  (testing "while decrements"
-    (is (= [0 nil] (let [a (atom 3)
-                         w (while (pos? @a)
-                             (swap! a dec))]
-                     [@a w])))))
+; locking, monitor-enter, monitor-exit
 
-;; ========== case tests (simplified) ==========
-;; Note: Symbol matching excluded — ClojureWasm case with quoted symbol causes error
-
+; case
 (deftest test-case
-  (testing "basic case matching"
-    (is (= :number (case 1
-                     1 :number
-                     :default)))
-    (is (= :string (case "foo"
-                     "foo" :string
-                     :default)))
-    (is (= :char (case \a
-                   \a :char
-                   :default)))
-    (is (= :keyword (case :zap
-                      :zap :keyword
-                      :default)))
-    ;; Symbol matching excluded — causes evaluation error
-    ;; (is (= :symbol (case 'pow pow :symbol :default)))
-    (is (= :nil (case nil
-                  nil :nil
-                  :default))))
+  (testing "can match many kinds of things"
+    (let [two 2
+          test-fn
+          #(case %
+             1 :number
+             "foo" :string
+             \a :char
+             pow :symbol
+             :zap :keyword
+             (2 \b "bar") :one-of-many
+             [1 2] :sequential-thing
+             {:a 2} :map
+             {:r 2 :d 2} :droid
+             #{2 3 4 5} :set
+             [1 [[[2]]]] :deeply-nested
+             nil :nil
+             :default)]
+      (are [result input] (= result (test-fn input))
+        :number 1
+        :string "foo"
+        :char \a
+        :keyword :zap
+        :symbol 'pow
+        :one-of-many 2
+        :one-of-many \b
+        :one-of-many "bar"
+        :sequential-thing [1 2]
+        :sequential-thing (list 1 2)
+        :sequential-thing [1 two]
+        :map {:a 2}
+        :map {:a two}
+        :set #{2 3 4 5}
+        :set #{two 3 4 5}
+        :default #{2 3 4 5 6}
+        :droid {:r 2 :d 2}
+        :deeply-nested [1 [[[two]]]]
+        :nil nil
+        :default :anything-not-appearing-above)))
+  ;; CLJW: adapted — IllegalArgumentException → Exception, thrown-with-msg? → thrown?
+  (testing "throws if no match"
+    (is (thrown? Exception
+                 (case 2 1 :ok))))
+  (testing "sorting doesn't matter"
+    (let [test-fn
+          #(case %
+             {:b 2 :a 1} :map
+             #{3 2 1} :set
+             :default)]
+      (are [result input] (= result (test-fn input))
+        :map {:a 1 :b 2}
+           ;; CLJW: removed — (sorted-map :a 1 :b 2), sorted-map not fully supported in case
+        :set #{3 2 1}
+           ;; CLJW: removed — (sorted-set 2 1 3), sorted-set not implemented
+        )))
+  ;; CLJW: JVM interop — test-number-equivalence requires 1N (BigInt)
+  ;; CLJW: JVM interop — test-warn-boxing requires should-print-err-message, Object.
+  ;; CLJW: JVM interop — test-sparse-ints requires 2r binary literal
+  ;; CLJW: JVM interop — test-emits-return-types requires Long., should-not-reflect
+  ;; CLJW: JVM interop — test-short-byte requires short/byte casts
+  ;; CLJW: JVM interop — test-non-equivalence-chars-nums requires (int \a), 97N
+  ;; CLJW: JVM interop — test-duplicate-constant requires eval
+  ;; CLJW: JVM interop — test-number-truncation requires Long.
+  ;; CLJW: JVM interop — test-hash-collision requires BigInt 9223372039002259457N
+  ;; CLJW: JVM interop — test-warn-hash-collision requires should-print-err-message
+  (testing "test constants are *not* evaluated"
+    (let [test-fn
+          ;; never write code like this...
+          ;; CLJW: adapted — RuntimeException. → string
+          #(case %
+             (throw "boom") :piece-of-throw-expr
+             :no-match)]
+      (are [result input] (= result (test-fn input))
+        :piece-of-throw-expr 'throw
+        :piece-of-throw-expr "boom"
+        :no-match nil))))
 
-  (testing "default clause"
-    (is (= :default (case 999
-                      1 :one
-                      2 :two
-                      :default))))
-
-  ;; Multiple test values excluded — ClojureWasm case doesn't support (val1 val2 ...) syntax
-  ;; (testing "multiple test values"
-  ;;   (is (= :one-of-many (case 2 (1 2 3) :one-of-many :default)))
-  ;;   (is (= :one-of-many (case \b (\a \b \c) :one-of-many :default)))
-  ;;   (is (= :one-of-many (case "bar" ("foo" "bar" "baz") :one-of-many :default))))
-
-  (testing "sequential matching"
-    (is (= :vec (case [1 2]
-                  [1 2] :vec
-                  :default)))
-    (is (= :map (case {:a 1}
-                  {:a 1} :map
-                  :default)))
-    (is (= :set (case #{1 2}
-                  #{1 2} :set
-                  :default)))))
-
-;; ========== Run tests ==========
-
+;; CLJW-ADD: test runner invocation
 (run-tests)

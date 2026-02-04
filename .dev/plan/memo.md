@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C8 (vars.clj)
+- Next task: C10 (Re-port predicates.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -22,8 +22,8 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C5: Re-port atoms.clj~~ done (12 assertions, *warn-on-reflection* stub)
 - ~~C6: delays.clj~~ done (6 assertions, delay exception caching)
 - ~~C7: def.clj~~ done (2 assertions, eval do sequential fix)
-- C8: vars.clj (109 lines, partial — threading/promise JVM-only)
-- C9: Re-port control.clj (upstream faithful)
+- ~~C8: vars.clj~~ done (1 assertion, zipmap lazy seq fix)
+- ~~C9: Re-port control.clj~~ done (155 assertions, was 66)
 - C10: Re-port predicates.clj (upstream faithful)
 - C11: Re-port data_structures.clj (upstream faithful)
 - C12: Re-port sequences.clj (upstream faithful)
@@ -38,13 +38,14 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C8: vars.clj — faithful from upstream with CLJW markers.
+C10: Re-port predicates.clj — faithful from upstream with CLJW markers.
 
 ## Previous Task
 
-C7 completed: Port def.clj — 2 assertions (2 of 4 tests; 2 JVM interop).
-- Fixed eval (do ...) to evaluate sub-forms sequentially (declare visible to later forms)
-- dynamic-redefinition and nested-dynamic-declaration tests pass
+C9 completed: Re-port control.clj — 155 assertions (was 66).
+- Added when-first, if-some, when-some tests from upstream
+- Fixed case no-match throw, if-some optional else
+- case symbol/multi-value matching now works
 
 ## Handover Notes
 
