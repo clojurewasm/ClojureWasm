@@ -591,7 +591,7 @@ vars:
     "simple-ident?": {type: function, status: todo}
     "simple-keyword?": {type: function, status: todo}
     "simple-symbol?": {type: function, status: todo}
-    slurp: {type: function, status: todo}
+    slurp: {type: function, status: done}
     some: {type: function, status: done}
     "some->": {type: macro, status: done}
     "some->>": {type: macro, status: done}
@@ -605,7 +605,7 @@ vars:
     "sorted-set-by": {type: function, status: todo}
     "sorted?": {type: function, status: todo}
     "special-symbol?": {type: function, status: todo}
-    spit: {type: function, status: todo}
+    spit: {type: function, status: done}
     "split-at": {type: function, status: done}
     "split-with": {type: function, status: done}
     "splitv-at": {type: function, status: todo}

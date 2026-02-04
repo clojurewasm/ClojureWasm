@@ -123,8 +123,8 @@ Organized based on discussion. Includes both done and todo items.
 
 | Var           | Status | Note                         |
 | ------------- | ------ | ---------------------------- |
-| `slurp`       | todo   | Zig fs.readFileAlloc         |
-| `spit`        | todo   | Zig fs.writeFile             |
+| `slurp`       | done   | Zig fs.readToEndAlloc        |
+| `spit`        | done   | Zig fs.createFile + writeAll |
 | `line-seq`    | todo   | lazy line reader (Beta stub) |
 | `file-seq`    | todo   | directory traversal          |
 | `load-file`   | todo   | load and eval Clojure file   |

@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 17 (IO / Print Functions)
-- Current task: T17.3
+- Current task: T17.4
 - Task file: N/A
-- Last completed: T17.2 — print-str, prn-str, println-str (3 builtins)
+- Last completed: T17.3 — slurp, spit (file IO, 2 builtins)
 - Blockers: none
-- Next: T17.3 — File IO (slurp, spit)
+- Next: T17.4 — Standard input (read-line)
 
 ## Current Phase: 17
 
