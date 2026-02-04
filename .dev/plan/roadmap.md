@@ -33,7 +33,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 14    | Clojure upstream test foundation | clojure.test, walk, 8 test files ported (72 tests)     |
 | 14.5  | Bug fix round                    | assoc vector, seq set, empty list eval, pop nil        |
 
-**Stats**: 290/705 vars done, 166 Zig builtins, 120+ core.clj fns
+**Stats**: 296/705 vars done, 170 Zig builtins, 120+ core.clj fns
 
 ## Phases
 
