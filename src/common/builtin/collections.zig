@@ -887,18 +887,8 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to zipmap", .{args.len});
 
-    const key_items = switch (args[0]) {
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        .nil => @as([]const Value, &.{}),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "zipmap expects a collection for keys, got {s}", .{@tagName(args[0])}),
-    };
-    const val_items = switch (args[1]) {
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        .nil => @as([]const Value, &.{}),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "zipmap expects a collection for vals, got {s}", .{@tagName(args[1])}),
-    };
+    const key_items = try collectSeqItems(allocator, args[0]);
+    const val_items = try collectSeqItems(allocator, args[1]);
 
     const pair_count = @min(key_items.len, val_items.len);
     const entries = try allocator.alloc(Value, pair_count * 2);
