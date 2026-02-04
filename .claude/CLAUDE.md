@@ -1,7 +1,7 @@
 # ClojureWasm
 
 Full-scratch Clojure implementation in Zig 0.15.2. Behavioral compatibility target.
-Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev/plan/memo.md`.
+Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/plan/memo.md`.
 
 ## Language Policy
 
@@ -30,7 +30,7 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. State: `.dev
 **Default mode: Continuous autonomous execution.**
 After session resume, continue automatically from where you left off.
 
-### Loop: Orient → Execute → Commit → Repeat
+### Loop: Orient → Plan → Execute → Commit → Repeat
 
 **1. Orient** (every iteration)
 
@@ -39,28 +39,25 @@ git log --oneline -3 && git status --short
 yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
 ```
 
-Read: `.dev/plan/memo.md` (current task, next task, technical notes)
+Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 
-**2. Prepare**
+**2. Plan**
 
-- **Task file exists** in `.dev/plan/active/`: resume from `## Log`
-- **Task file missing**: create from `memo.md` Task Queue
-  1. Read `roadmap.md` Phase Notes for context
-  2. Check `.dev/future.md` if task touches new subsystem (IO, GC, etc.)
-  3. Write task file: `## Plan` + empty `## Log`
+1. Move current `## Current Task` content → `## Previous Task` (overwrite previous)
+2. Write new task design in `## Current Task`
+3. Check `roadmap.md` Phase Notes and `.dev/future.md` for context on new subsystems
 
 **3. Execute**
 
 - TDD cycle: Red → Green → Refactor
 - Run tests: `zig build test`
-- Append progress to task file `## Log`
 - `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 
 **4. Complete** (per task)
 
-1. Move task file: `active/` → `archive/`
-2. Run **Commit Gate Checklist** (below)
-3. Single git commit
+1. Run **Commit Gate Checklist** (below)
+2. Single git commit
+3. Update memo.md: advance Current State and Task Queue
 4. **Loop back to Orient** — do NOT stop
 
 ### When to Stop
@@ -69,7 +66,7 @@ Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- Phase queue empty AND next phase undefined in `roadmap.md`
+- Task Queue empty AND next phase undefined in `roadmap.md`
 
 When in doubt, **continue** — pick the most reasonable option and proceed.
 
@@ -80,17 +77,17 @@ Run before every commit:
 1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 2. **checklist.md**: Strike resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
-4. **memo.md**: Advance task, update Technical Notes
+4. **memo.md**: Advance to next task
 
 ### Phase Completion
 
 When Task Queue empty:
 
-1. If next phase exists in `roadmap.md`: create Task Queue in `memo.md`
+1. If next phase exists in `roadmap.md`: create Task Queue in memo.md
 2. If not: plan new phase:
    - Read `roadmap.md` Phase Notes, `.dev/future.md`, `checklist.md`
    - Priority: bugs > blockers > deferred items > features
-   - Update `memo.md` with new Task Queue
+   - Update memo.md with new Task Queue
    - Commit: `Plan Phase X: [name]`
 3. Continue to first task
 

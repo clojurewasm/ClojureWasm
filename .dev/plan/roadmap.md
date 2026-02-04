@@ -8,7 +8,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 **References**:
 
 - `.dev/future.md` — Design document (SS sections)
-- `.dev/plan/memo.md` — Current task and session state
+- `.dev/plan/memo.md` — Session handover memo
 - `.dev/checklist.md` — Deferred items (F## entries)
 - `.dev/status/vars.yaml` — Var implementation tracking
 
@@ -33,7 +33,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 14    | Clojure upstream test foundation | clojure.test, walk, 8 test files ported (72 tests)     |
 | 14.5  | Bug fix round                    | assoc vector, seq set, empty list eval, pop nil        |
 
-**Stats**: 296/705 vars done, 170 Zig builtins, 120+ core.clj fns
+**Stats**: 405/712 vars done (as of Phase 18.7)
 
 ## Phases
 
@@ -43,7 +43,7 @@ Port upstream Clojure tests, implement missing features as gaps are found.
 TDD approach: port test → fail → implement → pass.
 
 **Scope**: High-priority test files (macros, special, walk, set, string, keywords, etc.)
-**Reference**: `.dev/notes/test_file_priority.md` (Batch 1-3 ordering)
+**Reference**: (test_file_priority.md removed — batches completed)
 
 ### Phase 15.5: Test Re-port with Dual-Backend Verification
 
@@ -58,7 +58,7 @@ Re-port tests from scratch, running both VM and TreeWalk, fixing root causes.
 - Use `--dump-bytecode` for VM debugging
 
 **Scope**: Tests ported in Phase 14-15 (up to walk)
-**Reference**: `.dev/plan/memo.md` Current Phase section
+**Reference**: `.dev/plan/memo.md`
 
 ### Phase 16: Test Expansion & Bug Fix
 
@@ -66,14 +66,14 @@ Port remaining Batch 1 test files (clojure_set, string, keywords, other_function
 metadata). Fix VM bugs (F76, F77) and implement missing core functions.
 
 **Scope**: Test Batch 1 completion, VM bug fixes, missing predicates/seq fns
-**Reference**: `.dev/notes/test_file_priority.md` Batch 1
+**Reference**: (test_file_priority.md removed)
 
 ### Phase 16.5: Test Batch 2 Port
 
 Port remaining Batch 2 test files (multimethods, vars, volatiles, delays).
 Continue dual-backend policy. Fix bugs found during porting.
 
-**Scope**: Test Batch 2 from `.dev/notes/test_file_priority.md`
+**Scope**: Test Batch 2 (multimethods, vars, volatiles, delays)
 **Reference**: `.dev/plan/memo.md`
 
 ### Phase 17: IO / System Namespace
@@ -112,7 +112,7 @@ Port Batch 3 test files (numbers, def, fn, ns_libs — partial) plus expand
 existing test files with assertions previously SKIPed in Phase 17.5.
 
 **Prerequisite**: Phase 17.5 (try/catch and destructuring available)
-**Reference**: `.dev/notes/test_file_priority.md` Batch 3
+**Reference**: (test_file_priority.md removed)
 
 ### Phase 18.5: Upstream Alignment
 
@@ -133,7 +133,7 @@ when all dependencies are available. Close gap between ClojureWasm and JVM Cloju
 3. For Analyzer rewrite: add `System/` and `Math/` pattern matching in analyzer
 
 **Prerequisite**: Phase 18 (tests provide regression safety)
-**Reference**: F89-F94 in checklist.md, `.dev/notes/java_interop_todo.md` P2
+**Reference**: F89-F94 in checklist.md, `.claude/rules/java-interop.md`
 
 ### Phase 19: Production GC
 
@@ -185,8 +185,8 @@ When implementing new functions, see `.claude/references/impl-tiers.md`.
 
 ### Test Porting Policy
 
-When porting upstream Clojure tests, see memo.md "Long-term Reference" section
-for JVM dependency handling (categories, porting rules, implicit assumptions).
+When porting upstream Clojure tests, follow dual-backend policy:
+run all tests on both VM and TreeWalk, SKIP only for JVM-specific features.
 
 ### IO / System Namespace Strategy
 

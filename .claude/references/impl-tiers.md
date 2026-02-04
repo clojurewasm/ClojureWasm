@@ -35,7 +35,7 @@ When to implement in Zig builtin vs Clojure (.clj files).
 ```
 
 **Important**: Do NOT skip features just because they look JVM-specific.
-Check ClojureWasmBeta and `.dev/notes/java_interop_todo.md` first.
+Check `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
 
 ## Namespace → File Mapping
 
