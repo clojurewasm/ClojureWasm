@@ -6,6 +6,7 @@
 // Started as tagged union (ADR-0001). NaN boxing deferred to Phase 4.
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
 const bootstrap = @import("bootstrap.zig");
@@ -367,7 +368,18 @@ pub const Value = union(enum) {
     }
 
     /// Clojure = semantics: structural equality.
+    /// For contexts without an allocator (cannot realize lazy-seqs).
     pub fn eql(self: Value, other: Value) bool {
+        return self.eqlImpl(other, null);
+    }
+
+    /// Clojure = semantics with allocator: can realize lazy-seqs for comparison.
+    /// Use this from builtin `=` and other contexts that have an allocator.
+    pub fn eqlAlloc(self: Value, other: Value, allocator: Allocator) bool {
+        return self.eqlImpl(other, allocator);
+    }
+
+    fn eqlImpl(self: Value, other: Value, allocator: ?Allocator) bool {
         const self_tag = std.meta.activeTag(self);
         const other_tag = std.meta.activeTag(other);
 
@@ -380,14 +392,27 @@ pub const Value = union(enum) {
             return a == b;
         }
 
-        // Realized lazy seqs delegate to their realized value
+        // Lazy seqs: realize if allocator available, else check cached result
         if (self_tag == .lazy_seq) {
-            if (self.lazy_seq.realized) |r| return r.eql(other);
-            return false; // unrealized lazy seqs only equal by identity
+            if (allocator) |alloc| {
+                const realized = self.lazy_seq.realize(alloc) catch return false;
+                return realized.eqlImpl(other, allocator);
+            }
+            if (self.lazy_seq.realized) |r| return r.eqlImpl(other, null);
+            return false;
         }
         if (other_tag == .lazy_seq) {
-            if (other.lazy_seq.realized) |r| return self.eql(r);
+            if (allocator) |alloc| {
+                const realized = other.lazy_seq.realize(alloc) catch return false;
+                return self.eqlImpl(realized, allocator);
+            }
+            if (other.lazy_seq.realized) |r| return self.eqlImpl(r, null);
             return false;
+        }
+
+        // Cons cells: compare as sequences
+        if (self_tag == .cons or other_tag == .cons) {
+            return eqlConsSeq(self, other, allocator);
         }
 
         // Sequential equality: (= '(1 2) [1 2]) => true
@@ -396,7 +421,7 @@ pub const Value = union(enum) {
             const b_items = sequentialItems(other);
             if (a_items.len != b_items.len) return false;
             for (a_items, b_items) |ai, bi| {
-                if (!ai.eql(bi)) return false;
+                if (!ai.eqlImpl(bi, allocator)) return false;
             }
             return true;
         }
@@ -423,8 +448,8 @@ pub const Value = union(enum) {
             .multi_fn => |a| a == other.multi_fn, // identity equality
             .lazy_seq => unreachable, // handled by early return above
             .var_ref => |a| a == other.var_ref, // identity equality
-            .cons => |a| a == other.cons, // identity equality (full comparison needs realization)
-            .reduced => |a| a.value.eql(other.reduced.value), // compare inner values
+            .cons => unreachable, // handled by eqlConsSeq above
+            .reduced => |a| a.value.eqlImpl(other.reduced.value, allocator),
             .map => |a| {
                 const b = other.map;
                 if (a.count() != b.count()) return false;
@@ -433,7 +458,7 @@ pub const Value = union(enum) {
                     const key = a.entries[i];
                     const val = a.entries[i + 1];
                     if (b.get(key)) |bval| {
-                        if (!val.eql(bval)) return false;
+                        if (!val.eqlImpl(bval, allocator)) return false;
                     } else {
                         return false;
                     }
@@ -481,6 +506,64 @@ fn sequentialItems(v: Value) []const Value {
         .vector => |vec| vec.items,
         else => unreachable,
     };
+}
+
+/// Compare a cons cell with another sequential value element-by-element.
+/// Handles cons vs cons, cons vs list/vector, list/vector vs cons.
+fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
+    const a_tag = std.meta.activeTag(a);
+    const b_tag = std.meta.activeTag(b);
+
+    // Both sequential (list/vector): handled by caller, shouldn't reach here
+    // At least one is cons
+    if (a_tag == .cons and b_tag == .cons) {
+        // Both cons: element-wise
+        if (!a.cons.first.eqlImpl(b.cons.first, allocator)) return false;
+        return a.cons.rest.eqlImpl(b.cons.rest, allocator);
+    }
+    // One cons, one sequential (or nil)
+    // Convert both to iterator-style comparison
+    if (a_tag == .cons) {
+        // a is cons, b is list/vector/nil
+        if (b_tag == .nil) {
+            return false; // cons is never empty
+        }
+        if (!isSequential(b_tag)) return false;
+        const b_items = sequentialItems(b);
+        var i: usize = 0;
+        var cur = a;
+        while (true) {
+            const cur_tag = std.meta.activeTag(cur);
+            if (cur_tag == .cons) {
+                if (i >= b_items.len) return false; // a has more
+                if (!cur.cons.first.eqlImpl(b_items[i], allocator)) return false;
+                cur = cur.cons.rest;
+                i += 1;
+            } else if (cur_tag == .nil) {
+                return i == b_items.len;
+            } else if (isSequential(cur_tag)) {
+                const rest_items = sequentialItems(cur);
+                if (i + rest_items.len != b_items.len) return false;
+                for (rest_items, 0..) |ri, j| {
+                    if (!ri.eqlImpl(b_items[i + j], allocator)) return false;
+                }
+                return true;
+            } else if (cur_tag == .lazy_seq) {
+                if (allocator) |alloc| {
+                    cur = cur.lazy_seq.realize(alloc) catch return false;
+                } else if (cur.lazy_seq.realized) |r| {
+                    cur = r;
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    } else {
+        // b is cons, a is list/vector/nil — symmetric
+        return eqlConsSeq(b, a, allocator);
+    }
 }
 
 fn eqlOptionalStr(a: ?[]const u8, b: ?[]const u8) bool {

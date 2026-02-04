@@ -495,17 +495,13 @@ pub const VM = struct {
             .eq => {
                 const b = self.pop();
                 const a = self.pop();
-                // Realize lazy seqs for structural equality
-                const ra = builtin_collections.realizeValue(self.allocator, a) catch a;
-                const rb = builtin_collections.realizeValue(self.allocator, b) catch b;
-                try self.push(.{ .boolean = ra.eql(rb) });
+                // Use eqlAlloc to realize nested lazy-seqs during comparison
+                try self.push(.{ .boolean = a.eqlAlloc(b, self.allocator) });
             },
             .neq => {
                 const b = self.pop();
                 const a = self.pop();
-                const ra = builtin_collections.realizeValue(self.allocator, a) catch a;
-                const rb = builtin_collections.realizeValue(self.allocator, b) catch b;
-                try self.push(.{ .boolean = !ra.eql(rb) });
+                try self.push(.{ .boolean = !a.eqlAlloc(b, self.allocator) });
             },
 
             // [Z] Debug

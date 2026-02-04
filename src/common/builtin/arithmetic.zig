@@ -177,11 +177,9 @@ fn remFn(_: Allocator, args: []const Value) anyerror!Value {
 fn eqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = true };
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to =", .{args.len});
-    // Realize lazy seqs/cons for structural equality comparison
-    const a = try collections.realizeValue(allocator, args[0]);
+    // Use eqlAlloc to realize nested lazy-seqs during comparison
     for (args[1..]) |arg| {
-        const b = try collections.realizeValue(allocator, arg);
-        if (!a.eql(b)) return .{ .boolean = false };
+        if (!args[0].eqlAlloc(arg, allocator)) return .{ .boolean = false };
     }
     return .{ .boolean = true };
 }
@@ -189,9 +187,7 @@ fn eqFn(allocator: Allocator, args: []const Value) anyerror!Value {
 fn neqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = false };
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not=", .{args.len});
-    const a = try collections.realizeValue(allocator, args[0]);
-    const b = try collections.realizeValue(allocator, args[1]);
-    return .{ .boolean = !a.eql(b) };
+    return .{ .boolean = !args[0].eqlAlloc(args[1], allocator) };
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {
