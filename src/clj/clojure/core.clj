@@ -1205,3 +1205,98 @@
   ([coll]
    (if (seq? coll) coll
        (or (seq coll) ()))))
+
+;; === Pure Clojure additions ===
+
+(defn random-sample
+  "Returns items from coll with random probability of prob (0.0 -
+  1.0).  Returns a transducer when no collection is provided."
+  ([prob]
+   (filter (fn [_] (< (rand) prob))))
+  ([prob coll]
+   (filter (fn [_] (< (rand) prob)) coll)))
+
+(defn replicate
+  "DEPRECATED: Use 'repeat' instead.
+   Returns a lazy seq of n xs."
+  [n x] (take n (repeat x)))
+
+(defn comparator
+  "Returns an implementation of a comparator based upon pred."
+  [pred]
+  (fn [x y]
+    (cond (pred x y) -1 (pred y x) 1 :else 0)))
+
+(defn xml-seq
+  "A tree seq on the xml elements as per xml/parse"
+  [root]
+  (tree-seq
+   (complement string?)
+   (comp seq :content)
+   root))
+
+(defn printf
+  "Prints formatted output, as per format"
+  [fmt & args]
+  (print (apply format fmt args)))
+
+(defn test
+  "test [v] finds fn at key :test in var metadata and calls it,
+  presuming failure will throw exception"
+  [v]
+  (let [f (:test (meta v))]
+    (if f
+      (do (f) :ok)
+      :no-test)))
+
+(defn mapv
+  "Returns a vector consisting of the result of applying f to the
+  set of first items of each coll, followed by applying f to the set
+  of second items in each coll, until any one of the colls is
+  exhausted."
+  ([f coll]
+   (vec (map f coll))))
+
+;; UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent!
+
+(defmacro time
+  "Evaluates expr and prints the time it took. Returns the value of expr."
+  [expr]
+  (list 'let ['start__ (list '__nano-time)
+              'ret__ expr]
+        (list 'prn (list 'str "Elapsed time: "
+                         (list '/ (list 'double (list '- (list '__nano-time) 'start__)) 1000000.0)
+                         " msecs"))
+        'ret__))
+
+(defmacro lazy-cat
+  "Expands to code which yields a lazy sequence of the concatenation
+  of the supplied colls. Each coll expr is not evaluated until it is
+  needed."
+  [& colls]
+  (cons 'concat (map (fn [c] (list 'lazy-seq c)) colls)))
+
+(defmacro when-first
+  "bindings => x xs
+
+  Roughly the same as (when (seq xs) (let [x (first xs)] body))
+  but xs is evaluated only once"
+  [bindings & body]
+  (let [x (first bindings)
+        xs (second bindings)]
+    (list 'when-let ['xs__ (list 'seq xs)]
+          (concat (list 'let [x (list 'first 'xs__)])
+                  body))))
+
+(def *assert* true)
+
+(defmacro assert
+  "Evaluates expr and throws an Error if it does not evaluate to
+  logical true."
+  [x & args]
+  (let [message (first args)]
+    (if message
+      (list 'when-not x
+            (list 'throw (list 'str "Assert failed: " message "\n" (list 'pr-str (list 'quote x)))))
+      (list 'when-not x
+            (list 'throw (list 'str "Assert failed: " (list 'pr-str (list 'quote x))))))))

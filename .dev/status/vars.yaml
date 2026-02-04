@@ -41,7 +41,7 @@ vars:
     "*3": {type: dynamic-var, status: todo}
     "*agent*": {type: var, status: todo}
     "*allow-unresolved-vars*": {type: var, status: todo}
-    "*assert*": {type: var, status: todo}
+    "*assert*": {type: var, status: done}
     "*clojure-version*": {type: dynamic-var, status: todo}
     "*command-line-args*": {type: var, status: todo}
     "*compile-files*": {type: var, status: todo}
@@ -133,7 +133,7 @@ vars:
     "aset-int": {type: function, status: todo}
     "aset-long": {type: function, status: todo}
     "aset-short": {type: function, status: todo}
-    assert: {type: macro, status: todo}
+    assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: uses variadic args instead of multi-arity defmacro'}
     assoc: {type: function, status: done}
     "assoc!": {type: function, status: todo}
     "assoc-in": {type: function, status: done}
@@ -197,7 +197,7 @@ vars:
     comment: {type: macro, status: done}
     commute: {type: function, status: todo}
     comp: {type: function, status: done}
-    comparator: {type: function, status: todo}
+    comparator: {type: function, status: done}
     compare: {type: function, status: done}
     "compare-and-set!": {type: function, status: done}
     compile: {type: function, status: todo}
@@ -375,7 +375,7 @@ vars:
     keyword: {type: function, status: done}
     "keyword?": {type: function, status: done}
     last: {type: function, status: done, note: "core.clj loop to end"}
-    "lazy-cat": {type: macro, status: todo}
+    "lazy-cat": {type: macro, status: done}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done}
     letfn: {type: special-form, status: todo}
@@ -402,7 +402,7 @@ vars:
     "map-indexed": {type: function, status: done}
     "map?": {type: function, status: done}
     mapcat: {type: function, status: done}
-    mapv: {type: function, status: done, note: "core.clj (vec (map f coll))"}
+    mapv: {type: function, status: done, note: "UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent\\!"}
     max: {type: function, status: done}
     "max-key": {type: function, status: done}
     memfn: {type: macro, status: todo}
@@ -484,7 +484,7 @@ vars:
     "print-method": {type: var, status: todo}
     "print-simple": {type: function, status: todo}
     "print-str": {type: function, status: done}
-    printf: {type: function, status: todo}
+    printf: {type: function, status: done}
     println: {type: function, status: done}
     "println-str": {type: function, status: done}
     prn: {type: function, status: done}
@@ -504,7 +504,7 @@ vars:
     rand: {type: function, status: done}
     "rand-int": {type: function, status: done}
     "rand-nth": {type: function, status: done}
-    "random-sample": {type: function, status: todo}
+    "random-sample": {type: function, status: done}
     "random-uuid": {type: function, status: todo}
     range: {type: function, status: done}
     "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -548,7 +548,7 @@ vars:
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
     repeatedly: {type: function, status: done}
     replace: {type: function, status: done}
-    replicate: {type: function, status: todo}
+    replicate: {type: function, status: done}
     require: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "requiring-resolve": {type: function, status: todo}
     "reset!": {type: function, status: done}
@@ -633,10 +633,10 @@ vars:
     "take-nth": {type: function, status: done}
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
-    test: {type: function, status: todo}
+    test: {type: function, status: done}
     "the-ns": {type: function, status: done}
     "thread-bound?": {type: function, status: todo}
-    time: {type: macro, status: todo}
+    time: {type: macro, status: done, note: macro using __nano-time}
     "to-array": {type: function, status: todo}
     "to-array-2d": {type: function, status: todo}
     trampoline: {type: function, status: done}
@@ -694,7 +694,7 @@ vars:
     "vreset!": {type: function, status: done}
     "vswap!": {type: macro, status: done, note: "core.clj macro"}
     when: {type: macro, status: done}
-    "when-first": {type: macro, status: todo}
+    "when-first": {type: macro, status: done}
     "when-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args'}
     "when-not": {type: macro, status: done}
     "when-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args"}
@@ -710,7 +710,7 @@ vars:
     "with-precision": {type: macro, status: todo}
     "with-redefs": {type: macro, status: todo}
     "with-redefs-fn": {type: function, status: todo}
-    "xml-seq": {type: function, status: todo}
+    "xml-seq": {type: function, status: done}
     "zero?": {type: function, status: done}
     zipmap: {type: function, status: done}
     alter-meta\!:
