@@ -518,7 +518,7 @@ vars:
     "re-seq": {type: function, status: done}
     read: {type: function, status: todo}
     read+string: {type: function, status: todo}
-    "read-line": {type: function, status: todo}
+    "read-line": {type: function, status: done}
     "read-string": {type: function, status: done}
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}

@@ -90,12 +90,49 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return .nil;
 }
 
+/// (read-line) => string or nil
+/// Reads a line from stdin. Returns nil on EOF.
+pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return error.ArityError;
+
+    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    var buf: [8192]u8 = undefined;
+    var pos: usize = 0;
+
+    while (pos < buf.len) {
+        var byte: [1]u8 = undefined;
+        const n = stdin.read(&byte) catch return .nil;
+        if (n == 0) {
+            // EOF
+            if (pos > 0) break;
+            return .nil;
+        }
+        if (byte[0] == '\n') break;
+        buf[pos] = byte[0];
+        pos += 1;
+    }
+
+    // Strip trailing \r (Windows line endings)
+    if (pos > 0 and buf[pos - 1] == '\r') pos -= 1;
+
+    const owned = try allocator.alloc(u8, pos);
+    @memcpy(owned, buf[0..pos]);
+    return Value{ .string = owned };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "slurp",
         .func = &slurpFn,
         .doc = "Opens f with reader, reads all its contents, and returns as a string.",
         .arglists = "([f])",
+        .added = "1.0",
+    },
+    .{
+        .name = "read-line",
+        .func = &readLineFn,
+        .doc = "Reads the next line from stream that is the current value of *in*.",
+        .arglists = "([])",
         .added = "1.0",
     },
     .{
@@ -211,5 +248,11 @@ test "spit - append mode" {
 test "spit - arity error" {
     const args = [_]Value{.{ .string = "/tmp/test.txt" }};
     const result = spitFn(testing.allocator, &args);
+    try testing.expectError(error.ArityError, result);
+}
+
+test "read-line - arity error" {
+    const args = [_]Value{.{ .integer = 1 }};
+    const result = readLineFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }

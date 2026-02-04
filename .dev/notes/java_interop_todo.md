@@ -141,7 +141,7 @@ Organized based on discussion. Includes both done and todo items.
 | `prn`       | done   | Zig builtin     |
 | `printf`    | todo   | formatted print |
 | `newline`   | done   | Zig builtin     |
-| `read-line` | todo   | read from stdin |
+| `read-line` | done   | Zig stdin read  |
 | `flush`     | done   | Zig builtin     |
 
 ### Dynamic Output
