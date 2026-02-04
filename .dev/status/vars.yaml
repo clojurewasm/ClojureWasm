@@ -673,9 +673,9 @@ vars:
     "unsigned-bit-shift-right": {type: function, status: todo}
     update: {type: function, status: done}
     "update-in": {type: function, status: done}
-    "update-keys": {type: function, status: todo}
+    "update-keys": {type: function, status: done, note: core.clj reduce-kv based}
     "update-proxy": {type: function, status: todo}
-    "update-vals": {type: function, status: todo}
+    "update-vals": {type: function, status: done, note: core.clj reduce-kv based}
     "uri?": {type: function, status: todo}
     use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "uuid?": {type: function, status: todo}

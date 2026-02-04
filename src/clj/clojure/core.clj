@@ -177,15 +177,31 @@
       (assoc m k (assoc-in (get m k) ks-rest v))
       (assoc m k v))))
 
-(defn update [m k f]
-  (assoc m k (f (get m k))))
+(defn update
+  ([m k f]
+   (assoc m k (f (get m k))))
+  ([m k f x]
+   (assoc m k (f (get m k) x)))
+  ([m k f x y]
+   (assoc m k (f (get m k) x y)))
+  ([m k f x y z]
+   (assoc m k (f (get m k) x y z)))
+  ([m k f x y z & more]
+   (assoc m k (apply f (get m k) x y z more))))
 
-(defn update-in [m ks f]
-  (let [k (first ks)
-        ks-rest (next ks)]
-    (if ks-rest
-      (assoc m k (update-in (get m k) ks-rest f))
-      (assoc m k (f (get m k))))))
+(defn update-in
+  ([m ks f]
+   (let [k (first ks)
+         ks-rest (next ks)]
+     (if ks-rest
+       (assoc m k (update-in (get m k) ks-rest f))
+       (assoc m k (f (get m k))))))
+  ([m ks f & args]
+   (let [k (first ks)
+         ks-rest (next ks)]
+     (if ks-rest
+       (assoc m k (apply update-in (get m k) ks-rest f args))
+       (assoc m k (apply f (get m k) args))))))
 
 (defn select-keys [m keyseq]
   (reduce (fn [acc k]
@@ -223,24 +239,74 @@
 ;; Function combinators
 
 (defn partial
-  ([f a]
-   (fn [& args] (apply f (cons a args))))
-  ([f a b]
-   (fn [& args] (apply f (cons a (cons b args))))))
+  ([f] f)
+  ([f arg1]
+   (fn
+     ([] (f arg1))
+     ([x] (f arg1 x))
+     ([x y] (f arg1 x y))
+     ([x y z] (f arg1 x y z))
+     ([x y z & args] (apply f arg1 x y z args))))
+  ([f arg1 arg2]
+   (fn
+     ([] (f arg1 arg2))
+     ([x] (f arg1 arg2 x))
+     ([x y] (f arg1 arg2 x y))
+     ([x y z] (f arg1 arg2 x y z))
+     ([x y z & args] (apply f arg1 arg2 x y z args))))
+  ([f arg1 arg2 arg3]
+   (fn
+     ([] (f arg1 arg2 arg3))
+     ([x] (f arg1 arg2 arg3 x))
+     ([x y] (f arg1 arg2 arg3 x y))
+     ([x y z] (f arg1 arg2 arg3 x y z))
+     ([x y z & args] (apply f arg1 arg2 arg3 x y z args))))
+  ([f arg1 arg2 arg3 & more]
+   (fn [& args] (apply f arg1 arg2 arg3 (concat more args)))))
 
 (defn comp
   ([] identity)
   ([f] f)
   ([f g]
-   (fn [x] (f (g x)))))
+   (fn
+     ([] (f (g)))
+     ([x] (f (g x)))
+     ([x y] (f (g x y)))
+     ([x y z] (f (g x y z)))
+     ([x y z & args] (f (apply g x y z args)))))
+  ([f g & fs]
+   (reduce comp (list* f g fs))))
 
 (defn juxt
   ([f]
-   (fn [& args]
-     (vector (apply f args))))
+   (fn
+     ([] [(f)])
+     ([x] [(f x)])
+     ([x y] [(f x y)])
+     ([x y z] [(f x y z)])
+     ([x y z & args] [(apply f x y z args)])))
   ([f g]
-   (fn [& args]
-     (vector (apply f args) (apply g args)))))
+   (fn
+     ([] [(f) (g)])
+     ([x] [(f x) (g x)])
+     ([x y] [(f x y) (g x y)])
+     ([x y z] [(f x y z) (g x y z)])
+     ([x y z & args] [(apply f x y z args) (apply g x y z args)])))
+  ([f g h]
+   (fn
+     ([] [(f) (g) (h)])
+     ([x] [(f x) (g x) (h x)])
+     ([x y] [(f x y) (g x y) (h x y)])
+     ([x y z] [(f x y z) (g x y z) (h x y z)])
+     ([x y z & args] [(apply f x y z args) (apply g x y z args) (apply h x y z args)])))
+  ([f g h & fs]
+   (let [fs (list* f g h fs)]
+     (fn
+       ([] (reduce #(conj %1 (%2)) [] fs))
+       ([x] (reduce #(conj %1 (%2 x)) [] fs))
+       ([x y] (reduce #(conj %1 (%2 x y)) [] fs))
+       ([x y z] (reduce #(conj %1 (%2 x y z)) [] fs))
+       ([x y z & args] (reduce #(conj %1 (apply %2 x y z args)) [] fs))))))
 
 ;; Sequence transforms
 
@@ -544,20 +610,92 @@
   (when (seq coll) coll))
 
 (defn every-pred
-  ([p] (fn [x] (p x)))
+  ([p]
+   (fn ep1
+     ([] true)
+     ([x] (boolean (p x)))
+     ([x y] (boolean (and (p x) (p y))))
+     ([x y z] (boolean (and (p x) (p y) (p z))))
+     ([x y z & args] (boolean (and (ep1 x y z)
+                                   (every? p args))))))
   ([p1 p2]
-   (fn [x]
-     (and (p1 x) (p2 x)))))
+   (fn ep2
+     ([] true)
+     ([x] (boolean (and (p1 x) (p2 x))))
+     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y))))
+     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z))))
+     ([x y z & args] (boolean (and (ep2 x y z)
+                                   (every? #(and (p1 %) (p2 %)) args))))))
+  ([p1 p2 p3]
+   (fn ep3
+     ([] true)
+     ([x] (boolean (and (p1 x) (p2 x) (p3 x))))
+     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y))))
+     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z))))
+     ([x y z & args] (boolean (and (ep3 x y z)
+                                   (every? #(and (p1 %) (p2 %) (p3 %)) args))))))
+  ([p1 p2 p3 & ps]
+   (let [ps (list* p1 p2 p3 ps)]
+     (fn epn
+       ([] true)
+       ([x] (every? #(% x) ps))
+       ([x y] (every? #(and (% x) (% y)) ps))
+       ([x y z] (every? #(and (% x) (% y) (% z)) ps))
+       ([x y z & args] (boolean (and (epn x y z)
+                                     (every? #(every? % args) ps))))))))
 
 (defn some-fn
-  ([p] (fn [x] (p x)))
+  ([p]
+   (fn sp1
+     ([] nil)
+     ([x] (p x))
+     ([x y] (or (p x) (p y)))
+     ([x y z] (or (p x) (p y) (p z)))
+     ([x y z & args] (or (sp1 x y z)
+                         (some p args)))))
   ([p1 p2]
-   (fn [x]
-     (or (p1 x) (p2 x)))))
+   (fn sp2
+     ([] nil)
+     ([x] (or (p1 x) (p2 x)))
+     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y)))
+     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z)))
+     ([x y z & args] (or (sp2 x y z)
+                         (some #(or (p1 %) (p2 %)) args)))))
+  ([p1 p2 p3]
+   (fn sp3
+     ([] nil)
+     ([x] (or (p1 x) (p2 x) (p3 x)))
+     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y)))
+     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z)))
+     ([x y z & args] (or (sp3 x y z)
+                         (some #(or (p1 %) (p2 %) (p3 %)) args)))))
+  ([p1 p2 p3 & ps]
+   (let [ps (list* p1 p2 p3 ps)]
+     (fn spn
+       ([] nil)
+       ([x] (some #(% x) ps))
+       ([x y] (some #(or (% x) (% y)) ps))
+       ([x y z] (some #(or (% x) (% y) (% z)) ps))
+       ([x y z & args] (or (spn x y z)
+                           (some #(some % args) ps)))))))
 
-(defn fnil [f default]
-  (fn [x]
-    (f (if (nil? x) default x))))
+(defn fnil
+  ([f x]
+   (fn
+     ([a] (f (if (nil? a) x a)))
+     ([a b] (f (if (nil? a) x a) b))
+     ([a b c] (f (if (nil? a) x a) b c))
+     ([a b c & ds] (apply f (if (nil? a) x a) b c ds))))
+  ([f x y]
+   (fn
+     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
+     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) c))
+     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) c ds))))
+  ([f x y z]
+   (fn
+     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
+     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c)))
+     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) ds)))))
 
 ;; Control flow macros
 
@@ -754,3 +892,15 @@
    (reduce (fn [best item]
              (if (<= (k item) (k best)) item best))
            (min-key k x y) more)))
+
+;; UPSTREAM-DIFF: no transient/persistent!, no with-meta
+(defn update-vals
+  [m f]
+  (reduce-kv (fn [acc k v] (assoc acc k (f v)))
+             {} m))
+
+;; UPSTREAM-DIFF: no transient/persistent!, no with-meta
+(defn update-keys
+  [m f]
+  (reduce-kv (fn [acc k v] (assoc acc (f k) v))
+             {} m))

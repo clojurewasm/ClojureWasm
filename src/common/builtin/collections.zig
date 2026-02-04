@@ -287,6 +287,12 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
     const not_found: Value = if (args.len == 3) args[2] else .nil;
     return switch (args[0]) {
         .map => |m| m.get(args[1]) orelse not_found,
+        .vector => |vec| blk: {
+            if (args[1] != .integer) break :blk not_found;
+            const idx = args[1].integer;
+            if (idx < 0) break :blk not_found;
+            break :blk vec.nth(@intCast(idx)) orelse not_found;
+        },
         .set => |s| if (s.contains(args[1])) args[1] else not_found,
         .nil => not_found,
         else => not_found,
@@ -506,6 +512,27 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return switch (f) {
         .builtin_fn => |func| func(allocator, call_args),
         .fn_val => bootstrap.callFnVal(allocator, f, call_args),
+        .keyword => |kw| blk: {
+            // keyword as function: (:kw map) or (:kw map default)
+            if (call_args.len < 1 or call_args.len > 2) return error.ArityError;
+            const m = switch (call_args[0]) {
+                .map => |mp| mp,
+                else => break :blk if (call_args.len == 2) call_args[1] else .nil,
+            };
+            break :blk m.get(Value{ .keyword = kw }) orelse
+                if (call_args.len == 2) call_args[1] else .nil;
+        },
+        .map => |m| blk: {
+            // map as function: ({:a 1} :a) or ({:a 1} :a default)
+            if (call_args.len < 1 or call_args.len > 2) return error.ArityError;
+            break :blk m.get(call_args[0]) orelse
+                if (call_args.len == 2) call_args[1] else .nil;
+        },
+        .set => |s| blk: {
+            // set as function: (#{:a :b} :a)
+            if (call_args.len != 1) return error.ArityError;
+            break :blk if (s.contains(call_args[0])) call_args[0] else .nil;
+        },
         else => error.TypeError,
     };
 }
