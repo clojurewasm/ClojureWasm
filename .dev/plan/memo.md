@@ -4,13 +4,12 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 18.5 (Upstream Alignment + Core Expansion II)
-- Phase: 18.6 (Core Coverage Sprint)
-- Current task: Phase 18.6 complete
+- Phase: 18.7 (Core Coverage Sprint II)
+- Current task: T18.7.1
 - Task file: N/A
 - Last completed: T18.6.4 (coverage expansion: +15 tests, +40 assertions)
 - Blockers: none
-- Next: Plan next phase
+- Next: Quick-win defs → Zig builtins → hierarchy → coverage
 
 ## Current Phase: 18
 
@@ -18,8 +17,8 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 8 numeric coercions, 10 type predicates, 4 seq utilities, test expansion.
 Total: 14 test files, 394 done clojure.core vars, 210 Zig builtins, 971 assertions.
 
-**Goal**: Sprint to 380+ done vars. Quick-win functions, transducer basics,
-collection utilities (rseq, shuffle), and bit-and-not.
+**Goal**: Continue sprint toward 400+ done vars. Quick-win defs, Zig builtins
+(parse-long/double, special-symbol?), hierarchy basics, coverage expansion.
 
 ### Rules
 
@@ -30,12 +29,12 @@ collection utilities (rseq, shuffle), and bit-and-not.
 
 ### Task Queue
 
-| Task    | Type | Description                              | Notes                                  |
-| ------- | ---- | ---------------------------------------- | -------------------------------------- |
-| T18.6.1 | done | Quick-win Zig builtins + aliases         | 3 builtins + 17 aliases, 375 done vars |
-| T18.6.2 | done | Transducer basics (transduce, cat, etc.) | +map/filter xf, conj arity, 383 vars   |
-| T18.6.3 | done | Pure Clojure additions                   | 13 functions/macros, 394 done vars     |
-| T18.6.4 | done | Coverage expansion                       | +15 tests, +40 assertions, 207/1011    |
+| Task    | Type | Description                   | Notes                                  |
+| ------- | ---- | ----------------------------- | -------------------------------------- |
+| T18.7.1 | impl | Quick-win defs + pure Clojure | make-hierarchy, char-\*, version, etc. |
+| T18.7.2 | impl | Zig builtins                  | parse-long/double, special-symbol?     |
+| T18.7.3 | impl | Hierarchy basics              | parents, descendants, ancestors        |
+| T18.7.4 | test | Coverage expansion            | Tests for T18.7.1-3 features           |
 
 ### Phase 18 Summary (completed)
 
