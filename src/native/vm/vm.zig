@@ -39,8 +39,8 @@ pub const VMError = error{
     UserException,
 };
 
-const STACK_MAX: usize = 256 * 64;
-const FRAMES_MAX: usize = 64;
+const STACK_MAX: usize = 256 * 128;
+const FRAMES_MAX: usize = 256;
 const HANDLERS_MAX: usize = 16;
 
 /// Exception handler — saves state for try/catch unwinding.
@@ -225,10 +225,8 @@ pub const VM = struct {
                     try self.push(result);
                 },
                 .closure => {
-                    // Operand encoding: (capture_base << 8) | const_idx
-                    // capture_base: stack offset from frame.base for captured values
-                    const const_idx: u16 = instr.operand & 0xFF;
-                    const capture_base: u16 = (instr.operand >> 8) & 0xFF;
+                    // Operand: constant pool index of fn template
+                    const const_idx: u16 = instr.operand;
 
                     const template = frame.constants[const_idx];
                     if (template != .fn_val) return error.TypeError;
@@ -236,11 +234,12 @@ pub const VM = struct {
                     const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
 
                     if (proto.capture_count > 0) {
-                        // Capture values from stack at capture_base offset
+                        // Capture values using per-slot offsets from capture_slots
                         const bindings = self.allocator.alloc(Value, proto.capture_count) catch
                             return error.OutOfMemory;
                         for (0..proto.capture_count) |i| {
-                            bindings[i] = self.stack[frame.base + capture_base + i];
+                            const slot = proto.capture_slots[i];
+                            bindings[i] = self.stack[frame.base + slot];
                         }
                         const new_fn = self.allocator.create(Fn) catch return error.OutOfMemory;
                         new_fn.* = .{
@@ -293,10 +292,18 @@ pub const VM = struct {
                     if (sym != .symbol) return error.InvalidInstruction;
                     const env = self.env orelse return error.UndefinedVar;
                     const ns = env.current_ns orelse return error.UndefinedVar;
-                    const v = if (sym.symbol.ns) |ns_name|
+                    var v = if (sym.symbol.ns) |ns_name|
                         ns.resolveQualified(ns_name, sym.symbol.name)
                     else
                         ns.resolve(sym.symbol.name);
+                    // Fallback: look up namespace by full name in env registry
+                    if (v == null) {
+                        if (sym.symbol.ns) |ns_name| {
+                            if (env.namespaces.get(ns_name)) |target_ns| {
+                                v = target_ns.resolve(sym.symbol.name);
+                            }
+                        }
+                    }
                     if (v) |resolved| {
                         try self.push(resolved.deref());
                     } else {
@@ -480,6 +487,27 @@ pub const VM = struct {
             return;
         }
 
+        // Set-as-function: (#{:a :b} :a) => :a or nil
+        if (callee == .set) {
+            if (arg_count < 1) return error.ArityError;
+            const key = self.stack[fn_idx + 1];
+            const result = if (callee.set.contains(key)) key else Value.nil;
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
+        }
+
+        // Map-as-function: ({:a 1} :b) => (get map key) or default
+        if (callee == .map) {
+            if (arg_count < 1) return error.ArityError;
+            const key = self.stack[fn_idx + 1];
+            const result = callee.map.get(key) orelse
+                (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
+        }
+
         if (callee != .fn_val) return error.TypeError;
 
         const fn_obj = callee.fn_val;
@@ -498,12 +526,41 @@ pub const VM = struct {
         // Arity dispatch: find matching proto
         const proto: *const FnProto = try findProtoByArity(fn_obj, arg_count);
 
+        // Variadic: collect rest args into a list
+        // For (fn [x & xs] body), arity=2 (x and xs), fixed=1.
+        // If called with 3 args: stack=[1,2,3] → stack=[1,(2 3)]
+        var current_arg_count = arg_count;
+        if (proto.variadic and proto.arity > 0) {
+            const fixed: u16 = proto.arity - 1; // number of fixed params (excluding rest param)
+            const args_start = fn_idx + 1;
+
+            if (arg_count >= fixed) {
+                const rest_count = arg_count - fixed;
+                // Build rest list from stack values
+                const rest_items = self.allocator.alloc(Value, rest_count) catch return error.OutOfMemory;
+                for (0..rest_count) |i| {
+                    rest_items[i] = self.stack[args_start + fixed + i];
+                }
+                const rest_list = self.allocator.create(PersistentList) catch return error.OutOfMemory;
+                rest_list.* = .{ .items = rest_items };
+                self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
+
+                // Place list at the rest param slot, adjust sp
+                self.stack[args_start + fixed] = .{ .list = rest_list };
+                self.sp = args_start + fixed + 1;
+                current_arg_count = fixed + 1; // fixed params + 1 rest list
+            } else {
+                // Fewer args than fixed params: rest is nil
+                // This shouldn't normally happen due to arity check, but handle gracefully
+            }
+        }
+
         // Inject closure_bindings before args if present
         const closure_count: u16 = if (fn_obj.closure_bindings) |cb| @intCast(cb.len) else 0;
         if (closure_count > 0) {
             const cb = fn_obj.closure_bindings.?;
             const args_start = fn_idx + 1;
-            shiftStackRight(self.stack[0..], args_start, arg_count, closure_count);
+            shiftStackRight(self.stack[0..], args_start, current_arg_count, closure_count);
             for (0..closure_count) |i| {
                 self.stack[args_start + i] = cb[i];
             }
@@ -513,7 +570,7 @@ pub const VM = struct {
         // Named fn self-reference: inject fn_val at slot after captures, before args
         if (proto.has_self_ref) {
             const self_slot = fn_idx + 1 + closure_count;
-            shiftStackRight(self.stack[0..], self_slot, arg_count, 1);
+            shiftStackRight(self.stack[0..], self_slot, current_arg_count, 1);
             self.stack[self_slot] = callee;
             self.sp += 1;
         }
@@ -534,18 +591,18 @@ pub const VM = struct {
     fn findProtoByArity(fn_obj: *const Fn, arg_count: u16) VMError!*const FnProto {
         const primary: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
 
-        // Exact match on primary arity
+        // Phase 1: Exact match across all arities (prefer over variadic)
         if (!primary.variadic and primary.arity == arg_count) return primary;
-        if (primary.variadic and arg_count >= primary.arity -| 1) return primary;
-
-        // Search extra arities
         if (fn_obj.extra_arities) |extras| {
-            // Exact match first
             for (extras) |extra| {
                 const p: *const FnProto = @ptrCast(@alignCast(extra));
                 if (!p.variadic and p.arity == arg_count) return p;
             }
-            // Variadic fallback
+        }
+
+        // Phase 2: Variadic fallback across all arities
+        if (primary.variadic and arg_count >= primary.arity -| 1) return primary;
+        if (fn_obj.extra_arities) |extras| {
             for (extras) |extra| {
                 const p: *const FnProto = @ptrCast(@alignCast(extra));
                 if (p.variadic and arg_count >= p.arity -| 1) return p;
@@ -948,12 +1005,14 @@ test "VM closure with capture" {
         .{ .op = .ret },
     };
     const inner_constants = [_]Value{};
+    const capture_slot_0 = [_]u16{0};
     const inner_proto = FnProto{
         .name = null,
         .arity = 1,
         .variadic = false,
         .local_count = 2,
         .capture_count = 1, // captures 1 value from parent
+        .capture_slots = &capture_slot_0, // capture from parent slot 0
         .code = &inner_code,
         .constants = &inner_constants,
     };

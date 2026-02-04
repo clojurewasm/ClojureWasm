@@ -65,6 +65,9 @@ pub const Compiler = struct {
 
     pub fn deinit(self: *Compiler) void {
         for (self.fn_protos.items) |proto| {
+            if (proto.capture_slots.len > 0) {
+                self.allocator.free(proto.capture_slots);
+            }
             self.allocator.free(proto.code);
             self.allocator.free(proto.constants);
             self.allocator.destroy(@constCast(proto));
@@ -284,17 +287,20 @@ pub const Compiler = struct {
         const has_self_ref = node.name != null;
         const capture_count: u16 = @intCast(self.locals.items.len);
 
-        // Calculate capture_base: the stack slot of the first captured local.
-        // This is needed because the closure may be emitted when other values
-        // are on the stack (e.g., function being called in argument position).
-        // If no captures, capture_base is 0 (unused).
-        const capture_base: u16 = if (capture_count > 0)
-            self.locals.items[0].slot
-        else
-            0;
+        // Build capture_slots: parent stack slot for each captured variable.
+        // Locals may be at non-contiguous stack positions (e.g., when a closure
+        // is defined inside a call argument where the callee is already on stack).
+        const capture_slots: []u16 = if (capture_count > 0) blk: {
+            const slots = self.allocator.alloc(u16, capture_count) catch return error.OutOfMemory;
+            for (self.locals.items, 0..) |local, i| {
+                slots[i] = local.slot;
+            }
+            break :blk slots;
+        } else &.{};
 
         // Compile the primary arity (first one)
         const primary_proto = try self.compileArity(node, node.arities[0], capture_count, has_self_ref);
+        primary_proto.capture_slots = capture_slots;
 
         // Compile additional arities (if multi-arity)
         var extra_arities: ?[]const *const anyopaque = null;
@@ -302,7 +308,9 @@ pub const Compiler = struct {
             const extras = self.allocator.alloc(*const anyopaque, node.arities.len - 1) catch
                 return error.OutOfMemory;
             for (node.arities[1..], 0..) |arity, i| {
-                extras[i] = try self.compileArity(node, arity, capture_count, has_self_ref);
+                const extra_proto = try self.compileArity(node, arity, capture_count, has_self_ref);
+                extra_proto.capture_slots = capture_slots;
+                extras[i] = @ptrCast(extra_proto);
             }
             extra_arities = extras;
         }
@@ -315,11 +323,8 @@ pub const Compiler = struct {
         const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
             return error.TooManyConstants;
 
-        // Encode closure operand: (capture_base << 8) | const_idx
-        // VM uses capture_base to find where captured values are on the stack.
-        if (idx > 0xFF) return error.TooManyConstants; // const_idx must fit in 8 bits
-        const operand: u16 = (capture_base << 8) | @as(u16, @intCast(idx));
-        try self.chunk.emit(.closure, operand);
+        // Closure operand: just the constant index (capture info is in FnProto).
+        try self.chunk.emit(.closure, idx);
         self.stack_depth += 1; // closure pushes fn_val
     }
 
@@ -329,7 +334,7 @@ pub const Compiler = struct {
         arity: node_mod.FnArity,
         capture_count: u16,
         has_self_ref: bool,
-    ) CompileError!*const anyopaque {
+    ) CompileError!*FnProto {
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
 

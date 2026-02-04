@@ -111,6 +111,9 @@ pub const FnProto = struct {
     local_count: u16,
     /// Number of captured variables from parent scope.
     capture_count: u16 = 0,
+    /// Parent stack slots to capture (one per captured variable).
+    /// Used by VM closure op to read values from non-contiguous stack positions.
+    capture_slots: []const u16 = &.{},
     /// Named fn has self-reference as first local (for recursion).
     has_self_ref: bool = false,
     /// Instruction sequence.
@@ -182,10 +185,9 @@ fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writ
             try w.print(" pairs={d}", .{instr.operand});
         },
         .closure => {
-            // Operand encoding: (capture_base << 8) | const_idx
-            const const_idx: u16 = instr.operand & 0xFF;
-            const capture_base: u16 = (instr.operand >> 8) & 0xFF;
-            try w.print(" #{d} base={d}", .{ const_idx, capture_base });
+            // Operand: constant pool index of fn template
+            const const_idx: u16 = instr.operand;
+            try w.print(" #{d}", .{const_idx});
             if (const_idx < constants.len) {
                 try w.writeAll("  ; ");
                 try dumpValue(constants[const_idx], w);

@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 15.5 (Test Re-port with Dual-Backend Verification)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T15.4b — in-ns builtin, ns macro, docstring support
+- Last completed: T15.5.1 — core_test VM+TreeWalk dual-backend (7 VM fixes, D56)
 - Blockers: none
-- Next: T15.5.1 — Re-run existing tests on both VM and TreeWalk
+- Next: T15.5.2 — for.clj dual-backend verification
 
 ## Current Phase: 15.5
 

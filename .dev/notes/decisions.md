@@ -1509,3 +1509,34 @@ matching upstream Clojure directory structure:
 **Limitation**: Fully-qualified references (`clojure.walk/postwalk`) do not work
 without explicit require. This is a namespace resolution issue to address later.
 Current workaround: Functions are auto-referred to user namespace at bootstrap.
+
+---
+
+## D56: VM Closure Capture — Per-Slot Array (T15.5.1)
+
+**Problem**: The original `capture_base + capture_count` contiguous capture
+approach failed when locals occupied non-contiguous stack slots. Example:
+
+```
+(defn outer []
+  (myid (do (let [y 1] (defn inner [] y)) (inner))))
+```
+
+Here self-ref is at slot 0, `myid` var_load at slot 1 (not in locals),
+`y` let binding at slot 2. The compiler sees `capture_base=0, capture_count=1`
+but the VM reads slot 0 (self-ref) instead of slot 2 (the actual let binding).
+
+**Decision**: Replace `capture_base: u16` with `capture_slots: []const u16`
+in `FnProto`. Each slot index is recorded individually, allowing the VM to
+capture from arbitrary non-contiguous stack positions.
+
+**Changes**:
+
+- `chunk.zig`: Added `capture_slots: []const u16 = &.{}` to FnProto
+- `compiler.zig`: `emitFn` builds `capture_slots` array from `locals[].slot`
+- `vm.zig`: Closure op reads `proto.capture_slots[i]` for each binding
+- `compiler.zig`: `deinit` frees `capture_slots` when non-empty
+
+**Consequence**: Resolves F75 (VM closure capture with named fn self-ref).
+The closure instruction operand is simplified to just the constant index
+(no more encoded capture_base).
