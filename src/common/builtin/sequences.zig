@@ -139,11 +139,13 @@ pub fn valFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (keys map) — returns a list of the map's keys.
+/// For non-map types, returns nil if empty (matches JVM behavior via RT.keys → seq).
 pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keys", .{args.len});
     if (args[0] == .nil) return Value.nil;
     const m = switch (args[0]) {
         .map => |m| m,
+        .list, .vector, .set, .string => return Value.nil,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "keys expects a map, got {s}", .{@tagName(args[0])}),
     };
     const n = m.count();
@@ -159,11 +161,13 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (vals map) — returns a list of the map's values.
+/// For non-map types, returns nil if empty (matches JVM behavior via RT.vals → seq).
 pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vals", .{args.len});
     if (args[0] == .nil) return Value.nil;
     const m = switch (args[0]) {
         .map => |m| m,
+        .list, .vector, .set, .string => return Value.nil,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "vals expects a map, got {s}", .{@tagName(args[0])}),
     };
     const n = m.count();
