@@ -1,8 +1,30 @@
-;; data_structures.clj - ClojureWasm equivalent tests
-;; Based on Clojure JVM data_structures.clj
-;; Known bugs: F58-F59, F61, F63-F64 (see checklist.md)
+;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
+;; Upstream lines: 1363
+;; CLJW markers: 21
 
-(println "[test/data_structures] running...")
+;   Copyright (c) Rich Hickey. All rights reserved.
+;   The use and distribution terms for this software are covered by the
+;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;   which can be found in the file epl-v10.html at the root of this distribution.
+;   By using this software in any fashion, you are agreeing to be bound by
+;   the terms of this license.
+;   You must not remove this notice, or any other, from this software.
+
+; Author: Frantisek Sodomka
+
+;; CLJW: removed (:use clojure.test.generative), (:require generators, gen, string), (:import Collection)
+(ns clojure.test-clojure.data-structures
+  (:use clojure.test))
+
+;; *** Helper functions ***
+
+(defn diff [s1 s2]
+  (seq (reduce disj (set s1) (set s2))))
+
+;; CLJW: JVM interop — generative tests (defspec) require clojure.test.generative
+;; CLJW: JVM interop — subcollection-counts, membership-count, equivalence-gentest
+
+;; *** Equality ***
 
 (deftest test-equality
   (testing "nil is not equal to other values"
@@ -31,31 +53,39 @@
       '(1) #{1}
       [1] #{1})))
 
+;; *** Count ***
+
 (deftest test-count
-  (testing "count on various collections"
-    (are [x y] (= (count x) y)
-      nil 0
-      '() 0
-      '(1) 1
-      '(1 2 3) 3
-      [] 0
-      [1] 1
-      [1 2 3] 3
-      #{} 0
-      #{1} 1
-      #{1 2 3} 3
-      {} 0
-      {:a 1} 1
-      {:a 1 :b 2 :c 3} 3
-      "" 0
-      "a" 1
-      "abc" 3))
+  (are [x y] (= (count x) y)
+    nil 0
+
+    () 0
+    '(1) 1
+    '(1 2 3) 3
+
+    [] 0
+    [1] 1
+    [1 2 3] 3
+
+    #{} 0
+    #{1} 1
+    #{1 2 3} 3
+
+    {} 0
+    {:a 1} 1
+    {:a 1 :b 2 :c 3} 3
+
+    "" 0
+    "a" 1
+    "abc" 3)
 
   (testing "count of single-element collections"
     (are [x] (= (count [x]) 1)
       nil true false
       0 0.0 "" \space
-      '() [] #{} {})))
+      () [] #{} {})))
+
+;; *** Conj ***
 
 (deftest test-conj
   (testing "conj on nil"
@@ -68,11 +98,11 @@
 
   (testing "conj on list"
     (are [x y] (= x y)
-      (conj '() 1) '(1)
-      (conj '() 1 2) '(2 1)
+      (conj () 1) '(1)
+      (conj () 1 2) '(2 1)
       (conj '(2 3) 1) '(1 2 3)
       (conj '(2 3) 1 4 3) '(3 4 1 2 3)
-      (conj '() nil) '(nil)))
+      (conj () nil) '(nil)))
 
   (testing "conj on vector"
     (are [x y] (= x y)
@@ -103,11 +133,13 @@
       (conj #{} nil) #{nil}
       (conj #{} #{}) #{#{}})))
 
+;; *** Peek and Pop ***
+
 (deftest test-peek
   (testing "peek on list"
     (are [x y] (= x y)
       (peek nil) nil
-      (peek '()) nil
+      (peek ()) nil
       (peek '(1)) 1
       (peek '(1 2 3)) 1
       (peek '(nil)) nil)
@@ -135,16 +167,18 @@
       (pop [nil]) []
       (pop [[]]) [])))
 
+;; *** Lists ***
+
 (deftest test-list
   (testing "list? predicate"
     (are [x] (list? x)
-      '()
+      ()
       (list)
       (list 1 2 3)))
 
   (testing "list construction"
     (are [x y] (= x y)
-      (list) '()
+      (list) ()
       (list 1) '(1)
       (list 1 2) '(1 2)))
 
@@ -155,66 +189,108 @@
     (are [x y] (= x y)
       (list nil) '(nil)
       (list 1 nil) '(1 nil))
-    (is (= 1 (count (list '()))))
-    (is (empty? (first (list '()))))))
+    (is (= 1 (count (list ()))))
+    (is (empty? (first (list ()))))))
+
+;; *** Maps ***
 
 (deftest test-find
-  (testing "find on map"
-    (are [x y] (= x y)
-      (find {} :a) nil
-      (find {:a 1} :a) [:a 1]
-      (find {:a 1} :b) nil
-      (find {nil 1} nil) [nil 1]
-      (find {:a 1 :b 2} :a) [:a 1]
-      (find {:a 1 :b 2} :c) nil)))
+  (are [x y] (= x y)
+    (find {} :a) nil
+    (find {:a 1} :a) [:a 1]
+    (find {:a 1} :b) nil
+    (find {nil 1} nil) [nil 1]
+    (find {:a 1 :b 2} :a) [:a 1]
+    (find {:a 1 :b 2} :c) nil))
 
 (deftest test-contains?
-  (testing "contains? on maps"
-    (are [x y] (= x y)
-      (contains? {} :a) false
-      (contains? {:a 1} :a) true
-      (contains? {:a 1} :b) false
-      (contains? {nil 1} nil) true))
+  ; contains? is designed to work preferably on maps and sets
+  (are [x y] (= x y)
+    (contains? {} :a) false
+    (contains? {} nil) false
 
-  (testing "contains? on sets"
-    (are [x y] (= x y)
-      (contains? #{} 1) false
-      (contains? #{1} 1) true
-      (contains? #{1} 2) false
-      (contains? #{1 2 3} 1) true))
+    (contains? {:a 1} :a) true
+    (contains? {:a 1} :b) false
+    (contains? {:a 1} nil) false
+    (contains? {nil 1} nil) true
 
-  (testing "contains? on vectors"
-    (are [x y] (= x y)
-      (contains? [] 0) false
-      (contains? [1] 0) true
-      (contains? [1] 1) false
-      (contains? [1 2 3] 2) true)))
+    (contains? {:a 1 :b 2} :a) true
+    (contains? {:a 1 :b 2} :b) true
+    (contains? {:a 1 :b 2} :c) false
+    (contains? {:a 1 :b 2} nil) false
+
+    ; sets
+    (contains? #{} 1) false
+    (contains? #{} nil) false
+
+    (contains? #{1} 1) true
+    (contains? #{1} 2) false
+    (contains? #{1} nil) false
+
+    (contains? #{1 2 3} 1) true
+    (contains? #{1 2 3} 3) true
+    (contains? #{1 2 3} 10) false
+    (contains? #{1 2 3} nil) false)
+
+  ;; CLJW: JVM interop — java.util.HashMap, java.util.HashSet tests removed
+
+  ; numerically indexed collections (e.g. vectors)
+  (are [x y] (= x y)
+    (contains? [] 0) false
+    (contains? [] -1) false
+    (contains? [] 1) false
+
+    (contains? [1] 0) true
+    (contains? [1] -1) false
+    (contains? [1] 1) false
+
+    (contains? [1 2 3] 0) true
+    (contains? [1 2 3] 2) true
+    (contains? [1 2 3] 3) false
+    (contains? [1 2 3] -1) false)
+
+  ;; CLJW: JVM interop — into-array tests removed
+
+  ;; CLJW: adapted — thrown? on non-associative types
+  (are [x] (is (thrown? Exception (contains? x 1)))
+    '(1 2 3)
+    3))
 
 (deftest test-keys
-  (testing "keys on maps"
-    (are [x y] (= x y)
-      (keys {}) nil
-      (keys {:a 1}) '(:a)
-      (keys {nil 1}) '(nil))
-    (is (= 2 (count (keys {:a 1 :b 2}))))))
+  (are [x y] (= x y)      ; other than map data structures
+    (keys ()) nil
+    (keys []) nil
+    (keys #{}) nil
+    (keys "") nil)
+
+  (are [x y] (= x y)
+    (keys {}) nil
+    (keys {:a 1}) '(:a)
+    (keys {nil 1}) '(nil))
+  (is (= 2 (count (keys {:a 1 :b 2})))))
 
 (deftest test-vals
-  (testing "vals on maps"
-    (are [x y] (= x y)
-      (vals {}) nil
-      (vals {:a 1}) '(1)
-      (vals {nil 1}) '(1))
-    (is (= 2 (count (vals {:a 1 :b 2}))))))
+  (are [x y] (= x y)      ; other than map data structures
+    (vals ()) nil
+    (vals []) nil
+    (vals #{}) nil
+    (vals "") nil)
+
+  (are [x y] (= x y)
+    (vals {}) nil
+    (vals {:a 1}) '(1)
+    (vals {nil 1}) '(1))
+  (is (= 2 (count (vals {:a 1 :b 2})))))
+
+;; CLJW: JVM interop — test-sorted-map-keys requires sorted-map comparison
 
 (deftest test-key
-  (testing "key on map entry"
-    (are [x] (= (key (first (hash-map x :value))) x)
-      nil false true 0 42 :kw)))
+  (are [x] (= (key (first (hash-map x :value))) x)
+    nil false true 0 42 :kw))
 
 (deftest test-val
-  (testing "val on map entry"
-    (are [x] (= (val (first (hash-map :key x))) x)
-      nil false true 0 42 :kw)))
+  (are [x] (= (val (first (hash-map :key x))) x)
+    nil false true 0 42 :kw))
 
 (deftest test-get
   (let [m {:a 1 :b 2 :c {:d 3 :e 4} :f nil nil {:h 5}}]
@@ -235,40 +311,60 @@
         (get-in m []) m
         (get-in m nil) m))))
 
+(deftest test-nested-map-destructuring
+  (let [sample-map {:a 1 :b {:a 2}}
+        {ao1 :a {ai1 :a} :b} sample-map
+        {ao2 :a {ai2 :a :as m1} :b :as m2} sample-map
+        {ao3 :a {ai3 :a :as m} :b :as m} sample-map
+        {{ai4 :a :as m} :b ao4 :a :as m} sample-map]
+    (are [i o] (and (= i 2)
+                    (= o 1))
+      ai1 ao1
+      ai2 ao2
+      ai3 ao3
+      ai4 ao4)))
+
+;; CLJW: JVM interop — test-map-entry? requires java.util.HashMap
+
+;; *** Sets ***
+
 (deftest test-hash-set
-  (testing "set? predicate"
-    (are [x] (set? x)
-      #{}
-      #{1 2}
-      (hash-set)
-      (hash-set 1 2)))
+  (are [x] (set? x)
+    #{}
+    #{1 2}
+    (hash-set)
+    (hash-set 1 2))
 
-  (testing "set order"
-    (are [x y] (= x y)
-      #{1 2} #{2 1}
-      (hash-set 1 2) (hash-set 2 1)))
+  ; order isn't important
+  (are [x y] (= x y)
+    #{1 2} #{2 1}
+    #{3 1 2} #{1 2 3}
+    (hash-set 1 2) (hash-set 2 1)
+    (hash-set 3 1 2) (hash-set 1 2 3))
 
-  (testing "hash-set construction"
-    (are [x y] (= x y)
-      (hash-set) #{}
-      (hash-set 1) #{1}
-      (hash-set 1 2) #{1 2}))
+  (are [x y] (= x y)
+    ; creating
+    (hash-set) #{}
+    (hash-set 1) #{1}
+    (hash-set 1 2) #{1 2}
 
-  (testing "hash-set nesting"
-    (is (= (hash-set 1 (hash-set 2 3)) #{1 #{2 3}})))
+    ; nesting
+    (hash-set 1 (hash-set 2 3)) #{1 #{2 3}}
 
-  (testing "hash-set special cases"
-    (are [x y] (= x y)
-      (hash-set nil) #{nil}
-      (hash-set 1 nil) #{1 nil}
-      (hash-set #{}) #{#{}})))
+    ; special cases
+    (hash-set nil) #{nil}
+    (hash-set 1 nil) #{1 nil}
+    (hash-set nil 2) #{nil 2}
+    (hash-set #{}) #{#{}}))
+
+;; CLJW: JVM interop — test-sorted-set requires sorted-set comparator behavior
+;; CLJW: JVM interop — test-sorted-set-by requires sorted-set-by, comparators
 
 (deftest test-set
-  (testing "set? on converted"
-    (are [x] (set? (set x))
-      '() '(1 2)
-      [] [1 2]
-      #{} #{1 2}))
+  (are [x] (set? (set x))
+    () '(1 2)
+    [] [1 2]
+    #{} #{1 2})
 
   (testing "set uniqueness"
     (are [x] (= (set [x x]) #{x})
@@ -276,7 +372,7 @@
 
   (testing "set conversion"
     (are [x y] (= (set x) y)
-      '() #{}
+      () #{}
       '(1 2) #{1 2}
       [] #{}
       [1 2] #{1 2}
@@ -300,13 +396,31 @@
       (disj #{nil} nil) #{}
       (disj #{#{}} #{}) #{})))
 
-(deftest test-assoc
-  (testing "assoc on vectors and maps"
-    (are [x y] (= x y)
-      [4] (assoc [] 0 4)
-      [5 -7] (assoc [] 0 5 1 -7)
-      {:a 1} (assoc {} :a 1)
-      {nil 1} (assoc {} nil 1)
-      {:a 2 :b -2} (assoc {} :b -2 :a 2))))
+;; CLJW: JVM interop — test-queues requires clojure.lang.PersistentQueue
+;; CLJW: JVM interop — test-duplicates requires read-string + defrecord
 
+(deftest test-array-map-arity
+  ;; CLJW: adapted — IllegalArgumentException → Exception
+  (is (thrown? Exception
+               (array-map 1 2 3))))
+
+(deftest test-assoc
+  (are [x y] (= x y)
+    [4] (assoc [] 0 4)
+    [5 -7] (assoc [] 0 5 1 -7)
+    {:a 1} (assoc {} :a 1)
+    {nil 1} (assoc {} nil 1)
+    {:a 2 :b -2} (assoc {} :b -2 :a 2))
+  ;; CLJW: adapted — IllegalArgumentException → Exception
+  (is (thrown? Exception (assoc [] 0 5 1)))
+  (is (thrown? Exception (assoc {} :b -2 :a))))
+
+;; CLJW: JVM interop — ordered-collection-equality-test requires PersistentQueue, vector-of, is-same-collection
+;; CLJW: JVM interop — set-equality-test requires sorted-set, sorted-set-by, is-same-collection
+;; CLJW: JVM interop — map-equality-test requires sorted-map-by, is-same-collection
+;; CLJW: JVM interop — ireduce-reduced requires clojure.lang.IReduce
+;; CLJW: JVM interop — test-seq-iter-match requires .iterator/.hasNext/.next
+;; CLJW: JVM interop — record-hashing requires defrecord
+
+;; CLJW-ADD: test runner invocation
 (run-tests)
