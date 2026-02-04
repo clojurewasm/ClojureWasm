@@ -105,6 +105,9 @@ Run before every commit:
 2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
 4. **memo.md**: Advance to next task
+   - Update `Next task:` in Current State
+   - Remove completed task from Task Queue
+   - Update Handover Notes if status changed (done/architecture/new info)
 5. **test-porting.md**: When changing test/upstream/ files:
    - All changes have CLJW/CLJW-SKIP markers
    - No assertion deletions (except CLJW-SKIP)
