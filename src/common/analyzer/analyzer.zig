@@ -1604,8 +1604,16 @@ pub const Analyzer = struct {
                 const bind_idx: u32 = @intCast(self.locals.items.len);
                 self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
                 bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+            } else if (key.data == .map or key.data == .vector) {
+                // Nested destructuring: {{x :x} :b} or {[a b] :items}
+                // val is the lookup key, key is the nested pattern
+                if (val.data != .keyword) {
+                    return self.analysisError(.value_error, "nested destructuring: value must be a keyword", val);
+                }
+                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, defaults);
+                try self.expandBindingPattern(key, get_init, bindings, form);
             } else {
-                return self.analysisError(.value_error, "map destructuring: key must be keyword or symbol", key);
+                return self.analysisError(.value_error, "map destructuring: key must be keyword, symbol, map, or vector", key);
             }
         }
     }

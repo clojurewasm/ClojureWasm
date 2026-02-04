@@ -62,10 +62,10 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | ~~F55~~ | ~~(= nil ()) returns true~~                      | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
 | ~~F56~~ | ~~(conj () ()) returns (nil)~~                   | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
 | ~~F57~~ | ~~Empty list comparison~~                        | ~~Resolved: T14.5.4 — empty list now self-evaluates~~                                  | T14.10  |
-| F58     | Nested map destructuring                         | `{{x :x} :b}` pattern in let/fn args — workaround: use sequential let bindings         | T14.10  |
+| ~~F58~~ | ~~Nested map destructuring~~                     | ~~Resolved: T17.5.2 — recursive expandBindingPattern in analyzer~~                     | T14.10  |
 | F67     | Rest args + map destructuring                    | `(fn [& {:keys [x]}] x)` — keyword args pattern not supported                          | T15.2   |
 | F68     | {:as x} on empty list returns ()                 | JVM: `(let [{:as x} '()] x)` → `{}`, ClojureWasm: `()` (not coerced to map)            | T15.2   |
-| F69     | Keywords in :keys vector                         | `{:keys [:a :b]}` syntax — keywords in :keys not supported (use symbols)               | T15.2   |
+| ~~F69~~ | ~~Keywords in :keys vector~~                     | ~~Resolved: already working — :keys accepts keywords and symbols~~                     | T15.2   |
 | F70     | Namespaced keywords in :keys                     | `{:keys [:a/b]}` — namespaced keywords in :keys not supported                          | T15.2   |
 | F71     | Namespaced symbols in :keys                      | `{:keys [a/b]}` — namespaced symbols for namespaced key lookup not supported           | T15.2   |
 | F72     | Namespaced :syms destructuring                   | `{:syms [a/b]}` — namespaced symbol lookup in :syms not supported                      | T15.2   |
