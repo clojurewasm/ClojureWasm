@@ -1627,3 +1627,25 @@ mechanism, bypassing the VM/TreeWalk exception handler entirely.
 for defprotocol/extend-type and lazy-seq remains valid (still TreeWalk-only).
 
 **Impact**: F13 resolved. VM mode now supports full multimethod dispatch.
+
+## D61: VM lazy-seq Opcode + collectSeqItems (T18.5.1)
+
+**Context**: lazy-seq was TreeWalk-only (D28). VM compiler returned `error.InvalidNode` for
+`lazy_seq_node`. Additionally, `concat`, `into`, `apply` only handled list/vector/nil,
+causing TypeError when receiving lazy-seq or cons values.
+
+**Decision**:
+
+1. Added `lazy_seq = 0x46` opcode (Var operations range). Stack: [thunk_fn] → [lazy_seq_value].
+2. Compiler `emitLazySeq`: compiles body_fn via `emitFn` (zero-arg closure), emits `.lazy_seq`.
+3. VM handler: pops fn_val, creates `LazySeq{.thunk=fn, .realized=null}`, pushes.
+4. Added `collectSeqItems` helper: walks cons chains, realizes lazy-seqs, handles all seq types.
+5. Rewrote `concatFn`, `intoFn`, `applyFn`, `vecFn` to use `collectSeqItems`.
+
+**Rationale**: Follows same pattern as D60 (defmulti/defmethod). The thunk is a closure
+compiled by the existing `emitFn` path. Realization happens via `bootstrap.callFnVal`
+which works for both VM and TreeWalk closures.
+
+**Supersedes**: D28 lazy-seq TreeWalk-only restriction.
+
+**Impact**: F14 + F95 resolved. tree-seq enabled. All lazy-seq operations work on both backends.

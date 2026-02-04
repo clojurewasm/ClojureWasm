@@ -642,7 +642,7 @@ vars:
     trampoline: {type: function, status: done}
     transduce: {type: function, status: todo}
     transient: {type: function, status: todo}
-    "tree-seq": {type: function, status: todo}
+    "tree-seq": {type: function, status: done}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
     "unchecked-add": {type: function, status: todo}

@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
-- Current task: T18.5.1
+- Current task: T18.5.2
 - Task file: N/A
-- Last completed: Phase 18 (4 tasks done, T18.2 deferred)
+- Last completed: T18.5.1 (lazy-seq VM opcode + collectSeqItems + tree-seq)
 - Blockers: none
-- Next: Fix F95 lazy-seq+cons → more core functions → numeric conversions
+- Next: Numeric conversions → core expansion II → seq utilities
 
 ## Current Phase: 18
 
@@ -30,13 +30,13 @@ numeric conversions (deferred T18.2), upstream macro alignment.
 
 ### Task Queue
 
-| Task    | Type | Description                              | Notes                                       |
-| ------- | ---- | ---------------------------------------- | ------------------------------------------- |
-| T18.5.1 | fix  | Fix F95 lazy-seq+cons TypeError          | Blocks tree-seq, reductions, other lazy fns |
-| T18.5.2 | impl | Numeric conversions (int, long, etc.)    | int, long, float, double, num (deferred)    |
-| T18.5.3 | impl | Core expansion II (seqable?, counted?)   | Zig builtins for type predicates            |
-| T18.5.4 | impl | Seq utilities (reductions, take-nth etc) | Pure Clojure seq functions                  |
-| T18.5.5 | test | Coverage: un-SKIP newly enabled tests    | Tests enabled by F95 fix and new functions  |
+| Task    | Type | Description                              | Notes                                      |
+| ------- | ---- | ---------------------------------------- | ------------------------------------------ |
+| T18.5.1 | done | Fix F95 lazy-seq+cons TypeError          | D61: lazy_seq opcode + collectSeqItems     |
+| T18.5.2 | impl | Numeric conversions (int, long, etc.)    | int, long, float, double, num (deferred)   |
+| T18.5.3 | impl | Core expansion II (seqable?, counted?)   | Zig builtins for type predicates           |
+| T18.5.4 | impl | Seq utilities (reductions, take-nth etc) | Pure Clojure seq functions                 |
+| T18.5.5 | test | Coverage: un-SKIP newly enabled tests    | Tests enabled by F95 fix and new functions |
 
 ### Phase 18 Summary (completed)
 

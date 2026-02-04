@@ -414,32 +414,16 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return Value{ .list = lst };
     }
 
-    // Collect all items from all sequences
-    var total: usize = 0;
+    // Collect all items from all sequences using collectSeqItems
+    var all: std.ArrayListUnmanaged(Value) = .empty;
     for (args) |arg| {
-        total += switch (arg) {
-            .nil => @as(usize, 0),
-            .list => |lst| lst.items.len,
-            .vector => |vec| vec.items.len,
-            else => return error.TypeError,
-        };
-    }
-
-    const items = try allocator.alloc(Value, total);
-    var idx: usize = 0;
-    for (args) |arg| {
-        const src = switch (arg) {
-            .nil => &[_]Value{},
-            .list => |lst| lst.items,
-            .vector => |vec| vec.items,
-            else => unreachable,
-        };
-        @memcpy(items[idx .. idx + src.len], src);
-        idx += src.len;
+        if (arg == .nil) continue;
+        const seq_items = try collectSeqItems(allocator, arg);
+        for (seq_items) |item| try all.append(allocator, item);
     }
 
     const lst = try allocator.create(PersistentList);
-    lst.* = .{ .items = items };
+    lst.* = .{ .items = try all.toOwnedSlice(allocator) };
     return Value{ .list = lst };
 }
 
@@ -467,12 +451,8 @@ pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (into to from) — returns a new coll with items from `from` conj'd onto `to`.
 pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
-    const from_items = switch (args[1]) {
-        .nil => return args[0],
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        else => return error.TypeError,
-    };
+    if (args[1] == .nil) return args[0];
+    const from_items = try collectSeqItems(allocator, args[1]);
     if (from_items.len == 0) return args[0];
 
     var current = args[0];
@@ -490,12 +470,10 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const last_arg = args[args.len - 1];
 
     // Collect spread args from last collection
-    const spread_items = switch (last_arg) {
-        .nil => @as([]const Value, &.{}),
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        else => return error.TypeError,
-    };
+    const spread_items: []const Value = if (last_arg == .nil)
+        &.{}
+    else
+        try collectSeqItems(allocator, last_arg);
 
     // Build final args: middle args + spread items
     const middle_count = args.len - 2; // exclude f and last_arg
@@ -830,20 +808,46 @@ pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = new_map };
 }
 
+/// Collect all items from a seq-like value (list, vector, cons, lazy_seq)
+/// into a flat slice. Handles cons chains and lazy realization.
+fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
+    var items: std.ArrayListUnmanaged(Value) = .empty;
+    var current = val;
+    while (true) {
+        switch (current) {
+            .cons => |c| {
+                try items.append(allocator, c.first);
+                current = c.rest;
+            },
+            .lazy_seq => |ls| {
+                current = try ls.realize(allocator);
+            },
+            .list => |lst| {
+                for (lst.items) |item| try items.append(allocator, item);
+                break;
+            },
+            .vector => |v| {
+                for (v.items) |item| try items.append(allocator, item);
+                break;
+            },
+            .set => |s| {
+                for (s.items) |item| try items.append(allocator, item);
+                break;
+            },
+            .nil => break,
+            else => return error.TypeError,
+        }
+    }
+    return items.toOwnedSlice(allocator);
+}
+
 /// (vec coll) — coerce a collection to a vector.
 pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return error.ArityError;
-    const items = switch (args[0]) {
-        .vector => return args[0], // already a vector
-        .list => |lst| lst.items,
-        .nil => @as([]const Value, &.{}),
-        .set => |s| s.items,
-        else => return error.TypeError,
-    };
-    const new_items = try allocator.alloc(Value, items.len);
-    @memcpy(new_items, items);
+    if (args[0] == .vector) return args[0];
+    const items = try collectSeqItems(allocator, args[0]);
     const vec = try allocator.create(PersistentVector);
-    vec.* = .{ .items = new_items };
+    vec.* = .{ .items = items };
     return Value{ .vector = vec };
 }
 

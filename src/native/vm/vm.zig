@@ -387,6 +387,13 @@ pub const VM = struct {
                 try self.push(method_fn);
             },
 
+            .lazy_seq => {
+                const thunk = self.pop();
+                const ls = self.allocator.create(value_mod.LazySeq) catch return error.OutOfMemory;
+                ls.* = .{ .thunk = thunk, .realized = null };
+                try self.push(.{ .lazy_seq = ls });
+            },
+
             // [K] Exceptions
             .try_begin => {
                 // Register exception handler

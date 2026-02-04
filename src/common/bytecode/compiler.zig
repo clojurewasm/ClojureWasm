@@ -111,8 +111,9 @@ pub const Compiler = struct {
             .var_ref => |ref| try self.emitVarRef(ref),
             .defmulti_node => |node| try self.emitDefmulti(node),
             .defmethod_node => |node| try self.emitDefmethod(node),
-            // Protocol/lazy-seq nodes not yet supported in VM compiler
-            .defprotocol_node, .extend_type_node, .lazy_seq_node => return error.InvalidNode,
+            .lazy_seq_node => |node| try self.emitLazySeq(node),
+            // Protocol nodes not yet supported in VM compiler
+            .defprotocol_node, .extend_type_node => return error.InvalidNode,
         }
     }
 
@@ -572,6 +573,14 @@ pub const Compiler = struct {
         // defmethod: pops method_fn and dispatch_val, adds to multimethod, pushes result (net -1)
         try self.chunk.emit(.defmethod, idx);
         self.stack_depth -= 1;
+    }
+
+    fn emitLazySeq(self: *Compiler, node: *const node_mod.LazySeqNode) CompileError!void {
+        // Compile body as a zero-arg closure (thunk)
+        try self.emitFn(node.body_fn); // +1 (pushes fn_val)
+
+        // lazy_seq: replaces fn_val with LazySeq (net 0)
+        try self.chunk.emitOp(.lazy_seq);
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {

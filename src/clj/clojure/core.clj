@@ -1018,4 +1018,12 @@
          true))
      false)))
 
-;; tree-seq: deferred — depends on lazy-seq+cons fix (F95)
+(defn tree-seq
+  "Returns a lazy sequence of the nodes in a tree, via a depth-first walk."
+  [branch? children root]
+  (let [walk (fn walk [node]
+               (lazy-seq
+                (cons node
+                      (when (branch? node)
+                        (mapcat walk (children node))))))]
+    (walk root)))

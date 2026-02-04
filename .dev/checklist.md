@@ -10,7 +10,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
   - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5) — module-level, single-thread only. realize_fn and atom.call_fn removed by D36 deep refactor (direct import of bootstrap.callFnVal)
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
-  - **Known exceptions**: defmulti, defmethod, lazy-seq — TreeWalk only (D28)
+  - **Known exceptions**: defmulti, defmethod — TreeWalk only (D28). lazy-seq resolved T18.5.1
 - [ ] D10: All code in English (identifiers, comments, commits)
 
 ## Blocked until needed
@@ -26,7 +26,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F7      | Macro body serialization (AOT blocker)           | T4.7 AOT bytecode startup                                                              | D18     |
 | ~~F8~~  | ~~TreeWalk→VM reverse dispatch~~                 | ~~Resolved: T10.2 — bytecodeCallBridge in bootstrap.zig~~                              | D22     |
 | ~~F13~~ | ~~VM opcodes for defmulti/defmethod~~            | ~~Resolved: T17.5.6 — defmulti/defmethod opcodes + callFnVal IFn extension (D60)~~     | D28     |
-| F14     | VM opcodes for lazy-seq/realize                  | VM-only mode needs lazy evaluation                                                     | D28     |
+| ~~F14~~ | ~~VM opcodes for lazy-seq/realize~~              | ~~Resolved: T18.5.1 — lazy_seq opcode (0x46) + collectSeqItems for concat/into/apply~~ | D28     |
 | ~~F19~~ | ~~Reader input validation (depth/size limits)~~  | ~~Resolved: T11.1b — Reader.Limits (depth/string/collection) + nREPL/CLI size checks~~ | SS14    |
 | F20     | Safe point GC design                             | Real GC (F2) implementation start                                                      | SS5     |
 | F21     | 3-layer separation (Memory/Exec/Opt)             | Introduction of fused reduce or optimization pass                                      | SS5     |
@@ -90,7 +90,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F92     | doseq :let/:when/:while and nesting              | Single binding only, no modifiers, no nested bindings                                  | T17     |
 | F93     | condp :>> modifier                               | Result-fn routing via `:>>` not supported                                              | T17     |
 | F94     | Upstream Alignment pass                          | Replace UPSTREAM-DIFF implementations with upstream verbatim where deps available      | T17     |
-| F95     | lazy-seq + cons TypeError                        | `(vec (lazy-seq (cons 1 nil)))` fails with TypeError — blocks tree-seq                 | T18.4   |
+| ~~F95~~ | ~~lazy-seq + cons TypeError~~                    | ~~Resolved: T18.5.1 — collectSeqItems + lazy_seq VM opcode + tree-seq enabled~~        | T18.4   |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10  |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10  |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10  |

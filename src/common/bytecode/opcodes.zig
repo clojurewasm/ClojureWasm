@@ -74,6 +74,9 @@ pub const OpCode = enum(u8) {
     /// defmethod (operand: constant index u16 -> multimethod name)
     /// Stack: [dispatch_val, method_fn] -> [method_fn]
     defmethod = 0x45,
+    /// lazy_seq (operand: unused)
+    /// Stack: [thunk_fn] -> [lazy_seq_value]
+    lazy_seq = 0x46,
 
     // === [F] Control flow (0x50-0x5F) ===
 
@@ -178,6 +181,7 @@ pub const OpCode = enum(u8) {
             .rem_,
             .eq,
             .neq,
+            .lazy_seq,
             .throw_ex,
             .try_end,
             .nop,
