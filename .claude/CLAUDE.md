@@ -60,6 +60,21 @@ Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 3. Update memo.md: advance Current State and Task Queue
 4. **Loop back to Orient** — do NOT stop
 
+### No-Workaround Rule (Phase B/C)
+
+When implementing or fixing features:
+
+1. **Fix root causes, never work around.** If a language feature (e.g.
+   multi-arity defmacro) is missing and needed, implement the feature
+   first. Never degrade the design to avoid the missing feature.
+2. **Upstream fidelity over expedience.** If upstream uses multi-arity,
+   our implementation must support multi-arity. Simplifying the API
+   shape is a workaround.
+3. **Dependency chain**: If task X requires feature Y, implement Y first
+   (as a separate commit), then implement X on top.
+4. **Checklist new blockers.** If you discover a missing feature during
+   implementation, add an F## entry and implement it before continuing.
+
 ### Test Porting Guardrails (Phase C active)
 
 When working on test files under test/upstream/:
