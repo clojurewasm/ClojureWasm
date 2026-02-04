@@ -1,167 +1,195 @@
-;; clojure/test_clojure/logic.clj — Equivalent tests for ClojureWasm
-;;
-;; Based on clojure/test_clojure/logic.clj from Clojure JVM.
-;; Java-dependent tests excluded (into-array, Date, bigint, bigdec, Ratio, regex).
-;;
-;; Uses clojure.test (auto-referred from bootstrap).
+;; Upstream: clojure/test/clojure/test_clojure/logic.clj
+;; Upstream lines: 212
+;; CLJW markers: 7
 
-(println "[clojure/test_clojure/logic] running...")
+;   Copyright (c) Rich Hickey. All rights reserved.
+;   The use and distribution terms for this software are covered by the
+;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;   which can be found in the file epl-v10.html at the root of this distribution.
+;   By using this software in any fashion, you are agreeing to be bound by
+;   the terms of this license.
+;   You must not remove this notice, or any other, from this distribution.
 
-;; ========== test-if ==========
+; Author: Frantisek Sodomka
+
+;;
+;;  Created 1/29/2009
+
+(ns clojure.test-clojure.logic
+  (:use clojure.test)) ;; CLJW: removed clojure.test-helper dependency
+
+;; CLJW-ADD: exception helper (upstream from clojure.test-helper)
+(defn exception [] (throw "test exception — should not be reached"))
+
+;; *** Tests ***
 
 (deftest test-if
-  (testing "true/false/nil"
-    ;; true branch
-    (is (= (if true :t) :t))
-    (is (= (if true :t :f) :t))
-    ;; false branch
-    (is (= (if false :t) nil))
-    (is (= (if false :t :f) :f))
-    ;; nil branch
-    (is (= (if nil :t) nil))
-    (is (= (if nil :t :f) :f)))
+  ; true/false/nil
+  (are [x y] (= x y)
+    (if true :t) :t
+    (if true :t :f) :t
+    (if true :t (exception)) :t
 
-  (testing "zero/empty is true"
-    (is (= (if 0 :t :f) :t))
-    (is (= (if 0.0 :t :f) :t))
-    (is (= (if "" :t :f) :t))
-    ;; Note: empty list () is falsy in ClojureWasm (F29)
-    ;; (is (= (if () :t :f) :t))
-    (is (= (if [] :t :f) :t))
-    (is (= (if {} :t :f) :t))
-    (is (= (if #{} :t :f) :t)))
+    (if false :t) nil
+    (if false :t :f) :f
+    (if false (exception) :f) :f
 
-  (testing "truthy values"
-    (is (= (if 2 :t :f) :t))
-    (is (= (if 2.5 :t :f) :t))
-    (is (= (if \a :t :f) :t))
-    (is (= (if "abc" :t :f) :t))
-    (is (= (if 'abc :t :f) :t))
-    (is (= (if :kw :t :f) :t))
-    (is (= (if '(1 2) :t :f) :t))
-    (is (= (if [1 2] :t :f) :t))
-    (is (= (if {:a 1 :b 2} :t :f) :t))
-    (is (= (if #{1 2} :t :f) :t))))
+    (if nil :t) nil
+    (if nil :t :f) :f
+    (if nil (exception) :f) :f)
 
-;; ========== test-nil-punning ==========
+  ;; CLJW: removed JVM type casts (byte, short, int, long, bigint, float, double, bigdec),
+  ;;       Ratio (0/2), into-array, java.util.Date
+  ; zero/empty is true
+  (are [x] (= (if x :t :f) :t)
+    0
+    0.0
+
+    ""
+    #""
+    (symbol "")
+
+    ()
+    []
+    {}
+    #{})
+
+  ;; CLJW: removed JVM type casts, Ratio (2/3), into-array, java.util.Date
+  ; anything except nil/false is true
+  (are [x]  (= (if x :t :f) :t)
+    2
+    2.0
+
+    \a
+    "abc"
+    #"a*b"
+    'abc
+    :kw
+
+    '(1 2)
+    [1 2]
+    {:a 1 :b 2}
+    #{1 2}))
 
 (deftest test-nil-punning
-  (testing "first/next/rest on empty"
-    (is (= (if (first []) :no :yes) :yes))
-    (is (= (if (next [1]) :no :yes) :yes))
-    ;; rest returns empty seq, which is truthy
-    (is (= (if (rest [1]) :no :yes) :no)))
+  (are [x y]  (= (if x :no :yes) y)
+    (first []) :yes
+    (next [1]) :yes
+    (rest [1]) :no
 
-  (testing "butlast"
-    (is (= (if (butlast [1]) :no :yes) :yes)))
+    (butlast [1]) :yes
 
-  (testing "seq"
-    (is (= (if (seq nil) :no :yes) :yes))
-    (is (= (if (seq []) :no :yes) :yes)))
+    (seq nil) :yes
+    (seq []) :yes
 
-  (testing "concat"
-    ;; concat returns lazy seq, which is truthy
-    (is (= (if (concat) :no :yes) :no))
-    (is (= (if (concat []) :no :yes) :no)))
+    (sequence nil) :no
+    (sequence []) :no
 
-  (testing "reverse"
-    (is (= (if (reverse nil) :no :yes) :no))
-    (is (= (if (reverse []) :no :yes) :no)))
+    (lazy-seq nil) :no
+    (lazy-seq []) :no
 
-  (testing "sort"
-    ;; sort returns empty list for empty input
-    (is (= (if (sort nil) :no :yes) :no))
-    (is (= (if (sort []) :no :yes) :no))))
+    (filter #(> % 10) [1 2 3]) :no
+    (map identity []) :no
+    (apply concat []) :no
 
-;; ========== test-and ==========
+    (concat) :no
+    (concat []) :no
 
-;; Note: ClojureWasm (and) returns nil, JVM returns true (F31)
+    (reverse nil) :no
+    (reverse []) :no
+
+    (sort nil) :no
+    (sort []) :no))
+
 (deftest test-and
-  (testing "basic and"
-    ;; (is (= (and) true))  ;; Excluded: ClojureWasm returns nil
-    (is (= (and true) true))
-    (is (= (and nil) nil))
-    (is (= (and false) false)))
+  (are [x y] (= x y)
+    (and) true
+    (and true) true
+    (and nil) nil
+    (and false) false
 
-  (testing "and with two args"
-    (is (= (and true nil) nil))
-    (is (= (and true false) false)))
+    (and true nil) nil
+    (and true false) false
 
-  (testing "and returns last truthy"
-    (is (= (and 1 true :kw 'abc "abc") "abc")))
+    (and 1 true :kw 'abc "abc") "abc"
 
-  (testing "and short-circuits on falsy"
-    (is (= (and 1 true :kw nil 'abc "abc") nil))
-    (is (= (and 1 true :kw 'abc "abc" false) false))))
+    (and 1 true :kw nil 'abc "abc") nil
+    (and 1 true :kw nil (exception) 'abc "abc") nil
 
-;; ========== test-or ==========
+    (and 1 true :kw 'abc "abc" false) false
+    (and 1 true :kw 'abc "abc" false (exception)) false))
 
 (deftest test-or
-  (testing "basic or"
-    (is (= (or) nil))
-    (is (= (or true) true))
-    (is (= (or nil) nil))
-    (is (= (or false) false)))
+  (are [x y] (= x y)
+    (or) nil
+    (or true) true
+    (or nil) nil
+    (or false) false
 
-  (testing "or finds first truthy"
-    (is (= (or nil false true) true))
-    (is (= (or nil false 1 2) 1))
-    (is (= (or nil false "abc" :kw) "abc")))
+    (or nil false true) true
+    (or nil false 1 2) 1
+    (or nil false "abc" :kw) "abc"
 
-  (testing "or returns last falsy"
-    (is (= (or false nil) nil))
-    (is (= (or nil false) false))
-    (is (= (or nil nil nil false) false)))
+    (or false nil) nil
+    (or nil false) false
+    (or nil nil nil false) false
 
-  (testing "or short-circuits on truthy"
-    (is (= (or nil true false) true))
-    (is (= (or nil false "abc" :not-reached) "abc"))))
-
-;; ========== test-not ==========
+    (or nil true false) true
+    (or nil true (exception) false) true
+    (or nil false "abc" (exception)) "abc"))
 
 (deftest test-not
-  (testing "not on falsy values"
-    (is (= (not nil) true))
-    (is (= (not false) true)))
+;  (is (thrown? IllegalArgumentException (not)))
+  (are [x] (= (not x) true)
+    nil
+    false)
+  ;; CLJW: removed JVM type casts, Ratio (0/2, 2/3), into-array, java.util.Date
+  (are [x]  (= (not x) false)
+    true
 
-  (testing "not on truthy values"
-    (is (= (not true) false))
-    ;; numbers
-    (is (= (not 0) false))
-    (is (= (not 0.0) false))
-    (is (= (not 42) false))
-    (is (= (not 1.2) false))
-    ;; characters
-    (is (= (not \space) false))
-    (is (= (not \tab) false))
-    (is (= (not \a) false))
-    ;; strings
-    (is (= (not "") false))
-    (is (= (not "abc") false))
-    ;; symbols
-    (is (= (not 'abc) false))
-    ;; keywords
-    (is (= (not :kw) false))
-    ;; collections
-    ;; Note: (not ()) would be true in ClojureWasm (F29)
-    (is (= (not '(1 2)) false))
-    (is (= (not []) false))
-    (is (= (not [1 2]) false))
-    (is (= (not {}) false))
-    (is (= (not {:a 1 :b 2}) false))
-    (is (= (not #{}) false))
-    (is (= (not #{1 2}) false))))
+      ; numbers
+    0
+    0.0
+    42
+    1.2
 
-;; ========== test-some? ==========
+      ; characters
+    \space
+    \tab
+    \a
+
+      ; strings
+    ""
+    "abc"
+
+      ; regexes
+    #""
+    #"a*b"
+
+      ; symbols
+    (symbol "")
+    'abc
+
+      ; keywords
+    :kw
+
+      ; collections
+    ()
+    '(1 2)
+    []
+    [1 2]
+    {}
+    {:a 1 :b 2}
+    #{}
+    #{1 2}))
 
 (deftest test-some?
-  (testing "some? returns false only for nil"
-    (is (= (some? nil) false))
-    (is (= (some? false) true))
-    (is (= (some? 0) true))
-    (is (= (some? "abc") true))
-    (is (= (some? []) true))))
+  (are [expected x] (= expected (some? x))
+    false nil
+    true false
+    true 0
+    true "abc"
+    true []))
 
-;; ========== Run tests ==========
-
+;; CLJW-ADD: test runner invocation
 (run-tests)
