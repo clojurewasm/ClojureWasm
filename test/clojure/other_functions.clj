@@ -164,4 +164,84 @@
   (are [result expr] (= result expr)
     {"a" 1 "b" 2} (update-keys {:a 1 :b 2} name)))
 
+;; --- Spec predicates (1.9) ---
+
+(deftest test-ident?
+  (is (true? (ident? :foo)))
+  (is (true? (ident? 'bar)))
+  (is (true? (ident? :a/b)))
+  (is (true? (ident? 'a/b)))
+  (is (false? (ident? "foo")))
+  (is (false? (ident? 42)))
+  (is (false? (ident? nil))))
+
+(deftest test-simple-ident?
+  (is (true? (simple-ident? :foo)))
+  (is (false? (simple-ident? :a/b)))
+  (is (true? (simple-ident? 'bar)))
+  (is (false? (simple-ident? 'a/b)))
+  (is (false? (simple-ident? "foo")))
+  (is (false? (simple-ident? 42))))
+
+(deftest test-qualified-ident?
+  (is (true? (qualified-ident? :a/b)))
+  (is (true? (qualified-ident? 'a/b)))
+  (is (false? (qualified-ident? :foo)))
+  (is (false? (qualified-ident? 'bar)))
+  (is (false? (qualified-ident? "a/b")))
+  (is (false? (qualified-ident? 42))))
+
+(deftest test-simple-symbol?
+  (is (true? (simple-symbol? 'foo)))
+  (is (false? (simple-symbol? 'a/b)))
+  (is (false? (simple-symbol? :foo)))
+  (is (false? (simple-symbol? "foo"))))
+
+(deftest test-qualified-symbol?
+  (is (true? (qualified-symbol? 'a/b)))
+  (is (false? (qualified-symbol? 'foo)))
+  (is (false? (qualified-symbol? :a/b)))
+  (is (false? (qualified-symbol? "a/b"))))
+
+(deftest test-distinct?
+  (is (true? (distinct? 1)))
+  (is (true? (distinct? 1 2)))
+  (is (false? (distinct? 1 1)))
+  (is (true? (distinct? 1 2 3)))
+  (is (false? (distinct? 1 2 1)))
+  (is (true? (distinct? 1 2 3 4 5)))
+  (is (false? (distinct? 1 2 3 4 1)))
+  (is (true? (distinct? :a :b :c)))
+  (is (false? (distinct? :a :b :a))))
+
+(deftest test-run!
+  (let [a (atom [])]
+    (run! (fn [x] (swap! a conj x)) [1 2 3])
+    (is (= [1 2 3] @a)))
+  (is (nil? (run! identity [1 2 3]))))
+
+(deftest test-nthnext
+  (is (= '(3 4 5) (nthnext [1 2 3 4 5] 2)))
+  (is (= '(1 2 3) (nthnext '(1 2 3) 0)))
+  (is (nil? (nthnext [1 2] 5)))
+  (is (nil? (nthnext [] 0))))
+
+(deftest test-nthrest
+  (is (= '(3 4 5) (nthrest [1 2 3 4 5] 2)))
+  (is (= [1 2 3] (nthrest [1 2 3] 0)))
+  (is (= () (nthrest [1 2] 5))))
+
+(deftest test-take-last
+  (is (= '(4 5) (take-last 2 [1 2 3 4 5])))
+  (is (= '(1 2 3) (take-last 10 [1 2 3])))
+  (is (nil? (take-last 0 [1 2 3])))
+  (is (nil? (take-last 2 []))))
+
+(deftest test-parse-boolean
+  (is (true? (parse-boolean "true")))
+  (is (false? (parse-boolean "false")))
+  (is (nil? (parse-boolean "yes")))
+  (is (nil? (parse-boolean "1")))
+  (is (nil? (parse-boolean nil))))
+
 (run-tests)

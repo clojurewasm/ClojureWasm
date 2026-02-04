@@ -77,4 +77,24 @@
   (is (= ":foo" (pr-str :foo)))
   (is (= ":a/b" (pr-str :a/b))))
 
+;; --- simple-keyword? / qualified-keyword? ---
+
+(deftest t-simple-keyword?
+  (is (true? (simple-keyword? :foo)))
+  (is (true? (simple-keyword? :bar)))
+  (is (false? (simple-keyword? :a/b)))
+  (is (false? (simple-keyword? :clojure.core/map)))
+  (is (false? (simple-keyword? 'foo)))
+  (is (false? (simple-keyword? "foo")))
+  (is (false? (simple-keyword? 42))))
+
+(deftest t-qualified-keyword?
+  (is (true? (qualified-keyword? :a/b)))
+  (is (true? (qualified-keyword? :clojure.core/map)))
+  (is (false? (qualified-keyword? :foo)))
+  (is (false? (qualified-keyword? :bar)))
+  (is (false? (qualified-keyword? 'a/b)))
+  (is (false? (qualified-keyword? "a/b")))
+  (is (false? (qualified-keyword? 42))))
+
 (run-tests)

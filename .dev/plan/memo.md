@@ -40,7 +40,7 @@ expand test coverage for existing files.
 | T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char          |
 | T18.3 | done | Port numbers.clj (31 tests)             | ArithmeticError fix, == multi-arity, NaN div |
 | T18.4 | done | Core function expansion (23 functions)  | 10 spec preds + 10 utils + 3 walk fns        |
-| T18.5 | test | Coverage expansion in existing tests    | Expand assertions in current 14 files        |
+| T18.5 | done | Coverage expansion (+120 assertions)    | numbers/other/keywords/walk test expansion   |
 
 ### Phase 17 Summary (completed)
 

@@ -8,7 +8,7 @@
 ;; SKIP: char tests (\a etc.)
 ;; SKIP: instance? checks (Java-specific)
 ;; SKIP: Coercion functions (int, double, float, long, short, byte)
-;; SKIP: NaN? function (not implemented)
+;; NaN? and infinite? now implemented (T18.4)
 ;; SKIP: unchecked-* operations (not implemented)
 ;; SKIP: Type/class identity tests
 ;; SKIP: warn-on-boxed, array types, expected-casts
@@ -626,6 +626,56 @@
   (is (= ##Inf (* ##Inf 2)))
   (is (= ##-Inf (* ##Inf -1)))
   (is (= 0.0 (/ 1 ##Inf))))
+
+;; *** Spec predicates (1.9) ***
+
+(deftest test-pos-int?
+  (is (true? (pos-int? 1)))
+  (is (true? (pos-int? 42)))
+  (is (false? (pos-int? 0)))
+  (is (false? (pos-int? -1)))
+  (is (false? (pos-int? 1.5)))
+  (is (false? (pos-int? nil))))
+
+(deftest test-neg-int?
+  (is (true? (neg-int? -1)))
+  (is (true? (neg-int? -42)))
+  (is (false? (neg-int? 0)))
+  (is (false? (neg-int? 1)))
+  (is (false? (neg-int? -1.5)))
+  (is (false? (neg-int? nil))))
+
+(deftest test-nat-int?
+  (is (true? (nat-int? 0)))
+  (is (true? (nat-int? 1)))
+  (is (true? (nat-int? 42)))
+  (is (false? (nat-int? -1)))
+  (is (false? (nat-int? 1.5)))
+  (is (false? (nat-int? nil))))
+
+(deftest test-double?
+  (is (true? (double? 1.0)))
+  (is (true? (double? 0.0)))
+  (is (true? (double? -1.5)))
+  (is (false? (double? 0)))
+  (is (false? (double? 42)))
+  (is (false? (double? nil)))
+  (is (false? (double? "1.0"))))
+
+(deftest test-NaN?-fn
+  (is (true? (NaN? ##NaN)))
+  (is (false? (NaN? 0)))
+  (is (false? (NaN? 0.0)))
+  (is (false? (NaN? 1.5)))
+  (is (false? (NaN? ##Inf))))
+
+(deftest test-infinite?-fn
+  (is (true? (infinite? ##Inf)))
+  (is (true? (infinite? ##-Inf)))
+  (is (false? (infinite? 0)))
+  (is (false? (infinite? 0.0)))
+  (is (false? (infinite? 1.5)))
+  (is (false? (infinite? ##NaN))))
 
 ;; Run all tests when executed directly
 (run-tests)

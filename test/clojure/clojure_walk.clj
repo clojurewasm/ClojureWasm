@@ -1,8 +1,7 @@
 ;; Tests for clojure.walk namespace
 ;; Ported from upstream test/clojure/test_clojure/clojure_walk.clj
 ;;
-;; PARTIAL: 5/8 tests ported
-;; SKIP: t-stringify-keys (needs stringify-keys impl)
+;; PARTIAL: 8/10 tests ported
 ;; SKIP: walk-mapentry (needs map-entry? predicate)
 ;; SKIP: retain-meta (walk doesn't preserve metadata - D54)
 ;;
@@ -62,5 +61,26 @@
     ;; Original: (is (= (w/walk #(update-in % [1] inc) #(reduce + (vals %)) c)
     ;;                  (reduce + (map (comp inc val) c))))
     ))
+
+(deftest t-keywordize-keys
+  (testing "converts string keys to keywords"
+    (is (= {:a 1 :b 2} (keywordize-keys {"a" 1 "b" 2}))))
+  (testing "leaves keyword keys unchanged"
+    (is (= {:a 1} (keywordize-keys {:a 1}))))
+  (testing "nested maps"
+    (is (= {:a {:b 1}} (keywordize-keys {"a" {"b" 1}})))))
+
+(deftest t-stringify-keys
+  (testing "converts keyword keys to strings"
+    (is (= {"a" 1 "b" 2} (stringify-keys {:a 1 :b 2}))))
+  (testing "leaves string keys unchanged"
+    (is (= {"a" 1} (stringify-keys {"a" 1}))))
+  (testing "nested maps"
+    (is (= {"a" {"b" 1}} (stringify-keys {:a {:b 1}})))))
+
+(deftest t-macroexpand-all
+  (testing "expands nested macros"
+    (is (= (macroexpand-all '(when true 1))
+           '(if true (do 1))))))
 
 (run-tests)
