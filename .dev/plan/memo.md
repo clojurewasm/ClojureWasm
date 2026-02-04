@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18.7 (Core Coverage Sprint II)
-- Current task: T18.7.1
+- Current task: T18.7.2
 - Task file: N/A
-- Last completed: T18.6.4 (coverage expansion: +15 tests, +40 assertions)
+- Last completed: T18.7.1 (quick-win defs: make-hierarchy, version, cast, REPL vars; 402 done)
 - Blockers: none
-- Next: Quick-win defs → Zig builtins → hierarchy → coverage
+- Next: Zig builtins → hierarchy → coverage
 
 ## Current Phase: 18
 

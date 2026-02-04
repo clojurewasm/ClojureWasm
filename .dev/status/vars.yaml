@@ -36,13 +36,13 @@ vars:
     var: {type: special-form, status: done}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
     "*'": {type: function, status: done}
-    "*1": {type: dynamic-var, status: todo}
-    "*2": {type: dynamic-var, status: todo}
-    "*3": {type: dynamic-var, status: todo}
+    "*1": {type: dynamic-var, status: done}
+    "*2": {type: dynamic-var, status: done}
+    "*3": {type: dynamic-var, status: done}
     "*agent*": {type: var, status: todo}
     "*allow-unresolved-vars*": {type: var, status: todo}
     "*assert*": {type: var, status: done}
-    "*clojure-version*": {type: dynamic-var, status: todo}
+    "*clojure-version*": {type: dynamic-var, status: done}
     "*command-line-args*": {type: var, status: todo}
     "*compile-files*": {type: var, status: todo}
     "*compile-path*": {type: var, status: todo}
@@ -141,7 +141,7 @@ vars:
     atom: {type: function, status: done}
     await: {type: function, status: todo}
     "await-for": {type: function, status: todo}
-    await1: {type: function, status: todo}
+    await1: {type: function, status: done}
     bases: {type: function, status: todo}
     bean: {type: function, status: todo}
     bigdec: {type: function, status: todo}
@@ -173,7 +173,7 @@ vars:
     bytes: {type: function, status: todo}
     "bytes?": {type: function, status: todo}
     case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
-    cast: {type: function, status: todo}
+    cast: {type: function, status: done, note: identity (no JVM type system)}
     cat: {type: function, status: done}
     char: {type: function, status: done, note: builtin (upstream is pure clj)}
     "char-array": {type: function, status: todo}
@@ -192,7 +192,7 @@ vars:
     class: {type: function, status: done, note: "Zig builtin alias of type"}
     "class?": {type: function, status: todo}
     "clear-agent-errors": {type: function, status: todo}
-    "clojure-version": {type: function, status: todo}
+    "clojure-version": {type: function, status: done}
     "coll?": {type: function, status: done}
     comment: {type: macro, status: done}
     commute: {type: function, status: todo}
@@ -396,7 +396,7 @@ vars:
     macroexpand: {type: function, status: done}
     "macroexpand-1": {type: function, status: done}
     "make-array": {type: function, status: todo}
-    "make-hierarchy": {type: function, status: todo}
+    "make-hierarchy": {type: function, status: done}
     map: {type: function, status: done, note: "eager (no lazy seq)"}
     "map-entry?": {type: function, status: todo}
     "map-indexed": {type: function, status: done}

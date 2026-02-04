@@ -1300,3 +1300,31 @@
             (list 'throw (list 'str "Assert failed: " message "\n" (list 'pr-str (list 'quote x)))))
       (list 'when-not x
             (list 'throw (list 'str "Assert failed: " (list 'pr-str (list 'quote x))))))))
+
+;; Hierarchy
+(defn make-hierarchy
+  "Creates a hierarchy object for use with derive, isa? etc."
+  []
+  {:parents {} :descendants {} :ancestors {}})
+
+;; Version
+(def *clojure-version*
+  {:major 1 :minor 12 :incremental 0 :qualifier nil})
+
+(defn clojure-version
+  "Returns clojure version as a printable string."
+  []
+  (let [v *clojure-version*]
+    (str (:major v) "." (:minor v)
+         (when-let [i (:incremental v)] (str "." i))
+         (when-let [q (:qualifier v)] (str "-" q)))))
+
+;; Type cast (identity in ClojureWasm - no JVM type system)
+(defn cast
+  "Throws a ClassCastException if val is not an instance of c, else returns val."
+  [c x] x)
+
+;; REPL result vars
+(def *1 nil)
+(def *2 nil)
+(def *3 nil)
