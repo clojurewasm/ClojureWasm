@@ -37,6 +37,7 @@ pub const VMError = error{
     DivisionByZero,
     Overflow,
     UserException,
+    ArithmeticError,
 };
 
 const STACK_MAX: usize = 256 * 128;
@@ -461,7 +462,8 @@ pub const VM = struct {
     fn isUserError(err: VMError) bool {
         return switch (err) {
             error.TypeError, error.ArityError, error.UndefinedVar,
-            error.DivisionByZero, error.Overflow, error.UserException => true,
+            error.DivisionByZero, error.Overflow, error.UserException,
+            error.ArithmeticError => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
             error.InvalidInstruction => false,
         };
@@ -475,6 +477,7 @@ pub const VM = struct {
             error.UndefinedVar => "Var not found",
             error.DivisionByZero => "Divide by zero",
             error.Overflow => "Arithmetic overflow",
+            error.ArithmeticError => "Arithmetic error",
             error.UserException => "Exception",
             else => "Runtime error",
         };

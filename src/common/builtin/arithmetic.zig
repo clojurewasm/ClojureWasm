@@ -186,6 +186,7 @@ fn neqFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn binaryDiv(a: Value, b: Value) !Value {
     const fa = try toFloat(a);
     const fb = try toFloat(b);
+    if (std.math.isNan(fa) or std.math.isNan(fb)) return .{ .float = std.math.nan(f64) };
     if (fb == 0.0) return error.DivisionByZero;
     return .{ .float = fa / fb };
 }

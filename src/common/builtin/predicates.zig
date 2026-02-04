@@ -386,19 +386,22 @@ fn eqlOptNs(a: ?[]const u8, b: ?[]const u8) bool {
     return std.mem.eql(u8, a.?, b.?);
 }
 
-/// (== x y) — numeric equality. Returns true if x and y are numerically equal.
-/// Both arguments must be numbers; otherwise throws TypeError.
+/// (== x y & more) — numeric equality. Returns true if all nums are numerically equal.
+/// All arguments must be numbers; otherwise throws TypeError.
 pub fn numericEqFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
-    const a = args[0];
-    const b = args[1];
+    if (args.len == 0) return error.ArityError;
+    if (args.len == 1) return Value{ .boolean = true };
 
-    if ((a != .integer and a != .float) or (b != .integer and b != .float))
-        return error.TypeError;
+    for (args) |a| {
+        if (a != .integer and a != .float) return error.TypeError;
+    }
 
-    const fa: f64 = if (a == .integer) @floatFromInt(a.integer) else a.float;
-    const fb: f64 = if (b == .integer) @floatFromInt(b.integer) else b.float;
-    return Value{ .boolean = fa == fb };
+    const first: f64 = if (args[0] == .integer) @floatFromInt(args[0].integer) else args[0].float;
+    for (args[1..]) |b| {
+        const fb: f64 = if (b == .integer) @floatFromInt(b.integer) else b.float;
+        if (first != fb) return Value{ .boolean = false };
+    }
+    return Value{ .boolean = true };
 }
 
 // ============================================================

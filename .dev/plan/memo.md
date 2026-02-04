@@ -5,17 +5,19 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18 (Test Batch 3 + Coverage Expansion)
-- Current task: T18.1
+- Current task: T18.4
 - Task file: N/A
-- Last completed: Phase 17.5 (Infrastructure Fix — 8 tasks, D59/D60)
+- Last completed: T18.3 (Port numbers.clj — 31 tests, 340 assertions)
 - Blockers: none
-- Next: Implement bit ops → port numbers.clj → coverage expansion
+- Next: Core function expansion → coverage expansion
 
 ## Current Phase: 18
 
 **Background**: Phase 17.5 completed infrastructure fixes (8 tasks, D59/D60).
-Total: 13 test files, 306 done vars (19 clojure.string), 189 Zig builtins.
+Total: 14 test files, 311 done vars (19 clojure.string), 189 Zig builtins.
 Phase 17.5 un-SKIPped 7 tests, resolved F13/F58/F67/F69/F79.
+T18.1 added 5 bit ops. T18.3 ported numbers.clj (31 tests, 340 assertions).
+Fixes: ArithmeticError added to VM/TreeWalk error sets, == multi-arity, NaN div.
 
 **Goal**: Port numbers.clj tests, implement missing bit/numeric functions,
 expand test coverage for existing files.
@@ -29,13 +31,13 @@ expand test coverage for existing files.
 
 ### Task Queue
 
-| Task  | Type | Description                             | Notes                                   |
-| ----- | ---- | --------------------------------------- | --------------------------------------- |
-| T18.1 | impl | Missing bit ops (bit-set, -clear, etc.) | 5 builtins: set/clear/flip/test/ushiftr |
-| T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char     |
-| T18.3 | test | Port numbers.clj (partial)              | ~16 portable tests from upstream        |
-| T18.4 | impl | Core function expansion                 | Quick-win todo vars from vars.yaml      |
-| T18.5 | test | Coverage expansion in existing tests    | Expand assertions in current 13 files   |
+| Task  | Type | Description                             | Notes                                        |
+| ----- | ---- | --------------------------------------- | -------------------------------------------- |
+| T18.1 | done | Missing bit ops (bit-set, -clear, etc.) | 5 builtins: set/clear/flip/test/ushiftr      |
+| T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char          |
+| T18.3 | done | Port numbers.clj (31 tests)             | ArithmeticError fix, == multi-arity, NaN div |
+| T18.4 | impl | Core function expansion                 | Quick-win todo vars from vars.yaml           |
+| T18.5 | test | Coverage expansion in existing tests    | Expand assertions in current 14 files        |
 
 ### Phase 17 Summary (completed)
 

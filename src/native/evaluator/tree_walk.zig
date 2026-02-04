@@ -29,6 +29,7 @@ pub const TreeWalkError = error{
     StackOverflow,
     IndexOutOfBounds,
     IllegalState,
+    ArithmeticError,
 };
 
 const MAX_LOCALS: usize = 256;
@@ -800,7 +801,7 @@ pub const TreeWalk = struct {
         return switch (err) {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.DivisionByZero, error.UserException, error.IndexOutOfBounds,
-            error.IllegalState => true,
+            error.IllegalState, error.ArithmeticError => true,
             error.StackOverflow, error.OutOfMemory => false,
         };
     }
@@ -812,6 +813,7 @@ pub const TreeWalk = struct {
             error.ArityError => "Wrong number of arguments",
             error.UndefinedVar => "Var not found",
             error.DivisionByZero => "Divide by zero",
+            error.ArithmeticError => "Arithmetic error",
             error.IndexOutOfBounds => "Index out of bounds",
             error.IllegalState => "Illegal state",
             else => "Runtime error",
