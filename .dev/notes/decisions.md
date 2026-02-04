@@ -1470,3 +1470,22 @@ state so test isolation is preserved.
 
 **Impact**: Analysis and parse errors now display full diagnostics. Runtime errors
 still show fallback (BE2/BE3 will add error info to builtins and VM/TreeWalk).
+
+## D64: Macro Expansion Source Preservation (BE5)
+
+**Context**: Macro expansion pipeline loses source info: Form→Value→macro→Value→Form.
+`valueToForm()` creates Forms with line=0 because Values carry no source info.
+Errors in macro-expanded code (e.g. defn, when, cond) reported no location.
+
+**Decision**: Add `source_line: u32` and `source_column: u16` fields to
+PersistentList and PersistentVector (default 0). formToValue copies Form source
+fields to collection source fields; valueToForm restores them. expandMacro stamps
+original call source on top-level expanded form when it has line=0.
+
+**Rationale**: Same approach as JVM Clojure (metadata with :line/:column on
+collections), but lighter — dedicated fields instead of full metadata map.
+Minimal overhead: +6 bytes per list/vector instance, defaults to 0 so all
+existing code is unaffected.
+
+**Impact**: TreeWalk now points to exact sub-expression inside macro bodies
+(e.g. `(+ x y)` inside `defn`). VM gets line-level precision through macros.

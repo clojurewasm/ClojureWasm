@@ -269,7 +269,13 @@ pub const Analyzer = struct {
         };
 
         // Convert result Value back to Form
-        const expanded_form = macro.valueToForm(self.allocator, result_val) catch return error.OutOfMemory;
+        var expanded_form = macro.valueToForm(self.allocator, result_val) catch return error.OutOfMemory;
+
+        // Stamp original macro call source on top-level form if it lost source info
+        if (expanded_form.line == 0 and form.line != 0) {
+            expanded_form.line = form.line;
+            expanded_form.column = form.column;
+        }
 
         // Re-analyze the expanded form
         return self.analyze(expanded_form);

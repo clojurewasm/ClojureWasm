@@ -12,6 +12,8 @@ const testing = std.testing;
 pub const PersistentList = struct {
     items: []const Value,
     meta: ?*const Value = null,
+    source_line: u32 = 0,
+    source_column: u16 = 0,
 
     pub fn count(self: PersistentList) usize {
         return self.items.len;
@@ -32,6 +34,8 @@ pub const PersistentList = struct {
 pub const PersistentVector = struct {
     items: []const Value,
     meta: ?*const Value = null,
+    source_line: u32 = 0,
+    source_column: u16 = 0,
 
     pub fn count(self: PersistentVector) usize {
         return self.items.len;

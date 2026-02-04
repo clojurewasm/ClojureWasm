@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE5 (Macro expansion source preservation)
+- Next task: BE6 (Arg-level error source)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -14,7 +14,6 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| BE5  | Macro expansion source preservation | Collection source fields + formToValue/valueToForm. Design: be5-be6-design.md |
 | BE6  | Arg-level error source             | Column debug info + threadlocal arg sources. Design: be5-be6-design.md        |
 | BE4  | Integration verification           | Complex nesting tests, both backends, macro + nested errors                   |
 | B0   | test.clj enhancement              | is pattern dispatch, thrown?                                                  |
@@ -25,21 +24,21 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-BE5: Macro expansion source preservation.
-Add source_line/source_column to PersistentList/PersistentVector.
-Modify formToValue/valueToForm to transfer source info through macro expansion.
-Stamp original call source on top-level expanded form.
+BE6: Arg-level error source.
+Column tracking in VM (Chunk columns array, Compiler save/restore).
+Threadlocal arg source API in error.zig.
+TreeWalk/VM arg source saving, builtins use getArgSource.
 Design: `.dev/notes/be5-be6-design.md`
 
 ## Previous Task
 
-BE3b completed: VM source location tracking.
-- Chunk: `lines: ArrayList(u32)` parallel to code, `current_line: u32 = 0`
-- FnProto: `lines: []const u32` parallel to code
-- emit/emitOp/emitJump append current_line to lines
-- Compiler.compile() sets current_line from node.source().line
-- CallFrame has lines, VM.execute() annotates errors via lines[ip-1]
-- Works for direct fn calls; defn macro expansion loses source info (needs BE4/macro fix)
+BE5 completed: Macro expansion source preservation.
+- Added source_line/source_column fields to PersistentList/PersistentVector
+- formToValue copies Form.line/column to collection source fields
+- valueToForm restores Form.line/column from collection source fields
+- expandMacro stamps original call source on expanded form when line=0
+- TreeWalk: exact sub-expression (e.g. (+ x y) at 1:16 inside defn)
+- VM: line-level precision through macros (column is call-site)
 
 ## Handover Notes
 
@@ -56,7 +55,7 @@ Notes that persist across sessions.
   - BE3a: Done — TreeWalk source location (annotateLocation, file name, message pointer)
   - BE3b: Done — VM source location (lines array in Chunk/FnProto, Compiler tracks current_line, VM annotates from lines[ip-1])
   - BE4: Investigation done — identified 2 root causes, created BE5/BE6 tasks
-  - BE5: Next — macro expansion source preservation (collection source fields)
+  - BE5: Done — source_line/source_column on PersistentList/PersistentVector, formToValue/valueToForm roundtrip, expandMacro stamp (D64)
   - BE6: Next — arg-level error source (column debug info + threadlocal arg sources)
   - BE5/BE6 design: `.dev/notes/be5-be6-design.md` (read before implementing)
   - Architecture: D3a superseded by D63 (threadlocal)

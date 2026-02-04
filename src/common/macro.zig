@@ -16,7 +16,7 @@ const Value = value_mod.Value;
 const collections = @import("collections.zig");
 
 /// Convert a Form to a runtime Value (for passing to macro functions).
-/// Collections are recursively converted. Source info is lost.
+/// Collections are recursively converted. Source info preserved on lists/vectors.
 pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
     return switch (form.data) {
         .nil => .nil,
@@ -33,7 +33,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
                 vals[i] = try formToValue(allocator, item);
             }
             const lst = try allocator.create(collections.PersistentList);
-            lst.* = .{ .items = vals };
+            lst.* = .{ .items = vals, .source_line = form.line, .source_column = form.column };
             return .{ .list = lst };
         },
         .vector => |items| {
@@ -42,7 +42,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
                 vals[i] = try formToValue(allocator, item);
             }
             const vec = try allocator.create(collections.PersistentVector);
-            vec.* = .{ .items = vals };
+            vec.* = .{ .items = vals, .source_line = form.line, .source_column = form.column };
             return .{ .vector = vec };
         },
         .map => |items| {
@@ -69,7 +69,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
 }
 
 /// Convert a runtime Value back to a Form (for re-analysis after macro expansion).
-/// Collections are recursively converted. Source info set to 0.
+/// Collections are recursively converted. Source info restored from list/vector fields.
 pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
     return switch (val) {
         .nil => Form{ .data = .nil },
@@ -85,14 +85,14 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             for (lst.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
             }
-            return Form{ .data = .{ .list = forms } };
+            return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column };
         },
         .vector => |vec| {
             const forms = try allocator.alloc(Form, vec.items.len);
             for (vec.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
             }
-            return Form{ .data = .{ .vector = forms } };
+            return Form{ .data = .{ .vector = forms }, .line = vec.source_line, .column = vec.source_column };
         },
         .map => |m| {
             const forms = try allocator.alloc(Form, m.entries.len);
@@ -191,4 +191,47 @@ test "valueToForm - list roundtrip" {
     try testing.expectEqualStrings("+", form.data.list[0].data.symbol.name);
     try testing.expectEqual(@as(i64, 1), form.data.list[1].data.integer);
     try testing.expectEqual(@as(i64, 2), form.data.list[2].data.integer);
+}
+
+test "formToValue/valueToForm - list source location roundtrip" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "+" } } },
+        .{ .data = .{ .integer = 1 } },
+    };
+    // Form with source location
+    const form = Form{ .data = .{ .list = &items }, .line = 5, .column = 10 };
+    const val = try formToValue(alloc, form);
+
+    // Value should carry source info
+    try testing.expectEqual(@as(u32, 5), val.list.source_line);
+    try testing.expectEqual(@as(u16, 10), val.list.source_column);
+
+    // Roundtrip back to Form should restore source
+    const restored = try valueToForm(alloc, val);
+    try testing.expectEqual(@as(u32, 5), restored.line);
+    try testing.expectEqual(@as(u16, 10), restored.column);
+}
+
+test "formToValue/valueToForm - vector source location roundtrip" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const items = [_]Form{
+        .{ .data = .{ .integer = 1 } },
+        .{ .data = .{ .integer = 2 } },
+    };
+    const form = Form{ .data = .{ .vector = &items }, .line = 3, .column = 7 };
+    const val = try formToValue(alloc, form);
+
+    try testing.expectEqual(@as(u32, 3), val.vector.source_line);
+    try testing.expectEqual(@as(u16, 7), val.vector.source_column);
+
+    const restored = try valueToForm(alloc, val);
+    try testing.expectEqual(@as(u32, 3), restored.line);
+    try testing.expectEqual(@as(u16, 7), restored.column);
 }
