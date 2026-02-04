@@ -75,7 +75,7 @@ When in doubt, **continue** — pick the most reasonable option and proceed.
 Run before every commit:
 
 1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
-2. **checklist.md**: Strike resolved F##, add new F##
+2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
 4. **memo.md**: Advance to next task
 
@@ -184,7 +184,8 @@ When adding a function/macro to any `.clj` file:
    - `clojure.walk` → `src/clj/clojure/walk.clj`
    - `clojure.set` → `src/clj/clojure/set.clj`
    - `clojure.string` → `src/clj/clojure/string.clj`
-2. **Read upstream** first (e.g., `src/clj/clojure/core.clj` for core functions)
+   - `clojure.template` → `src/clj/clojure/template.clj`
+2. **Read JVM Clojure upstream** source first (add-dir: `clojure/src/clj/clojure/`)
 3. **Use upstream verbatim** if no Java interop / JVM-specific code
 4. **If simplified**: add `UPSTREAM-DIFF:` note to vars.yaml
    - Format: `UPSTREAM-DIFF: <what changed>; missing: <dep list>`
@@ -207,6 +208,8 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 | Zig tips/pitfalls | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
 | Impl tier guide   | `.claude/references/impl-tiers.md`   | When implementing a new function           |
 | Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
+| Roadmap           | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
+| Deferred items    | `.dev/checklist.md`                  | F## items to check before skipping         |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | Zig 0.15.2 guide  | Beta's `docs/reference/zig_guide.md` | When Zig 0.15 API is unclear               |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
