@@ -50,6 +50,10 @@ pub fn main() !void {
             std.debug.print("Error: failed to load clojure.test\n", .{});
             std.process.exit(1);
         };
+        bootstrap.loadSet(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.set\n", .{});
+            std.process.exit(1);
+        };
         runRepl(alloc, &env);
         return;
     }
@@ -251,6 +255,10 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
     };
     bootstrap.loadTest(allocator, &env) catch {
         std.debug.print("Error: failed to load clojure.test\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadSet(allocator, &env) catch {
+        std.debug.print("Error: failed to load clojure.set\n", .{});
         std.process.exit(1);
     };
 

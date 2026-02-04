@@ -736,3 +736,21 @@
        ret)))
   ([f & args]
    (trampoline (fn [] (apply f args)))))
+
+;; Key comparison — max-key, min-key
+
+(defn max-key
+  ([k x] x)
+  ([k x y] (if (> (k x) (k y)) x y))
+  ([k x y & more]
+   (reduce (fn [best item]
+             (if (>= (k item) (k best)) item best))
+           (max-key k x y) more)))
+
+(defn min-key
+  ([k x] x)
+  ([k x y] (if (< (k x) (k y)) x y))
+  ([k x y & more]
+   (reduce (fn [best item]
+             (if (<= (k item) (k best)) item best))
+           (min-key k x y) more)))

@@ -1540,3 +1540,30 @@ capture from arbitrary non-contiguous stack positions.
 **Consequence**: Resolves F75 (VM closure capture with named fn self-ref).
 The closure instruction operand is simplified to just the constant index
 (no more encoded capture_base).
+
+---
+
+## D57: Map-as-function and in-ns refers inheritance
+
+**Context**: T16.1 — clojure.set implementation revealed two gaps:
+
+1. Maps could not be called as functions in TreeWalk (`({:a 1} :key)`)
+2. `(ns ...)` / `in-ns` created new namespaces that lost refers from
+   loaded libraries (clojure.walk, clojure.set, etc.)
+
+**Decision**:
+
+1. Add `.map` IFn dispatch to TreeWalk `callValue` and `runCall`.
+   VM already had this (performCall line 501-509).
+2. Add refers inheritance to `inNsFn`: when creating a new namespace,
+   copy `current_ns.refers` to the new namespace in addition to
+   `clojure.core.mappings`.
+
+**Rationale**: Both are standard Clojure behaviors. Maps implementing IFn
+is fundamental to idiomatic Clojure. The refers inheritance ensures that
+`are` macro (which uses `postwalk-replace` from clojure.walk) works after
+`(ns ...)`.
+
+**Note**: The proper fix for macro symbol resolution (macros should resolve
+symbols in the namespace where they were defined) is a larger change.
+The refers inheritance is a pragmatic workaround that covers most cases.

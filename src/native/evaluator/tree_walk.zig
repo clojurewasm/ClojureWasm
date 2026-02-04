@@ -196,6 +196,12 @@ pub const TreeWalk = struct {
                 if (args.len < 1 or args.len > 2) return error.ArityError;
                 return if (set.contains(args[0])) args[0] else if (args.len == 2) args[1] else .nil;
             },
+            .map => |m| {
+                // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
+                if (args.len < 1 or args.len > 2) return error.ArityError;
+                return m.get(args[0]) orelse
+                    if (args.len == 2) args[1] else .nil;
+            },
             else => return error.TypeError,
         };
     }
@@ -234,6 +240,14 @@ pub const TreeWalk = struct {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
             return if (callee.set.contains(target)) target else if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+        }
+
+        // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
+        if (callee == .map) {
+            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            const target = try self.run(call_n.args[0]);
+            return callee.map.get(target) orelse
+                if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
         // Closure call

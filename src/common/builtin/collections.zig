@@ -33,6 +33,12 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const seq_args = [1]Value{s};
             return firstFn(allocator, &seq_args);
         },
+        .set => {
+            const s = try seqFn(allocator, args);
+            if (s == .nil) return .nil;
+            const seq_args = [1]Value{s};
+            return firstFn(allocator, &seq_args);
+        },
         .lazy_seq => |ls| {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
@@ -64,6 +70,16 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .cons => |c| c.rest,
         .map => {
+            const s = try seqFn(allocator, args);
+            if (s == .nil) {
+                const empty = try allocator.create(PersistentList);
+                empty.* = .{ .items = &.{} };
+                return Value{ .list = empty };
+            }
+            const seq_args = [1]Value{s};
+            return restFn(allocator, &seq_args);
+        },
+        .set => {
             const s = try seqFn(allocator, args);
             if (s == .nil) {
                 const empty = try allocator.create(PersistentList);

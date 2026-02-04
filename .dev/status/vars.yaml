@@ -404,7 +404,7 @@ vars:
     mapcat: {type: function, status: done}
     mapv: {type: function, status: done, note: "core.clj (vec (map f coll))"}
     max: {type: function, status: done}
-    "max-key": {type: function, status: todo}
+    "max-key": {type: function, status: done}
     memfn: {type: macro, status: todo}
     memoize: {type: function, status: done}
     merge: {type: function, status: done}
@@ -413,7 +413,7 @@ vars:
     "method-sig": {type: function, status: todo}
     methods: {type: function, status: todo}
     min: {type: function, status: done}
-    "min-key": {type: function, status: todo}
+    "min-key": {type: function, status: done}
     "mix-collection-hash": {type: function, status: todo}
     mod: {type: function, status: done, note: "VM intrinsic opcode"}
     munge: {type: function, status: todo}
@@ -968,18 +968,18 @@ vars:
     "stack-element-str": {type: function, status: todo}
     "thread-stopper": {type: function, status: todo}
   clojure_set:
-    difference: {type: function, status: todo}
-    index: {type: function, status: todo}
-    intersection: {type: function, status: todo}
-    join: {type: function, status: todo}
-    "map-invert": {type: function, status: todo}
-    project: {type: function, status: todo}
-    rename: {type: function, status: todo}
-    "rename-keys": {type: function, status: todo}
-    select: {type: function, status: todo}
-    "subset?": {type: function, status: todo}
-    "superset?": {type: function, status: todo}
-    union: {type: function, status: todo}
+    difference: {type: function, status: done}
+    index: {type: function, status: done}
+    intersection: {type: function, status: done}
+    join: {type: function, status: done}
+    "map-invert": {type: function, status: done}
+    project: {type: function, status: done}
+    rename: {type: function, status: done}
+    "rename-keys": {type: function, status: done}
+    select: {type: function, status: done}
+    "subset?": {type: function, status: done}
+    "superset?": {type: function, status: done}
+    union: {type: function, status: done}
   clojure_spec_alpha:
     "&": {type: macro, status: todo}
     "*": {type: macro, status: todo}

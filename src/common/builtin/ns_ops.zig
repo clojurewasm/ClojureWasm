@@ -137,6 +137,16 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    // Copy refers from current namespace to new namespace.
+    // This ensures functions from loaded libraries (clojure.walk, clojure.set, etc.)
+    // remain accessible after namespace switch.
+    if (env.current_ns) |current| {
+        var ref_iter = current.refers.iterator();
+        while (ref_iter.next()) |entry| {
+            ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+
     // Switch current namespace
     env.current_ns = ns;
     return .{ .symbol = .{ .ns = null, .name = ns.name } };

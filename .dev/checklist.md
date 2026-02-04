@@ -48,7 +48,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F37     | ifn? predicate                                   | predicates.clj tests (excluded) — not implemented                                      | T14.7  |
 | F38     | swap-vals! (returns [old new])                   | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
-| F40     | first/rest on set                                | sequences.clj tests (excluded) — (first #{1}) fails                                    | T14.9  |
+| ~~F40~~ | ~~first/rest on set~~                            | ~~Resolved: T16.1 — added .set case to firstFn/restFn~~                                | T14.9  |
 | F41     | first/rest on string                             | sequences.clj tests (excluded) — (first "a") fails                                     | T14.9  |
 | F43     | ffirst function                                  | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
 | F44     | nnext function                                   | sequences.clj tests (excluded) — not implemented                                       | T14.9  |

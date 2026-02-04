@@ -41,6 +41,9 @@ const walk_clj_source = @embedFile("../clj/clojure/walk.clj");
 /// Embedded clojure/template.clj source (compiled into binary).
 const template_clj_source = @embedFile("../clj/clojure/template.clj");
 
+/// Embedded clojure/set.clj source (compiled into binary).
+const set_clj_source = @embedFile("../clj/clojure/set.clj");
+
 /// Load and evaluate core.clj in the given Env.
 /// Called after registerBuiltins to define core macros (defn, when, etc.).
 /// Temporarily switches to clojure.core namespace so macros are defined there,
@@ -159,6 +162,37 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = saved_ns;
     if (saved_ns) |user_ns| {
         var iter = test_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+}
+
+/// Load and evaluate clojure/set.clj in the given Env.
+/// Creates the clojure.set namespace and defines set operation functions.
+/// Re-refers set bindings into user namespace for convenience.
+pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.set namespace
+    const set_ns = env.findOrCreateNamespace("clojure.set") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.set so core functions are available
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        set_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Save current namespace and switch to clojure.set
+    const saved_ns = env.current_ns;
+    env.current_ns = set_ns;
+
+    // Evaluate clojure/set.clj (defines functions in clojure.set)
+    _ = try evalString(allocator, env, set_clj_source);
+
+    // Restore user namespace and re-refer set bindings
+    env.current_ns = saved_ns;
+    if (saved_ns) |user_ns| {
+        var iter = set_ns.mappings.iterator();
         while (iter.next()) |entry| {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }

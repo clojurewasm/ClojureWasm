@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: Phase 15.5 complete — 196 tests/1046 assertions dual-backend
+- Last completed: T16.1 — clojure.set ns, map-as-fn, first/rest on set, in-ns refers
 - Blockers: none
-- Next: T16.1 (clojure.set namespace + test)
+- Next: T16.2 (Port string.clj)
 
 ## Current Phase: 16
 
