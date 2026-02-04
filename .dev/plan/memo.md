@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.8 — Implement sequential?, associative?, ifn?
+- Last completed: T16.9 — Implement ffirst, nnext, drop-last, split-at, split-with
 - Blockers: none
-- Next: T16.9 (Implement missing seq fns F43-F44, F46-F47)
+- Next: T16.10 (Implement swap-vals!/reset-vals! F38-F39)
 
 ## Current Phase: 16
 

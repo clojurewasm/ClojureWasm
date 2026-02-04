@@ -50,11 +50,11 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F39     | reset-vals! (returns [old new])                  | atoms.clj tests (excluded) — not implemented                                           | T14.8  |
 | ~~F40~~ | ~~first/rest on set~~                            | ~~Resolved: T16.1 — added .set case to firstFn/restFn~~                                | T14.9  |
 | F41     | first/rest on string                             | sequences.clj tests (excluded) — (first "a") fails                                     | T14.9  |
-| F43     | ffirst function                                  | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F44     | nnext function                                   | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| ~~F43~~ | ~~ffirst function~~                              | ~~Resolved: T16.9 — (first (first x)) in core.clj~~                                    | T14.9  |
+| ~~F44~~ | ~~nnext function~~                               | ~~Resolved: T16.9 — (next (next x)) in core.clj~~                                      | T14.9  |
 | F45     | interleave 0-1 args                              | sequences.clj tests (excluded) — (interleave) and (interleave [1]) fail                | T14.9  |
-| F46     | drop-last function                               | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
-| F47     | split-at / split-with                            | sequences.clj tests (excluded) — not implemented                                       | T14.9  |
+| ~~F46~~ | ~~drop-last function~~                           | ~~Resolved: T16.9 — take-based in core.clj (no multi-coll map)~~                       | T14.9  |
+| ~~F47~~ | ~~split-at / split-with~~                        | ~~Resolved: T16.9 — vector of [take/drop] pairs in core.clj~~                          | T14.9  |
 | F48     | (range) infinite sequence                        | sequences.clj tests (excluded) — infinite range not supported                          | T14.9  |
 | F49     | partition with step arg                          | sequences.clj tests (excluded) — (partition 2 3 coll) not supported                    | T14.9  |
 | F50     | reductions function                              | sequences.clj tests (excluded) — not implemented                                       | T14.9  |

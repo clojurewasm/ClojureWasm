@@ -904,3 +904,21 @@
   [m f]
   (reduce-kv (fn [acc k v] (assoc acc (f k) v))
              {} m))
+
+(defn ffirst [x] (first (first x)))
+
+(defn nnext [x] (next (next x)))
+
+;; UPSTREAM-DIFF: uses take instead of 2-arg map (multi-coll map not supported)
+(defn drop-last
+  ([coll] (drop-last 1 coll))
+  ([n coll]
+   (let [s (seq coll)
+         cnt (count s)]
+     (take (max 0 (- cnt n)) s))))
+
+(defn split-at [n coll]
+  [(take n coll) (drop n coll)])
+
+(defn split-with [pred coll]
+  [(take-while pred coll) (drop-while pred coll)])
