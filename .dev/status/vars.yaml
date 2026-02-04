@@ -166,7 +166,7 @@ vars:
     "bound-fn": {type: macro, status: todo}
     "bound-fn*": {type: function, status: todo}
     "bound?": {type: function, status: done, note: 'Takes symbol, resolves in current ns'}
-    "bounded-count": {type: function, status: todo}
+    "bounded-count": {type: function, status: done, note: builtin (upstream is pure clj)}
     butlast: {type: function, status: done, note: "core.clj loop"}
     byte: {type: function, status: done, note: builtin (upstream is pure clj)}
     "byte-array": {type: function, status: todo}
@@ -215,13 +215,13 @@ vars:
     "construct-proxy": {type: function, status: todo}
     "contains?": {type: function, status: done}
     count: {type: function, status: done}
-    "counted?": {type: function, status: todo}
+    "counted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "create-ns": {type: function, status: done}
     "create-struct": {type: function, status: todo}
     cycle: {type: function, status: done}
     dec: {type: function, status: done}
     "dec'": {type: function, status: todo}
-    "decimal?": {type: function, status: todo}
+    "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: todo}
     "default-data-readers": {type: var, status: todo}
@@ -345,7 +345,7 @@ vars:
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
     inc: {type: function, status: done}
     "inc'": {type: function, status: todo}
-    "indexed?": {type: function, status: todo}
+    "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "infinite?": {type: function, status: done}
     "init-proxy": {type: function, status: todo}
     "inst-ms": {type: function, status: todo}
@@ -507,8 +507,8 @@ vars:
     "random-sample": {type: function, status: todo}
     "random-uuid": {type: function, status: todo}
     range: {type: function, status: done}
-    "ratio?": {type: function, status: todo}
-    "rational?": {type: function, status: todo}
+    "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
+    "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rationalize: {type: function, status: todo}
     "re-find": {type: function, status: done}
     "re-groups": {type: function, status: todo}
@@ -523,7 +523,7 @@ vars:
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}
     "realized?": {type: function, status: done, note: "core.clj checks delay :realized atom"}
-    "record?": {type: function, status: todo}
+    "record?": {type: function, status: done, note: builtin (upstream is pure clj)}
     reduce: {type: function, status: done}
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
     reduced: {type: function, status: done}
@@ -559,7 +559,7 @@ vars:
     "restart-agent": {type: function, status: todo}
     "resultset-seq": {type: function, status: todo}
     reverse: {type: function, status: done, note: "portable to clj"}
-    "reversible?": {type: function, status: todo}
+    "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rseq: {type: function, status: todo}
     rsubseq: {type: function, status: todo}
     "run!": {type: function, status: done}
@@ -572,7 +572,7 @@ vars:
     seq: {type: function, status: done}
     "seq-to-map-for-destructuring": {type: function, status: todo}
     "seq?": {type: function, status: done}
-    "seqable?": {type: function, status: todo}
+    "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: todo}
     sequence: {type: function, status: todo}
     "sequential?": {type: function, status: done}
@@ -603,7 +603,7 @@ vars:
     "sorted-map-by": {type: function, status: todo}
     "sorted-set": {type: function, status: todo}
     "sorted-set-by": {type: function, status: todo}
-    "sorted?": {type: function, status: todo}
+    "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "special-symbol?": {type: function, status: todo}
     spit: {type: function, status: done}
     "split-at": {type: function, status: done}

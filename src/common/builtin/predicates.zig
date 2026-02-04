@@ -443,6 +443,115 @@ pub fn ensureReducedFn(allocator: Allocator, args: []const Value) anyerror!Value
 }
 
 // ============================================================
+// Collection type predicates
+// ============================================================
+
+/// (seqable? x) — Returns true if (seq x) would succeed.
+fn seqablePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = switch (args[0]) {
+        .nil, .list, .vector, .map, .set, .string, .cons, .lazy_seq => true,
+        else => false,
+    } };
+}
+
+/// (counted? x) — Returns true if (count x) is O(1).
+fn countedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = switch (args[0]) {
+        .list, .vector, .map, .set, .string => true,
+        else => false,
+    } };
+}
+
+/// (indexed? x) — Returns true if coll supports nth in O(1).
+fn indexedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = switch (args[0]) {
+        .vector, .string => true,
+        else => false,
+    } };
+}
+
+/// (reversible? x) — Returns true if coll supports rseq.
+fn reversiblePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return Value{ .boolean = args[0] == .vector };
+}
+
+/// (sorted? x) — Returns true if coll implements Sorted.
+fn sortedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    // No sorted collections in ClojureWasm yet
+    return Value{ .boolean = false };
+}
+
+/// (record? x) — Returns true if x is a record.
+fn recordPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    // No defrecord in ClojureWasm yet
+    return Value{ .boolean = false };
+}
+
+/// (ratio? x) — Returns true if x is a Ratio.
+fn ratioPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    // No ratio type in ClojureWasm
+    return Value{ .boolean = false };
+}
+
+/// (rational? x) — Returns true if x is a rational number.
+fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    // integer is rational; no ratio type so only integer qualifies
+    return Value{ .boolean = args[0] == .integer };
+}
+
+/// (decimal? x) — Returns true if x is a BigDecimal.
+fn decimalPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    // No BigDecimal in ClojureWasm
+    return Value{ .boolean = false };
+}
+
+/// (bounded-count n coll) — If coll is counted? returns its count, else counts up to n.
+fn boundedCountFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return error.ArityError;
+    const limit = switch (args[0]) {
+        .integer => |i| if (i >= 0) @as(usize, @intCast(i)) else return error.ArithmeticError,
+        else => return error.TypeError,
+    };
+    const coll = args[1];
+    // Counted collections: return count directly
+    const count: usize = switch (coll) {
+        .nil => 0,
+        .list => |lst| lst.items.len,
+        .vector => |vec| vec.items.len,
+        .map => |m| m.entries.len / 2,
+        .set => |s| s.items.len,
+        .string => |s| s.len,
+        .cons => blk: {
+            // Walk cons chain up to limit
+            var n: usize = 0;
+            var cur = coll;
+            while (n < limit) : (n += 1) {
+                switch (cur) {
+                    .cons => |c| cur = c.rest,
+                    .nil => break,
+                    else => {
+                        n += 1;
+                        break;
+                    },
+                }
+            }
+            break :blk n;
+        },
+        else => return error.TypeError,
+    };
+    return Value{ .integer = @intCast(@min(count, limit)) };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -487,6 +596,16 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "reduced?", .func = &isReducedPred, .doc = "Returns true if x is the result of a call to reduced.", .arglists = "([x])", .added = "1.5" },
     .{ .name = "unreduced", .func = &unreducedFn, .doc = "If x is reduced?, returns (deref x), else returns x.", .arglists = "([x])", .added = "1.7" },
     .{ .name = "ensure-reduced", .func = &ensureReducedFn, .doc = "If x is already reduced?, returns it, else returns (reduced x).", .arglists = "([x])", .added = "1.7" },
+    .{ .name = "seqable?", .func = &seqablePred, .doc = "Return true if the seq function is supported for x.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "counted?", .func = &countedPred, .doc = "Returns true if coll implements count in constant time.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "indexed?", .func = &indexedPred, .doc = "Return true if coll implements Indexed, indicating efficient lookup by index.", .arglists = "([coll])", .added = "1.9" },
+    .{ .name = "reversible?", .func = &reversiblePred, .doc = "Returns true if coll implements Reversible.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "sorted?", .func = &sortedPred, .doc = "Returns true if coll implements Sorted.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "record?", .func = &recordPred, .doc = "Returns true if x is a record.", .arglists = "([x])", .added = "1.6" },
+    .{ .name = "ratio?", .func = &ratioPred, .doc = "Returns true if n is a Ratio.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "rational?", .func = &rationalPred, .doc = "Returns true if n is a rational number.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "decimal?", .func = &decimalPred, .doc = "Returns true if n is a BigDecimal.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "bounded-count", .func = &boundedCountFn, .doc = "If coll is counted? returns its count, else will count at most the first n elements of coll.", .arglists = "([n coll])", .added = "1.9" },
 };
 
 // === Tests ===
@@ -713,8 +832,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
 }
 
-test "builtins table has 40 entries" {
-    try testing.expectEqual(40, builtins.len);
+test "builtins table has 50 entries" {
+    // 40 + 10 (seqable?, counted?, indexed?, reversible?, sorted?, record?, ratio?, rational?, decimal?, bounded-count)
+    try testing.expectEqual(50, builtins.len);
 }
 
 test "builtins all have func" {
