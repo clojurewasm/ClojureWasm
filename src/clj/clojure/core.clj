@@ -731,35 +731,53 @@
         default (if (= (* 2 (count pairs)) (count clauses))
                   nil
                   (last clauses))
-        gexpr '__case_val__]
+        gexpr '__case_val__
+        quote-const (fn [c]
+                      (if (symbol? c)
+                        (list 'quote c)
+                        c))
+        test-expr (fn [test]
+                    (if (seq? test)
+                      (cons 'or (map (fn [t] (list '= gexpr (quote-const t))) test))
+                      (list '= gexpr (quote-const test))))]
     `(let [~gexpr ~expr]
        (cond
          ~@(mapcat (fn [pair]
-                     (list (list '= gexpr (first pair))
-                           (first (rest pair))))
+                     (list (test-expr (first pair))
+                           (second pair)))
                    pairs)
          ~@(if default
              (list true default)
              nil)))))
 
-;; UPSTREAM-DIFF: No :>> modifier support, no error on no-match without default
 (defmacro condp [pred expr & clauses]
-  (let [pairs (partition 2 clauses)
-        default (if (= (* 2 (count pairs)) (count clauses))
-                  nil
-                  (last clauses))
-        gexpr '__condp_val__]
-    (cons 'let
-          (list [gexpr expr]
-                (cons 'cond
-                      (concat
-                       (mapcat (fn [pair]
-                                 (list (list pred (first pair) gexpr)
-                                       (first (rest pair))))
-                               pairs)
-                       (if default
-                         (list true default)
-                         (list))))))))
+  (let [gpred '__condp_pred__
+        gexpr '__condp_expr__
+        emit (fn emit [args]
+               (let [cnt (count args)]
+                 (cond
+                   (= cnt 0)
+                   (list 'throw (list 'ex-info
+                                      (list 'str "No matching clause: " gexpr) {}))
+                   (= cnt 1)
+                   (first args)
+                   (= :>> (second args))
+                   (let [test (first args)
+                         result-fn (first (rest (rest args)))
+                         more (rest (rest (rest args)))]
+                     (list 'let ['__condp_p__ (list gpred test gexpr)]
+                           (list 'if '__condp_p__
+                                 (list result-fn '__condp_p__)
+                                 (emit more))))
+                   :else
+                   (let [test (first args)
+                         result (second args)
+                         more (rest (rest args))]
+                     (list 'if (list gpred test gexpr)
+                           result
+                           (emit more))))))]
+    (list 'let [gpred pred gexpr expr]
+          (emit clauses))))
 
 (defmacro declare [& names]
   (cons 'do (map (fn [n] (list 'def n)) names)))
@@ -772,15 +790,41 @@
        ~@body
        (recur))))
 
-;; UPSTREAM-DIFF: Single binding only; no :let/:when/:while, no chunked-seq, no nesting
-(defmacro doseq [bindings & body]
-  (let [sym (first bindings)
-        coll (first (rest bindings))]
-    `(loop [s# (seq ~coll)]
-       (when s#
-         (let [~sym (first s#)]
-           ~@body)
-         (recur (next s#))))))
+;; UPSTREAM-DIFF: No chunked-seq optimization
+(defmacro doseq [seq-exprs & body]
+  (let [step (fn step [recform exprs]
+               (if (nil? (seq exprs))
+                 [true (cons 'do body)]
+                 (let [k (first exprs)
+                       v (second exprs)]
+                   (if (keyword? k)
+                     (let [steppair (step recform (rest (rest exprs)))
+                           needrec (first steppair)
+                           subform (second steppair)]
+                       (cond
+                         (= k :let) [needrec (list 'let v subform)]
+                         (= k :while) [false (if needrec
+                                               (list 'when v subform recform)
+                                               (list 'when v subform))]
+                         (= k :when) [false (if needrec
+                                              (list 'if v (list 'do subform recform) recform)
+                                              (list 'if v subform recform))]))
+                     (let [s '__doseq_s__
+                           recform2 (list 'recur (list 'next s))
+                           steppair (step recform2 (rest (rest exprs)))
+                           needrec (first steppair)
+                           subform (second steppair)]
+                       [true
+                        (list 'loop [s (list 'seq v)]
+                              (if needrec
+                                (list 'when s
+                                      (list 'let [k (list 'first s)]
+                                            subform
+                                            recform2))
+                                (list 'when s
+                                      (list 'let [k (list 'first s)]
+                                            subform))))])))))]
+    (second (step nil (seq seq-exprs)))))
 
 (defn dorun [coll]
   (loop [s (seq coll)]

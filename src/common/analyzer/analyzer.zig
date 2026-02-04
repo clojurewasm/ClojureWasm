@@ -737,6 +737,7 @@ pub const Analyzer = struct {
         var mod_idx: usize = 2;
         var when_forms: std.ArrayList(Form) = .empty;
         var let_forms: std.ArrayList(Form) = .empty;
+        var while_forms: std.ArrayList(Form) = .empty;
         while (mod_idx < bindings.len) {
             if (bindings[mod_idx].data == .keyword) {
                 const kw = bindings[mod_idx].data.keyword.name;
@@ -753,7 +754,10 @@ pub const Analyzer = struct {
                     let_forms.append(self.allocator, bindings[mod_idx + 1]) catch return error.OutOfMemory;
                     mod_idx += 2;
                 } else if (std.mem.eql(u8, kw, "while")) {
-                    // :while is complex (early termination), skip for now
+                    if (mod_idx + 1 >= bindings.len) {
+                        return self.analysisError(.value_error, ":while requires a test expression", form);
+                    }
+                    while_forms.append(self.allocator, bindings[mod_idx + 1]) catch return error.OutOfMemory;
                     mod_idx += 2;
                 } else {
                     break; // unknown keyword = start of next binding
@@ -767,7 +771,7 @@ pub const Analyzer = struct {
         const is_last = remaining_bindings.len == 0;
 
         // Analyze collection expression
-        const coll_node = try self.analyze(coll_form);
+        var coll_node = try self.analyze(coll_form);
 
         // Build the fn body
         const start_locals = self.locals.items.len;
@@ -789,6 +793,46 @@ pub const Analyzer = struct {
         }
         const param_idx: u32 = @intCast(self.locals.items.len);
         self.locals.append(self.allocator, .{ .name = param_name, .idx = param_idx }) catch return error.OutOfMemory;
+
+        // Apply :while by wrapping coll with take-while
+        // (take-while (fn [param] test) coll) for each while condition
+        for (while_forms.items) |while_form| {
+            const while_test = try self.analyze(while_form);
+
+            // Build predicate fn: (fn [param] while_test)
+            const tw_params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
+            tw_params[0] = param_name;
+            const tw_arities = self.allocator.alloc(node_mod.FnArity, 1) catch return error.OutOfMemory;
+            tw_arities[0] = .{
+                .params = tw_params,
+                .variadic = false,
+                .body = while_test,
+            };
+            const tw_fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
+            tw_fn_data.* = .{
+                .name = null,
+                .arities = tw_arities,
+                .source = self.sourceFromForm(form),
+            };
+            const tw_fn_node = self.allocator.create(Node) catch return error.OutOfMemory;
+            tw_fn_node.* = .{ .fn_node = tw_fn_data };
+
+            // Build call: (take-while pred coll)
+            const tw_ref = self.allocator.create(Node) catch return error.OutOfMemory;
+            tw_ref.* = .{ .var_ref = .{ .ns = null, .name = "take-while", .source = .{} } };
+            const tw_call_data = self.allocator.create(node_mod.CallNode) catch return error.OutOfMemory;
+            const tw_call_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+            tw_call_args[0] = tw_fn_node;
+            tw_call_args[1] = coll_node;
+            tw_call_data.* = .{
+                .callee = tw_ref,
+                .args = tw_call_args,
+                .source = self.sourceFromForm(form),
+            };
+            const tw_call_node = self.allocator.create(Node) catch return error.OutOfMemory;
+            tw_call_node.* = .{ .call_node = tw_call_data };
+            coll_node = tw_call_node;
+        }
 
         // Apply :let bindings BEFORE analyzing body (so body can reference :let vars)
         var let_bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
@@ -813,26 +857,12 @@ pub const Analyzer = struct {
             fn_body = try self.expandForBindings(remaining_bindings, body_forms, form);
         }
 
-        // Wrap with :let bindings if any
-        if (let_bindings_list.items.len > 0) {
-            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
-            let_data.* = .{
-                .bindings = let_bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
-                .body = fn_body,
-                .source = self.sourceFromForm(form),
-            };
-            fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
-            fn_body.* = .{ .let_node = let_data };
-        }
-
-        // Wrap with :when guards
+        // Wrap with :when guards FIRST (inner), then :let (outer)
+        // so that :let vars are available in :when tests
         for (when_forms.items) |when_form| {
             const test_node = try self.analyze(when_form);
             if (is_last) {
-                // For innermost level with :when, wrap in (when test body) => (if test (list body) (list))
-                // We need to return a list for filter-like behavior
-                // Actually: (for [x coll :when pred] body) should only include x when pred is true
-                // Strategy: wrap body in (if test [body] []) and then mapcat
+                // Wrap in (if test (list body) (list)) for filter behavior
                 const body_vec_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
                 body_vec_args[0] = fn_body;
                 const body_as_list = try self.makeBuiltinCall("list", body_vec_args);
@@ -864,6 +894,18 @@ pub const Analyzer = struct {
                 fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
                 fn_body.* = .{ .if_node = if_data };
             }
+        }
+
+        // Wrap with :let bindings (outer) so vars are available to :when tests
+        if (let_bindings_list.items.len > 0) {
+            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
+            let_data.* = .{
+                .bindings = let_bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = fn_body,
+                .source = self.sourceFromForm(form),
+            };
+            fn_body = self.allocator.create(Node) catch return error.OutOfMemory;
+            fn_body.* = .{ .let_node = let_data };
         }
 
         // If destructuring needed, wrap body in let

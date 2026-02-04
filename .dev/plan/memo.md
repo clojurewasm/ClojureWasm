@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: B2 (Macro Enhancement)
+- Next task: B3 (Seq/String Operations)
 - Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
@@ -14,25 +14,24 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| B2   | Macro Enhancement                  | F27/F28, F93, F92, F25/F26                                                    |
 | B3   | Seq/String Operations              | F41, F45, F48, F49                                                            |
 | B4   | defn/ns Enhancement                | F90, F85                                                                      |
 
 ## Current Task
 
-B2: Macro Enhancement.
-F27/F28, F93, F92, F25/F26.
+B3: Seq/String Operations.
+F41, F45, F48, F49.
 
 ## Previous Task
 
-B1 completed: Core Semantics fixes.
-- F29/F33: Already resolved (empty list truthy/predicates)
-- F31: (and) now returns true (was nil)
-- F30: if-let/if-not now accept optional else clause
-- F32: reverse nil/[] returns empty list () instead of nil
-- F34: seq on vector returns list (proper seq type)
-- logic.clj reverse tests reverted to upstream (no longer CLJW workaround)
-- Resolved F29, F30, F31, F32, F33, F34 from checklist
+B2 completed: Macro Enhancement.
+- F27/F28: case — quote symbols, support (test1 test2 ...) grouping
+- F93: condp — rewritten with recursive emit, :>> modifier support, no-match throw
+- F92: doseq — rewritten with recursive step; :let/:when/:while and nesting
+- F25: for :while — implemented via take-while collection wrapping
+- F26: for :let+:when — fixed wrapping order (:when inner, :let outer)
+- TreeWalk bugfix: let/loop errdefer for local_count on throw
+- Resolved F25, F26, F27, F28, F92, F93 from checklist
 
 ## Handover Notes
 

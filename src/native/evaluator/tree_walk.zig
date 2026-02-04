@@ -124,6 +124,7 @@ pub const TreeWalk = struct {
             },
             .let_node => |let_n| {
                 const saved = self.local_count;
+                errdefer self.local_count = saved;
                 for (let_n.bindings) |binding| {
                     const val = try self.run(binding.init);
                     if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
@@ -715,6 +716,7 @@ pub const TreeWalk = struct {
 
     fn runLoop(self: *TreeWalk, loop_n: *const node_mod.LoopNode) TreeWalkError!Value {
         const saved = self.local_count;
+        errdefer self.local_count = saved;
         const binding_base = self.local_count;
 
         // Initial bindings

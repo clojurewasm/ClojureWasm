@@ -23,10 +23,6 @@ Check at session start for items that become actionable.
 | F20 | Safe point GC design                        | Real GC (F2) implementation start                                  |
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
-| F25 | for macro :while modifier                   | for.clj tests (currently excluded)                                 |
-| F26 | for macro :let + :when combination          | for.clj tests — :let followed by :when fails                      |
-| F27 | case multiple test values syntax            | `(case x (1 2 3) :match :default)` fails                          |
-| F28 | case symbol matching                        | `(case 'sym sym :match :default)` fails                            |
 | F41 | first/rest on string                        | (first "a") fails                                                  |
 | F45 | interleave 0-1 args                         | (interleave) and (interleave [1]) fail                             |
 | F48 | (range) infinite sequence                   | infinite range not supported                                       |
@@ -50,6 +46,4 @@ Check at session start for items that become actionable.
 | F89 | Analyzer rewrite for System/Math            | Builtins exist but syntax routing missing                          |
 | F90 | defn full implementation                    | No docstring, metadata, pre/post conditions, inline support        |
 | F91 | delay proper Value type                     | Map-based delay; upstream uses clojure.lang.Delay class            |
-| F92 | doseq :let/:when/:while and nesting         | Single binding only, no modifiers, no nested bindings              |
-| F93 | condp :>> modifier                          | Result-fn routing via `:>>` not supported                          |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
