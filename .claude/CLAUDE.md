@@ -177,7 +177,7 @@ yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .
 - `"VM intrinsic opcode"` — Optimized VM instruction
 - `"UPSTREAM-DIFF: <what>; missing: <deps>"` — Simplified implementation
 
-Query reference: `.claude/references/yq-queries.md`
+Use `yq` for queries (e.g. `yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length'`).
 
 ### Clojure Implementation Rule
 
@@ -210,11 +210,6 @@ When encountering Java interop patterns (`System/`, `Math/`, `.method`, etc.):
 
 **Do NOT skip** items in the todo list — attempt implementation first.
 
-## IDE Tools
-
-Use `imenu-list-symbols`, `xref-find-references`, `getDiagnostics` actively
-for Zig code exploration. Details: `.claude/references/ide-patterns.md`
-
 ## Zig 0.15.2 Pitfalls
 
 When unsure about Zig 0.15.2 API usage,
@@ -223,14 +218,11 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 
 ## References
 
-| Topic              | Location                                   | When to read                                    |
-| ------------------ | ------------------------------------------ | ----------------------------------------------- |
-| Zig tips/pitfalls  | `.claude/references/zig-tips.md`           | Before writing Zig code, on compile errors      |
-| yq query examples  | `.claude/references/yq-queries.md`         | When querying vars.yaml or other YAML files     |
-| IDE usage patterns | `.claude/references/ide-patterns.md`       | When exploring Zig code structure               |
-| Debugging bytecode | `.claude/references/debugging-bytecode.md` | When VM tests fail or bytecode looks wrong      |
-| Impl tier guide    | `.claude/references/impl-tiers.md`         | When implementing a new function (Zig vs .clj?) |
-| Java interop list  | `.dev/notes/java_interop_todo.md`          | When encountering System/, Math/, .method, etc. |
-| Benchmark suite    | `bench/README.md`                          | Before/after performance optimization           |
-| Design document    | `.dev/future.md`                           | When planning new phases or major features      |
-| Zig 0.15.2 guide   | Beta's `docs/reference/zig_guide.md`       | When Zig 0.15 API is unclear                    |
+| Topic             | Location                             | When to read                               |
+| ----------------- | ------------------------------------ | ------------------------------------------ |
+| Zig tips/pitfalls | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
+| Impl tier guide   | `.claude/references/impl-tiers.md`   | When implementing a new function           |
+| Java interop list | `.dev/notes/java_interop_todo.md`    | When encountering System/, Math/, .method  |
+| Design document   | `.dev/future.md`                     | When planning new phases or major features |
+| Zig 0.15.2 guide  | Beta's `docs/reference/zig_guide.md` | When Zig 0.15 API is unclear               |
+| Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
