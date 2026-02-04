@@ -14,6 +14,10 @@ pub const PersistentList = struct {
     meta: ?*const Value = null,
     source_line: u32 = 0,
     source_column: u16 = 0,
+    /// Per-child source positions for macro expansion roundtrip preservation.
+    /// Parallel to items[]. Set by formToValue, read by valueToForm.
+    child_lines: ?[]const u32 = null,
+    child_columns: ?[]const u16 = null,
 
     pub fn count(self: PersistentList) usize {
         return self.items.len;
@@ -36,6 +40,9 @@ pub const PersistentVector = struct {
     meta: ?*const Value = null,
     source_line: u32 = 0,
     source_column: u16 = 0,
+    /// Per-child source positions for macro expansion roundtrip preservation.
+    child_lines: ?[]const u32 = null,
+    child_columns: ?[]const u16 = null,
 
     pub fn count(self: PersistentVector) usize {
         return self.items.len;

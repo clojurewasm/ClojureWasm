@@ -29,20 +29,40 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
         .keyword => |sym| .{ .keyword = .{ .ns = sym.ns, .name = sym.name } },
         .list => |items| {
             const vals = try allocator.alloc(Value, items.len);
+            const c_lines = try allocator.alloc(u32, items.len);
+            const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
                 vals[i] = try formToValue(allocator, item);
+                c_lines[i] = item.line;
+                c_cols[i] = item.column;
             }
             const lst = try allocator.create(collections.PersistentList);
-            lst.* = .{ .items = vals, .source_line = form.line, .source_column = form.column };
+            lst.* = .{
+                .items = vals,
+                .source_line = form.line,
+                .source_column = form.column,
+                .child_lines = c_lines,
+                .child_columns = c_cols,
+            };
             return .{ .list = lst };
         },
         .vector => |items| {
             const vals = try allocator.alloc(Value, items.len);
+            const c_lines = try allocator.alloc(u32, items.len);
+            const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
                 vals[i] = try formToValue(allocator, item);
+                c_lines[i] = item.line;
+                c_cols[i] = item.column;
             }
             const vec = try allocator.create(collections.PersistentVector);
-            vec.* = .{ .items = vals, .source_line = form.line, .source_column = form.column };
+            vec.* = .{
+                .items = vals,
+                .source_line = form.line,
+                .source_column = form.column,
+                .child_lines = c_lines,
+                .child_columns = c_cols,
+            };
             return .{ .vector = vec };
         },
         .map => |items| {
@@ -84,6 +104,15 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const forms = try allocator.alloc(Form, lst.items.len);
             for (lst.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
+                // Restore child source positions from formToValue roundtrip
+                if (forms[i].line == 0) {
+                    if (lst.child_lines) |cl| if (i < cl.len) {
+                        forms[i].line = cl[i];
+                    };
+                    if (lst.child_columns) |cc| if (i < cc.len) {
+                        forms[i].column = cc[i];
+                    };
+                }
             }
             return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column };
         },
@@ -91,6 +120,14 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const forms = try allocator.alloc(Form, vec.items.len);
             for (vec.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
+                if (forms[i].line == 0) {
+                    if (vec.child_lines) |cl| if (i < cl.len) {
+                        forms[i].line = cl[i];
+                    };
+                    if (vec.child_columns) |cc| if (i < cc.len) {
+                        forms[i].column = cc[i];
+                    };
+                }
             }
             return Form{ .data = .{ .vector = forms }, .line = vec.source_line, .column = vec.source_column };
         },

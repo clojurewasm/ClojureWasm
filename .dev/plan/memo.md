@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE4 (Integration verification)
+- Next task: B0 (test.clj enhancement)
 - Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
@@ -14,7 +14,6 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| BE4  | Integration verification           | Complex nesting tests, both backends, macro + nested errors                   |
 | B0   | test.clj enhancement              | is pattern dispatch, thrown?                                                  |
 | B1   | Core Semantics fixes               | F29/F33, F34, F30, F31, F32                                                   |
 | B2   | Macro Enhancement                  | F27/F28, F93, F92, F25/F26                                                    |
@@ -23,23 +22,18 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-BE4: Integration verification.
-Complex nesting tests, both backends, macro + nested errors.
-Verify BE1-BE6 improvements work together correctly.
+B0: test.clj enhancement.
+is pattern dispatch, thrown? implementation.
 
 ## Previous Task
 
-BE6 Part B completed: Arg-level error source precision.
-- ConstantNode struct added to Node union (value + source)
-- Analyzer passes Form source to constants via makeConstantFrom
-- Collection constant optimizations (vector/map/set) preserve form source
-- Threadlocal arg_sources in error.zig (saveArgSource/getArgSource)
-- TreeWalk: generic callBuiltinFn saves arg source from Node.source()
-- VM: saveVmArgSources scans backward through bytecode columns
-- Arithmetic builtins use getArgSource for precise arg-level error pointing
-- (+ 1 "hello") → caret at "hello", (+ "hello" 1) → caret at "hello"
-- All literal types verified: string, keyword, boolean, nil, vector, char
-- Both backends produce identical error locations
+BE4 completed: Integration verification + macro child source preservation.
+- Root cause: formToValue→valueToForm roundtrip lost per-child source positions
+- Fix: child_lines/child_columns on PersistentList/PersistentVector
+- formToValue stores child Form positions, valueToForm restores them
+- Result: defn body errors now point to exact bad argument, not just `(+`
+- Verified: defn, nested defn, let, custom macro — both backends consistent
+- E2E tests added for defn body error and let body error positions
 
 ## Handover Notes
 
@@ -55,7 +49,7 @@ Notes that persist across sessions.
   - BE2d: Done — other builtins (atom, metadata, multimethods, io, system, regex, file_io, ns_ops, misc, eval, var.zig); legacy tags removed
   - BE3a: Done — TreeWalk source location (annotateLocation, file name, message pointer)
   - BE3b: Done — VM source location (lines array in Chunk/FnProto, Compiler tracks current_line, VM annotates from lines[ip-1])
-  - BE4: Investigation done — identified 2 root causes, created BE5/BE6 tasks
+  - BE4: Done — child source preservation on PersistentList/PersistentVector, E2E tests for macro-expanded error positions
   - BE5: Done — source_line/source_column on PersistentList/PersistentVector, formToValue/valueToForm roundtrip, expandMacro stamp (D64)
   - BE6: Done (Part A) — VM column tracking (Chunk.columns, Compiler.current_column, CallFrame.columns)
   - BE6 Part B: Done — arg-level source (ConstantNode, threadlocal arg sources, VM backward scan)

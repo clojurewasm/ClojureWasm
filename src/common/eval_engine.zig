@@ -2259,3 +2259,61 @@ test "E2E error location: (+ 1 [2 3]) points to vector arg" {
     try std.testing.expectEqual(@as(u32, 1), vm.location.line);
     try std.testing.expectEqual(@as(u32, 5), vm.location.column);
 }
+
+/// Multi-form variant: evaluate all forms, return error info from the last failing one.
+fn evalMultiExpectErrorTW(source: []const u8) !err_mod.Info {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+    _ = bootstrap.evalString(alloc, &env, source) catch {
+        return err_mod.getLastError() orelse return error.NoError;
+    };
+    return error.NoError;
+}
+
+fn evalMultiExpectErrorVM(source: []const u8) !err_mod.Info {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+    _ = bootstrap.evalStringVM(alloc, &env, source) catch {
+        return err_mod.getLastError() orelse return error.NoError;
+    };
+    return error.NoError;
+}
+
+test "E2E error location: defn body points to bad arg through macro expansion" {
+    // (defn broken [x] (+ x "oops")) — "oops" is at line 1 col 22
+    const source = "(defn broken [x] (+ x \"oops\")) (broken 42)";
+    // "oops" is at column 22 in the single-line version
+    const tw = try evalMultiExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 22), tw.location.column);
+
+    const vm = try evalMultiExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 22), vm.location.column);
+}
+
+test "E2E error location: let body points to bad arg (special form)" {
+    // (let [x 1] (+ x "bad")) — "bad" is at column 16
+    const source = "(let [x 1] (+ x \"bad\"))";
+    const tw = try evalExpectErrorTW(source);
+    try std.testing.expectEqual(@as(u32, 1), tw.location.line);
+    try std.testing.expectEqual(@as(u32, 16), tw.location.column);
+
+    const vm = try evalExpectErrorVM(source);
+    try std.testing.expectEqual(@as(u32, 1), vm.location.line);
+    try std.testing.expectEqual(@as(u32, 16), vm.location.column);
+}
