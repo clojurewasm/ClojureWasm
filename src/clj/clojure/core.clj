@@ -1464,6 +1464,9 @@
          (finally
            (pop-thread-bindings))))))
 
+;; Dynamic vars (stubs for JVM compat)
+(def ^:dynamic *warn-on-reflection* false)
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C5 (re-port atoms.clj)
+- Next task: C6 (delays.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -19,7 +19,7 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C2: macros.clj~~ done
 - ~~C3: Re-port logic.clj~~ done (102 assertions)
 - ~~C4: Re-port for.clj~~ done (49 assertions, lazy seq infrastructure D65)
-- C5: Re-port atoms.clj (62 lines, faithful to upstream)
+- ~~C5: Re-port atoms.clj~~ done (12 assertions, *warn-on-reflection* stub)
 - C6: delays.clj (88 lines, partial — JVM threading tests excluded)
 - C7: def.clj (84 lines, partial — spec tests JVM-only)
 - C8: vars.clj (109 lines, partial — threading/promise JVM-only)
@@ -38,16 +38,13 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C5: Re-port atoms.clj — faithful from upstream with CLJW markers.
+C6: delays.clj — faithful from upstream with CLJW markers.
 
 ## Previous Task
 
-C4 completed: Re-port for.clj — faithful upstream, 49 assertions.
-- D65: Lazy seq infrastructure — map, filter, take, take-while, concat, range, mapcat all lazy
-- realizeValue() in collections.zig for transparent lazy→eager at boundaries
-- Fixed eq/neq, print, str, valueToForm, withMetaFn to handle lazy_seq/cons
-- VM .eq/.neq opcodes realize lazy seqs before comparison
-- for analyzer: mapcat instead of (apply concat (map ...)); :when/:while ordering fix
+C5 completed: Re-port atoms.clj — faithful upstream, 12 assertions.
+- Added *warn-on-reflection* dynamic var stub (no reflection in Zig)
+- swap-vals!/reset-vals! already implemented, test was out of date
 
 ## Handover Notes
 

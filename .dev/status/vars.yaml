@@ -72,7 +72,7 @@ vars:
     "*unchecked-math*": {type: var, status: todo}
     "*use-context-classloader*": {type: var, status: todo}
     "*verbose-defrecords*": {type: dynamic-var, status: todo}
-    "*warn-on-reflection*": {type: var, status: todo}
+    "*warn-on-reflection*": {type: var, status: done, note: "stub dynamic var (no reflection in Zig)"}
     "+": {type: function, status: done, note: "VM intrinsic opcode"}
     "+'": {type: function, status: done, note: "Zig builtin (upstream uses Math.addExact)"}
     "-": {type: function, status: done, note: "VM intrinsic opcode"}
