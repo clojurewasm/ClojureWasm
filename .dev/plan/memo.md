@@ -5,18 +5,40 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
-- Sub-phase: B (Fix F## items) complete
-- Next task: Phase C (Upstream test porting)
+- Sub-phase: C (Faithful test porting) in progress
+- Next task: C1 (volatiles.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
 
-(Phase B complete. Plan Phase C next.)
+Phase C: Faithful upstream test porting with CLJW markers.
+Order: new small → re-port existing → new medium → new large.
+
+- C1: volatiles.clj (31 lines, all fns done, zero JVM deps)
+- C2: macros.clj (113 lines, threading macros)
+- C3: Re-port logic.clj (212→167 lines, add missing upstream tests)
+- C4: Re-port for.clj (128→71 lines, add missing upstream tests)
+- C5: Re-port atoms.clj (62 lines, faithful to upstream)
+- C6: delays.clj (88 lines, partial — JVM threading tests excluded)
+- C7: def.clj (84 lines, partial — spec tests JVM-only)
+- C8: vars.clj (109 lines, partial — threading/promise JVM-only)
+- C9: Re-port control.clj (upstream faithful)
+- C10: Re-port predicates.clj (upstream faithful)
+- C11: Re-port data_structures.clj (upstream faithful)
+- C12: Re-port sequences.clj (upstream faithful)
+- C13: clojure_walk.clj (75 lines)
+- C14: string.clj (196 lines)
+- C15: clojure_set.clj (224 lines)
+- C16: metadata.clj (239 lines)
+- C17: special.clj (106 lines, many F## blockers)
+- C18: other_functions.clj (401 lines)
+- C19: numbers.clj (959 lines)
+- C20: evaluation.clj (226 lines)
 
 ## Current Task
 
-Phase C planning.
+C1: Port volatiles.clj — upstream faithful with CLJW markers.
 
 ## Previous Task
 
