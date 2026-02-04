@@ -377,6 +377,34 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
                 return treewalkCallBridge(allocator, fn_val, args);
             }
         },
+        .multi_fn => |mf| {
+            // Dispatch: call dispatch_fn, lookup method, call method
+            const dispatch_val = try callFnVal(allocator, mf.dispatch_fn, args);
+            const method_fn = mf.methods.get(dispatch_val) orelse
+                mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
+                return error.TypeError;
+            return callFnVal(allocator, method_fn, args);
+        },
+        .keyword => {
+            // Keyword-as-function: (:key map) => (get map :key)
+            if (args.len < 1) return error.TypeError;
+            if (args[0] == .map) {
+                return args[0].map.get(fn_val) orelse
+                    if (args.len >= 2) args[1] else Value.nil;
+            }
+            return if (args.len >= 2) args[1] else Value.nil;
+        },
+        .map => |m| {
+            // Map-as-function: ({:a 1} :b) => (get map key)
+            if (args.len < 1) return error.TypeError;
+            return m.get(args[0]) orelse
+                if (args.len >= 2) args[1] else Value.nil;
+        },
+        .set => |s| {
+            // Set-as-function: (#{:a :b} :a) => :a or nil
+            if (args.len < 1) return error.TypeError;
+            return if (s.contains(args[0])) args[0] else Value.nil;
+        },
         .var_ref => |v| return callFnVal(allocator, v.deref(), args),
         else => return error.TypeError,
     }

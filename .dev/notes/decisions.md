@@ -1595,6 +1595,7 @@ threading macros (`->`, `->>`).
 mechanism, bypassing the VM/TreeWalk exception handler entirely.
 
 **Solution**: Two-part fix:
+
 1. **VM**: Extract `execute` loop body into `stepInstruction`, catch errors at loop level.
    `isUserError()` filter + `dispatchErrorToHandler()` synthesizes ex-info map and jumps to
    catch handler. Also fixed catch cleanup: `pop` → `pop_under` for correct body result.
@@ -1602,7 +1603,27 @@ mechanism, bypassing the VM/TreeWalk exception handler entirely.
    `createRuntimeException()` synthesizes ex-info map for non-throw errors.
 
 **Error categories**:
+
 - Catchable: TypeError, ArityError, UndefinedVar, DivisionByZero, Overflow, UserException
 - Non-catchable: StackOverflow, OutOfMemory, InvalidInstruction
 
 **Impact**: Unblocks `thrown?` macro, enables proper exception testing in test suite.
+
+## D60: VM Multimethod Opcodes — defmulti/defmethod (T17.5.6)
+
+**Problem**: D28 left defmulti/defmethod as TreeWalk-only. VM compiler returned
+`error.InvalidNode` for these nodes, causing VM mode to fail on any multimethod code.
+
+**Solution**: Two new opcodes + callFnVal IFn extension:
+
+1. **Opcodes**: `defmulti` (0x44) pops dispatch_fn, creates MultiFn, binds to var.
+   `defmethod` (0x45) pops method_fn + dispatch_val, adds to multimethod methods map.
+2. **VM performCall**: `multi_fn` case calls dispatch_fn via `callFnVal`, looks up method
+   in methods map (with `:default` fallback), calls matched method.
+3. **bootstrap.callFnVal**: Extended with `multi_fn`, `keyword`, `map`, `set` IFn cases.
+   This enables dispatch functions that are keywords (e.g., `(defmulti area :shape)`).
+
+**Supersedes**: D28 TreeWalk-only restriction for defmulti/defmethod. D28's design rationale
+for defprotocol/extend-type and lazy-seq remains valid (still TreeWalk-only).
+
+**Impact**: F13 resolved. VM mode now supports full multimethod dispatch.

@@ -25,7 +25,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F6      | Multi-thread dynamic bindings                    | Native multi-thread target                                                             | D11     |
 | F7      | Macro body serialization (AOT blocker)           | T4.7 AOT bytecode startup                                                              | D18     |
 | ~~F8~~  | ~~TreeWalk→VM reverse dispatch~~                 | ~~Resolved: T10.2 — bytecodeCallBridge in bootstrap.zig~~                              | D22     |
-| F13     | VM opcodes for defmulti/defmethod                | VM-only mode needs multimethod dispatch                                                | D28     |
+| ~~F13~~ | ~~VM opcodes for defmulti/defmethod~~            | ~~Resolved: T17.5.6 — defmulti/defmethod opcodes + callFnVal IFn extension (D60)~~     | D28     |
 | F14     | VM opcodes for lazy-seq/realize                  | VM-only mode needs lazy evaluation                                                     | D28     |
 | ~~F19~~ | ~~Reader input validation (depth/size limits)~~  | ~~Resolved: T11.1b — Reader.Limits (depth/string/collection) + nREPL/CLI size checks~~ | SS14    |
 | F20     | Safe point GC design                             | Real GC (F2) implementation start                                                      | SS5     |

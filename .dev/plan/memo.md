@@ -44,7 +44,7 @@ Three priority areas in order.
 | T17.5.3 | done | Destructuring: F67 rest args + map      | apply hash-map conversion               |
 | T17.5.4 | done | Destructuring: F69 keywords in :keys    | Already working                         |
 | T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer           |
-| T17.5.6 | impl | VM defmulti/defmethod opcodes (F13)     | Compiler + VM opcodes for multimethod   |
+| T17.5.6 | done | VM defmulti/defmethod opcodes (F13)     | D60: opcodes + callFnVal IFn extension  |
 | T17.5.7 | impl | clojure.string expansion                | capitalize, split-lines, index-of, etc. |
 | T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass      |
 

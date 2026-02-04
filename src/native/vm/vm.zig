@@ -337,6 +337,55 @@ pub const VM = struct {
                 try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
             },
 
+            .defmulti => {
+                const dispatch_fn = self.pop();
+                const sym = frame.constants[instr.operand];
+                if (sym != .symbol) return error.InvalidInstruction;
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+
+                // Create MultiFn
+                const mf = self.allocator.create(value_mod.MultiFn) catch return error.OutOfMemory;
+                const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                empty_map.* = .{ .entries = &.{} };
+                mf.* = .{
+                    .name = sym.symbol.name,
+                    .dispatch_fn = dispatch_fn,
+                    .methods = empty_map,
+                };
+
+                // Bind to var
+                const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
+                v.bindRoot(.{ .multi_fn = mf });
+                try self.push(.{ .multi_fn = mf });
+            },
+            .defmethod => {
+                const method_fn = self.pop();
+                const dispatch_val = self.pop();
+                const sym = frame.constants[instr.operand];
+                if (sym != .symbol) return error.InvalidInstruction;
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+
+                // Resolve multimethod
+                const mf_var = ns.resolve(sym.symbol.name) orelse return error.UndefinedVar;
+                const mf_val = mf_var.deref();
+                if (mf_val != .multi_fn) return error.TypeError;
+                const mf = mf_val.multi_fn;
+
+                // Add method: assoc dispatch_val -> method_fn
+                const old = mf.methods;
+                const new_entries = self.allocator.alloc(value_mod.Value, old.entries.len + 2) catch return error.OutOfMemory;
+                @memcpy(new_entries[0..old.entries.len], old.entries);
+                new_entries[old.entries.len] = dispatch_val;
+                new_entries[old.entries.len + 1] = method_fn;
+                const new_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                new_map.* = .{ .entries = new_entries };
+                mf.methods = new_map;
+
+                try self.push(method_fn);
+            },
+
             // [K] Exceptions
             .try_begin => {
                 // Register exception handler
@@ -585,6 +634,30 @@ pub const VM = struct {
         if (callee == .var_ref) {
             self.stack[fn_idx] = callee.var_ref.deref();
             return self.performCall(arg_count);
+        }
+
+        // MultiFn dispatch: call dispatch_fn, lookup method, call method
+        if (callee == .multi_fn) {
+            const mf = callee.multi_fn;
+            const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+
+            // Call dispatch function
+            const dispatch_val = bootstrap.callFnVal(self.allocator, mf.dispatch_fn, args) catch |e| {
+                return @as(VMError, @errorCast(e));
+            };
+
+            // Lookup method by dispatch value, fallback to :default
+            const method_fn = mf.methods.get(dispatch_val) orelse
+                mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
+                return error.TypeError;
+
+            // Call the matched method
+            const result = bootstrap.callFnVal(self.allocator, method_fn, args) catch |e| {
+                return @as(VMError, @errorCast(e));
+            };
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
         }
 
         if (callee != .fn_val) return error.TypeError;

@@ -109,8 +109,10 @@ pub const Compiler = struct {
             .throw_node => |node| try self.emitThrow(node),
             .try_node => |node| try self.emitTry(node),
             .var_ref => |ref| try self.emitVarRef(ref),
-            // Protocol/multimethod/lazy-seq nodes not yet supported in VM compiler
-            .defprotocol_node, .extend_type_node, .defmulti_node, .defmethod_node, .lazy_seq_node => return error.InvalidNode,
+            .defmulti_node => |node| try self.emitDefmulti(node),
+            .defmethod_node => |node| try self.emitDefmethod(node),
+            // Protocol/lazy-seq nodes not yet supported in VM compiler
+            .defprotocol_node, .extend_type_node, .lazy_seq_node => return error.InvalidNode,
         }
     }
 
@@ -542,6 +544,34 @@ pub const Compiler = struct {
         // Use def_macro opcode to preserve macro flag at runtime
         const op: OpCode = if (node.is_macro) .def_macro else .def;
         try self.chunk.emit(op, idx);
+    }
+
+    fn emitDefmulti(self: *Compiler, node: *const node_mod.DefMultiNode) CompileError!void {
+        // Push name as constant
+        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.name } };
+        const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+
+        // Compile dispatch function
+        try self.compile(node.dispatch_fn); // +1
+
+        // defmulti: pops dispatch_fn, creates MultiFn, binds to var, pushes result (net 0)
+        try self.chunk.emit(.defmulti, idx);
+    }
+
+    fn emitDefmethod(self: *Compiler, node: *const node_mod.DefMethodNode) CompileError!void {
+        // Push multimethod name as constant
+        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.multi_name } };
+        const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+
+        // Compile dispatch value
+        try self.compile(node.dispatch_val); // +1
+
+        // Compile method fn (FnNode, not a full Node)
+        try self.emitFn(node.fn_node); // +1
+
+        // defmethod: pops method_fn and dispatch_val, adds to multimethod, pushes result (net -1)
+        try self.chunk.emit(.defmethod, idx);
+        self.stack_depth -= 1;
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {
