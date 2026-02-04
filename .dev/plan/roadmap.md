@@ -33,7 +33,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 14    | Clojure upstream test foundation | clojure.test, walk, 8 test files ported (72 tests)     |
 | 14.5  | Bug fix round                    | assoc vector, seq set, empty list eval, pop nil        |
 
-**Stats**: 276/705 vars done, 161 Zig builtins, 110+ core.clj fns
+**Stats**: 290/705 vars done, 166 Zig builtins, 120+ core.clj fns
 
 ## Phases
 
@@ -67,6 +67,14 @@ metadata). Fix VM bugs (F76, F77) and implement missing core functions.
 
 **Scope**: Test Batch 1 completion, VM bug fixes, missing predicates/seq fns
 **Reference**: `.dev/notes/test_file_priority.md` Batch 1
+
+### Phase 16.5: Test Batch 2 Port
+
+Port remaining Batch 2 test files (multimethods, vars, volatiles, delays).
+Continue dual-backend policy. Fix bugs found during porting.
+
+**Scope**: Test Batch 2 from `.dev/notes/test_file_priority.md`
+**Reference**: `.dev/plan/memo.md`
 
 ### Phase 17: IO / System Namespace
 

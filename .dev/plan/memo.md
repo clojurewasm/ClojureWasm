@@ -4,25 +4,24 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 16 (Test Expansion & Bug Fix)
+- Phase: 16.5 (Test Batch 2 Port)
 - Current task: (none)
 - Task file: N/A
 - Last completed: T16.10 — Implement swap-vals!/reset-vals! (F38-F39)
 - Blockers: none
-- Next: Phase 16 complete — plan Phase 17
+- Next: T16.5.1 (Port multimethods.clj)
 
-## Current Phase: 16
+## Current Phase: 16.5
 
-**Background**: Phase 15.5 verified all existing tests on both backends (196 tests,
-1046 assertions). 4 new F## items discovered (F76-F79). Test Batch 1 has 5 unported
-files. Many F## items from earlier phases remain open.
+**Background**: Phase 16 completed Batch 1 test ports (8 files, 79 tests, 332 assertions),
+fixed F76/F77 VM bugs, implemented F35-F39/F43-F47. Total: 290 done vars.
+SCI tests: 72 tests, 267 assertions on TreeWalk.
 
-**Goal**: Expand test coverage via Batch 1 remaining files + fix high-priority bugs.
-Continue dual-backend policy from Phase 15.5.
+**Goal**: Port Test Batch 2 (core features). Continue dual-backend policy.
 
 ### Rules
 
-Same as Phase 15.5:
+Same as Phase 15.5/16:
 
 1. **Dual-Backend Execution**: Run every test on both backends
 2. **SKIP is Last Resort**: Only for JVM-specific features
@@ -31,25 +30,19 @@ Same as Phase 15.5:
 
 ### Task Queue
 
-| Task   | Type    | Description                                     | Notes                                   |
-| ------ | ------- | ----------------------------------------------- | --------------------------------------- |
-| T16.1  | test    | Port clojure_set.clj + implement clojure.set ns | union, intersection, difference, etc.   |
-| T16.2  | test    | Port string.clj (clojure.string tests)          | Already have clojure.string ns          |
-| T16.3  | test    | Port keywords.clj                               | keyword ops, find-keyword               |
-| T16.4  | test    | Port other_functions.clj                        | identity, fnil, constantly, comp, juxt  |
-| T16.5  | test    | Port metadata.clj                               | meta, with-meta, vary-meta              |
-| T16.6  | bugfix  | Fix F77: VM user-defined macro expansion        | -> threading with user defmacro         |
-| T16.7  | bugfix  | Fix F76: VM stack_depth underflow with recur    | recur inside when-not/cond->            |
-| T16.8  | feature | Implement missing predicates (F35-F37)          | sequential?, associative?, ifn?         |
-| T16.9  | feature | Implement missing seq fns (F43-F44, F46-F47)    | ffirst, nnext, drop-last, split-at/with |
-| T16.10 | feature | Implement swap-vals!/reset-vals! (F38-F39)      | Atom operations returning [old new]     |
+| Task    | Type | Description                               | Notes                               |
+| ------- | ---- | ----------------------------------------- | ----------------------------------- |
+| T16.5.1 | test | Port multimethods.clj                     | defmulti, defmethod (TreeWalk only) |
+| T16.5.2 | test | Port vars.clj                             | def, defn, binding, dynamic vars    |
+| T16.5.3 | test | Port volatiles.clj                        | volatile!, vreset!, vswap!          |
+| T16.5.4 | test | Port delays.clj                           | delay, force, realized?             |
+| T16.5.5 | test | Implement core bugfixes found during port | Fix F## items discovered in Batch 2 |
 
 ### Completion Criteria
 
-- Batch 1 test files all ported and passing dual-backend
-- F76, F77 VM bugs fixed
-- F35-F39, F43-F44, F46-F47 implemented
-- Total test count significantly higher than 196
+- Batch 2 test files ported and passing dual-backend
+- New F## items documented
+- Total test count significantly higher than 79 ported tests
 
 ---
 
