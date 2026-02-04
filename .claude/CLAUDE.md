@@ -60,6 +60,18 @@ Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 3. Update memo.md: advance Current State and Task Queue
 4. **Loop back to Orient** — do NOT stop
 
+### Test Porting Guardrails (Phase C active)
+
+When working on test files under test/upstream/:
+
+1. **Implement, don't work around.** Test failure = implementation issue.
+   Never change expected values to make tests pass.
+2. **CLJW-SKIP requires F## reference.** Every skipped test needs a
+   checklist.md entry.
+3. **No assertion reduction.** Ported file assertion count must not be
+   less than upstream (excluding CLJW-SKIP).
+4. **Both backends.** Verify on VM + TreeWalk.
+
 ### When to Stop
 
 Stop **only** when:
@@ -78,6 +90,11 @@ Run before every commit:
 2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
 4. **memo.md**: Advance to next task
+5. **test-porting.md**: When changing test/upstream/ files:
+   - All changes have CLJW/CLJW-SKIP markers
+   - No assertion deletions (except CLJW-SKIP)
+   - File header statistics updated
+   - Both backends verified
 
 ### Phase Completion
 

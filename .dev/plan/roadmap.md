@@ -33,7 +33,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 14    | Clojure upstream test foundation | clojure.test, walk, 8 test files ported (72 tests)     |
 | 14.5  | Bug fix round                    | assoc vector, seq set, empty list eval, pop nil        |
 
-**Stats**: 405/712 vars done (as of Phase 18.7)
+**Stats**: 405/712 vars done (as of Phase 19)
 
 ## Phases
 
@@ -135,7 +135,24 @@ when all dependencies are available. Close gap between ClojureWasm and JVM Cloju
 **Prerequisite**: Phase 18 (tests provide regression safety)
 **Reference**: F89-F94 in checklist.md, `.claude/rules/java-interop.md`
 
-### Phase 19: Production GC
+### Phase 19: Foundation Reset (Upstream Fidelity)
+
+Eliminate test workarounds and build a foundation faithful to upstream
+Clojure/SCI. Var expansion resumes after this foundation is solid.
+
+**Sub-phases**:
+
+- **A**: Audit & Document — vars.yaml full audit (405 done vars vs upstream)
+- **B**: Fix Known Issues — F## items by test-porting impact
+- **C**: Faithful Test Porting — upstream tests with CLJW markers
+- **D**: Parallel Expansion — new vars with test-first approach
+
+**Plan**: `.dev/plan/foundation-reset.md`
+**Tracker**: `.dev/status/audit-progress.yaml`
+**Rules**: `.claude/rules/test-porting.md`
+**Reference**: `.claude/references/interop-patterns.md`
+
+### Phase 20: Production GC
 
 Replace arena allocator with real garbage collector.
 
@@ -143,27 +160,27 @@ Replace arena allocator with real garbage collector.
 **Triggers**: Long-running REPL, memory benchmarks exceed bounds
 **Reference**: F2, F20 in checklist.md; .dev/future.md SS5
 
-### Phase 20: Optimization
+### Phase 21: Optimization
 
 Performance optimization pass, benchmark-driven.
 
 **Scope**: NaN boxing (F1), fused reduce (F21), persistent DS (F4), inline caching
-**Prerequisite**: Phase 19 (Production GC) complete
+**Prerequisite**: Phase 20 (Production GC) complete
 **Reference**: See "Optimization Phase" in Phase Notes below; bench/README.md
 
-### Phase 21: Wasm InterOp (FFI)
+### Phase 22: Wasm InterOp (FFI)
 
 Call Wasm modules from native track.
 
 **Scope**: wasm/load, wasm/fn, WIT parser, Component Model
 **Reference**: See "Wasm InterOp" in Phase Notes below; .dev/future.md SS1, SS4
 
-### Phase 22: wasm_rt Track
+### Phase 23: wasm_rt Track
 
 Compile entire runtime to Wasm.
 
 **Scope**: WasmGC delegate, wasm32-wasi target
-**Prerequisite**: Phase 21 (Wasm InterOp) complete
+**Prerequisite**: Phase 22 (Wasm InterOp) complete
 **Reference**: See "wasm_rt Track" in Phase Notes below; .dev/future.md SS7
 
 ---
@@ -208,7 +225,7 @@ When implementing IO/system functionality:
 
 ### Optimization Phase
 
-**Prerequisite**: Phase 17 (Production GC) complete
+**Prerequisite**: Phase 20 (Production GC) complete
 
 | ID  | Item                     | Trigger                            | Reference |
 | --- | ------------------------ | ---------------------------------- | --------- |
@@ -234,7 +251,7 @@ Target: VM outperforms TreeWalk on all benchmarks.
 
 ### Wasm InterOp (FFI)
 
-**Prerequisite**: Optimization phase complete
+**Prerequisite**: Phase 21 (Optimization) complete
 
 FFI for calling Wasm modules from native track. Distinct from wasm_rt.
 Beta has working implementation to reference.
@@ -266,7 +283,7 @@ Beta has working implementation to reference.
 
 ### wasm_rt Track
 
-**Prerequisite**: Wasm InterOp (SS1 Phase 1-2) complete
+**Prerequisite**: Phase 22 (Wasm InterOp) complete
 
 Compile entire runtime to `.wasm`, run on WasmEdge/Wasmtime.
 
