@@ -96,8 +96,8 @@
         `(if ~test ~then (cond ~@more))
         `(if ~test ~then)))))
 
-(defmacro if-not [test then else]
-  `(if (not ~test) ~then ~else))
+(defmacro if-not [test then & more]
+  `(if (not ~test) ~then ~(first more)))
 
 (defmacro when-not [test & body]
   `(if (not ~test) (do ~@body)))
@@ -170,12 +170,14 @@
 
 (defmacro and
   [& args]
-  (let [a (first args)
-        more (rest args)]
-    (if (seq more)
-      `(let [and__val ~a]
-         (if and__val (and ~@more) and__val))
-      a)))
+  (if (nil? (seq args))
+    true
+    (let [a (first args)
+          more (rest args)]
+      (if (seq more)
+        `(let [and__val ~a]
+           (if and__val (and ~@more) and__val))
+        a))))
 
 (defmacro or
   [& args]
@@ -400,9 +402,10 @@
 ;; Utility macros
 
 ;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
-(defmacro if-let [bindings then else]
+(defmacro if-let [bindings then & more]
   (let [sym (first bindings)
-        val (first (rest bindings))]
+        val (second bindings)
+        else (first more)]
     `(let [temp# ~val]
        (if temp#
          (let [~sym temp#] ~then)

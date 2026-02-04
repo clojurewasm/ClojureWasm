@@ -27,12 +27,6 @@ Check at session start for items that become actionable.
 | F26 | for macro :let + :when combination          | for.clj tests — :let followed by :when fails                      |
 | F27 | case multiple test values syntax            | `(case x (1 2 3) :match :default)` fails                          |
 | F28 | case symbol matching                        | `(case 'sym sym :match :default)` fails                            |
-| F29 | Empty list () truthy behavior               | JVM: () is truthy, ClojureWasm: () is falsy                        |
-| F30 | if-let / if-not optional else clause        | JVM allows 2-arg, ClojureWasm requires 3-arg                      |
-| F31 | (and) returns true                          | JVM: true, ClojureWasm: nil                                        |
-| F32 | reverse nil/[] returns empty list           | JVM: empty list (truthy), ClojureWasm: nil (falsy)                 |
-| F33 | Empty list () type predicates               | list?/coll?/seq? return false for ()                               |
-| F34 | seq returns proper seq type                 | (seq [1 2 3]) returns vector, not seq                              |
 | F41 | first/rest on string                        | (first "a") fails                                                  |
 | F45 | interleave 0-1 args                         | (interleave) and (interleave [1]) fail                             |
 | F48 | (range) infinite sequence                   | infinite range not supported                                       |

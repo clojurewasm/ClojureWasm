@@ -1427,9 +1427,9 @@ test "EvalEngine compare seq on vector" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    // seq on non-empty vector returns the vector as-is
-    try std.testing.expect(result.tw_value.? == .vector);
-    try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.vector.items.len);
+    // seq on non-empty vector returns a list
+    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.list.items.len);
 }
 
 test "EvalEngine compare seq on empty vector" {

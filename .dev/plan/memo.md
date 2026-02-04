@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: B1 (Core Semantics fixes)
+- Next task: B2 (Macro Enhancement)
 - Coverage: 399/712 clojure.core vars done
 - Blockers: none
 
@@ -14,26 +14,25 @@ Session handover document. Read at session start.
 
 | Task | Description                        | Notes                                                                        |
 |------|------------------------------------|------------------------------------------------------------------------------|
-| B1   | Core Semantics fixes               | F29/F33, F34, F30, F31, F32                                                   |
 | B2   | Macro Enhancement                  | F27/F28, F93, F92, F25/F26                                                    |
 | B3   | Seq/String Operations              | F41, F45, F48, F49                                                            |
 | B4   | defn/ns Enhancement                | F90, F85                                                                      |
 
 ## Current Task
 
-B1: Core Semantics fixes.
-F29/F33, F34, F30, F31, F32.
+B2: Macro Enhancement.
+F27/F28, F93, F92, F25/F26.
 
 ## Previous Task
 
-B0 completed: test.clj enhancement.
-- `is` macro now dispatches on first symbol of expression
-- `(is (thrown? ExType body...))` — exception assertion with class check
-- `(is (thrown-with-msg? ExType re body...))` — exception + message regex
-- `(is expr msg)` — optional message argument for all patterns
-- Failure reporting includes message and expected expression
-- Standalone `thrown?` macro kept for backward compat
-- All 22 test files pass, no regressions
+B1 completed: Core Semantics fixes.
+- F29/F33: Already resolved (empty list truthy/predicates)
+- F31: (and) now returns true (was nil)
+- F30: if-let/if-not now accept optional else clause
+- F32: reverse nil/[] returns empty list () instead of nil
+- F34: seq on vector returns list (proper seq type)
+- logic.clj reverse tests reverted to upstream (no longer CLJW workaround)
+- Resolved F29, F30, F31, F32, F33, F34 from checklist
 
 ## Handover Notes
 

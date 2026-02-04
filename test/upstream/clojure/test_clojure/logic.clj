@@ -64,11 +64,9 @@
     (is (= (if (concat) :no :yes) :no))
     (is (= (if (concat []) :no :yes) :no)))
 
-  ;; Note: ClojureWasm reverse returns nil for nil/[] (JVM returns empty list) (F32)
   (testing "reverse"
-    ;; JVM returns empty list (truthy), ClojureWasm returns nil (falsy)
-    (is (= (if (reverse nil) :no :yes) :yes))
-    (is (= (if (reverse []) :no :yes) :yes)))
+    (is (= (if (reverse nil) :no :yes) :no))
+    (is (= (if (reverse []) :no :yes) :no)))
 
   (testing "sort"
     ;; sort returns empty list for empty input

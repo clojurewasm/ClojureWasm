@@ -376,7 +376,9 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| if (lst.items.len == 0) .nil else args[0],
         .vector => |vec| {
             if (vec.items.len == 0) return .nil;
-            return args[0];
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = vec.items };
+            return Value{ .list = lst };
         },
         .cons => args[0], // cons is always non-empty
         .map => |m| {
@@ -436,15 +438,20 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (reverse coll) — returns a list of items in reverse order.
+/// nil returns empty list. Empty collection returns empty list.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
     const items = switch (args[0]) {
-        .nil => return .nil,
+        .nil => &[_]Value{},
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "reverse not supported on {s}", .{@tagName(args[0])}),
     };
-    if (items.len == 0) return .nil;
+    if (items.len == 0) {
+        const empty_lst = try allocator.create(PersistentList);
+        empty_lst.* = .{ .items = &.{} };
+        return Value{ .list = empty_lst };
+    }
 
     const new_items = try allocator.alloc(Value, items.len);
     for (items, 0..) |item, i| {
@@ -1812,9 +1819,12 @@ test "reverse list" {
     try testing.expectEqual(Value{ .integer = 1 }, result.list.items[2]);
 }
 
-test "reverse nil" {
-    const result = try reverseFn(test_alloc, &.{Value.nil});
-    try testing.expect(result == .nil);
+test "reverse nil returns empty list" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const result = try reverseFn(arena.allocator(), &.{Value.nil});
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 0), result.list.items.len);
 }
 
 test "apply with builtin_fn" {
