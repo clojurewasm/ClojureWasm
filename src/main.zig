@@ -101,6 +101,7 @@ pub fn main() !void {
     }
 
     if (expr) |e| {
+        err.setSourceFile(null);
         err.setSourceText(e);
         evalAndPrint(alloc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
@@ -111,6 +112,7 @@ pub fn main() !void {
             std.process.exit(1);
         };
         defer allocator.free(source);
+        err.setSourceFile(f);
         err.setSourceText(source);
         evalAndPrint(alloc, source, use_vm, dump_bytecode);
     }
@@ -320,7 +322,7 @@ fn reportError(eval_err: anyerror) void {
         }
         // Source context
         if (info.location.line > 0) {
-            showSourceContext(w, info.location);
+            showSourceContext(w, info.location, info.message);
         }
     } else {
         // No detailed error info — fallback to Zig error name
@@ -330,7 +332,7 @@ fn reportError(eval_err: anyerror) void {
     _ = stderr.write(stream.getWritten()) catch {};
 }
 
-fn showSourceContext(w: anytype, location: err.SourceLocation) void {
+fn showSourceContext(w: anytype, location: err.SourceLocation, message: []const u8) void {
     const source = getSourceForLocation(location) orelse return;
     const error_line = location.line; // 1-based
 
@@ -359,7 +361,7 @@ fn showSourceContext(w: anytype, location: err.SourceLocation) void {
         writeLineNumber(w, line_num, max_digits);
         w.print(" | {s}\n", .{line_text}) catch {};
         if (line_num == error_line) {
-            writeErrorPointer(w, max_digits, location.column);
+            writeErrorPointer(w, max_digits, location.column, message);
         }
     }
     w.writeByte('\n') catch {};
@@ -375,14 +377,14 @@ fn writeLineNumber(w: anytype, line_num: u32, width: u32) void {
     w.print("{d}", .{line_num}) catch {};
 }
 
-fn writeErrorPointer(w: anytype, max_digits: u32, column: u32) void {
+fn writeErrorPointer(w: anytype, max_digits: u32, column: u32, message: []const u8) void {
     // "  " + digits + " | " = 2 + max_digits + 3
     const prefix_len = 2 + max_digits + 3;
     var i: u32 = 0;
     while (i < prefix_len + column) : (i += 1) {
         w.writeByte(' ') catch {};
     }
-    w.writeAll("^--- error here\n") catch {};
+    w.print("^--- {s}\n", .{message}) catch {};
 }
 
 fn countDigits(n: u32) u32 {

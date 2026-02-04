@@ -72,6 +72,7 @@ pub const Error = error{
 threadlocal var last_error: ?Info = null;
 threadlocal var msg_buf: [512]u8 = undefined;
 threadlocal var source_text_cache: ?[]const u8 = null;
+threadlocal var source_file_cache: ?[]const u8 = null;
 
 /// Store error info and return the corresponding Zig error tag.
 pub fn setError(info: Info) Error {
@@ -95,6 +96,16 @@ pub fn getLastError() ?Info {
     const info = last_error;
     last_error = null;
     return info;
+}
+
+/// Cache source file name for Node source tracking.
+pub fn setSourceFile(file: ?[]const u8) void {
+    source_file_cache = file;
+}
+
+/// Retrieve cached source file name.
+pub fn getSourceFile() ?[]const u8 {
+    return source_file_cache;
 }
 
 /// Cache source text for error context display (REPL/-e mode).

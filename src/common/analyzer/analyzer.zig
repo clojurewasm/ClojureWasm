@@ -51,7 +51,7 @@ pub const Analyzer = struct {
     }
 
     pub fn initWithEnv(allocator: Allocator, env: *Env) Analyzer {
-        return .{ .allocator = allocator, .env = env };
+        return .{ .allocator = allocator, .env = env, .source_file = err.getSourceFile() };
     }
 
 
