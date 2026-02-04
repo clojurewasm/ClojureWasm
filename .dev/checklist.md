@@ -75,7 +75,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | ~~F76~~ | ~~VM compiler stack_depth underflow with recur~~ | ~~No longer reproducible as of T16.7 — likely fixed by D56 closure capture~~           | T15.5   |
 | ~~F77~~ | ~~VM user-defined macro expansion~~              | ~~Resolved: T16.6 — def_macro opcode preserves macro flag (D58)~~                      | T15.5   |
 | F78     | with-meta on symbols                             | `(with-meta 'sym {:k v})` fails — symbol meta not supported                            | T15.5   |
-| F79     | :syms map destructuring                          | `{:syms [a b]}` basic symbol key destructuring not implemented                         | T15.5   |
+| ~~F79~~ | ~~:syms map destructuring~~                      | ~~Resolved: T17.5.5 — :syms handler in expandMapPattern + makeGetSymbolCall~~          | T15.5   |
 | F80     | find-keyword function                            | Needs keyword intern table to distinguish existing vs absent keywords                  | T16.3   |
 | F81     | ::foo auto-resolved keyword                      | `::foo` should resolve to `:current-ns/foo` — reader needs Env access                  | T16.3   |
 | F82     | Hierarchy system                                 | make-hierarchy, derive, underive, parents, ancestors, descendants                      | T16.5.1 |

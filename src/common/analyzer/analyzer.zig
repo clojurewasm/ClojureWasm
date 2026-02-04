@@ -1592,6 +1592,21 @@ pub const Analyzer = struct {
                         self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
                         bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
                     }
+                } else if (std.mem.eql(u8, kw_name, "syms")) {
+                    // :syms [a b] -> each symbol becomes a symbol-keyed get
+                    if (val.data != .vector) {
+                        return self.analysisError(.value_error, ":syms must be followed by a vector", val);
+                    }
+                    for (val.data.vector) |sym_form| {
+                        if (sym_form.data != .symbol) {
+                            return self.analysisError(.value_error, ":syms elements must be symbols", sym_form);
+                        }
+                        const sym_name = sym_form.data.symbol.name;
+                        const get_init = try self.makeGetSymbolCall(temp_ref, sym_name, defaults);
+                        const bind_idx: u32 = @intCast(self.locals.items.len);
+                        self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                        bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+                    }
                 } else if (std.mem.eql(u8, kw_name, "as")) {
                     // :as all -> all = coll
                     try self.expandBindingPattern(val, temp_ref, bindings, form);
@@ -1669,6 +1684,13 @@ pub const Analyzer = struct {
     fn makeGetStringCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
         const key_node = try self.makeConstant(.{ .string = key_name });
         const default_node = try self.findDefault(key_name, defaults);
+        return self.makeGetCallNode(coll_node, key_node, default_node);
+    }
+
+    /// Generate (get coll 'symbol) or (get coll 'symbol default) call node.
+    fn makeGetSymbolCall(self: *Analyzer, coll_node: *Node, sym_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
+        const key_node = try self.makeConstant(.{ .symbol = .{ .ns = null, .name = sym_name } });
+        const default_node = try self.findDefault(sym_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 

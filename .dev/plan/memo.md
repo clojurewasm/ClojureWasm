@@ -39,11 +39,11 @@ Three priority areas in order.
 
 | Task    | Type | Description                             | Notes                                   |
 | ------- | ---- | --------------------------------------- | --------------------------------------- |
-| T17.5.1 | fix  | VM try/catch body evaluation bug        | Catch returns exception instead of body |
-| T17.5.2 | fix  | Destructuring: F58 nested map           | `{{x :x} :b}` pattern in let/fn         |
-| T17.5.3 | fix  | Destructuring: F67 rest args + map      | `(fn [& {:keys [x]}] x)` keyword args   |
-| T17.5.4 | fix  | Destructuring: F69 keywords in :keys    | `{:keys [:a :b]}` syntax                |
-| T17.5.5 | fix  | Destructuring: F79 :syms basic          | `{:syms [a b]}` symbol key lookup       |
+| T17.5.1 | done | VM try/catch body evaluation bug        | D59: stepInstruction + error routing    |
+| T17.5.2 | done | Destructuring: F58 nested map           | Recursive expandBindingPattern          |
+| T17.5.3 | done | Destructuring: F67 rest args + map      | apply hash-map conversion               |
+| T17.5.4 | done | Destructuring: F69 keywords in :keys    | Already working                         |
+| T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer           |
 | T17.5.6 | impl | VM defmulti/defmethod opcodes (F13)     | Compiler + VM opcodes for multimethod   |
 | T17.5.7 | impl | clojure.string expansion                | capitalize, split-lines, index-of, etc. |
 | T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass      |
