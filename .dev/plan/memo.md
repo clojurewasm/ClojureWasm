@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: A (Audit & Document)
-- Next task: Batch A1 (Special Forms audit)
+- Next task: Batch A2 (Arithmetic & Comparison audit)
 - Coverage: 405/712 clojure.core vars done (269 without notes)
 - Blockers: none
 

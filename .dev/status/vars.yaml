@@ -13,27 +13,27 @@ vars:
   clojure_core:
     ".": {type: special-form, status: skip, note: "JVM interop"}
     "case*": {type: special-form, status: todo}
-    catch: {type: special-form, status: done}
-    def: {type: special-form, status: done}
+    catch: {type: special-form, status: done, note: special form (part of try)}
+    def: {type: special-form, status: done, note: special form}
     "deftype*": {type: special-form, status: skip, note: "JVM type system"}
-    do: {type: special-form, status: done}
-    finally: {type: special-form, status: done, note: "part of try"}
-    "fn*": {type: special-form, status: done}
-    if: {type: special-form, status: done}
+    do: {type: special-form, status: done, note: special form}
+    finally: {type: special-form, status: done, note: "special form (part of try)"}
+    "fn*": {type: special-form, status: done, note: special form}
+    if: {type: special-form, status: done, note: special form}
     "import*": {type: special-form, status: skip, note: "JVM interop"}
-    "let*": {type: special-form, status: done}
-    "letfn*": {type: special-form, status: todo}
-    "loop*": {type: special-form, status: done}
+    "let*": {type: special-form, status: done, note: special form}
+    "letfn*": {type: special-form, status: todo, note: special form}
+    "loop*": {type: special-form, status: done, note: special form}
     "monitor-enter": {type: special-form, status: skip, note: "JVM concurrency"}
     "monitor-exit": {type: special-form, status: skip, note: "JVM concurrency"}
     new: {type: special-form, status: skip, note: "JVM interop"}
-    quote: {type: special-form, status: done}
-    recur: {type: special-form, status: done}
+    quote: {type: special-form, status: done, note: special form}
+    recur: {type: special-form, status: done, note: special form}
     "reify*": {type: special-form, status: skip, note: "JVM type system"}
-    "set!": {type: special-form, status: done}
-    throw: {type: special-form, status: done}
-    try: {type: special-form, status: done}
-    var: {type: special-form, status: done}
+    "set!": {type: special-form, status: partial, note: "UPSTREAM-DIFF: metadata registered but not in analyzer dispatch; needs F85 binding"}
+    throw: {type: special-form, status: done, note: special form}
+    try: {type: special-form, status: done, note: special form}
+    var: {type: special-form, status: done, note: special form}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
     "*'": {type: function, status: done}
     "*1": {type: dynamic-var, status: done}
@@ -303,10 +303,10 @@ vars:
     "float?": {type: function, status: done}
     floats: {type: function, status: todo}
     flush: {type: function, status: done}
-    fn: {type: special-form, status: done}
-    "fn?": {type: function, status: done}
-    fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
-    fnil: {type: function, status: done, note: "core.clj nil-replacement wrapper"}
+    fn: {type: special-form, status: done, note: special form (analyzes as fn*)}
+    "fn?": {type: function, status: done, note: special form}
+    fnext: {type: function, status: done, note: "special form"}
+    fnil: {type: function, status: done, note: "special form"}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
     force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
     format: {type: function, status: done}
@@ -377,8 +377,8 @@ vars:
     last: {type: function, status: done, note: "core.clj loop to end"}
     "lazy-cat": {type: macro, status: done}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
-    let: {type: special-form, status: done}
-    letfn: {type: special-form, status: todo}
+    let: {type: special-form, status: done, note: special form (analyzes as let*)}
+    letfn: {type: special-form, status: todo, note: special form}
     "line-seq": {type: function, status: todo}
     list: {type: function, status: done}
     "list*": {type: function, status: done}
@@ -392,7 +392,7 @@ vars:
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
     "long-array": {type: function, status: todo}
     longs: {type: function, status: todo}
-    loop: {type: special-form, status: done}
+    loop: {type: special-form, status: done, note: special form (analyzes as loop*)}
     macroexpand: {type: function, status: done}
     "macroexpand-1": {type: function, status: done}
     "make-array": {type: function, status: todo}
@@ -743,6 +743,9 @@ vars:
       note: builtin (upstream is pure clj)
     swap\!:
       note: builtin
+    set\!:
+      status: partial
+      note: 'UPSTREAM-DIFF: metadata registered but not in analyzer dispatch; needs F85 binding'
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

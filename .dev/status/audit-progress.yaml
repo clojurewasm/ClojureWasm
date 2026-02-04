@@ -1,10 +1,10 @@
 audit:
-  batch_a1_special_forms:   {total: 16, audited: 0, issues: 0}
-  batch_a2_arithmetic:      {total: 20, audited: 0, issues: 0}
-  batch_a3_collections:     {total: 80, audited: 0, issues: 0}
-  batch_a4_strings:         {total: 15, audited: 0, issues: 0}
-  batch_a5_predicates:      {total: 30, audited: 0, issues: 0}
-  batch_a6_macros:          {total: 17, audited: 0, issues: 0}
-  batch_a7_hof_lazy:        {total: 40, audited: 0, issues: 0}
-  batch_a8_state:           {total: 10, audited: 0, issues: 0}
-  batch_a9_remaining:       {total: 50, audited: 0, issues: 0}
+  batch_a1_special_forms: {total: 17, audited: 17, issues: 1, note: set\! partial (F85); 7 skip vars verified correct}
+  batch_a2_arithmetic: {total: 20, audited: 0, issues: 0}
+  batch_a3_collections: {total: 80, audited: 0, issues: 0}
+  batch_a4_strings: {total: 15, audited: 0, issues: 0}
+  batch_a5_predicates: {total: 30, audited: 0, issues: 0}
+  batch_a6_macros: {total: 17, audited: 0, issues: 0}
+  batch_a7_hof_lazy: {total: 40, audited: 0, issues: 0}
+  batch_a8_state: {total: 10, audited: 0, issues: 0}
+  batch_a9_remaining: {total: 50, audited: 0, issues: 0}
