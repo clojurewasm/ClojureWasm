@@ -14,6 +14,7 @@ const SymbolRef = form_mod.SymbolRef;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const collections = @import("collections.zig");
+const builtin_collections = @import("builtin/collections.zig");
 
 /// Convert a Form to a runtime Value (for passing to macro functions).
 /// Collections are recursively converted. Source info preserved on lists/vectors.
@@ -152,8 +153,13 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             items[1] = Form{ .data = .{ .symbol = .{ .ns = v.ns_name, .name = v.sym.name } } };
             return Form{ .data = .{ .list = items } };
         },
+        // Lazy seq / cons — realize to list and convert
+        .lazy_seq, .cons => {
+            const realized = builtin_collections.realizeValue(allocator, val) catch return Form{ .data = .nil };
+            return valueToForm(allocator, realized);
+        },
         // Non-data values become nil (shouldn't appear in macro output)
-        .fn_val, .builtin_fn, .atom, .volatile_ref, .regex, .protocol, .protocol_fn, .multi_fn, .lazy_seq, .cons, .reduced => Form{ .data = .nil },
+        .fn_val, .builtin_fn, .atom, .volatile_ref, .regex, .protocol, .protocol_fn, .multi_fn, .reduced => Form{ .data = .nil },
     };
 }
 

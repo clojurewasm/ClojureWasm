@@ -19,6 +19,7 @@ const predicates_mod = @import("builtin/predicates.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
+const builtin_collections = @import("builtin/collections.zig");
 
 /// Bootstrap error type.
 pub const BootstrapError = error{
@@ -696,7 +697,10 @@ test "core.clj - map" {
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
-    const result = try evalString(alloc, &env, "(map inc (list 1 2 3))");
+    const raw_result = try evalString(alloc, &env, "(map inc (list 1 2 3))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 3), result.list.items.len);
     try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
@@ -715,7 +719,10 @@ test "core.clj - filter" {
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
-    const result = try evalString(alloc, &env, "(filter even? (list 1 2 3 4 5 6))");
+    const raw_result = try evalString(alloc, &env, "(filter even? (list 1 2 3 4 5 6))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 3), result.list.items.len);
     try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
@@ -749,7 +756,10 @@ test "core.clj - take" {
     try registry.registerBuiltins(&env);
     try loadCore(alloc, &env);
 
-    const result = try evalString(alloc, &env, "(take 2 (list 1 2 3 4 5))");
+    const raw_result = try evalString(alloc, &env, "(take 2 (list 1 2 3 4 5))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 2), result.list.items.len);
     try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
@@ -938,7 +948,10 @@ test "core.clj - thread-last" {
 
     // (->> (list 1 2 3) (map inc)) with inline inc
     _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
-    const r1 = try evalString(alloc, &env, "(->> (list 1 2 3) (map inc))");
+    const raw_r1 = try evalString(alloc, &env, "(->> (list 1 2 3) (map inc))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const r1 = try builtin_collections.realizeValue(alloc, raw_r1);
     try testing.expect(r1 == .list);
     try testing.expectEqual(@as(usize, 3), r1.list.items.len);
     try testing.expectEqual(Value{ .integer = 2 }, r1.list.items[0]);
@@ -2300,10 +2313,13 @@ test "lazy-seq - take from infinite sequence" {
     );
 
     // take 5 from infinite sequence
-    const result = try evalString(alloc, &env,
+    const raw_result = try evalString(alloc, &env,
         \\(take 5 (my-iterate inc 0))
     );
     // Should be (0 1 2 3 4) or [0 1 2 3 4]
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try std.testing.expect(result == .list or result == .vector);
 }
 
@@ -2391,15 +2407,18 @@ test "core.clj - partition-all" {
     try loadCore(alloc, &env);
 
     // partition-all includes trailing incomplete chunk
-    const result = try evalString(alloc, &env, "(partition-all 3 [1 2 3 4 5])");
+    const raw_result = try evalString(alloc, &env, "(partition-all 3 [1 2 3 4 5])");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try std.testing.expect(result == .list);
     try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
     // First chunk: (1 2 3)
-    const chunk1 = result.list.items[0];
+    const chunk1 = try builtin_collections.realizeValue(alloc, result.list.items[0]);
     try std.testing.expect(chunk1 == .list);
     try std.testing.expectEqual(@as(usize, 3), chunk1.list.items.len);
     // Second chunk: (4 5) — incomplete
-    const chunk2 = result.list.items[1];
+    const chunk2 = try builtin_collections.realizeValue(alloc, result.list.items[1]);
     try std.testing.expect(chunk2 == .list);
     try std.testing.expectEqual(@as(usize, 2), chunk2.list.items.len);
 }
@@ -2415,7 +2434,10 @@ test "core.clj - take-while" {
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
-    const result = try evalString(alloc, &env, "(take-while pos? [3 2 1 0 -1])");
+    const raw_result = try evalString(alloc, &env, "(take-while pos? [3 2 1 0 -1])");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try std.testing.expect(result == .list);
     try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
     try std.testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
@@ -2640,7 +2662,10 @@ test "core.clj - doall" {
     try loadCore(alloc, &env);
 
     // doall forces lazy seq and returns it
-    const result = try evalString(alloc, &env, "(doall (map inc [1 2 3]))");
+    const raw_result = try evalString(alloc, &env, "(doall (map inc [1 2 3]))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw_result);
     try std.testing.expect(result == .list);
     try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
 }
@@ -2919,21 +2944,21 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
     try registry.registerBuiltins(&env);
     try loadCore(alloc, &env);
 
-    // map with fn callback
-    const r1 = try evalStringVM(alloc, &env, "(map (fn [x] (* x x)) [1 2 3])");
-    try testing.expect(r1 == .list);
+    // map with fn callback — wrap in vec to force realization within VM context
+    const r1 = try evalStringVM(alloc, &env, "(vec (map (fn [x] (* x x)) [1 2 3]))");
+    try testing.expect(r1 == .vector);
     var buf: [256]u8 = undefined;
     var w: std.Io.Writer = .fixed(&buf);
     try r1.formatPrStr(&w);
-    try testing.expectEqualStrings("(1 4 9)", w.buffered());
+    try testing.expectEqualStrings("[1 4 9]", w.buffered());
 
-    // filter with fn callback
-    const r2 = try evalStringVM(alloc, &env, "(filter (fn [x] (> x 2)) [1 2 3 4 5])");
-    try testing.expect(r2 == .list);
+    // filter with fn callback — wrap in vec to force realization within VM context
+    const r2 = try evalStringVM(alloc, &env, "(vec (filter (fn [x] (> x 2)) [1 2 3 4 5]))");
+    try testing.expect(r2 == .vector);
     var buf2: [256]u8 = undefined;
     var w2: std.Io.Writer = .fixed(&buf2);
     try r2.formatPrStr(&w2);
-    try testing.expectEqualStrings("(3 4 5)", w2.buffered());
+    try testing.expectEqualStrings("[3 4 5]", w2.buffered());
 
     // reduce with fn callback
     const r3 = try evalStringVM(alloc, &env, "(reduce (fn [acc x] (+ acc x)) 0 [1 2 3 4 5])");
@@ -3034,7 +3059,11 @@ test "macroexpand-1 expands when macro" {
     try loadCore(alloc, &env);
 
     // (when true 1) should expand to (if true (do 1))
-    const result = try evalString(alloc, &env, "(macroexpand-1 '(when true 1))");
+    const raw = try evalString(alloc, &env, "(macroexpand-1 '(when true 1))");
+    // Lazy concat in syntax-quote may produce cons/lazy_seq; realize to list
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw);
     try testing.expect(result == .list);
     // First element should be 'if' symbol
     try testing.expect(result.list.items[0] == .symbol);
@@ -3052,7 +3081,10 @@ test "macroexpand fully expands nested macros" {
     try loadCore(alloc, &env);
 
     // (when true 1) -> macroexpand should fully expand
-    const result = try evalString(alloc, &env, "(macroexpand '(when true 1))");
+    const raw = try evalString(alloc, &env, "(macroexpand '(when true 1))");
+    const prev = setupMacroEnv(&env);
+    defer restoreMacroEnv(prev);
+    const result = try builtin_collections.realizeValue(alloc, raw);
     try testing.expect(result == .list);
     try testing.expect(result.list.items[0] == .symbol);
     try testing.expectEqualStrings("if", result.list.items[0].symbol.name);

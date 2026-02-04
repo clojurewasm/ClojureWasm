@@ -11,6 +11,7 @@ const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
+const collections = @import("collections.zig");
 const err = @import("../error.zig");
 
 /// (str) => ""
@@ -28,20 +29,23 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args) |arg| {
-        try arg.formatStr(&aw.writer);
+        const v = try collections.realizeValue(allocator, arg);
+        try v.formatStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
     return Value{ .string = owned };
 }
 
 fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
-    switch (val) {
+    // Realize lazy seqs/cons before string conversion
+    const v = try collections.realizeValue(allocator, val);
+    switch (v) {
         .nil => return Value{ .string = "" },
-        .string => return val, // already a string, return as-is
+        .string => return v, // already a string, return as-is
         else => {
             var aw: Writer.Allocating = .init(allocator);
             defer aw.deinit();
-            try val.formatStr(&aw.writer);
+            try v.formatStr(&aw.writer);
             const owned = try aw.toOwnedSlice();
             return Value{ .string = owned };
         },
@@ -58,7 +62,8 @@ pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     defer aw.deinit();
     for (args, 0..) |arg, i| {
         if (i > 0) try aw.writer.writeAll(" ");
-        try arg.formatPrStr(&aw.writer);
+        const v = try collections.realizeValue(allocator, arg);
+        try v.formatPrStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
     return Value{ .string = owned };

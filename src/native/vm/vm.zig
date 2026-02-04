@@ -22,6 +22,7 @@ const PersistentList = collections.PersistentList;
 const PersistentVector = collections.PersistentVector;
 const PersistentArrayMap = collections.PersistentArrayMap;
 const PersistentHashSet = collections.PersistentHashSet;
+const builtin_collections = @import("../../common/builtin/collections.zig");
 const arith = @import("../../common/builtin/arithmetic.zig");
 const bootstrap = @import("../../common/bootstrap.zig");
 
@@ -487,12 +488,17 @@ pub const VM = struct {
             .eq => {
                 const b = self.pop();
                 const a = self.pop();
-                try self.push(.{ .boolean = a.eql(b) });
+                // Realize lazy seqs for structural equality
+                const ra = builtin_collections.realizeValue(self.allocator, a) catch a;
+                const rb = builtin_collections.realizeValue(self.allocator, b) catch b;
+                try self.push(.{ .boolean = ra.eql(rb) });
             },
             .neq => {
                 const b = self.pop();
                 const a = self.pop();
-                try self.push(.{ .boolean = !a.eql(b) });
+                const ra = builtin_collections.realizeValue(self.allocator, a) catch a;
+                const rb = builtin_collections.realizeValue(self.allocator, b) catch b;
+                try self.push(.{ .boolean = !ra.eql(rb) });
             },
 
             // [Z] Debug

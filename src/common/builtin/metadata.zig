@@ -93,6 +93,13 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             break :blk Value{ .fn_val = new_fn };
         },
         .symbol => |s| Value{ .symbol = .{ .ns = s.ns, .name = s.name, .meta = meta_ptr } },
+        // Lazy seq / cons — realize to list, then apply meta
+        .lazy_seq, .cons => {
+            const collections = @import("collections.zig");
+            const realized = try collections.realizeValue(allocator, obj);
+            const with_meta_args = [2]Value{ realized, new_meta };
+            return withMetaFn(allocator, &with_meta_args);
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection, symbol, or fn, got {s}", .{@tagName(obj)}),
     };
 }

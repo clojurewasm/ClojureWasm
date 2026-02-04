@@ -10,6 +10,7 @@ const Allocator = std.mem.Allocator;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
+const collections = @import("collections.zig");
 const err = @import("../error.zig");
 
 /// Arithmetic and comparison intrinsics registered in clojure.core.
@@ -173,19 +174,24 @@ fn remFn(_: Allocator, args: []const Value) anyerror!Value {
     return binaryRem(args[0], args[1]);
 }
 
-fn eqFn(_: Allocator, args: []const Value) anyerror!Value {
+fn eqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = true };
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to =", .{args.len});
+    // Realize lazy seqs/cons for structural equality comparison
+    const a = try collections.realizeValue(allocator, args[0]);
     for (args[1..]) |arg| {
-        if (!args[0].eql(arg)) return .{ .boolean = false };
+        const b = try collections.realizeValue(allocator, arg);
+        if (!a.eql(b)) return .{ .boolean = false };
     }
     return .{ .boolean = true };
 }
 
-fn neqFn(_: Allocator, args: []const Value) anyerror!Value {
+fn neqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return .{ .boolean = false };
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not=", .{args.len});
-    return .{ .boolean = !args[0].eql(args[1]) };
+    const a = try collections.realizeValue(allocator, args[0]);
+    const b = try collections.realizeValue(allocator, args[1]);
+    return .{ .boolean = !a.eql(b) };
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {

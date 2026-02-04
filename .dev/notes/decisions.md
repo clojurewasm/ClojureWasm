@@ -1489,3 +1489,32 @@ existing code is unaffected.
 
 **Impact**: TreeWalk now points to exact sub-expression inside macro bodies
 (e.g. `(+ x y)` inside `defn`). VM gets line-level precision through macros.
+
+---
+
+## D65: Lazy Sequence Infrastructure
+
+**Context**: Core seq functions (map, filter, take, take-while, concat, range, mapcat)
+were eager, preventing `(range 100000000)` and `for` comprehensions with large ranges.
+
+**Decision**: Replace eager loop/recur implementations of core seq functions with
+lazy-seq/cons based implementations in core.clj. Add `realizeValue()` utility in
+collections.zig for transparent lazy→eager conversion at system boundaries
+(equality, printing, string conversion, metadata, macro expansion).
+
+**Architecture**:
+- core.clj: map, filter, take, take-while, concat, range, mapcat all use lazy-seq/cons
+- collections.zig: `realizeValue(alloc, val)` converts lazy_seq/cons to PersistentList
+- Transparent realization at boundaries: eqFn/neqFn, VM .eq/.neq opcodes,
+  print/pr/println/prn, str/pr-str, valueToForm, withMetaFn
+- `for` analyzer: uses mapcat instead of (apply concat (map ...))
+- `for` analyzer: :when/:while ordering — :when guards :while via
+  `(fn [a] (if when-cond while-cond true))` take-while predicate
+
+**Rationale**: Clojure semantics require lazy sequences. Eager implementations
+break `(take 5 (range 100000000))` and `for` comprehensions. The realize-at-boundaries
+pattern keeps lazy seq transparent: no changes needed in most code.
+
+**Impact**: Infinite sequences work. `for` comprehensions with large ranges work.
+Syntax-quote expansion (which uses concat) now returns lazy seqs, handled
+transparently by valueToForm and withMetaFn.

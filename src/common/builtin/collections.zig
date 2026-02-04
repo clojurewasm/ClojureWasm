@@ -912,9 +912,20 @@ pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = new_map };
 }
 
+/// Realize a lazy_seq/cons value into a PersistentList.
+/// Non-sequential values are returned as-is.
+/// Used by eqFn and print builtins for transparent lazy seq support.
+pub fn realizeValue(allocator: Allocator, val: Value) anyerror!Value {
+    if (val != .lazy_seq and val != .cons) return val;
+    const items = try collectSeqItems(allocator, val);
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = items };
+    return Value{ .list = lst };
+}
+
 /// Collect all items from a seq-like value (list, vector, cons, lazy_seq)
 /// into a flat slice. Handles cons chains and lazy realization.
-fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
+pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
     var items: std.ArrayListUnmanaged(Value) = .empty;
     var current = val;
     while (true) {

@@ -782,6 +782,8 @@ pub const Analyzer = struct {
         var when_forms: std.ArrayList(Form) = .empty;
         var let_forms: std.ArrayList(Form) = .empty;
         var while_forms: std.ArrayList(Form) = .empty;
+        // Track how many :when forms precede each :while (for correct :when/:while ordering)
+        var when_count_at_while: std.ArrayList(usize) = .empty;
         while (mod_idx < bindings.len) {
             if (bindings[mod_idx].data == .keyword) {
                 const kw = bindings[mod_idx].data.keyword.name;
@@ -801,6 +803,7 @@ pub const Analyzer = struct {
                     if (mod_idx + 1 >= bindings.len) {
                         return self.analysisError(.value_error, ":while requires a test expression", form);
                     }
+                    when_count_at_while.append(self.allocator, when_forms.items.len) catch return error.OutOfMemory;
                     while_forms.append(self.allocator, bindings[mod_idx + 1]) catch return error.OutOfMemory;
                     mod_idx += 2;
                 } else {
@@ -839,9 +842,37 @@ pub const Analyzer = struct {
         self.locals.append(self.allocator, .{ .name = param_name, .idx = param_idx }) catch return error.OutOfMemory;
 
         // Apply :while by wrapping coll with take-while
-        // (take-while (fn [param] test) coll) for each while condition
-        for (while_forms.items) |while_form| {
-            const while_test = try self.analyze(while_form);
+        // When :when precedes :while on same binding, guard the take-while predicate
+        // so :when-false elements pass through (to be filtered later by :when in body).
+        // Clojure semantics: (for [a coll :when P :while Q] body)
+        //   → P false: skip element (don't check Q)
+        //   → P true, Q true: include
+        //   → P true, Q false: terminate
+        // Predicate: (fn [a] (if P Q true)) instead of (fn [a] Q)
+        for (while_forms.items, 0..) |while_form, while_idx| {
+            var while_test = try self.analyze(while_form);
+
+            // Guard with preceding :when conditions
+            const guard_count = when_count_at_while.items[while_idx];
+            if (guard_count > 0) {
+                // Build: (if when_1 (if when_2 ... while_test ... true) true)
+                const true_val = try self.makeConstant(.{ .boolean = true });
+                var g: usize = guard_count;
+                while (g > 0) {
+                    g -= 1;
+                    const when_guard = try self.analyze(when_forms.items[g]);
+                    const guard_if = self.allocator.create(node_mod.IfNode) catch return error.OutOfMemory;
+                    guard_if.* = .{
+                        .test_node = when_guard,
+                        .then_node = while_test,
+                        .else_node = true_val,
+                        .source = self.sourceFromForm(form),
+                    };
+                    const guard_node = self.allocator.create(Node) catch return error.OutOfMemory;
+                    guard_node.* = .{ .if_node = guard_if };
+                    while_test = guard_node;
+                }
+            }
 
             // Build predicate fn: (fn [param] while_test)
             const tw_params = self.allocator.alloc([]const u8, 1) catch return error.OutOfMemory;
@@ -987,27 +1018,32 @@ pub const Analyzer = struct {
         const fn_node = self.allocator.create(Node) catch return error.OutOfMemory;
         fn_node.* = .{ .fn_node = fn_data };
 
-        // Build the call: map or mapcat
-        // For nested/when cases, use (apply concat (map fn coll)) directly
-        // instead of (mapcat fn coll) to avoid dependency on core.clj's mapcat
+        // Build the call: map (innermost) or mapcat (nested/when)
         const use_flatten = !is_last or when_forms.items.len > 0;
 
-        const map_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
-        map_args[0] = fn_node;
-        map_args[1] = coll_node;
-        const map_call = try self.makeBuiltinCall("map", map_args);
-
         if (!use_flatten) {
-            return map_call;
+            // (map fn coll)
+            const map_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+            map_args[0] = fn_node;
+            map_args[1] = coll_node;
+            return try self.makeBuiltinCall("map", map_args);
         }
 
-        // (apply concat (map fn coll))
-        const concat_ref = self.allocator.create(Node) catch return error.OutOfMemory;
-        concat_ref.* = .{ .var_ref = .{ .ns = null, .name = "concat", .source = .{} } };
-        const apply_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
-        apply_args[0] = concat_ref;
-        apply_args[1] = map_call;
-        return self.makeBuiltinCall("apply", apply_args);
+        // (mapcat fn coll) — lazy concatenation of mapped results
+        const mapcat_ref = self.allocator.create(Node) catch return error.OutOfMemory;
+        mapcat_ref.* = .{ .var_ref = .{ .ns = null, .name = "mapcat", .source = .{} } };
+        const mc_call_data = self.allocator.create(node_mod.CallNode) catch return error.OutOfMemory;
+        const mc_call_args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        mc_call_args[0] = fn_node;
+        mc_call_args[1] = coll_node;
+        mc_call_data.* = .{
+            .callee = mapcat_ref,
+            .args = mc_call_args,
+            .source = self.sourceFromForm(form),
+        };
+        const mc_call_node = self.allocator.create(Node) catch return error.OutOfMemory;
+        mc_call_node.* = .{ .call_node = mc_call_data };
+        return mc_call_node;
     }
 
     fn analyzeDefprotocol(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

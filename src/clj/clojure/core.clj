@@ -64,10 +64,10 @@
        ([result input]
         (rf result (f input))))))
   ([f coll]
-   (loop [s (seq coll) acc (list)]
-     (if s
-       (recur (next s) (cons (f (first s)) acc))
-       (reverse acc)))))
+   (lazy-seq
+    (let [s (seq coll)]
+      (when s
+        (cons (f (first s)) (map f (rest s))))))))
 
 (defn filter
   ([pred]
@@ -80,12 +80,12 @@
           (rf result input)
           result)))))
   ([pred coll]
-   (loop [s (seq coll) acc (list)]
-     (if s
-       (if (pred (first s))
-         (recur (next s) (cons (first s) acc))
-         (recur (next s) acc))
-       (reverse acc)))))
+   (lazy-seq
+    (let [s (seq coll)]
+      (when s
+        (if (pred (first s))
+          (cons (first s) (filter pred (rest s)))
+          (filter pred (rest s))))))))
 
 (defn reduce
   ([f coll]
@@ -102,10 +102,11 @@
          acc)))))
 
 (defn take [n coll]
-  (loop [i n s (seq coll) acc (list)]
-    (if (if (> i 0) s nil)
-      (recur (- i 1) (next s) (cons (first s) acc))
-      (reverse acc))))
+  (lazy-seq
+   (when (pos? n)
+     (let [s (seq coll)]
+       (when s
+         (cons (first s) (take (dec n) (rest s))))))))
 
 (defn drop [n coll]
   (loop [i n s (seq coll)]
@@ -114,7 +115,14 @@
       s)))
 
 (defn mapcat [f coll]
-  (apply concat (map f coll)))
+  ((fn step [cur remaining]
+     (lazy-seq
+      (if (seq cur)
+        (cons (first cur) (step (rest cur) remaining))
+        (let [s (seq remaining)]
+          (when s
+            (step (f (first s)) (rest s)))))))
+   nil coll))
 
 ;; Core macros
 
@@ -567,16 +575,41 @@
 
 ;; Lazy sequence constructors
 
+;; Shadow eager concat builtin with lazy version
+(defn concat
+  ([] nil)
+  ([x] (lazy-seq x))
+  ([x y]
+   (lazy-seq
+    (let [s (seq x)]
+      (if s
+        (cons (first s) (concat (rest s) y))
+        y))))
+  ([x y & zs]
+   (let [cat (fn cat [xy zs]
+               (lazy-seq
+                (let [s (seq xy)]
+                  (if s
+                    (cons (first s) (cat (rest s) zs))
+                    (when zs
+                      (cat (first zs) (next zs)))))))]
+     (cat (concat x y) zs))))
+
 (defn iterate [f x]
   (lazy-seq (cons x (iterate f (f x)))))
 
-;; Shadow builtin range to add 0-arity infinite range
-(let [builtin-range range]
-  (defn range
-    ([] (iterate inc 0))
-    ([end] (builtin-range end))
-    ([start end] (builtin-range start end))
-    ([start end step] (builtin-range start end step))))
+;; Lazy range — shadows eager builtin for lazy seq support
+(defn range
+  ([] (iterate inc 0))
+  ([end] (range 0 end 1))
+  ([start end] (range start end 1))
+  ([start end step]
+   (lazy-seq
+    (cond
+      (and (pos? step) (< start end))
+      (cons start (range (+ start step) end step))
+      (and (neg? step) (> start end))
+      (cons start (range (+ start step) end step))))))
 
 (defn repeat
   ([x] (lazy-seq (cons x (repeat x))))
@@ -645,12 +678,11 @@
         (reverse acc)))))
 
 (defn take-while [pred coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (if (pred (first s))
-        (recur (next s) (cons (first s) acc))
-        (reverse acc))
-      (reverse acc))))
+  (lazy-seq
+   (let [s (seq coll)]
+     (when s
+       (when (pred (first s))
+         (cons (first s) (take-while pred (rest s))))))))
 
 (defn drop-while [pred coll]
   (loop [s (seq coll)]
