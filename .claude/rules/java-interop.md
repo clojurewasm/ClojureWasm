@@ -7,38 +7,60 @@ paths:
 
 # Java Interop Policy
 
-**Do NOT skip features** that look JVM-specific. Check this table first,
-then investigate Zig equivalents. Avoid workarounds and stubs — implement
-the real feature or document why it's impossible.
+**Do NOT skip features** that look JVM-specific. This table is NOT exhaustive.
+When you encounter ANY Java interop pattern not listed here, investigate Zig
+equivalents before concluding it's impossible.
 
-## Pattern Mapping: Java → Zig/Internal
+## Decision Flow
 
-| Java Pattern               | ClojureWasm Equivalent    | Zig Mechanism               |
-| -------------------------- | ------------------------- | --------------------------- |
-| `(System/nanoTime)`        | `(__nano-time)`           | `std.time`                  |
-| `(System/currentTimeMillis)` | `(__current-time-millis)` | `std.time`                |
-| `(System/getenv k)`        | `(__getenv k)`            | `std.process.getEnvMap`     |
-| `(System/exit n)`          | `(__exit n)`              | `std.process.exit`          |
-| `(Math/abs x)`             | `(abs x)`                 | `@abs`                      |
-| `(Math/ceil x)`            | `(__ceil x)`              | `@ceil`                     |
-| `(Math/floor x)`           | `(__floor x)`             | `@floor`                    |
-| `(Math/round x)`           | `(__round x)`             | `@round`                    |
-| `(Math/sqrt x)`            | `(__sqrt x)`              | `@sqrt`                     |
-| `(Math/pow x y)`           | `(__pow x y)`             | `std.math.pow`              |
-| `(Math/sin x)`             | `(__sin x)`               | `@sin`                      |
-| `(Math/cos x)`             | `(__cos x)`               | `@cos`                      |
-| `(Math/tan x)`             | `(__tan x)`               | `@tan`                      |
-| `(Math/log x)`             | `(__log x)`               | `@log`                      |
-| `(Math/exp x)`             | `(__exp x)`               | `@exp`                      |
-| `(Math/random)`            | `(rand)`                  | builtin                     |
-| `Math/PI`, `Math/E`        | constants                 | `std.math.pi`, `std.math.e` |
-| `(.getMessage e)`          | `(ex-message e)`          | builtin                     |
-| `(.getCause e)`            | `(ex-cause e)`            | builtin                     |
-| `(Thread/sleep ms)`        | `(__sleep ms)`            | `std.time.sleep`            |
-| `clojure.java.io/*`        | `slurp`/`spit`/etc.       | `std.fs`                    |
+```
+1. Is it in "Will Not Implement" below?
+   → Yes: skip. No: continue.
+2. Is there a Zig stdlib equivalent? (std.fs, std.time, std.math, std.process)
+   → Yes: implement as Zig builtin with __ prefix name.
+3. Is it a threading/concurrency feature? (future, promise, ref, agent)
+   → Yes: implement single-threaded simplified version (e.g., future=eager delay).
+4. Is it a type conversion? (int, long, float, double, char, num)
+   → Yes: implement as Zig builtin (cast/coerce).
+5. Can pure Clojure implement it? (extend-protocol, macros, higher-order fns)
+   → Yes: implement in .clj file.
+6. None of the above?
+   → Document limitation with F## entry. Do NOT silently skip.
+```
+
+## Known Patterns: Java → Zig/Internal
+
+| Java Pattern                 | ClojureWasm Equivalent    | Zig Mechanism               |
+| ---------------------------- | ------------------------- | --------------------------- |
+| `(System/nanoTime)`          | `(__nano-time)`           | `std.time`                  |
+| `(System/currentTimeMillis)` | `(__current-time-millis)` | `std.time`                  |
+| `(System/getenv k)`         | `(__getenv k)`            | `std.process.getEnvMap`     |
+| `(System/exit n)`           | `(__exit n)`              | `std.process.exit`          |
+| `(Math/* x)`                | `(__sqrt x)` etc.         | `@sqrt`, `@sin`, `std.math` |
+| `Math/PI`, `Math/E`         | constants                 | `std.math.pi`, `std.math.e` |
+| `(.getMessage e)`           | `(ex-message e)`          | builtin                     |
+| `(.getCause e)`             | `(ex-cause e)`            | builtin                     |
+| `(Thread/sleep ms)`         | `(__sleep ms)`            | `std.time.sleep`            |
+| `clojure.java.io/*`         | `slurp`/`spit`/etc.       | `std.fs`                    |
 
 Syntax rewrite (F89): Analyzer should route `(System/*)` and `(Math/*)`
 to internal `__` names automatically. Until then, `__` names work directly.
+
+## Category Guidelines
+
+| Category          | Approach                                | Example                        |
+| ----------------- | --------------------------------------- | ------------------------------ |
+| IO/File           | Zig builtin via `std.fs`                | slurp, spit, delete-file       |
+| Math              | Zig builtin via `@intrinsic`/`std.math` | sqrt, sin, pow                 |
+| Time/System       | Zig builtin via `std.time`/`std.process`| nano-time, exit, getenv        |
+| Concurrency       | Single-threaded simplified              | future→delay, ref→atom, dosync→noop |
+| Type conversion   | Zig builtin (cast/coerce)               | int, long, float, double       |
+| Protocols         | Already supported (extend-type)         | extend, extend-protocol (.clj) |
+| Hierarchy         | Zig builtin (global hierarchy map)      | derive, parents, ancestors     |
+| Multimethods      | Already supported (both backends)       | prefer-method, get-method      |
+| Exceptions        | Zig builtin                             | ex-cause, Throwable->map       |
+| UUID/Random       | Zig builtin via `std.crypto`/`std.rand` | random-uuid, parse-uuid        |
+| Bit ops           | Zig builtin (remaining)                 | bit-and-not, bit-set, bit-test |
 
 ## Will Not Implement
 
@@ -50,9 +72,7 @@ to internal `__` names automatically. Until then, `__` names work directly.
 
 ## Development Principle
 
-When encountering missing functionality:
-
-1. **Implement properly** — add the builtin or .clj function
-2. **Never use workarounds** as permanent solutions (temp stubs need F## tracking)
-3. Check `vars.yaml` status before implementing (avoid duplicating done work)
-4. If new Zig equivalent is needed, add builtin + register + update vars.yaml
+- **Implement properly** — add the builtin or .clj function. Never use
+  workarounds as permanent solutions (temp stubs need F## tracking).
+- Check `vars.yaml` before implementing (avoid duplicating done work).
+- This file lists known patterns only. **Unlisted ≠ skip.**
