@@ -194,6 +194,23 @@ When adding a function/macro to any `.clj` file:
 4. **If simplified**: add `UPSTREAM-DIFF:` note to vars.yaml
    - Format: `UPSTREAM-DIFF: <what changed>; missing: <dep list>`
 
+### Java Interop Policy
+
+When encountering Java interop patterns (`System/`, `Math/`, `.method`, etc.):
+
+1. **Check `.dev/notes/java_interop_todo.md`** — comprehensive list of interop features
+2. **If listed as "todo"**: implement using Zig equivalent (Analyzer rewrite or builtin)
+3. **If listed as "skip"**: document why and use alternative approach
+4. **If not listed**: evaluate if Zig equivalent exists, add to list if implementable
+
+**Common patterns to handle**:
+
+- `(System/nanoTime)` → `(__nano-time)` (Analyzer rewrite)
+- `(Math/sqrt x)` → `(__sqrt x)` (Analyzer rewrite)
+- `(.getMessage e)` → `(ex-message e)` (use Clojure equivalent)
+
+**Do NOT skip** items in the todo list — attempt implementation first.
+
 ## IDE Tools
 
 Use `imenu-list-symbols`, `xref-find-references`, `getDiagnostics` actively
@@ -214,6 +231,7 @@ source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_gu
 | IDE usage patterns | `.claude/references/ide-patterns.md`       | When exploring Zig code structure               |
 | Debugging bytecode | `.claude/references/debugging-bytecode.md` | When VM tests fail or bytecode looks wrong      |
 | Impl tier guide    | `.claude/references/impl-tiers.md`         | When implementing a new function (Zig vs .clj?) |
+| Java interop list  | `.dev/notes/java_interop_todo.md`          | When encountering System/, Math/, .method, etc. |
 | Benchmark suite    | `bench/README.md`                          | Before/after performance optimization           |
 | Design document    | `.dev/future.md`                           | When planning new phases or major features      |
 | Zig 0.15.2 guide   | Beta's `docs/reference/zig_guide.md`       | When Zig 0.15 API is unclear                    |

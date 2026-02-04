@@ -81,6 +81,7 @@ When porting tests from `test/clojure/test_clojure/`, follow these rules.
 #### Reference Files
 
 - `.dev/notes/test_file_priority.md` — prioritized file list
+- `.dev/notes/java_interop_todo.md` — Java interop implementation list
 - `.dev/status/compat_test.yaml` — test tracking
 - `.dev/checklist.md` — F## deferred items
 
@@ -103,9 +104,15 @@ When porting tests from `test/clojure/test_clojure/`, follow these rules.
 
 **Test modifications:**
 
-- Only allowed for truly JVM-specific code with no portable equivalent
-- Add SKIP comment with F## reference and clear reason
+- Only allowed for truly JVM-specific code with no portable equivalent (e.g., Java interop)
 - Exhaust all implementation options before skipping
+
+**F## Deferred Items:**
+
+- Previously skipped tests (with F## reference) should now be **resolved**
+- When porting upstream tests, fix F## issues that block those tests
+- Update `.dev/checklist.md` to strike resolved F## items
+- Goal: reduce deferred items while expanding test coverage
 
 ---
 
