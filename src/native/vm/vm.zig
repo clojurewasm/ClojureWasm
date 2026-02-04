@@ -449,7 +449,12 @@ pub const VM = struct {
                 self.handler_count += 1;
             },
             .catch_begin => {
-                // Normal flow reached catch — pop handler (try body succeeded)
+                // No-op: marker for catch clause entry.
+                // Handler was already popped by throw_ex (exception flow).
+            },
+            .pop_handler => {
+                // Normal flow: pop handler that was pushed by try_begin
+                // (exception flow pops via throw_ex instead)
                 if (self.handler_count > 0) {
                     self.handler_count -= 1;
                 }
@@ -470,6 +475,8 @@ pub const VM = struct {
                     // Jump to catch handler
                     self.frames[handler.frame_idx].ip = handler.catch_ip;
                 } else {
+                    // No handler — save value for cross-backend propagation
+                    bootstrap.last_thrown_exception = thrown;
                     return error.UserException;
                 }
             },
@@ -567,7 +574,16 @@ pub const VM = struct {
         const handler = self.handlers[self.handler_count];
         self.sp = handler.saved_sp;
         self.frame_count = handler.saved_frame_count;
-        const ex = try self.createRuntimeException(err);
+
+        // Check for preserved exception value from TreeWalk boundary crossing
+        const ex = if (err == error.UserException) blk: {
+            if (bootstrap.last_thrown_exception) |thrown| {
+                bootstrap.last_thrown_exception = null;
+                break :blk thrown;
+            }
+            break :blk try self.createRuntimeException(err);
+        } else try self.createRuntimeException(err);
+
         try self.push(ex);
         self.frames[handler.frame_idx].ip = handler.catch_ip;
     }

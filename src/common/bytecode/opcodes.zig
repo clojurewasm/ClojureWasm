@@ -123,8 +123,10 @@ pub const OpCode = enum(u8) {
 
     /// Begin try block (operand: offset to catch/finally)
     try_begin = 0xA0,
-    /// Begin catch clause (operand: constant index for exception type)
+    /// Begin catch clause — no-op marker (handler already popped by throw_ex)
     catch_begin = 0xA1,
+    /// Pop exception handler (normal flow — handler not consumed by throw)
+    pop_handler = 0xA2,
     /// End try block
     try_end = 0xA3,
     /// Throw top of stack as exception
@@ -189,6 +191,7 @@ pub const OpCode = enum(u8) {
             .lazy_seq,
             .throw_ex,
             .try_end,
+            .pop_handler,
             .nop,
             .debug_print,
             => false,
@@ -261,6 +264,7 @@ test "OpCode category ranges" {
     // Exception handling (0xA0-0xAF)
     try std.testing.expectEqual(@as(u8, 0xA0), @intFromEnum(OpCode.try_begin));
     try std.testing.expectEqual(@as(u8, 0xA1), @intFromEnum(OpCode.catch_begin));
+    try std.testing.expectEqual(@as(u8, 0xA2), @intFromEnum(OpCode.pop_handler));
     try std.testing.expectEqual(@as(u8, 0xA3), @intFromEnum(OpCode.try_end));
     try std.testing.expectEqual(@as(u8, 0xA4), @intFromEnum(OpCode.throw_ex));
 
@@ -327,4 +331,5 @@ test "OpCode.hasOperand classification" {
     try std.testing.expect(!OpCode.add.hasOperand());
     try std.testing.expect(!OpCode.throw_ex.hasOperand());
     try std.testing.expect(!OpCode.try_end.hasOperand());
+    try std.testing.expect(!OpCode.pop_handler.hasOperand());
 }

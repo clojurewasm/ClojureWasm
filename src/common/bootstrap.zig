@@ -417,8 +417,18 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
         TreeWalk.initWithEnv(allocator, env)
     else
         TreeWalk.init(allocator);
-    return tw.callValue(fn_val, args);
+    return tw.callValue(fn_val, args) catch |e| {
+        // Preserve exception value across TreeWalk → VM boundary
+        if (e == error.UserException) {
+            last_thrown_exception = tw.exception;
+        }
+        return @as(anyerror, e);
+    };
 }
+
+/// Last exception value thrown by TreeWalk, for VM boundary crossing.
+/// VM reads this in dispatchErrorToHandler to avoid creating generic ExInfo.
+pub var last_thrown_exception: ?Value = null;
 
 /// Execute a bytecode fn_val via a new VM instance.
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {

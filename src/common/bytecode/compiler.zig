@@ -640,6 +640,9 @@ pub const Compiler = struct {
         const body_depth = depth_before_body + 1;
         self.stack_depth = body_depth;
 
+        // Normal flow: pop exception handler before skipping catch
+        try self.chunk.emitOp(.pop_handler);
+
         // Jump over catch to try_end
         const jump_to_end = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
 

@@ -190,7 +190,15 @@ pub const TreeWalk = struct {
             .builtin_fn => |f| @errorCast(f(self.allocator, args)),
             .fn_val => |fn_ptr| {
                 if (fn_ptr.kind == .bytecode) {
-                    return @errorCast(bootstrap.callFnVal(self.allocator, callee, args));
+                    const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
+                        // Preserve exception value from VM → TreeWalk boundary
+                        if (e == error.UserException and self.exception == null) {
+                            self.exception = bootstrap.last_thrown_exception;
+                            bootstrap.last_thrown_exception = null;
+                        }
+                        return @errorCast(e);
+                    };
+                    return result;
                 }
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, callee, args);
@@ -292,7 +300,15 @@ pub const TreeWalk = struct {
 
         // Bytecode fn_val: dispatch to VM via unified callFnVal
         if (fn_ptr.kind == .bytecode) {
-            return @errorCast(bootstrap.callFnVal(self.allocator, callee, arg_vals));
+            const result = bootstrap.callFnVal(self.allocator, callee, arg_vals) catch |e| {
+                // Preserve exception value from VM → TreeWalk boundary
+                if (e == error.UserException and self.exception == null) {
+                    self.exception = bootstrap.last_thrown_exception;
+                    bootstrap.last_thrown_exception = null;
+                }
+                return @errorCast(e);
+            };
+            return result;
         }
 
         // TreeWalk closure
