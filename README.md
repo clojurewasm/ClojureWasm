@@ -5,12 +5,13 @@ Clojure runtime written from scratch in Zig. Behavioral compatibility with Cloju
 ## Features
 
 - Full Clojure reader (literals, reader macros, syntax-quote, regex)
-- Dual backend: TreeWalk (reference) + bytecode VM (54x faster on fib)
-- 211 vars implemented (core.clj bootstrap: 663 lines)
+- Dual backend: TreeWalk (reference) + bytecode VM (9x faster on fib)
+- 405/712 clojure.core vars implemented (57%)
+- 5 Clojure namespaces (core, string, set, walk, test)
 - Interactive REPL with multi-line input
 - nREPL server (CIDER-compatible)
 - Wasm target (wasm32-wasi, 207KB)
-- 748 tests, 11 benchmarks across 8 languages
+- 385 deftests, 1490 assertions across 22 test files, 11 benchmarks
 
 ## Usage
 
@@ -35,70 +36,50 @@ src/
 ├── main.zig                        CLI entry point
 ├── root.zig                        Library root
 ├── clj/
-│   └── core.clj                    Clojure bootstrap (defn, macros, HOFs)
+│   └── clojure/
+│       ├── core.clj                Clojure core (1330 lines)
+│       ├── string.clj              clojure.string
+│       ├── set.clj                 clojure.set
+│       ├── walk.clj                clojure.walk
+│       └── test.clj                clojure.test
 │
 ├── common/                         Shared foundation
-│   ├── value.zig                   Value tagged union (18 variants)
+│   ├── value.zig                   Value tagged union (24 variants)
 │   ├── env.zig                     Environment (instantiated, no threadlocal)
 │   ├── namespace.zig               Namespace (intern/find/refer)
 │   ├── var.zig                     Var (root + dynamic bindings)
 │   ├── collections.zig             PersistentList/Vector/ArrayMap/HashSet
 │   ├── bootstrap.zig               core.clj loading + evalString pipelines
 │   ├── eval_engine.zig             Dual-backend compare mode
-│   ├── error.zig                   ErrorContext
-│   ├── gc.zig                      GC strategy trait (arena stub)
-│   ├── macro.zig                   Macro expansion
-│   ├── reader/
-│   │   ├── tokenizer.zig           Lexer
-│   │   ├── reader.zig              Parser (read-time macro expansion)
-│   │   └── form.zig                Form type (Value + source location)
-│   ├── analyzer/
-│   │   ├── analyzer.zig            Form → Node (special forms, var resolution)
-│   │   └── node.zig                AST node types (14 variants)
-│   ├── bytecode/
-│   │   ├── opcodes.zig             OpCode enum
-│   │   ├── chunk.zig               Chunk, FnProto, instruction encoding
-│   │   └── compiler.zig            Node → Bytecode
-│   └── builtin/
-│       ├── registry.zig            BuiltinDef registration
-│       ├── arithmetic.zig          +, -, *, /, mod, rem, comparisons
-│       ├── collections.zig         first, rest, conj, assoc, get, nth, count, ...
-│       ├── sequences.zig           map, filter, reduce, sort, range, ...
-│       ├── predicates.zig          nil?, number?, empty?, instance?, ...
-│       ├── strings.zig             str, subs, name, namespace, ...
-│       ├── numeric.zig             abs, max, min, rand, bit-ops, ...
-│       ├── io.zig                  println, prn, pr-str, slurp, spit
-│       ├── atom.zig                atom, deref, swap!, reset!
-│       └── special_forms.zig       Special form dispatch table
+│   ├── reader/                     Tokenizer, Reader, Form
+│   ├── analyzer/                   Form → Node AST analysis
+│   ├── bytecode/                   OpCode enum, Chunk, Compiler (49 opcodes)
+│   └── builtin/                    19 builtin modules (210+ builtins)
 │
 ├── native/                         Native execution track
-│   ├── vm/
-│   │   └── vm.zig                  Stack-based bytecode VM
-│   └── evaluator/
-│       └── tree_walk.zig           Direct AST interpreter
+│   ├── vm/vm.zig                   Stack-based bytecode VM
+│   └── evaluator/tree_walk.zig     Direct AST interpreter
 │
-├── repl/                           REPL subsystem
+├── repl/                           REPL + nREPL subsystem
 │   ├── nrepl.zig                   nREPL server (TCP, bencode)
 │   └── bencode.zig                 Bencode encoder/decoder
 │
-├── wasm_rt/                        Wasm runtime track (placeholder)
-│   ├── vm/
-│   └── gc/
-│
-├── wasm/                           Wasm FFI (placeholder)
-└── api/                            Embedding API (placeholder)
+├── wasm_rt/                        Wasm runtime track (stub)
+├── wasm/                           Wasm FFI (stub)
+└── api/                            Embedding API (stub)
 
 bench/                              Benchmark suite (11 benchmarks, 8 languages)
-.dev/                               Development plans, status tracking, notes
+test/                               22 Clojure test files (SCI + upstream ports)
 ```
 
 ## Architecture
 
-- **Tagged union Value** — 18 variants, NaN boxing deferred
+- **Tagged union Value** — 24 variants, NaN boxing deferred
 - **Arena allocator** — bulk free, real GC deferred
 - **Dual backend** — VM (default, fast) + TreeWalk (reference, correct)
 - **Instantiated VM** — no threadlocal/global mutable state
 - **core.clj bootstrap** — read+eval at startup (AOT embed deferred)
+- **49 opcodes** — bytecode compiler with direct-threaded VM
 
 ## License
 
