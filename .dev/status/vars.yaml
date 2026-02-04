@@ -238,7 +238,7 @@ vars:
     defstruct: {type: macro, status: todo}
     deftype: {type: macro, status: todo}
     delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
-    "delay?": {type: function, status: todo}
+    "delay?": {type: function, status: done, note: clj in core.clj}
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
     deref: {type: function, status: done}

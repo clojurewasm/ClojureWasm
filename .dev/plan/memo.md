@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16.5 (Test Batch 2 Port)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.5.3 — Port volatiles.clj (2 tests, 10 assertions)
+- Last completed: T16.5.4 — Port delays.clj (6 tests, 24 assertions)
 - Blockers: none
-- Next: T16.5.4 (Port delays.clj)
+- Next: Phase 16.5 complete — assess and plan next phase
 
 ## Current Phase: 16.5
 

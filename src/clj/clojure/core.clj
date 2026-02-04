@@ -785,6 +785,9 @@
     (deref (:realized x))
     false))
 
+(defn delay? [x]
+  (if (map? x) (if (:__delay x) true false) false))
+
 ;; Basic predicates
 
 (defn boolean [x]
