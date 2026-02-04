@@ -46,7 +46,7 @@ Three priority areas in order.
 | T17.5.5 | done | Destructuring: F79 :syms basic          | makeGetSymbolCall in analyzer          |
 | T17.5.6 | done | VM defmulti/defmethod opcodes (F13)     | D60: opcodes + callFnVal IFn extension |
 | T17.5.7 | done | clojure.string expansion                | +5 fns: capitalize, split-lines, etc.  |
-| T17.5.8 | test | Un-SKIP tests enabled by infrastructure | Re-enable SKIP tests that now pass     |
+| T17.5.8 | done | Un-SKIP tests enabled by infrastructure | +7 tests: 5 string, 2 destructuring    |
 
 ### Phase 17 Summary (completed)
 

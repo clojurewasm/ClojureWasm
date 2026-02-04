@@ -40,12 +40,32 @@
   (is (= "foo" (s/trim-newline "foo")))
   (is (= "" (s/trim-newline ""))))
 
-;; SKIP: t-capitalize (not implemented)
-;; SKIP: t-escape (not implemented)
-;; SKIP: t-replace-first (not implemented)
-;; SKIP: t-split-lines (not implemented)
-;; SKIP: t-index-of (not implemented)
-;; SKIP: t-last-index-of (not implemented)
+(deftest t-capitalize
+  (is (= "Foobar" (s/capitalize "foobar")))
+  (is (= "Foobar" (s/capitalize "FOOBAR")))
+  (is (= "Foobar" (s/capitalize "Foobar")))
+  (is (= "" (s/capitalize ""))))
+
+;; SKIP: t-escape (not implemented — needs higher-order fn)
+
+(deftest t-replace-first
+  (is (= "barbarfoo" (s/replace-first "foobarfoo" "foo" "bar")))
+  (is (= "foobarfoo" (s/replace-first "foobarfoo" "baz" "bar")))
+  (is (= "f$od" (s/replace-first "food" "o" "$"))))
+
+(deftest t-split-lines
+  (is (= ["one" "two" "three"] (s/split-lines "one\ntwo\nthree")))
+  (is (= ["foo" "bar"] (s/split-lines "foo\r\nbar"))))
+
+(deftest t-index-of
+  (is (= 2 (s/index-of "hello" "ll")))
+  (is (nil? (s/index-of "hello" "xyz")))
+  (is (= 3 (s/index-of "hello" "l" 3))))
+
+(deftest t-last-index-of
+  (is (= 3 (s/last-index-of "hello" "l")))
+  (is (nil? (s/last-index-of "hello" "xyz")))
+  (is (= 2 (s/last-index-of "hello" "l" 2))))
 
 (deftest t-triml
   (is (= "foo " (s/triml " foo ")))

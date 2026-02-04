@@ -1,9 +1,9 @@
 ;; Ported from clojure/test_clojure/special.clj
 ;; Tests for special forms: let destructuring
 ;;
-;; PARTIAL PORT: 3/14 tests ported
-;; SKIP: 11 tests - JVM-specific (thrown-with-cause-msg, Compiler exceptions,
-;;       reflection tests) or require unsupported features (& {:keys}, ::alias/keys)
+;; PARTIAL PORT: 5/14 tests ported (T17.5: +syms, +keyword-args destructuring)
+;; SKIP: 9 tests - JVM-specific (thrown-with-cause-msg, Compiler exceptions,
+;;       reflection tests) or require unsupported features (namespaced keys, ::alias/keys)
 
 (ns test.special
   (:use clojure.test))
@@ -28,13 +28,13 @@
   (let [{:strs [a b c] :or {c 3}} {"a" 1 "b" 2}]
     (is (= [1 2 3] [a b c]))))
 
-;; SKIP: :syms destructuring for symbol keys — not yet implemented
-;; (deftest syms-destructuring
-;;   (let [m {'a 1 'b 2}]
-;;     (let [{:syms [a b]} m]
-;;       (is (= [1 2] [a b]))))
-;;   (let [{:syms [a b c] :or {c 3}} {'a 1 'b 2}]
-;;     (is (= [1 2 3] [a b c]))))
+;; :syms destructuring for symbol keys (T17.5.5 — F79 resolved)
+(deftest syms-destructuring
+  (let [m {'a 1 'b 2}]
+    (let [{:syms [a b]} m]
+      (is (= [1 2] [a b]))))
+  (let [{:syms [a b c] :or {c 3}} {'a 1 'b 2}]
+    (is (= [1 2 3] [a b c]))))
 
 ;; :as binds the entire map
 (deftest as-destructuring
@@ -74,11 +74,10 @@
 ;; SKIP: Tests requiring unsupported features
 ;; ===========================================================================
 
-;; SKIP: F59 - multiple-keys-in-destructuring
-;; Requires: (fn [& {:keys [x]}] x) - rest args + map destructuring
-;; Original: (deftest multiple-keys-in-destructuring
-;;   (let [foo (fn [& {:keys [x]}] x)]
-;;     (is (= (foo :x :b) :b))))
+;; Rest args + map destructuring (T17.5.3 — F67 resolved)
+(deftest multiple-keys-in-destructuring
+  (let [foo (fn [& {:keys [x]}] x)]
+    (is (= (foo :x :b) :b))))
 
 ;; SKIP: F60 - empty-list-with-:as-destructuring
 ;; Requires: {:as x} '() returning {} instead of ()
