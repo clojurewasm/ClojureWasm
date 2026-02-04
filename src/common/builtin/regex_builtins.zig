@@ -14,6 +14,7 @@ const CompiledRegex = regex_mod.CompiledRegex;
 const matcher_mod = @import("../regex/matcher.zig");
 const MatchResult = matcher_mod.MatchResult;
 const Matcher = matcher_mod.Matcher;
+const err = @import("../error.zig");
 
 /// Helper: get or compile a Pattern from a Value (string or regex)
 fn getCompiledPattern(allocator: Allocator, val: Value) !*const CompiledRegex {
@@ -24,7 +25,7 @@ fn getCompiledPattern(allocator: Allocator, val: Value) !*const CompiledRegex {
             compiled.* = try matcher_mod.compile(allocator, s);
             return compiled;
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "re-find/re-matches pattern expects a regex or string, got {s}", .{@tagName(val)}),
     };
 }
 
@@ -53,7 +54,7 @@ fn matchResultToValue(allocator: Allocator, result: MatchResult, input: []const 
 
 /// (re-pattern s) — compile string to Pattern; if already Pattern, return as-is
 pub fn rePatternFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-pattern", .{args.len});
     return switch (args[0]) {
         .regex => args[0], // already a Pattern
         .string => |s| {
@@ -67,18 +68,18 @@ pub fn rePatternFn(allocator: Allocator, args: []const Value) anyerror!Value {
             };
             return Value{ .regex = pat };
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "re-pattern expects a string, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (re-find pattern s) — find first match in string
 pub fn reFindFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-find", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
     const input = switch (args[1]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-find expects a string as second argument, got {s}", .{@tagName(args[1])}),
     };
 
     const result = try matcher_mod.findFirst(allocator, compiled, input) orelse {
@@ -89,12 +90,12 @@ pub fn reFindFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (re-matches pattern s) — match entire string
 pub fn reMatchesFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-matches", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
     const input = switch (args[1]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-matches expects a string as second argument, got {s}", .{@tagName(args[1])}),
     };
 
     var m = try Matcher.init(allocator, compiled, input);
@@ -108,12 +109,12 @@ pub fn reMatchesFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (re-seq pattern s) — list of all matches
 pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-seq", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
     const input = switch (args[1]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-seq expects a string as second argument, got {s}", .{@tagName(args[1])}),
     };
 
     var results: std.ArrayListUnmanaged(Value) = .empty;

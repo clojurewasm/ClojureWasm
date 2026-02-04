@@ -31,9 +31,6 @@ pub const TreeWalkError = error{
     IndexError,
     ValueError,
     ArithmeticError,
-    // Legacy (kept until BE2c/d migrates strings.zig, var.zig)
-    IndexOutOfBounds,
-    IllegalState,
 };
 
 const MAX_LOCALS: usize = 256;
@@ -805,8 +802,7 @@ pub const TreeWalk = struct {
         return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.UserException, error.IndexError,
-            error.ValueError, error.ArithmeticError,
-            error.IndexOutOfBounds, error.IllegalState => true,
+            error.ValueError, error.ArithmeticError => true,
             error.StackOverflow, error.OutOfMemory => false,
         };
     }

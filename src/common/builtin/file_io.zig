@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 // ============================================================
 // Builtins
@@ -16,10 +17,10 @@ const BuiltinDef = var_mod.BuiltinDef;
 /// (slurp filename) => string
 /// Opens the file, reads all content as UTF-8 string, closes the file.
 pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to slurp", .{args.len});
     const path = switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "slurp expects a string filename, got {s}", .{@tagName(args[0])}),
     };
 
     const cwd = std.fs.cwd();
@@ -34,10 +35,10 @@ pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (spit filename content :append true) => nil
 /// Writes content to the file. Creates if not exists, truncates by default.
 pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to spit", .{args.len});
     const path = switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "spit expects a string filename, got {s}", .{@tagName(args[0])}),
     };
 
     // Get content as string
@@ -93,7 +94,7 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (read-line) => string or nil
 /// Reads a line from stdin. Returns nil on EOF.
 pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-line", .{args.len});
 
     const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
     var buf: [8192]u8 = undefined;

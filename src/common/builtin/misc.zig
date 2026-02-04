@@ -8,6 +8,7 @@ const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
+const err = @import("../error.zig");
 
 // ============================================================
 // gensym
@@ -18,11 +19,11 @@ var gensym_counter: u64 = 0;
 /// (gensym) => G__42
 /// (gensym prefix-string) => prefix42
 pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len > 1) return error.InvalidNumberOfArguments;
+    if (args.len > 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to gensym", .{args.len});
 
     const prefix: []const u8 = if (args.len == 1) switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "gensym expects a string prefix, got {s}", .{@tagName(args[0])}),
     } else "G__";
 
     gensym_counter += 1;
@@ -44,10 +45,10 @@ pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// current value of the atom is identical to oldval. Returns true
 /// if set happened, else false.
 pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 3) return error.InvalidNumberOfArguments;
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to compare-and-set!", .{args.len});
     const atom_ptr = switch (args[0]) {
         .atom => |a| a,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "compare-and-set! expects an atom, got {s}", .{@tagName(args[0])}),
     };
     const oldval = args[1];
     const newval = args[2];
@@ -68,10 +69,10 @@ pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Formats a string using java.lang.String/format-style placeholders.
 /// Supported: %s (string), %d (integer), %f (float), %% (literal %).
 pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 1) return error.InvalidNumberOfArguments;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to format", .{args.len});
     const fmt_str = switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "format expects a string as first argument, got {s}", .{@tagName(args[0])}),
     };
     const fmt_args = args[1..];
 

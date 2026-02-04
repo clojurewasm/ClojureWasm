@@ -10,6 +10,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
 const collections = @import("../collections.zig");
 const bootstrap = @import("../bootstrap.zig");
+const err = @import("../error.zig");
 
 // ============================================================
 // the-ns
@@ -20,10 +21,10 @@ const bootstrap = @import("../bootstrap.zig");
 /// Throws if namespace not found.
 pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to the-ns", .{args.len});
     const name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "the-ns expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name) == null) return error.NamespaceNotFound;
@@ -37,7 +38,7 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (all-ns)
 /// Returns a list of all namespace names as symbols.
 pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.InvalidNumberOfArguments;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to all-ns", .{args.len});
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
     var ns_iter = env.namespaces.iterator();
@@ -67,10 +68,10 @@ pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns the namespace named by symbol, or nil if not found.
 pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-ns", .{args.len});
     const name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-ns expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name)) |ns| {
@@ -87,10 +88,10 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns the name of the namespace as a symbol.
 pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-name", .{args.len});
     return switch (args[0]) {
         .symbol => |s| .{ .symbol = .{ .ns = null, .name = s.name } },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "ns-name expects a symbol, got {s}", .{@tagName(args[0])}),
     };
 }
 
@@ -102,10 +103,10 @@ pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Finds or creates a namespace named by symbol. Returns the namespace symbol.
 pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to create-ns", .{args.len});
     const name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "create-ns expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = try env.findOrCreateNamespace(name);
@@ -121,10 +122,10 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Also refers all clojure.core vars into the new namespace.
 pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to in-ns", .{args.len});
     const name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = try env.findOrCreateNamespace(name);
@@ -161,10 +162,10 @@ const Var = var_mod.Var;
 
 /// Resolve a symbol arg to a Namespace via Env.
 fn resolveNs(args: []const Value) !*Namespace {
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-resolve", .{args.len});
     const name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     return env.findNamespace(name) orelse return error.NamespaceNotFound;
@@ -273,10 +274,10 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (refer ns-sym :only [sym1 sym2]) — refer only specified vars.
 pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len < 1) return error.InvalidNumberOfArguments;
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to refer", .{args.len});
     const ns_name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "refer expects a symbol, got {s}", .{@tagName(args[0])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
@@ -323,14 +324,14 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Adds an alias in the current namespace to another namespace.
 pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
-    if (args.len != 2) return error.InvalidNumberOfArguments;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alias", .{args.len});
     const alias_name = switch (args[0]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as first argument, got {s}", .{@tagName(args[0])}),
     };
     const ns_name = switch (args[1]) {
         .symbol => |s| s.name,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const target_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
@@ -360,10 +361,10 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
             },
             .vector => |v| {
                 // (require '[ns :as alias :refer [syms]])
-                if (v.items.len < 1) return error.InvalidNumberOfArguments;
+                if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to require", .{args.len});
                 const ns_name = switch (v.items[0]) {
                     .symbol => |s| s.name,
-                    else => return error.TypeError,
+                    else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0])}),
                 };
                 const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
                 const current_ns = env.current_ns orelse return error.EvalError;
@@ -399,7 +400,7 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     }
                 }
             },
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got {s}", .{@tagName(arg)}),
         }
     }
 
@@ -430,10 +431,10 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
             },
             .vector => |v| {
                 // (use '[ns :only [syms]])
-                if (v.items.len < 1) return error.InvalidNumberOfArguments;
+                if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to use", .{args.len});
                 const ns_name = switch (v.items[0]) {
                     .symbol => |s| s.name,
-                    else => return error.TypeError,
+                    else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol, got {s}", .{@tagName(v.items[0])}),
                 };
                 const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
 
@@ -464,7 +465,7 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     }
                 }
             },
-            else => return error.TypeError,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol or vector, got {s}", .{@tagName(arg)}),
         }
     }
 

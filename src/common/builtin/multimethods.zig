@@ -11,23 +11,24 @@ const MultiFn = value_mod.MultiFn;
 const PersistentArrayMap = value_mod.PersistentArrayMap;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 /// (methods multifn) => map of dispatch-val -> method-fn
 pub fn methodsFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to methods", .{args.len});
     const mf = switch (args[0]) {
         .multi_fn => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "methods expects a multimethod, got {s}", .{@tagName(args[0])}),
     };
     return Value{ .map = mf.methods };
 }
 
 /// (get-method multifn dispatch-val) => method-fn or nil
 pub fn getMethodFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-method", .{args.len});
     const mf = switch (args[0]) {
         .multi_fn => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-method expects a multimethod, got {s}", .{@tagName(args[0])}),
     };
     return mf.methods.get(args[1]) orelse .nil;
 }
@@ -35,10 +36,10 @@ pub fn getMethodFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (remove-method multifn dispatch-val) => multifn
 /// Removes the method associated with dispatch-val.
 pub fn removeMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-method", .{args.len});
     const mf = switch (args[0]) {
         .multi_fn => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-method expects a multimethod, got {s}", .{@tagName(args[0])}),
     };
     const old_entries = mf.methods.entries;
     const dispatch_val = args[1];
@@ -78,10 +79,10 @@ pub fn removeMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
 /// (remove-all-methods multifn) => multifn
 /// Removes all methods from the multimethod.
 pub fn removeAllMethodsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-all-methods", .{args.len});
     const mf = switch (args[0]) {
         .multi_fn => |m| m,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-all-methods expects a multimethod, got {s}", .{@tagName(args[0])}),
     };
 
     const empty_map = try allocator.create(PersistentArrayMap);

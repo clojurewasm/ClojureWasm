@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE2d (Other builtins error messages)
+- Next task: BE3 (Runtime source location)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -14,7 +14,6 @@ Session handover document. Read at session start.
 
 | Task | Description             | Notes                                                                                                                     |
 |------|-------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| BE2  | Builtin error messages  | 17 files, ~314 sites                                                                                                      |
 | BE3  | Runtime source location | vm.zig, tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces. |
 | B0   | test.clj enhancement    | is pattern dispatch, thrown?                                                                                              |
 | B1   | Core Semantics fixes    | F29/F33, F34, F30, F31, F32                                                                                               |
@@ -24,17 +23,19 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-BE2d: Add descriptive error messages to remaining builtin files
-(atom, metadata, multimethods, ns_ops, misc, io, file_io,
-regex_builtins, system, eval, var.zig). Migrate var.zig's IllegalState
-→ ValueError. After this, remove legacy tags (IndexOutOfBounds,
-IllegalState) from VMError/TreeWalkError.
+BE3: Add runtime source location tracking to error messages.
+vm.zig and tree_walk.zig need to capture source code locations and
+original code before macro expansion, enabling proper stack traces.
 
 ## Previous Task
 
-BE2c completed: Added descriptive error messages to strings.zig
-(~18 sites) and clj_string.zig (~51 sites). Migrated IndexOutOfBounds →
-IndexError in subsFn. Both backends verified with E2E tests.
+BE2d completed: Added descriptive error messages to atom.zig,
+metadata.zig, multimethods.zig, io.zig, system.zig, regex_builtins.zig,
+file_io.zig, ns_ops.zig, misc.zig, eval.zig (~73 sites), and var.zig
+(1 site). Migrated InvalidNumberOfArguments → ArityError, IllegalState →
+ValueError. Removed legacy tags (IndexOutOfBounds, IllegalState) from
+VMError/TreeWalkError. BE2 sub-phase complete (~314 sites total across
+BE2a-d).
 
 ## Handover Notes
 
@@ -47,8 +48,7 @@ Notes that persist across sessions.
   - BE2a: Done — core builtins (arithmetic, numeric, predicates); DivisionByZero removed
   - BE2b: Done — collections + sequences; IndexOutOfBounds→IndexError, IllegalState→ValueError
   - BE2c: Done — strings (strings.zig, clj_string.zig); IndexOutOfBounds→IndexError in subsFn
-  - BE2d: Next — other builtins (~111 sites remaining)
-  - Legacy error tags: IndexOutOfBounds/IllegalState in VMError/TreeWalkError — remove after BE2d migrates all files
+  - BE2d: Done — other builtins (atom, metadata, multimethods, io, system, regex, file_io, ns_ops, misc, eval, var.zig); legacy tags removed
   - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces.
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`

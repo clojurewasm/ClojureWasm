@@ -41,9 +41,6 @@ pub const VMError = error{
     ArithmeticError,
     IndexError,
     ValueError,
-    // Legacy (kept until BE2c/d migrates strings.zig, var.zig)
-    IndexOutOfBounds,
-    IllegalState,
 };
 
 const STACK_MAX: usize = 256 * 128;
@@ -476,8 +473,7 @@ pub const VM = struct {
         return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.Overflow, error.UserException,
-            error.ArithmeticError, error.IndexError, error.ValueError,
-            error.IndexOutOfBounds, error.IllegalState => true,
+            error.ArithmeticError, error.IndexError, error.ValueError => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
             error.InvalidInstruction => false,
         };

@@ -11,6 +11,7 @@ const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
+const err = @import("../error.zig");
 
 // ============================================================
 // Output capture for testing
@@ -105,14 +106,14 @@ pub fn prFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (newline) => nil (prints newline character)
 pub fn newlineFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to newline", .{args.len});
     writeOutputByte('\n');
     return .nil;
 }
 
 /// (flush) => nil (flushes stdout)
 pub fn flushFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to flush", .{args.len});
     if (capture_buf == null) {
         var wbuf: [4096]u8 = undefined;
         var file_writer = std.fs.File.stdout().writer(&wbuf);

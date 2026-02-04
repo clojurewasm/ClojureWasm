@@ -16,6 +16,7 @@ const Analyzer = @import("../analyzer/analyzer.zig").Analyzer;
 const Node = @import("../analyzer/node.zig").Node;
 const bootstrap = @import("../bootstrap.zig");
 const TreeWalk = @import("../../native/evaluator/tree_walk.zig").TreeWalk;
+const err = @import("../error.zig");
 
 // ============================================================
 // read-string
@@ -24,10 +25,10 @@ const TreeWalk = @import("../../native/evaluator/tree_walk.zig").TreeWalk;
 /// (read-string s)
 /// Reads one object from the string s. Returns nil if string is empty.
 pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-string", .{args.len});
     const s = switch (args[0]) {
         .string => |str| str,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "read-string expects a string, got {s}", .{@tagName(args[0])}),
     };
     if (s.len == 0) return .nil;
 
@@ -44,7 +45,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (eval form)
 /// Evaluates the form data structure and returns the result.
 pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to eval", .{args.len});
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
     // Convert Value -> Form -> Node -> eval
@@ -66,7 +67,7 @@ pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// If form is a list whose first element resolves to a macro Var,
 /// expands it once and returns the result. Otherwise returns form unchanged.
 pub fn macroexpand1Fn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to macroexpand-1", .{args.len});
     return macroexpand1(allocator, args[0]);
 }
 
@@ -107,7 +108,7 @@ fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
 /// (macroexpand form)
 /// Repeatedly calls macroexpand-1 until the form no longer changes.
 pub fn macroexpandFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.InvalidNumberOfArguments;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to macroexpand", .{args.len});
 
     var current = args[0];
     var i: usize = 0;

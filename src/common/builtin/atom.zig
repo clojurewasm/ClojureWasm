@@ -13,10 +13,11 @@ const Volatile = value_mod.Volatile;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../bootstrap.zig");
+const err = @import("../error.zig");
 
 /// (atom val) => #<atom val>
 pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to atom", .{args.len});
     const a = try allocator.create(Atom);
     a.* = .{ .value = args[0] };
     return Value{ .atom = a };
@@ -24,7 +25,7 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (deref ref) => val  — works on atoms, volatiles, and delay maps
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
     return switch (args[0]) {
         .atom => |a| a.value,
         .volatile_ref => |v| v.value,
@@ -36,9 +37,9 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
             if (m.get(delay_key)) |_| {
                 return derefDelay(allocator, m);
             }
-            return error.TypeError;
+            return err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])});
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])}),
     };
 }
 
@@ -73,13 +74,13 @@ fn derefDelay(allocator: Allocator, m: *const value_mod.PersistentArrayMap) anye
 
 /// (reset! atom new-val) => new-val
 pub fn resetBangFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset!", .{args.len});
     return switch (args[0]) {
         .atom => |a| {
             a.value = args[1];
             return args[1];
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "reset! expects an atom, got {s}", .{@tagName(args[0])}),
     };
 }
 
@@ -87,10 +88,10 @@ pub fn resetBangFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (swap! atom f x y ...) => (f @atom x y ...)
 /// Supports builtin_fn directly and fn_val via call_fn dispatcher.
 pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap!", .{args.len});
     const atom_ptr = switch (args[0]) {
         .atom => |a| a,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap! expects an atom, got {s}", .{@tagName(args[0])}),
     };
 
     const fn_val = args[1];
@@ -99,7 +100,7 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Build call args: [current-val, extra-args...]
     const total = 1 + extra_args.len;
     var call_args: [256]Value = undefined;
-    if (total > call_args.len) return error.ArityError;
+    if (total > call_args.len) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap!", .{args.len});
     call_args[0] = atom_ptr.value;
     for (extra_args, 0..) |arg, i| {
         call_args[1 + i] = arg;
@@ -113,7 +114,7 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (reset-vals! atom new-val) => [old-val new-val]
 pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset-vals!", .{args.len});
     return switch (args[0]) {
         .atom => |a| {
             const old = a.value;
@@ -125,17 +126,17 @@ pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
             vec.* = .{ .items = items };
             return Value{ .vector = vec };
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "reset-vals! expects an atom, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (swap-vals! atom f) => [old-val new-val]
 /// (swap-vals! atom f x y ...) => [old-val (f @atom x y ...)]
 pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap-vals!", .{args.len});
     const atom_ptr = switch (args[0]) {
         .atom => |a| a,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap-vals! expects an atom, got {s}", .{@tagName(args[0])}),
     };
 
     const fn_val = args[1];
@@ -144,7 +145,7 @@ pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Build call args: [current-val, extra-args...]
     const total = 1 + extra_args.len;
     var call_args: [256]Value = undefined;
-    if (total > call_args.len) return error.ArityError;
+    if (total > call_args.len) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap-vals!", .{args.len});
     call_args[0] = atom_ptr.value;
     for (extra_args, 0..) |arg, i| {
         call_args[1 + i] = arg;
@@ -165,7 +166,7 @@ pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (volatile! val) => #<volatile val>
 pub fn volatileFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to volatile!", .{args.len});
     const v = try allocator.create(Volatile);
     v.* = .{ .value = args[0] };
     return Value{ .volatile_ref = v };
@@ -173,19 +174,19 @@ pub fn volatileFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (vreset! vol new-val) => new-val
 pub fn vresetBangFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vreset!", .{args.len});
     return switch (args[0]) {
         .volatile_ref => |v| {
             v.value = args[1];
             return args[1];
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "vreset! expects a volatile, got {s}", .{@tagName(args[0])}),
     };
 }
 
 /// (volatile? x) => true if x is a volatile
 pub fn volatilePred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to volatile?", .{args.len});
     return Value{ .boolean = args[0] == .volatile_ref };
 }
 

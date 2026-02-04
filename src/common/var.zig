@@ -10,6 +10,7 @@ const std = @import("std");
 const value = @import("value.zig");
 const Value = value.Value;
 const Symbol = value.Symbol;
+const err_mod = @import("error.zig");
 
 /// Builtin function signature: re-exported from value.zig to avoid circular dependency.
 pub const BuiltinFn = value.BuiltinFn;
@@ -171,7 +172,7 @@ pub fn setThreadBinding(v: *Var, new_val: Value) !void {
         }
         frame = f.prev;
     }
-    return error.IllegalState;
+    return err_mod.setErrorFmt(.eval, .value_error, .{}, "Can't change/establish root binding of: {s}", .{v.sym.name});
 }
 
 /// Check if a Var has a thread binding.
@@ -283,7 +284,7 @@ test "Var set! outside binding is error" {
     var v = Var{ .sym = .{ .name = "*x*", .ns = null }, .ns_name = "user", .dynamic = true };
     v.bindRoot(.{ .integer = 1 });
 
-    try std.testing.expectError(error.IllegalState, setThreadBinding(&v, .{ .integer = 99 }));
+    try std.testing.expectError(error.ValueError, setThreadBinding(&v, .{ .integer = 99 }));
 }
 
 test "BuiltinDef creation" {

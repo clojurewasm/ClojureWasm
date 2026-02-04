@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const err = @import("../error.zig");
 
 // ============================================================
 // Builtins
@@ -16,7 +17,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 /// (__nano-time) => integer
 /// Returns nanosecond timestamp (monotonic clock).
 pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/nanoTime", .{args.len});
     const ns: i128 = std.time.nanoTimestamp();
     // Clojure returns long (64-bit), truncate i128 to i64
     const truncated: i64 = @intCast(@as(i128, @rem(ns, std.math.maxInt(i64))));
@@ -26,7 +27,7 @@ pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (__current-time-millis) => integer
 /// Returns milliseconds since epoch (wall clock).
 pub fn currentTimeMillisFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 0) return error.ArityError;
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/currentTimeMillis", .{args.len});
     const ms = std.time.milliTimestamp();
     return Value{ .integer = ms };
 }
@@ -34,10 +35,10 @@ pub fn currentTimeMillisFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (__getenv key) => string or nil
 /// Returns the value of the environment variable, or nil if not set.
 pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/getenv", .{args.len});
     const key = switch (args[0]) {
         .string => |s| s,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/getenv expects a string, got {s}", .{@tagName(args[0])}),
     };
 
     // Need null-terminated key for posix getenv
@@ -58,10 +59,10 @@ pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (__exit n) => (does not return)
 /// Exits the process with the given exit code.
 pub fn exitFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/exit", .{args.len});
     const code = switch (args[0]) {
         .integer => |i| i,
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/exit expects an integer, got {s}", .{@tagName(args[0])}),
     };
     const exit_code: u8 = if (code >= 0 and code <= 255)
         @intCast(code)

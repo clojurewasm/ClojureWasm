@@ -10,6 +10,7 @@ const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
 const PersistentArrayMap = @import("../collections.zig").PersistentArrayMap;
+const err = @import("../error.zig");
 
 const testing = std.testing;
 
@@ -18,7 +19,7 @@ const testing = std.testing;
 // ============================================================
 
 pub fn metaFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return error.ArityError;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to meta", .{args.len});
     return getMeta(args[0]);
 }
 
@@ -42,14 +43,14 @@ pub fn getMeta(val: Value) Value {
 // ============================================================
 
 pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to with-meta", .{args.len});
     const obj = args[0];
     const new_meta = args[1];
 
     // Validate meta is a map or nil
     switch (new_meta) {
         .map, .nil => {},
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a map for metadata, got {s}", .{@tagName(new_meta)}),
     }
 
     const meta_ptr: ?*const Value = if (new_meta == .nil) null else blk: {
@@ -90,7 +91,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             };
             break :blk Value{ .fn_val = new_fn };
         },
-        else => error.TypeError,
+        else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection or fn, got {s}", .{@tagName(obj)}),
     };
 }
 
@@ -101,7 +102,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
 const bootstrap = @import("../bootstrap.zig");
 
 pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len < 2) return error.ArityError;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alter-meta!", .{args.len});
     const ref = args[0];
     const f = args[1];
     const extra = args[2..];
@@ -121,7 +122,7 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     a.meta = ptr;
                 },
                 .nil => a.meta = null,
-                else => return error.TypeError,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }
             return new_meta;
         },
@@ -131,11 +132,11 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             switch (new_meta) {
                 .map => |m| v.meta = @constCast(m),
                 .nil => v.meta = null,
-                else => return error.TypeError,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }
             return new_meta;
         },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects an atom or var, got {s}", .{@tagName(ref)}),
     }
 }
 
@@ -144,7 +145,7 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // ============================================================
 
 pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return error.ArityError;
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset-meta!", .{args.len});
     const ref = args[0];
     const new_meta = args[1];
 
@@ -157,7 +158,7 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     a.meta = ptr;
                 },
                 .nil => a.meta = null,
-                else => return error.TypeError,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }
             return new_meta;
         },
@@ -165,11 +166,11 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             switch (new_meta) {
                 .map => |m| v.meta = @constCast(m),
                 .nil => v.meta = null,
-                else => return error.TypeError,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }
             return new_meta;
         },
-        else => return error.TypeError,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects an atom or var, got {s}", .{@tagName(ref)}),
     }
 }
 
