@@ -7,9 +7,9 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 - Phase: 16 (Test Expansion & Bug Fix)
 - Current task: (none)
 - Task file: N/A
-- Last completed: T16.6 — Fix F77: VM def_macro opcode
+- Last completed: T16.7 — F76 no longer reproducible (marked resolved)
 - Blockers: none
-- Next: T16.7 (Fix F76: VM stack_depth underflow with recur)
+- Next: T16.8 (Implement missing predicates F35-F37)
 
 ## Current Phase: 16
 

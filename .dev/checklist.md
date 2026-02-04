@@ -72,7 +72,7 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F73     | Namespace-qualified :keys syntax                 | `{:a/keys [b]}` — shorthand for `{:keys [:a/b]}` not supported                         | T15.2  |
 | F74     | Namespace-qualified :syms syntax                 | `{:a/syms [b]}` — shorthand for `{:syms [a/b]}` not supported                          | T15.2  |
 | ~~F75~~ | ~~VM closure capture with named fn self-ref~~    | ~~Resolved: T15.5.1 — per-slot capture_slots array in FnProto (D56)~~                  | T15.4  |
-| F76     | VM compiler stack_depth underflow with recur     | recur inside when-not/some->/cond-> in deftest fn body causes panic                    | T15.5  |
+| ~~F76~~ | ~~VM compiler stack_depth underflow with recur~~ | ~~No longer reproducible as of T16.7 — likely fixed by D56 closure capture~~           | T15.5  |
 | ~~F77~~ | ~~VM user-defined macro expansion~~              | ~~Resolved: T16.6 — def_macro opcode preserves macro flag (D58)~~                      | T15.5  |
 | F78     | with-meta on symbols                             | `(with-meta 'sym {:k v})` fails — symbol meta not supported                            | T15.5  |
 | F79     | :syms map destructuring                          | `{:syms [a b]}` basic symbol key destructuring not implemented                         | T15.5  |
