@@ -6,11 +6,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
 - Phase: 18.6 (Core Coverage Sprint)
-- Current task: T18.6.4
+- Current task: Phase 18.6 complete
 - Task file: N/A
-- Last completed: T18.6.3 (13 pure Clojure additions: random-sample, replicate, comparator, xml-seq, printf, test, mapv, time, lazy-cat, when-first, assert, _assert_, map/filter xf)
+- Last completed: T18.6.4 (coverage expansion: +15 tests, +40 assertions)
 - Blockers: none
-- Next: Coverage expansion tests
+- Next: Plan next phase
 
 ## Current Phase: 18
 
@@ -35,7 +35,7 @@ collection utilities (rseq, shuffle), and bit-and-not.
 | T18.6.1 | done | Quick-win Zig builtins + aliases         | 3 builtins + 17 aliases, 375 done vars |
 | T18.6.2 | done | Transducer basics (transduce, cat, etc.) | +map/filter xf, conj arity, 383 vars   |
 | T18.6.3 | done | Pure Clojure additions                   | 13 functions/macros, 394 done vars     |
-| T18.6.4 | test | Coverage expansion                       | Tests for T18.6.1-3 features           |
+| T18.6.4 | done | Coverage expansion                       | +15 tests, +40 assertions, 207/1011    |
 
 ### Phase 18 Summary (completed)
 

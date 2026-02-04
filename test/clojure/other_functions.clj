@@ -1,6 +1,8 @@
 ;; Ported from clojure/test_clojure/other_functions.clj
 ;; Tests for identity, fnil, comp, complement, constantly, juxt, partial,
-;; every-pred, some-fn, max/min-key, update, update-vals, update-keys
+;; every-pred, some-fn, max/min-key, update, update-vals, update-keys,
+;; transduce, cat, dedupe, halt-when, sequence, random-sample, replicate,
+;; comparator, xml-seq, mapv, lazy-cat, when-first, assert, deref/reduced, conj
 ;;
 ;; SKIP: test-regex-matcher (regex not implemented)
 ;; SKIP: test-identity char literals (\c), BigDecimal (0M), Ratio (2/3)
@@ -303,5 +305,79 @@
 (deftest test-reversible-pred
   (is (true? (reversible? [1 2])))
   (is (false? (reversible? '(1)))))
+
+;; === T18.6.2-3: Transducer & Pure Clojure additions ===
+
+(deftest test-transduce
+  (is (= 14 (transduce (map inc) + [1 2 3 4])))
+  (is (= 24 (transduce (map inc) + 10 [1 2 3 4])))
+  (is (= 0 (transduce (map inc) + [])))
+  (is (= 9 (transduce (filter odd?) + [1 2 3 4 5])))
+  (is (= [2 3 4] (into [] (map inc) [1 2 3])))
+  (is (= [1 3 5] (into [] (filter odd?) [1 2 3 4 5]))))
+
+(deftest test-cat
+  (is (= [1 2 3 4 5] (into [] cat [[1 2] [3 4] [5]])))
+  (is (= [1 2 3] (into [] cat [[1] [2] [3]])))
+  (is (= [] (into [] cat []))))
+
+(deftest test-dedupe
+  (is (= [1 2 3 1] (into [] (dedupe) [1 1 2 2 3 3 1 1])))
+  (is (= [1 2 3 1] (into [] (dedupe) [1 2 2 3 1 1])))
+  (is (= [1 2 3] (dedupe [1 1 2 2 3 3]))))
+
+(deftest test-halt-when
+  (is (= 4 (into [] (halt-when (fn [x] (> x 3))) [1 2 3 4 5])))
+  (is (= [1 2 3] (into [] (halt-when (fn [x] (> x 10))) [1 2 3]))))
+
+(deftest test-sequence
+  (is (= '(1 2 3) (sequence [1 2 3])))
+  (is (= () (sequence nil)))
+  (is (= () (sequence [])))
+  (is (= 3 (count (sequence [1 2 3])))))
+
+(deftest test-random-sample
+  (is (<= (count (random-sample 0.5 (range 100))) 100))
+  (is (= 0 (count (random-sample 0.0 [1 2 3]))))
+  (is (= 3 (count (into [] (random-sample 1.0) [1 2 3])))))
+
+(deftest test-replicate
+  (is (= '(:x :x :x) (replicate 3 :x)))
+  (is (empty? (replicate 0 :x))))
+
+(deftest test-comparator
+  (let [cmp (comparator <)]
+    (is (= -1 (cmp 1 2)))
+    (is (= 1 (cmp 2 1)))
+    (is (= 0 (cmp 1 1)))))
+
+(deftest test-xml-seq
+  (let [root {:tag :a :content [{:tag :b :content []} "text"]}]
+    (is (= 3 (count (xml-seq root))))))
+
+(deftest test-mapv
+  (is (= [2 3 4] (mapv inc [1 2 3])))
+  (is (vector? (mapv inc [1 2 3])))
+  (is (= [] (mapv inc []))))
+
+(deftest test-lazy-cat
+  (is (= [1 2 3 4 5] (vec (lazy-cat [1 2] [3 4] [5]))))
+  (is (= [] (vec (lazy-cat)))))
+
+(deftest test-when-first
+  (is (= "first=1" (when-first [x [1 2 3]] (str "first=" x))))
+  (is (nil? (when-first [x []] (str "first=" x)))))
+
+(deftest test-assert
+  (is (= :ok (do (assert true) :ok)))
+  (is (= "caught" (try (assert false "boom") (catch Error e "caught")))))
+
+(deftest test-deref-reduced
+  (is (= 42 (deref (reduced 42))))
+  (is (= 99 @(reduced 99))))
+
+(deftest test-conj-arity
+  (is (= [] (conj)))
+  (is (= [1] (conj [1]))))
 
 (run-tests)
