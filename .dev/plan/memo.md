@@ -4,26 +4,22 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 
 ## Current State
 
-- Phase: 18 (Test Batch 3 + Coverage Expansion)
-- Current task: T18.5
+- Phase: 18.5 (Upstream Alignment + Core Expansion II)
+- Current task: T18.5.1
 - Task file: N/A
-- Last completed: T18.4 (Core function expansion — 23 functions)
+- Last completed: Phase 18 (4 tasks done, T18.2 deferred)
 - Blockers: none
-- Next: Coverage expansion in existing tests
+- Next: Fix F95 lazy-seq+cons → more core functions → numeric conversions
 
 ## Current Phase: 18
 
-**Background**: Phase 17.5 completed infrastructure fixes (8 tasks, D59/D60).
-Total: 14 test files, 311 done vars (19 clojure.string), 189 Zig builtins.
-Phase 17.5 un-SKIPped 7 tests, resolved F13/F58/F67/F69/F79.
-T18.1 added 5 bit ops. T18.3 ported numbers.clj (31 tests, 340 assertions).
-Fixes: ArithmeticError added to VM/TreeWalk error sets, == multi-arity, NaN div.
-T18.4 added 23 functions: 10 spec predicates, NaN?/infinite?/double?/parse-boolean,
-run!/rand-nth/nthnext/nthrest/take-last/distinct?, 3 clojure.walk functions.
-tree-seq deferred (F95: lazy-seq+cons TypeError).
+**Background**: Phase 18 completed: 5 bit ops, numbers.clj (37 tests/376 assertions),
+23 core/walk functions, test coverage expansion (+120 assertions across 4 files).
+Total: 14 test files, 332 done clojure.core vars, 189 Zig builtins.
+F95 (lazy-seq+cons TypeError) blocks tree-seq and other lazy functions.
 
-**Goal**: Port numbers.clj tests, implement missing bit/numeric functions,
-expand test coverage for existing files.
+**Goal**: Fix infrastructure gaps (F95), continue core function expansion,
+numeric conversions (deferred T18.2), upstream macro alignment.
 
 ### Rules
 
@@ -34,13 +30,22 @@ expand test coverage for existing files.
 
 ### Task Queue
 
-| Task  | Type | Description                             | Notes                                        |
-| ----- | ---- | --------------------------------------- | -------------------------------------------- |
-| T18.1 | done | Missing bit ops (bit-set, -clear, etc.) | 5 builtins: set/clear/flip/test/ushiftr      |
-| T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char          |
-| T18.3 | done | Port numbers.clj (31 tests)             | ArithmeticError fix, == multi-arity, NaN div |
-| T18.4 | done | Core function expansion (23 functions)  | 10 spec preds + 10 utils + 3 walk fns        |
-| T18.5 | done | Coverage expansion (+120 assertions)    | numbers/other/keywords/walk test expansion   |
+| Task    | Type | Description                              | Notes                                       |
+| ------- | ---- | ---------------------------------------- | ------------------------------------------- |
+| T18.5.1 | fix  | Fix F95 lazy-seq+cons TypeError          | Blocks tree-seq, reductions, other lazy fns |
+| T18.5.2 | impl | Numeric conversions (int, long, etc.)    | int, long, float, double, num (deferred)    |
+| T18.5.3 | impl | Core expansion II (seqable?, counted?)   | Zig builtins for type predicates            |
+| T18.5.4 | impl | Seq utilities (reductions, take-nth etc) | Pure Clojure seq functions                  |
+| T18.5.5 | test | Coverage: un-SKIP newly enabled tests    | Tests enabled by F95 fix and new functions  |
+
+### Phase 18 Summary (completed)
+
+| Task  | Status | Description                            |
+| ----- | ------ | -------------------------------------- |
+| T18.1 | done   | 5 bit ops builtins                     |
+| T18.3 | done   | Port numbers.clj + ArithmeticError/NaN |
+| T18.4 | done   | 23 core/walk functions                 |
+| T18.5 | done   | Test coverage expansion (+120)         |
 
 ### Phase 17 Summary (completed)
 
