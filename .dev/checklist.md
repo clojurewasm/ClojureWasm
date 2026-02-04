@@ -30,7 +30,6 @@ Check at session start for items that become actionable.
 | F72 | Namespaced :syms destructuring              | `{:syms [a/b]}` not supported                                      |
 | F73 | Namespace-qualified :keys syntax            | `{:a/keys [b]}` not supported                                      |
 | F74 | Namespace-qualified :syms syntax            | `{:a/syms [b]}` not supported                                      |
-| F78 | with-meta on symbols                        | symbol meta not supported                                          |
 | F80 | find-keyword function                       | Needs keyword intern table                                         |
 | F81 | ::foo auto-resolved keyword                 | Reader needs Env access for `:current-ns/foo`                      |
 | F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |

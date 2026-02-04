@@ -32,6 +32,7 @@ pub fn getMeta(val: Value) Value {
         .map => |m| if (m.meta) |meta| meta.* else .nil,
         .set => |s| if (s.meta) |m| m.* else .nil,
         .fn_val => |f| if (f.meta) |m| m.* else .nil,
+        .symbol => |s| if (s.meta) |m| m.* else .nil,
         .atom => |a| if (a.meta) |m| m.* else .nil,
         .var_ref => |v| if (v.meta) |m| Value{ .map = m } else .nil,
         else => .nil,
@@ -91,7 +92,8 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             };
             break :blk Value{ .fn_val = new_fn };
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection or fn, got {s}", .{@tagName(obj)}),
+        .symbol => |s| Value{ .symbol = .{ .ns = s.ns, .name = s.name, .meta = meta_ptr } },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection, symbol, or fn, got {s}", .{@tagName(obj)}),
     };
 }
 

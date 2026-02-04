@@ -26,6 +26,7 @@ pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Val
 pub const Symbol = struct {
     ns: ?[]const u8,
     name: []const u8,
+    meta: ?*const Value = null,
 };
 
 /// Interned keyword reference.

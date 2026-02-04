@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C1 (volatiles.clj)
+- Next task: C3 (re-port logic.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -15,8 +15,8 @@ Session handover document. Read at session start.
 Phase C: Faithful upstream test porting with CLJW markers.
 Order: new small → re-port existing → new medium → new large.
 
-- C1: volatiles.clj (31 lines, all fns done, zero JVM deps)
-- C2: macros.clj (113 lines, threading macros)
+- ~~C1: volatiles.clj~~ done
+- ~~C2: macros.clj~~ done
 - C3: Re-port logic.clj (212→167 lines, add missing upstream tests)
 - C4: Re-port for.clj (128→71 lines, add missing upstream tests)
 - C5: Re-port atoms.clj (62 lines, faithful to upstream)
@@ -38,7 +38,7 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C1: Port volatiles.clj — upstream faithful with CLJW markers.
+C3: Re-port logic.clj — faithful from upstream with CLJW markers.
 
 ## Previous Task
 

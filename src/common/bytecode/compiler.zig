@@ -194,7 +194,9 @@ pub const Compiler = struct {
 
         // Patch jump over else
         self.chunk.patchJump(jump_over_else);
-        // Both branches leave depth at branch_base + 1
+        // Normalize depth: if one branch has recur/throw (non-local exit),
+        // its depth may be lower. The join point always has branch_base + 1.
+        self.stack_depth = branch_base + 1;
     }
 
     fn emitDo(self: *Compiler, node: *const node_mod.DoNode) CompileError!void {
