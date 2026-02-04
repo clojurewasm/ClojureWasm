@@ -147,7 +147,7 @@ vars:
     bigdec: {type: function, status: todo}
     bigint: {type: function, status: todo}
     biginteger: {type: function, status: todo}
-    binding: {type: macro, status: todo}
+    binding: {type: macro, status: done}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: done, note: builtin (upstream is pure clj)}
     "bit-clear": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
@@ -470,7 +470,7 @@ vars:
     pmap: {type: function, status: todo}
     pop: {type: function, status: done, note: "Zig builtin"}
     "pop!": {type: function, status: todo}
-    "pop-thread-bindings": {type: function, status: todo}
+    "pop-thread-bindings": {type: function, status: done}
     "pos-int?": {type: function, status: done, note: "Zig builtin"}
     "pos?": {type: function, status: done, note: "Zig builtin"}
     pr: {type: function, status: done, note: "Zig builtin"}
@@ -496,7 +496,7 @@ vars:
     "proxy-mappings": {type: function, status: todo}
     "proxy-name": {type: function, status: todo}
     "proxy-super": {type: macro, status: todo}
-    "push-thread-bindings": {type: function, status: todo}
+    "push-thread-bindings": {type: function, status: done}
     pvalues: {type: macro, status: todo}
     "qualified-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "qualified-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}

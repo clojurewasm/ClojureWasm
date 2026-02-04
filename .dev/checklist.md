@@ -35,11 +35,8 @@ Check at session start for items that become actionable.
 | F81 | ::foo auto-resolved keyword                 | Reader needs Env access for `:current-ns/foo`                      |
 | F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |
 | F83 | prefer-method / prefers                     | Multimethod dispatch preference resolution                         |
-| F85 | binding / set! special forms                | Dynamic binding per-call-stack not implemented; set! in analyzer missing |
 | F86 | bound? takes var_ref not symbol             | ClojureWasm bound? takes symbol, JVM takes var_ref                 |
 | F87 | #'var inside deftest body                   | Var quote resolves at analyze time, fails for deftest-local defs   |
-| F88 | ^:dynamic / ^:meta on def                   | Reader metadata on def special form not supported                  |
 | F89 | Analyzer rewrite for System/Math            | Builtins exist but syntax routing missing                          |
-| F90 | defn full implementation                    | No docstring, metadata, pre/post conditions, inline support        |
 | F91 | delay proper Value type                     | Map-based delay; upstream uses clojure.lang.Delay class            |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |

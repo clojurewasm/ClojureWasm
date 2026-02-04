@@ -18,6 +18,7 @@ const env_mod = @import("../../common/env.zig");
 const Env = env_mod.Env;
 const bootstrap = @import("../../common/bootstrap.zig");
 
+const var_mod = @import("../../common/var.zig");
 const err_mod = @import("../../common/error.zig");
 
 /// TreeWalk execution errors.
@@ -138,6 +139,7 @@ pub const TreeWalk = struct {
             .fn_node => |fn_n| self.makeClosure(fn_n),
             .call_node => |call_n| self.runCall(call_n),
             .def_node => |def_n| self.runDef(def_n),
+            .set_node => |set_n| self.runSetBang(set_n),
             .loop_node => |loop_n| self.runLoop(loop_n),
             .recur_node => |recur_n| self.runRecur(recur_n),
             .quote_node => |q| q.value,
@@ -471,6 +473,15 @@ pub const TreeWalk = struct {
         if (def_n.is_private) v.private = true;
 
         return Value{ .symbol = .{ .ns = ns.name, .name = v.sym.name } };
+    }
+
+    fn runSetBang(self: *TreeWalk, set_n: *const node_mod.SetNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+        const v = ns.resolve(set_n.var_name) orelse return error.UndefinedVar;
+        const new_val = try self.run(set_n.expr);
+        var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
+        return new_val;
     }
 
     fn callProtocolFn(self: *TreeWalk, pf: *const value_mod.ProtocolFn, arg_nodes: []const *Node) TreeWalkError!Value {
@@ -849,8 +860,6 @@ pub const TreeWalk = struct {
     }
 
     // --- Builtin function dispatch (runtime_fn) ---
-
-    const var_mod = @import("../../common/var.zig");
 
     fn callBuiltinFn(self: *TreeWalk, func: var_mod.BuiltinFn, arg_nodes: []const *Node) TreeWalkError!Value {
         // Evaluate all arguments (heap-allocated to reduce stack frame size)

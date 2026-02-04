@@ -4,7 +4,7 @@
 ;; Builtins (def, defmacro, fn, if, do, let, +, -, etc.) are already registered
 ;; in the Env by registry.registerBuiltins before this file is loaded.
 
-;; UPSTREAM-DIFF: Simplified defn; no docstring, metadata, pre/post, inline support
+;; Bootstrap defn — will be redefined below with docstring/metadata support
 (defmacro defn [name & fdecl]
   `(def ~name (fn ~name ~@fdecl)))
 
@@ -20,6 +20,40 @@
 
 (defn next [coll]
   (seq (rest coll)))
+
+;; last/butlast defined early — needed by enhanced defn below
+(defn last [coll]
+  (loop [s (seq coll)]
+    (if s
+      (if (next s)
+        (recur (next s))
+        (first s))
+      nil)))
+
+(defn butlast [coll]
+  (loop [s (seq coll) acc (list)]
+    (if s
+      (if (next s)
+        (recur (next s) (cons (first s) acc))
+        (if (seq acc) (reverse acc) nil))
+      nil)))
+
+;; Full defn: strips docstring, attr-map, trailing attr-map
+;; UPSTREAM-DIFF: No arglists metadata, no inline support, no with-meta on name
+(defmacro defn [name & fdecl]
+  (let [fdecl (if (string? (first fdecl))
+                (next fdecl)
+                fdecl)
+        fdecl (if (map? (first fdecl))
+                (next fdecl)
+                fdecl)
+        fdecl (if (vector? (first fdecl))
+                (list fdecl)
+                fdecl)
+        fdecl (if (map? (last fdecl))
+                (butlast fdecl)
+                fdecl)]
+    `(def ~name (fn ~name ~@fdecl))))
 
 (defn map
   ([f]
@@ -113,8 +147,9 @@
   (fn [& args]
     (not (apply f args))))
 
+;; UPSTREAM-DIFF: No :private metadata (F78 needed for symbol meta)
 (defmacro defn- [name & fdecl]
-  `(def ~name (fn ~name ~@fdecl)))
+  `(defn ~name ~@fdecl))
 
 ;; Namespace declaration
 ;; UPSTREAM-DIFF: Simplified ns macro; no :import, no docstring, no :gen-class
@@ -631,23 +666,7 @@
           (recur (next s) (f acc k (get m k))))
         acc))))
 
-;; Convenience accessors
-
-(defn last [coll]
-  (loop [s (seq coll)]
-    (if s
-      (if (next s)
-        (recur (next s))
-        (first s))
-      nil)))
-
-(defn butlast [coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (if (next s)
-        (recur (next s) (cons (first s) acc))
-        (if (seq acc) (reverse acc) nil))
-      nil)))
+;; Convenience accessors (last/butlast defined early for defn macro)
 
 (defn second [coll]
   (first (next coll)))
@@ -1398,6 +1417,18 @@
 (defn cast
   "Throws a ClassCastException if val is not an instance of c, else returns val."
   [c x] x)
+
+;; Dynamic binding
+(defmacro binding [bindings & body]
+  (let [pairs (partition 2 bindings)
+        bind-forms (mapcat (fn [p] (list (list 'var (first p)) (second p)))
+                           pairs)]
+    `(do
+       (push-thread-bindings (hash-map ~@bind-forms))
+       (try
+         ~@body
+         (finally
+           (pop-thread-bindings))))))
 
 ;; REPL result vars
 (def *1 nil)

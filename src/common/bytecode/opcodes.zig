@@ -74,9 +74,14 @@ pub const OpCode = enum(u8) {
     /// defmethod (operand: constant index u16 -> multimethod name)
     /// Stack: [dispatch_val, method_fn] -> [method_fn]
     defmethod = 0x45,
+    /// def with dynamic flag (operand: constant index u16 -> symbol name)
+    def_dynamic = 0x46,
+    /// set! dynamic var (operand: constant index u16 -> symbol name)
+    /// Stack: [new-value] -> [new-value] (value remains on stack)
+    set_bang = 0x47,
     /// lazy_seq (operand: unused)
     /// Stack: [thunk_fn] -> [lazy_seq_value]
-    lazy_seq = 0x46,
+    lazy_seq = 0x48,
 
     // === [F] Control flow (0x50-0x5F) ===
 

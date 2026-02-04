@@ -173,6 +173,7 @@ pub const Analyzer = struct {
         .{ "defmethod", analyzeDefmethod },
         .{ "lazy-seq", analyzeLazySeq },
         .{ "var", analyzeVarForm },
+        .{ "set!", analyzeSetBang },
     });
 
     // === Main entry point ===
@@ -579,15 +580,55 @@ pub const Analyzer = struct {
 
     fn analyzeDef(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (def name) or (def name value)
+        // (def ^:dynamic name value) → reader produces (def (with-meta name {:dynamic true}) value)
         if (items.len < 2 or items.len > 3) {
             return self.analysisError(.arity_error, "def requires 1 or 2 arguments", form);
         }
 
-        if (items[1].data != .symbol) {
+        var sym_name: []const u8 = undefined;
+        var is_dynamic = false;
+        var is_private = false;
+        var is_const = false;
+
+        if (items[1].data == .symbol) {
+            sym_name = items[1].data.symbol.name;
+        } else if (items[1].data == .list) {
+            // (with-meta sym {:dynamic true, ...}) pattern from reader ^:meta syntax
+            const wm_items = items[1].data.list;
+            if (wm_items.len == 3 and wm_items[0].data == .symbol and
+                std.mem.eql(u8, wm_items[0].data.symbol.name, "with-meta"))
+            {
+                if (wm_items[1].data != .symbol) {
+                    return self.analysisError(.value_error, "def name must be a symbol", items[1]);
+                }
+                sym_name = wm_items[1].data.symbol.name;
+                // Parse metadata map for :dynamic, :private, :const
+                if (wm_items[2].data == .map) {
+                    const meta_entries = wm_items[2].data.map;
+                    var mi: usize = 0;
+                    while (mi + 1 < meta_entries.len) : (mi += 2) {
+                        if (meta_entries[mi].data == .keyword and
+                            meta_entries[mi + 1].data == .boolean and
+                            meta_entries[mi + 1].data.boolean)
+                        {
+                            const kw_name = meta_entries[mi].data.keyword.name;
+                            if (std.mem.eql(u8, kw_name, "dynamic")) {
+                                is_dynamic = true;
+                            } else if (std.mem.eql(u8, kw_name, "private")) {
+                                is_private = true;
+                            } else if (std.mem.eql(u8, kw_name, "const")) {
+                                is_const = true;
+                            }
+                        }
+                    }
+                }
+            } else {
+                return self.analysisError(.value_error, "def name must be a symbol", items[1]);
+            }
+        } else {
             return self.analysisError(.value_error, "def name must be a symbol", items[1]);
         }
 
-        const sym_name = items[1].data.symbol.name;
         const init_node: ?*Node = if (items.len == 3)
             try self.analyze(items[2])
         else
@@ -597,6 +638,9 @@ pub const Analyzer = struct {
         def_data.* = .{
             .sym_name = sym_name,
             .init = init_node,
+            .is_dynamic = is_dynamic,
+            .is_private = is_private,
+            .is_const = is_const,
             .source = self.sourceFromForm(form),
         };
 
@@ -1232,6 +1276,28 @@ pub const Analyzer = struct {
             return self.makeConstant(.{ .var_ref = v });
         }
         return self.analysisError(.syntax_error, "Unable to resolve var", form);
+    }
+
+    fn analyzeSetBang(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (set! var-symbol expr)
+        if (items.len != 3) {
+            return self.analysisError(.arity_error, "set! requires exactly 2 arguments", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.syntax_error, "set! target must be a symbol", items[1]);
+        }
+        const sym_name = items[1].data.symbol.name;
+        const expr = try self.analyze(items[2]);
+
+        const set_data = self.allocator.create(node_mod.SetNode) catch return error.OutOfMemory;
+        set_data.* = .{
+            .var_name = sym_name,
+            .expr = expr,
+            .source = self.sourceFromForm(form),
+        };
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .set_node = set_data };
+        return n;
     }
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

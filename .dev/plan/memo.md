@@ -5,30 +5,29 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
-- Sub-phase: BE (Error System Overhaul)
-- Next task: B4 (defn/ns Enhancement)
-- Coverage: 399/712 clojure.core vars done
+- Sub-phase: B (Fix F## items) complete
+- Next task: Phase C (Upstream test porting)
+- Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
 
-| Task | Description                        | Notes                                                                        |
-|------|------------------------------------|------------------------------------------------------------------------------|
-| B4   | defn/ns Enhancement                | F90, F85                                                                      |
+(Phase B complete. Plan Phase C next.)
 
 ## Current Task
 
-B4: defn/ns Enhancement.
-F90, F85.
+Phase C planning.
 
 ## Previous Task
 
-B3 completed: Seq/String Operations.
-- F41: first/rest/next/seq on string — UTF-8 decode to character list
-- F45: interleave multi-arity — 0-arg returns (), 1-arg returns lazy-seq, N-arg supported
-- F48: (range) infinite — wraps builtin with (iterate inc 0) for 0-arity
-- F49: partition step/pad — multi-arity with step and pad collection support
-- Resolved F41, F45, F48, F49 from checklist
+B4 completed: defn/ns Enhancement.
+- F90: defn full implementation — docstring, attr-map, trailing attr-map stripping
+- F88: ^:dynamic/^:private/^:const metadata on def (reader with-meta pattern)
+- F85: binding/set! — push/pop-thread-bindings builtins, set! special form, binding macro
+- Fixed try/finally bug: catch-less try with finally now correctly re-throws exceptions
+- def_dynamic VM opcode, set_bang VM opcode added
+- last/butlast moved early in core.clj for defn macro dependency
+- Resolved F85, F88, F90 from checklist
 
 ## Handover Notes
 
@@ -36,7 +35,7 @@ Notes that persist across sessions.
 
 - Plan: `.dev/plan/foundation-reset.md` (Phase A-D, with BE inserted)
 - Phase A: Completed — all 399 done vars annotated
-- Phase BE: Error System Overhaul
+- Phase BE: Error System Overhaul (complete)
   - BE1: Done — threadlocal + reportError() + showSourceContext()
   - BE2a: Done — core builtins (arithmetic, numeric, predicates); DivisionByZero removed
   - BE2b: Done — collections + sequences; IndexOutOfBounds→IndexError, IllegalState→ValueError
@@ -52,9 +51,10 @@ Notes that persist across sessions.
   - Architecture: D3a superseded by D63 (threadlocal)
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
   - Display: `reportError()` in main.zig, babashka-style format
-- Phase B: Fix F## items (test.clj, core semantics, macros, seq/string)
+- Phase B: Complete — all F## items resolved (B0-B4)
 - Phase C: Faithful upstream test porting with CLJW markers
 - Phase D: Parallel expansion (new vars + test porting)
+- Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
 - Audit tracker: `.dev/status/audit-progress.yaml`

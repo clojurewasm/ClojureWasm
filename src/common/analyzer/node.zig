@@ -117,6 +117,13 @@ pub const DefNode = struct {
     source: SourceInfo,
 };
 
+/// set!: (set! var-symbol expr)
+pub const SetNode = struct {
+    var_name: []const u8,
+    expr: *Node,
+    source: SourceInfo,
+};
+
 // -- Quote --
 
 /// quote: (quote form)
@@ -228,6 +235,9 @@ pub const Node = union(enum) {
     // Definitions
     def_node: *DefNode,
 
+    // Assignment
+    set_node: *SetNode,
+
     // Quote
     quote_node: *QuoteNode,
 
@@ -260,6 +270,7 @@ pub const Node = union(enum) {
             .fn_node => |n| n.source,
             .call_node => |n| n.source,
             .def_node => |n| n.source,
+            .set_node => |n| n.source,
             .quote_node => |n| n.source,
             .throw_node => |n| n.source,
             .try_node => |n| n.source,
@@ -285,6 +296,7 @@ pub const Node = union(enum) {
             .fn_node => "fn",
             .call_node => "call",
             .def_node => "def",
+            .set_node => "set!",
             .quote_node => "quote",
             .throw_node => "throw",
             .try_node => "try",

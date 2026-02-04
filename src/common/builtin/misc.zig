@@ -134,6 +134,49 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // BuiltinDef table
 // ============================================================
 
+// ============================================================
+// Dynamic binding support
+// ============================================================
+
+/// (push-thread-bindings {var1 val1, var2 val2, ...})
+/// Takes a map of Var refs to values, pushes a new binding frame.
+pub fn pushThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "push-thread-bindings requires 1 argument, got {d}", .{args.len});
+    const m = switch (args[0]) {
+        .map => |mp| mp,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "push-thread-bindings requires a map", .{}),
+    };
+    const n_pairs = m.entries.len / 2;
+    if (n_pairs == 0) return .nil;
+
+    const entries = allocator.alloc(var_mod.BindingEntry, n_pairs) catch return error.OutOfMemory;
+    var idx: usize = 0;
+    var i: usize = 0;
+    while (i < m.entries.len) : (i += 2) {
+        const key = m.entries[i];
+        const val = m.entries[i + 1];
+        const v: *var_mod.Var = switch (key) {
+            .var_ref => |ptr| ptr,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "push-thread-bindings keys must be Vars", .{}),
+        };
+        if (!v.dynamic) return err.setErrorFmt(.eval, .value_error, .{}, "Can't dynamically bind non-dynamic var: {s}", .{v.sym.name});
+        entries[idx] = .{ .var_ptr = v, .val = val };
+        idx += 1;
+    }
+
+    const frame = allocator.create(var_mod.BindingFrame) catch return error.OutOfMemory;
+    frame.* = .{ .entries = entries, .prev = null };
+    var_mod.pushBindings(frame);
+    return .nil;
+}
+
+/// (pop-thread-bindings) — pops the current binding frame.
+pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "pop-thread-bindings takes no arguments, got {d}", .{args.len});
+    var_mod.popBindings();
+    return .nil;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "gensym",
@@ -154,6 +197,20 @@ pub const builtins = [_]BuiltinDef{
         .func = formatFn,
         .doc = "Formats a string using java.lang.String/format-style placeholders. Supports %s, %d, %f, %%.",
         .arglists = "([fmt & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "push-thread-bindings",
+        .func = pushThreadBindingsFn,
+        .doc = "Pushes a new frame of bindings for dynamic vars. bindings-map is a map of Var/value pairs.",
+        .arglists = "([bindings-map])",
+        .added = "1.0",
+    },
+    .{
+        .name = "pop-thread-bindings",
+        .func = popThreadBindingsFn,
+        .doc = "Pops the frame of bindings most recently pushed with push-thread-bindings.",
+        .arglists = "([])",
         .added = "1.0",
     },
 };

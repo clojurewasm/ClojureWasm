@@ -118,6 +118,7 @@ pub const Compiler = struct {
             .fn_node => |node| try self.emitFn(node),
             .call_node => |node| try self.emitCall(node),
             .def_node => |node| try self.emitDef(node),
+            .set_node => |node| try self.emitSetBang(node),
             .quote_node => |node| try self.emitQuote(node),
             .throw_node => |node| try self.emitThrow(node),
             .try_node => |node| try self.emitTry(node),
@@ -561,9 +562,19 @@ pub const Compiler = struct {
         }
 
         // Emit def: pops value, pushes symbol (net 0)
-        // Use def_macro opcode to preserve macro flag at runtime
-        const op: OpCode = if (node.is_macro) .def_macro else .def;
+        // Use def_macro/def_dynamic opcode to preserve flags at runtime
+        const op: OpCode = if (node.is_macro) .def_macro else if (node.is_dynamic) .def_dynamic else .def;
         try self.chunk.emit(op, idx);
+    }
+
+    fn emitSetBang(self: *Compiler, node: *const node_mod.SetNode) CompileError!void {
+        // (set! var-sym expr) — mutate thread-local binding
+        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.var_name } };
+        const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+        // Compile expression (pushes value)
+        try self.compile(node.expr); // +1
+        // set_bang: reads top of stack, sets binding, keeps value on stack (net 0 change: value stays)
+        try self.chunk.emit(.set_bang, idx);
     }
 
     fn emitDefmulti(self: *Compiler, node: *const node_mod.DefMultiNode) CompileError!void {
@@ -658,6 +669,21 @@ pub const Compiler = struct {
             }
             self.locals.shrinkRetainingCapacity(base);
             self.scope_depth -= 1;
+        } else if (node.finally_body != null) {
+            // No catch but has finally: synthetic handler that runs finally then re-throws.
+            // throw already consumed the handler, so NO catch_begin here.
+            // throw handler pushes exception value; run finally, then throw_ex to re-propagate.
+            self.stack_depth = depth_before_body;
+            self.stack_depth += 1; // exception on stack (pushed by throw handler)
+
+            // Run finally on exception path
+            try self.compile(node.finally_body.?); // +1
+            try self.chunk.emitOp(.pop); // discard finally result
+            self.stack_depth -= 1;
+
+            // Re-throw: exception value is still on stack
+            try self.chunk.emitOp(.throw_ex);
+            self.stack_depth -= 1;
         }
 
         // Both paths converge at body_depth
@@ -666,7 +692,7 @@ pub const Compiler = struct {
         // Patch jump to end
         self.chunk.patchJump(jump_to_end);
 
-        // Compile finally if present
+        // Compile finally for normal path
         if (node.finally_body) |finally_body| {
             try self.compile(finally_body); // +1
             try self.chunk.emitOp(.pop); // finally result is discarded

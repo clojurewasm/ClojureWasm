@@ -353,7 +353,19 @@ pub const VM = struct {
                     return error.UndefinedVar;
                 }
             },
-            .def, .def_macro => {
+            .set_bang => {
+                // (set! var-sym expr) — mutate thread-local binding
+                const new_val = self.peek(0);
+                const sym = frame.constants[instr.operand];
+                if (sym != .symbol) return error.InvalidInstruction;
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+                const v = ns.resolve(sym.symbol.name) orelse return error.UndefinedVar;
+                const var_mod = @import("../../common/var.zig");
+                var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
+                // Value remains on stack (net 0)
+            },
+            .def, .def_macro, .def_dynamic => {
                 const val = self.pop();
                 const sym = frame.constants[instr.operand];
                 if (sym != .symbol) return error.InvalidInstruction;
@@ -362,6 +374,7 @@ pub const VM = struct {
                 const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
                 v.bindRoot(val);
                 if (instr.op == .def_macro) v.setMacro(true);
+                if (instr.op == .def_dynamic) v.dynamic = true;
                 try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
             },
 
