@@ -5,21 +5,21 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18.5 (Upstream Alignment + Core Expansion II)
-- Current task: (Phase 18.5 complete — plan next phase)
+- Phase: 18.6 (Core Coverage Sprint)
+- Current task: T18.6.1
 - Task file: N/A
-- Last completed: T18.5.5 (coverage expansion: +10 tests/+39 assertions)
+- Last completed: Phase 18.5 (5 tasks, lazy-seq opcode, 22 new functions, 355 done vars)
 - Blockers: none
-- Next: Plan Phase 19
+- Next: Quick-win functions → transducer support → coverage
 
 ## Current Phase: 18
 
-**Background**: Phase 18 completed: 5 bit ops, numbers.clj (37 tests/376 assertions),
-23 core/walk functions, test coverage expansion (+120 assertions across 4 files).
-Total: 14 test files, 332 done clojure.core vars, 189 Zig builtins.
-F95 (lazy-seq+cons TypeError) blocks tree-seq and other lazy functions.
+**Background**: Phase 18.5 completed: lazy-seq VM opcode (D61), 22 new functions,
+8 numeric coercions, 10 type predicates, 4 seq utilities, test expansion.
+Total: 14 test files, 355 done clojure.core vars, 207 Zig builtins, 971 assertions.
 
-**Goal**: Fix infrastructure gaps (F95), continue core function expansion,
-numeric conversions (deferred T18.2), upstream macro alignment.
+**Goal**: Sprint to 380+ done vars. Quick-win functions, transducer basics,
+collection utilities (rseq, shuffle), and bit-and-not.
 
 ### Rules
 
@@ -30,13 +30,12 @@ numeric conversions (deferred T18.2), upstream macro alignment.
 
 ### Task Queue
 
-| Task    | Type | Description                              | Notes                                    |
-| ------- | ---- | ---------------------------------------- | ---------------------------------------- |
-| T18.5.1 | done | Fix F95 lazy-seq+cons TypeError          | D61: lazy_seq opcode + collectSeqItems   |
-| T18.5.2 | done | Numeric conversions (int, long, etc.)    | 8 builtins, 341 done vars                |
-| T18.5.3 | done | Core expansion II (seqable?, counted?)   | 10 builtins, 351 done vars               |
-| T18.5.4 | done | Seq utilities (reductions, take-nth etc) | 4 functions, F50 resolved, 355 done vars |
-| T18.5.5 | done | Coverage: un-SKIP newly enabled tests    | +10 tests, +39 assertions, 971 total     |
+| Task    | Type | Description                              | Notes                                   |
+| ------- | ---- | ---------------------------------------- | --------------------------------------- |
+| T18.6.1 | impl | Quick-win Zig builtins                   | rseq, shuffle, bit-and-not, re-groups   |
+| T18.6.2 | impl | Transducer basics (transduce, cat, etc.) | transduce, cat, dedupe, halt-when       |
+| T18.6.3 | impl | Pure Clojure additions                   | random-sample, not=, unchecked-\*, etc. |
+| T18.6.4 | test | Coverage expansion                       | Tests for T18.6.1-3 features            |
 
 ### Phase 18 Summary (completed)
 
