@@ -33,18 +33,11 @@
   true)
 
 ;; Record a failing assertion and print context.
-(defn- do-report-fail
-  ([expr]
-   (swap! fail-count inc)
-   (println (str "  FAIL in " (join-str " > " @testing-contexts)))
-   (println (str "    expected: " expr))
-   false)
-  ([expr expected actual]
-   (swap! fail-count inc)
-   (println (str "  FAIL in " (join-str " > " @testing-contexts)))
-   (println (str "    expected: " expected))
-   (println (str "    actual: " actual))
-   false))
+(defn- do-report-fail [expr]
+  (swap! fail-count inc)
+  (println (str "  FAIL in " (join-str " > " @testing-contexts)))
+  (println (str "    expected: " expr))
+  false)
 
 ;; ========== Core assertion ==========
 
@@ -86,51 +79,9 @@
      (defn ~tname [] ~@body)
      (register-test ~(str tname) ~tname)))
 
-;; Assert that expr is truthy. Dispatches on first symbol for special forms:
-;;   (is (thrown? ExType body...))        — assert exception thrown
-;;   (is (thrown-with-msg? ExType re body...)) — assert exception with message match
-;;   (is (= expected actual))             — equality with expected/actual reporting
-;;   (is expr)                            — general truthy assertion
+;; Assert that expr is truthy. Returns the result of expr.
 (defmacro is [expr]
-  (if (and (seq? expr) (symbol? (first expr)))
-    (let [op (first expr)]
-      (cond
-        (= op 'thrown?)
-        (let [klass (second expr)
-              body (rest (rest expr))]
-          `(try
-             (do ~@body)
-             (do-report-fail ~(str expr))
-             (catch ~klass ~'e
-               (do-report-pass))))
-
-        (= op 'thrown-with-msg?)
-        (let [klass (nth expr 1)
-              re (nth expr 2)
-              body (nthnext expr 3)]
-          `(try
-             (do ~@body)
-             (do-report-fail ~(str expr))
-             (catch ~klass ~'e
-               (let [m# (ex-message ~'e)]
-                 (if (re-find ~re m#)
-                   (do-report-pass)
-                   (do-report-fail ~(str expr)
-                                   ~(str "exception matching " re)
-                                   (str "exception message: " m#)))))))
-
-        (and (= op '=) (= (count expr) 3))
-        (let [expected (second expr)
-              actual (nth expr 2)]
-          `(let [e# ~expected
-                 a# ~actual]
-             (if (= e# a#)
-               (do-report-pass)
-               (do-report-fail ~(str expr) e# a#))))
-
-        :else
-        `(do-is ~expr ~(str expr))))
-    `(do-is ~expr ~(str expr))))
+  `(do-is ~expr ~(str expr)))
 
 ;; Group assertions under a descriptive string.
 (defmacro testing [desc & body]
@@ -144,10 +95,9 @@
         groups (partition c args)]
     `(do ~@(map (fn [g] `(is ~(postwalk-replace (zipmap argv g) expr))) groups))))
 
-;; Standalone thrown? macro for backward compatibility.
-;; Preferred usage: (is (thrown? Exception (/ 1 0)))
-;; which is handled by is macro's pattern dispatch above.
-;; This standalone form returns true/false without test reporting.
+;; Assert that body throws an exception of the given class.
+;; Usage: (is (thrown? Exception (/ 1 0)))
+;; UPSTREAM-DIFF: standalone macro (upstream uses assert-expr multimethod in is)
 (defmacro thrown? [klass & body]
   `(try
      (do ~@body)

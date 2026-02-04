@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: B (Fix Known Issues)
-- Next task: B1 (Core Semantics fixes)
+- Next task: B0 (test.clj enhancement)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
