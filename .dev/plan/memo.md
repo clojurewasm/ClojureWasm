@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 18 (Test Batch 3 + Coverage Expansion)
-- Current task: T18.4
+- Current task: T18.5
 - Task file: N/A
-- Last completed: T18.3 (Port numbers.clj — 31 tests, 340 assertions)
+- Last completed: T18.4 (Core function expansion — 23 functions)
 - Blockers: none
-- Next: Core function expansion → coverage expansion
+- Next: Coverage expansion in existing tests
 
 ## Current Phase: 18
 
@@ -18,6 +18,9 @@ Total: 14 test files, 311 done vars (19 clojure.string), 189 Zig builtins.
 Phase 17.5 un-SKIPped 7 tests, resolved F13/F58/F67/F69/F79.
 T18.1 added 5 bit ops. T18.3 ported numbers.clj (31 tests, 340 assertions).
 Fixes: ArithmeticError added to VM/TreeWalk error sets, == multi-arity, NaN div.
+T18.4 added 23 functions: 10 spec predicates, NaN?/infinite?/double?/parse-boolean,
+run!/rand-nth/nthnext/nthrest/take-last/distinct?, 3 clojure.walk functions.
+tree-seq deferred (F95: lazy-seq+cons TypeError).
 
 **Goal**: Port numbers.clj tests, implement missing bit/numeric functions,
 expand test coverage for existing files.
@@ -36,7 +39,7 @@ expand test coverage for existing files.
 | T18.1 | done | Missing bit ops (bit-set, -clear, etc.) | 5 builtins: set/clear/flip/test/ushiftr      |
 | T18.2 | impl | Numeric conversions (int, long, etc.)   | int, long, float, double, num, char          |
 | T18.3 | done | Port numbers.clj (31 tests)             | ArithmeticError fix, == multi-arity, NaN div |
-| T18.4 | impl | Core function expansion                 | Quick-win todo vars from vars.yaml           |
+| T18.4 | done | Core function expansion (23 functions)  | 10 spec preds + 10 utils + 3 walk fns        |
 | T18.5 | test | Coverage expansion in existing tests    | Expand assertions in current 14 files        |
 
 ### Phase 17 Summary (completed)

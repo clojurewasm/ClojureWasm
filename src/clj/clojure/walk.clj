@@ -42,3 +42,20 @@
   values. Does replacement at the root of the tree first."
   [smap form]
   (prewalk (fn [x] (if (contains? smap x) (get smap x) x)) form))
+
+(defn keywordize-keys
+  "Recursively transforms all map keys from strings to keywords."
+  [m]
+  (let [f (fn [[k v]] (if (string? k) [(keyword k) v] [k v]))]
+    (postwalk (fn [x] (if (map? x) (into {} (map f x)) x)) m)))
+
+(defn stringify-keys
+  "Recursively transforms all map keys from keywords to strings."
+  [m]
+  (let [f (fn [[k v]] (if (keyword? k) [(name k) v] [k v]))]
+    (postwalk (fn [x] (if (map? x) (into {} (map f x)) x)) m)))
+
+(defn macroexpand-all
+  "Recursively performs all possible macroexpansions in form."
+  [form]
+  (prewalk (fn [x] (if (seq? x) (macroexpand x) x)) form))

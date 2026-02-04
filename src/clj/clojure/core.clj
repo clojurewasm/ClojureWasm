@@ -936,3 +936,86 @@
 
 (defn split-with [pred coll]
   [(take-while pred coll) (drop-while pred coll)])
+
+;; Spec predicates (1.9)
+
+(defn pos-int? [x] (and (int? x) (pos? x)))
+
+(defn neg-int? [x] (and (int? x) (neg? x)))
+
+(defn nat-int? [x] (and (int? x) (not (neg? x))))
+
+(defn ident? [x] (or (keyword? x) (symbol? x)))
+
+(defn simple-ident? [x] (and (ident? x) (nil? (namespace x))))
+
+(defn qualified-ident? [x] (boolean (and (ident? x) (namespace x) true)))
+
+(defn simple-symbol? [x] (and (symbol? x) (nil? (namespace x))))
+
+(defn qualified-symbol? [x] (boolean (and (symbol? x) (namespace x) true)))
+
+(defn simple-keyword? [x] (and (keyword? x) (nil? (namespace x))))
+
+(defn qualified-keyword? [x] (boolean (and (keyword? x) (namespace x) true)))
+
+;; UPSTREAM-DIFF: equivalent to float? (ClojureWasm uses f64 for all floats)
+(defn double? [x] (float? x))
+
+;; UPSTREAM-DIFF: pure Clojure, upstream uses Double/isNaN
+(defn NaN? [num] (not (= num num)))
+
+;; UPSTREAM-DIFF: pure Clojure, upstream uses Double/isInfinite
+(defn infinite? [num] (or (= num ##Inf) (= num ##-Inf)))
+
+;; UPSTREAM-DIFF: returns nil for non-string instead of throwing
+(defn parse-boolean [s]
+  (when (string? s)
+    (case s
+      "true" true
+      "false" false
+      nil)))
+
+;; Seq utilities
+
+(defn rand-nth [coll] (nth coll (rand-int (count coll))))
+
+(defn run! [proc coll]
+  (reduce (fn [_ x] (proc x)) nil coll)
+  nil)
+
+;; UPSTREAM-DIFF: no IDrop interface, uses loop instead
+(defn nthnext [coll n]
+  (loop [n n xs (seq coll)]
+    (if (and xs (pos? n))
+      (recur (dec n) (next xs))
+      xs)))
+
+;; UPSTREAM-DIFF: no IDrop interface, uses loop instead
+(defn nthrest [coll n]
+  (loop [n n xs coll]
+    (if (pos? n)
+      (recur (dec n) (rest xs))
+      xs)))
+
+(defn take-last [n coll]
+  (loop [s (seq coll) lead (seq (drop n coll))]
+    (if lead
+      (recur (next s) (next lead))
+      s)))
+
+;; UPSTREAM-DIFF: avoids [x & etc :as xs] loop destructuring
+(defn distinct?
+  ([x] true)
+  ([x y] (not (= x y)))
+  ([x y & more]
+   (if (not= x y)
+     (loop [s #{x y} xs (seq more)]
+       (if xs
+         (if (contains? s (first xs))
+           false
+           (recur (conj s (first xs)) (next xs)))
+         true))
+     false)))
+
+;; tree-seq: deferred — depends on lazy-seq+cons fix (F95)

@@ -96,7 +96,7 @@ vars:
     ">=": {type: function, status: done, note: "VM intrinsic opcode"}
     "EMPTY-NODE": {type: var, status: todo}
     Inst: {type: var, status: todo}
-    "NaN?": {type: function, status: todo}
+    "NaN?": {type: function, status: done}
     "PrintWriter-on": {type: function, status: todo}
     "StackTraceElement->vec": {type: function, status: todo}
     "Throwable->map": {type: function, status: todo}
@@ -250,7 +250,7 @@ vars:
     dissoc: {type: function, status: done}
     "dissoc!": {type: function, status: todo}
     distinct: {type: function, status: done}
-    "distinct?": {type: function, status: todo}
+    "distinct?": {type: function, status: done}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
     doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: single binding only, no :let/:when/:while/nesting"}
@@ -259,8 +259,8 @@ vars:
     doto: {type: macro, status: done}
     double: {type: function, status: todo}
     "double-array": {type: function, status: todo}
-    "double?": {type: function, status: todo}
-    doubles: {type: function, status: todo}
+    "double?": {type: function, status: done}
+    doubles: {type: function, status: done}
     drop: {type: function, status: done}
     "drop-last": {type: function, status: done}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
@@ -334,7 +334,7 @@ vars:
     "hash-ordered-coll": {type: function, status: todo}
     "hash-set": {type: function, status: done}
     "hash-unordered-coll": {type: function, status: todo}
-    "ident?": {type: function, status: todo}
+    "ident?": {type: function, status: done}
     "identical?": {type: function, status: done}
     identity: {type: function, status: done}
     "if-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, requires 3 args (F30)'}
@@ -346,7 +346,7 @@ vars:
     inc: {type: function, status: done}
     "inc'": {type: function, status: todo}
     "indexed?": {type: function, status: todo}
-    "infinite?": {type: function, status: todo}
+    "infinite?": {type: function, status: done}
     "init-proxy": {type: function, status: todo}
     "inst-ms": {type: function, status: todo}
     "inst-ms*": {type: function, status: todo}
@@ -420,8 +420,8 @@ vars:
     name: {type: function, status: done}
     namespace: {type: function, status: done}
     "namespace-munge": {type: function, status: todo}
-    "nat-int?": {type: function, status: todo}
-    "neg-int?": {type: function, status: todo}
+    "nat-int?": {type: function, status: done}
+    "neg-int?": {type: function, status: done}
     "neg?": {type: function, status: done}
     newline: {type: function, status: done}
     next: {type: function, status: done}
@@ -445,8 +445,8 @@ vars:
     "ns-unalias": {type: function, status: todo}
     "ns-unmap": {type: function, status: todo}
     nth: {type: function, status: done}
-    nthnext: {type: function, status: todo}
-    nthrest: {type: function, status: todo}
+    nthnext: {type: function, status: done}
+    nthrest: {type: function, status: done}
     num: {type: function, status: todo}
     "number?": {type: function, status: done}
     numerator: {type: function, status: todo}
@@ -454,7 +454,7 @@ vars:
     "odd?": {type: function, status: done}
     or: {type: macro, status: done}
     parents: {type: function, status: todo}
-    "parse-boolean": {type: function, status: todo}
+    "parse-boolean": {type: function, status: done}
     "parse-double": {type: function, status: todo}
     "parse-long": {type: function, status: todo}
     "parse-uuid": {type: function, status: todo}
@@ -471,7 +471,7 @@ vars:
     pop: {type: function, status: done}
     "pop!": {type: function, status: todo}
     "pop-thread-bindings": {type: function, status: todo}
-    "pos-int?": {type: function, status: todo}
+    "pos-int?": {type: function, status: done}
     "pos?": {type: function, status: done}
     pr: {type: function, status: done}
     "pr-str": {type: function, status: done}
@@ -497,13 +497,13 @@ vars:
     "proxy-super": {type: macro, status: todo}
     "push-thread-bindings": {type: function, status: todo}
     pvalues: {type: macro, status: todo}
-    "qualified-ident?": {type: function, status: todo}
-    "qualified-keyword?": {type: function, status: todo}
-    "qualified-symbol?": {type: function, status: todo}
+    "qualified-ident?": {type: function, status: done}
+    "qualified-keyword?": {type: function, status: done}
+    "qualified-symbol?": {type: function, status: done}
     quot: {type: function, status: done}
     rand: {type: function, status: done}
     "rand-int": {type: function, status: done}
-    "rand-nth": {type: function, status: todo}
+    "rand-nth": {type: function, status: done}
     "random-sample": {type: function, status: todo}
     "random-uuid": {type: function, status: todo}
     range: {type: function, status: done}
@@ -562,7 +562,7 @@ vars:
     "reversible?": {type: function, status: todo}
     rseq: {type: function, status: todo}
     rsubseq: {type: function, status: todo}
-    "run!": {type: function, status: todo}
+    "run!": {type: function, status: done}
     "satisfies?": {type: function, status: done}
     second: {type: function, status: done, note: "core.clj (first (next coll))"}
     "select-keys": {type: function, status: done}
@@ -588,9 +588,9 @@ vars:
     shorts: {type: function, status: todo}
     shuffle: {type: function, status: todo}
     "shutdown-agents": {type: function, status: todo}
-    "simple-ident?": {type: function, status: todo}
-    "simple-keyword?": {type: function, status: todo}
-    "simple-symbol?": {type: function, status: todo}
+    "simple-ident?": {type: function, status: done}
+    "simple-keyword?": {type: function, status: done}
+    "simple-symbol?": {type: function, status: done}
     slurp: {type: function, status: done}
     some: {type: function, status: done}
     "some->": {type: macro, status: done}
@@ -629,7 +629,7 @@ vars:
     "tagged-literal": {type: function, status: todo}
     "tagged-literal?": {type: function, status: todo}
     take: {type: function, status: done}
-    "take-last": {type: function, status: todo}
+    "take-last": {type: function, status: done}
     "take-nth": {type: function, status: todo}
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
@@ -1206,15 +1206,15 @@ vars:
     "with-test-out": {type: macro, status: todo}
   clojure_uuid:
   clojure_walk:
-    "keywordize-keys": {type: function, status: todo}
-    "macroexpand-all": {type: function, status: todo}
+    "keywordize-keys": {type: function, status: done}
+    "macroexpand-all": {type: function, status: done}
     postwalk: {type: function, status: done}
     "postwalk-demo": {type: function, status: todo}
     "postwalk-replace": {type: function, status: done}
     prewalk: {type: function, status: done}
     "prewalk-demo": {type: function, status: todo}
     "prewalk-replace": {type: function, status: done}
-    "stringify-keys": {type: function, status: todo}
+    "stringify-keys": {type: function, status: done}
     walk: {type: function, status: done}
   clojure_zip:
     "append-child": {type: function, status: todo}
