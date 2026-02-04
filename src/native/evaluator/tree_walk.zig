@@ -202,6 +202,10 @@ pub const TreeWalk = struct {
                 return m.get(args[0]) orelse
                     if (args.len == 2) args[1] else .nil;
             },
+            .var_ref => |v| {
+                // Var-as-IFn: (#'f x) => (f x)
+                return self.callValue(v.deref(), args);
+            },
             else => return error.TypeError,
         };
     }
@@ -248,6 +252,17 @@ pub const TreeWalk = struct {
             const target = try self.run(call_n.args[0]);
             return callee.map.get(target) orelse
                 if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+        }
+
+        // Var-as-IFn: (#'f args) => deref var, then dispatch
+        if (callee == .var_ref) {
+            const derefed = callee.var_ref.deref();
+            const arg_vals = self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory;
+            defer self.allocator.free(arg_vals);
+            for (call_n.args, 0..) |arg, i| {
+                arg_vals[i] = try self.run(arg);
+            }
+            return self.callValue(derefed, arg_vals);
         }
 
         // Closure call

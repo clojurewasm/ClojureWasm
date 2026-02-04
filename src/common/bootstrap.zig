@@ -377,6 +377,7 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
                 return treewalkCallBridge(allocator, fn_val, args);
             }
         },
+        .var_ref => |v| return callFnVal(allocator, v.deref(), args),
         else => return error.TypeError,
     }
 }

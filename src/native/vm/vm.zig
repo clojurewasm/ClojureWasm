@@ -509,6 +509,12 @@ pub const VM = struct {
             return;
         }
 
+        // Var-as-IFn: (#'f args) => deref var, then call
+        if (callee == .var_ref) {
+            self.stack[fn_idx] = callee.var_ref.deref();
+            return self.performCall(arg_count);
+        }
+
         if (callee != .fn_val) return error.TypeError;
 
         const fn_obj = callee.fn_val;

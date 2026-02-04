@@ -80,6 +80,10 @@ Last updated: 2026-02-03 (T15.0 — vars.yaml Audit)
 | F81     | ::foo auto-resolved keyword                      | `::foo` should resolve to `:current-ns/foo` — reader needs Env access                  | T16.3   |
 | F82     | Hierarchy system                                 | make-hierarchy, derive, underive, parents, ancestors, descendants                      | T16.5.1 |
 | F83     | prefer-method / prefers                          | Multimethod dispatch preference resolution                                             | T16.5.1 |
+| F85     | binding special form                             | Dynamic binding per-call-stack not implemented                                         | T16.5.2 |
+| F86     | bound? takes var_ref not symbol                  | ClojureWasm bound? takes symbol, JVM takes var_ref                                     | T16.5.2 |
+| F87     | #'var inside deftest body                        | Var quote resolves at analyze time, fails for deftest-local defs                       | T16.5.2 |
+| F88     | ^:dynamic / ^:meta on def                        | Reader metadata on def special form not supported                                      | T16.5.2 |
 | ~~F59~~ | ~~(pop nil) throws error~~                       | ~~Resolved: T14.5.5 — (pop nil) now returns nil~~                                      | T14.10  |
 | ~~F60~~ | ~~() evaluates to nil~~                          | ~~Resolved: T14.5.4 — analyzer returns empty list for ()~~                             | T14.10  |
 | ~~F61~~ | ~~keys/vals on non-maps throws error~~           | ~~Not a bug: Clojure JVM also throws on non-map input~~                                | T14.10  |

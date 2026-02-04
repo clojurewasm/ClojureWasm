@@ -28,6 +28,7 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0]) {
         .atom => |a| a.value,
         .volatile_ref => |v| v.value,
+        .var_ref => |v| v.deref(),
         .map => |m| {
             // Delay map: {:__delay true, :thunk fn, :value atom, :realized atom}
             const delay_key = Value{ .keyword = .{ .name = "__delay", .ns = null } };
