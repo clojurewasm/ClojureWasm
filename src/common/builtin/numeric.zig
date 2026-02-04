@@ -300,6 +300,28 @@ fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = str };
 }
 
+/// (parse-long s) — Parses string to integer, returns nil if not valid.
+fn parseLongFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const s = switch (args[0]) {
+        .string => |s| s,
+        else => return Value.nil,
+    };
+    const val = std.fmt.parseInt(i64, s, 10) catch return Value.nil;
+    return Value{ .integer = val };
+}
+
+/// (parse-double s) — Parses string to double, returns nil if not valid.
+fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const s = switch (args[0]) {
+        .string => |s| s,
+        else => return Value.nil,
+    };
+    const val = std.fmt.parseFloat(f64, s) catch return Value.nil;
+    return Value{ .float = val };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -487,6 +509,20 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x])",
         .added = "1.1",
     },
+    .{
+        .name = "parse-long",
+        .func = &parseLongFn,
+        .doc = "Parses the string argument as a signed decimal integer, returning nil if not valid.",
+        .arglists = "([s])",
+        .added = "1.11",
+    },
+    .{
+        .name = "parse-double",
+        .func = &parseDoubleFn,
+        .doc = "Parses the string argument as a double, returning nil if not valid.",
+        .arglists = "([s])",
+        .added = "1.11",
+    },
 };
 
 // === Tests ===
@@ -610,4 +646,34 @@ test "rand-int returns integer in [0, n)" {
 test "rand-int with non-positive n is error" {
     try testing.expectError(error.ArithmeticError, randIntFn(test_alloc, &.{Value{ .integer = 0 }}));
     try testing.expectError(error.ArithmeticError, randIntFn(test_alloc, &.{Value{ .integer = -5 }}));
+}
+
+test "parse-long valid integer" {
+    try testing.expectEqual(Value{ .integer = 42 }, try parseLongFn(test_alloc, &.{Value{ .string = "42" }}));
+}
+
+test "parse-long negative" {
+    try testing.expectEqual(Value{ .integer = -7 }, try parseLongFn(test_alloc, &.{Value{ .string = "-7" }}));
+}
+
+test "parse-long invalid returns nil" {
+    try testing.expectEqual(Value.nil, try parseLongFn(test_alloc, &.{Value{ .string = "abc" }}));
+}
+
+test "parse-long float string returns nil" {
+    try testing.expectEqual(Value.nil, try parseLongFn(test_alloc, &.{Value{ .string = "3.14" }}));
+}
+
+test "parse-double valid" {
+    const result = try parseDoubleFn(test_alloc, &.{Value{ .string = "3.14" }});
+    try testing.expect(result == .float);
+    try testing.expect(result.float == 3.14);
+}
+
+test "parse-double invalid returns nil" {
+    try testing.expectEqual(Value.nil, try parseDoubleFn(test_alloc, &.{Value{ .string = "xyz" }}));
+}
+
+test "parse-long non-string returns nil" {
+    try testing.expectEqual(Value.nil, try parseLongFn(test_alloc, &.{Value{ .integer = 42 }}));
 }

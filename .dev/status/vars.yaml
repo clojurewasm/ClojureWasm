@@ -455,8 +455,8 @@ vars:
     or: {type: macro, status: done}
     parents: {type: function, status: todo}
     "parse-boolean": {type: function, status: done}
-    "parse-double": {type: function, status: todo}
-    "parse-long": {type: function, status: todo}
+    "parse-double": {type: function, status: done, note: builtin (upstream is pure clj)}
+    "parse-long": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-uuid": {type: function, status: todo}
     partial: {type: function, status: done}
     partition: {type: function, status: done}
@@ -604,7 +604,7 @@ vars:
     "sorted-set": {type: function, status: todo}
     "sorted-set-by": {type: function, status: todo}
     "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "special-symbol?": {type: function, status: todo}
+    "special-symbol?": {type: function, status: done, note: builtin (upstream is pure clj)}
     spit: {type: function, status: done}
     "split-at": {type: function, status: done}
     "split-with": {type: function, status: done}

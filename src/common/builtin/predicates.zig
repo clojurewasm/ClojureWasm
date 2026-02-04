@@ -551,6 +551,26 @@ fn boundedCountFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .integer = @intCast(@min(count, limit)) };
 }
 
+/// (special-symbol? s) — Returns true if s names a special form.
+fn specialSymbolPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const name = switch (args[0]) {
+        .symbol => |sym| sym.name,
+        else => return Value{ .boolean = false },
+    };
+    const specials = [_][]const u8{
+        "def",     "loop*",   "recur",     "if",        "case*",
+        "let*",    "letfn*",  "do",        "fn*",       "quote",
+        "var",     "import*", "set!",      "try",       "catch",
+        "throw",   "finally", "deftype*",  "reify*",    "new",
+        ".",       "&",       "defmacro",
+    };
+    for (&specials) |s| {
+        if (std.mem.eql(u8, name, s)) return Value{ .boolean = true };
+    }
+    return Value{ .boolean = false };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -606,6 +626,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "rational?", .func = &rationalPred, .doc = "Returns true if n is a rational number.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "decimal?", .func = &decimalPred, .doc = "Returns true if n is a BigDecimal.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "bounded-count", .func = &boundedCountFn, .doc = "If coll is counted? returns its count, else will count at most the first n elements of coll.", .arglists = "([n coll])", .added = "1.9" },
+    .{ .name = "special-symbol?", .func = &specialSymbolPred, .doc = "Returns true if s names a special form.", .arglists = "([s])", .added = "1.5" },
 };
 
 // === Tests ===
@@ -832,9 +853,8 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
 }
 
-test "builtins table has 50 entries" {
-    // 40 + 10 (seqable?, counted?, indexed?, reversible?, sorted?, record?, ratio?, rational?, decimal?, bounded-count)
-    try testing.expectEqual(50, builtins.len);
+test "builtins table has 51 entries" {
+    try testing.expectEqual(51, builtins.len);
 }
 
 test "builtins all have func" {
