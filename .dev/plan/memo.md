@@ -46,6 +46,12 @@ missing print variants (print, pr, newline, flush), string IO functions.
 - read-line working from stdin
 - Test file for IO functions ported/created
 
+### After Phase 17
+
+Phase 17.5 (Infrastructure Fix) before further test porting. See `roadmap.md`.
+Priority: try/catch/throw > destructuring (F58,F67-F74,F79) > VM defmulti (F13).
+This unblocks ~35+ of ~60 remaining test SKIPs.
+
 ---
 
 ## Permanent Reference

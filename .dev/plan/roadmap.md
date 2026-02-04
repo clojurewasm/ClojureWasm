@@ -83,7 +83,38 @@ File I/O, system functions via Zig std library.
 **Scope**: slurp, spit, _in_, _out_, _err_, read-line, System/getenv, System/nanoTime
 **Reference**: See "IO / System Namespace Strategy" in Phase Notes below
 
-### Phase 18: Production GC
+### Phase 17.5: Infrastructure Fix (SKIP Unblock)
+
+Focused fix phase for cross-cutting infrastructure gaps that block large numbers
+of test SKIPs. Addresses root causes rather than individual symptoms.
+
+**Rationale**: Remaining SKIPs (~60) are dominated by infrastructure gaps, not
+leaf features. Fixing these before further test porting dramatically improves
+coverage quality. See analysis in checklist.md.
+
+**Scope** (priority order):
+
+1. **try/catch/throw** (~15 SKIPs unblocked) — Analyzer special forms, VM opcodes,
+   TreeWalk handling, error/exception Value type. Largest single blocker.
+2. **Destructuring fixes** (~10 SKIPs unblocked) — F58, F67-F74, F79.
+   All in Analyzer destructuring code, fixable in concentrated pass.
+3. **VM defmulti/defmethod opcodes** (F13) — Compiler + VM opcodes so
+   multimethod tests pass on VM backend.
+
+**Out of scope** (later phases): regex (#"..."), seq abstraction (F34),
+infinite range (F48), _out_/_err_ dynamic vars (needs binding F85).
+
+**Reference**: `.dev/checklist.md` F## items, test/clojure/\*.clj SKIP comments
+
+### Phase 18: Test Batch 3 Port + Coverage Expansion
+
+Port Batch 3 test files (numbers, def, fn, ns_libs — partial) plus expand
+existing test files with assertions previously SKIPed in Phase 17.5.
+
+**Prerequisite**: Phase 17.5 (try/catch and destructuring available)
+**Reference**: `.dev/notes/test_file_priority.md` Batch 3
+
+### Phase 19: Production GC
 
 Replace arena allocator with real garbage collector.
 
@@ -91,27 +122,27 @@ Replace arena allocator with real garbage collector.
 **Triggers**: Long-running REPL, memory benchmarks exceed bounds
 **Reference**: F2, F20 in checklist.md; .dev/future.md SS5
 
-### Phase 19: Optimization
+### Phase 20: Optimization
 
 Performance optimization pass, benchmark-driven.
 
 **Scope**: NaN boxing (F1), fused reduce (F21), persistent DS (F4), inline caching
-**Prerequisite**: Phase 18 (Production GC) complete
+**Prerequisite**: Phase 19 (Production GC) complete
 **Reference**: See "Optimization Phase" in Phase Notes below; bench/README.md
 
-### Phase 20: Wasm InterOp (FFI)
+### Phase 21: Wasm InterOp (FFI)
 
 Call Wasm modules from native track.
 
 **Scope**: wasm/load, wasm/fn, WIT parser, Component Model
 **Reference**: See "Wasm InterOp" in Phase Notes below; .dev/future.md SS1, SS4
 
-### Phase 21: wasm_rt Track
+### Phase 22: wasm_rt Track
 
 Compile entire runtime to Wasm.
 
 **Scope**: WasmGC delegate, wasm32-wasi target
-**Prerequisite**: Phase 20 (Wasm InterOp) complete
+**Prerequisite**: Phase 21 (Wasm InterOp) complete
 **Reference**: See "wasm_rt Track" in Phase Notes below; .dev/future.md SS7
 
 ---
