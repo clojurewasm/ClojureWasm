@@ -5,11 +5,11 @@ Read this at session start. Roadmap: `.dev/plan/roadmap.md`
 ## Current State
 
 - Phase: 17 (IO / Print Functions)
-- Current task: T17.1
+- Current task: T17.2
 - Task file: N/A
-- Last completed: Phase 16.5 — Test Batch 2 Port (4 files, 26 tests, 82 assertions)
+- Last completed: T17.1 — print, pr, newline, flush (4 builtins)
 - Blockers: none
-- Next: T17.1 — Basic print functions
+- Next: T17.2 — String IO functions
 
 ## Current Phase: 17
 

@@ -302,7 +302,7 @@ vars:
     "float-array": {type: function, status: todo}
     "float?": {type: function, status: done}
     floats: {type: function, status: todo}
-    flush: {type: function, status: todo}
+    flush: {type: function, status: done}
     fn: {type: special-form, status: done}
     "fn?": {type: function, status: done}
     fnext: {type: function, status: done, note: "core.clj (first (next coll))"}
@@ -423,7 +423,7 @@ vars:
     "nat-int?": {type: function, status: todo}
     "neg-int?": {type: function, status: todo}
     "neg?": {type: function, status: done}
-    newline: {type: function, status: todo}
+    newline: {type: function, status: done}
     next: {type: function, status: done}
     nfirst: {type: function, status: done, note: "core.clj (next (first coll))"}
     "nil?": {type: function, status: done}
@@ -473,12 +473,12 @@ vars:
     "pop-thread-bindings": {type: function, status: todo}
     "pos-int?": {type: function, status: todo}
     "pos?": {type: function, status: done}
-    pr: {type: function, status: todo}
+    pr: {type: function, status: done}
     "pr-str": {type: function, status: done}
     "prefer-method": {type: function, status: todo}
     prefers: {type: function, status: todo}
     "primitives-classnames": {type: var, status: todo}
-    print: {type: function, status: todo}
+    print: {type: function, status: done}
     "print-ctor": {type: function, status: todo}
     "print-dup": {type: var, status: todo}
     "print-method": {type: var, status: todo}

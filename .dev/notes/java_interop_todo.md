@@ -136,13 +136,13 @@ Organized based on discussion. Includes both done and todo items.
 | Var         | Status | Note            |
 | ----------- | ------ | --------------- |
 | `println`   | done   | Zig builtin     |
-| `print`     | todo   | Zig builtin     |
-| `pr`        | todo   | print readably  |
-| `prn`       | todo   | pr + newline    |
+| `print`     | done   | Zig builtin     |
+| `pr`        | done   | Zig builtin     |
+| `prn`       | done   | Zig builtin     |
 | `printf`    | todo   | formatted print |
-| `newline`   | todo   | print newline   |
+| `newline`   | done   | Zig builtin     |
 | `read-line` | todo   | read from stdin |
-| `flush`     | todo   | flush stdout    |
+| `flush`     | done   | Zig builtin     |
 
 ### Dynamic Output
 
