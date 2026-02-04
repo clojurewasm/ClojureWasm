@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: BE (Error System Overhaul)
-- Next task: BE1 (Threadlocal infrastructure + display)
+- Next task: BE2 (Builtin error messages)
 - Coverage: 399/712 clojure.core vars done (0 without notes)
 - Blockers: none
 
@@ -14,7 +14,6 @@ Session handover document. Read at session start.
 
 | Task | Description                  | Notes                              |
 |------|------------------------------|------------------------------------|
-| BE1  | Threadlocal infra + display  | error.zig, main.zig, bootstrap etc |
 | BE2  | Builtin error messages       | 17 files, ~314 sites               |
 | BE3  | Runtime source location      | vm.zig, tree_walk.zig              |
 | B0   | test.clj enhancement         | is pattern dispatch, thrown?        |
@@ -25,36 +24,16 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-### BE1: Threadlocal infrastructure + error display
-
-**Goal**: Switch ErrorContext from instance-based to threadlocal.
-Add reportError() and showSourceContext() to main.zig.
-
-**Steps**:
-1. error.zig: Replace ErrorContext struct with threadlocal vars + module-level
-   functions (setError, setErrorFmt, getLastError, setSourceText, getSourceText).
-   Keep Info, Kind, Phase, SourceLocation, Error unchanged.
-2. Update all consumers (7 files):
-   - analyzer.zig: Remove error_ctx field, use err.setError() directly
-   - reader.zig: Remove error_ctx param, use err.setError() directly
-   - bootstrap.zig: Remove local ErrorContext vars, remove &error_ctx params
-   - env.zig: Remove error_ctx if used
-   - nrepl.zig: Remove error_ctx if used
-   - eval.zig (builtin): Remove error_ctx if used
-3. main.zig: Add reportError(), showSourceContext(), countDigits(),
-   writeLineNumber(), writeErrorPointer(), getSourceForLocation().
-   Replace all "Error: evaluation failed" with reportError() calls.
-   Add setSourceText() before evaluation.
-4. Verify: zig build test + manual test with intentional errors
-
-**Acceptance**: Error messages show kind + message + location + source context.
+Write task design here at iteration start.
+On next task, move this content to Previous Task below.
 
 ## Previous Task
 
-Phase A completed. 399 done vars all annotated (0 without notes).
-B0 attempted but reverted — defmacro multi-arity needed first.
-Error system investigation showed current errors are "Error: evaluation failed"
-with zero diagnostics. Inserted Phase BE before B0.
+BE1 completed: Switched error system from instance-based ErrorContext (D3a)
+to threadlocal. Added reportError() with babashka-style error display to
+main.zig (Type, Message, Phase, Location, source context with pointer).
+Analysis/parse errors now show full diagnostics. Runtime errors still show
+fallback "Error: {errorName}" (BE2/BE3 will fix).
 
 ## Handover Notes
 
@@ -62,7 +41,13 @@ Notes that persist across sessions.
 
 - Plan: `.dev/plan/foundation-reset.md` (Phase A-D, with BE inserted)
 - Phase A: Completed — all 399 done vars annotated
-- Phase BE: Error System Overhaul (threadlocal, display, builtin messages)
+- Phase BE: Error System Overhaul
+  - BE1: Done — threadlocal + reportError() + showSourceContext()
+  - BE2: Next — add error messages to 17 builtin files (~314 sites)
+  - BE3: After BE2 — runtime source location in vm.zig/tree_walk.zig
+  - Architecture: D3a superseded by D63 (threadlocal)
+  - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
+  - Display: `reportError()` in main.zig, babashka-style format
 - Phase B: Fix F## items (test.clj, core semantics, macros, seq/string)
 - Phase C: Faithful upstream test porting with CLJW markers
 - Phase D: Parallel expansion (new vars + test porting)
@@ -70,4 +55,3 @@ Notes that persist across sessions.
 - Interop patterns: `.claude/references/interop-patterns.md`
 - Audit tracker: `.dev/status/audit-progress.yaml`
 - Beta error reference: `ClojureWasmBeta/src/base/error.zig`, `ClojureWasmBeta/src/main.zig:839-970`
-- CW D3a (instance-based ErrorContext) will be reversed → threadlocal
