@@ -70,6 +70,9 @@ pub const Compiler = struct {
             }
             self.allocator.free(proto.code);
             self.allocator.free(proto.constants);
+            if (proto.lines.len > 0) {
+                self.allocator.free(proto.lines);
+            }
             self.allocator.destroy(@constCast(proto));
         }
         self.fn_protos.deinit(self.allocator);
@@ -94,6 +97,10 @@ pub const Compiler = struct {
 
     /// Compile a single Node to bytecode.
     pub fn compile(self: *Compiler, n: *const Node) CompileError!void {
+        // Track source line for debug info
+        const src = n.source();
+        if (src.line > 0) self.chunk.current_line = src.line;
+
         switch (n.*) {
             .constant => |val| try self.emitConstant(val),
             .local_ref => |ref| try self.emitLocalRef(ref),
@@ -384,10 +391,12 @@ pub const Compiler = struct {
         }
         if (nested.fn_objects.len > 0) self.allocator.free(nested.fn_objects);
 
-        // Allocate owned copies of code and constants
+        // Allocate owned copies of code, constants, and lines
         const code_copy = self.allocator.dupe(Instruction, fn_compiler.chunk.code.items) catch
             return error.OutOfMemory;
         const const_copy = self.allocator.dupe(Value, fn_compiler.chunk.constants.items) catch
+            return error.OutOfMemory;
+        const lines_copy = self.allocator.dupe(u32, fn_compiler.chunk.lines.items) catch
             return error.OutOfMemory;
 
         const proto = self.allocator.create(FnProto) catch return error.OutOfMemory;
@@ -400,6 +409,7 @@ pub const Compiler = struct {
             .has_self_ref = has_self_ref,
             .code = code_copy,
             .constants = const_copy,
+            .lines = lines_copy,
         };
 
         self.fn_protos.append(self.allocator, proto) catch return error.OutOfMemory;

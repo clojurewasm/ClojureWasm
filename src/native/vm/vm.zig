@@ -61,6 +61,8 @@ const CallFrame = struct {
     base: usize,
     code: []const Instruction,
     constants: []const Value,
+    /// Source line per instruction (parallel to code) for error reporting.
+    lines: []const u32 = &.{},
 };
 
 /// Stack-based bytecode virtual machine.
@@ -148,6 +150,7 @@ pub const VM = struct {
             .base = 0,
             .code = c.code.items,
             .constants = c.constants.items,
+            .lines = c.lines.items,
         };
         self.frame_count = 1;
         return self.execute();
@@ -158,6 +161,19 @@ pub const VM = struct {
             if (self.stepInstruction()) |maybe_result| {
                 if (maybe_result) |result| return result;
             } else |e| {
+                // Annotate error with source location from current frame
+                if (self.frame_count > 0) {
+                    const f = &self.frames[self.frame_count - 1];
+                    if (f.lines.len > 0 and f.ip > 0) {
+                        const line = f.lines[f.ip - 1];
+                        if (line > 0) {
+                            err_mod.annotateLocation(.{
+                                .line = line,
+                                .file = err_mod.getSourceFile(),
+                            });
+                        }
+                    }
+                }
                 if (self.handler_count > 0 and isUserError(e)) {
                     self.dispatchErrorToHandler(e) catch |e2| return e2;
                     continue;
@@ -749,6 +765,7 @@ pub const VM = struct {
             .base = fn_idx + 1,
             .code = proto.code,
             .constants = proto.constants,
+            .lines = proto.lines,
         };
         self.frame_count += 1;
     }

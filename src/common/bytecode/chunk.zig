@@ -18,18 +18,24 @@ pub const Chunk = struct {
     code: std.ArrayList(Instruction),
     /// Constant pool.
     constants: std.ArrayList(Value),
+    /// Source line per instruction (parallel to code).
+    lines: std.ArrayList(u32),
+    /// Current source line — set by compiler before emitting.
+    current_line: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) Chunk {
         return .{
             .allocator = allocator,
             .code = .empty,
             .constants = .empty,
+            .lines = .empty,
         };
     }
 
     pub fn deinit(self: *Chunk) void {
         self.code.deinit(self.allocator);
         self.constants.deinit(self.allocator);
+        self.lines.deinit(self.allocator);
     }
 
     /// Add a value to the constant pool and return its index.
@@ -43,11 +49,13 @@ pub const Chunk = struct {
     /// Emit an instruction with operand.
     pub fn emit(self: *Chunk, op: OpCode, operand: u16) !void {
         try self.code.append(self.allocator, .{ .op = op, .operand = operand });
+        try self.lines.append(self.allocator, self.current_line);
     }
 
     /// Emit an instruction without operand.
     pub fn emitOp(self: *Chunk, op: OpCode) !void {
         try self.code.append(self.allocator, .{ .op = op });
+        try self.lines.append(self.allocator, self.current_line);
     }
 
     /// Return the current instruction offset (for jump patching).
@@ -59,6 +67,7 @@ pub const Chunk = struct {
     pub fn emitJump(self: *Chunk, op: OpCode) !usize {
         const offset = self.code.items.len;
         try self.code.append(self.allocator, .{ .op = op, .operand = 0xFFFF });
+        try self.lines.append(self.allocator, self.current_line);
         return offset;
     }
 
@@ -120,6 +129,8 @@ pub const FnProto = struct {
     code: []const Instruction,
     /// Constant pool.
     constants: []const Value,
+    /// Source line per instruction (parallel to code).
+    lines: []const u32 = &.{},
 
     /// Dump function prototype to writer for debugging.
     pub fn dump(self: *const FnProto, w: *std.Io.Writer) !void {
@@ -404,6 +415,24 @@ test "FnProto.dump variadic" {
 
     try std.testing.expect(std.mem.indexOf(u8, output, "<anonymous>") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "variadic") != null);
+}
+
+test "Chunk lines track current_line per instruction" {
+    const allocator = std.testing.allocator;
+    var chunk = Chunk.init(allocator);
+    defer chunk.deinit();
+
+    chunk.current_line = 3;
+    try chunk.emitOp(.nil); // line 3
+    chunk.current_line = 5;
+    try chunk.emit(.const_load, 0); // line 5
+    chunk.current_line = 7;
+    _ = try chunk.emitJump(.jump_if_false); // line 7
+
+    try std.testing.expectEqual(@as(usize, 3), chunk.lines.items.len);
+    try std.testing.expectEqual(@as(u32, 3), chunk.lines.items[0]);
+    try std.testing.expectEqual(@as(u32, 5), chunk.lines.items[1]);
+    try std.testing.expectEqual(@as(u32, 7), chunk.lines.items[2]);
 }
 
 test "FnProto creation" {
