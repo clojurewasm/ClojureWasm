@@ -26,11 +26,6 @@
             "type": "command",
             "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -qE '\\.zig$'; then cd /Users/shota.508/Documents/MyProducts/ClojureWasm && zig build test 2>&1 | tail -20; fi",
             "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "if echo \"$CLAUDE_FILE_PATHS\" | grep -q 'src/common/bytecode/compiler.zig'; then echo '[compiler-check] compiler.zig modified. Run /compiler-check before commit.'; fi",
-            "timeout": 3
           }
         ]
       }

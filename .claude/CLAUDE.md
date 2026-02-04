@@ -54,7 +54,7 @@ Read: `.dev/plan/memo.md` (current task, next task, technical notes)
 - TDD cycle: Red → Green → Refactor
 - Run tests: `zig build test`
 - Append progress to task file `## Log`
-- If `compiler.zig` modified: run `/compiler-check`
+- `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 
 **4. Complete** (per task)
 
@@ -123,8 +123,7 @@ via `./zig-out/bin/cljw file.clj`. Never use `-e` for these.
 2. Add `EvalEngine.compare()` test
 3. If Compiler emits a direct opcode, TreeWalk must handle via builtin dispatch
 
-When editing `compiler.zig`, PostToolUse hook will remind you.
-Run `/compiler-check` before commit to verify stack_depth/scope/backend sync.
+When editing `compiler.zig`, `.claude/rules/compiler-check.md` auto-loads into context.
 
 ### Test Evaluation Policy
 
