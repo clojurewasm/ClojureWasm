@@ -238,6 +238,61 @@ pub fn bitTestFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Numeric coercion functions
+// ============================================================
+
+/// (int x) — Coerce to integer (truncate float).
+fn intCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .integer => args[0],
+        .float => |f| Value{ .integer = @intFromFloat(f) },
+        else => error.TypeError,
+    };
+}
+
+/// (float x) — Coerce to float.
+fn floatCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .float => args[0],
+        .integer => |i| Value{ .float = @floatFromInt(i) },
+        else => error.TypeError,
+    };
+}
+
+/// (num x) — Coerce to Number (identity for numbers).
+fn numFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    return switch (args[0]) {
+        .integer, .float => args[0],
+        else => error.TypeError,
+    };
+}
+
+/// (char x) — Coerce int to character string.
+fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return error.ArityError;
+    const code: u21 = switch (args[0]) {
+        .integer => |i| if (i >= 0 and i <= 0x10FFFF)
+            @intCast(i)
+        else
+            return error.ArithmeticError,
+        .string => |s| blk: {
+            if (s.len == 0) return error.ArithmeticError;
+            const view = std.unicode.Utf8View.initUnchecked(s);
+            var it = view.iterator();
+            break :blk it.nextCodepoint() orelse return error.ArithmeticError;
+        },
+        else => return error.TypeError,
+    };
+    var buf: [4]u8 = undefined;
+    const len = std.unicode.utf8Encode(code, &buf) catch return error.ArithmeticError;
+    const str = allocator.dupe(u8, buf[0..len]) catch return error.OutOfMemory;
+    return Value{ .string = str };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -360,6 +415,62 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Test bit at index n.",
         .arglists = "([x n])",
         .added = "1.0",
+    },
+    .{
+        .name = "int",
+        .func = &intCoerceFn,
+        .doc = "Coerce to int",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "long",
+        .func = &intCoerceFn,
+        .doc = "Coerce to long",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "short",
+        .func = &intCoerceFn,
+        .doc = "Coerce to short",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "byte",
+        .func = &intCoerceFn,
+        .doc = "Coerce to byte",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "float",
+        .func = &floatCoerceFn,
+        .doc = "Coerce to float",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "double",
+        .func = &floatCoerceFn,
+        .doc = "Coerce to double",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "num",
+        .func = &numFn,
+        .doc = "Coerce to Number",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "char",
+        .func = &charFn,
+        .doc = "Coerce to char",
+        .arglists = "([x])",
+        .added = "1.1",
     },
 };
 

@@ -168,14 +168,14 @@ vars:
     "bound?": {type: function, status: done, note: 'Takes symbol, resolves in current ns'}
     "bounded-count": {type: function, status: todo}
     butlast: {type: function, status: done, note: "core.clj loop"}
-    byte: {type: function, status: todo}
+    byte: {type: function, status: done, note: builtin (upstream is pure clj)}
     "byte-array": {type: function, status: todo}
     bytes: {type: function, status: todo}
     "bytes?": {type: function, status: todo}
     case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
     cast: {type: function, status: todo}
     cat: {type: function, status: todo}
-    char: {type: function, status: todo}
+    char: {type: function, status: done, note: builtin (upstream is pure clj)}
     "char-array": {type: function, status: todo}
     "char-escape-string": {type: var, status: todo}
     "char-name-string": {type: var, status: todo}
@@ -257,7 +257,7 @@ vars:
     dosync: {type: macro, status: todo}
     dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, uses + not unchecked-inc'}
     doto: {type: macro, status: done}
-    double: {type: function, status: todo}
+    double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: todo}
     "double?": {type: function, status: done}
     doubles: {type: function, status: done}
@@ -298,7 +298,7 @@ vars:
     "find-var": {type: function, status: todo}
     first: {type: function, status: done}
     flatten: {type: function, status: done}
-    float: {type: function, status: todo}
+    float: {type: function, status: done, note: builtin (upstream is pure clj)}
     "float-array": {type: function, status: todo}
     "float?": {type: function, status: done}
     floats: {type: function, status: todo}
@@ -352,7 +352,7 @@ vars:
     "inst-ms*": {type: function, status: todo}
     "inst?": {type: function, status: todo}
     "instance?": {type: function, status: done, note: "core.clj (= t (type x))"}
-    int: {type: function, status: todo}
+    int: {type: function, status: done, note: builtin (upstream is pure clj)}
     "int-array": {type: function, status: todo}
     "int?": {type: function, status: done}
     "integer?": {type: function, status: done}
@@ -389,7 +389,7 @@ vars:
     "load-string": {type: function, status: todo}
     "loaded-libs": {type: function, status: todo}
     locking: {type: macro, status: todo}
-    long: {type: function, status: todo}
+    long: {type: function, status: done, note: builtin (upstream is pure clj)}
     "long-array": {type: function, status: todo}
     longs: {type: function, status: todo}
     loop: {type: special-form, status: done}
@@ -447,7 +447,7 @@ vars:
     nth: {type: function, status: done}
     nthnext: {type: function, status: done}
     nthrest: {type: function, status: done}
-    num: {type: function, status: todo}
+    num: {type: function, status: done, note: builtin (upstream is pure clj)}
     "number?": {type: function, status: done}
     numerator: {type: function, status: todo}
     "object-array": {type: function, status: todo}
@@ -583,7 +583,7 @@ vars:
     "set-error-mode!": {type: function, status: todo}
     "set-validator!": {type: function, status: todo}
     "set?": {type: function, status: done}
-    short: {type: function, status: todo}
+    short: {type: function, status: done, note: builtin (upstream is pure clj)}
     "short-array": {type: function, status: todo}
     shorts: {type: function, status: todo}
     shuffle: {type: function, status: todo}

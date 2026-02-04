@@ -7,7 +7,6 @@
 ;; SKIP: Java exceptions (ClassCastException, ArithmeticException, IllegalArgumentException)
 ;; SKIP: char tests (\a etc.)
 ;; SKIP: instance? checks (Java-specific)
-;; SKIP: Coercion functions (int, double, float, long, short, byte)
 ;; NaN? and infinite? now implemented (T18.4)
 ;; SKIP: unchecked-* operations (not implemented)
 ;; SKIP: Type/class identity tests
@@ -676,6 +675,41 @@
   (is (false? (infinite? 0.0)))
   (is (false? (infinite? 1.5)))
   (is (false? (infinite? ##NaN))))
+
+(deftest test-int-coercion
+  (is (= 3 (int 3.14)))
+  (is (= 3 (int 3)))
+  (is (= -2 (int -2.9)))
+  (is (= 0 (int 0.5))))
+
+(deftest test-long-coercion
+  (is (= 3 (long 3.14)))
+  (is (= 42 (long 42)))
+  (is (= -1 (long -1.9))))
+
+(deftest test-float-coercion
+  (is (= 3.0 (float 3)))
+  (is (= 3.14 (float 3.14)))
+  (is (= 0.0 (float 0))))
+
+(deftest test-double-coercion
+  (is (= 3.0 (double 3)))
+  (is (= 3.14 (double 3.14))))
+
+(deftest test-num-coercion
+  (is (= 42 (num 42)))
+  (is (= 3.14 (num 3.14))))
+
+(deftest test-short-byte-coercion
+  (is (= 3 (short 3.7)))
+  (is (= 255 (byte 255.9)))
+  (is (= 0 (short 0)))
+  (is (= 0 (byte 0))))
+
+(deftest test-char-coercion
+  (is (= "A" (char 65)))
+  (is (= "a" (char 97)))
+  (is (= "0" (char 48))))
 
 ;; Run all tests when executed directly
 (run-tests)
