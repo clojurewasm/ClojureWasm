@@ -15,6 +15,7 @@ Session handover document. Read at session start.
 | Task | Description             | Notes                                                                                                                     |
 |------|-------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | BE3  | Runtime source location | vm.zig, tree_walk.zig NOTE: Source code locations and original code before macro expansion, enabling proper stack traces. |
+| BE4  | Error caret precision   | Investigate nested expr errors, choose strategy (arg-level threadlocal, heuristic, etc.) to improve caret position        |
 | B0   | test.clj enhancement    | is pattern dispatch, thrown?                                                                                              |
 | B1   | Core Semantics fixes    | F29/F33, F34, F30, F31, F32                                                                                               |
 | B2   | Macro Enhancement       | F27/F28, F93, F92, F25/F26                                                                                                |
