@@ -36,13 +36,13 @@ vars:
     var: {type: special-form, status: done, note: special form}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
     "*'": {type: function, status: done, note: "Zig builtin (upstream uses Math.multiplyExact)"}
-    "*1": {type: dynamic-var, status: done}
-    "*2": {type: dynamic-var, status: done}
-    "*3": {type: dynamic-var, status: done}
+    "*1": {type: dynamic-var, status: done, note: "REPL history var"}
+    "*2": {type: dynamic-var, status: done, note: "REPL history var"}
+    "*3": {type: dynamic-var, status: done, note: "REPL history var"}
     "*agent*": {type: var, status: todo}
     "*allow-unresolved-vars*": {type: var, status: todo}
-    "*assert*": {type: var, status: done}
-    "*clojure-version*": {type: dynamic-var, status: done}
+    "*assert*": {type: var, status: done, note: "dynamic var"}
+    "*clojure-version*": {type: dynamic-var, status: done, note: "dynamic var"}
     "*command-line-args*": {type: var, status: todo}
     "*compile-files*": {type: var, status: todo}
     "*compile-path*": {type: var, status: todo}
@@ -77,8 +77,8 @@ vars:
     "+'": {type: function, status: done, note: "Zig builtin (upstream uses Math.addExact)"}
     "-": {type: function, status: done, note: "VM intrinsic opcode"}
     "-'": {type: function, status: done, note: "Zig builtin (upstream uses Math.subtractExact)"}
-    "->": {type: macro, status: done}
-    "->>": {type: macro, status: done}
+    "->": {type: macro, status: done, note: "macro in core.clj"}
+    "->>": {type: macro, status: done, note: "macro in core.clj"}
     "->ArrayChunk": {type: function, status: todo}
     "->Eduction": {type: function, status: todo}
     "->Vec": {type: function, status: todo}
@@ -112,18 +112,18 @@ vars:
     aget: {type: function, status: todo}
     alength: {type: function, status: todo}
     alias: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "all-ns": {type: function, status: done}
+    "all-ns": {type: function, status: done, note: "Zig builtin"}
     alter: {type: function, status: todo}
-    "alter-meta!": {type: function, status: todo}
+    "alter-meta!": {type: function, status: done, note: "Zig builtin: mutates atom metadata"}
     "alter-var-root": {type: function, status: todo}
     amap: {type: macro, status: todo}
     ancestors: {type: function, status: todo}
-    and: {type: macro, status: done}
+    and: {type: macro, status: done, note: "macro in core.clj"}
     "any?": {type: function, status: done, note: "core.clj always true"}
-    apply: {type: function, status: done}
+    apply: {type: function, status: done, note: "Zig builtin"}
     areduce: {type: macro, status: todo}
-    "array-map": {type: function, status: done}
-    "as->": {type: macro, status: done}
+    "array-map": {type: function, status: done, note: "Zig builtin"}
+    "as->": {type: macro, status: done, note: "macro in core.clj"}
     aset: {type: function, status: todo}
     "aset-boolean": {type: function, status: todo}
     "aset-byte": {type: function, status: todo}
@@ -134,14 +134,14 @@ vars:
     "aset-long": {type: function, status: todo}
     "aset-short": {type: function, status: todo}
     assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: uses variadic args instead of multi-arity defmacro'}
-    assoc: {type: function, status: done}
+    assoc: {type: function, status: done, note: "Zig builtin"}
     "assoc!": {type: function, status: todo}
-    "assoc-in": {type: function, status: done}
-    "associative?": {type: function, status: done}
-    atom: {type: function, status: done}
+    "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "associative?": {type: function, status: done, note: "Zig builtin"}
+    atom: {type: function, status: done, note: "Zig builtin"}
     await: {type: function, status: todo}
     "await-for": {type: function, status: todo}
-    await1: {type: function, status: done}
+    await1: {type: function, status: done, note: "core.clj stub"}
     bases: {type: function, status: todo}
     bean: {type: function, status: todo}
     bigdec: {type: function, status: todo}
@@ -161,7 +161,7 @@ vars:
     "bit-xor": {type: function, status: done, note: "Zig builtin"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
-    "boolean?": {type: function, status: done}
+    "boolean?": {type: function, status: done, note: "Zig builtin"}
     booleans: {type: function, status: todo}
     "bound-fn": {type: macro, status: todo}
     "bound-fn*": {type: function, status: todo}
@@ -174,12 +174,12 @@ vars:
     "bytes?": {type: function, status: todo}
     case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
     cast: {type: function, status: done, note: identity (no JVM type system)}
-    cat: {type: function, status: done}
+    cat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     char: {type: function, status: done, note: builtin (upstream is pure clj)}
     "char-array": {type: function, status: todo}
     "char-escape-string": {type: var, status: todo}
     "char-name-string": {type: var, status: todo}
-    "char?": {type: function, status: done}
+    "char?": {type: function, status: done, note: "Zig builtin"}
     chars: {type: function, status: todo}
     chunk: {type: function, status: todo}
     "chunk-append": {type: function, status: todo}
@@ -192,35 +192,35 @@ vars:
     class: {type: function, status: done, note: "Zig builtin alias of type"}
     "class?": {type: function, status: todo}
     "clear-agent-errors": {type: function, status: todo}
-    "clojure-version": {type: function, status: done}
-    "coll?": {type: function, status: done}
-    comment: {type: macro, status: done}
+    "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "coll?": {type: function, status: done, note: "Zig builtin"}
+    comment: {type: macro, status: done, note: "macro in core.clj"}
     commute: {type: function, status: todo}
-    comp: {type: function, status: done}
-    comparator: {type: function, status: done}
-    compare: {type: function, status: done}
-    "compare-and-set!": {type: function, status: done}
+    comp: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    comparator: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    compare: {type: function, status: done, note: "Zig builtin"}
+    "compare-and-set!": {type: function, status: done, note: "Zig builtin"}
     compile: {type: function, status: todo}
-    complement: {type: function, status: done}
-    completing: {type: function, status: done}
-    concat: {type: function, status: done}
+    complement: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    completing: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    concat: {type: function, status: done, note: "Zig builtin"}
     cond: {type: macro, status: done, note: 'UPSTREAM-DIFF: no even-forms error check'}
-    "cond->": {type: macro, status: done}
-    "cond->>": {type: macro, status: done}
+    "cond->": {type: macro, status: done, note: "macro in core.clj"}
+    "cond->>": {type: macro, status: done, note: "macro in core.clj"}
     condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
-    conj: {type: function, status: done}
+    conj: {type: function, status: done, note: "Zig builtin"}
     "conj!": {type: function, status: todo}
-    cons: {type: function, status: done}
-    constantly: {type: function, status: done}
+    cons: {type: function, status: done, note: "Zig builtin"}
+    constantly: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "construct-proxy": {type: function, status: todo}
-    "contains?": {type: function, status: done}
-    count: {type: function, status: done}
+    "contains?": {type: function, status: done, note: "Zig builtin"}
+    count: {type: function, status: done, note: "Zig builtin"}
     "counted?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "create-ns": {type: function, status: done}
+    "create-ns": {type: function, status: done, note: "Zig builtin"}
     "create-struct": {type: function, status: todo}
-    cycle: {type: function, status: done}
+    cycle: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "dec'": {type: function, status: done}
+    "dec'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity uses (into [] (dedupe) coll) instead of sequence'}
@@ -231,7 +231,7 @@ vars:
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
     defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: simplified, no docstring/metadata/pre-post/inline'}
-    "defn-": {type: macro, status: done}
+    "defn-": {type: macro, status: done, note: "macro in core.clj"}
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
@@ -241,76 +241,76 @@ vars:
     "delay?": {type: function, status: done, note: clj in core.clj}
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
-    deref: {type: function, status: done}
+    deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: todo}
     descendants: {type: function, status: todo}
     destructure: {type: function, status: todo}
-    disj: {type: function, status: done}
+    disj: {type: function, status: done, note: "Zig builtin"}
     "disj!": {type: function, status: todo}
-    dissoc: {type: function, status: done}
+    dissoc: {type: function, status: done, note: "Zig builtin"}
     "dissoc!": {type: function, status: todo}
-    distinct: {type: function, status: done}
-    "distinct?": {type: function, status: done}
+    distinct: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "distinct?": {type: function, status: done, note: "Zig builtin"}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
     doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: single binding only, no :let/:when/:while/nesting"}
     dosync: {type: macro, status: todo}
     dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, uses + not unchecked-inc'}
-    doto: {type: macro, status: done}
+    doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: todo}
     "double?": {type: function, status: done, note: "Zig builtin"}
     doubles: {type: function, status: skip, note: "JVM interop (double-array)"}
-    drop: {type: function, status: done}
-    "drop-last": {type: function, status: done}
+    drop: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "drop-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
     eduction: {type: function, status: todo}
-    empty: {type: function, status: done}
-    "empty?": {type: function, status: done}
+    empty: {type: function, status: done, note: "Zig builtin"}
+    "empty?": {type: function, status: done, note: "Zig builtin"}
     ensure: {type: function, status: todo}
-    "ensure-reduced": {type: function, status: done}
+    "ensure-reduced": {type: function, status: done, note: "Zig builtin"}
     "enumeration-seq": {type: function, status: todo}
     "error-handler": {type: function, status: todo}
     "error-mode": {type: function, status: todo}
-    eval: {type: function, status: done}
+    eval: {type: function, status: done, note: "Zig builtin"}
     "even?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}
-    "every?": {type: function, status: done}
+    "every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "ex-cause": {type: function, status: todo}
-    "ex-data": {type: function, status: done}
-    "ex-info": {type: function, status: done}
-    "ex-message": {type: function, status: done}
+    "ex-data": {type: function, status: done, note: "Zig builtin"}
+    "ex-info": {type: function, status: done, note: "Zig builtin"}
+    "ex-message": {type: function, status: done, note: "Zig builtin"}
     extend: {type: function, status: todo}
     "extend-protocol": {type: macro, status: todo}
     "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
     extenders: {type: function, status: todo}
     "extends?": {type: function, status: todo}
     "false?": {type: function, status: done, note: "core.clj (= x false)"}
-    ffirst: {type: function, status: done}
+    ffirst: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "file-seq": {type: function, status: todo}
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
-    find: {type: function, status: done}
+    find: {type: function, status: done, note: "Zig builtin"}
     "find-keyword": {type: function, status: todo}
-    "find-ns": {type: function, status: done}
+    "find-ns": {type: function, status: done, note: "Zig builtin"}
     "find-protocol-impl": {type: function, status: todo}
     "find-protocol-method": {type: function, status: todo}
     "find-var": {type: function, status: todo}
-    first: {type: function, status: done}
-    flatten: {type: function, status: done}
+    first: {type: function, status: done, note: "Zig builtin"}
+    flatten: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     float: {type: function, status: done, note: builtin (upstream is pure clj)}
     "float-array": {type: function, status: todo}
     "float?": {type: function, status: done, note: "Zig builtin"}
     floats: {type: function, status: todo}
-    flush: {type: function, status: done}
+    flush: {type: function, status: done, note: "Zig builtin"}
     fn: {type: special-form, status: done, note: special form (analyzes as fn*)}
     "fn?": {type: function, status: done, note: special form}
     fnext: {type: function, status: done, note: "special form"}
     fnil: {type: function, status: done, note: "special form"}
     for: {type: macro, status: done, note: "analyzer special form in CW"}
     force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
-    format: {type: function, status: done}
-    frequencies: {type: function, status: done}
+    format: {type: function, status: done, note: "Zig builtin"}
+    frequencies: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     future: {type: macro, status: todo}
     "future-call": {type: function, status: todo}
     "future-cancel": {type: function, status: todo}
@@ -319,34 +319,34 @@ vars:
     "future?": {type: function, status: todo}
     "gen-class": {type: macro, status: todo}
     "gen-interface": {type: macro, status: todo}
-    gensym: {type: function, status: done}
-    get: {type: function, status: done}
-    "get-in": {type: function, status: done}
+    gensym: {type: function, status: done, note: "Zig builtin"}
+    get: {type: function, status: done, note: "Zig builtin"}
+    "get-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "get-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "get-proxy-class": {type: function, status: todo}
     "get-thread-bindings": {type: function, status: todo}
     "get-validator": {type: function, status: todo}
-    "group-by": {type: function, status: done}
+    "group-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "halt-when": {type: function, status: done, note: 'UPSTREAM-DIFF: uses :__halt instead of ::halt'}
-    hash: {type: function, status: done}
+    hash: {type: function, status: done, note: "Zig builtin"}
     "hash-combine": {type: function, status: todo}
-    "hash-map": {type: function, status: done}
+    "hash-map": {type: function, status: done, note: "Zig builtin"}
     "hash-ordered-coll": {type: function, status: todo}
-    "hash-set": {type: function, status: done}
+    "hash-set": {type: function, status: done, note: "Zig builtin"}
     "hash-unordered-coll": {type: function, status: todo}
-    "ident?": {type: function, status: done}
-    "identical?": {type: function, status: done}
-    identity: {type: function, status: done}
+    "ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "identical?": {type: function, status: done, note: "Zig builtin"}
+    identity: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "if-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, requires 3 args (F30)'}
-    "if-not": {type: macro, status: done}
+    "if-not": {type: macro, status: done, note: "macro in core.clj"}
     "if-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args, requires 3 args"}
-    "ifn?": {type: function, status: done}
+    "ifn?": {type: function, status: done, note: "Zig builtin"}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
     inc: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "inc'": {type: function, status: done}
+    "inc'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "infinite?": {type: function, status: done}
+    "infinite?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "init-proxy": {type: function, status: todo}
     "inst-ms": {type: function, status: todo}
     "inst-ms*": {type: function, status: todo}
@@ -354,35 +354,35 @@ vars:
     "instance?": {type: function, status: done, note: "core.clj (= t (type x))"}
     int: {type: function, status: done, note: builtin (upstream is pure clj)}
     "int-array": {type: function, status: todo}
-    "int?": {type: function, status: done}
+    "int?": {type: function, status: done, note: "Zig builtin"}
     "integer?": {type: function, status: done, note: "Zig builtin"}
-    interleave: {type: function, status: done}
+    interleave: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     intern: {type: function, status: todo}
-    interpose: {type: function, status: done}
+    interpose: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     into: {type: function, status: done, note: "portable to clj"}
     "into-array": {type: function, status: todo}
     ints: {type: function, status: todo}
     "io!": {type: macro, status: todo}
     "isa?": {type: function, status: done, note: "core.clj simplified (= child parent)"}
-    iterate: {type: function, status: done}
+    iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     iteration: {type: function, status: todo}
     "iterator-seq": {type: function, status: todo}
-    juxt: {type: function, status: done}
-    keep: {type: function, status: done}
-    "keep-indexed": {type: function, status: done}
-    key: {type: function, status: done}
-    keys: {type: function, status: done}
-    keyword: {type: function, status: done}
-    "keyword?": {type: function, status: done}
+    juxt: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    keep: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "keep-indexed": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    key: {type: function, status: done, note: "Zig builtin"}
+    keys: {type: function, status: done, note: "Zig builtin"}
+    keyword: {type: function, status: done, note: "Zig builtin"}
+    "keyword?": {type: function, status: done, note: "Zig builtin"}
     last: {type: function, status: done, note: "core.clj loop to end"}
-    "lazy-cat": {type: macro, status: done}
+    "lazy-cat": {type: macro, status: done, note: "macro in core.clj"}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done, note: special form (analyzes as let*)}
     letfn: {type: special-form, status: todo, note: special form}
     "line-seq": {type: function, status: todo}
-    list: {type: function, status: done}
-    "list*": {type: function, status: done}
-    "list?": {type: function, status: done}
+    list: {type: function, status: done, note: "Zig builtin"}
+    "list*": {type: function, status: done, note: "Zig builtin"}
+    "list?": {type: function, status: done, note: "Zig builtin"}
     load: {type: function, status: todo}
     "load-file": {type: var, status: todo}
     "load-reader": {type: function, status: todo}
@@ -393,102 +393,103 @@ vars:
     "long-array": {type: function, status: todo}
     longs: {type: function, status: todo}
     loop: {type: special-form, status: done, note: special form (analyzes as loop*)}
-    macroexpand: {type: function, status: done}
-    "macroexpand-1": {type: function, status: done}
+    macroexpand: {type: function, status: done, note: "Zig builtin"}
+    "macroexpand-1": {type: function, status: done, note: "Zig builtin"}
     "make-array": {type: function, status: todo}
-    "make-hierarchy": {type: function, status: done}
+    "make-hierarchy": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     map: {type: function, status: done, note: "eager (no lazy seq)"}
     "map-entry?": {type: function, status: todo}
-    "map-indexed": {type: function, status: done}
-    "map?": {type: function, status: done}
-    mapcat: {type: function, status: done}
+    "map-indexed": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "map?": {type: function, status: done, note: "Zig builtin"}
+    mapcat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     mapv: {type: function, status: done, note: "UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent\\!"}
     max: {type: function, status: done, note: "Zig builtin"}
-    "max-key": {type: function, status: done}
+    "max-key": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     memfn: {type: macro, status: todo}
-    memoize: {type: function, status: done}
-    merge: {type: function, status: done}
-    "merge-with": {type: function, status: done}
+    memoize: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    merge: {type: function, status: done, note: "Zig builtin"}
+    "merge-with": {type: function, status: done, note: "Zig builtin"}
     meta: {type: function, status: done, note: 'Zig builtin: returns metadata map from collections, fn, atom'}
     "method-sig": {type: function, status: todo}
     methods: {type: function, status: done, note: builtin (upstream is pure clj)}
     min: {type: function, status: done, note: "Zig builtin"}
-    "min-key": {type: function, status: done}
+    "min-key": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "mix-collection-hash": {type: function, status: todo}
     mod: {type: function, status: done, note: "VM intrinsic opcode"}
     munge: {type: function, status: todo}
-    name: {type: function, status: done}
-    namespace: {type: function, status: done}
+    name: {type: function, status: done, note: "Zig builtin"}
+    namespace: {type: function, status: done, note: "Zig builtin"}
     "namespace-munge": {type: function, status: todo}
-    "nat-int?": {type: function, status: done}
+    "nat-int?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "neg-int?": {type: function, status: done, note: "Zig builtin"}
     "neg?": {type: function, status: done, note: "Zig builtin"}
-    newline: {type: function, status: done}
-    next: {type: function, status: done}
+    newline: {type: function, status: done, note: "Zig builtin"}
+    next: {type: function, status: done, note: "Zig builtin"}
     nfirst: {type: function, status: done, note: "core.clj (next (first coll))"}
-    "nil?": {type: function, status: done}
-    nnext: {type: function, status: done}
-    not: {type: function, status: done}
-    "not-any?": {type: function, status: done}
+    "nil?": {type: function, status: done, note: "Zig builtin"}
+    nnext: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    not: {type: function, status: done, note: "Zig builtin"}
+    "not-any?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
-    "not-every?": {type: function, status: done}
+    "not-every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
     ns: {type: macro, status: done, note: 'UPSTREAM-DIFF: minimal impl, no :require/:use/:import'}
     "ns-aliases": {type: function, status: todo}
     "ns-imports": {type: function, status: todo}
-    "ns-interns": {type: function, status: done}
-    "ns-map": {type: function, status: done}
-    "ns-name": {type: function, status: done}
-    "ns-publics": {type: function, status: done}
+    "ns-interns": {type: function, status: done, note: "Zig builtin"}
+    "ns-map": {type: function, status: done, note: "Zig builtin"}
+    "ns-name": {type: function, status: done, note: "Zig builtin"}
+    "ns-publics": {type: function, status: done, note: "Zig builtin"}
     "ns-refers": {type: function, status: todo}
     "ns-resolve": {type: function, status: todo}
     "ns-unalias": {type: function, status: todo}
     "ns-unmap": {type: function, status: todo}
-    nth: {type: function, status: done}
-    nthnext: {type: function, status: done}
-    nthrest: {type: function, status: done}
+    nth: {type: function, status: done, note: "Zig builtin"}
+    nthnext: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    nthrest: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     num: {type: function, status: done, note: builtin (upstream is pure clj)}
     "number?": {type: function, status: done, note: "Zig builtin"}
     numerator: {type: function, status: todo}
     "object-array": {type: function, status: todo}
     "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
-    or: {type: macro, status: done}
+    or: {type: macro, status: done, note: "macro in core.clj"}
     parents: {type: function, status: todo}
-    "parse-boolean": {type: function, status: done}
+    "parse-boolean": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "parse-double": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-long": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-uuid": {type: function, status: todo}
-    partial: {type: function, status: done}
-    partition: {type: function, status: done}
+    partial: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    partition: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "partition-all": {type: function, status: done, note: "core.clj like partition but includes trailing"}
-    "partition-by": {type: function, status: done}
+    "partition-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     partitionv: {type: function, status: todo}
     "partitionv-all": {type: function, status: todo}
     pcalls: {type: function, status: todo}
-    peek: {type: function, status: done}
+    peek: {type: function, status: done, note: "Zig builtin"}
     "persistent!": {type: function, status: todo}
     pmap: {type: function, status: todo}
-    pop: {type: function, status: done}
+    pop: {type: function, status: done, note: "Zig builtin"}
     "pop!": {type: function, status: todo}
     "pop-thread-bindings": {type: function, status: todo}
     "pos-int?": {type: function, status: done, note: "Zig builtin"}
     "pos?": {type: function, status: done, note: "Zig builtin"}
-    pr: {type: function, status: done}
-    "pr-str": {type: function, status: done}
+    pr: {type: function, status: done, note: "Zig builtin"}
+    "pr-str": {type: function, status: done, note: "Zig builtin"}
     "prefer-method": {type: function, status: todo}
     prefers: {type: function, status: todo}
+    "preserving-reduced": {type: function, status: done, note: "private helper for cat"}
     "primitives-classnames": {type: var, status: todo}
-    print: {type: function, status: done}
+    print: {type: function, status: done, note: "Zig builtin"}
     "print-ctor": {type: function, status: todo}
     "print-dup": {type: var, status: todo}
     "print-method": {type: var, status: todo}
     "print-simple": {type: function, status: todo}
-    "print-str": {type: function, status: done}
-    printf: {type: function, status: done}
-    println: {type: function, status: done}
-    "println-str": {type: function, status: done}
-    prn: {type: function, status: done}
-    "prn-str": {type: function, status: done}
+    "print-str": {type: function, status: done, note: "Zig builtin"}
+    printf: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    println: {type: function, status: done, note: "Zig builtin"}
+    "println-str": {type: function, status: done, note: "Zig builtin"}
+    prn: {type: function, status: done, note: "Zig builtin"}
+    "prn-str": {type: function, status: done, note: "Zig builtin"}
     promise: {type: function, status: todo}
     proxy: {type: macro, status: todo}
     "proxy-call-with-super": {type: function, status: todo}
@@ -497,38 +498,38 @@ vars:
     "proxy-super": {type: macro, status: todo}
     "push-thread-bindings": {type: function, status: todo}
     pvalues: {type: macro, status: todo}
-    "qualified-ident?": {type: function, status: done}
-    "qualified-keyword?": {type: function, status: done}
-    "qualified-symbol?": {type: function, status: done}
+    "qualified-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "qualified-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "qualified-symbol?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     quot: {type: function, status: done, note: "Zig builtin"}
-    rand: {type: function, status: done}
-    "rand-int": {type: function, status: done}
-    "rand-nth": {type: function, status: done}
-    "random-sample": {type: function, status: done}
+    rand: {type: function, status: done, note: "Zig builtin"}
+    "rand-int": {type: function, status: done, note: "Zig builtin"}
+    "rand-nth": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "random-sample": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "random-uuid": {type: function, status: todo}
-    range: {type: function, status: done}
+    range: {type: function, status: done, note: "Zig builtin"}
     "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rationalize: {type: function, status: todo}
-    "re-find": {type: function, status: done}
+    "re-find": {type: function, status: done, note: "Zig builtin"}
     "re-groups": {type: function, status: todo}
     "re-matcher": {type: function, status: todo}
-    "re-matches": {type: function, status: done}
-    "re-pattern": {type: function, status: done}
-    "re-seq": {type: function, status: done}
+    "re-matches": {type: function, status: done, note: "Zig builtin"}
+    "re-pattern": {type: function, status: done, note: "Zig builtin"}
+    "re-seq": {type: function, status: done, note: "Zig builtin"}
     read: {type: function, status: todo}
     read+string: {type: function, status: todo}
-    "read-line": {type: function, status: done}
-    "read-string": {type: function, status: done}
+    "read-line": {type: function, status: done, note: "Zig builtin"}
+    "read-string": {type: function, status: done, note: "Zig builtin"}
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}
     "realized?": {type: function, status: done, note: "core.clj checks delay :realized atom"}
     "record?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    reduce: {type: function, status: done}
+    reduce: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
-    reduced: {type: function, status: done}
-    "reduced?": {type: function, status: done}
-    reductions: {type: function, status: done}
+    reduced: {type: function, status: done, note: "Zig builtin"}
+    "reduced?": {type: function, status: done, note: "Zig builtin"}
+    reductions: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     ref: {type: function, status: todo}
     "ref-history-count": {type: function, status: todo}
     "ref-max-history": {type: function, status: todo}
@@ -539,110 +540,110 @@ vars:
     reify: {type: macro, status: todo}
     "release-pending-sends": {type: function, status: todo}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
-    remove: {type: function, status: done}
+    remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-ns": {type: function, status: todo}
     "remove-tap": {type: function, status: todo}
     "remove-watch": {type: function, status: todo}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
-    repeatedly: {type: function, status: done}
-    replace: {type: function, status: done}
-    replicate: {type: function, status: done}
+    repeatedly: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    replace: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    replicate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     require: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "requiring-resolve": {type: function, status: todo}
-    "reset!": {type: function, status: done}
-    "reset-meta!": {type: function, status: todo}
-    "reset-vals!": {type: function, status: todo}
+    "reset!": {type: function, status: done, note: "Zig builtin"}
+    "reset-meta!": {type: function, status: done, note: "Zig builtin: replaces atom metadata"}
+    "reset-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     resolve: {type: function, status: todo}
-    rest: {type: function, status: done}
+    rest: {type: function, status: done, note: "Zig builtin"}
     "restart-agent": {type: function, status: todo}
     "resultset-seq": {type: function, status: todo}
     reverse: {type: function, status: done, note: "portable to clj"}
     "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rseq: {type: function, status: done, note: builtin (upstream is pure clj)}
     rsubseq: {type: function, status: todo}
-    "run!": {type: function, status: done}
-    "satisfies?": {type: function, status: done}
+    "run!": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "satisfies?": {type: function, status: done, note: "Zig builtin"}
     second: {type: function, status: done, note: "core.clj (first (next coll))"}
-    "select-keys": {type: function, status: done}
+    "select-keys": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     send: {type: function, status: todo}
     "send-off": {type: function, status: todo}
     "send-via": {type: function, status: todo}
-    seq: {type: function, status: done}
+    seq: {type: function, status: done, note: "Zig builtin"}
     "seq-to-map-for-destructuring": {type: function, status: todo}
-    "seq?": {type: function, status: done}
+    "seq?": {type: function, status: done, note: "Zig builtin"}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: todo}
     sequence: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity only (no transducer arities)'}
-    "sequential?": {type: function, status: done}
-    set: {type: function, status: done}
+    "sequential?": {type: function, status: done, note: "Zig builtin"}
+    set: {type: function, status: done, note: "Zig builtin"}
     "set-agent-send-executor!": {type: function, status: todo}
     "set-agent-send-off-executor!": {type: function, status: todo}
     "set-error-handler!": {type: function, status: todo}
     "set-error-mode!": {type: function, status: todo}
     "set-validator!": {type: function, status: todo}
-    "set?": {type: function, status: done}
+    "set?": {type: function, status: done, note: "Zig builtin"}
     short: {type: function, status: done, note: builtin (upstream is pure clj)}
     "short-array": {type: function, status: todo}
     shorts: {type: function, status: todo}
     shuffle: {type: function, status: done, note: builtin (upstream is pure clj)}
     "shutdown-agents": {type: function, status: todo}
-    "simple-ident?": {type: function, status: done}
-    "simple-keyword?": {type: function, status: done}
-    "simple-symbol?": {type: function, status: done}
-    slurp: {type: function, status: done}
-    some: {type: function, status: done}
-    "some->": {type: macro, status: done}
-    "some->>": {type: macro, status: done}
+    "simple-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "simple-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "simple-symbol?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    slurp: {type: function, status: done, note: "Zig builtin"}
+    some: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "some->": {type: macro, status: done, note: "macro in core.clj"}
+    "some->>": {type: macro, status: done, note: "macro in core.clj"}
     "some-fn": {type: function, status: done, note: "core.clj or-based combinator"}
     "some?": {type: function, status: done, note: "core.clj (not (nil? x))"}
-    sort: {type: function, status: done}
-    "sort-by": {type: function, status: done}
-    "sorted-map": {type: function, status: done}
+    sort: {type: function, status: done, note: "Zig builtin"}
+    "sort-by": {type: function, status: done, note: "Zig builtin"}
+    "sorted-map": {type: function, status: done, note: "Zig builtin"}
     "sorted-map-by": {type: function, status: todo}
     "sorted-set": {type: function, status: todo}
     "sorted-set-by": {type: function, status: todo}
     "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "special-symbol?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    spit: {type: function, status: done}
-    "split-at": {type: function, status: done}
-    "split-with": {type: function, status: done}
+    spit: {type: function, status: done, note: "Zig builtin"}
+    "split-at": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "split-with": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "splitv-at": {type: function, status: todo}
     str: {type: function, status: done, note: "portable to clj"}
     "stream-into!": {type: function, status: todo}
     "stream-reduce!": {type: function, status: todo}
     "stream-seq!": {type: function, status: todo}
     "stream-transduce!": {type: function, status: todo}
-    "string?": {type: function, status: done}
+    "string?": {type: function, status: done, note: "Zig builtin"}
     struct: {type: function, status: todo}
     "struct-map": {type: function, status: todo}
-    subs: {type: function, status: done}
+    subs: {type: function, status: done, note: "Zig builtin"}
     subseq: {type: function, status: todo}
-    subvec: {type: function, status: done}
+    subvec: {type: function, status: done, note: "Zig builtin"}
     supers: {type: function, status: todo}
     "swap!": {type: function, status: done, note: "builtin-fn only (D8)"}
-    "swap-vals!": {type: function, status: todo}
-    symbol: {type: function, status: done}
-    "symbol?": {type: function, status: done}
+    "swap-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
+    symbol: {type: function, status: done, note: "Zig builtin"}
+    "symbol?": {type: function, status: done, note: "Zig builtin"}
     sync: {type: macro, status: todo}
     "tagged-literal": {type: function, status: todo}
     "tagged-literal?": {type: function, status: todo}
-    take: {type: function, status: done}
-    "take-last": {type: function, status: done}
-    "take-nth": {type: function, status: done}
+    take: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "take-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "take-nth": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
-    test: {type: function, status: done}
-    "the-ns": {type: function, status: done}
+    test: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "the-ns": {type: function, status: done, note: "Zig builtin"}
     "thread-bound?": {type: function, status: todo}
     time: {type: macro, status: done, note: macro using __nano-time}
     "to-array": {type: function, status: todo}
     "to-array-2d": {type: function, status: todo}
-    trampoline: {type: function, status: done}
+    trampoline: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     transduce: {type: function, status: done, note: 'UPSTREAM-DIFF: uses reduce instead of coll-reduce protocol'}
     transient: {type: function, status: todo}
-    "tree-seq": {type: function, status: done}
+    "tree-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
     "unchecked-add": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
@@ -669,34 +670,34 @@ vars:
     underive: {type: function, status: todo}
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
-    unreduced: {type: function, status: done}
-    "unsigned-bit-shift-right": {type: function, status: done}
-    update: {type: function, status: done}
-    "update-in": {type: function, status: done}
+    unreduced: {type: function, status: done, note: "Zig builtin"}
+    "unsigned-bit-shift-right": {type: function, status: done, note: "Zig builtin"}
+    update: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "update-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "update-keys": {type: function, status: done, note: core.clj reduce-kv based}
     "update-proxy": {type: function, status: todo}
     "update-vals": {type: function, status: done, note: core.clj reduce-kv based}
     "uri?": {type: function, status: todo}
     use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "uuid?": {type: function, status: todo}
-    val: {type: function, status: done}
-    vals: {type: function, status: done}
+    val: {type: function, status: done, note: "Zig builtin"}
+    vals: {type: function, status: done, note: "Zig builtin"}
     "var-get": {type: function, status: done, note: T11.2}
     "var-set": {type: function, status: done, note: T11.2}
     "var?": {type: function, status: done, note: T11.2}
     "vary-meta": {type: function, status: done, note: 'core.clj: (with-meta obj (apply f (meta obj) args))'}
-    vec: {type: function, status: done}
-    vector: {type: function, status: done}
+    vec: {type: function, status: done, note: "Zig builtin"}
+    vector: {type: function, status: done, note: "Zig builtin"}
     "vector-of": {type: function, status: todo}
-    "vector?": {type: function, status: done}
-    "volatile!": {type: function, status: done}
-    "volatile?": {type: function, status: done}
-    "vreset!": {type: function, status: done}
+    "vector?": {type: function, status: done, note: "Zig builtin"}
+    "volatile!": {type: function, status: done, note: "Zig builtin"}
+    "volatile?": {type: function, status: done, note: "Zig builtin"}
+    "vreset!": {type: function, status: done, note: "Zig builtin"}
     "vswap!": {type: macro, status: done, note: "core.clj macro"}
-    when: {type: macro, status: done}
-    "when-first": {type: macro, status: done}
+    when: {type: macro, status: done, note: "macro in core.clj"}
+    "when-first": {type: macro, status: done, note: "macro in core.clj"}
     "when-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args'}
-    "when-not": {type: macro, status: done}
+    "when-not": {type: macro, status: done, note: "macro in core.clj"}
     "when-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args"}
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: todo}
@@ -710,42 +711,9 @@ vars:
     "with-precision": {type: macro, status: todo}
     "with-redefs": {type: macro, status: todo}
     "with-redefs-fn": {type: function, status: todo}
-    "xml-seq": {type: function, status: done}
+    "xml-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "zero?": {type: function, status: done, note: "Zig builtin"}
-    zipmap: {type: function, status: done}
-    alter-meta\!:
-      status: done
-      note: 'Zig builtin: mutates atom metadata'
-      type: function
-    reset-meta\!:
-      status: done
-      note: 'Zig builtin: replaces atom metadata'
-      type: function
-    compare-and-set\!:
-      status: done
-    swap-vals\!:
-      status: done
-      note: builtin (upstream is pure clj)
-    reset-vals\!:
-      status: done
-      note: builtin (upstream is pure clj)
-    vswap\!:
-      status: done
-      note: macro in core.clj (upstream)
-    preserving-reduced:
-      status: done
-      note: private helper for cat
-    volatile\!:
-      status: done
-      note: builtin (upstream is pure clj)
-    vreset\!:
-      status: done
-      note: builtin (upstream is pure clj)
-    swap\!:
-      note: builtin
-    set\!:
-      status: partial
-      note: 'UPSTREAM-DIFF: metadata registered but not in analyzer dispatch; needs F85 binding'
+    zipmap: {type: function, status: done, note: "Zig builtin"}
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}
@@ -1164,7 +1132,7 @@ vars:
     "last-index-of": {type: function, status: done, note: builtin (upstream uses .lastIndexOf)}
     "lower-case": {type: function, status: done}
     "re-quote-replacement": {type: function, status: todo}
-    replace: {type: function, status: done}
+    replace: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "replace-first": {type: function, status: done, note: builtin (upstream is pure clj)}
     reverse: {type: function, status: done}
     split: {type: function, status: done}
