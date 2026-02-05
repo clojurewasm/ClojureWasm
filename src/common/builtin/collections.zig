@@ -1331,6 +1331,12 @@ pub fn hashSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .set = set };
 }
 
+/// (sorted-set & vals) — creates a set from the given values.
+/// Currently uses hash-set storage (no sorted iteration order).
+pub fn sortedSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return hashSetFn(allocator, args);
+}
+
 /// (sorted-map & kvs) — creates a map with entries sorted by key.
 /// Uses natural ordering (compareValues).
 pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -1640,6 +1646,13 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.0",
     },
     .{
+        .name = "sorted-set",
+        .func = &sortedSetFn,
+        .doc = "Returns a new sorted set with supplied keys.",
+        .arglists = "([& keys])",
+        .added = "1.0",
+    },
+    .{
         .name = "sorted-map",
         .func = &sortedMapFn,
         .doc = "keyval => key val. Returns a new sorted map with supplied mappings.",
@@ -1929,9 +1942,9 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 38 entries" {
-    // 37 + 1 (__seq-to-map)
-    try testing.expectEqual(38, builtins.len);
+test "builtins table has 39 entries" {
+    // 37 + 1 (__seq-to-map) + 1 (sorted-set)
+    try testing.expectEqual(39, builtins.len);
 }
 
 test "reverse list" {

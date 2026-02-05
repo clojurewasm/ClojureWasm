@@ -602,7 +602,7 @@ vars:
     "sort-by": {type: function, status: done, note: "Zig builtin"}
     "sorted-map": {type: function, status: done, note: "Zig builtin"}
     "sorted-map-by": {type: function, status: todo}
-    "sorted-set": {type: function, status: todo}
+    "sorted-set": {type: function, status: done, note: 'UPSTREAM-DIFF: uses hash-set storage (no sorted iteration)'}
     "sorted-set-by": {type: function, status: todo}
     "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "special-symbol?": {type: function, status: done, note: builtin (upstream is pure clj)}

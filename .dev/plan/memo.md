@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C15 (clojure_set.clj)
+- Next task: C16 (metadata.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -48,7 +48,7 @@ Completed:
 Remaining (resume here after CX):
 - ~~C13: clojure_walk.clj~~ done (23 assertions, D68 namespace isolation + metadata preservation)
 - ~~C14: string.clj~~ done (114 assertions, regex macro roundtrip fix + clj_string.zig extensions)
-- C15: clojure_set.clj (224 lines)
+- ~~C15: clojure_set.clj~~ done (111 assertions, sorted-set builtin)
 - C16: metadata.clj (239 lines)
 - C17: special.clj (106 lines, many F## blockers — CX should resolve most)
 - C18: other_functions.clj (401 lines)
@@ -57,19 +57,14 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-C15: clojure_set.clj (224 lines)
+C16: metadata.clj (239 lines)
 
 ## Previous Task
 
-C14 completed: string.clj (114 assertions, 22 tests).
-- Regex macro roundtrip fix: `formToValueWithNs` in macro.zig now compiles
-  regex Form→Value.regex (was converting to string). `valueToForm` maps
-  Value.regex→Form.regex. Fixes `#"foo"` becoming string inside deftest.
-- clj_string.zig extensions: replace/replace-first (char/char, regex/string,
-  regex/fn), join (char separator), split (3-arg limit), index-of/last-index-of
-  (char support), trim/triml/trimr (Unicode whitespace), escape, re-quote-replacement.
-- Tokenizer fix: `\,` char literal (comma is whitespace in Clojure, readCharacter
-  must consume at least one char after backslash).
+C15 completed: clojure_set.clj (111 assertions, 12 tests).
+- Added `sorted-set` builtin (delegates to hash-set; no sorted iteration order).
+- All 12 upstream set tests pass (union, intersection, difference, select,
+  project, rename, rename-keys, index, join, map-invert, subset?, superset?).
 
 ## Handover Notes
 
