@@ -323,6 +323,66 @@ fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .float = val };
 }
 
+/// (__pow base exp) — returns base raised to the power of exp (as double).
+pub fn powFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __pow", .{args.len});
+    const base = switch (args[0]) {
+        .integer => |n| @as(f64, @floatFromInt(n)),
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__pow expects a number", .{}),
+    };
+    const exp = switch (args[1]) {
+        .integer => |n| @as(f64, @floatFromInt(n)),
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__pow expects a number", .{}),
+    };
+    return Value{ .float = std.math.pow(f64, base, exp) };
+}
+
+/// (__sqrt n) — returns the square root of n (as double).
+pub fn sqrtFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __sqrt", .{args.len});
+    const n = switch (args[0]) {
+        .integer => |v| @as(f64, @floatFromInt(v)),
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__sqrt expects a number", .{}),
+    };
+    return Value{ .float = @sqrt(n) };
+}
+
+/// (__round n) — returns the closest long to n.
+pub fn roundFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __round", .{args.len});
+    const n = switch (args[0]) {
+        .integer => |v| return Value{ .integer = v },
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__round expects a number", .{}),
+    };
+    return Value{ .integer = @intFromFloat(@round(n)) };
+}
+
+/// (__ceil n) — returns the smallest integer >= n (as double).
+pub fn ceilFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __ceil", .{args.len});
+    const n = switch (args[0]) {
+        .integer => |v| @as(f64, @floatFromInt(v)),
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__ceil expects a number", .{}),
+    };
+    return Value{ .float = @ceil(n) };
+}
+
+/// (__floor n) — returns the largest integer <= n (as double).
+pub fn floorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __floor", .{args.len});
+    const n = switch (args[0]) {
+        .integer => |v| @as(f64, @floatFromInt(v)),
+        .float => |f| f,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__floor expects a number", .{}),
+    };
+    return Value{ .float = @floor(n) };
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -523,6 +583,41 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Parses the string argument as a double, returning nil if not valid.",
         .arglists = "([s])",
         .added = "1.11",
+    },
+    .{
+        .name = "__pow",
+        .func = &powFn,
+        .doc = "Returns base raised to the power of exp.",
+        .arglists = "([base exp])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__sqrt",
+        .func = &sqrtFn,
+        .doc = "Returns the square root of n.",
+        .arglists = "([n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__round",
+        .func = &roundFn,
+        .doc = "Returns the closest long to n.",
+        .arglists = "([n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__ceil",
+        .func = &ceilFn,
+        .doc = "Returns the smallest integer value >= n.",
+        .arglists = "([n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__floor",
+        .func = &floorFn,
+        .doc = "Returns the largest integer value <= n.",
+        .arglists = "([n])",
+        .added = "1.0",
     },
 };
 

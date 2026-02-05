@@ -243,9 +243,53 @@ pub const Analyzer = struct {
             }
         }
 
+        // Rewrite Math/System static method calls to builtin names
+        if (items[0].data == .symbol) {
+            if (items[0].data.symbol.ns) |ns_name| {
+                if (rewriteInteropCall(ns_name, items[0].data.symbol.name)) |builtin_name| {
+                    var rewritten = self.allocator.alloc(Form, items.len) catch return error.OutOfMemory;
+                    rewritten[0] = .{
+                        .data = .{ .symbol = .{ .ns = null, .name = builtin_name } },
+                        .line = items[0].line,
+                        .column = items[0].column,
+                    };
+                    @memcpy(rewritten[1..], items[1..]);
+                    return self.analyzeCall(rewritten, form);
+                }
+            }
+        }
+
         // Function call
         return self.analyzeCall(items, form);
     }
+
+    /// Rewrite Java static method calls to ClojureWasm builtins.
+    fn rewriteInteropCall(ns: []const u8, name: []const u8) ?[]const u8 {
+        if (std.mem.eql(u8, ns, "Math")) {
+            return math_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "System")) {
+            return system_rewrites.get(name);
+        }
+        return null;
+    }
+
+    const math_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "abs", "abs" },
+        .{ "max", "max" },
+        .{ "min", "min" },
+        .{ "pow", "__pow" },
+        .{ "sqrt", "__sqrt" },
+        .{ "round", "__round" },
+        .{ "ceil", "__ceil" },
+        .{ "floor", "__floor" },
+    });
+
+    const system_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "getenv", "__getenv" },
+        .{ "exit", "__exit" },
+        .{ "nanoTime", "__nano-time" },
+        .{ "currentTimeMillis", "__current-time-millis" },
+    });
 
     /// Resolve a symbol to a Var if possible (via env).
     fn resolveMacroVar(self: *const Analyzer, sym: SymbolRef) ?*Var {

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX3 (Math/System syntax routing)
+- Next task: CX4 (delay proper Value type)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -17,7 +17,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 
 - ~~CX1: Remove F51 + Fix F24 (housekeeping)~~ done
 - ~~CX2: bound? takes var_ref (F86)~~ done
-- CX3: Math/System syntax routing (F89)
+- ~~CX3: Math/System syntax routing (F89)~~ done
 - CX4: delay proper Value type (F91)
 - CX5: {:as x} seq-to-map coercion (F68)
 - CX6: Namespaced destructuring (F70-F74)
@@ -57,15 +57,14 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX3: Math/System syntax routing (F89) — route (Math/abs x) to builtins.
+CX4: delay proper Value type (F91) — replace map-based delay with dedicated Value variant.
 
 ## Previous Task
 
-CX2 completed: bound? takes var_ref (F86).
-- Changed bound? to accept var_ref (JVM compatible) + symbol (backward compat)
-- Now variadic: (bound? #'x #'y) checks all vars
-- defonce unchanged (uses symbol mode)
-- Removed F86 from checklist
+CX3 completed: Math/System syntax routing (F89).
+- Analyzer rewrites Math/abs → abs, Math/pow → __pow, System/getenv → __getenv, etc.
+- Added 5 new math builtins: __pow, __sqrt, __round, __ceil, __floor
+- Removed F89 from checklist
 
 ## Handover Notes
 
