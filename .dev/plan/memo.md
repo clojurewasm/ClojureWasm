@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D15
-- Coverage: 493/703 clojure.core vars done
+- Next task: D16
+- Coverage: 503/704 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -50,17 +50,20 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D15: Chunked seqs — chunk, chunk-append, chunk-buffer, chunk-first, chunk-next,
-chunk-rest, chunked-seq?
+D16: random-uuid — implement as Zig builtin (last remaining todo var).
 
 ## Previous Task
 
-D14 completed: Read system — load-string implemented as Zig builtin.
-- load-string: read all forms + eval sequentially (Reader loop)
-- read/load-reader/read+string: skip (need PushbackReader type)
-- munge: character map replacement (Compiler.CHAR_MAP equivalent)
-- namespace-munge: replace `-` with `_`
-- Skipped: destructure (compiler handles), find-keyword (F80), re-matcher/re-groups (needs Matcher type)
+D15 completed: Easy wins sweep — 10 vars implemented, ~50 skipped.
+- Implemented: locking, requiring-resolve, splitv-at, partitionv, partitionv-all,
+  add-tap, remove-tap, tap>, promise, deliver
+- All pure Clojure in core.clj (no Zig builtins needed)
+- promise/deliver: simplified atom-based (no blocking deref)
+- tap system: synchronous stub (no async queue)
+- locking: single-threaded no-op
+- Batch skipped ~50 vars (chunked seqs, transients, sorted collections,
+  concurrency, new Value types needed)
+- Coverage: 493 → 503 done, 199 skip, 1 todo (random-uuid)
 
 D12 completed: Binding & redefs — 5 vars implemented.
 - thread-bound? builtin (checks hasThreadBinding)

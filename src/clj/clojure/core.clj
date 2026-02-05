@@ -1740,6 +1740,94 @@
   [ns]
   (apply str (map (fn [c] (if (= c \-) \_ c)) (seq (str ns)))))
 
+;; === D15 easy wins ===
+
+;; locking (single-threaded, no-op synchronization)
+(defmacro locking
+  "Executes body in an (effectively) atomic way. In ClojureWasm
+  (single-threaded), this simply evaluates body."
+  [x & body]
+  `(do ~x ~@body))
+
+;; requiring-resolve
+(defn requiring-resolve
+  "Resolves namespace-qualified sym. Requires ns if not yet loaded."
+  [sym]
+  (or (resolve sym)
+      (do (require (symbol (namespace sym)))
+          (resolve sym))))
+
+;; splitv-at — vector version of split-at
+(defn splitv-at
+  "Returns a vector of [taken-vec rest-seq]."
+  [n coll]
+  [(vec (take n coll)) (drop n coll)])
+
+;; partitionv — like partition but returns vectors
+(defn partitionv
+  "Returns a lazy sequence of vectors of n items each."
+  ([n coll] (partitionv n n coll))
+  ([n step coll]
+   (lazy-seq
+    (let [s (seq coll)
+          p (vec (take n s))]
+      (when (= n (count p))
+        (cons p (partitionv n step (nthrest s step)))))))
+  ([n step pad coll]
+   (lazy-seq
+    (let [s (seq coll)
+          p (vec (take n s))]
+      (if (= n (count p))
+        (cons p (partitionv n step pad (nthrest s step)))
+        (when (seq p)
+          (list (vec (take n (concat p pad))))))))))
+
+;; partitionv-all — like partition-all but returns vectors
+(defn partitionv-all
+  "Returns a lazy sequence of vectors like partition-all."
+  ([n coll] (partitionv-all n n coll))
+  ([n step coll]
+   (lazy-seq
+    (let [s (seq coll)]
+      (when s
+        (let [p (vec (take n s))]
+          (cons p (partitionv-all n step (nthrest s step)))))))))
+
+;; Tap system (stub — no async queue, synchronous dispatch)
+(def ^:private tap-fns (atom #{}))
+
+(defn add-tap
+  "Adds f to the tap set."
+  [f]
+  (swap! tap-fns conj f)
+  nil)
+
+(defn remove-tap
+  "Removes f from the tap set."
+  [f]
+  (swap! tap-fns disj f)
+  nil)
+
+(defn tap>
+  "Sends val to each tap fn. Returns true if there are taps."
+  [val]
+  (let [fns @tap-fns]
+    (doseq [f fns] (try (f val) (catch Exception _ nil)))
+    (boolean (seq fns))))
+
+;; promise / deliver (simplified, no blocking deref)
+(defn promise
+  "Returns a promise object. Deliver a value with deliver."
+  []
+  (atom {:val nil :delivered false}))
+
+(defn deliver
+  "Delivers val to promise p. Returns p."
+  [p val]
+  (when-not (:delivered @p)
+    (reset! p {:val val :delivered true}))
+  p)
+
 ;; Data reader constants
 (def default-data-readers {})
 

@@ -12,7 +12,7 @@
 vars:
   clojure_core:
     ".": {type: special-form, status: skip, note: "JVM interop"}
-    "case*": {type: special-form, status: todo}
+    "case*": {type: special-form, status: skip, note: 'internal special form, case macro handled'}
     catch: {type: special-form, status: done, note: special form (part of try)}
     def: {type: special-form, status: done, note: special form}
     "deftype*": {type: special-form, status: skip, note: "JVM type system"}
@@ -22,7 +22,7 @@ vars:
     if: {type: special-form, status: done, note: special form}
     "import*": {type: special-form, status: skip, note: "JVM interop"}
     "let*": {type: special-form, status: done, note: special form}
-    "letfn*": {type: special-form, status: todo, note: special form}
+    "letfn*": {type: special-form, status: skip, note: internal special form}
     "loop*": {type: special-form, status: done, note: special form}
     "monitor-enter": {type: special-form, status: skip, note: "JVM concurrency"}
     "monitor-exit": {type: special-form, status: skip, note: "JVM concurrency"}
@@ -101,10 +101,10 @@ vars:
     "StackTraceElement->vec": {type: function, status: skip, note: "JVM interop"}
     "Throwable->map": {type: function, status: skip, note: "JVM interop"}
     abs: {type: function, status: done, note: "Zig builtin"}
-    accessor: {type: function, status: todo}
+    accessor: {type: function, status: skip, note: deprecated struct system}
     aclone: {type: function, status: skip, note: JVM interop}
     "add-classpath": {type: function, status: skip, note: JVM interop}
-    "add-tap": {type: function, status: todo}
+    "add-tap": {type: function, status: done}
     "add-watch": {type: function, status: done}
     agent: {type: function, status: skip, note: JVM interop}
     "agent-error": {type: function, status: skip, note: JVM interop}
@@ -135,7 +135,7 @@ vars:
     "aset-short": {type: function, status: skip, note: JVM interop}
     assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: no *assert* dynamic var rebinding'}
     assoc: {type: function, status: done, note: "Zig builtin"}
-    "assoc!": {type: function, status: todo}
+    "assoc!": {type: function, status: skip, note: "needs transient collections"}
     "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "associative?": {type: function, status: done, note: "Zig builtin"}
     atom: {type: function, status: done, note: "Zig builtin"}
@@ -144,9 +144,9 @@ vars:
     await1: {type: function, status: skip, note: JVM interop}
     bases: {type: function, status: skip, note: JVM interop}
     bean: {type: function, status: skip, note: JVM interop}
-    bigdec: {type: function, status: todo}
-    bigint: {type: function, status: todo}
-    biginteger: {type: function, status: todo}
+    bigdec: {type: function, status: skip, note: no BigDecimal type}
+    bigint: {type: function, status: skip, note: no BigInteger type}
+    biginteger: {type: function, status: skip, note: no BigInteger type}
     binding: {type: macro, status: done}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -171,8 +171,8 @@ vars:
     byte: {type: function, status: done, note: builtin (upstream is pure clj)}
     "byte-array": {type: function, status: skip, note: JVM interop}
     bytes: {type: function, status: skip, note: JVM interop}
-    "bytes?": {type: function, status: todo}
-    case: {type: macro, status: done, note: "UPSTREAM-DIFF: cond-based, no case* optimization (F27/F28)"}
+    "bytes?": {type: function, status: skip, note: "no byte array type"}
+    case: {type: macro, status: done, note: "Zig builtin compiler support"}
     cast: {type: function, status: done, note: identity (no JVM type system)}
     cat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     char: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -181,16 +181,16 @@ vars:
     "char-name-string": {type: var, status: done, note: core.clj (from core_print.clj)}
     "char?": {type: function, status: done, note: "Zig builtin"}
     chars: {type: function, status: skip, note: JVM interop}
-    chunk: {type: function, status: todo}
-    "chunk-append": {type: function, status: todo}
-    "chunk-buffer": {type: function, status: todo}
+    chunk: {type: function, status: skip, note: needs chunked seq infrastructure}
+    "chunk-append": {type: function, status: skip, note: needs chunked seq infrastructure}
+    "chunk-buffer": {type: function, status: skip, note: needs chunked seq infrastructure}
     "chunk-cons": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "chunk-first": {type: function, status: todo}
-    "chunk-next": {type: function, status: todo}
-    "chunk-rest": {type: function, status: todo}
-    "chunked-seq?": {type: function, status: todo}
+    "chunk-first": {type: function, status: skip, note: needs chunked seq infrastructure}
+    "chunk-next": {type: function, status: skip, note: needs chunked seq infrastructure}
+    "chunk-rest": {type: function, status: skip, note: needs chunked seq infrastructure}
+    "chunked-seq?": {type: function, status: skip, note: "needs chunked seq infrastructure"}
     class: {type: function, status: done, note: "Zig builtin alias of type"}
-    "class?": {type: function, status: todo}
+    "class?": {type: function, status: skip, note: "no Java class system"}
     "clear-agent-errors": {type: function, status: skip, note: JVM interop}
     "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "coll?": {type: function, status: done, note: "Zig builtin"}
@@ -209,7 +209,7 @@ vars:
     "cond->>": {type: macro, status: done, note: "macro in core.clj"}
     condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
     conj: {type: function, status: done, note: "Zig builtin"}
-    "conj!": {type: function, status: todo}
+    "conj!": {type: function, status: skip, note: "needs transient collections"}
     cons: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     constantly: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "construct-proxy": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
@@ -217,7 +217,7 @@ vars:
     count: {type: function, status: done, note: "Zig builtin"}
     "counted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "create-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "create-struct": {type: function, status: todo}
+    "create-struct": {type: function, status: skip, note: deprecated struct system}
     cycle: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "dec'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -225,7 +225,7 @@ vars:
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: done}
     "default-data-readers": {type: var, status: done}
-    definline: {type: macro, status: todo}
+    definline: {type: macro, status: skip, note: JVM optimization}
     definterface: {type: macro, status: skip, note: JVM interop}
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
@@ -235,20 +235,20 @@ vars:
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
-    defstruct: {type: macro, status: todo}
-    deftype: {type: macro, status: todo}
+    defstruct: {type: macro, status: skip, note: deprecated struct system}
+    deftype: {type: macro, status: skip, note: needs full type/protocol infrastructure}
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
-    deliver: {type: function, status: todo}
-    denominator: {type: function, status: todo}
+    deliver: {type: function, status: done, note: "UPSTREAM-DIFF: atom-based, no blocking deref"}
+    denominator: {type: function, status: skip, note: no Ratio type}
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
     descendants: {type: function, status: done, note: core.clj hierarchy-aware}
     destructure: {type: function, status: skip, note: compiler handles destructuring directly}
     disj: {type: function, status: done, note: "Zig builtin"}
-    "disj!": {type: function, status: todo}
+    "disj!": {type: function, status: skip, note: "needs transient collections"}
     dissoc: {type: function, status: done, note: "Zig builtin"}
-    "dissoc!": {type: function, status: todo}
+    "dissoc!": {type: function, status: skip, note: "needs transient collections"}
     distinct: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "distinct?": {type: function, status: done, note: "Zig builtin"}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
@@ -264,7 +264,7 @@ vars:
     drop: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
-    eduction: {type: function, status: todo}
+    eduction: {type: function, status: skip, note: needs IReduceInit protocol}
     empty: {type: function, status: done, note: "Zig builtin"}
     "empty?": {type: function, status: done, note: "Zig builtin"}
     ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
@@ -291,7 +291,7 @@ vars:
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
     find: {type: function, status: done, note: "Zig builtin"}
-    "find-keyword": {type: function, status: todo}
+    "find-keyword": {type: function, status: skip, note: 'F80: needs keyword intern table'}
     "find-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "find-protocol-impl": {type: function, status: skip, note: JVM interop}
     "find-protocol-method": {type: function, status: skip, note: JVM interop}
@@ -311,12 +311,12 @@ vars:
     force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
     format: {type: function, status: done, note: "Zig builtin"}
     frequencies: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    future: {type: macro, status: todo}
-    "future-call": {type: function, status: todo}
-    "future-cancel": {type: function, status: todo}
-    "future-cancelled?": {type: function, status: todo}
-    "future-done?": {type: function, status: todo}
-    "future?": {type: function, status: todo}
+    future: {type: macro, status: skip, note: needs thread pool}
+    "future-call": {type: function, status: skip, note: needs thread pool}
+    "future-cancel": {type: function, status: skip, note: needs thread pool}
+    "future-cancelled?": {type: function, status: skip, note: needs thread pool}
+    "future-done?": {type: function, status: skip, note: needs thread pool}
+    "future?": {type: function, status: skip, note: "no future type"}
     "gen-class": {type: macro, status: skip, note: JVM interop}
     "gen-interface": {type: macro, status: skip, note: JVM interop}
     gensym: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
@@ -365,7 +365,7 @@ vars:
     "io!": {type: macro, status: skip, note: "JVM interop"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    iteration: {type: function, status: todo}
+    iteration: {type: function, status: skip, note: needs lazy stateful iterator}
     "iterator-seq": {type: function, status: skip, note: JVM interop}
     juxt: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     keep: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -378,8 +378,8 @@ vars:
     "lazy-cat": {type: macro, status: done, note: "macro in core.clj"}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done, note: special form (analyzes as let*)}
-    letfn: {type: special-form, status: todo, note: special form}
-    "line-seq": {type: function, status: todo}
+    letfn: {type: special-form, status: skip, note: internal special form}
+    "line-seq": {type: function, status: skip, note: needs BufferedReader type}
     list: {type: function, status: done, note: "Zig builtin"}
     "list*": {type: function, status: done, note: "Zig builtin"}
     "list?": {type: function, status: done, note: "Zig builtin"}
@@ -388,7 +388,7 @@ vars:
     "load-reader": {type: function, status: skip, note: needs Reader type}
     "load-string": {type: function, status: done}
     "loaded-libs": {type: function, status: done}
-    locking: {type: macro, status: todo}
+    locking: {type: macro, status: done, note: "UPSTREAM-DIFF: single-threaded no-op"}
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
     "long-array": {type: function, status: skip, note: JVM interop}
     longs: {type: function, status: skip, note: JVM interop}
@@ -449,7 +449,7 @@ vars:
     nthrest: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     num: {type: function, status: done, note: builtin (upstream is pure clj)}
     "number?": {type: function, status: done, note: "Zig builtin"}
-    numerator: {type: function, status: todo}
+    numerator: {type: function, status: skip, note: no Ratio type}
     "object-array": {type: function, status: skip, note: JVM interop}
     "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     or: {type: macro, status: done, note: "macro in core.clj"}
@@ -457,19 +457,19 @@ vars:
     "parse-boolean": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "parse-double": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-long": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "parse-uuid": {type: function, status: todo}
+    "parse-uuid": {type: function, status: skip, note: no UUID type}
     partial: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     partition: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "partition-all": {type: function, status: done, note: "core.clj like partition but includes trailing"}
     "partition-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    partitionv: {type: function, status: todo}
-    "partitionv-all": {type: function, status: todo}
-    pcalls: {type: function, status: todo}
+    partitionv: {type: function, status: done}
+    "partitionv-all": {type: function, status: done}
+    pcalls: {type: function, status: skip, note: needs future}
     peek: {type: function, status: done, note: "Zig builtin"}
-    "persistent!": {type: function, status: todo}
-    pmap: {type: function, status: todo}
+    "persistent!": {type: function, status: skip, note: "needs transient collections"}
+    pmap: {type: function, status: skip, note: needs future}
     pop: {type: function, status: done, note: "Zig builtin"}
-    "pop!": {type: function, status: todo}
+    "pop!": {type: function, status: skip, note: "needs transient collections"}
     "pop-thread-bindings": {type: function, status: done}
     "pos-int?": {type: function, status: done, note: "Zig builtin"}
     "pos?": {type: function, status: done, note: "Zig builtin"}
@@ -490,14 +490,14 @@ vars:
     "println-str": {type: function, status: done, note: "Zig builtin"}
     prn: {type: function, status: done, note: "Zig builtin"}
     "prn-str": {type: function, status: done, note: "Zig builtin"}
-    promise: {type: function, status: todo}
+    promise: {type: function, status: done, note: "UPSTREAM-DIFF: atom-based, no blocking deref"}
     proxy: {type: macro, status: skip, note: JVM interop}
     "proxy-call-with-super": {type: function, status: skip, note: JVM interop}
     "proxy-mappings": {type: function, status: skip, note: JVM interop}
     "proxy-name": {type: function, status: skip, note: JVM interop}
     "proxy-super": {type: macro, status: skip, note: JVM interop}
     "push-thread-bindings": {type: function, status: done}
-    pvalues: {type: macro, status: todo}
+    pvalues: {type: macro, status: skip, note: needs future}
     "qualified-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "qualified-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "qualified-symbol?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -510,7 +510,7 @@ vars:
     range: {type: function, status: done, note: "Zig builtin"}
     "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    rationalize: {type: function, status: todo}
+    rationalize: {type: function, status: skip, note: no Ratio type}
     "re-find": {type: function, status: done, note: "Zig builtin"}
     "re-groups": {type: function, status: skip, note: needs Matcher Value type}
     "re-matcher": {type: function, status: skip, note: needs Matcher Value type}
@@ -521,8 +521,8 @@ vars:
     read+string: {type: function, status: skip, note: needs PushbackReader type}
     "read-line": {type: function, status: done, note: "Zig builtin"}
     "read-string": {type: function, status: done, note: "Zig builtin"}
-    "reader-conditional": {type: function, status: todo}
-    "reader-conditional?": {type: function, status: todo}
+    "reader-conditional": {type: function, status: skip, note: needs ReaderConditional Value type}
+    "reader-conditional?": {type: function, status: skip, note: "needs ReaderConditional Value type"}
     "realized?": {type: function, status: done, note: "supports delay + lazy-seq"}
     "record?": {type: function, status: done, note: builtin (upstream is pure clj)}
     reduce: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -537,21 +537,21 @@ vars:
     "ref-set": {type: function, status: skip, note: JVM interop}
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: done}
-    reify: {type: macro, status: todo}
+    reify: {type: macro, status: skip, note: needs full type/protocol infrastructure}
     "release-pending-sends": {type: function, status: skip, note: JVM interop}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
     remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-ns": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "remove-tap": {type: function, status: todo}
+    "remove-tap": {type: function, status: done}
     "remove-watch": {type: function, status: done}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
     repeatedly: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     replace: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     replicate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     require: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
-    "requiring-resolve": {type: function, status: todo}
+    "requiring-resolve": {type: function, status: done}
     "reset!": {type: function, status: done, note: "Zig builtin"}
     "reset-meta!": {type: function, status: done, note: "Zig builtin: replaces atom metadata"}
     "reset-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
@@ -562,7 +562,7 @@ vars:
     reverse: {type: function, status: done, note: "portable to clj"}
     "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rseq: {type: function, status: done, note: builtin (upstream is pure clj)}
-    rsubseq: {type: function, status: todo}
+    rsubseq: {type: function, status: skip, note: needs sorted data structure}
     "run!": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "satisfies?": {type: function, status: done, note: "Zig builtin"}
     second: {type: function, status: done, note: "core.clj (first (next coll))"}
@@ -571,7 +571,7 @@ vars:
     "send-off": {type: function, status: skip, note: JVM interop}
     "send-via": {type: function, status: skip, note: JVM interop}
     seq: {type: function, status: done, note: "Zig builtin"}
-    "seq-to-map-for-destructuring": {type: function, status: todo}
+    "seq-to-map-for-destructuring": {type: function, status: skip, note: 'internal helper, compiler handles'}
     "seq?": {type: function, status: done, note: "Zig builtin"}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: skip, note: JVM interop}
@@ -601,25 +601,25 @@ vars:
     sort: {type: function, status: done, note: "Zig builtin"}
     "sort-by": {type: function, status: done, note: "Zig builtin"}
     "sorted-map": {type: function, status: done, note: "Zig builtin"}
-    "sorted-map-by": {type: function, status: todo}
+    "sorted-map-by": {type: function, status: skip, note: needs sorted data structure}
     "sorted-set": {type: function, status: done, note: 'UPSTREAM-DIFF: uses hash-set storage (no sorted iteration)'}
-    "sorted-set-by": {type: function, status: todo}
+    "sorted-set-by": {type: function, status: skip, note: needs sorted data structure}
     "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "special-symbol?": {type: function, status: done, note: builtin (upstream is pure clj)}
     spit: {type: function, status: done, note: "Zig builtin"}
     "split-at": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "split-with": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "splitv-at": {type: function, status: todo}
+    "splitv-at": {type: function, status: done}
     str: {type: function, status: done, note: "portable to clj"}
     "stream-into!": {type: function, status: skip, note: "JVM interop"}
     "stream-reduce!": {type: function, status: skip, note: "JVM interop"}
     "stream-seq!": {type: function, status: skip, note: "JVM interop"}
     "stream-transduce!": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "string?": {type: function, status: done, note: "Zig builtin"}
-    struct: {type: function, status: todo}
-    "struct-map": {type: function, status: todo}
+    struct: {type: function, status: skip, note: deprecated struct system}
+    "struct-map": {type: function, status: skip, note: deprecated struct system}
     subs: {type: function, status: done, note: "Zig builtin"}
-    subseq: {type: function, status: todo}
+    subseq: {type: function, status: skip, note: needs sorted data structure}
     subvec: {type: function, status: done, note: "Zig builtin"}
     supers: {type: function, status: skip, note: JVM interop}
     "swap!": {type: function, status: done, note: "builtin-fn only (D8)"}
@@ -627,13 +627,13 @@ vars:
     symbol: {type: function, status: done, note: "Zig builtin"}
     "symbol?": {type: function, status: done, note: "Zig builtin"}
     sync: {type: macro, status: skip, note: JVM interop}
-    "tagged-literal": {type: function, status: todo}
-    "tagged-literal?": {type: function, status: todo}
+    "tagged-literal": {type: function, status: skip, note: needs TaggedLiteral Value type}
+    "tagged-literal?": {type: function, status: skip, note: "needs TaggedLiteral Value type"}
     take: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-nth": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
-    "tap>": {type: function, status: todo}
+    "tap>": {type: function, status: done}
     test: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "the-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "thread-bound?": {type: function, status: done}
@@ -642,7 +642,7 @@ vars:
     "to-array-2d": {type: function, status: skip, note: JVM interop}
     trampoline: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     transduce: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    transient: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    transient: {type: function, status: done}
     "tree-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
@@ -677,9 +677,9 @@ vars:
     "update-keys": {type: function, status: done, note: core.clj reduce-kv based}
     "update-proxy": {type: function, status: skip, note: JVM interop}
     "update-vals": {type: function, status: done, note: core.clj reduce-kv based}
-    "uri?": {type: function, status: todo}
+    "uri?": {type: function, status: skip, note: "no URI type"}
     use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
-    "uuid?": {type: function, status: todo}
+    "uuid?": {type: function, status: skip, note: "no UUID type"}
     val: {type: function, status: done, note: "Zig builtin"}
     vals: {type: function, status: done, note: "Zig builtin"}
     "var-get": {type: function, status: done, note: T11.2}
@@ -703,12 +703,12 @@ vars:
     "with-bindings": {type: macro, status: done}
     "with-bindings*": {type: function, status: done}
     "with-in-str": {type: macro, status: skip, note: needs string reader + *in* input}
-    "with-loading-context": {type: macro, status: todo}
+    "with-loading-context": {type: macro, status: skip, note: JVM classloader}
     "with-local-vars": {type: macro, status: skip, note: needs Var.create()}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: skip, note: needs .close interop}
     "with-out-str": {type: macro, status: done}
-    "with-precision": {type: macro, status: todo}
+    "with-precision": {type: macro, status: skip, note: JVM BigDecimal}
     "with-redefs": {type: macro, status: done}
     "with-redefs-fn": {type: function, status: done}
     "xml-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
