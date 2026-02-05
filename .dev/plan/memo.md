@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next task: 22c.3
+- Next task: 22c.4
 - Blockers: none
 
 ## Task Queue
@@ -15,7 +15,7 @@ Phase 22c — Test Gap Resolution (gap analysis: `.dev/plan/test-gap-analysis.md
 
 Tier 1: Revive skipped tests (features already implemented)
 - ~~22c.2: done in 22c.1~~
-- 22c.3: Revive with-redefs tests (vars — non-threaded subset)
+- ~~22c.3: Revive with-redefs tests (vars — non-threaded subset)~~
 - 22c.4: Revive eval-based tests (special — non-JVM-exception subset)
 
 Tier 2: Small implementation + new file ports
@@ -38,19 +38,16 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.3)
+(next: 22c.4)
 
 ## Previous Task
 
-22c.1: Revive sorted-set/map tests (4 files, +3 new tests, ~200 new assertions)
-- Fixed boolean comparator in compareWithComparator (AFunction.compare semantics)
-- Fixed reverse to work on any seqable (lazy-seq, set, map, etc.)
-- clojure_walk.clj: revived sorted-set-by, sorted-map-by in walk + walk-mapentry test
-- control.clj: revived sorted-map, sorted-set in case test
-- sequences.clj: +test-empty-sorted, +test-partitionv, +test-partitionv-all, +test-subseq,
-  + sorted-set/map assertions in cons, first, fnext, nnext (52 tests, 543 assertions)
-- data_structures.clj: +test-sorted-map-keys, +test-sorted-set, +test-sorted-set-by,
-  +set-equality-test, +map-equality-test (24 tests, 497 assertions)
+22c.3: Revive with-redefs tests (vars.clj — non-threaded subset)
+- Fixed promise deref: added :__promise tag, derefAtom returns :val for promise atoms
+- Updated promise/deliver in core.clj to use :__promise tag + swap!-based deliver
+- Ported 4 tests: test-with-redefs-fn, test-with-redefs, test-with-redefs-throw, test-with-redefs-inside-binding
+- Removed Thread usage (single-threaded), kept core with-redefs behavior verification
+- vars.clj: 5 tests, 11 assertions, both backends pass
 
 ## Handover Notes
 

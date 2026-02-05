@@ -2125,16 +2125,20 @@
     (boolean (seq fns))))
 
 ;; promise / deliver (simplified, no blocking deref)
+;; Uses :__promise tag so deref returns :val instead of the whole map.
+;; swap! receives the raw atom value (the map), bypassing promise-aware deref.
 (defn promise
   "Returns a promise object. Deliver a value with deliver."
   []
-  (atom {:val nil :delivered false}))
+  (atom {:__promise true :val nil :delivered false}))
 
 (defn deliver
   "Delivers val to promise p. Returns p."
   [p val]
-  (when-not (:delivered @p)
-    (reset! p {:val val :delivered true}))
+  (swap! p (fn [m]
+             (if (and (map? m) (:__promise m) (not (:delivered m)))
+               {:__promise true :val val :delivered true}
+               m)))
   p)
 
 ;; Data reader constants

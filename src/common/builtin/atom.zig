@@ -23,17 +23,30 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .atom = a };
 }
 
-/// (deref ref) => val  — works on atoms, volatiles, delays, vars
+/// (deref ref) => val  — works on atoms, volatiles, delays, vars, promises
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
     return switch (args[0]) {
-        .atom => |a| a.value,
+        .atom => |a| derefAtom(a),
         .volatile_ref => |v| v.value,
         .var_ref => |v| v.deref(),
         .reduced => |r| r.value,
         .delay => |d| forceDelay(allocator, d),
         else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])}),
     };
+}
+
+/// Deref an atom, with special handling for promise atoms.
+/// Promise atoms contain a map with :__promise key; deref returns :val from the map.
+fn derefAtom(a: *Atom) Value {
+    if (a.value == .map) {
+        const promise_key = Value{ .keyword = .{ .ns = null, .name = "__promise" } };
+        if (a.value.map.get(promise_key) != null) {
+            const val_key = Value{ .keyword = .{ .ns = null, .name = "val" } };
+            return a.value.map.get(val_key) orelse .nil;
+        }
+    }
+    return a.value;
 }
 
 /// Force a Delay value: evaluate thunk on first access, cache result.
