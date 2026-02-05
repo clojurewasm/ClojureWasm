@@ -5,16 +5,33 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
-- Sub-phase: C (Faithful test porting) in progress
-- Next task: C13 (clojure_walk.clj)
+- Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
+- Next task: CX1 (housekeeping: remove F51, fix F24)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
 
+Phase CX: Resolve actionable F## items before continuing test porting.
+Detailed plan: `.dev/plan/phase-cx-plan.md`
+
+- CX1: Remove F51 + Fix F24 (housekeeping)
+- CX2: bound? takes var_ref (F86)
+- CX3: Math/System syntax routing (F89)
+- CX4: delay proper Value type (F91)
+- CX5: {:as x} seq-to-map coercion (F68)
+- CX6: Namespaced destructuring (F70-F74)
+- CX7: ::foo auto-resolved keyword (F81)
+- CX8: Hierarchy system (F82 + F83)
+- CX9: #'var inside deftest body (F87)
+- CX10: UPSTREAM-DIFF quick fixes (F94 partial)
+
+## Saved Phase C Queue (resume after CX)
+
 Phase C: Faithful upstream test porting with CLJW markers.
 Order: new small → re-port existing → new medium → new large.
 
+Completed:
 - ~~C1: volatiles.clj~~ done
 - ~~C2: macros.clj~~ done
 - ~~C3: Re-port logic.clj~~ done (102 assertions)
@@ -27,18 +44,20 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C10: Re-port predicates.clj~~ skip (already faithful, 143 assertions)
 - ~~C11: Re-port data_structures.clj~~ done (236 assertions, was 197, keys/vals nil-for-non-map fix)
 - ~~C12: Re-port sequences.clj~~ done (301 assertions, was 188, lazy-seq equality + drop lazy-seq)
+
+Remaining (resume here after CX):
 - C13: clojure_walk.clj (75 lines)
 - C14: string.clj (196 lines)
 - C15: clojure_set.clj (224 lines)
 - C16: metadata.clj (239 lines)
-- C17: special.clj (106 lines, many F## blockers)
+- C17: special.clj (106 lines, many F## blockers — CX should resolve most)
 - C18: other_functions.clj (401 lines)
 - C19: numbers.clj (959 lines)
 - C20: evaluation.clj (226 lines)
 
 ## Current Task
 
-C13: Port clojure_walk.clj — upstream 75 lines, new test file.
+CX1: Housekeeping — remove F51 from checklist, fix F24 (vars.yaml accuracy).
 
 ## Previous Task
 
@@ -52,6 +71,7 @@ C12 completed: Re-port sequences.clj — 301 assertions (was 188).
 Notes that persist across sessions.
 
 - Plan: `.dev/plan/foundation-reset.md` (Phase A-D, with BE inserted)
+- **Phase CX plan: `.dev/plan/phase-cx-plan.md`** (read before starting CX tasks)
 - Phase A: Completed — all 399 done vars annotated
 - Phase BE: Error System Overhaul (complete)
   - BE1: Done — threadlocal + reportError() + showSourceContext()
@@ -70,10 +90,13 @@ Notes that persist across sessions.
   - Error API: `err.setError(info)`, `err.setErrorFmt(...)`, `err.getLastError()`
   - Display: `reportError()` in main.zig, babashka-style format
 - Phase B: Complete — all F## items resolved (B0-B4)
-- Phase C: Faithful upstream test porting with CLJW markers
+- Phase C: Faithful upstream test porting with CLJW markers (C1-C12 done, C13-C20 saved)
+- Phase CX: Known issue resolution (F51, F24, F68, F70-74, F80-83, F86-87, F89, F91, F94)
 - Phase D: Parallel expansion (new vars + test porting)
 - Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
 - Audit tracker: `.dev/status/audit-progress.yaml`
 - Beta error reference: `ClojureWasmBeta/src/base/error.zig`, `ClojureWasmBeta/src/main.zig:839-970`
+- Beta delay reference: `ClojureWasmBeta/src/lib/core/concurrency.zig`, `ClojureWasmBeta/src/base/value.zig`
+- Beta hierarchy reference: `ClojureWasmBeta/src/lib/core/interop.zig`

@@ -144,10 +144,13 @@ Clojure/SCI. Var expansion resumes after this foundation is solid.
 
 - **A**: Audit & Document — vars.yaml full audit (405 done vars vs upstream)
 - **B**: Fix Known Issues — F## items by test-porting impact
-- **C**: Faithful Test Porting — upstream tests with CLJW markers
+- **C**: Faithful Test Porting — upstream tests with CLJW markers (C1-C12 done)
+- **CX**: Known Issue Resolution — resolve actionable F## items (inserted between C12 and C13)
+- **C** (cont.): Resume test porting from C13
 - **D**: Parallel Expansion — new vars with test-first approach
 
 **Plan**: `.dev/plan/foundation-reset.md`
+**Phase CX plan**: `.dev/plan/phase-cx-plan.md`
 **Tracker**: `.dev/status/audit-progress.yaml`
 **Rules**: `.claude/rules/test-porting.md`
 **Reference**: `.claude/references/interop-patterns.md`
