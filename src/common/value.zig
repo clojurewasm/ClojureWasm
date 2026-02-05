@@ -117,6 +117,9 @@ pub const MultiFn = struct {
     methods: *PersistentArrayMap,
     /// Maps preferred_value -> set of values it is preferred over.
     prefer_table: ?*PersistentArrayMap = null,
+    /// Optional custom hierarchy Var (from :hierarchy option).
+    /// When set, deref'd to get the hierarchy map instead of global-hierarchy.
+    hierarchy_var: ?*Var = null,
 };
 
 /// Cons cell — a pair of (first, rest) forming a linked sequence.

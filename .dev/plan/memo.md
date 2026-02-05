@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next: Phase 22 (Test Porting Expansion)
+- Next task: 22.6 (Port transducers.clj)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -23,10 +23,10 @@ Session handover document. Read at session start.
 ## Task Queue
 
 1. ~~22.1: Port transients.clj (82 lines)~~ — DONE (4 tests, 29 assertions)
-2. 22.2: Port keywords.clj (31 lines) — keyword tests
-3. 22.3: Port fn.clj (55 lines) — function edge cases
-4. 22.4: Port try_catch.clj (39 lines) — exception handling
-5. 22.5: Port multimethods.clj (271 lines) — roadmap target
+2. ~~22.2: keywords.clj — SKIP (find-keyword F80 + regex needed)~~
+3. ~~22.3: fn.clj — SKIP (fails-with-cause? + clojure.spec)~~
+4. ~~22.4: try_catch.clj — SKIP (100% JVM: Java exception classes + test fixtures)~~
+5. ~~22.5: Port multimethods.clj (271 lines)~~ — DONE (9 tests, 102 assertions)
 6. 22.6: Port transducers.clj (410 lines) — roadmap target
 7. 22.7: Port vectors.clj (491 lines) — comprehensive vector coverage
 8. 22.8: Port protocols.clj (721 lines) — roadmap target
@@ -34,15 +34,18 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-22.2: Port keywords.clj (31 lines)
+22.6: Port transducers.clj (410 lines)
 
 ## Previous Task
 
-22.1: Port transients.clj — 4 tests, 29 assertions. Fixed: get/contains?/find on transients, disj! variadic
-- 20.1-20.2: Transient collections (6 vars)
-- 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
-- 20.5: sorted-map-by, sorted-set-by (2 vars)
-- 20.6: subseq, rsubseq (2 vars)
+22.5: Port multimethods.clj — 9 tests, 102 assertions, 11 CLJW markers
+- Fixed VM closure defining_ns propagation bug (closures lost namespace context)
+- Fixed bytecodeCallBridge C stack overflow (heap-allocate VM struct)
+- Fixed with-meta on fn losing defining_ns
+- Implemented ambiguous multimethod dispatch detection (throws instead of silent fallback)
+- Implemented indirect preferences through hierarchy ancestors
+- Implemented custom hierarchy per-multimethod (:hierarchy #'var option)
+- Full stack: analyzer → node → compiler → VM → TreeWalk → multimethods.zig
 
 ## Completed Phases (reverse chronological)
 

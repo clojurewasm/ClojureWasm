@@ -456,12 +456,15 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 pub var last_thrown_exception: ?Value = null;
 
 /// Execute a bytecode fn_val via a new VM instance.
+/// Heap-allocates the VM to avoid C stack overflow from recursive
+/// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     const env = macro_eval_env orelse return error.EvalError;
     // Note: VM is NOT deinit'd here — closures created during execution
     // (e.g., fn values returned from calls) must outlive this scope.
     // Memory is owned by the arena allocator, which handles bulk deallocation.
-    var vm = VM.initWithEnv(allocator, env);
+    const vm = try allocator.create(VM);
+    vm.* = VM.initWithEnv(allocator, env);
 
     // Push fn_val onto stack
     try vm.push(fn_val);

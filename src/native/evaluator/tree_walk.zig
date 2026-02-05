@@ -717,6 +717,15 @@ pub const TreeWalk = struct {
         // Evaluate dispatch function
         const dispatch_fn = try self.run(dm_n.dispatch_fn);
 
+        // Evaluate optional hierarchy var reference
+        var hierarchy_var: ?*value_mod.Var = null;
+        if (dm_n.hierarchy_node) |h_node| {
+            const h_val = try self.run(h_node);
+            if (h_val == .var_ref) {
+                hierarchy_var = h_val.var_ref;
+            }
+        }
+
         // Create MultiFn
         const mf = self.allocator.create(value_mod.MultiFn) catch return error.OutOfMemory;
         const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
@@ -725,6 +734,7 @@ pub const TreeWalk = struct {
             .name = dm_n.name,
             .dispatch_fn = dispatch_fn,
             .methods = empty_map,
+            .hierarchy_var = hierarchy_var,
         };
 
         // Bind to var

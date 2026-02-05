@@ -183,10 +183,12 @@ pub const ExtendMethodNode = struct {
 
 // -- Multimethods --
 
-/// defmulti: (defmulti name dispatch-fn)
+/// defmulti: (defmulti name dispatch-fn & options)
 pub const DefMultiNode = struct {
     name: []const u8,
     dispatch_fn: *Node,
+    /// Optional custom hierarchy var reference (from :hierarchy option).
+    hierarchy_node: ?*Node = null,
     source: SourceInfo,
 };
 

@@ -176,12 +176,19 @@ pub fn findBestMethod(mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Valu
     // 1. Exact match
     if (mf.methods.get(dispatch_val)) |m| return m;
 
-    // 2. isa?-based matching (only if hierarchy is available)
-    if (env) |e| {
-        if (getGlobalHierarchy(e)) |hierarchy_val| {
-            if (hierarchy_val == .map) {
-                if (findIsaMatch(mf, dispatch_val, hierarchy_val.map)) |m| return m;
-            }
+    // 2. isa?-based matching using custom or global hierarchy
+    const hierarchy_val: ?Value = if (mf.hierarchy_var) |hv|
+        blk: {
+            const v = hv.deref();
+            break :blk if (v == .nil) null else v;
+        }
+    else if (env) |e|
+        getGlobalHierarchy(e)
+    else
+        null;
+    if (hierarchy_val) |hv| {
+        if (hv == .map) {
+            if (findIsaMatch(mf, dispatch_val, hv.map)) |m| return m;
         }
     }
 
@@ -231,11 +238,11 @@ fn findIsaMatch(mf: *const MultiFn, dispatch_val: Value, hierarchy: *const Persi
     // Multiple matches: use prefer_table to disambiguate
     const matches = matches_buf[0..match_count];
     if (mf.prefer_table) |pt| {
-        return resolveWithPrefers(matches, pt);
+        return resolveWithPrefers(matches, pt, ancestors_map);
     }
 
-    // No prefer table, return first match
-    return matches[0].method;
+    // No prefer table and multiple matches: ambiguous dispatch
+    return null;
 }
 
 fn isaCheck(ancestors_map: *const PersistentArrayMap, child: Value, parent: Value) bool {
@@ -270,31 +277,52 @@ fn isDefaultKey(key: Value) bool {
     return std.mem.eql(u8, key.keyword.name, "default");
 }
 
-fn resolveWithPrefers(matches: []const Match, pt: *const PersistentArrayMap) ?Value {
+fn resolveWithPrefers(matches: []const Match, pt: *const PersistentArrayMap, ancestors_map: *const PersistentArrayMap) ?Value {
     for (matches) |candidate| {
         var is_preferred = true;
         for (matches) |other| {
             if (candidate.key.eql(other.key)) continue;
 
-            // Check if candidate is preferred over other
-            if (isPreferred(pt, candidate.key, other.key)) continue;
+            // Check if candidate is preferred over other (directly or indirectly)
+            if (isPreferred(pt, candidate.key, other.key, ancestors_map)) continue;
 
             // Check if other is preferred over candidate
-            if (isPreferred(pt, other.key, candidate.key)) {
+            if (isPreferred(pt, other.key, candidate.key, ancestors_map)) {
                 is_preferred = false;
                 break;
             }
+
+            // Neither is preferred over the other: ambiguous
+            is_preferred = false;
+            break;
         }
         if (is_preferred) return candidate.method;
     }
-    return matches[0].method; // fallback
+    // No candidate is preferred over all others: ambiguous dispatch
+    return null;
 }
 
-fn isPreferred(pt: *const PersistentArrayMap, preferred: Value, over: Value) bool {
+/// Check if `preferred` is preferred over `over`, including indirect
+/// preferences through the hierarchy. JVM Clojure semantics:
+/// - Direct: preferred is in prefer_table over `over`
+/// - Indirect via over: preferred is in prefer_table over some ancestor of `over`
+/// - Indirect via preferred: some ancestor of `preferred` is preferred over `over`
+fn isPreferred(pt: *const PersistentArrayMap, preferred: Value, over: Value, ancestors_map: *const PersistentArrayMap) bool {
+    // Direct preference check
     if (pt.get(preferred)) |set_val| {
         if (set_val == .set) {
             for (set_val.set.items) |item| {
                 if (item.eql(over)) return true;
+                // Indirect: preferred over an ancestor of `over`
+                if (isaCheck(ancestors_map, over, item)) return true;
+            }
+        }
+    }
+    // Indirect via preferred: check if any ancestor of `preferred` is preferred over `over`
+    if (ancestors_map.get(preferred)) |ancestor_set_val| {
+        if (ancestor_set_val == .set) {
+            for (ancestor_set_val.set.items) |anc| {
+                if (isPreferred(pt, anc, over, ancestors_map)) return true;
             }
         }
     }

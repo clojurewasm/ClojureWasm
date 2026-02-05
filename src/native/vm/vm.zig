@@ -300,6 +300,7 @@ pub const VM = struct {
                         .proto = fn_obj.proto,
                         .closure_bindings = bindings,
                         .extra_arities = fn_obj.extra_arities,
+                        .defining_ns = fn_obj.defining_ns,
                     };
                     self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
                     try self.push(.{ .fn_val = new_fn });
@@ -391,7 +392,19 @@ pub const VM = struct {
 
             .defmulti => {
                 const dispatch_fn = self.pop();
-                const sym = frame.constants[instr.operand];
+                const has_hierarchy = (instr.operand >> 15) != 0;
+                const name_idx: u16 = instr.operand & 0x7FFF;
+
+                // Pop optional hierarchy var reference
+                var hierarchy_var: ?*value_mod.Var = null;
+                if (has_hierarchy) {
+                    const h_val = self.pop();
+                    if (h_val == .var_ref) {
+                        hierarchy_var = h_val.var_ref;
+                    }
+                }
+
+                const sym = frame.constants[name_idx];
                 if (sym != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
@@ -404,6 +417,7 @@ pub const VM = struct {
                     .name = sym.symbol.name,
                     .dispatch_fn = dispatch_fn,
                     .methods = empty_map,
+                    .hierarchy_var = hierarchy_var,
                 };
 
                 // Bind to var

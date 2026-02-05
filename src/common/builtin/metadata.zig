@@ -89,6 +89,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 .closure_bindings = f.closure_bindings,
                 .extra_arities = f.extra_arities,
                 .meta = meta_ptr,
+                .defining_ns = f.defining_ns,
             };
             break :blk Value{ .fn_val = new_fn };
         },

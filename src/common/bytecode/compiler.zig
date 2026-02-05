@@ -595,11 +595,24 @@ pub const Compiler = struct {
         const sym_val = Value{ .symbol = .{ .ns = null, .name = node.name } };
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
+        // Compile optional hierarchy var reference (must be on stack BEFORE dispatch fn)
+        if (node.hierarchy_node) |h_node| {
+            try self.compile(h_node); // +1
+            self.stack_depth += 1;
+        }
+
         // Compile dispatch function
         try self.compile(node.dispatch_fn); // +1
 
-        // defmulti: pops dispatch_fn, creates MultiFn, binds to var, pushes result (net 0)
-        try self.chunk.emit(.defmulti, idx);
+        // Operand: name_idx | (has_hierarchy << 15)
+        const has_h: u16 = if (node.hierarchy_node != null) 1 else 0;
+        const operand = idx | (has_h << 15);
+
+        // defmulti: pops dispatch_fn (and optionally hierarchy), creates MultiFn, pushes result
+        try self.chunk.emit(.defmulti, operand);
+        if (node.hierarchy_node != null) {
+            self.stack_depth -= 1; // hierarchy was consumed
+        }
     }
 
     fn emitDefmethod(self: *Compiler, node: *const node_mod.DefMethodNode) CompileError!void {

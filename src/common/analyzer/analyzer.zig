@@ -1341,7 +1341,7 @@ pub const Analyzer = struct {
     }
 
     fn analyzeDefmulti(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (defmulti name dispatch-fn)
+        // (defmulti name dispatch-fn & options)
         if (items.len < 3) {
             return self.analysisError(.arity_error, "defmulti requires name and dispatch-fn", form);
         }
@@ -1352,10 +1352,22 @@ pub const Analyzer = struct {
         const name = items[1].data.symbol.name;
         const dispatch_node = try self.analyze(items[2]);
 
+        // Parse keyword options: :hierarchy var-ref
+        var hierarchy_node: ?*Node = null;
+        var i: usize = 3;
+        while (i + 1 < items.len) : (i += 2) {
+            if (items[i].data == .keyword) {
+                if (std.mem.eql(u8, items[i].data.keyword.name, "hierarchy")) {
+                    hierarchy_node = try self.analyze(items[i + 1]);
+                }
+            }
+        }
+
         const dm = self.allocator.create(node_mod.DefMultiNode) catch return error.OutOfMemory;
         dm.* = .{
             .name = name,
             .dispatch_fn = dispatch_node,
+            .hierarchy_node = hierarchy_node,
             .source = self.sourceFromForm(form),
         };
 

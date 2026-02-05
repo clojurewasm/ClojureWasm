@@ -90,21 +90,23 @@ When working on test files under test/upstream/:
 
 ### When to Stop
 
-**Current goal: Complete Phase R (require/load/ns system).**
+**Current goal: Phase 20-25 in order (see memo.md Phase Roadmap table).**
 See `.dev/plan/memo.md` for task queue and current state.
 Do NOT stop between tasks within a phase.
+
+**Phase order** (user-specified): 20(infra) → 21(upstream align) → 22(tests) → 23(GC) → 24(optimize) → 25(wasm)
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase D is complete** (var coverage target 550+ reached)
+- **Phase 25 is complete** (all planned phases done)
 
 Do NOT stop for:
 
 - Task Queue becoming empty (plan next task and continue)
 - Session context getting large (compress and continue)
-- "Good stopping points" — there are none until Phase D is done
+- "Good stopping points" — there are none until the current phase is done
 
 When in doubt, **continue** — pick the most reasonable option and proceed.
 
