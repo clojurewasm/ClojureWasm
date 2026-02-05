@@ -769,9 +769,9 @@ vars:
   clojure_data:
     Diff: {type: var, status: todo}
     EqualityPartition: {type: var, status: todo}
-    diff: {type: function, status: todo}
-    "diff-similar": {type: function, status: todo}
-    "equality-partition": {type: function, status: todo}
+    diff: {type: function, status: done, notes: 'UPSTREAM-DIFF: type checks instead of protocols'}
+    "diff-similar": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
+    "equality-partition": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
   clojure_datafy:
     datafy: {type: function, status: todo}
     nav: {type: function, status: todo}

@@ -46,6 +46,9 @@ const template_clj_source = @embedFile("../clj/clojure/template.clj");
 /// Embedded clojure/set.clj source (compiled into binary).
 const set_clj_source = @embedFile("../clj/clojure/set.clj");
 
+/// Embedded clojure/data.clj source (compiled into binary).
+const data_clj_source = @embedFile("../clj/clojure/data.clj");
+
 /// Load and evaluate core.clj in the given Env.
 /// Called after registerBuiltins to define core macros (defn, when, etc.).
 /// Temporarily switches to clojure.core namespace so macros are defined there,
@@ -220,6 +223,29 @@ pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
     }
+}
+
+pub fn loadData(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.data namespace
+    const data_ns = env.findOrCreateNamespace("clojure.data") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.data
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        data_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Save current namespace and switch to clojure.data
+    const saved_ns = env.current_ns;
+    env.current_ns = data_ns;
+
+    // Evaluate clojure/data.clj (defines functions in clojure.data)
+    _ = try evalString(allocator, env, data_clj_source);
+
+    // Restore namespace
+    env.current_ns = saved_ns;
+    syncNsVar(env);
 }
 
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.

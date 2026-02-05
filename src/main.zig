@@ -64,6 +64,10 @@ pub fn main() !void {
             std.debug.print("Error: failed to load clojure.set\n", .{});
             std.process.exit(1);
         };
+        bootstrap.loadData(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.data\n", .{});
+            std.process.exit(1);
+        };
         // Enable GC for REPL evaluation (bootstrap runs without GC).
         // Reset threshold to avoid immediate sweep on first safe point.
         gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
@@ -283,6 +287,10 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     };
     bootstrap.loadSet(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.set\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadData(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.data\n", .{});
         std.process.exit(1);
     };
     // Enable GC for user evaluation (bootstrap runs without GC).

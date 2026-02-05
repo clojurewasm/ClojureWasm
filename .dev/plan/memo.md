@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.15
+- Next task: 22c.16
 - Blockers: none
 
 ## Task Queue
@@ -31,23 +31,22 @@ Tier 3: Medium implementation + new file ports
 - ~~22c.12: Implement iteration function (sequences)~~
 - ~~22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)~~
 - ~~22c.14: Port ns_libs.clj~~
-- 22c.15: Port data.clj (implement clojure.data/diff)
+- ~~22c.15: Port data.clj (implement clojure.data/diff)~~
 - 22c.16: Port protocols.clj (portable subset)
 
 Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-22c.15: Port data.clj (implement clojure.data/diff)
+22c.16: Port protocols.clj (portable subset)
 
 ## Previous Task
 
-22c.14: Port ns_libs.clj
-- Implemented ns-resolve (2/3-arg), ns-aliases, ns-refers builtins
-- Fixed alias error (proper exception), require/use arg validation
-- Added def_private opcode (VM + compiler), NameError to VM/TreeWalk error sets
-- Fixed refer :only validation (existence + private checks, list support)
-- 5 tests, 11 assertions, both backends pass
+22c.15: Port data.clj (implement clojure.data/diff)
+- Implemented clojure.data namespace (diff, equality-partition, diff-similar)
+- UPSTREAM-DIFF: type checks instead of protocols (no Java types)
+- Bootstrap-loaded via loadData in main.zig
+- 1 test, 13 assertions, both backends pass
 
 ## Handover Notes
 
