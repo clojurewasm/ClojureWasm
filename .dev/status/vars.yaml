@@ -291,7 +291,7 @@ vars:
     filter: {type: function, status: done, note: "eager (no lazy seq)"}
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
     find: {type: function, status: done, note: "Zig builtin"}
-    "find-keyword": {type: function, status: skip, note: 'F80: needs keyword intern table'}
+    "find-keyword": {type: function, status: done, note: 'F80: needs keyword intern table'}
     "find-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "find-protocol-impl": {type: function, status: skip, note: JVM interop}
     "find-protocol-method": {type: function, status: skip, note: JVM interop}

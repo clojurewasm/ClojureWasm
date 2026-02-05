@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
-- Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next task: 22c.5
+- Coverage: 522/704 clojure.core vars done (0 todo, 181 skip)
+- Next task: 22c.6
 - Blockers: none
 
 ## Task Queue
@@ -19,7 +19,7 @@ Tier 1: Revive skipped tests (features already implemented)
 - ~~22c.4: Revive eval-based tests (special — non-JVM-exception subset)~~
 
 Tier 2: Small implementation + new file ports
-- 22c.5: Implement find-keyword (F80) + revive keywords.clj test
+- ~~22c.5: Implement find-keyword (F80) + revive keywords.clj test~~
 - 22c.6: Implement parse-uuid + revive parse.clj test
 - 22c.7: Port edn.clj (clojure.edn thin wrapper)
 - 22c.8: Port try_catch.clj (basic portable subset)
@@ -38,15 +38,16 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.5)
+(next: 22c.6)
 
 ## Previous Task
 
-22c.4: Revive eval-based tests (special.clj — non-JVM-exception subset)
-- Fixed analyzer: reject namespace-qualified symbols in let/destructuring bindings
-- Ported 3 tests: keywords-not-allowed-in-let-bindings (4), namespaced-syms-only-allowed-in-map-destructuring (2), or-doesnt-create-bindings (1)
-- Used thrown? instead of thrown-with-cause-msg? (no .getCause interop)
-- special.clj: 12 tests, 20 assertions, both backends pass
+22c.5: Implement find-keyword (F80) + revive keywords.clj test
+- Implemented keyword intern table (keyword_intern.zig) — global state, D3 exception
+- Hooked intern into analyzer (source keywords) and keyword builtin (runtime keywords)
+- Added find-keyword builtin (1-arg: kw/sym/str, 2-arg: ns+name)
+- Resolved F80 in checklist.md
+- keywords.clj: 2 tests, 11 assertions, both backends pass
 
 ## Handover Notes
 

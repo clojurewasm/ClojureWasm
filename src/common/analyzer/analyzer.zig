@@ -25,6 +25,7 @@ const collections = @import("../collections.zig");
 const bootstrap = @import("../bootstrap.zig");
 const value_mod = @import("../value.zig");
 const regex_matcher = @import("../regex/matcher.zig");
+const keyword_intern = @import("../keyword_intern.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
@@ -192,6 +193,7 @@ pub const Analyzer = struct {
                 if (sym.auto_resolve) {
                     resolved_ns = self.resolveAutoNs(sym.ns) orelse sym.ns;
                 }
+                keyword_intern.intern(resolved_ns, sym.name);
                 break :blk self.makeConstantFrom(.{ .keyword = .{ .ns = resolved_ns, .name = sym.name } }, form);
             },
             .symbol => |sym| self.analyzeSymbol(sym, form),

@@ -6,7 +6,7 @@ Check at session start for items that become actionable.
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
-  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception — module-level, single-thread only
+  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception, keyword_intern.table — module-level, single-thread only
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
 - [ ] D10: All code in English (identifiers, comments, commits)
 
@@ -23,6 +23,6 @@ Check at session start for items that become actionable.
 | ~~F20~~ | ~~Safe point GC design~~                | Done: Phase 23.4, VM/REPL safe points (D70)                       |
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
-| F80 | find-keyword function                       | Needs keyword intern table                                         |
+| ~~F80~~ | ~~find-keyword function~~                | Done: 22c.5, keyword_intern.zig                                   |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |

@@ -14,6 +14,7 @@ const Value = @import("common/value.zig").Value;
 const nrepl = @import("repl/nrepl.zig");
 const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
+const keyword_intern = @import("common/keyword_intern.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -29,6 +30,10 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
+
+    // Initialize keyword intern table (uses GPA for permanent keyword strings)
+    keyword_intern.init(allocator);
+    defer keyword_intern.deinit();
 
     if (args.len < 2) {
         // No args — start REPL

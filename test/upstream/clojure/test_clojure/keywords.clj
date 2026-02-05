@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/keywords.clj
 ;; Upstream lines: 31
-;; CLJW markers: 5
+;; CLJW markers: 4
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -13,7 +13,21 @@
 (ns clojure.test-clojure.keywords
   (:use clojure.test))
 
-;; CLJW: test-find-keyword skipped — find-keyword not implemented (F80: needs keyword intern table)
+;; CLJW: removed (.name *ns*) — use (str (ns-name *ns*)) instead
+(let [this-ns (str (ns-name *ns*))]
+  (deftest test-find-keyword
+    :foo
+    ::foo
+    (let [absent-keyword-sym (gensym "absent-keyword-sym")]
+      (are [result lookup] (= result (find-keyword lookup))
+        :foo :foo
+        :foo 'foo
+        :foo "foo"
+        nil absent-keyword-sym
+        nil (str absent-keyword-sym))
+      (are [result lookup] (= result (find-keyword this-ns lookup))
+        ::foo "foo"
+        nil (str absent-keyword-sym)))))
 
 (deftest arity-exceptions
   ;; CLJW: thrown-with-msg? not supported; adapted to try/catch + re-find message check

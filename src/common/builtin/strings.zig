@@ -14,6 +14,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
 const collections = @import("collections.zig");
 const err = @import("../error.zig");
+const keyword_intern = @import("../keyword_intern.zig");
 
 /// (str) => ""
 /// (str x) => string representation of x (non-readable)
@@ -125,12 +126,14 @@ pub fn namespaceFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (keyword x), (keyword ns name) — coerce to keyword.
 pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) {
-        return switch (args[0]) {
+        const result: Value = switch (args[0]) {
             .keyword => args[0],
-            .string => |s| Value{ .keyword = .{ .name = s, .ns = null } },
-            .symbol => |sym| Value{ .keyword = .{ .name = sym.name, .ns = sym.ns } },
-            else => err.setErrorFmt(.eval, .type_error, .{}, "keyword expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
+            .string => |s| .{ .keyword = .{ .name = s, .ns = null } },
+            .symbol => |sym| .{ .keyword = .{ .name = sym.name, .ns = sym.ns } },
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
         };
+        keyword_intern.intern(result.keyword.ns, result.keyword.name);
+        return result;
     } else if (args.len == 2) {
         const ns_str = switch (args[0]) {
             .string => |s| s,
@@ -141,9 +144,50 @@ pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
             .string => |s| s,
             else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword name expects a string, got {s}", .{@tagName(args[1])}),
         };
+        keyword_intern.intern(ns_str, name_str);
         return Value{ .keyword = .{ .name = name_str, .ns = ns_str } };
     }
     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keyword", .{args.len});
+}
+
+/// (find-keyword name), (find-keyword ns name) — find interned keyword.
+/// Returns nil if the keyword has not been interned.
+pub fn findKeywordFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        // (find-keyword :foo) or (find-keyword 'foo) or (find-keyword "foo")
+        const ns: ?[]const u8 = switch (args[0]) {
+            .keyword => |k| k.ns,
+            .symbol => |s| s.ns,
+            .string => null,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "find-keyword expects a string, keyword, or symbol, got {s}", .{@tagName(args[0])}),
+        };
+        const name: []const u8 = switch (args[0]) {
+            .keyword => |k| k.name,
+            .symbol => |s| s.name,
+            .string => |s| s,
+            else => unreachable,
+        };
+        if (keyword_intern.contains(ns, name)) {
+            return Value{ .keyword = .{ .ns = ns, .name = name } };
+        }
+        return .nil;
+    } else if (args.len == 2) {
+        // (find-keyword "ns" "name")
+        const ns_str: ?[]const u8 = switch (args[0]) {
+            .string => |s| s,
+            .nil => null,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "find-keyword namespace expects a string, got {s}", .{@tagName(args[0])}),
+        };
+        const name_str: []const u8 = switch (args[1]) {
+            .string => |s| s,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "find-keyword name expects a string, got {s}", .{@tagName(args[1])}),
+        };
+        if (keyword_intern.contains(ns_str, name_str)) {
+            return Value{ .keyword = .{ .ns = ns_str, .name = name_str } };
+        }
+        return .nil;
+    }
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-keyword", .{args.len});
 }
 
 /// (symbol x), (symbol ns name) — coerce to symbol.
@@ -300,6 +344,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Returns a Symbol with the given namespace and name.",
         .arglists = "([name] [ns name])",
         .added = "1.0",
+    },
+    .{
+        .name = "find-keyword",
+        .func = &findKeywordFn,
+        .doc = "Returns a Keyword with the given namespace and name if one is already interned. Otherwise returns nil.",
+        .arglists = "([name] [ns name])",
+        .added = "1.3",
     },
 };
 
