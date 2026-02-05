@@ -601,9 +601,9 @@ vars:
     sort: {type: function, status: done, note: "Zig builtin"}
     "sort-by": {type: function, status: done, note: "Zig builtin"}
     "sorted-map": {type: function, status: done, note: "Zig builtin"}
-    "sorted-map-by": {type: function, status: skip, note: needs sorted data structure}
-    "sorted-set": {type: function, status: done, note: 'UPSTREAM-DIFF: uses hash-set storage (no sorted iteration)'}
-    "sorted-set-by": {type: function, status: skip, note: needs sorted data structure}
+    "sorted-map-by": {type: function, status: done, note: builtin with custom comparator}
+    "sorted-set": {type: function, status: done, note: 'builtin (upstream uses Java TreeSet)'}
+    "sorted-set-by": {type: function, status: done, note: builtin with custom comparator}
     "sorted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "special-symbol?": {type: function, status: done, note: builtin (upstream is pure clj)}
     spit: {type: function, status: done, note: "Zig builtin"}

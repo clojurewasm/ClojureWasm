@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
-- Coverage: 517/704 clojure.core vars done (0 todo, 186 skip)
-- Next: 20.5 (Sorted-map-by, sorted-set-by)
+- Coverage: 519/704 clojure.core vars done (0 todo, 184 skip)
+- Next: 20.6 (subseq, rsubseq)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -26,24 +26,27 @@ Session handover document. Read at session start.
 2. ~~20.2: Core.clj transient alignment~~ — DONE
 3. ~~20.3: Chunked sequences — types + builtins~~ — DONE (8 builtins + chunk-cons)
 4. ~~20.4: Core.clj chunked seq paths~~ — DONE (map, filter, keep, doseq)
-5. 20.5: Sorted-map-by, sorted-set-by with custom comparators — 2 vars
+5. ~~20.5: Sorted-map-by, sorted-set-by~~ — DONE (2 vars + sorted-set/sorted-map improved)
 6. 20.6: subseq, rsubseq — 2 vars
 
 ## Current Task
 
-20.5: Sorted-map-by, sorted-set-by with custom comparators
-- Need SortedArrayMap with custom comparator for sorted-map-by
-- Need SortedHashSet with custom comparator for sorted-set-by
-- Both maintain insertion order sorted by comparator
+20.6: subseq, rsubseq
+- Implement subseq/rsubseq for sorted maps/sets
+- Need to work with comparator field on PersistentArrayMap/PersistentHashSet
 
 ## Previous Task
 
-20.4 completed: Core.clj chunked seq paths
-- map: added chunked-seq? path with chunk-buffer/chunk-append/chunk-cons
-- filter: added chunked-seq? path with chunk-buffer/chunk-append/chunk-cons
-- keep: converted from eager to lazy + chunked-seq? path
-- doseq: added chunked-seq? code generation path
-- nth: added ArrayChunk support
+20.5 completed: Sorted-map-by, sorted-set-by with custom comparators
+- Added comparator field to PersistentArrayMap and PersistentHashSet
+- sorted-map now stores comparator=.nil (natural ordering sentinel)
+- sorted-map-by: new builtin with custom comparator support
+- sorted-set now properly sorts items (was just delegating to hash-set)
+- sorted-set-by: new builtin with custom comparator support
+- assocFn, dissocFn, conjOne, disjFn, emptyFn all propagate comparator
+- assoc re-sorts entries when comparator is present
+- conj on sorted-set re-sorts items
+- compareWithComparator helper: .nil=natural, fn_val=custom
 - Both VM + TreeWalk verified
 
 ## Completed Phases (reverse chronological)

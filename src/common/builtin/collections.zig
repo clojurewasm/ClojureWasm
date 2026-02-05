@@ -213,8 +213,12 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             const new_items = try allocator.alloc(Value, s.items.len + 1);
             @memcpy(new_items[0..s.items.len], s.items);
             new_items[s.items.len] = x;
+            // Re-sort if sorted set
+            if (s.comparator) |comp| {
+                try sortSetItems(allocator, new_items, comp);
+            }
             const new_set = try allocator.create(PersistentHashSet);
-            new_set.* = .{ .items = new_items, .meta = s.meta };
+            new_set.* = .{ .items = new_items, .meta = s.meta, .comparator = s.comparator };
             return Value{ .set = new_set };
         },
         .map => {
@@ -292,8 +296,15 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    const base_comp: ?Value = if (base == .map) base.map.comparator else null;
+
+    // Re-sort if this is a sorted map
+    if (base_comp) |comp| {
+        try sortMapEntries(allocator, entries.items, comp);
+    }
+
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = if (base == .map) base.map.meta else null };
+    new_map.* = .{ .entries = entries.items, .meta = if (base == .map) base.map.meta else null, .comparator = base_comp };
     return Value{ .map = new_map };
 }
 
@@ -1236,7 +1247,7 @@ pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = if (args[0] == .map) args[0].map.meta else null };
+    new_map.* = .{ .entries = entries.items, .meta = if (args[0] == .map) args[0].map.meta else null, .comparator = if (args[0] == .map) args[0].map.comparator else null };
     return Value{ .map = new_map };
 }
 
@@ -1273,7 +1284,7 @@ pub fn disjFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_set = try allocator.create(PersistentHashSet);
-    new_set.* = .{ .items = items.items, .meta = if (args[0] == .set) args[0].set.meta else null };
+    new_set.* = .{ .items = items.items, .meta = if (args[0] == .set) args[0].set.meta else null, .comparator = if (args[0] == .set) args[0].set.comparator else null };
     return Value{ .set = new_set };
 }
 
@@ -1378,34 +1389,110 @@ pub fn hashSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .set = set };
 }
 
-/// (sorted-set & vals) — creates a set from the given values.
-/// Currently uses hash-set storage (no sorted iteration order).
+/// (sorted-set & vals) — creates a sorted set with natural ordering.
 pub fn sortedSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    return hashSetFn(allocator, args);
+    // Deduplicate
+    var items = std.ArrayList(Value).empty;
+    for (args) |arg| {
+        var found = false;
+        for (items.items) |existing| {
+            if (existing.eql(arg)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            try items.append(allocator, arg);
+        }
+    }
+    // Sort with natural ordering
+    if (items.items.len > 1) try sortSetItems(allocator, items.items, Value.nil);
+    const set = try allocator.create(PersistentHashSet);
+    set.* = .{ .items = try allocator.dupe(Value, items.items), .comparator = Value.nil };
+    items.deinit(allocator);
+    return Value{ .set = set };
+}
+
+/// (sorted-set-by comp & vals) — creates a sorted set with custom comparator.
+pub fn sortedSetByFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-set-by requires a comparator", .{});
+    const comp = args[0];
+    const vals = args[1..];
+    // Deduplicate
+    var items = std.ArrayList(Value).empty;
+    for (vals) |arg| {
+        var found = false;
+        for (items.items) |existing| {
+            if (existing.eql(arg)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            try items.append(allocator, arg);
+        }
+    }
+    // Sort with custom comparator
+    if (items.items.len > 1) try sortSetItems(allocator, items.items, comp);
+    const set = try allocator.create(PersistentHashSet);
+    set.* = .{ .items = try allocator.dupe(Value, items.items), .comparator = comp };
+    items.deinit(allocator);
+    return Value{ .set = set };
 }
 
 /// (sorted-map & kvs) — creates a map with entries sorted by key.
-/// Uses natural ordering (compareValues).
+/// Uses natural ordering (compareValues). Stores comparator=.nil for natural ordering.
 pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-map requires even number of args, got {d}", .{args.len});
     if (args.len == 0) {
         const map = try allocator.create(PersistentArrayMap);
-        map.* = .{ .entries = &.{} };
+        map.* = .{ .entries = &.{}, .comparator = Value.nil };
         return Value{ .map = map };
     }
-    // Copy entries then sort key-value pairs by key
-    const n_pairs = args.len / 2;
     const entries = try allocator.alloc(Value, args.len);
     @memcpy(entries, args);
 
-    // Sort pairs using insertion sort (stable, simple for small maps)
+    try sortMapEntries(allocator, entries, Value.nil);
+
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries, .comparator = Value.nil };
+    return Value{ .map = map };
+}
+
+/// (sorted-map-by comp & kvs) — creates a map sorted by custom comparator.
+/// comp is a fn of 2 args returning negative/zero/positive.
+pub fn sortedMapByFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-map-by requires a comparator", .{});
+    const comp = args[0];
+    const kvs = args[1..];
+    if (kvs.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-map-by requires even number of key-value args, got {d}", .{kvs.len});
+    if (kvs.len == 0) {
+        const map = try allocator.create(PersistentArrayMap);
+        map.* = .{ .entries = &.{}, .comparator = comp };
+        return Value{ .map = map };
+    }
+    const entries = try allocator.alloc(Value, kvs.len);
+    @memcpy(entries, kvs);
+
+    try sortMapEntries(allocator, entries, comp);
+
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries, .comparator = comp };
+    return Value{ .map = map };
+}
+
+/// Sort map entries (flat [k1,v1,k2,v2,...]) using comparator.
+/// comparator=.nil means natural ordering; otherwise call as Clojure fn.
+fn sortMapEntries(allocator: Allocator, entries: []Value, comparator: Value) anyerror!void {
+    const n_pairs = entries.len / 2;
+    // Insertion sort (stable, simple for small maps)
     var i: usize = 1;
     while (i < n_pairs) : (i += 1) {
         const key_i = entries[i * 2];
         const val_i = entries[i * 2 + 1];
         var j: usize = i;
         while (j > 0) {
-            const ord = compareValues(entries[(j - 1) * 2], key_i) catch .eq;
+            const ord = try compareWithComparator(allocator, comparator, entries[(j - 1) * 2], key_i);
             if (ord != .gt) break;
             entries[j * 2] = entries[(j - 1) * 2];
             entries[j * 2 + 1] = entries[(j - 1) * 2 + 1];
@@ -1414,10 +1501,42 @@ pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
         entries[j * 2] = key_i;
         entries[j * 2 + 1] = val_i;
     }
+}
 
-    const map = try allocator.create(PersistentArrayMap);
-    map.* = .{ .entries = entries };
-    return Value{ .map = map };
+/// Sort set items using comparator.
+fn sortSetItems(allocator: Allocator, items: []Value, comparator: Value) anyerror!void {
+    // Insertion sort
+    var i: usize = 1;
+    while (i < items.len) : (i += 1) {
+        const item_i = items[i];
+        var j: usize = i;
+        while (j > 0) {
+            const ord = try compareWithComparator(allocator, comparator, items[j - 1], item_i);
+            if (ord != .gt) break;
+            items[j] = items[j - 1];
+            j -= 1;
+        }
+        items[j] = item_i;
+    }
+}
+
+/// Compare two values using a comparator.
+/// .nil = natural ordering (compareValues), otherwise call as Clojure fn.
+fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: Value) anyerror!std.math.Order {
+    if (comparator == .nil) {
+        return compareValues(a, b);
+    }
+    // Custom comparator: call as Clojure function
+    const result = try bootstrap.callFnVal(allocator, comparator, &.{ a, b });
+    const n: i64 = switch (result) {
+        .integer => |i| i,
+        .float => |f| @intFromFloat(f),
+        .boolean => |bv| if (bv) @as(i64, -1) else 0,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "comparator must return a number, got {s}", .{@tagName(result)}),
+    };
+    if (n < 0) return .lt;
+    if (n > 0) return .gt;
+    return .eq;
 }
 
 /// (empty coll) — empty collection of same type, or nil.
@@ -1436,12 +1555,12 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .map => blk: {
             const new_map = try allocator.create(PersistentArrayMap);
-            new_map.* = .{ .entries = &.{}, .meta = args[0].map.meta };
+            new_map.* = .{ .entries = &.{}, .meta = args[0].map.meta, .comparator = args[0].map.comparator };
             break :blk Value{ .map = new_map };
         },
         .set => blk: {
             const new_set = try allocator.create(PersistentHashSet);
-            new_set.* = .{ .items = &.{}, .meta = args[0].set.meta };
+            new_set.* = .{ .items = &.{}, .meta = args[0].set.meta, .comparator = args[0].set.comparator };
             break :blk Value{ .set = new_set };
         },
         .nil => .nil,
@@ -1705,6 +1824,20 @@ pub const builtins = [_]BuiltinDef{
         .doc = "keyval => key val. Returns a new sorted map with supplied mappings.",
         .arglists = "([& keyvals])",
         .added = "1.0",
+    },
+    .{
+        .name = "sorted-map-by",
+        .func = &sortedMapByFn,
+        .doc = "keyval => key val. Returns a new sorted map with supplied mappings, using the supplied comparator.",
+        .arglists = "([comparator & keyvals])",
+        .added = "1.0",
+    },
+    .{
+        .name = "sorted-set-by",
+        .func = &sortedSetByFn,
+        .doc = "Returns a new sorted set with supplied keys, using the supplied comparator.",
+        .arglists = "([comparator & keys])",
+        .added = "1.1",
     },
     .{
         .name = "rseq",
@@ -1990,8 +2123,8 @@ test "count on various types" {
 }
 
 test "builtins table has 39 entries" {
-    // 37 + 1 (__seq-to-map) + 1 (sorted-set)
-    try testing.expectEqual(39, builtins.len);
+    // 37 + 1 (__seq-to-map) + 1 (sorted-set) + 2 (sorted-map-by, sorted-set-by)
+    try testing.expectEqual(41, builtins.len);
 }
 
 test "reverse list" {
@@ -2716,4 +2849,92 @@ test "sorted-map with no args returns empty map" {
 
 test "sorted-map with odd args is error" {
     try testing.expectError(error.ArityError, sortedMapFn(test_alloc, &.{Value{ .integer = 1 }}));
+}
+
+test "sorted-map stores natural ordering comparator" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try sortedMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+    });
+    try testing.expect(result == .map);
+    // sorted-map stores .nil as natural ordering sentinel
+    try testing.expect(result.map.comparator != null);
+    try testing.expect(result.map.comparator.? == .nil);
+}
+
+test "sorted-map empty stores natural ordering comparator" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try sortedMapFn(arena.allocator(), &.{});
+    try testing.expect(result == .map);
+    try testing.expect(result.map.comparator != null);
+    try testing.expect(result.map.comparator.? == .nil);
+}
+
+test "assoc on sorted-map maintains sort order" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create sorted map with :a and :c
+    const sm = try sortedMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "c", .ns = null } }, Value{ .integer = 3 },
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+    });
+    // assoc :b — should sort into the middle
+    const result = try assocFn(alloc, &.{
+        sm,
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+    });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 3), result.map.count());
+    // Keys should be sorted: :a, :b, :c
+    try testing.expect(result.map.entries[0].eql(.{ .keyword = .{ .name = "a", .ns = null } }));
+    try testing.expect(result.map.entries[2].eql(.{ .keyword = .{ .name = "b", .ns = null } }));
+    try testing.expect(result.map.entries[4].eql(.{ .keyword = .{ .name = "c", .ns = null } }));
+    // Comparator propagated
+    try testing.expect(result.map.comparator != null);
+    try testing.expect(result.map.comparator.? == .nil);
+}
+
+test "dissoc on sorted-map preserves comparator" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const sm = try sortedMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+    });
+    const result = try dissocFn(alloc, &.{
+        sm,
+        Value{ .keyword = .{ .name = "b", .ns = null } },
+    });
+    try testing.expect(result == .map);
+    try testing.expectEqual(@as(usize, 1), result.map.count());
+    try testing.expect(result.map.comparator != null);
+}
+
+test "sorted-set stores natural ordering comparator" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try sortedSetFn(alloc, &.{
+        Value{ .integer = 3 }, Value{ .integer = 1 }, Value{ .integer = 2 },
+    });
+    try testing.expect(result == .set);
+    // Items should be sorted: 1, 2, 3
+    try testing.expectEqual(@as(usize, 3), result.set.count());
+    try testing.expect(result.set.items[0].eql(Value{ .integer = 1 }));
+    try testing.expect(result.set.items[1].eql(Value{ .integer = 2 }));
+    try testing.expect(result.set.items[2].eql(Value{ .integer = 3 }));
+    // Comparator stored
+    try testing.expect(result.set.comparator != null);
+    try testing.expect(result.set.comparator.? == .nil);
 }

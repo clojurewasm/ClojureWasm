@@ -59,6 +59,9 @@ pub const PersistentVector = struct {
 pub const PersistentArrayMap = struct {
     entries: []const Value,
     meta: ?*const Value = null,
+    /// Custom comparator for sorted-map-by (fn of 2 args → negative/0/positive).
+    /// null for regular maps and sorted-map (natural ordering).
+    comparator: ?Value = null,
 
     pub fn count(self: PersistentArrayMap) usize {
         return self.entries.len / 2;
@@ -77,6 +80,9 @@ pub const PersistentArrayMap = struct {
 pub const PersistentHashSet = struct {
     items: []const Value,
     meta: ?*const Value = null,
+    /// Custom comparator for sorted-set-by (fn of 2 args → negative/0/positive).
+    /// .nil for sorted-set (natural ordering), null for regular sets.
+    comparator: ?Value = null,
 
     pub fn count(self: PersistentHashSet) usize {
         return self.items.len;
