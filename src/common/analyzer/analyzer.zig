@@ -187,7 +187,13 @@ pub const Analyzer = struct {
             .float => |n| self.makeConstantFrom(.{ .float = n }, form),
             .char => |c| self.makeConstantFrom(.{ .char = c }, form),
             .string => |s| self.makeConstantFrom(.{ .string = s }, form),
-            .keyword => |sym| self.makeConstantFrom(.{ .keyword = .{ .ns = sym.ns, .name = sym.name } }, form),
+            .keyword => |sym| blk: {
+                var resolved_ns = sym.ns;
+                if (sym.auto_resolve) {
+                    resolved_ns = self.resolveAutoNs(sym.ns) orelse sym.ns;
+                }
+                break :blk self.makeConstantFrom(.{ .keyword = .{ .ns = resolved_ns, .name = sym.name } }, form);
+            },
             .symbol => |sym| self.analyzeSymbol(sym, form),
             .list => |items| self.analyzeList(items, form),
             .vector => |items| self.analyzeVector(items, form),
@@ -310,8 +316,9 @@ pub const Analyzer = struct {
         if (arg_forms.len > arg_vals.len) {
             return self.analysisError(.arity_error, "too many macro arguments", form);
         }
+        const current_ns_name = if (self.env) |env| (if (env.current_ns) |ns| ns.name else null) else null;
         for (arg_forms, 0..) |af, i| {
-            arg_vals[i] = macro.formToValue(self.allocator, af) catch return error.OutOfMemory;
+            arg_vals[i] = macro.formToValueWithNs(self.allocator, af, current_ns_name) catch return error.OutOfMemory;
         }
 
         // Call the macro function via unified dispatch
@@ -699,7 +706,8 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "quote requires exactly 1 argument", form);
         }
 
-        const val = macro.formToValue(self.allocator, items[1]) catch return error.OutOfMemory;
+        const quote_ns = if (self.env) |env| (if (env.current_ns) |ns| ns.name else null) else null;
+        const val = macro.formToValueWithNs(self.allocator, items[1], quote_ns) catch return error.OutOfMemory;
 
         const quote_data = self.allocator.create(node_mod.QuoteNode) catch return error.OutOfMemory;
         quote_data.* = .{
@@ -1760,11 +1768,16 @@ pub const Analyzer = struct {
 
                 if (std.mem.eql(u8, kw_name, "keys")) {
                     // :keys [a b c] or :ns/keys [a b c] -> keyword-keyed get
-                    // Supports: :keys [a], :keys [:a/b], :keys [a/b], :ns/keys [b]
+                    // Supports: :keys [a], :keys [:a/b], :keys [a/b], :ns/keys [b], ::keys [b]
                     if (val.data != .vector) {
                         return self.analysisError(.value_error, ":keys must be followed by a vector", val);
                     }
-                    const key_ns = key.data.keyword.ns; // nil for :keys, "ns" for :ns/keys
+                    const key_ns = if (key.data.keyword.ns) |ns|
+                        ns
+                    else if (key.data.keyword.auto_resolve)
+                        self.resolveAutoNs(null)
+                    else
+                        null;
                     for (val.data.vector) |sym_form| {
                         var lookup_ns: ?[]const u8 = key_ns;
                         var bind_name: []const u8 = undefined;
@@ -1773,7 +1786,12 @@ pub const Analyzer = struct {
                             if (sym_form.data.symbol.ns) |ns| lookup_ns = ns;
                         } else if (sym_form.data == .keyword) {
                             bind_name = sym_form.data.keyword.name;
-                            if (sym_form.data.keyword.ns) |ns| lookup_ns = ns;
+                            if (sym_form.data.keyword.ns) |ns| {
+                                lookup_ns = ns;
+                            } else if (sym_form.data.keyword.auto_resolve) {
+                                // ::x in :keys — resolve to current namespace
+                                lookup_ns = self.resolveAutoNs(null);
+                            }
                         } else {
                             return self.analysisError(.value_error, ":keys elements must be symbols or keywords", sym_form);
                         }
@@ -1799,11 +1817,16 @@ pub const Analyzer = struct {
                     }
                 } else if (std.mem.eql(u8, kw_name, "syms")) {
                     // :syms [a b] or :ns/syms [a b] -> symbol-keyed get
-                    // Supports: :syms [a], :syms [a/b], :ns/syms [b]
+                    // Supports: :syms [a], :syms [a/b], :ns/syms [b], ::syms [b]
                     if (val.data != .vector) {
                         return self.analysisError(.value_error, ":syms must be followed by a vector", val);
                     }
-                    const key_ns = key.data.keyword.ns; // nil for :syms, "ns" for :ns/syms
+                    const key_ns = if (key.data.keyword.ns) |ns|
+                        ns
+                    else if (key.data.keyword.auto_resolve)
+                        self.resolveAutoNs(null)
+                    else
+                        null;
                     for (val.data.vector) |sym_form| {
                         if (sym_form.data != .symbol) {
                             return self.analysisError(.value_error, ":syms elements must be symbols", sym_form);
@@ -1858,6 +1881,19 @@ pub const Analyzer = struct {
             .source = .{},
         } };
         return n;
+    }
+
+    /// Resolve auto-resolved keyword namespace.
+    /// For ::foo (alias=null) → current ns name.
+    /// For ::alias/foo (alias!=null) → resolved alias ns name.
+    fn resolveAutoNs(self: *const Analyzer, alias: ?[]const u8) ?[]const u8 {
+        const env = self.env orelse return null;
+        const ns = env.current_ns orelse return null;
+        if (alias) |a| {
+            const resolved = ns.getAlias(a) orelse return null;
+            return resolved.name;
+        }
+        return ns.name;
     }
 
     /// Generate (nth coll idx) call node.

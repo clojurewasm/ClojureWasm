@@ -290,9 +290,17 @@ pub const Reader = struct {
         // Strip leading ':'
         if (text.len > 0 and text[0] == ':') text = text[1..];
         // Strip second ':' for auto-resolved keywords (::foo)
-        if (text.len > 0 and text[0] == ':') text = text[1..];
+        var is_auto_resolve = false;
+        if (text.len > 0 and text[0] == ':') {
+            text = text[1..];
+            is_auto_resolve = true;
+        }
         const sym = parseSymbol(text);
-        return Form{ .data = .{ .keyword = sym }, .line = token.line, .column = token.column };
+        return Form{ .data = .{ .keyword = .{
+            .ns = sym.ns,
+            .name = sym.name,
+            .auto_resolve = is_auto_resolve,
+        } }, .line = token.line, .column = token.column };
     }
 
     // --- Collections ---

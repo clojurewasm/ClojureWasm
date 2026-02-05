@@ -19,6 +19,12 @@ const builtin_collections = @import("builtin/collections.zig");
 /// Convert a Form to a runtime Value (for passing to macro functions).
 /// Collections are recursively converted. Source info preserved on lists/vectors.
 pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
+    return formToValueWithNs(allocator, form, null);
+}
+
+/// Convert a Form to a runtime Value, resolving auto-resolved keywords
+/// using the given current namespace name.
+pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const u8) Allocator.Error!Value {
     return switch (form.data) {
         .nil => .nil,
         .boolean => |b| .{ .boolean = b },
@@ -27,13 +33,13 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
         .char => |c| .{ .char = c },
         .string => |s| .{ .string = s },
         .symbol => |sym| .{ .symbol = .{ .ns = sym.ns, .name = sym.name } },
-        .keyword => |sym| .{ .keyword = .{ .ns = sym.ns, .name = sym.name } },
+        .keyword => |sym| .{ .keyword = .{ .ns = if (sym.auto_resolve) (current_ns orelse sym.ns) else sym.ns, .name = sym.name } },
         .list => |items| {
             const vals = try allocator.alloc(Value, items.len);
             const c_lines = try allocator.alloc(u32, items.len);
             const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValue(allocator, item);
+                vals[i] = try formToValueWithNs(allocator, item, current_ns);
                 c_lines[i] = item.line;
                 c_cols[i] = item.column;
             }
@@ -52,7 +58,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
             const c_lines = try allocator.alloc(u32, items.len);
             const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValue(allocator, item);
+                vals[i] = try formToValueWithNs(allocator, item, current_ns);
                 c_lines[i] = item.line;
                 c_cols[i] = item.column;
             }
@@ -69,7 +75,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
         .map => |items| {
             const vals = try allocator.alloc(Value, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValue(allocator, item);
+                vals[i] = try formToValueWithNs(allocator, item, current_ns);
             }
             const m = try allocator.create(collections.PersistentArrayMap);
             m.* = .{ .entries = vals };
@@ -78,7 +84,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
         .set => |items| {
             const vals = try allocator.alloc(Value, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValue(allocator, item);
+                vals[i] = try formToValueWithNs(allocator, item, current_ns);
             }
             const s = try allocator.create(collections.PersistentHashSet);
             s.* = .{ .items = vals };

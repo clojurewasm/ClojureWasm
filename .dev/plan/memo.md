@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX7 (::foo auto-resolved keyword)
+- Next task: CX8 (Hierarchy system)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -21,7 +21,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX4: delay proper Value type (F91)~~ done
 - ~~CX5: {:as x} seq-to-map coercion (F68)~~ done
 - ~~CX6: Namespaced destructuring (F70-F74)~~ done
-- CX7: ::foo auto-resolved keyword (F81)
+- ~~CX7: ::foo auto-resolved keyword (F81)~~ done
 - CX8: Hierarchy system (F82 + F83)
 - CX9: #'var inside deftest body (F87)
 - CX10: UPSTREAM-DIFF quick fixes (F94 partial)
@@ -57,14 +57,16 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX7: ::foo auto-resolved keyword (F81) — support auto-resolved keywords in reader.
+CX8: Hierarchy system (F82 + F83) — derive, isa?, prefer-method for multimethods.
 
 ## Previous Task
 
-CX6 completed: Namespaced destructuring (F70-F74).
-- makeGetKeywordCall/makeGetSymbolCall accept optional ns parameter
-- :keys/:syms handlers extract namespace from both key keyword and elements
-- Supports: :keys [:a/b], :keys [a/b], :a/keys [b], :syms [a/b], :a/syms [b]
+CX7 completed: ::foo auto-resolved keyword (F81).
+- SymbolRef.auto_resolve flag in form.zig
+- Reader sets flag for :: keywords
+- Analyzer resolves via env.current_ns (::foo) or ns.getAlias (::alias/foo)
+- macro.formToValueWithNs propagates resolution through macro expansion
+- Supports ::foo, ::keys, :keys [::x], ns switching, quoted ::foo
 - Both backends pass all E2E tests
 
 ## Handover Notes

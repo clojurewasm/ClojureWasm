@@ -41,6 +41,7 @@ pub const FormData = union(enum) {
 pub const SymbolRef = struct {
     ns: ?[]const u8,
     name: []const u8,
+    auto_resolve: bool = false, // true for ::foo auto-resolved keywords
 };
 
 /// Tagged literal: #tag form
