@@ -1723,11 +1723,16 @@ pub const Analyzer = struct {
         bindings: *std.ArrayList(node_mod.LetBinding),
         form: Form,
     ) AnalyzeError!void {
+        // Wrap init with __seq-to-map to coerce seqs to maps (JVM destructure semantics)
+        const coerce_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+        coerce_args[0] = init_node;
+        const coerced_init = try self.makeBuiltinCall("__seq-to-map", coerce_args);
+
         // Bind whole collection to temp var
         const temp_name = "__destructure_map__";
         const temp_idx: u32 = @intCast(self.locals.items.len);
         self.locals.append(self.allocator, .{ .name = temp_name, .idx = temp_idx }) catch return error.OutOfMemory;
-        bindings.append(self.allocator, .{ .name = temp_name, .init = init_node }) catch return error.OutOfMemory;
+        bindings.append(self.allocator, .{ .name = temp_name, .init = coerced_init }) catch return error.OutOfMemory;
 
         const temp_ref = try self.makeTempLocalRef(temp_name, temp_idx);
 

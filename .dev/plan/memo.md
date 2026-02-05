@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX5 ({:as x} seq-to-map coercion)
+- Next task: CX6 (Namespaced destructuring)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -19,7 +19,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX2: bound? takes var_ref (F86)~~ done
 - ~~CX3: Math/System syntax routing (F89)~~ done
 - ~~CX4: delay proper Value type (F91)~~ done
-- CX5: {:as x} seq-to-map coercion (F68)
+- ~~CX5: {:as x} seq-to-map coercion (F68)~~ done
 - CX6: Namespaced destructuring (F70-F74)
 - CX7: ::foo auto-resolved keyword (F81)
 - CX8: Hierarchy system (F82 + F83)
@@ -57,16 +57,15 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX5: {:as x} seq-to-map coercion (F68) — map destructuring :as binding coerces seqs to maps.
+CX6: Namespaced destructuring (F70-F74) — support namespaced keys/syms in map destructuring.
 
 ## Previous Task
 
-CX4 completed: delay proper Value type (F91, D66).
-- Added Delay struct + delay variant to Value union
-- __delay-create builtin, __delay?/__delay-realized?/__lazy-seq-realized? predicates
-- Exception caching with identity preservation (JVM Delay semantics)
-- Fixed TreeWalk builtin exception propagation (callBuiltinFn)
-- Both backends pass all 6 delay test assertions
+CX5 completed: {:as x} seq-to-map coercion (F68).
+- Added __seq-to-map builtin in collections.zig
+- Analyzer expandMapPattern wraps init_node with __seq-to-map
+- JVM-faithful: seq? types (list/cons/lazy-seq) coerced, nil/vector/map pass through
+- Both backends pass all E2E tests
 
 ## Handover Notes
 

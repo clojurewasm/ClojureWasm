@@ -638,6 +638,33 @@ pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .map = map };
 }
 
+/// (__seq-to-map x) — coerce seq-like values to maps for map destructuring.
+/// Seqs/lists are converted via hash-map semantics. Non-seqs pass through unchanged.
+pub fn seqToMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __seq-to-map", .{args.len});
+    return switch (args[0]) {
+        .nil => .nil, // JVM: (seq? nil) → false, passes through
+        .list => |lst| {
+            if (lst.items.len == 0) {
+                const map = try allocator.create(PersistentArrayMap);
+                map.* = .{ .entries = &.{} };
+                return Value{ .map = map };
+            }
+            return hashMapFn(allocator, lst.items);
+        },
+        .cons, .lazy_seq => {
+            const items = try collectSeqItems(allocator, args[0]);
+            if (items.len == 0) {
+                const map = try allocator.create(PersistentArrayMap);
+                map.* = .{ .entries = &.{} };
+                return Value{ .map = map };
+            }
+            return hashMapFn(allocator, items);
+        },
+        else => args[0], // maps, vectors, etc. pass through
+    };
+}
+
 /// (merge & maps) — returns a map that consists of the rest of the maps conj-ed onto the first.
 /// If a key occurs in more than one map, the mapping from the latter (left-to-right) will be the mapping in the result.
 pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -1580,6 +1607,13 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([coll])",
         .added = "1.2",
     },
+    .{
+        .name = "__seq-to-map",
+        .func = &seqToMapFn,
+        .doc = "Coerces seq to map for map destructuring.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -1842,9 +1876,9 @@ test "count on various types" {
     try testing.expectEqual(Value{ .integer = 5 }, try countFn(test_alloc, &.{Value{ .string = "hello" }}));
 }
 
-test "builtins table has 37 entries" {
-    // 35 + 2 (rseq, shuffle)
-    try testing.expectEqual(37, builtins.len);
+test "builtins table has 38 entries" {
+    // 37 + 1 (__seq-to-map)
+    try testing.expectEqual(38, builtins.len);
 }
 
 test "reverse list" {

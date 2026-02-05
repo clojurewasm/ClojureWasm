@@ -115,8 +115,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 220 + 4 (__delay-create, __delay?, __delay-realized?, __lazy-seq-realized?)
-    try std.testing.expectEqual(224, builtin_count);
+    // 224 + 1 (__seq-to-map)
+    try std.testing.expectEqual(225, builtin_count);
 }
 
 test "comptime lookup finds +" {
