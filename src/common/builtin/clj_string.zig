@@ -1,4 +1,4 @@
-// clojure.string namespace builtins — join, split, upper-case, lower-case, trim
+// clojure.string namespace builtins — join, split, upper-case, lower-case, trim, etc.
 //
 // String manipulation functions registered in the clojure.string namespace.
 
@@ -11,6 +11,9 @@ const PersistentVector = value_mod.PersistentVector;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../error.zig");
+const matcher_mod = @import("../regex/matcher.zig");
+const CompiledRegex = @import("../regex/regex.zig").CompiledRegex;
+const bootstrap = @import("../bootstrap.zig");
 
 /// (clojure.string/join coll)
 /// (clojure.string/join separator coll)
@@ -19,16 +22,49 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to join", .{args.len});
 
     const sep: []const u8 = if (args.len == 2) blk: {
-        if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "join separator expects a string, got {s}", .{@tagName(args[0])});
-        break :blk args[0].string;
+        if (args[0] == .string) break :blk args[0].string;
+        if (args[0] == .char) {
+            var buf: [4]u8 = undefined;
+            const len = std.unicode.utf8Encode(args[0].char, &buf) catch 0;
+            const s = try allocator.dupe(u8, buf[0..len]);
+            break :blk s;
+        }
+        // Convert anything else via str semantics
+        const s = try valueToStr(allocator, args[0]);
+        break :blk s;
     } else "";
 
     const coll = if (args.len == 2) args[1] else args[0];
-    const items = switch (coll) {
+    const items: []const Value = switch (coll) {
         .vector => |v| v.items,
         .list => |l| l.items,
         .nil => return Value{ .string = "" },
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "join expects a vector or list, got {s}", .{@tagName(coll)}),
+        .lazy_seq => blk: {
+            const realized = try coll.lazy_seq.realize(allocator);
+            break :blk switch (realized) {
+                .list => |l| l.items,
+                .nil => return Value{ .string = "" },
+                else => return Value{ .string = "" },
+            };
+        },
+        .cons => blk: {
+            var elems: std.ArrayListUnmanaged(Value) = .empty;
+            var cur = coll;
+            while (true) {
+                if (cur == .cons) {
+                    try elems.append(allocator, cur.cons.first);
+                    cur = cur.cons.rest;
+                } else if (cur == .lazy_seq) {
+                    cur = try cur.lazy_seq.realize(allocator);
+                } else if (cur == .list) {
+                    for (cur.list.items) |item| try elems.append(allocator, item);
+                    break;
+                } else break;
+            }
+            break :blk elems.items;
+        },
+        .set => |s| s.items,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "join expects a collection, got {s}", .{@tagName(coll)}),
     };
 
     if (items.len == 0) return Value{ .string = "" };
@@ -46,26 +82,36 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = try aw.toOwnedSlice() };
 }
 
-/// (clojure.string/split s re-or-str)
-/// Splits string on a string pattern. Returns a vector of strings.
-/// (Simplified: string pattern only, not regex.)
+/// (clojure.string/split s re)
+/// (clojure.string/split s re limit)
+/// Splits string on a regular expression. Returns a vector of strings.
 pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split", .{args.len});
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split expects a string, got {s}", .{@tagName(args[0])});
-    if (args[1] != .string and args[1] != .regex) return err.setErrorFmt(.eval, .type_error, .{}, "split pattern expects a string or regex, got {s}", .{@tagName(args[1])});
 
     const s = args[0].string;
-    const pattern = if (args[1] == .string) args[1].string else args[1].regex.source;
+    const limit: i64 = if (args.len == 3) blk: {
+        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "split limit expects an integer, got {s}", .{@tagName(args[2])});
+        break :blk args[2].integer;
+    } else 0;
 
+    // Use regex matching for regex patterns, literal for strings
+    if (args[1] == .regex) {
+        return splitWithRegex(allocator, s, args[1], limit);
+    } else if (args[1] == .string) {
+        return splitWithString(allocator, s, args[1].string, limit);
+    }
+    return err.setErrorFmt(.eval, .type_error, .{}, "split pattern expects a string or regex, got {s}", .{@tagName(args[1])});
+}
+
+fn splitWithString(allocator: Allocator, s: []const u8, pattern: []const u8, limit: i64) anyerror!Value {
     if (pattern.len == 0) {
-        // Split into individual characters
-        var chars = std.ArrayList(Value).empty;
+        var chars: std.ArrayListUnmanaged(Value) = .empty;
         var i: usize = 0;
         while (i < s.len) {
             const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
             const end = @min(i + cp_len, s.len);
-            const char_str = try allocator.dupe(u8, s[i..end]);
-            try chars.append(allocator, Value{ .string = char_str });
+            try chars.append(allocator, Value{ .string = try allocator.dupe(u8, s[i..end]) });
             i = end;
         }
         const vec = try allocator.create(PersistentVector);
@@ -73,16 +119,49 @@ pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return Value{ .vector = vec };
     }
 
-    var parts = std.ArrayList(Value).empty;
+    var parts: std.ArrayListUnmanaged(Value) = .empty;
     var start: usize = 0;
+    var count: i64 = 1;
     while (start <= s.len) {
+        if (limit > 0 and count >= limit) {
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..]) });
+            break;
+        }
         if (std.mem.indexOfPos(u8, s, start, pattern)) |pos| {
-            const part = try allocator.dupe(u8, s[start..pos]);
-            try parts.append(allocator, Value{ .string = part });
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..pos]) });
             start = pos + pattern.len;
+            count += 1;
         } else {
-            const part = try allocator.dupe(u8, s[start..]);
-            try parts.append(allocator, Value{ .string = part });
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..]) });
+            break;
+        }
+    }
+
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = try parts.toOwnedSlice(allocator) };
+    return Value{ .vector = vec };
+}
+
+fn splitWithRegex(allocator: Allocator, s: []const u8, regex_val: Value, limit: i64) anyerror!Value {
+    const compiled: *const CompiledRegex = @ptrCast(@alignCast(regex_val.regex.compiled));
+    var m = try matcher_mod.Matcher.init(allocator, compiled, s);
+    defer m.deinit();
+
+    var parts: std.ArrayListUnmanaged(Value) = .empty;
+    var start: usize = 0;
+    var count: i64 = 1;
+
+    while (start <= s.len) {
+        if (limit > 0 and count >= limit) {
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..]) });
+            break;
+        }
+        if (try m.find(start)) |result| {
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..result.start]) });
+            start = if (result.end > result.start) result.end else result.end + 1;
+            count += 1;
+        } else {
+            try parts.append(allocator, Value{ .string = try allocator.dupe(u8, s[start..]) });
             break;
         }
     }
@@ -121,8 +200,9 @@ pub fn trimFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim expects a string, got {s}", .{@tagName(args[0])});
     const s = args[0].string;
-    const trimmed = std.mem.trim(u8, s, " \t\n\r\x0b\x0c");
-    return Value{ .string = trimmed };
+    const left = trimLeftUnicode(s);
+    const right = trimRightUnicode(left);
+    return Value{ .string = right };
 }
 
 /// (clojure.string/includes? s substr)
@@ -154,18 +234,54 @@ pub fn endsWithFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/replace s match replacement)
 /// Replaces all instances of match with replacement in s.
+/// match can be: string, char, or regex.
+/// replacement can be: string, char, or function (for regex match).
 pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace expects a string, got {s}", .{@tagName(args[0])});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace match expects a string, got {s}", .{@tagName(args[1])});
-    if (args[2] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace replacement expects a string, got {s}", .{@tagName(args[2])});
 
     const s = args[0].string;
-    const match = args[1].string;
-    const replacement = args[2].string;
 
-    if (match.len == 0) return args[0]; // no-op for empty match
+    return switch (args[1]) {
+        .char => |from| switch (args[2]) {
+            .char => |to| replaceChar(allocator, s, from, to),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace with char match expects char replacement, got {s}", .{@tagName(args[2])}),
+        },
+        .string => |match| switch (args[2]) {
+            .string => |replacement| replaceString(allocator, s, match, replacement),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace with string match expects string replacement, got {s}", .{@tagName(args[2])}),
+        },
+        .regex => switch (args[2]) {
+            .string => |replacement| replaceRegexStr(allocator, s, args[1], replacement),
+            .fn_val, .builtin_fn => replaceRegexFn(allocator, s, args[1], args[2], false),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace with regex expects string or fn replacement, got {s}", .{@tagName(args[2])}),
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "replace match expects a string, char, or regex, got {s}", .{@tagName(args[1])}),
+    };
+}
 
+fn replaceChar(allocator: Allocator, s: []const u8, from: u21, to: u21) anyerror!Value {
+    var aw: Writer.Allocating = .init(allocator);
+    var from_buf: [4]u8 = undefined;
+    const from_len = std.unicode.utf8Encode(from, &from_buf) catch return error.ValueError;
+    var to_buf: [4]u8 = undefined;
+    const to_len = std.unicode.utf8Encode(to, &to_buf) catch return error.ValueError;
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        const end = @min(i + cp_len, s.len);
+        if (cp_len == from_len and std.mem.eql(u8, s[i..end], from_buf[0..from_len])) {
+            try aw.writer.writeAll(to_buf[0..to_len]);
+        } else {
+            try aw.writer.writeAll(s[i..end]);
+        }
+        i = end;
+    }
+    return Value{ .string = try aw.toOwnedSlice() };
+}
+
+fn replaceString(allocator: Allocator, s: []const u8, match: []const u8, replacement: []const u8) anyerror!Value {
+    if (match.len == 0) return Value{ .string = s };
     var aw: Writer.Allocating = .init(allocator);
     var start: usize = 0;
     while (start < s.len) {
@@ -177,27 +293,129 @@ pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
             try aw.writer.writeAll(s[start..]);
             break;
         }
-    } else {
-        // If start == s.len exactly after last match, nothing left to write
     }
-
     return Value{ .string = try aw.toOwnedSlice() };
+}
+
+fn replaceRegexStr(allocator: Allocator, s: []const u8, regex_val: Value, replacement: []const u8) anyerror!Value {
+    const compiled: *const CompiledRegex = @ptrCast(@alignCast(regex_val.regex.compiled));
+    var m = try matcher_mod.Matcher.init(allocator, compiled, s);
+    defer m.deinit();
+    var aw: Writer.Allocating = .init(allocator);
+    var start: usize = 0;
+    while (start <= s.len) {
+        if (try m.find(start)) |result| {
+            try aw.writer.writeAll(s[start..result.start]);
+            try aw.writer.writeAll(replacement);
+            start = if (result.end > result.start) result.end else result.end + 1;
+        } else {
+            try aw.writer.writeAll(s[start..]);
+            break;
+        }
+    }
+    return Value{ .string = try aw.toOwnedSlice() };
+}
+
+fn replaceRegexFn(allocator: Allocator, s: []const u8, regex_val: Value, fn_val: Value, first_only: bool) anyerror!Value {
+    const compiled: *const CompiledRegex = @ptrCast(@alignCast(regex_val.regex.compiled));
+    var m = try matcher_mod.Matcher.init(allocator, compiled, s);
+    defer m.deinit();
+    var aw: Writer.Allocating = .init(allocator);
+    var start: usize = 0;
+    while (start <= s.len) {
+        if (try m.find(start)) |result| {
+            try aw.writer.writeAll(s[start..result.start]);
+            // Build match argument for fn
+            const match_val = try matchResultToValue(allocator, result, s);
+            const call_args = [_]Value{match_val};
+            const replacement_val = try bootstrap.callFnVal(allocator, fn_val, &call_args);
+            if (replacement_val == .string) {
+                try aw.writer.writeAll(replacement_val.string);
+            } else {
+                const str_val = try valueToStr(allocator, replacement_val);
+                try aw.writer.writeAll(str_val);
+            }
+            start = if (result.end > result.start) result.end else result.end + 1;
+            if (first_only) {
+                try aw.writer.writeAll(s[start..]);
+                break;
+            }
+        } else {
+            try aw.writer.writeAll(s[start..]);
+            break;
+        }
+    }
+    return Value{ .string = try aw.toOwnedSlice() };
+}
+
+fn matchResultToValue(allocator: Allocator, result: matcher_mod.MatchResult, input: []const u8) !Value {
+    if (result.groups.len <= 1) {
+        return Value{ .string = input[result.start..result.end] };
+    }
+    const items = try allocator.alloc(Value, result.groups.len);
+    for (result.groups, 0..) |group_opt, i| {
+        if (group_opt) |span| {
+            items[i] = Value{ .string = span.text(input) };
+        } else {
+            items[i] = .nil;
+        }
+    }
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = items };
+    return Value{ .vector = vec };
 }
 
 /// (clojure.string/replace-first s match replacement)
 /// Replaces the first instance of match with replacement in s.
+/// match can be: string, char, or regex.
+/// replacement can be: string, char, or function (for regex match).
 pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace-first", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first expects a string, got {s}", .{@tagName(args[0])});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first match expects a string, got {s}", .{@tagName(args[1])});
-    if (args[2] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first replacement expects a string, got {s}", .{@tagName(args[2])});
 
     const s = args[0].string;
-    const match = args[1].string;
-    const replacement = args[2].string;
 
-    if (match.len == 0) return args[0];
+    return switch (args[1]) {
+        .char => |from| switch (args[2]) {
+            .char => |to| replaceFirstChar(allocator, s, from, to),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace-first with char match expects char replacement, got {s}", .{@tagName(args[2])}),
+        },
+        .string => |match| switch (args[2]) {
+            .string => |replacement| replaceFirstString(allocator, s, match, replacement),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace-first with string match expects string replacement, got {s}", .{@tagName(args[2])}),
+        },
+        .regex => switch (args[2]) {
+            .string => |replacement| replaceFirstRegexStr(allocator, s, args[1], replacement),
+            .fn_val, .builtin_fn => replaceRegexFn(allocator, s, args[1], args[2], true),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "replace-first with regex expects string or fn replacement, got {s}", .{@tagName(args[2])}),
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "replace-first match expects a string, char, or regex, got {s}", .{@tagName(args[1])}),
+    };
+}
 
+fn replaceFirstChar(allocator: Allocator, s: []const u8, from: u21, to: u21) anyerror!Value {
+    var from_buf: [4]u8 = undefined;
+    const from_len = std.unicode.utf8Encode(from, &from_buf) catch return error.ValueError;
+    var to_buf: [4]u8 = undefined;
+    const to_len = std.unicode.utf8Encode(to, &to_buf) catch return error.ValueError;
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        const end = @min(i + cp_len, s.len);
+        if (cp_len == from_len and std.mem.eql(u8, s[i..end], from_buf[0..from_len])) {
+            var aw: Writer.Allocating = .init(allocator);
+            try aw.writer.writeAll(s[0..i]);
+            try aw.writer.writeAll(to_buf[0..to_len]);
+            try aw.writer.writeAll(s[end..]);
+            return Value{ .string = try aw.toOwnedSlice() };
+        }
+        i = end;
+    }
+    return Value{ .string = s };
+}
+
+fn replaceFirstString(allocator: Allocator, s: []const u8, match: []const u8, replacement: []const u8) anyerror!Value {
+    if (match.len == 0) return Value{ .string = s };
     if (std.mem.indexOf(u8, s, match)) |pos| {
         var aw: Writer.Allocating = .init(allocator);
         try aw.writer.writeAll(s[0..pos]);
@@ -205,7 +423,21 @@ pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value 
         try aw.writer.writeAll(s[pos + match.len ..]);
         return Value{ .string = try aw.toOwnedSlice() };
     }
-    return args[0];
+    return Value{ .string = s };
+}
+
+fn replaceFirstRegexStr(allocator: Allocator, s: []const u8, regex_val: Value, replacement: []const u8) anyerror!Value {
+    const compiled: *const CompiledRegex = @ptrCast(@alignCast(regex_val.regex.compiled));
+    var m = try matcher_mod.Matcher.init(allocator, compiled, s);
+    defer m.deinit();
+    if (try m.find(0)) |result| {
+        var aw: Writer.Allocating = .init(allocator);
+        try aw.writer.writeAll(s[0..result.start]);
+        try aw.writer.writeAll(replacement);
+        try aw.writer.writeAll(s[result.end..]);
+        return Value{ .string = try aw.toOwnedSlice() };
+    }
+    return Value{ .string = s };
 }
 
 /// (clojure.string/capitalize s)
@@ -261,13 +493,16 @@ pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/index-of s value)
 /// (clojure.string/index-of s value from-index)
-/// Returns the index of value in s, optionally starting from from-index.
-pub fn indexOfFn(_: Allocator, args: []const Value) anyerror!Value {
+/// Returns the index of value (string or char) in s, optionally starting from from-index.
+pub fn indexOfFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to index-of", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[0])});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[1])});
     const s = args[0].string;
-    const sub = args[1].string;
+    const sub: []const u8 = if (args[1] == .string) args[1].string else if (args[1] == .char) blk: {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(args[1].char, &buf) catch return error.ValueError;
+        break :blk try allocator.dupe(u8, buf[0..len]);
+    } else return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string or char, got {s}", .{@tagName(args[1])});
     const from: usize = if (args.len == 3) blk: {
         if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "index-of from-index expects an integer, got {s}", .{@tagName(args[2])});
         const idx = args[2].integer;
@@ -282,13 +517,16 @@ pub fn indexOfFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (clojure.string/last-index-of s value)
 /// (clojure.string/last-index-of s value from-index)
-/// Returns the last index of value in s, optionally searching backward from from-index.
-pub fn lastIndexOfFn(_: Allocator, args: []const Value) anyerror!Value {
+/// Returns the last index of value (string or char) in s, optionally searching backward from from-index.
+pub fn lastIndexOfFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to last-index-of", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[0])});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[1])});
     const s = args[0].string;
-    const sub = args[1].string;
+    const sub: []const u8 = if (args[1] == .string) args[1].string else if (args[1] == .char) blk: {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(args[1].char, &buf) catch return error.ValueError;
+        break :blk try allocator.dupe(u8, buf[0..len]);
+    } else return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string or char, got {s}", .{@tagName(args[1])});
     const search_end: usize = if (args.len == 3) blk: {
         if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of from-index expects an integer, got {s}", .{@tagName(args[2])});
         const idx = args[2].integer;
@@ -346,9 +584,7 @@ pub fn trimNewlineFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn trimlFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to triml", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "triml expects a string, got {s}", .{@tagName(args[0])});
-    const s = args[0].string;
-    const trimmed = std.mem.trimLeft(u8, s, " \t\n\r\x0b\x0c");
-    return Value{ .string = trimmed };
+    return Value{ .string = trimLeftUnicode(args[0].string) };
 }
 
 /// (clojure.string/trimr s)
@@ -356,9 +592,7 @@ pub fn trimlFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn trimrFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trimr", .{args.len});
     if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trimr expects a string, got {s}", .{@tagName(args[0])});
-    const s = args[0].string;
-    const trimmed = std.mem.trimRight(u8, s, " \t\n\r\x0b\x0c");
-    return Value{ .string = trimmed };
+    return Value{ .string = trimRightUnicode(args[0].string) };
 }
 
 const Writer = std.Io.Writer;
@@ -375,6 +609,104 @@ fn valueToStr(allocator: Allocator, val: Value) anyerror![]const u8 {
             break :blk try aw.toOwnedSlice();
         },
     };
+}
+
+/// (clojure.string/escape s cmap)
+/// Return a new string, using cmap to escape each character ch from s
+/// as follows: if (cmap ch) is non-nil, use it as replacement, otherwise use ch.
+pub fn escapeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to escape", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a string, got {s}", .{@tagName(args[0])});
+    if (args[1] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a map, got {s}", .{@tagName(args[1])});
+
+    const s = args[0].string;
+    const cmap = args[1].map;
+    var aw: Writer.Allocating = .init(allocator);
+
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        const end = @min(i + cp_len, s.len);
+        // Decode the codepoint to match as a char key
+        const cp = std.unicode.utf8Decode(s[i..end]) catch {
+            try aw.writer.writeAll(s[i..end]);
+            i = end;
+            continue;
+        };
+        const char_key = Value{ .char = cp };
+        // Look up in cmap
+        if (cmap.get(char_key)) |replacement| {
+            if (replacement == .string) {
+                try aw.writer.writeAll(replacement.string);
+            } else if (replacement == .char) {
+                var buf: [4]u8 = undefined;
+                const len = std.unicode.utf8Encode(replacement.char, &buf) catch 0;
+                try aw.writer.writeAll(buf[0..len]);
+            } else {
+                const str_val = try valueToStr(allocator, replacement);
+                try aw.writer.writeAll(str_val);
+            }
+        } else {
+            try aw.writer.writeAll(s[i..end]);
+        }
+        i = end;
+    }
+
+    return Value{ .string = try aw.toOwnedSlice() };
+}
+
+/// (clojure.string/re-quote-replacement replacement)
+/// Given a replacement string, returns a string that will produce the
+/// replacement when passed to replace/replace-first.
+pub fn reQuoteReplacementFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-quote-replacement", .{args.len});
+    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "re-quote-replacement expects a string, got {s}", .{@tagName(args[0])});
+    // In JVM Clojure, this escapes $ and \ for Matcher.appendReplacement.
+    // Since our replacement is literal, just return the string as-is.
+    return args[0];
+}
+
+// Unicode whitespace helper: matches Character.isWhitespace in Java
+fn isUnicodeWhitespace(cp: u21) bool {
+    return switch (cp) {
+        ' ', '\t', '\n', '\r', 0x0B, 0x0C => true,
+        // Unicode space separators (Zs category) used by Java
+        0x00A0, // NO-BREAK SPACE — Java isWhitespace returns false for this, but Character.isSpaceChar returns true
+        => false,
+        0x2000...0x200A, // EN QUAD through HAIR SPACE (includes EN SPACE 0x2002)
+        0x1680, // OGHAM SPACE MARK
+        0x2028, // LINE SEPARATOR
+        0x2029, // PARAGRAPH SEPARATOR
+        0x205F, // MEDIUM MATHEMATICAL SPACE
+        0x3000, // IDEOGRAPHIC SPACE
+        => true,
+        else => false,
+    };
+}
+
+fn trimLeftUnicode(s: []const u8) []const u8 {
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch break;
+        const end = @min(i + cp_len, s.len);
+        const cp = std.unicode.utf8Decode(s[i..end]) catch break;
+        if (!isUnicodeWhitespace(cp)) break;
+        i = end;
+    }
+    return s[i..];
+}
+
+fn trimRightUnicode(s: []const u8) []const u8 {
+    var i: usize = s.len;
+    while (i > 0) {
+        // Walk backward through UTF-8 continuation bytes
+        var start = i - 1;
+        while (start > 0 and (s[start] & 0xC0) == 0x80) start -= 1;
+        const cp = std.unicode.utf8Decode(s[start..i]) catch break;
+        if (!isUnicodeWhitespace(cp)) break;
+        i = start;
+    }
+    return s[0..i];
 }
 
 // ============================================================
@@ -401,6 +733,8 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "index-of", .func = &indexOfFn, .doc = "Return index of value (string) in s, optionally searching forward from from-index. Return nil if value not found.", .arglists = "([s value] [s value from-index])", .added = "1.8" },
     .{ .name = "last-index-of", .func = &lastIndexOfFn, .doc = "Return last index of value (string) in s, optionally searching backward from from-index. Return nil if value not found.", .arglists = "([s value] [s value from-index])", .added = "1.8" },
     .{ .name = "replace-first", .func = &replaceFirstFn, .doc = "Replaces the first instance of match with replacement in s.", .arglists = "([s match replacement])", .added = "1.2" },
+    .{ .name = "escape", .func = &escapeFn, .doc = "Return a new string, using cmap to escape each character ch from s.", .arglists = "([s cmap])", .added = "1.2" },
+    .{ .name = "re-quote-replacement", .func = &reQuoteReplacementFn, .doc = "Given a replacement string that will be used in a call to replace, returns a string that will produce the exact same replacement.", .arglists = "([replacement])", .added = "1.5" },
 };
 
 // ============================================================
@@ -592,6 +926,6 @@ test "replace-first" {
     try testing.expectEqualStrings("hello", r2.string);
 }
 
-test "builtins table has 19 entries" {
-    try testing.expectEqual(19, builtins.len);
+test "builtins table has 21 entries" {
+    try testing.expectEqual(21, builtins.len);
 }

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C14 (string.clj)
+- Next task: C15 (clojure_set.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -47,7 +47,7 @@ Completed:
 
 Remaining (resume here after CX):
 - ~~C13: clojure_walk.clj~~ done (23 assertions, D68 namespace isolation + metadata preservation)
-- C14: string.clj (196 lines)
+- ~~C14: string.clj~~ done (114 assertions, regex macro roundtrip fix + clj_string.zig extensions)
 - C15: clojure_set.clj (224 lines)
 - C16: metadata.clj (239 lines)
 - C17: special.clj (106 lines, many F## blockers — CX should resolve most)
@@ -57,22 +57,19 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-C14: string.clj (196 lines)
+C15: clojure_set.clj (224 lines)
 
 ## Previous Task
 
-C13 completed: clojure_walk.clj (23 assertions, 7 tests).
-- D68 namespace isolation: Fn.defining_ns captures defining namespace, VM/TreeWalk
-  save/restore env.current_ns on function call/return. Fixes cross-namespace
-  var shadowing (e.g. `(deftest walk ...)` no longer shadows `clojure.walk/walk`).
-- Metadata preservation in `conj`, `assoc`, `empty`: structural operations now
-  carry forward the source collection's metadata.
-- walk.clj updated to upstream pattern: `with-meta`+`(meta form)` for list/seq,
-  `(into (empty form) ...)` for other colls.
-- `set` builtin: added lazy_seq/cons support in setCoerceFn.
-- `defrecord`: now generates both `->Name` and `map->Name` constructors.
-- `are` macro: referred clojure.walk bindings into clojure.test namespace.
-- `namespace.zig`: `resolveQualified` for own namespace uses `resolve()` (mappings + refers).
+C14 completed: string.clj (114 assertions, 22 tests).
+- Regex macro roundtrip fix: `formToValueWithNs` in macro.zig now compiles
+  regex Form→Value.regex (was converting to string). `valueToForm` maps
+  Value.regex→Form.regex. Fixes `#"foo"` becoming string inside deftest.
+- clj_string.zig extensions: replace/replace-first (char/char, regex/string,
+  regex/fn), join (char separator), split (3-arg limit), index-of/last-index-of
+  (char support), trim/triml/trimr (Unicode whitespace), escape, re-quote-replacement.
+- Tokenizer fix: `\,` char literal (comma is whitespace in Clojure, readCharacter
+  must consume at least one char after backslash).
 
 ## Handover Notes
 

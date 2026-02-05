@@ -2109,7 +2109,7 @@ pub fn formToValue(form: Form) Value {
         // Collections require allocation; for Phase 1c, return nil placeholder.
         // Full collection quote support requires allocator (deferred).
         .list, .vector, .map, .set => .nil,
-        .regex => |pattern| .{ .string = pattern },
+        .regex => |_| .nil, // no allocator available; use macro.formToValue for regex support
         .tag => .nil,
     };
 }

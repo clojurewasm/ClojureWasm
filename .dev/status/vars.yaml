@@ -1129,13 +1129,13 @@ vars:
     "blank?": {type: function, status: done}
     capitalize: {type: function, status: done, note: builtin (upstream is pure clj)}
     "ends-with?": {type: function, status: done}
-    escape: {type: function, status: todo}
+    escape: {type: function, status: done, note: builtin (upstream is pure clj)}
     "includes?": {type: function, status: done}
     "index-of": {type: function, status: done, note: builtin (upstream uses .indexOf)}
     join: {type: function, status: done}
     "last-index-of": {type: function, status: done, note: builtin (upstream uses .lastIndexOf)}
     "lower-case": {type: function, status: done}
-    "re-quote-replacement": {type: function, status: todo}
+    "re-quote-replacement": {type: function, status: done, note: builtin (upstream is pure clj)}
     replace: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "replace-first": {type: function, status: done, note: builtin (upstream is pure clj)}
     reverse: {type: function, status: done}

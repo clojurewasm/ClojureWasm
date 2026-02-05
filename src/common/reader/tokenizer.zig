@@ -150,7 +150,10 @@ pub const Tokenizer = struct {
             return .{ .kind = .invalid, .start = start, .len = 1, .line = start_line, .column = start_col };
         }
 
-        // Read character name or single char
+        // Always read at least one character after backslash (even if it's a terminator like comma)
+        self.advance();
+
+        // Continue reading for named characters (e.g. \newline, \space, \u1234)
         while (self.pos < self.source.len and !isTerminator(self.source[self.pos])) {
             self.advance();
         }

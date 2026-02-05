@@ -90,7 +90,23 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const 
             s.* = .{ .items = vals };
             return .{ .set = s };
         },
-        .regex => |pattern| .{ .string = pattern }, // regex as string
+        .regex => |pattern| {
+            // Compile regex so it survives the formToValue/valueToForm roundtrip
+            const regex_mod = @import("regex/regex.zig");
+            const matcher_mod = @import("regex/matcher.zig");
+            const compiled = allocator.create(regex_mod.CompiledRegex) catch return error.OutOfMemory;
+            compiled.* = matcher_mod.compile(allocator, pattern) catch {
+                // Fallback to string if compilation fails (shouldn't happen — reader validated)
+                return .{ .string = pattern };
+            };
+            const pat = try allocator.create(value_mod.Pattern);
+            pat.* = .{
+                .source = pattern,
+                .compiled = @ptrCast(compiled),
+                .group_count = compiled.group_count,
+            };
+            return .{ .regex = pat };
+        },
         .tag => .nil, // tagged literals not supported in macro args
     };
 }
@@ -164,8 +180,9 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const realized = builtin_collections.realizeValue(allocator, val) catch return Form{ .data = .nil };
             return valueToForm(allocator, realized);
         },
+        .regex => |pat| Form{ .data = .{ .regex = pat.source } },
         // Non-data values become nil (shouldn't appear in macro output)
-        .fn_val, .builtin_fn, .atom, .volatile_ref, .regex, .protocol, .protocol_fn, .multi_fn, .delay, .reduced => Form{ .data = .nil },
+        .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced => Form{ .data = .nil },
     };
 }
 
