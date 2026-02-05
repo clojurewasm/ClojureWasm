@@ -205,6 +205,157 @@ pub fn alterVarRootFn(allocator: Allocator, args: []const Value) anyerror!Value 
     return new_val;
 }
 
+// ============================================================
+// ex-cause
+// ============================================================
+
+/// (ex-cause ex)
+/// Returns the cause of an exception (currently always nil — no nested cause chain).
+pub fn exCauseFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-cause", .{args.len});
+    // Our exceptions don't have a cause chain — return nil
+    return .nil;
+}
+
+// ============================================================
+// find-var
+// ============================================================
+
+/// (find-var sym)
+/// Returns the Var mapped to the qualified symbol, or nil if not found.
+pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-var", .{args.len});
+    const sym = switch (args[0]) {
+        .symbol => |s| s,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-var expects a symbol, got {s}", .{@tagName(args[0])}),
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const ns_name = sym.ns orelse {
+        // Unqualified — look in current ns
+        const current = env.current_ns orelse return .nil;
+        if (current.resolve(sym.name)) |_| {
+            return args[0]; // return the symbol (we don't expose Var as Value)
+        }
+        return .nil;
+    };
+    const ns = env.findNamespace(ns_name) orelse return .nil;
+    if (ns.resolve(sym.name)) |_| {
+        return args[0];
+    }
+    return .nil;
+}
+
+// ============================================================
+// resolve
+// ============================================================
+
+/// (resolve sym) or (resolve env sym)
+/// Returns the var or Class to which sym will be resolved in the current namespace, else nil.
+pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to resolve", .{args.len});
+    const sym = switch (args[args.len - 1]) {
+        .symbol => |s| s,
+        else => return .nil,
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const current = env.current_ns orelse return .nil;
+
+    // Qualified symbol
+    if (sym.ns) |ns_name| {
+        // Check alias first
+        if (current.getAlias(ns_name)) |target_ns| {
+            if (target_ns.resolve(sym.name)) |_| {
+                return args[args.len - 1];
+            }
+        }
+        // Try direct namespace
+        if (env.findNamespace(ns_name)) |ns| {
+            if (ns.resolve(sym.name)) |_| {
+                return args[args.len - 1];
+            }
+        }
+        return .nil;
+    }
+
+    // Unqualified — search current ns
+    if (current.resolve(sym.name)) |_| {
+        return args[args.len - 1];
+    }
+    return .nil;
+}
+
+// ============================================================
+// intern
+// ============================================================
+
+/// (intern ns name) or (intern ns name val)
+/// Finds or creates a var named by the symbol name in the namespace ns, setting root to val if supplied.
+pub fn internFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to intern", .{args.len});
+    const ns_name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for namespace, got {s}", .{@tagName(args[0])}),
+    };
+    const var_name = switch (args[1]) {
+        .symbol => |s| s.name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for name, got {s}", .{@tagName(args[1])}),
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const ns = env.findNamespace(ns_name) orelse {
+        return err.setErrorFmt(.eval, .value_error, .{}, "No namespace: {s}", .{ns_name});
+    };
+    const v = try ns.intern(var_name);
+    if (args.len == 3) {
+        v.bindRoot(args[2]);
+    }
+    // Return the qualified symbol representing the var
+    return .{ .symbol = .{ .ns = ns_name, .name = var_name } };
+}
+
+// ============================================================
+// loaded-libs
+// ============================================================
+
+const ns_ops = @import("ns_ops.zig");
+
+/// (loaded-libs)
+/// Returns a sorted set of symbols naming loaded libs.
+pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to loaded-libs", .{args.len});
+    // Build a set of loaded lib names
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    // Return all namespace names as a set
+    var count: usize = 0;
+    var iter = env.namespaces.iterator();
+    while (iter.next()) |_| count += 1;
+
+    const items = allocator.alloc(Value, count) catch return .nil;
+    var i: usize = 0;
+    iter = env.namespaces.iterator();
+    while (iter.next()) |entry| {
+        items[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        i += 1;
+    }
+    const set = try allocator.create(value_mod.PersistentHashSet);
+    set.* = .{ .items = items };
+    return .{ .set = set };
+}
+
+// ============================================================
+// map-entry?
+// ============================================================
+
+/// (map-entry? x)
+/// Returns true if x is a map entry (2-element vector from map seq).
+pub fn mapEntryFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to map-entry?", .{args.len});
+    // In our implementation, map entries are 2-element vectors
+    return switch (args[0]) {
+        .vector => |v| .{ .boolean = v.items.len == 2 },
+        else => .{ .boolean = false },
+    };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "gensym",
@@ -247,6 +398,48 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Atomically alters the root binding of var by applying f to its current value plus any args.",
         .arglists = "([v f & args])",
         .added = "1.0",
+    },
+    .{
+        .name = "ex-cause",
+        .func = exCauseFn,
+        .doc = "Returns the cause of an exception.",
+        .arglists = "([ex])",
+        .added = "1.0",
+    },
+    .{
+        .name = "find-var",
+        .func = findVarFn,
+        .doc = "Returns the global var named by the namespace-qualified symbol, or nil if no var with that name.",
+        .arglists = "([sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "resolve",
+        .func = resolveFn,
+        .doc = "Returns the var or Class to which a symbol will be resolved in the namespace, else nil.",
+        .arglists = "([sym] [env sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "intern",
+        .func = internFn,
+        .doc = "Finds or creates a var named by the symbol name in the namespace ns, optionally setting root binding.",
+        .arglists = "([ns name] [ns name val])",
+        .added = "1.0",
+    },
+    .{
+        .name = "loaded-libs",
+        .func = loadedLibsFn,
+        .doc = "Returns a sorted set of symbols naming the currently loaded libs.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "map-entry?",
+        .func = mapEntryFn,
+        .doc = "Return true if x is a map entry.",
+        .arglists = "([x])",
+        .added = "1.9",
     },
 };
 

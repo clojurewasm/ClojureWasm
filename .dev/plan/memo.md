@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: R (require/load/ns system)
 - Next task: Plan Phase D
-- Coverage: 460/703 clojure.core vars done
+- Coverage: 467/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -58,9 +58,13 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D3: Exception & var system — ex-cause, find-var, resolve, intern, loaded-libs.
+D4: Atom watchers & validators — add-watch, remove-watch, set-validator!, get-validator.
 
 ## Previous Task
+
+D3 completed: Exception & var system + map-entry? — 7 new builtins.
+- ex-cause, find-var, resolve, intern, loaded-libs, map-entry?
+- Status: 467 done, 131 skip, 105 todo
 
 D2 completed: Dynamic vars batch — 27 vars registered.
 - 21 dynamic vars in registerBuiltins (print, IO, reader, misc)

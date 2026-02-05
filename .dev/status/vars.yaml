@@ -276,7 +276,7 @@ vars:
     "even?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}
     "every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "ex-cause": {type: function, status: todo}
+    "ex-cause": {type: function, status: done}
     "ex-data": {type: function, status: done, note: "Zig builtin"}
     "ex-info": {type: function, status: done, note: "Zig builtin"}
     "ex-message": {type: function, status: done, note: "Zig builtin"}
@@ -295,7 +295,7 @@ vars:
     "find-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "find-protocol-impl": {type: function, status: skip, note: JVM interop}
     "find-protocol-method": {type: function, status: skip, note: JVM interop}
-    "find-var": {type: function, status: todo}
+    "find-var": {type: function, status: done}
     first: {type: function, status: done, note: "Zig builtin"}
     flatten: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     float: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -357,7 +357,7 @@ vars:
     "int?": {type: function, status: done, note: "Zig builtin"}
     "integer?": {type: function, status: done, note: "Zig builtin"}
     interleave: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    intern: {type: function, status: todo}
+    intern: {type: function, status: done}
     interpose: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     into: {type: function, status: done, note: "portable to clj"}
     "into-array": {type: function, status: skip, note: JVM interop}
@@ -387,7 +387,7 @@ vars:
     "load-file": {type: var, status: done, note: 'Zig builtin, reads + evals file'}
     "load-reader": {type: function, status: todo}
     "load-string": {type: function, status: todo}
-    "loaded-libs": {type: function, status: todo}
+    "loaded-libs": {type: function, status: done}
     locking: {type: macro, status: todo}
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
     "long-array": {type: function, status: skip, note: JVM interop}
@@ -398,7 +398,7 @@ vars:
     "make-array": {type: function, status: skip, note: JVM interop}
     "make-hierarchy": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     map: {type: function, status: done, note: "eager (no lazy seq)"}
-    "map-entry?": {type: function, status: todo}
+    "map-entry?": {type: function, status: done}
     "map-indexed": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "map?": {type: function, status: done, note: "Zig builtin"}
     mapcat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -555,7 +555,7 @@ vars:
     "reset!": {type: function, status: done, note: "Zig builtin"}
     "reset-meta!": {type: function, status: done, note: "Zig builtin: replaces atom metadata"}
     "reset-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
-    resolve: {type: function, status: todo}
+    resolve: {type: function, status: done}
     rest: {type: function, status: done, note: "Zig builtin"}
     "restart-agent": {type: function, status: skip, note: JVM interop}
     "resultset-seq": {type: function, status: skip, note: JVM interop}
