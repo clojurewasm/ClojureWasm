@@ -822,8 +822,8 @@ hyperfine statistical measurement rather than wall-clock timing of long runs.
 
 ## D28: VM Deferred for defmulti, defmethod, lazy-seq (T7.4, T7.6)
 
-**Status**: **Superseded** — defmulti/defmethod implemented in VM (D60),
-lazy-seq implemented in VM (D61). All three features now work on both backends.
+**Status**: **Fully superseded** — defmulti/defmethod in VM (D60),
+lazy-seq in VM (D61), defprotocol/extend-type in VM (F96). All features on both backends.
 
 **Date**: 2026-02-02
 **Context**: T7.4 (Multimethod) and T7.6 (Lazy sequences) — TreeWalk only
@@ -1396,8 +1396,8 @@ mechanism, bypassing the VM/TreeWalk exception handler entirely.
 3. **bootstrap.callFnVal**: Extended with `multi_fn`, `keyword`, `map`, `set` IFn cases.
    This enables dispatch functions that are keywords (e.g., `(defmulti area :shape)`).
 
-**Supersedes**: D28 TreeWalk-only restriction for defmulti/defmethod. D28's design rationale
-for defprotocol/extend-type and lazy-seq remains valid (still TreeWalk-only).
+**Supersedes**: D28 TreeWalk-only restriction for defmulti/defmethod.
+D28 is now fully superseded: lazy-seq (D61), defprotocol/extend-type (F96) also in VM.
 
 **Impact**: F13 resolved. VM mode now supports full multimethod dispatch.
 

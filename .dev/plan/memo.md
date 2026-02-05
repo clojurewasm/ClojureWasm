@@ -35,6 +35,8 @@ F96: VM protocol compilation
 
 - **Phase 22c**: Complete. 16 tasks, all done. Gap analysis: `.dev/plan/test-gap-analysis.md`
 - **F96**: Resolved. Protocols now compile to VM bytecode and work on both backends.
+- **D28 fully superseded**: All formerly TreeWalk-only features (defmulti D60, lazy-seq D61, defprotocol/extend-type F96) now on both backends.
+- **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`

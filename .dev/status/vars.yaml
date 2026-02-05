@@ -236,7 +236,7 @@ vars:
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: skip, note: deprecated struct system}
-    deftype: {type: macro, status: skip, note: needs full type/protocol infrastructure}
+    deftype: {type: macro, status: skip, note: "no JVM class generation — defrecord covers data use cases"}
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
     deliver: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
@@ -537,7 +537,7 @@ vars:
     "ref-set": {type: function, status: skip, note: JVM interop}
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: done}
-    reify: {type: macro, status: skip, note: needs full type/protocol infrastructure}
+    reify: {type: macro, status: skip, note: "no JVM class generation"}
     "release-pending-sends": {type: function, status: skip, note: JVM interop}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
     remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
