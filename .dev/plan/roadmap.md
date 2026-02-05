@@ -269,6 +269,25 @@ param_tags, pprint, reflect, refs, rt, run_single_test, serialization, server, s
 **Scope**: Tier 1 first (8 files, ~68 tests). Tier 2 if time permits.
 **Reference**: `.claude/rules/test-porting.md`
 
+### Phase 22c: Test Gap Resolution
+
+Revive skipped tests where features are now implemented, port remaining
+portable upstream test files, implement small missing features as needed.
+
+**Gap analysis**: `.dev/plan/test-gap-analysis.md`
+
+**Scope** (3 tiers):
+
+- **Tier 1** (revive only): sorted-set/map tests across 4 files, map-entry?,
+  partitionv, with-redefs, eval — features already done, tests still skipped
+- **Tier 2** (small impl + port): find-keyword (F80), parse-uuid, edn.clj,
+  try_catch.clj, ##Inf/##NaN print, with-var-roots helper
+- **Tier 3** (medium impl + port): eduction, iteration, test.clj,
+  test_fixtures.clj, ns_libs.clj, data.clj, protocols.clj partial
+
+**Prerequisite**: Phase 22b complete
+**Reference**: `.dev/plan/test-gap-analysis.md`
+
 ### Phase 24: Optimization
 
 Performance optimization pass, benchmark-driven.

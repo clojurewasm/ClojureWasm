@@ -6,24 +6,40 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Phase 22b complete. Next: Phase 24 (Optimization)
+- Next: Phase 22c (Test Gap Resolution)
 - Blockers: none
 
 ## Task Queue
 
-Phase 24 (Optimization) — not yet planned.
-See roadmap.md Phase 24 and Phase Notes for scope.
+Phase 22c — Test Gap Resolution (gap analysis: `.dev/plan/test-gap-analysis.md`)
 
-Deferred from 22b (blocked on protocol/fixture support):
-- 22b.4 (test.clj) — needs test-ns-hook/custom report
-- 22b.5 (test_fixtures.clj) — needs use-fixtures
-- 22b.6 (try_catch.clj) — entirely JVM-specific
-- 22b.8 (protocols.clj) — defprotocol VM-only, most tests JVM interop
-- 22b.11 (data.clj) — needs clojure.data which requires defprotocol
+Tier 1: Revive skipped tests (features already implemented)
+- 22c.1: Revive sorted-set/map tests (clojure_walk, control, sequences, data_structures)
+- 22c.2: Revive map-entry? test (clojure_walk) + partitionv test (sequences)
+- 22c.3: Revive with-redefs tests (vars — non-threaded subset)
+- 22c.4: Revive eval-based tests (special — non-JVM-exception subset)
+
+Tier 2: Small implementation + new file ports
+- 22c.5: Implement find-keyword (F80) + revive keywords.clj test
+- 22c.6: Implement parse-uuid + revive parse.clj test
+- 22c.7: Port edn.clj (clojure.edn thin wrapper)
+- 22c.8: Port try_catch.clj (basic portable subset)
+- 22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)
+- 22c.10: Implement with-var-roots test helper + revive multimethods tests
+
+Tier 3: Medium implementation + new file ports
+- 22c.11: Implement eduction + IReduceInit (transducers)
+- 22c.12: Implement iteration function (sequences)
+- 22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
+- 22c.14: Port ns_libs.clj
+- 22c.15: Port data.clj (implement clojure.data/diff)
+- 22c.16: Port protocols.clj (portable subset)
+
+Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-Plan Phase 24 (Optimization)
+(none — start from 22c.1)
 
 ## Previous Task
 
@@ -33,6 +49,7 @@ Plan Phase 24 (Optimization)
 
 ## Handover Notes
 
+- **Gap analysis**: `.dev/plan/test-gap-analysis.md` (full inventory of skips + unported files)
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`

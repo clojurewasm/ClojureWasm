@@ -6,7 +6,6 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/
 ## Language Policy
 
 - **All code in English**: identifiers, comments, docstrings, commit messages, markdown
-- Agent response language: configure in `~/.claude/CLAUDE.md`
 
 ## TDD (t-wada style)
 
@@ -61,46 +60,31 @@ Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 4. **Immediately loop back to Orient** — do NOT stop, do NOT summarize,
    do NOT ask for confirmation. The next task starts now.
 
-### No-Workaround Rule (Phase B/C)
+### No-Workaround Rule
 
-When implementing or fixing features:
+1. **Fix root causes, never work around.** If a feature is missing and needed,
+   implement it first (as a separate commit), then build on top.
+2. **Upstream fidelity over expedience.** Never simplify API shape to avoid gaps.
+3. **Checklist new blockers.** Add F## entry for missing features discovered mid-task.
 
-1. **Fix root causes, never work around.** If a language feature (e.g.
-   multi-arity defmacro) is missing and needed, implement the feature
-   first. Never degrade the design to avoid the missing feature.
-2. **Upstream fidelity over expedience.** If upstream uses multi-arity,
-   our implementation must support multi-arity. Simplifying the API
-   shape is a workaround.
-3. **Dependency chain**: If task X requires feature Y, implement Y first
-   (as a separate commit), then implement X on top.
-4. **Checklist new blockers.** If you discover a missing feature during
-   implementation, add an F## entry and implement it before continuing.
+### Test Porting Guardrails
 
-### Test Porting Guardrails (Phase C active)
-
-When working on test files under test/upstream/:
-
-1. **Implement, don't work around.** Test failure = implementation issue.
-   Fix the implementation, never change expected values.
-2. **No skipping.** If a test fails, implement the missing feature or fix
-   the bug. The only exception is pure JVM interop (Java class hierarchy,
-   JMX, classloaders, etc.) which is physically impossible to implement.
-3. **No assertion reduction.** Ported file assertion count must match upstream.
-4. **Both backends.** Verify on VM + TreeWalk.
+See `.claude/rules/test-porting.md` (auto-loads on test file edits) for full rules.
+Key points: implement don't skip, no assertion reduction, both backends, CLJW markers.
 
 ### When to Stop
 
-**Current goal: Phase 20-25 in order (see memo.md Phase Roadmap table).**
 See `.dev/plan/memo.md` for task queue and current state.
 Do NOT stop between tasks within a phase.
 
-**Phase order** (user-specified): 20(infra) → 21(upstream align) → 22(tests) → 23(GC) → 24(optimize) → 25(wasm)
+**Phase order**: ... → **22c(test gaps)** → 24(optimize) → 25(wasm)
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase 25 is complete** (all planned phases done)
+- **Phase 22c is complete** (22c.16 done — loop ends here)
+- Phase 25 is complete (all planned phases done)
 
 Do NOT stop for:
 
@@ -150,17 +134,10 @@ zig build test -- "X"  # Specific test only
 ./zig-out/bin/cljw path/to/file.clj           # File execution
 ```
 
-**Shell escaping with `!` and `?`**: Claude Code escapes `!` in single quotes.
-For expressions with `swap!`, `nil?` etc., **write a temp .clj file** and run
-via `./zig-out/bin/cljw file.clj`. Never use `-e` for these.
+## Notice
 
-**zsh `!` in yq/shell commands**: zsh performs history expansion on `!` even
-inside double quotes. This causes `yq -i` with `!`-containing YAML keys
-(e.g. `swap!`, `reset!`) to silently create duplicate entries with `\!`
-escaping instead of updating the original key. **Never use `yq -i` for
-keys containing `!`**. Instead, use the Edit tool to directly modify
-vars.yaml. If `yq` output shows `\!` in key names, the data is correct
-but comparison tools (diff, comm) may see them as different keys.
+**Shell escaping**: For `swap!`, `nil?` etc., write a temp .clj file instead of `-e`.
+**yq and `!` keys**: Never use `yq -i` for keys containing `!` — use Edit tool directly.
 
 ## Dual Backend (D6)
 
@@ -170,102 +147,48 @@ but comparison tools (diff, comm) may see them as different keys.
 | TreeWalk   | `src/native/evaluator/tree_walk.zig` | Direct AST evaluator   |
 | EvalEngine | `src/common/eval_engine.zig`         | Runs both, compares    |
 
-**Rules when adding new features**:
+**Rules**: Implement in both backends. Add `EvalEngine.compare()` test.
+If Compiler emits a direct opcode, TreeWalk must handle via builtin dispatch.
+When editing `compiler.zig`, `.claude/rules/compiler-check.md` auto-loads.
+Always verify on **both VM + TreeWalk** when porting tests or fixing bugs.
 
-1. Implement in **both** VM and TreeWalk
-2. Add `EvalEngine.compare()` test
-3. If Compiler emits a direct opcode, TreeWalk must handle via builtin dispatch
-
-When editing `compiler.zig`, `.claude/rules/compiler-check.md` auto-loads into context.
-
-### Test Evaluation Policy
-
-Always run tests on **both backends** to catch backend-specific bugs:
+## vars.yaml
 
 ```bash
-./zig-out/bin/cljw test.clj              # VM (default)
-./zig-out/bin/cljw --tree-walk test.clj  # TreeWalk
-```
-
-Testing only one backend may hide bugs in the other. When porting tests or
-verifying fixes, confirm behavior matches on both VM and TreeWalk.
-
-## Status Tracking
-
-| File         | Content                   | Update When                     |
-| ------------ | ------------------------- | ------------------------------- |
-| `vars.yaml`  | Var implementation status | After implementing new Vars     |
-| `bench.yaml` | Benchmark results         | After performance optimizations |
-
-### vars.yaml Usage
-
-**Check implementation status** (use at session start):
-
-```bash
-# Coverage summary
+# Coverage summary (use at Orient)
 yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
-yq '.vars.clojure_core | to_entries | length' .dev/status/vars.yaml
-
-# Check specific var
-yq '.vars.clojure_core["var-name"]' .dev/status/vars.yaml
+# Update: yq -i '.vars.clojure_core["name"].status = "done"' .dev/status/vars.yaml
 ```
 
-**Update after implementation**:
+Status values: `done`, `todo`, `skip`.
+Notes: `"JVM interop"`, `"builtin (upstream is pure clj)"`, `"UPSTREAM-DIFF: ..."`.
 
-```bash
-# Set status to done
-yq -i '.vars.clojure_core["var-name"].status = "done"' .dev/status/vars.yaml
+## Clojure Implementation Rule
 
-# Add note for non-upstream implementation
-yq -i '.vars.clojure_core["var-name"].note = "builtin (upstream is pure clj)"' .dev/status/vars.yaml
-```
+1. **Place in correct namespace** — see `.claude/references/impl-tiers.md`
+2. **Read JVM upstream** source first (add-dir: `clojure/src/clj/clojure/`)
+3. **Use upstream verbatim** if no Java interop. If simplified: add `UPSTREAM-DIFF:` note.
 
-**Status values**: `done`, `todo`, `skip`
+## Java Interop Policy
 
-**Note conventions**:
-
-- `"JVM interop"` — JVM-specific, not applicable
-- `"builtin (upstream is pure clj)"` — Zig builtin, upstream is pure Clojure
-- `"VM intrinsic opcode"` — Optimized VM instruction
-- `"UPSTREAM-DIFF: <what>; missing: <deps>"` — Simplified implementation
-
-Use `yq` for queries (e.g. `yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length'`).
-
-### Clojure Implementation Rule
-
-When adding a function/macro to any `.clj` file:
-
-1. **Place in correct namespace** — see `.claude/references/impl-tiers.md` for mapping
-   - `clojure.core` → `src/clj/clojure/core.clj`
-   - `clojure.walk` → `src/clj/clojure/walk.clj`
-   - `clojure.set` → `src/clj/clojure/set.clj`
-   - `clojure.string` → `src/clj/clojure/string.clj`
-   - `clojure.template` → `src/clj/clojure/template.clj`
-2. **Read JVM Clojure upstream** source first (add-dir: `clojure/src/clj/clojure/`)
-3. **Use upstream verbatim** if no Java interop / JVM-specific code
-4. **If simplified**: add `UPSTREAM-DIFF:` note to vars.yaml
-   - Format: `UPSTREAM-DIFF: <what changed>; missing: <dep list>`
-
-### Java Interop Policy
-
-Java interop patterns → `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
-Do NOT skip features that look JVM-specific — try implement Zig equivalents first.
+See `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits).
+Do NOT skip features that look JVM-specific — try Zig equivalents first.
 
 ## Zig 0.15.2 Pitfalls
 
-When unsure about Zig 0.15.2 API usage,
-check `.claude/references/zig-tips.md` first, then the Zig 0.15.2 stdlib
-source at `/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_guide.md`.
+Check `.claude/references/zig-tips.md` first, then Zig stdlib at
+`/opt/homebrew/Cellar/zig/0.15.2/lib` or Beta's `docs/reference/zig_guide.md`.
 
 ## References
 
-| Topic             | Location                             | When to read                               |
-| ----------------- | ------------------------------------ | ------------------------------------------ |
-| Zig tips/pitfalls | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
-| Impl tier guide   | `.claude/references/impl-tiers.md`   | When implementing a new function           |
-| Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
-| Roadmap           | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
-| Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
-| Design document   | `.dev/future.md`                     | When planning new phases or major features |
-| Zig 0.15.2 guide  | Beta's `docs/reference/zig_guide.md` | When Zig 0.15 API is unclear               |
-| Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
+| Topic            | Location                             | When to read                               |
+| ---------------- | ------------------------------------ | ------------------------------------------ |
+| Zig tips         | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
+| Impl tiers       | `.claude/references/impl-tiers.md`   | When implementing a new function           |
+| Java interop     | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
+| Test porting     | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
+| Test gap analysis| `.dev/plan/test-gap-analysis.md`     | Phase 22c planning and execution           |
+| Roadmap          | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
+| Deferred items   | `.dev/checklist.md`                  | F## items — blockers to resolve            |
+| Design document  | `.dev/future.md`                     | When planning new phases or major features |
+| Bytecode debug   | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
