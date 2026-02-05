@@ -23,11 +23,6 @@ Check at session start for items that become actionable.
 | F20 | Safe point GC design                        | Real GC (F2) implementation start                                  |
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
-| F70 | Namespaced keywords in :keys                | `{:keys [:a/b]}` not supported                                     |
-| F71 | Namespaced symbols in :keys                 | `{:keys [a/b]}` not supported                                      |
-| F72 | Namespaced :syms destructuring              | `{:syms [a/b]}` not supported                                      |
-| F73 | Namespace-qualified :keys syntax            | `{:a/keys [b]}` not supported                                      |
-| F74 | Namespace-qualified :syms syntax            | `{:a/syms [b]}` not supported                                      |
 | F80 | find-keyword function                       | Needs keyword intern table                                         |
 | F81 | ::foo auto-resolved keyword                 | Reader needs Env access for `:current-ns/foo`                      |
 | F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |

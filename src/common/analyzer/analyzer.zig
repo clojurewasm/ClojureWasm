@@ -1759,21 +1759,28 @@ pub const Analyzer = struct {
                 const kw_name = key.data.keyword.name;
 
                 if (std.mem.eql(u8, kw_name, "keys")) {
-                    // :keys [a b c] -> each symbol becomes a keyword-keyed get
+                    // :keys [a b c] or :ns/keys [a b c] -> keyword-keyed get
+                    // Supports: :keys [a], :keys [:a/b], :keys [a/b], :ns/keys [b]
                     if (val.data != .vector) {
                         return self.analysisError(.value_error, ":keys must be followed by a vector", val);
                     }
+                    const key_ns = key.data.keyword.ns; // nil for :keys, "ns" for :ns/keys
                     for (val.data.vector) |sym_form| {
-                        const sym_name = if (sym_form.data == .symbol)
-                            sym_form.data.symbol.name
-                        else if (sym_form.data == .keyword)
-                            sym_form.data.keyword.name
-                        else
+                        var lookup_ns: ?[]const u8 = key_ns;
+                        var bind_name: []const u8 = undefined;
+                        if (sym_form.data == .symbol) {
+                            bind_name = sym_form.data.symbol.name;
+                            if (sym_form.data.symbol.ns) |ns| lookup_ns = ns;
+                        } else if (sym_form.data == .keyword) {
+                            bind_name = sym_form.data.keyword.name;
+                            if (sym_form.data.keyword.ns) |ns| lookup_ns = ns;
+                        } else {
                             return self.analysisError(.value_error, ":keys elements must be symbols or keywords", sym_form);
-                        const get_init = try self.makeGetKeywordCall(temp_ref, sym_name, defaults);
+                        }
+                        const get_init = try self.makeGetKeywordCall(temp_ref, bind_name, lookup_ns, defaults);
                         const bind_idx: u32 = @intCast(self.locals.items.len);
-                        self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
-                        bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+                        self.locals.append(self.allocator, .{ .name = bind_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                        bindings.append(self.allocator, .{ .name = bind_name, .init = get_init }) catch return error.OutOfMemory;
                     }
                 } else if (std.mem.eql(u8, kw_name, "strs")) {
                     // :strs [a b] -> each symbol becomes a string-keyed get
@@ -1791,19 +1798,23 @@ pub const Analyzer = struct {
                         bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
                     }
                 } else if (std.mem.eql(u8, kw_name, "syms")) {
-                    // :syms [a b] -> each symbol becomes a symbol-keyed get
+                    // :syms [a b] or :ns/syms [a b] -> symbol-keyed get
+                    // Supports: :syms [a], :syms [a/b], :ns/syms [b]
                     if (val.data != .vector) {
                         return self.analysisError(.value_error, ":syms must be followed by a vector", val);
                     }
+                    const key_ns = key.data.keyword.ns; // nil for :syms, "ns" for :ns/syms
                     for (val.data.vector) |sym_form| {
                         if (sym_form.data != .symbol) {
                             return self.analysisError(.value_error, ":syms elements must be symbols", sym_form);
                         }
-                        const sym_name = sym_form.data.symbol.name;
-                        const get_init = try self.makeGetSymbolCall(temp_ref, sym_name, defaults);
+                        const bind_name = sym_form.data.symbol.name;
+                        var lookup_ns: ?[]const u8 = key_ns;
+                        if (sym_form.data.symbol.ns) |ns| lookup_ns = ns;
+                        const get_init = try self.makeGetSymbolCall(temp_ref, bind_name, lookup_ns, defaults);
                         const bind_idx: u32 = @intCast(self.locals.items.len);
-                        self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
-                        bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
+                        self.locals.append(self.allocator, .{ .name = bind_name, .idx = bind_idx }) catch return error.OutOfMemory;
+                        bindings.append(self.allocator, .{ .name = bind_name, .init = get_init }) catch return error.OutOfMemory;
                     }
                 } else if (std.mem.eql(u8, kw_name, "as")) {
                     // :as all -> all = coll
@@ -1820,7 +1831,7 @@ pub const Analyzer = struct {
                 if (val.data != .keyword) {
                     return self.analysisError(.value_error, "map destructuring: value must be a keyword", val);
                 }
-                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, null);
+                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, val.data.keyword.ns, null);
                 const bind_idx: u32 = @intCast(self.locals.items.len);
                 self.locals.append(self.allocator, .{ .name = sym_name, .idx = bind_idx }) catch return error.OutOfMemory;
                 bindings.append(self.allocator, .{ .name = sym_name, .init = get_init }) catch return error.OutOfMemory;
@@ -1830,7 +1841,7 @@ pub const Analyzer = struct {
                 if (val.data != .keyword) {
                     return self.analysisError(.value_error, "nested destructuring: value must be a keyword", val);
                 }
-                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, defaults);
+                const get_init = try self.makeGetKeywordCall(temp_ref, val.data.keyword.name, val.data.keyword.ns, defaults);
                 try self.expandBindingPattern(key, get_init, bindings, form);
             } else {
                 return self.analysisError(.value_error, "map destructuring: key must be keyword, symbol, map, or vector", key);
@@ -1871,9 +1882,9 @@ pub const Analyzer = struct {
         return current;
     }
 
-    /// Generate (get coll :keyword) or (get coll :keyword default) call node.
-    fn makeGetKeywordCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(.{ .keyword = .{ .ns = null, .name = key_name } });
+    /// Generate (get coll :ns/keyword) or (get coll :keyword default) call node.
+    fn makeGetKeywordCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
+        const key_node = try self.makeConstant(.{ .keyword = .{ .ns = ns, .name = key_name } });
         const default_node = try self.findDefault(key_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
@@ -1885,9 +1896,9 @@ pub const Analyzer = struct {
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 
-    /// Generate (get coll 'symbol) or (get coll 'symbol default) call node.
-    fn makeGetSymbolCall(self: *Analyzer, coll_node: *Node, sym_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(.{ .symbol = .{ .ns = null, .name = sym_name } });
+    /// Generate (get coll 'ns/symbol) or (get coll 'symbol default) call node.
+    fn makeGetSymbolCall(self: *Analyzer, coll_node: *Node, sym_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
+        const key_node = try self.makeConstant(.{ .symbol = .{ .ns = ns, .name = sym_name } });
         const default_node = try self.findDefault(sym_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }

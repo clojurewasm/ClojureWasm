@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX6 (Namespaced destructuring)
+- Next task: CX7 (::foo auto-resolved keyword)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -20,7 +20,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX3: Math/System syntax routing (F89)~~ done
 - ~~CX4: delay proper Value type (F91)~~ done
 - ~~CX5: {:as x} seq-to-map coercion (F68)~~ done
-- CX6: Namespaced destructuring (F70-F74)
+- ~~CX6: Namespaced destructuring (F70-F74)~~ done
 - CX7: ::foo auto-resolved keyword (F81)
 - CX8: Hierarchy system (F82 + F83)
 - CX9: #'var inside deftest body (F87)
@@ -57,14 +57,14 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX6: Namespaced destructuring (F70-F74) — support namespaced keys/syms in map destructuring.
+CX7: ::foo auto-resolved keyword (F81) — support auto-resolved keywords in reader.
 
 ## Previous Task
 
-CX5 completed: {:as x} seq-to-map coercion (F68).
-- Added __seq-to-map builtin in collections.zig
-- Analyzer expandMapPattern wraps init_node with __seq-to-map
-- JVM-faithful: seq? types (list/cons/lazy-seq) coerced, nil/vector/map pass through
+CX6 completed: Namespaced destructuring (F70-F74).
+- makeGetKeywordCall/makeGetSymbolCall accept optional ns parameter
+- :keys/:syms handlers extract namespace from both key keyword and elements
+- Supports: :keys [:a/b], :keys [a/b], :a/keys [b], :syms [a/b], :a/syms [b]
 - Both backends pass all E2E tests
 
 ## Handover Notes
