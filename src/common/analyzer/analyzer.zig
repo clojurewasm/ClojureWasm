@@ -1363,6 +1363,13 @@ pub const Analyzer = struct {
         if (the_var) |v| {
             return self.makeConstant(.{ .var_ref = v });
         }
+        // For unqualified vars, intern in current namespace (JVM Clojure
+        // behavior: def interns at compile time, so #'x works even before
+        // the def form executes at runtime).
+        if (sym.ns == null) {
+            const interned = ns.intern(sym.name) catch return error.OutOfMemory;
+            return self.makeConstant(.{ .var_ref = interned });
+        }
         return self.analysisError(.syntax_error, "Unable to resolve var", form);
     }
 

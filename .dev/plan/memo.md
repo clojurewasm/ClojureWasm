@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX9 (#'var inside deftest body)
+- Next task: CX10 (UPSTREAM-DIFF quick fixes)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -23,7 +23,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX6: Namespaced destructuring (F70-F74)~~ done
 - ~~CX7: ::foo auto-resolved keyword (F81)~~ done
 - ~~CX8: Hierarchy system (F82 + F83)~~ done
-- CX9: #'var inside deftest body (F87)
+- ~~CX9: #'var inside deftest body (F87)~~ done
 - CX10: UPSTREAM-DIFF quick fixes (F94 partial)
 
 ## Saved Phase C Queue (resume after CX)
@@ -57,17 +57,14 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX9: #'var inside deftest body (F87)
+CX10: UPSTREAM-DIFF quick fixes (F94 partial)
 
 ## Previous Task
 
-CX8 completed: Hierarchy system (F82 + F83).
-- Part A: Hierarchy functions in core.clj (isa?, parents, ancestors, descendants, derive, underive)
-- global-hierarchy var + alter-var-root builtin in misc.zig
-- cons expanded to support set/map as second arg (needed by derive's tf helper)
-- Part B: prefer-method/prefers builtins in multimethods.zig
-- isa?-based multimethod dispatch (findBestMethod) in multimethods.zig
-- Both VM and TreeWalk dispatch updated to use findBestMethod
+CX9 completed: #'var inside deftest body (F87).
+- Analyzer's analyzeVar now interns unqualified vars in current namespace
+  when resolution fails (matches JVM Clojure compile-time intern behavior)
+- Allows #'x to work inside fn bodies where def x runs at runtime
 - Both backends pass all E2E tests
 
 ## Handover Notes
