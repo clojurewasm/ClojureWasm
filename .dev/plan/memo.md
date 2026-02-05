@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: R (require/load/ns system)
-- Next task: R4 (upgrade require to file-based loading)
+- Next task: R6 (ns macro full implementation)
 - Coverage: 415/712 clojure.core vars done
 - Blockers: none
 
@@ -42,16 +42,16 @@ Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
 
 ## Current Task
 
-R4: Upgrade `require` to file-based loading.
+R6: `ns` macro full implementation.
 
 ## Previous Task
 
-R3 completed: `load` + path resolution.
-- Added loadFn to ns_ops.zig with load path infrastructure
-- Load paths module-level array (default: ["."]), loaded libs tracking
-- IoError added to both VMError and TreeWalkError error sets + isUserError
-- *ns* preserved across load calls (save/restore)
-- Both backends pass
+R4+R5 completed: Upgrade require/use to file-based loading.
+- requireFn: loads ns from file when not found, dedup via loaded_libs, :reload support
+- useFn: delegates to requireLib for loading, then refers
+- rootResource helper: ns name → file path (clojure.set → /clojure/set)
+- loadLib/loadResource: shared file loading logic extracted from loadFn
+- Both backends pass with file-based require, use, :as, :refer, :reload
 
 ## Handover Notes
 

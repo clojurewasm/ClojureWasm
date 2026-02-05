@@ -47,6 +47,74 @@ pub fn markLibLoaded(name: []const u8) !void {
 }
 
 // ============================================================
+// Path resolution
+// ============================================================
+
+/// Convert namespace name to resource path: clojure.string → /clojure/string
+/// Replaces '-' with '_' and '.' with '/'.
+fn rootResource(buf: []u8, ns_name: []const u8) ?[]const u8 {
+    if (ns_name.len + 1 > buf.len) return null;
+    buf[0] = '/';
+    var i: usize = 1;
+    for (ns_name) |c| {
+        if (i >= buf.len) return null;
+        buf[i] = switch (c) {
+            '.' => '/',
+            '-' => '_',
+            else => c,
+        };
+        i += 1;
+    }
+    return buf[0..i];
+}
+
+/// Load a namespace by name: convert to path, search load paths, eval.
+/// Returns true if file was found and loaded, false otherwise.
+fn loadLib(allocator: Allocator, env: *@import("../env.zig").Env, ns_name: []const u8) !bool {
+    var path_buf: [4096]u8 = undefined;
+    const resource_path = rootResource(&path_buf, ns_name) orelse return false;
+
+    // Strip leading slash for loadResource
+    const resource = if (resource_path.len > 0 and resource_path[0] == '/')
+        resource_path[1..]
+    else
+        resource_path;
+
+    return loadResource(allocator, env, resource);
+}
+
+/// Load a resource file by searching load paths. Saves/restores *ns*.
+fn loadResource(allocator: Allocator, env: *@import("../env.zig").Env, resource: []const u8) !bool {
+    const saved_ns = env.current_ns;
+
+    for (load_paths) |base| {
+        var buf: [4096]u8 = undefined;
+        const full_path = std.fmt.bufPrint(&buf, "{s}/{s}.clj", .{ base, resource }) catch continue;
+
+        const cwd = std.fs.cwd();
+        if (cwd.openFile(full_path, .{})) |file| {
+            defer file.close();
+            const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+            _ = bootstrap.evalString(allocator, env, content) catch {
+                // Restore ns even on error
+                env.current_ns = saved_ns;
+                bootstrap.syncNsVar(env);
+                return error.EvalError;
+            };
+            env.current_ns = saved_ns;
+            bootstrap.syncNsVar(env);
+            return true;
+        } else |_| {
+            continue;
+        }
+    }
+
+    env.current_ns = saved_ns;
+    bootstrap.syncNsVar(env);
+    return false;
+}
+
+// ============================================================
 // load
 // ============================================================
 
@@ -71,32 +139,7 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else
             path_str;
 
-        // Save current namespace
-        const saved_ns = env.current_ns;
-
-        // Search load paths for the file
-        var loaded = false;
-        for (load_paths) |base| {
-            // Build full path: base/resource.clj
-            var buf: [4096]u8 = undefined;
-            const full_path = std.fmt.bufPrint(&buf, "{s}/{s}.clj", .{ base, resource }) catch continue;
-
-            const cwd = std.fs.cwd();
-            if (cwd.openFile(full_path, .{})) |file| {
-                defer file.close();
-                const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
-                _ = bootstrap.evalString(allocator, env, content) catch return error.EvalError;
-                loaded = true;
-                break;
-            } else |_| {
-                continue;
-            }
-        }
-
-        // Restore namespace
-        env.current_ns = saved_ns;
-        bootstrap.syncNsVar(env);
-
+        const loaded = loadResource(allocator, env, resource) catch return error.EvalError;
         if (!loaded) {
             return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s}.clj on load path", .{resource});
         }
@@ -445,29 +488,38 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // require
 // ============================================================
 
-/// (require '[ns-sym :as alias])
-/// (require '[ns-sym :refer [sym1 sym2]])
+/// (require 'ns-sym)
+/// (require '[ns-sym :as alias :refer [sym1 sym2]])
 /// (require '[ns-sym :refer :all])
-/// For already-loaded namespaces, sets up alias and/or refer.
-/// File loading is not supported — namespace must be pre-loaded at bootstrap.
+/// (require 'ns :reload)
+/// Loads namespace from file if not already loaded. Supports :reload/:reload-all.
 pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
+
+    // Scan for top-level :reload / :reload-all flags
+    var reload = false;
+    for (args) |arg| {
+        if (arg == .keyword) {
+            if (std.mem.eql(u8, arg.keyword.name, "reload")) reload = true;
+            if (std.mem.eql(u8, arg.keyword.name, "reload-all")) reload = true;
+        }
+    }
 
     for (args) |arg| {
         switch (arg) {
+            .keyword => continue, // Skip :reload/:reload-all flags
             .symbol => |s| {
-                // Simple (require 'ns) — just verify it exists
-                if (env.findNamespace(s.name) == null) return error.NamespaceNotFound;
+                try requireLib(allocator, env, s.name, reload);
             },
             .vector => |v| {
-                // (require '[ns :as alias :refer [syms]])
                 if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to require", .{args.len});
                 const ns_name = switch (v.items[0]) {
                     .symbol => |s| s.name,
                     else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0])}),
                 };
-                const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+                try requireLib(allocator, env, ns_name, reload);
+                const source_ns = env.findNamespace(ns_name) orelse
+                    return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
                 const current_ns = env.current_ns orelse return error.EvalError;
 
                 var j: usize = 1;
@@ -475,12 +527,10 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     if (v.items[j] == .keyword) {
                         const kw = v.items[j].keyword.name;
                         if (std.mem.eql(u8, kw, "as")) {
-                            // :as alias
                             if (v.items[j + 1] == .symbol) {
                                 try current_ns.setAlias(v.items[j + 1].symbol.name, source_ns);
                             }
                         } else if (std.mem.eql(u8, kw, "refer")) {
-                            // :refer [syms] or :refer :all
                             if (v.items[j + 1] == .vector) {
                                 for (v.items[j + 1].vector.items) |sym| {
                                     if (sym == .symbol) {
@@ -508,6 +558,36 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return .nil;
 }
 
+/// Core require logic: ensure namespace is loaded (from file if needed).
+fn requireLib(allocator: Allocator, env: *@import("../env.zig").Env, ns_name: []const u8, reload: bool) !void {
+    // Skip if already loaded and no reload flag
+    if (!reload and env.findNamespace(ns_name) != null and isLibLoaded(ns_name)) return;
+
+    // If namespace exists but not marked loaded (bootstrap namespace), just mark it
+    if (!reload and env.findNamespace(ns_name) != null) {
+        try markLibLoaded(ns_name);
+        return;
+    }
+
+    // Try to load from file
+    const loaded = try loadLib(allocator, env, ns_name);
+    if (loaded) {
+        if (env.findNamespace(ns_name) == null) {
+            return err.setErrorFmt(.eval, .io_error, .{}, "Namespace {s} not found after loading file", .{ns_name});
+        }
+        try markLibLoaded(ns_name);
+        return;
+    }
+
+    // File not found — check if namespace already exists (e.g. bootstrap)
+    if (env.findNamespace(ns_name) != null) {
+        try markLibLoaded(ns_name);
+        return;
+    }
+
+    return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
+}
+
 // ============================================================
 // use
 // ============================================================
@@ -515,29 +595,32 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (use 'ns-sym)
 /// (use '[ns-sym :only [sym1 sym2]])
 /// Equivalent to require + refer :all (or :only).
+/// Loads namespace from file if not already loaded.
 pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const current_ns = env.current_ns orelse return error.EvalError;
 
     for (args) |arg| {
         switch (arg) {
             .symbol => |s| {
-                // (use 'ns) — refer all public vars
-                const source_ns = env.findNamespace(s.name) orelse return error.NamespaceNotFound;
+                // (use 'ns) — load if needed, then refer all
+                try requireLib(allocator, env, s.name, false);
+                const source_ns = env.findNamespace(s.name) orelse
+                    return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{s.name});
                 var iter = source_ns.mappings.iterator();
                 while (iter.next()) |entry| {
                     current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
                 }
             },
             .vector => |v| {
-                // (use '[ns :only [syms]])
                 if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to use", .{args.len});
                 const ns_name = switch (v.items[0]) {
                     .symbol => |s| s.name,
                     else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol, got {s}", .{@tagName(v.items[0])}),
                 };
-                const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+                try requireLib(allocator, env, ns_name, false);
+                const source_ns = env.findNamespace(ns_name) orelse
+                    return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
 
                 var only_filter: ?[]const Value = null;
                 var j: usize = 1;
