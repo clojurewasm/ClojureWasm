@@ -255,7 +255,7 @@ vars:
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
     doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: single binding only, no :let/:when/:while/nesting"}
     dosync: {type: macro, status: skip, note: JVM interop}
-    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args (uses unchecked-inc)'}
+    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: inline validation instead of assert-args (bootstrap order)'}
     doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: skip, note: JVM interop}

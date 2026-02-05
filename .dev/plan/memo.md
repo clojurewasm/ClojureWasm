@@ -25,17 +25,17 @@ Session handover document. Read at session start.
 1. ~~21.1: cond — add even-forms error check~~ — DONE
 2. ~~21.2: assert — already aligned~~ — DONE (note updated)
 3. ~~21.3: condp — upstream-align (gensym, if-let, docstring)~~ — DONE
-4. 21.4: dotimes — upstream verbatim (assert-args style)
+4. ~~21.4: dotimes — add input validation~~ — DONE
 5. 21.5: doseq — full upstream with nesting + :let/:when/:while
 6. 21.6: Skip audit — mark defn/sequence/deliver/promise/locking as permanent UPSTREAM-DIFF
 
 ## Current Task
 
-21.4: dotimes — upstream verbatim (assert-args style)
+21.5: doseq — full upstream with nesting + :let/:when/:while
 
 ## Previous Task
 
-21.3: condp — upstream-align (gensym, if-let, docstring, backtick style)
+21.4: dotimes — add input validation (when-not + throw)
 - 20.1-20.2: Transient collections (6 vars)
 - 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
 - 20.5: sorted-map-by, sorted-set-by (2 vars)

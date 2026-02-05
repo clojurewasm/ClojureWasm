@@ -247,6 +247,10 @@
   Repeatedly executes body (presumably for side-effects) with name
   bound to integers from 0 through n-1."
   [bindings & body]
+  (when-not (vector? bindings)
+    (throw (str "dotimes requires a vector for its binding")))
+  (when-not (= 2 (count bindings))
+    (throw (str "dotimes requires exactly 2 forms in binding vector")))
   (let [i (first bindings)
         n (second bindings)]
     `(let [n# (long ~n)]
