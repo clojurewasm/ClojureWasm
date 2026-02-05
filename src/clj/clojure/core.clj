@@ -168,7 +168,9 @@
 ;; UPSTREAM-DIFF: Simplified ns macro; no :import, no docstring, no :gen-class
 
 (defmacro ns [name & references]
-  (let [process-ref (fn [ref-form]
+  (let [docstring (when (string? (first references)) (first references))
+        references (if docstring (rest references) references)
+        process-ref (fn [ref-form]
                       (let [kw (first ref-form)
                             args (rest ref-form)]
                         (cond
@@ -177,6 +179,16 @@
 
                           (= kw :use)
                           (map (fn [arg] `(use '~arg)) args)
+
+                          (= kw :refer-clojure)
+                          (let [quote-vals (fn quote-vals [xs]
+                                             (if (seq xs)
+                                               (cons (first xs)
+                                                     (cons (list 'quote (second xs))
+                                                           (quote-vals (rest (rest xs)))))
+                                               nil))]
+                            (list (apply list 'clojure.core/refer ''clojure.core
+                                         (quote-vals args))))
 
                           :else nil)))
         ref-forms (apply concat (map process-ref references))]
@@ -1015,6 +1027,10 @@
 (defmacro defonce [name expr]
   (list 'when-not (list 'bound? (list 'quote name))
         (list 'def name expr)))
+
+(defmacro refer-clojure
+  [& filters]
+  (cons 'clojure.core/refer (cons (list 'quote 'clojure.core) filters)))
 
 ;; Metadata utilities
 

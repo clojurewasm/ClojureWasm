@@ -25,3 +25,4 @@ Check at session start for items that become actionable.
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
 | F80 | find-keyword function                       | Needs keyword intern table                                         |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
+| F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |

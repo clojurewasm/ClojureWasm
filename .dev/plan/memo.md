@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D6
-- Coverage: 474/703 clojure.core vars done
+- Next task: D7
+- Coverage: 475/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -58,14 +58,15 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D6: refer-clojure + ns enhancements — refer-clojure with :exclude.
+D7: Sorted collections — sorted-map-by, sorted-set-by, subseq, rsubseq.
 
 ## Previous Task
 
-D5 completed: Hashing functions — 4 new builtins.
-- mix-collection-hash, hash-ordered-coll, hash-unordered-coll, hash-combine
-- Murmur3 mixCollHash/fmix matching JVM Clojure, boost hash-combine
-- Status: 474 done, 131 skip, 98 todo
+D6 completed: refer-clojure + ns enhancements.
+- refer-clojure macro in core.clj, ns macro handles :refer-clojure
+- refer supports :exclude and :only filters, ns quotes filter args
+- F95: VM intrinsic bypass for arithmetic ops (deferred)
+- Status: 475 done, 131 skip, 97 todo
 
 D2 completed: Dynamic vars batch — 27 vars registered.
 - 21 dynamic vars in registerBuiltins (print, IO, reader, misc)

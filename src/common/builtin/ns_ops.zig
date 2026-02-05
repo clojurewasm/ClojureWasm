@@ -427,8 +427,9 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
     const current_ns = env.current_ns orelse return error.EvalError;
 
-    // Check for :only filter
+    // Check for :only and :exclude filters
     var only_list: ?[]const Value = null;
+    var exclude_list: ?[]const Value = null;
     var i: usize = 1;
     while (i + 1 < args.len) : (i += 2) {
         if (args[i] == .keyword) {
@@ -436,7 +437,20 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 if (args[i + 1] == .vector) {
                     only_list = args[i + 1].vector.items;
                 }
+            } else if (std.mem.eql(u8, args[i].keyword.name, "exclude")) {
+                if (args[i + 1] == .vector) {
+                    exclude_list = args[i + 1].vector.items;
+                }
             }
+        }
+    }
+
+    // When :only or :exclude is specified, first remove all existing refers
+    // from the source namespace (in-ns auto-refers core, so we must undo it).
+    if (only_list != null or exclude_list != null) {
+        var rm_iter = source_ns.mappings.iterator();
+        while (rm_iter.next()) |entry| {
+            _ = current_ns.refers.remove(entry.key_ptr.*);
         }
     }
 
@@ -447,6 +461,21 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 if (source_ns.resolve(sym.symbol.name)) |v| {
                     current_ns.refer(sym.symbol.name, v) catch {};
                 }
+            }
+        }
+    } else if (exclude_list) |excludes| {
+        // Refer all public vars, minus excluded
+        var iter = source_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            var excluded = false;
+            for (excludes) |ex| {
+                if (ex == .symbol and std.mem.eql(u8, ex.symbol.name, entry.key_ptr.*)) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if (!excluded) {
+                current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
             }
         }
     } else {

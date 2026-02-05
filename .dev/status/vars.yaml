@@ -536,7 +536,7 @@ vars:
     "ref-min-history": {type: function, status: skip, note: JVM interop}
     "ref-set": {type: function, status: skip, note: JVM interop}
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "refer-clojure": {type: macro, status: todo}
+    "refer-clojure": {type: macro, status: done}
     reify: {type: macro, status: todo}
     "release-pending-sends": {type: function, status: skip, note: JVM interop}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
