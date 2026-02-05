@@ -54,9 +54,7 @@
 
 (defn project
   [xrel ks]
-  (set (map #(select-keys % ks) xrel)))
-
-;; UPSTREAM-DIFF: no with-meta (meta preservation not implemented for project/rename)
+  (with-meta (set (map #(select-keys % ks) xrel)) (meta xrel)))
 
 (defn rename-keys
   [map kmap]
@@ -69,7 +67,7 @@
 
 (defn rename
   [xrel kmap]
-  (set (map #(rename-keys % kmap) xrel)))
+  (with-meta (set (map #(rename-keys % kmap) xrel)) (meta xrel)))
 
 (defn index
   [xrel ks]

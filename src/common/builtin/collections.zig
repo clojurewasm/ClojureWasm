@@ -711,7 +711,7 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items };
+    new_map.* = .{ .entries = entries.items, .meta = args[start].map.meta };
     return Value{ .map = new_map };
 }
 
@@ -762,7 +762,7 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items };
+    new_map.* = .{ .entries = entries.items, .meta = maps[start].map.meta };
     return Value{ .map = new_map };
 }
 

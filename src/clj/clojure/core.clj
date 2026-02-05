@@ -281,13 +281,15 @@
        (assoc m k (apply f (get m k) args))))))
 
 (defn select-keys [m keyseq]
-  (reduce (fn [acc k]
-            (let [v (get m k)]
-              (if (not (nil? v))
-                (assoc acc k v)
-                acc)))
-          {}
-          keyseq))
+  (with-meta
+    (reduce (fn [acc k]
+              (let [v (get m k)]
+                (if (not (nil? v))
+                  (assoc acc k v)
+                  acc)))
+            {}
+            keyseq)
+    (meta m)))
 
 ;; Predicates and search
 

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C16 (metadata.clj)
+- Next task: C17 (special.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -49,7 +49,7 @@ Remaining (resume here after CX):
 - ~~C13: clojure_walk.clj~~ done (23 assertions, D68 namespace isolation + metadata preservation)
 - ~~C14: string.clj~~ done (114 assertions, regex macro roundtrip fix + clj_string.zig extensions)
 - ~~C15: clojure_set.clj~~ done (111 assertions, sorted-set builtin)
-- C16: metadata.clj (239 lines)
+- ~~C16: metadata.clj~~ done (41 assertions, vector-as-IFn + meta preservation fixes)
 - C17: special.clj (106 lines, many F## blockers — CX should resolve most)
 - C18: other_functions.clj (401 lines)
 - C19: numbers.clj (959 lines)
@@ -57,14 +57,16 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-C16: metadata.clj (239 lines)
+C17: special.clj (106 lines)
 
 ## Previous Task
 
-C15 completed: clojure_set.clj (111 assertions, 12 tests).
-- Added `sorted-set` builtin (delegates to hash-set; no sorted iteration order).
-- All 12 upstream set tests pass (union, intersection, difference, select,
-  project, rename, rename-keys, index, join, map-invert, subset?, superset?).
+C16 completed: metadata.clj (41 assertions, 3 tests).
+- Vector-as-IFn: `([10 20 30] 1)` → `20` in both VM and TreeWalk.
+- Set-as-IFn fix: return stored element (not lookup key) to preserve metadata.
+- `merge`/`merge-with`: now preserve first map's metadata.
+- `select-keys`: now preserves source map's metadata via `(with-meta ... (meta m))`.
+- `set/project`/`set/rename`: now preserve set metadata via `(with-meta ... (meta xrel))`.
 
 ## Handover Notes
 

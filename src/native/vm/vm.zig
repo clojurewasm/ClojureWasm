@@ -692,7 +692,28 @@ pub const VM = struct {
         if (callee == .set) {
             if (arg_count < 1) return error.ArityError;
             const key = self.stack[fn_idx + 1];
-            const result = if (callee.set.contains(key)) key else Value.nil;
+            const result = callee.set.get(key) orelse Value.nil;
+            self.sp = fn_idx;
+            try self.push(result);
+            return;
+        }
+
+        // Vector-as-function: ([10 20 30] 1) => (nth vec idx)
+        if (callee == .vector) {
+            if (arg_count < 1) return error.ArityError;
+            const idx_val = self.stack[fn_idx + 1];
+            if (idx_val != .integer) return error.TypeError;
+            const idx = idx_val.integer;
+            if (idx < 0 or idx >= @as(i64, @intCast(callee.vector.items.len))) {
+                if (arg_count >= 2) {
+                    const result = self.stack[fn_idx + 2];
+                    self.sp = fn_idx;
+                    try self.push(result);
+                    return;
+                }
+                return error.IndexError;
+            }
+            const result = callee.vector.items[@intCast(idx)];
             self.sp = fn_idx;
             try self.push(result);
             return;

@@ -222,10 +222,21 @@ pub const TreeWalk = struct {
                 }
                 return if (args.len == 2) args[1] else .nil;
             },
+            .vector => |vec| {
+                // Vector-as-function: ([10 20 30] 1) => 20
+                if (args.len < 1 or args.len > 2) return error.ArityError;
+                if (args[0] != .integer) return error.TypeError;
+                const idx = args[0].integer;
+                if (idx < 0 or idx >= @as(i64, @intCast(vec.items.len))) {
+                    if (args.len == 2) return args[1];
+                    return error.IndexError;
+                }
+                return vec.items[@intCast(idx)];
+            },
             .set => |set| {
                 // Set-as-function: (#{:a :b} :a) => :a, (#{:a :b} :c) => nil
                 if (args.len < 1 or args.len > 2) return error.ArityError;
-                return if (set.contains(args[0])) args[0] else if (args.len == 2) args[1] else .nil;
+                return set.get(args[0]) orelse if (args.len == 2) args[1] else .nil;
             },
             .map => |m| {
                 // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
@@ -270,11 +281,24 @@ pub const TreeWalk = struct {
             return if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
+        // Vector-as-function: ([10 20 30] 1) => 20
+        if (callee == .vector) {
+            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            const idx_val = try self.run(call_n.args[0]);
+            if (idx_val != .integer) return error.TypeError;
+            const idx = idx_val.integer;
+            if (idx < 0 or idx >= @as(i64, @intCast(callee.vector.items.len))) {
+                if (call_n.args.len == 2) return try self.run(call_n.args[1]);
+                return error.IndexError;
+            }
+            return callee.vector.items[@intCast(idx)];
+        }
+
         // Set-as-function: (#{:a :b} :a) => :a
         if (callee == .set) {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
-            return if (callee.set.contains(target)) target else if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            return callee.set.get(target) orelse if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
         // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)

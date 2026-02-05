@@ -88,6 +88,15 @@ pub const PersistentHashSet = struct {
         }
         return false;
     }
+
+    /// Returns the actual stored element that equals val, or null.
+    /// Unlike contains(), this returns the set's own element (preserving metadata).
+    pub fn get(self: PersistentHashSet, val: Value) ?Value {
+        for (self.items) |item| {
+            if (item.eql(val)) return item;
+        }
+        return null;
+    }
 };
 
 // === Tests ===
