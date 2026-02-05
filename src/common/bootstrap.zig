@@ -496,6 +496,14 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             return if (s.contains(args[0])) args[0] else Value.nil;
         },
         .var_ref => |v| return callFnVal(allocator, v.deref(), args),
+        .protocol_fn => |pf| {
+            if (args.len == 0) return error.ArityError;
+            const type_key = TreeWalk.valueTypeKey(args[0]);
+            const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse return error.TypeError;
+            if (method_map_val != .map) return error.TypeError;
+            const impl_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse return error.TypeError;
+            return callFnVal(allocator, impl_fn, args);
+        },
         else => return error.TypeError,
     }
 }

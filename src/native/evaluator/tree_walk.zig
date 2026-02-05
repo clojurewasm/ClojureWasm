@@ -729,7 +729,7 @@ pub const TreeWalk = struct {
     }
 
     /// Get type key string for a runtime value.
-    fn valueTypeKey(val: Value) []const u8 {
+    pub fn valueTypeKey(val: Value) []const u8 {
         return switch (val) {
             .nil => "nil",
             .boolean => "boolean",

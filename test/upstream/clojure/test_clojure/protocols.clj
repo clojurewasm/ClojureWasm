@@ -10,7 +10,7 @@
 
 ;; Upstream: clojure/test/clojure/test_clojure/protocols.clj
 ;; Upstream lines: 721
-;; CLJW markers: 18
+;; CLJW markers: 20
 
 ;; CLJW: simplified ns — upstream uses external protocol example namespaces,
 ;; deftype, defrecord, reify, Java imports, and proxy which are not available.
@@ -91,5 +91,21 @@
     (is (true? (eval '(satisfies? ExtProtoTest "x"))))
     (is (true? (eval '(satisfies? ExtProtoTest :x))))
     (is (false? (eval '(satisfies? ExtProtoTest 42))))))
+
+;; CLJW-ADD: direct (non-eval) protocol tests — exercises VM bytecode path
+(defprotocol DirectProto (dp-greet [this]))
+(extend-type String DirectProto
+             (dp-greet [this] (str "hi " this)))
+(extend-type Keyword DirectProto
+             (dp-greet [this] (str "kw:" (name this))))
+
+(deftest test-protocol-direct
+  (testing "direct protocol dispatch (VM bytecode)"
+    (is (= "hi world" (dp-greet "world")))
+    (is (= "kw:foo" (dp-greet :foo))))
+  (testing "satisfies? on direct protocol"
+    (is (true? (satisfies? DirectProto "x")))
+    (is (true? (satisfies? DirectProto :y)))
+    (is (false? (satisfies? DirectProto 42)))))
 
 (run-tests)

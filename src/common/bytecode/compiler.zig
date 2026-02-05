@@ -131,8 +131,8 @@ pub const Compiler = struct {
             .defmulti_node => |node| try self.emitDefmulti(node),
             .defmethod_node => |node| try self.emitDefmethod(node),
             .lazy_seq_node => |node| try self.emitLazySeq(node),
-            // Protocol nodes not yet supported in VM compiler
-            .defprotocol_node, .extend_type_node => return error.InvalidNode,
+            .defprotocol_node => |node| try self.emitDefprotocol(node),
+            .extend_type_node => |node| try self.emitExtendType(node),
         }
     }
 
@@ -637,6 +637,58 @@ pub const Compiler = struct {
 
         // lazy_seq: replaces fn_val with LazySeq (net 0)
         try self.chunk.emitOp(.lazy_seq);
+    }
+
+    fn emitDefprotocol(self: *Compiler, node: *const node_mod.DefProtocolNode) CompileError!void {
+        // Constant[idx] = protocol name symbol
+        const name_sym = Value{ .symbol = .{ .ns = null, .name = node.name } };
+        const idx = self.chunk.addConstant(name_sym) catch return error.TooManyConstants;
+
+        // Constant[idx+1] = sigs vector: [name1, arity1, name2, arity2, ...]
+        const sigs_len = node.method_sigs.len * 2;
+        const sigs_items = self.allocator.alloc(Value, sigs_len) catch return error.OutOfMemory;
+        for (node.method_sigs, 0..) |sig, i| {
+            sigs_items[i * 2] = .{ .string = sig.name };
+            sigs_items[i * 2 + 1] = .{ .integer = @intCast(sig.arity) };
+        }
+        const sigs_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
+        sigs_vec.* = .{ .items = sigs_items };
+        _ = self.chunk.addConstant(.{ .vector = sigs_vec }) catch return error.TooManyConstants;
+
+        // Emit opcode: [] -> [protocol]
+        try self.chunk.emit(.defprotocol, idx);
+        self.stack_depth += 1;
+    }
+
+    fn emitExtendType(self: *Compiler, node: *const node_mod.ExtendTypeNode) CompileError!void {
+        if (node.methods.len == 0) {
+            try self.chunk.emitOp(.nil);
+            self.stack_depth += 1;
+            return;
+        }
+
+        for (node.methods, 0..) |method, i| {
+            // Compile method fn -> pushes fn_val (+1)
+            try self.emitFn(method.fn_node);
+
+            // Create meta vector: [type_name, protocol_name, method_name]
+            const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
+            meta_items[0] = .{ .string = node.type_name };
+            meta_items[1] = .{ .string = node.protocol_name };
+            meta_items[2] = .{ .string = method.name };
+            const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
+            meta_vec.* = .{ .items = meta_items };
+            const meta_idx = self.chunk.addConstant(.{ .vector = meta_vec }) catch return error.TooManyConstants;
+
+            // extend_type_method: pops fn, pushes nil (net 0)
+            try self.chunk.emit(.extend_type_method, meta_idx);
+
+            // Pop nil for non-last methods
+            if (i < node.methods.len - 1) {
+                try self.chunk.emitOp(.pop);
+                self.stack_depth -= 1;
+            }
+        }
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {

@@ -84,6 +84,14 @@ pub const OpCode = enum(u8) {
     /// lazy_seq (operand: unused)
     /// Stack: [thunk_fn] -> [lazy_seq_value]
     lazy_seq = 0x48,
+    /// defprotocol (operand: constant index u16 -> name symbol)
+    /// Constants[operand] = name symbol, Constants[operand+1] = sigs vector
+    /// Stack: [] -> [protocol]
+    defprotocol = 0x4A,
+    /// extend_type_method (operand: constant index u16 -> meta vector)
+    /// Constants[operand] = [type_name, protocol_name, method_name] vector
+    /// Stack: [method_fn] -> [nil]
+    extend_type_method = 0x4B,
 
     // === [F] Control flow (0x50-0x5F) ===
 
@@ -242,6 +250,8 @@ test "OpCode category ranges" {
     try std.testing.expectEqual(@as(u8, 0x43), @intFromEnum(OpCode.def_macro));
     try std.testing.expectEqual(@as(u8, 0x44), @intFromEnum(OpCode.defmulti));
     try std.testing.expectEqual(@as(u8, 0x45), @intFromEnum(OpCode.defmethod));
+    try std.testing.expectEqual(@as(u8, 0x4A), @intFromEnum(OpCode.defprotocol));
+    try std.testing.expectEqual(@as(u8, 0x4B), @intFromEnum(OpCode.extend_type_method));
 
     // Control flow (0x50-0x5F)
     try std.testing.expectEqual(@as(u8, 0x50), @intFromEnum(OpCode.jump));

@@ -491,6 +491,136 @@ pub const VM = struct {
                 try self.push(.{ .lazy_seq = ls });
             },
 
+            .defprotocol => {
+                // Constants[operand] = name symbol, Constants[operand+1] = sigs vector
+                const name_sym = frame.constants[instr.operand];
+                if (name_sym != .symbol) return error.InvalidInstruction;
+                const sigs_val = frame.constants[instr.operand + 1];
+                if (sigs_val != .vector) return error.InvalidInstruction;
+
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+
+                // Parse sigs vector: [name1, arity1, name2, arity2, ...]
+                const sigs_items = sigs_val.vector.items;
+                const sig_count = sigs_items.len / 2;
+                const method_sigs = self.allocator.alloc(value_mod.MethodSig, sig_count) catch return error.OutOfMemory;
+                for (0..sig_count) |i| {
+                    const m_name = sigs_items[i * 2];
+                    const m_arity = sigs_items[i * 2 + 1];
+                    if (m_name != .string or m_arity != .integer) return error.InvalidInstruction;
+                    method_sigs[i] = .{
+                        .name = m_name.string,
+                        .arity = @intCast(m_arity.integer),
+                    };
+                }
+
+                // Create protocol with empty impls
+                const protocol = self.allocator.create(value_mod.Protocol) catch return error.OutOfMemory;
+                const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                empty_map.* = .{ .entries = &.{} };
+                self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
+                protocol.* = .{
+                    .name = name_sym.symbol.name,
+                    .method_sigs = method_sigs,
+                    .impls = empty_map,
+                };
+
+                // Bind protocol to var
+                const proto_var = ns.intern(name_sym.symbol.name) catch return error.OutOfMemory;
+                proto_var.bindRoot(.{ .protocol = protocol });
+
+                // Create ProtocolFn for each method and bind to vars
+                for (method_sigs) |sig| {
+                    const pf = self.allocator.create(value_mod.ProtocolFn) catch return error.OutOfMemory;
+                    pf.* = .{
+                        .protocol = protocol,
+                        .method_name = sig.name,
+                    };
+                    const method_var = ns.intern(sig.name) catch return error.OutOfMemory;
+                    method_var.bindRoot(.{ .protocol_fn = pf });
+                }
+
+                try self.push(.{ .protocol = protocol });
+            },
+
+            .extend_type_method => {
+                // Pop method fn from stack
+                const method_fn = self.pop();
+
+                // Read meta vector: [type_name, protocol_name, method_name]
+                const meta_val = frame.constants[instr.operand];
+                if (meta_val != .vector) return error.InvalidInstruction;
+                const meta = meta_val.vector.items;
+                if (meta.len != 3) return error.InvalidInstruction;
+                const type_name_val = meta[0];
+                const proto_name_val = meta[1];
+                const method_name_val = meta[2];
+                if (type_name_val != .string or proto_name_val != .string or method_name_val != .string)
+                    return error.InvalidInstruction;
+
+                const type_key = mapTypeKey(type_name_val.string);
+                const proto_name = proto_name_val.string;
+                const method_name = method_name_val.string;
+
+                // Resolve protocol
+                const env = self.env orelse return error.UndefinedVar;
+                const ns = env.current_ns orelse return error.UndefinedVar;
+                const proto_var = ns.resolve(proto_name) orelse return error.UndefinedVar;
+                const proto_val = proto_var.deref();
+                if (proto_val != .protocol) return error.TypeError;
+                const protocol = proto_val.protocol;
+
+                // Get or create method map for this type in protocol.impls
+                const existing = protocol.impls.get(.{ .string = type_key });
+                if (existing) |ex_val| {
+                    // Existing method map for this type — add method
+                    if (ex_val != .map) return error.TypeError;
+                    const old_map = ex_val.map;
+                    const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
+                    self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
+                    @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
+                    new_entries[old_map.entries.len] = .{ .string = method_name };
+                    new_entries[old_map.entries.len + 1] = method_fn;
+                    const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                    new_method_map.* = .{ .entries = new_entries };
+                    self.allocated_maps.append(self.allocator, new_method_map) catch return error.OutOfMemory;
+                    // Update impls: replace the type_key -> method_map entry
+                    const impls = protocol.impls;
+                    var i: usize = 0;
+                    while (i < impls.entries.len) : (i += 2) {
+                        if (impls.entries[i].eql(.{ .string = type_key })) {
+                            // Mutate in place — protocol.impls is mutable
+                            @constCast(impls.entries)[i + 1] = .{ .map = new_method_map };
+                            break;
+                        }
+                    }
+                } else {
+                    // New type — create method map and add to impls
+                    const method_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
+                    self.allocated_slices.append(self.allocator, method_entries) catch return error.OutOfMemory;
+                    method_entries[0] = .{ .string = method_name };
+                    method_entries[1] = method_fn;
+                    const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                    method_map.* = .{ .entries = method_entries };
+                    self.allocated_maps.append(self.allocator, method_map) catch return error.OutOfMemory;
+
+                    // Add type_key -> method_map to impls
+                    const old_impls = protocol.impls;
+                    const new_impls_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
+                    self.allocated_slices.append(self.allocator, new_impls_entries) catch return error.OutOfMemory;
+                    @memcpy(new_impls_entries[0..old_impls.entries.len], old_impls.entries);
+                    new_impls_entries[old_impls.entries.len] = .{ .string = type_key };
+                    new_impls_entries[old_impls.entries.len + 1] = .{ .map = method_map };
+                    const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                    new_impls.* = .{ .entries = new_impls_entries };
+                    self.allocated_maps.append(self.allocator, new_impls) catch return error.OutOfMemory;
+                    protocol.impls = new_impls;
+                }
+
+                try self.push(.nil);
+            },
+
             // [K] Exceptions
             .try_begin => {
                 // Register exception handler
@@ -792,6 +922,24 @@ pub const VM = struct {
             return;
         }
 
+        // Protocol function dispatch
+        if (callee == .protocol_fn) {
+            const pf = callee.protocol_fn;
+            if (arg_count < 1) return error.ArityError;
+            const first_arg = self.stack[fn_idx + 1];
+            const type_key = valueTypeKey(first_arg);
+
+            const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse
+                return error.TypeError;
+            if (method_map_val != .map) return error.TypeError;
+            const method_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse
+                return error.TypeError;
+
+            // Replace callee with resolved method fn and re-dispatch
+            self.stack[fn_idx] = method_fn;
+            return self.performCall(arg_count);
+        }
+
         // Var-as-IFn: (#'f args) => deref var, then call
         if (callee == .var_ref) {
             self.stack[fn_idx] = callee.var_ref.deref();
@@ -996,6 +1144,63 @@ pub const VM = struct {
         err_mod.saveArgSource(0, .{ .line = arg0_line, .column = arg0_col, .file = file });
     }
 };
+
+/// Map user-facing type name to internal type key.
+/// Duplicated from tree_walk.zig to avoid circular imports.
+fn mapTypeKey(type_name: []const u8) []const u8 {
+    if (std.mem.eql(u8, type_name, "String")) return "string";
+    if (std.mem.eql(u8, type_name, "Integer") or std.mem.eql(u8, type_name, "Long")) return "integer";
+    if (std.mem.eql(u8, type_name, "Double") or std.mem.eql(u8, type_name, "Float")) return "float";
+    if (std.mem.eql(u8, type_name, "Boolean")) return "boolean";
+    if (std.mem.eql(u8, type_name, "nil")) return "nil";
+    if (std.mem.eql(u8, type_name, "Keyword")) return "keyword";
+    if (std.mem.eql(u8, type_name, "Symbol")) return "symbol";
+    if (std.mem.eql(u8, type_name, "PersistentList") or std.mem.eql(u8, type_name, "List")) return "list";
+    if (std.mem.eql(u8, type_name, "PersistentVector") or std.mem.eql(u8, type_name, "Vector")) return "vector";
+    if (std.mem.eql(u8, type_name, "PersistentArrayMap") or std.mem.eql(u8, type_name, "Map")) return "map";
+    if (std.mem.eql(u8, type_name, "PersistentHashSet") or std.mem.eql(u8, type_name, "Set")) return "set";
+    if (std.mem.eql(u8, type_name, "Atom")) return "atom";
+    if (std.mem.eql(u8, type_name, "Volatile")) return "volatile";
+    if (std.mem.eql(u8, type_name, "Pattern")) return "regex";
+    return type_name;
+}
+
+/// Get type key string for a runtime value.
+/// Duplicated from tree_walk.zig to avoid circular imports.
+fn valueTypeKey(val: Value) []const u8 {
+    return switch (val) {
+        .nil => "nil",
+        .boolean => "boolean",
+        .integer => "integer",
+        .float => "float",
+        .char => "char",
+        .string => "string",
+        .symbol => "symbol",
+        .keyword => "keyword",
+        .list => "list",
+        .vector => "vector",
+        .map => "map",
+        .set => "set",
+        .fn_val, .builtin_fn => "function",
+        .atom => "atom",
+        .volatile_ref => "volatile",
+        .regex => "regex",
+        .protocol => "protocol",
+        .protocol_fn => "protocol_fn",
+        .multi_fn => "multi_fn",
+        .lazy_seq => "lazy_seq",
+        .cons => "cons",
+        .var_ref => "var",
+        .delay => "delay",
+        .reduced => "reduced",
+        .transient_vector => "transient_vector",
+        .transient_map => "transient_map",
+        .transient_set => "transient_set",
+        .chunked_cons => "chunked_cons",
+        .chunk_buffer => "chunk_buffer",
+        .array_chunk => "array_chunk",
+    };
+}
 
 /// Shift `count` stack elements starting at `start` to the right by `shift` positions.
 /// Used to make room for injected values (closure bindings, self-reference).

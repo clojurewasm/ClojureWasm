@@ -8,6 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
 - Phase 22c complete — loop ends here
 - Next phase: 24 (optimize) per roadmap
+- F96 resolved: VM protocol compilation done
 - Blockers: none
 
 ## Task Queue
@@ -20,18 +21,20 @@ Phase 22c — COMPLETE (all 16 tasks done)
 
 ## Previous Task
 
-22c.16: Port protocols.clj (portable subset)
-- Fixed reduce-kv on seqs (fallback for seq of map entries)
-- Implemented extend-protocol macro (parse-impls + extend-type expansion)
-- Added defprotocol validation (min 1 arg, no duplicate methods)
-- Added F96 (VM protocol compilation) to checklist.md
-- 4 tests, 13 assertions, both backends pass
-- eval-based protocol tests work on both backends (eval uses TreeWalk internally)
+F96: VM protocol compilation
+- Added defprotocol (0x4A) + extend_type_method (0x4B) opcodes
+- Compiler: emitDefprotocol + emitExtendType (removed InvalidNode fallback)
+- VM: defprotocol/extend_type_method handlers + protocol_fn dispatch in performCall
+- bootstrap.callFnVal: added .protocol_fn case for cross-backend dispatch
+- tree_walk.zig: made valueTypeKey pub for bootstrap access
+- vm.zig: duplicated mapTypeKey/valueTypeKey (avoid circular imports)
+- Added direct (non-eval) protocol tests: 5 tests, 18 assertions, both backends
+- F96 removed from checklist.md
 
 ## Handover Notes
 
 - **Phase 22c**: Complete. 16 tasks, all done. Gap analysis: `.dev/plan/test-gap-analysis.md`
-- **F96**: VM protocol compilation deferred — defprotocol/extend-type only TreeWalk
+- **F96**: Resolved. Protocols now compile to VM bytecode and work on both backends.
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
