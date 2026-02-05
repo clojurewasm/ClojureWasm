@@ -155,6 +155,27 @@ Clojure/SCI. Var expansion resumes after this foundation is solid.
 **Rules**: `.claude/rules/test-porting.md`
 **Reference**: `.claude/references/interop-patterns.md`
 
+### Phase R: require / load / ns System
+
+Full upstream-compatible namespace loading system. Enables multi-file
+projects and `::alias/foo` keyword resolution via `:as` aliases.
+
+**Scope**:
+
+- `load` / `load-file` — ns name to file path resolution, read + eval
+- `require` — file-based loading with `:as`, `:refer`, `:reload`
+- `use` — file-based loading with refer-all
+- `ns` macro — full `:require` / `:use` / `:import` clause support
+- Classpath equivalent — configurable load path(s)
+- Circular require detection
+- `*loaded-libs*`, `*loading-verbosely*` vars
+
+**Current state**: `require` / `use` work for pre-loaded namespaces only
+(clojure.string, clojure.set, clojure.walk, etc.). No file loading.
+
+**Prerequisite**: Phase 19 complete (solid core foundation)
+**Reference**: Upstream `clojure/core.clj` (load, require, use, ns)
+
 ### Phase 20: Production GC
 
 Replace arena allocator with real garbage collector.

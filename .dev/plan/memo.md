@@ -94,6 +94,7 @@ Notes that persist across sessions.
 - Phase C: Faithful upstream test porting with CLJW markers (C1-C12 done, C13-C20 saved)
 - Phase CX: Known issue resolution (F51, F24, F68, F70-74, F80-83, F86-87, F89, F91, F94)
 - Phase D: Parallel expansion (new vars + test porting)
+- **Phase R** (after Phase 19): require/load/ns system — full file-based loading, see `roadmap.md`
 - Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
