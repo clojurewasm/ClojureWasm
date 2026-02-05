@@ -13,8 +13,8 @@ Session handover document. Read at session start.
 
 | Phase | Name                     | Status  | Key Goal                              |
 | ----- | ------------------------ | ------- | ------------------------------------- |
-| 20    | Infrastructure Expansion | active  | transient, chunked, sorted (~18 vars) |
-| 21    | Upstream Alignment       | pending | Replace 13 UPSTREAM-DIFF with upstream|
+| 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars) |
+| 21    | Upstream Alignment       | active  | Replace UPSTREAM-DIFF with upstream   |
 | 22    | Test Porting Expansion   | pending | multimethods, protocols, transducers  |
 | 23    | Production GC            | pending | Replace arena allocator               |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
@@ -22,25 +22,27 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. ~~20.1: Transient collections~~ — DONE
-2. ~~20.2: Core.clj transient alignment~~ — DONE
-3. ~~20.3: Chunked sequences — types + builtins~~ — DONE (8 builtins + chunk-cons)
-4. ~~20.4: Core.clj chunked seq paths~~ — DONE (map, filter, keep, doseq)
-5. ~~20.5: Sorted-map-by, sorted-set-by~~ — DONE (2 vars + sorted-set/sorted-map improved)
-6. ~~20.6: subseq, rsubseq~~ — DONE (2 vars)
+1. 21.1: cond — add even-forms error check (upstream verbatim)
+2. 21.2: assert — add *assert* dynamic var
+3. 21.3: condp — add :>> modifier + no-match error (upstream verbatim)
+4. 21.4: dotimes — upstream verbatim (assert-args style)
+5. 21.5: doseq — full upstream with nesting + :let/:when/:while
+6. 21.6: Skip audit — mark defn/sequence/deliver/promise/locking as permanent UPSTREAM-DIFF
 
 ## Current Task
 
-Phase 20 complete — all tasks done. Plan next.
+21.1: cond — add even-forms error check
+- Upstream uses IllegalArgumentException for odd forms
+- Replace with (throw (ex-info ...)) or (throw (str ...))
+- Simple change in core.clj
 
 ## Previous Task
 
-20.6 completed: subseq, rsubseq
-- Zig builtins: iterate sorted entries, call test fn via callFnVal
-- Map entries returned as [key val] vectors, set entries as values
-- rsubseq reverses output
-- 3-arg (test key) and 5-arg (start-test start-key end-test end-key) forms
-- Both VM + TreeWalk verified
+Phase 20 completed: Infrastructure Expansion
+- 20.1-20.2: Transient collections (6 vars)
+- 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
+- 20.5: sorted-map-by, sorted-set-by (2 vars)
+- 20.6: subseq, rsubseq (2 vars)
 
 ## Completed Phases (reverse chronological)
 
