@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: R (require/load/ns system)
-- Next task: R6 (ns macro full implementation)
+- Next task: Plan Phase D
 - Coverage: 415/712 clojure.core vars done
 - Blockers: none
 
@@ -42,16 +42,17 @@ Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
 
 ## Current Task
 
-R6: `ns` macro full implementation.
+Plan Phase D: Parallel expansion (new vars + test porting).
 
 ## Previous Task
 
-R4+R5 completed: Upgrade require/use to file-based loading.
-- requireFn: loads ns from file when not found, dedup via loaded_libs, :reload support
-- useFn: delegates to requireLib for loading, then refers
-- rootResource helper: ns name → file path (clojure.set → /clojure/set)
-- loadLib/loadResource: shared file loading logic extracted from loadFn
-- Both backends pass with file-based require, use, :as, :refer, :reload
+Phase R completed: require/load/ns system — all 7 tasks done.
+- R1: *ns* dynamic var with bootstrap sync
+- R2: load-file builtin
+- R3: load function with path resolution, IoError in both backends
+- R4+R5: require/use upgraded to file-based loading with dedup, :reload
+- R6: ns macro already working via core.clj + upgraded require/use
+- R7: E2E test — multi-file project with transitive deps, both backends pass
 
 ## Handover Notes
 
