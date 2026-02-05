@@ -133,7 +133,7 @@ vars:
     "aset-int": {type: function, status: skip, note: JVM interop}
     "aset-long": {type: function, status: skip, note: JVM interop}
     "aset-short": {type: function, status: skip, note: JVM interop}
-    assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: no *assert* dynamic var rebinding'}
+    assert: {type: macro, status: done, note: 'CLJW: str throw instead of AssertionError (JVM class)'}
     assoc: {type: function, status: done, note: "Zig builtin"}
     "assoc!": {type: function, status: done}
     "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -207,7 +207,7 @@ vars:
     cond: {type: macro, status: done, note: 'CLJW: error on odd forms caught at analysis time (not runtime)'}
     "cond->": {type: macro, status: done, note: "macro in core.clj"}
     "cond->>": {type: macro, status: done, note: "macro in core.clj"}
-    condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
+    condp: {type: macro, status: done, note: "UPSTREAM-DIFF: uses manual destructuring instead of split-at (bootstrap order)"}
     conj: {type: function, status: done, note: "Zig builtin"}
     "conj!": {type: function, status: done}
     cons: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}

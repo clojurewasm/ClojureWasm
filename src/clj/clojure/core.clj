@@ -915,34 +915,51 @@
              (list true default)
              (list true `(throw (str "No matching clause: " ~gexpr))))))))
 
-(defmacro condp [pred expr & clauses]
-  (let [gpred '__condp_pred__
-        gexpr '__condp_expr__
-        emit (fn emit [args]
+(defmacro condp
+  "Takes a binary predicate, an expression, and a set of clauses.
+  Each clause can take the form of either:
+
+  test-expr result-expr
+
+  test-expr :>> result-fn
+
+  Note :>> is an ordinary keyword.
+
+  For each clause, (pred test-expr expr) is evaluated. If it returns
+  logical true, the clause is a match. If a binary clause matches, the
+  result-expr is returned, if a ternary clause matches, its result-fn,
+  which must be a unary function, is called with the result of the
+  predicate as its argument, the result of that call being the return
+  value of condp. A single default expression can follow the clauses,
+  and its value will be returned if no clause matches. If no default
+  expression is provided and no clause matches, an exception is thrown."
+  [pred expr & clauses]
+  (let [gpred (gensym "pred__")
+        gexpr (gensym "expr__")
+        emit (fn emit [pred expr args]
                (let [cnt (count args)]
                  (cond
-                   (= cnt 0)
-                   (list 'throw (list 'ex-info
-                                      (list 'str "No matching clause: " gexpr) {}))
-                   (= cnt 1)
+                   (= 0 cnt)
+                   `(throw (ex-info (str "No matching clause: " ~expr) {}))
+                   (= 1 cnt)
                    (first args)
                    (= :>> (second args))
-                   (let [test (first args)
-                         result-fn (first (rest (rest args)))
+                   (let [a (first args)
+                         c (first (rest (rest args)))
                          more (rest (rest (rest args)))]
-                     (list 'let ['__condp_p__ (list gpred test gexpr)]
-                           (list 'if '__condp_p__
-                                 (list result-fn '__condp_p__)
-                                 (emit more))))
+                     `(if-let [p# (~pred ~a ~expr)]
+                        (~c p#)
+                        ~(emit pred expr more)))
                    :else
-                   (let [test (first args)
-                         result (second args)
+                   (let [a (first args)
+                         b (second args)
                          more (rest (rest args))]
-                     (list 'if (list gpred test gexpr)
-                           result
-                           (emit more))))))]
-    (list 'let [gpred pred gexpr expr]
-          (emit clauses))))
+                     `(if (~pred ~a ~expr)
+                        ~b
+                        ~(emit pred expr more))))))]
+    `(let [~gpred ~pred
+           ~gexpr ~expr]
+       ~(emit gpred gexpr clauses))))
 
 (defmacro declare [& names]
   (cons 'do (map (fn [n] (list 'def n)) names)))
