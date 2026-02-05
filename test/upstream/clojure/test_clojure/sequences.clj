@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/sequences.clj
 ;; Upstream lines: 1654
-;; CLJW markers: 35
+;; CLJW markers: 36
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -710,11 +710,67 @@
 (deftest CLJ-1633
   (is (= ((fn [& args] (apply (fn [a & b] (apply list b)) args)) 1 2 3) '(2 3))))
 
-;; CLJW: JVM interop — test-sort-retains-meta requires sort-by with keyword keyfn
+;; CLJW: JVM interop — test-sort-retains-meta requires meta preservation on sort results
 ;; CLJW: JVM interop — test-seqs-implements-iobj requires vector-of, instance?, Queue
-;; CLJW: JVM interop — test-iteration-opts, test-iteration require iteration (not implemented)
 ;; CLJW: JVM interop — infinite-seq-hash requires .hashCode/.hasheq method call
 ;; CLJW: JVM interop — longrange-equals-range, iteration-seq-equals-reduce (defspec)
+
+(deftest test-iteration-opts
+  (let [genstep (fn [steps]
+                  (fn [k] (swap! steps inc) (inc k)))
+        test (fn [expect & iteropts]
+               (is (= expect
+                      (let [nsteps (atom 0)
+                            iter (apply iteration (genstep nsteps) iteropts)
+                            ret (doall (seq iter))]
+                        {:ret ret :steps @nsteps})
+                      (let [nsteps (atom 0)
+                            iter (apply iteration (genstep nsteps) iteropts)
+                            ret (into [] iter)]
+                        {:ret ret :steps @nsteps}))))]
+    (test {:ret [1 2 3 4]
+           :steps 5}
+          :initk 0 :somef #(< % 5))
+    (test {:ret [1 2 3 4 5]
+           :steps 5}
+          :initk 0 :kf (fn [ret] (when (< ret 5) ret)))
+    (test {:ret ["1"]
+           :steps 2}
+          :initk 0 :somef #(< % 2) :vf str))
+
+  ;; kf does not stop on false
+  (let [iter #(iteration (fn [k]
+                           (if (boolean? k)
+                             [10 :boolean]
+                             [k k]))
+                         :vf second
+                         :kf (fn [[k v]]
+                               (cond
+                                 (= k 3) false
+                                 (< k 14) (inc k)))
+                         :initk 0)]
+    (is (= [0 1 2 3 :boolean 11 12 13 14]
+           (into [] (iter))
+           (seq (iter))))))
+
+(deftest test-iteration
+  ;; CLJW: JVM interop — skipped java.io.File/BufferedReader test (line-seq equivalence)
+  ;; CLJW: JVM interop — skipped java.util.UUID/randomUUID test (paginated API)
+
+  (let [src [:a :b :c :d :e]
+        api (fn [k]
+              (let [k (or k 0)]
+                (if (< k (count src))
+                  {:item (nth src k)
+                   :k (inc k)})))]
+    (is (= [:a :b :c]
+           (vec (iteration api
+                           :somef (comp #{:a :b :c} :item)
+                           :kf :k
+                           :vf :item))
+           (vec (iteration api
+                           :kf #(some-> % :k #{0 1 2})
+                           :vf :item))))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)

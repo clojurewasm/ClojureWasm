@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.12
+- Next task: 22c.13
 - Blockers: none
 
 ## Task Queue
@@ -28,7 +28,7 @@ Tier 2: Small implementation + new file ports
 
 Tier 3: Medium implementation + new file ports
 - ~~22c.11: Implement eduction + sort-by/compare fix (transducers)~~
-- 22c.12: Implement iteration function (sequences)
+- ~~22c.12: Implement iteration function (sequences)~~
 - 22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
 - 22c.14: Port ns_libs.clj
 - 22c.15: Port data.clj (implement clojure.data/diff)
@@ -38,16 +38,14 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-22c.12: Implement iteration function (sequences)
+22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
 
 ## Previous Task
 
-22c.11: Implement eduction + sort-by/compare fix (transducers)
-- eduction: eager sequence wrapper (UPSTREAM-DIFF: no deftype, uses sequence)
-- sort-by fix: support fn_val/multi_fn/keyword as keyfn (was builtin_fn only)
-- compareValues fix: add char comparison support (was missing → silent sort failure)
-- Revived test-eduction and test-eduction-completion in transducers.clj
-- 16 tests, 100 assertions, both backends pass
+22c.12: Implement iteration function (sequences)
+- iteration: lazy-seq wrapper (UPSTREAM-DIFF: no reify/IReduceInit)
+- Revived test-iteration-opts and test-iteration (portable subset) in sequences.clj
+- 54 tests, 548 assertions, both backends pass
 
 ## Handover Notes
 

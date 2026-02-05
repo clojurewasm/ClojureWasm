@@ -365,7 +365,7 @@ vars:
     "io!": {type: macro, status: skip, note: "JVM interop"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    iteration: {type: function, status: skip, note: needs lazy stateful iterator}
+    iteration: {type: function, status: done, note: needs lazy stateful iterator, notes: 'UPSTREAM-DIFF: lazy-seq wrapper (no reify/IReduceInit)'}
     "iterator-seq": {type: function, status: skip, note: JVM interop}
     juxt: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     keep: {type: function, status: done, note: "core.clj (upstream is pure clj)"}

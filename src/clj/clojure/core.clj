@@ -1700,6 +1700,26 @@
   [& xforms]
   (sequence (apply comp (butlast xforms)) (last xforms)))
 
+;; UPSTREAM-DIFF: iteration returns lazy-seq (upstream uses reify Seqable + IReduceInit)
+(defn iteration
+  "Creates a seqable/reducible via repeated calls to step,
+  a function of some (continuation token) 'k'. The first call to step
+  will be passed initk, returning 'ret'. Iff (somef ret) is true,
+  (vf ret) will be included in the iteration, else iteration will
+  terminate and vf/kf will not be called. If (kf ret) is non-nil it
+  will be passed to the next step call, else iteration will terminate."
+  [step & {:keys [somef vf kf initk]
+           :or {vf identity
+                kf identity
+                somef some?
+                initk nil}}]
+  ((fn next [ret]
+     (when (somef ret)
+       (cons (vf ret)
+             (when-some [k (kf ret)]
+               (lazy-seq (next (step k)))))))
+   (step initk)))
+
 ;; === Pure Clojure additions ===
 
 (defn random-sample
