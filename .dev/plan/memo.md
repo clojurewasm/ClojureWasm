@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
-- Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX10 (UPSTREAM-DIFF quick fixes)
+- Sub-phase: C (Faithful Test Porting, resumed after CX)
+- Next task: C13 (clojure_walk.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -24,7 +24,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX7: ::foo auto-resolved keyword (F81)~~ done
 - ~~CX8: Hierarchy system (F82 + F83)~~ done
 - ~~CX9: #'var inside deftest body (F87)~~ done
-- CX10: UPSTREAM-DIFF quick fixes (F94 partial)
+- ~~CX10: UPSTREAM-DIFF quick fixes (F94 partial)~~ done
 
 ## Saved Phase C Queue (resume after CX)
 
@@ -57,15 +57,19 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX10: UPSTREAM-DIFF quick fixes (F94 partial)
+C13: clojure_walk.clj (75 lines)
 
 ## Previous Task
 
-CX9 completed: #'var inside deftest body (F87).
-- Analyzer's analyzeVar now interns unqualified vars in current namespace
-  when resolution fails (matches JVM Clojure compile-time intern behavior)
-- Allows #'x to work inside fn bodies where def x runs at runtime
-- Both backends pass all E2E tests
+CX10 completed: UPSTREAM-DIFF quick fixes (F94 partial).
+- Multi-arity defmacro support in analyzer (D67): `analyzeDefmacro` now
+  handles `([params] body...) ...` forms and `^{:metadata}` on name
+- assert-args private macro for if-let/when-let/if-some/when-some validation
+- assert: multi-arity with `*assert*` check
+- cond/dotimes: docstrings, unchecked-inc
+- halt-when: `::halt` (was `:__halt`), dedupe: `::none` + `sequence`
+- sequence: 2-arity `(sequence xform coll)` added (eager via into)
+- Phase CX complete — all 10 tasks done
 
 ## Handover Notes
 

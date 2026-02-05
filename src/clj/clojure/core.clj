@@ -129,8 +129,12 @@
 
 (defmacro comment [& body] nil)
 
-;; UPSTREAM-DIFF: No even-number-of-forms error check
-(defmacro cond [& clauses]
+(defmacro cond
+  "Takes a set of test/expr pairs. It evaluates each test one at a
+  time.  If a test returns logical true, cond evaluates and returns
+  the value of the corresponding expr and doesn't evaluate any of the
+  other tests or exprs. (cond) returns nil."
+  [& clauses]
   (when (seq clauses)
     (let [test (first clauses)
           then (first (rest clauses))
@@ -202,15 +206,19 @@
 
 ;; Iteration
 
-;; UPSTREAM-DIFF: No assert-args, uses + instead of unchecked-inc
-(defmacro dotimes [bindings & body]
+(defmacro dotimes
+  "bindings => name n
+
+  Repeatedly executes body (presumably for side-effects) with name
+  bound to integers from 0 through n-1."
+  [bindings & body]
   (let [i (first bindings)
-        n (first (rest bindings))]
-    `(let [n# ~n]
+        n (second bindings)]
+    `(let [n# (long ~n)]
        (loop [~i 0]
          (when (< ~i n#)
            ~@body
-           (recur (+ ~i 1)))))))
+           (recur (unchecked-inc ~i)))))))
 
 ;; and/or
 
@@ -467,23 +475,51 @@
 
 ;; Utility macros
 
-;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
-(defmacro if-let [bindings then & more]
-  (let [sym (first bindings)
-        val (second bindings)
-        else (first more)]
-    `(let [temp# ~val]
-       (if temp#
-         (let [~sym temp#] ~then)
-         ~else))))
+;; CLJW: Simplified assert-args — upstream uses &form and IllegalArgumentException
+;; Note: uses (next (next ...)) and (first (next ...)) because nnext/second
+;; are not yet defined at this point in core.clj bootstrap
+(defmacro ^{:private true} assert-args
+  [& pairs]
+  (let [checks (loop [ps pairs acc []]
+                 (if (seq ps)
+                   (recur (next (next ps))
+                          (conj acc (list 'when-not (first ps)
+                                          (list 'throw (list 'str "Requires " (first (next ps)))))))
+                   acc))]
+    (cons 'do checks)))
 
-;; UPSTREAM-DIFF: No assert-args validation
-(defmacro when-let [bindings & body]
-  (let [sym (first bindings)
-        val (first (rest bindings))]
-    `(let [temp# ~val]
+(defmacro if-let
+  "bindings => binding-form test
+
+  If test is true, evaluates then with binding-form bound to the value of
+  test, if not, yields else"
+  ([bindings then]
+   `(if-let ~bindings ~then nil))
+  ([bindings then else & oldform]
+   (assert-args
+    (vector? bindings) "a vector for its binding"
+    (nil? oldform) "1 or 2 forms after binding vector"
+    (= 2 (count bindings)) "exactly 2 forms in binding vector")
+   (let [form (first bindings) tst (first (next bindings))]
+     `(let [temp# ~tst]
+        (if temp#
+          (let [~form temp#]
+            ~then)
+          ~else)))))
+
+(defmacro when-let
+  "bindings => binding-form test
+
+  When test is true, evaluates body with binding-form bound to the value of test"
+  [bindings & body]
+  (assert-args
+   (vector? bindings) "a vector for its binding"
+   (= 2 (count bindings)) "exactly 2 forms in binding vector")
+  (let [form (first bindings) tst (first (next bindings))]
+    `(let [temp# ~tst]
        (when temp#
-         (let [~sym temp#] ~@body)))))
+         (let [~form temp#]
+           ~@body)))))
 
 ;; Threading macro variants
 
@@ -986,24 +1022,40 @@
 
 ;; Nil-safe conditionals
 
-;; UPSTREAM-DIFF: No assert-args validation, requires 3 args (no optional else)
-(defmacro if-some [bindings then & more]
-  (let [sym (first bindings)
-        val (first (rest bindings))
-        else (first more)]
-    `(let [temp# ~val]
-       (if (nil? temp#)
-         ~else
-         (let [~sym temp#] ~then)))))
+(defmacro if-some
+  "bindings => binding-form test
 
-;; UPSTREAM-DIFF: No assert-args validation
-(defmacro when-some [bindings & body]
-  (let [sym (first bindings)
-        val (first (rest bindings))]
-    `(let [temp# ~val]
+   If test is not nil, evaluates then with binding-form bound to the
+   value of test, if not, yields else"
+  ([bindings then]
+   `(if-some ~bindings ~then nil))
+  ([bindings then else & oldform]
+   (assert-args
+    (vector? bindings) "a vector for its binding"
+    (nil? oldform) "1 or 2 forms after binding vector"
+    (= 2 (count bindings)) "exactly 2 forms in binding vector")
+   (let [form (first bindings) tst (first (next bindings))]
+     `(let [temp# ~tst]
+        (if (nil? temp#)
+          ~else
+          (let [~form temp#]
+            ~then))))))
+
+(defmacro when-some
+  "bindings => binding-form test
+
+   When test is not nil, evaluates body with binding-form bound to the
+   value of test"
+  [bindings & body]
+  (assert-args
+   (vector? bindings) "a vector for its binding"
+   (= 2 (count bindings)) "exactly 2 forms in binding vector")
+  (let [form (first bindings) tst (first (next bindings))]
+    `(let [temp# ~tst]
        (if (nil? temp#)
          nil
-         (let [~sym temp#] ~@body)))))
+         (let [~form temp#]
+           ~@body)))))
 
 ;; Volatile swap macro
 
@@ -1294,21 +1346,20 @@
      (fn
        ([] (rf))
        ([result]
-        (if (and (map? result) (contains? result :__halt))
-          (:__halt result)
+        (if (and (map? result) (contains? result ::halt))
+          (::halt result)
           (rf result)))
        ([result input]
         (if (pred input)
-          (reduced {:__halt (if retf (retf (rf result) input) input)})
+          (reduced {::halt (if retf (retf (rf result) input) input)})
           (rf result input)))))))
 
-;; UPSTREAM-DIFF: uses :__halt instead of ::halt (no ns-qualified auto-keywords)
-
 (defn dedupe
-  "Returns a transducer that removes consecutive duplicates."
+  "Returns a lazy sequence removing consecutive duplicates in coll.
+  Returns a transducer when no collection is provided."
   ([]
    (fn [rf]
-     (let [pv (volatile! :__none)]
+     (let [pv (volatile! ::none)]
        (fn
          ([] (rf))
          ([result] (rf result))
@@ -1318,16 +1369,21 @@
             (if (= prior input)
               result
               (rf result input))))))))
-  ([coll] (into [] (dedupe) coll)))
-
-;; UPSTREAM-DIFF: 1-arity uses (into [] (dedupe) coll) instead of (sequence (dedupe) coll)
+  ([coll] (sequence (dedupe) coll)))
 
 (defn sequence
   "Coerces coll to a (possibly empty) sequence, if it is not already
-  one. Will not force a lazy seq. (sequence nil) yields ()."
+  one. Will not force a lazy seq. (sequence nil) yields (). When a
+  transducer is supplied, returns a lazy sequence of applications of
+  the transform to the items in coll(s)."
   ([coll]
    (if (seq? coll) coll
-       (or (seq coll) ()))))
+       (or (seq coll) ())))
+  ;; CLJW: upstream uses TransformerIterator; we eagerly transduce via into then seq
+  ([xform coll]
+   (or (seq (into [] xform coll)) ()))
+  ([xform coll & colls]
+   (or (seq (into [] xform (apply map vector (cons coll colls)))) ())))
 
 ;; === Pure Clojure additions ===
 
@@ -1414,15 +1470,16 @@
 (def *assert* true)
 
 (defmacro assert
-  "Evaluates expr and throws an Error if it does not evaluate to
+  "Evaluates expr and throws an AssertionError if it does not evaluate to
   logical true."
-  [x & args]
-  (let [message (first args)]
-    (if message
-      (list 'when-not x
-            (list 'throw (list 'str "Assert failed: " message "\n" (list 'pr-str (list 'quote x)))))
-      (list 'when-not x
-            (list 'throw (list 'str "Assert failed: " (list 'pr-str (list 'quote x))))))))
+  ([x]
+   (when *assert*
+     `(when-not ~x
+        (throw (str "Assert failed: " (pr-str '~x))))))
+  ([x message]
+   (when *assert*
+     `(when-not ~x
+        (throw (str "Assert failed: " ~message "\n" (pr-str '~x)))))))
 
 ;; Hierarchy
 

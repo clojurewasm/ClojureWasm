@@ -721,20 +721,29 @@ pub const Analyzer = struct {
     }
 
     fn analyzeDefmacro(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (defmacro name docstring? [params] body...) - treated like def + fn with is_macro flag
+        // (defmacro name docstring? attr-map? [params] body...)
+        // (defmacro name docstring? attr-map? ([params] body...) ...)
         if (items.len < 3) {
             return self.analysisError(.arity_error, "defmacro requires name and body", form);
         }
 
-        if (items[1].data != .symbol) {
+        // Extract name — handle both plain symbol and (with-meta symbol map)
+        const sym_name = if (items[1].data == .symbol)
+            items[1].data.symbol.name
+        else if (items[1].data == .list and items[1].data.list.len == 3 and
+            items[1].data.list[0].data == .symbol and
+            std.mem.eql(u8, items[1].data.list[0].data.symbol.name, "with-meta") and
+            items[1].data.list[1].data == .symbol)
+            items[1].data.list[1].data.symbol.name
+        else
             return self.analysisError(.value_error, "defmacro name must be a symbol", items[1]);
-        }
 
-        const sym_name = items[1].data.symbol.name;
-
-        // Skip optional docstring
+        // Skip optional docstring and attr-map
         var body_start: usize = 2;
-        if (items[body_start].data == .string) {
+        if (body_start < items.len and items[body_start].data == .string) {
+            body_start += 1;
+        }
+        if (body_start < items.len and items[body_start].data == .map) {
             body_start += 1;
         }
 
@@ -742,9 +751,59 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "defmacro requires parameter vector", form);
         }
 
-        // Build fn node from remaining forms (params + body)
-        // Synthesize a fn form: (fn [params] body...)
-        const fn_node = try self.analyzeFnBody(items[body_start..], form);
+        // Build fn node — supports both single and multi-arity
+        var fn_node: *Node = undefined;
+
+        if (items[body_start].data == .vector) {
+            // Single arity: [params] body...
+            const arity = try self.analyzeFnArity(items[body_start].data.vector, items[body_start + 1 ..], form);
+            const arities = self.allocator.alloc(node_mod.FnArity, 1) catch return error.OutOfMemory;
+            arities[0] = arity;
+
+            const fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
+            fn_data.* = .{
+                .name = null,
+                .arities = arities,
+                .source = self.sourceFromForm(form),
+            };
+
+            fn_node = self.allocator.create(Node) catch return error.OutOfMemory;
+            fn_node.* = .{ .fn_node = fn_data };
+        } else {
+            // Multi-arity: ([params] body...) ...
+            var arities_list: std.ArrayList(node_mod.FnArity) = .empty;
+            var idx = body_start;
+
+            while (idx < items.len) {
+                if (items[idx].data != .list) {
+                    return self.analysisError(.arity_error, "defmacro arity must be a list: ([params] body...)", form);
+                }
+
+                const arity_items = items[idx].data.list;
+                if (arity_items.len == 0 or arity_items[0].data != .vector) {
+                    return self.analysisError(.arity_error, "defmacro arity must start with parameter vector", form);
+                }
+
+                const arity = try self.analyzeFnArity(arity_items[0].data.vector, arity_items[1..], form);
+                arities_list.append(self.allocator, arity) catch return error.OutOfMemory;
+
+                idx += 1;
+            }
+
+            if (arities_list.items.len == 0) {
+                return self.analysisError(.arity_error, "defmacro requires at least one arity", form);
+            }
+
+            const fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
+            fn_data.* = .{
+                .name = null,
+                .arities = arities_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .source = self.sourceFromForm(form),
+            };
+
+            fn_node = self.allocator.create(Node) catch return error.OutOfMemory;
+            fn_node.* = .{ .fn_node = fn_data };
+        }
 
         const def_data = self.allocator.create(node_mod.DefNode) catch return error.OutOfMemory;
         def_data.* = .{
@@ -1505,28 +1564,6 @@ pub const Analyzer = struct {
 
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .try_node = try_data };
-        return n;
-    }
-
-    /// Analyze fn body starting from params vector (helper for defmacro).
-    fn analyzeFnBody(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        if (items.len == 0 or items[0].data != .vector) {
-            return self.analysisError(.arity_error, "expected parameter vector", form);
-        }
-
-        const arity = try self.analyzeFnArity(items[0].data.vector, items[1..], form);
-        const arities = self.allocator.alloc(node_mod.FnArity, 1) catch return error.OutOfMemory;
-        arities[0] = arity;
-
-        const fn_data = self.allocator.create(node_mod.FnNode) catch return error.OutOfMemory;
-        fn_data.* = .{
-            .name = null,
-            .arities = arities,
-            .source = self.sourceFromForm(form),
-        };
-
-        const n = self.allocator.create(Node) catch return error.OutOfMemory;
-        n.* = .{ .fn_node = fn_data };
         return n;
     }
 

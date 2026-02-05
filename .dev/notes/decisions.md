@@ -1538,3 +1538,17 @@ Replace map-based delay in core.clj with `__delay-create` builtin.
 
 **Rationale**: Proper Value variant enables correct type predicates, efficient dispatch,
 and exception caching with identity preservation (JVM Delay semantics).
+
+## D67: Multi-Arity defmacro Support
+
+**Decision**: Extend `analyzeDefmacro` in analyzer.zig to support multi-arity forms,
+matching the existing `analyzeFn` pattern. Also handle `^{metadata}` reader syntax
+on defmacro name (reader expands to `(with-meta name metadata)`).
+
+**Architecture**:
+- analyzer.zig `analyzeDefmacro`: supports both `[params] body` and `([params] body) ...` forms
+- analyzer.zig `analyzeDefmacro`: extracts name from `(with-meta sym map)` list when present
+- Removed unused `analyzeFnBody` helper (single-arity only, superseded)
+
+**Rationale**: Upstream Clojure macros like `assert`, `if-let`, `if-some` use multi-arity
+forms. Without this, core.clj cannot define these macros in their upstream shape.

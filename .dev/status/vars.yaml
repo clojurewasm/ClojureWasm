@@ -133,7 +133,7 @@ vars:
     "aset-int": {type: function, status: todo}
     "aset-long": {type: function, status: todo}
     "aset-short": {type: function, status: todo}
-    assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: uses variadic args instead of multi-arity defmacro'}
+    assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: no *assert* dynamic var rebinding'}
     assoc: {type: function, status: done, note: "Zig builtin"}
     "assoc!": {type: function, status: todo}
     "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -223,7 +223,7 @@ vars:
     "dec'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
-    dedupe: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity uses (into [] (dedupe) coll) instead of sequence'}
+    dedupe: {type: function, status: done}
     "default-data-readers": {type: var, status: todo}
     definline: {type: macro, status: todo}
     definterface: {type: macro, status: todo}
@@ -255,7 +255,7 @@ vars:
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
     doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: single binding only, no :let/:when/:while/nesting"}
     dosync: {type: macro, status: todo}
-    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, uses + not unchecked-inc'}
+    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args (uses unchecked-inc)'}
     doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: todo}
@@ -327,7 +327,7 @@ vars:
     "get-thread-bindings": {type: function, status: todo}
     "get-validator": {type: function, status: todo}
     "group-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "halt-when": {type: function, status: done, note: 'UPSTREAM-DIFF: uses :__halt instead of ::halt'}
+    "halt-when": {type: function, status: done}
     hash: {type: function, status: done, note: "Zig builtin"}
     "hash-combine": {type: function, status: todo}
     "hash-map": {type: function, status: done, note: "Zig builtin"}
@@ -337,9 +337,9 @@ vars:
     "ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "identical?": {type: function, status: done, note: "Zig builtin"}
     identity: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "if-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args, requires 3 args (F30)'}
+    "if-let": {type: macro, status: done, note: 'CLJW: uses (first (next ...)) instead of second (bootstrap order)'}
     "if-not": {type: macro, status: done, note: "macro in core.clj"}
-    "if-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args, requires 3 args"}
+    "if-some": {type: macro, status: done}
     "ifn?": {type: function, status: done, note: "Zig builtin"}
     import: {type: macro, status: todo}
     "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
@@ -575,7 +575,7 @@ vars:
     "seq?": {type: function, status: done, note: "Zig builtin"}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: todo}
-    sequence: {type: function, status: done, note: 'UPSTREAM-DIFF: 1-arity only (no transducer arities)'}
+    sequence: {type: function, status: done, note: 'UPSTREAM-DIFF: eager via into (upstream uses TransformerIterator)'}
     "sequential?": {type: function, status: done, note: "Zig builtin"}
     set: {type: function, status: done, note: "Zig builtin"}
     "set-agent-send-executor!": {type: function, status: todo}
@@ -696,9 +696,9 @@ vars:
     "vswap!": {type: macro, status: done, note: "core.clj macro"}
     when: {type: macro, status: done, note: "macro in core.clj"}
     "when-first": {type: macro, status: done, note: "macro in core.clj"}
-    "when-let": {type: macro, status: done, note: 'UPSTREAM-DIFF: no assert-args'}
+    "when-let": {type: macro, status: done}
     "when-not": {type: macro, status: done, note: "macro in core.clj"}
-    "when-some": {type: macro, status: done, note: "UPSTREAM-DIFF: no assert-args"}
+    "when-some": {type: macro, status: done}
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: todo}
     "with-bindings*": {type: function, status: todo}
