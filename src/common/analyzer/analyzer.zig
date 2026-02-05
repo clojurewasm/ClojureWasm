@@ -1711,6 +1711,10 @@ pub const Analyzer = struct {
         switch (pattern.data) {
             .symbol => |sym| {
                 // Simple binding: name = init
+                // Namespace-qualified symbols not allowed in bindings (only in map destructuring :keys/:syms)
+                if (sym.ns != null) {
+                    return self.analysisError(.value_error, "can't let qualified name", pattern);
+                }
                 const name = sym.name;
                 const idx: u32 = @intCast(self.locals.items.len);
                 self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;

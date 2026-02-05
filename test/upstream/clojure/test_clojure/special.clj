@@ -70,9 +70,21 @@
   (let [{:a/syms [b c d] :or {d 3}} {'a/b 1 'a/c 2}]
     (is (= [1 2 3] [b c d]))))
 
-;; CLJW: keywords-not-allowed-in-let-bindings skipped — requires eval + CompilerException
-;; CLJW: namespaced-syms-only-allowed-in-map-destructuring skipped — requires eval
-;; CLJW: or-doesnt-create-bindings skipped — requires eval
+;; CLJW: thrown-with-cause-msg? replaced with thrown? (no .getCause interop)
+(deftest keywords-not-allowed-in-let-bindings
+  (is (thrown? Exception (eval '(let [:a 1] a))))
+  (is (thrown? Exception (eval '(let [:a/b 1] b))))
+  (is (thrown? Exception (eval '(let [[:a] [1]] a))))
+  (is (thrown? Exception (eval '(let [[:a/b] [1]] b)))))
+
+;; CLJW: thrown-with-cause-msg? replaced with thrown? (no .getCause interop)
+(deftest namespaced-syms-only-allowed-in-map-destructuring
+  (is (thrown? Exception (eval '(let [a/x 1, [y] [1]] x))))
+  (is (thrown? Exception (eval '(let [[a/x] [1]] x)))))
+
+;; CLJW: thrown-with-cause-msg? replaced with thrown? (no .getCause interop)
+(deftest or-doesnt-create-bindings
+  (is (thrown? Exception (eval '(let [{:keys [a] :or {b 2}} {:a 1}] [a b])))))
 
 (require '[clojure.string :as s])
 (deftest resolve-keyword-ns-alias-in-destructuring

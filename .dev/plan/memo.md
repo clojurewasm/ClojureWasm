@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next task: 22c.4
+- Next task: 22c.5
 - Blockers: none
 
 ## Task Queue
@@ -16,7 +16,7 @@ Phase 22c — Test Gap Resolution (gap analysis: `.dev/plan/test-gap-analysis.md
 Tier 1: Revive skipped tests (features already implemented)
 - ~~22c.2: done in 22c.1~~
 - ~~22c.3: Revive with-redefs tests (vars — non-threaded subset)~~
-- 22c.4: Revive eval-based tests (special — non-JVM-exception subset)
+- ~~22c.4: Revive eval-based tests (special — non-JVM-exception subset)~~
 
 Tier 2: Small implementation + new file ports
 - 22c.5: Implement find-keyword (F80) + revive keywords.clj test
@@ -38,16 +38,15 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.4)
+(next: 22c.5)
 
 ## Previous Task
 
-22c.3: Revive with-redefs tests (vars.clj — non-threaded subset)
-- Fixed promise deref: added :__promise tag, derefAtom returns :val for promise atoms
-- Updated promise/deliver in core.clj to use :__promise tag + swap!-based deliver
-- Ported 4 tests: test-with-redefs-fn, test-with-redefs, test-with-redefs-throw, test-with-redefs-inside-binding
-- Removed Thread usage (single-threaded), kept core with-redefs behavior verification
-- vars.clj: 5 tests, 11 assertions, both backends pass
+22c.4: Revive eval-based tests (special.clj — non-JVM-exception subset)
+- Fixed analyzer: reject namespace-qualified symbols in let/destructuring bindings
+- Ported 3 tests: keywords-not-allowed-in-let-bindings (4), namespaced-syms-only-allowed-in-map-destructuring (2), or-doesnt-create-bindings (1)
+- Used thrown? instead of thrown-with-cause-msg? (no .getCause interop)
+- special.clj: 12 tests, 20 assertions, both backends pass
 
 ## Handover Notes
 
