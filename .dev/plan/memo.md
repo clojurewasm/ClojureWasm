@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next task: 22.8 (Port protocols.clj)
+- Phase 22 complete. Next: Phase 23 (Production GC)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -15,35 +15,40 @@ Session handover document. Read at session start.
 | ----- | ------------------------ | ------- | ------------------------------------- |
 | 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars) |
 | 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream   |
-| 22    | Test Porting Expansion   | active  | multimethods, protocols, transducers  |
-| 23    | Production GC            | pending | Replace arena allocator               |
+| 22    | Test Porting Expansion   | done    | multimethods, protocols, transducers  |
+| 23    | Production GC            | active  | Replace arena allocator               |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
 | 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT              |
 
 ## Task Queue
 
-1. ~~22.1: Port transients.clj (82 lines)~~ — DONE (4 tests, 29 assertions)
-2. ~~22.2: keywords.clj — SKIP (find-keyword F80 + regex needed)~~
-3. ~~22.3: fn.clj — SKIP (fails-with-cause? + clojure.spec)~~
-4. ~~22.4: try_catch.clj — SKIP (100% JVM: Java exception classes + test fixtures)~~
-5. ~~22.5: Port multimethods.clj (271 lines)~~ — DONE (9 tests, 102 assertions)
-6. ~~22.6: Port transducers.clj (410 lines)~~ — DONE (14 tests, 90 assertions)
-7. ~~22.7: Port vectors.clj (491 lines)~~ — DONE (9 tests, 68 assertions)
-8. 22.8: Port protocols.clj (721 lines) — roadmap target
-9. 22.9: Port math.clj (326 lines) — math functions
+1. 23.1: GcAllocator core — mark-sweep allocator with allocation tracking
+2. 23.2: Value tracing — comptime-verified traceValue for all Value variants
+3. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
+4. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+5. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+6. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-22.8: Port protocols.clj (721 lines)
+23.1: GcAllocator core — mark-sweep allocator with allocation tracking
+- Create src/native/gc/mark_sweep.zig
+- Implement GcStrategy vtable (alloc, collect, shouldCollect, stats)
+- Track allocations in intrusive linked list (GcHeader prepended to each object)
+- Mark phase: traverse from root set, set mark bit
+- Sweep phase: free all unmarked, reset mark bits
+- Allocation threshold for shouldCollect()
+- Unit tests for basic alloc/collect cycle
 
 ## Previous Task
 
-22.7: Port vectors.clj — 9 tests, 68 assertions, 16 CLJW markers
-- Added vector comparison to compareValues (element-by-element)
-- Added .map and .string handling to collectSeqItems
-- Added multi-collection arities to map (3, 4, variadic)
-- Added multi-collection arities to mapv (2, 3, variadic)
-- Fixed reduce-kv to support vectors (index-based iteration)
+Phase 22 complete: 4 test files ported (36 tests, 289 assertions)
+- 22.1: transients (4 tests, 29 assertions)
+- 22.5: multimethods (9 tests, 102 assertions)
+- 22.6: transducers (14 tests, 90 assertions)
+- 22.7: vectors (9 tests, 68 assertions)
+- Major fixes: 15 transducer forms, multi-arity map/mapv, vector compare,
+  coll?/sequential? predicates, reduce-kv vectors, collectSeqItems expansion
 
 ## Completed Phases (reverse chronological)
 
