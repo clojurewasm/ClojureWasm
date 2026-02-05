@@ -356,6 +356,115 @@ pub fn mapEntryFn(_: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
+// ============================================================
+// Hashing
+// ============================================================
+
+const predicates_mod = @import("predicates.zig");
+const collections_mod = @import("collections.zig");
+
+/// Murmur3 constants (matches JVM Clojure)
+const M3_C1: i32 = @bitCast(@as(u32, 0xcc9e2d51));
+const M3_C2: i32 = @bitCast(@as(u32, 0x1b873593));
+
+fn mixK1(k: i32) i32 {
+    var k1: u32 = @bitCast(k);
+    k1 *%= @bitCast(M3_C1);
+    k1 = std.math.rotl(u32, k1, 15);
+    k1 *%= @bitCast(M3_C2);
+    return @bitCast(k1);
+}
+
+fn mixH1(h: i32, k1: i32) i32 {
+    var h1: u32 = @bitCast(h);
+    h1 ^= @as(u32, @bitCast(k1));
+    h1 = std.math.rotl(u32, h1, 13);
+    h1 = h1 *% 5 +% @as(u32, 0xe6546b64);
+    return @bitCast(h1);
+}
+
+fn fmix(h: i32, length: i32) i32 {
+    var h1 = h;
+    h1 ^= length;
+    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 16));
+    h1 = h1 *% @as(i32, @bitCast(@as(u32, 0x85ebca6b)));
+    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 13));
+    h1 = h1 *% @as(i32, @bitCast(@as(u32, 0xc2b2ae35)));
+    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 16));
+    return h1;
+}
+
+fn mixCollHash(hash_val: i32, count: i32) i32 {
+    var h1: i32 = 0; // seed
+    const k1 = mixK1(hash_val);
+    h1 = mixH1(h1, k1);
+    return fmix(h1, count);
+}
+
+/// (mix-collection-hash hash-basis count)
+pub fn mixCollectionHashFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to mix-collection-hash", .{args.len});
+    const hash_basis: i32 = switch (args[0]) {
+        .integer => |n| @truncate(n),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer, got {s}", .{@tagName(args[0])}),
+    };
+    const count: i32 = switch (args[1]) {
+        .integer => |n| @truncate(n),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer count, got {s}", .{@tagName(args[1])}),
+    };
+    return Value{ .integer = @as(i64, mixCollHash(hash_basis, count)) };
+}
+
+/// (hash-ordered-coll coll)
+pub fn hashOrderedCollFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash-ordered-coll", .{args.len});
+    var n: i32 = 0;
+    var hash: i32 = 1;
+    // Walk the seq
+    var s = try collections_mod.seqFn(allocator, &.{args[0]});
+    while (s != .nil) {
+        const first = try collections_mod.firstFn(allocator, &.{s});
+        const h = predicates_mod.computeHash(first);
+        hash = hash *% 31 +% @as(i32, @truncate(h));
+        n += 1;
+        s = try collections_mod.restFn(allocator, &.{s});
+        // restFn returns empty list, not nil, so check for empty
+        s = try collections_mod.seqFn(allocator, &.{s});
+    }
+    return Value{ .integer = @as(i64, mixCollHash(hash, n)) };
+}
+
+/// (hash-unordered-coll coll)
+pub fn hashUnorderedCollFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash-unordered-coll", .{args.len});
+    var n: i32 = 0;
+    var hash: i32 = 0;
+    var s = try collections_mod.seqFn(allocator, &.{args[0]});
+    while (s != .nil) {
+        const first = try collections_mod.firstFn(allocator, &.{s});
+        const h = predicates_mod.computeHash(first);
+        hash +%= @as(i32, @truncate(h));
+        n += 1;
+        s = try collections_mod.restFn(allocator, &.{s});
+        s = try collections_mod.seqFn(allocator, &.{s});
+    }
+    return Value{ .integer = @as(i64, mixCollHash(hash, n)) };
+}
+
+/// (hash-combine x y) — à la boost::hash_combine
+pub fn hashCombineFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash-combine", .{args.len});
+    const x: i32 = switch (args[0]) {
+        .integer => |n| @truncate(n),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "hash-combine expects integer, got {s}", .{@tagName(args[0])}),
+    };
+    const y_hash: i32 = @truncate(predicates_mod.computeHash(args[1]));
+    // a la boost: seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2)
+    var seed: i32 = x;
+    seed ^= y_hash +% @as(i32, @bitCast(@as(u32, 0x9e3779b9))) +% (seed << 6) +% @as(i32, @intCast(@as(u32, @bitCast(seed)) >> 2));
+    return Value{ .integer = @as(i64, seed) };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "gensym",
@@ -440,6 +549,34 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Return true if x is a map entry.",
         .arglists = "([x])",
         .added = "1.9",
+    },
+    .{
+        .name = "mix-collection-hash",
+        .func = mixCollectionHashFn,
+        .doc = "Mix final collection hash for ordered or unordered collections. hash-basis is the combined collection hash, count is the number of elements included in the basis.",
+        .arglists = "([hash-basis count])",
+        .added = "1.6",
+    },
+    .{
+        .name = "hash-ordered-coll",
+        .func = hashOrderedCollFn,
+        .doc = "Returns the hash code, consistent with =, for an external ordered collection implementing Iterable.",
+        .arglists = "([coll])",
+        .added = "1.6",
+    },
+    .{
+        .name = "hash-unordered-coll",
+        .func = hashUnorderedCollFn,
+        .doc = "Returns the hash code, consistent with =, for an external unordered collection implementing Iterable.",
+        .arglists = "([coll])",
+        .added = "1.6",
+    },
+    .{
+        .name = "hash-combine",
+        .func = hashCombineFn,
+        .doc = "Utility function for combining hash values.",
+        .arglists = "([x y])",
+        .added = "1.2",
     },
 };
 

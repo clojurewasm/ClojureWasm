@@ -329,11 +329,11 @@ vars:
     "group-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "halt-when": {type: function, status: done}
     hash: {type: function, status: done, note: "Zig builtin"}
-    "hash-combine": {type: function, status: todo}
+    "hash-combine": {type: function, status: done}
     "hash-map": {type: function, status: done, note: "Zig builtin"}
-    "hash-ordered-coll": {type: function, status: todo}
+    "hash-ordered-coll": {type: function, status: done}
     "hash-set": {type: function, status: done, note: "Zig builtin"}
-    "hash-unordered-coll": {type: function, status: todo}
+    "hash-unordered-coll": {type: function, status: done}
     "ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "identical?": {type: function, status: done, note: "Zig builtin"}
     identity: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -414,7 +414,7 @@ vars:
     methods: {type: function, status: done, note: builtin (upstream is pure clj)}
     min: {type: function, status: done, note: "Zig builtin"}
     "min-key": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "mix-collection-hash": {type: function, status: todo}
+    "mix-collection-hash": {type: function, status: done}
     mod: {type: function, status: done, note: "VM intrinsic opcode"}
     munge: {type: function, status: todo}
     name: {type: function, status: done, note: "Zig builtin"}

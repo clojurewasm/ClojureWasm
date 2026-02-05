@@ -343,7 +343,7 @@ pub fn hashFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .integer = computeHash(args[0]) };
 }
 
-fn computeHash(v: Value) i64 {
+pub fn computeHash(v: Value) i64 {
     return switch (v) {
         .nil => 0,
         .boolean => |b| if (b) @as(i64, 1231) else @as(i64, 1237),

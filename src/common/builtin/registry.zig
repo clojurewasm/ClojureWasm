@@ -161,8 +161,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 237 + 4 (add-watch, remove-watch, set-validator!, get-validator)
-    try std.testing.expectEqual(241, builtin_count);
+    // 241 + 4 (mix-collection-hash, hash-ordered-coll, hash-unordered-coll, hash-combine)
+    try std.testing.expectEqual(245, builtin_count);
 }
 
 test "comptime lookup finds +" {

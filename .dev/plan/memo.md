@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D5
-- Coverage: 470/703 clojure.core vars done
+- Next task: D6
+- Coverage: 474/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -58,14 +58,14 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D5: Hashing — hash-combine, hash-ordered-coll, hash-unordered-coll, mix-collection-hash.
+D6: refer-clojure + ns enhancements — refer-clojure with :exclude.
 
 ## Previous Task
 
-D4 completed: Atom watchers & validators — 4 new builtins.
-- add-watch, remove-watch, set-validator!, get-validator
-- Validator throws catchable UserException (ex-info format)
-- Status: 470 done, 131 skip, 102 todo
+D5 completed: Hashing functions — 4 new builtins.
+- mix-collection-hash, hash-ordered-coll, hash-unordered-coll, hash-combine
+- Murmur3 mixCollHash/fmix matching JVM Clojure, boost hash-combine
+- Status: 474 done, 131 skip, 98 todo
 
 D2 completed: Dynamic vars batch — 27 vars registered.
 - 21 dynamic vars in registerBuiltins (print, IO, reader, misc)
