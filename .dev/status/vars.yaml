@@ -402,7 +402,7 @@ vars:
     "map-indexed": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "map?": {type: function, status: done, note: "Zig builtin"}
     mapcat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    mapv: {type: function, status: done, note: "UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent\\!"}
+    mapv: {type: function, status: done, note: "core.clj with transient"}
     max: {type: function, status: done, note: "Zig builtin"}
     "max-key": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     memfn: {type: macro, status: skip, note: JVM interop}
@@ -674,9 +674,9 @@ vars:
     "unsigned-bit-shift-right": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     update: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "update-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "update-keys": {type: function, status: done, note: core.clj reduce-kv based}
+    "update-keys": {type: function, status: done, note: "core.clj with transient"}
     "update-proxy": {type: function, status: skip, note: JVM interop}
-    "update-vals": {type: function, status: done, note: core.clj reduce-kv based}
+    "update-vals": {type: function, status: done, note: "core.clj with transient"}
     "uri?": {type: function, status: skip, note: "no URI type"}
     use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
     "uuid?": {type: function, status: skip, note: "no UUID type"}

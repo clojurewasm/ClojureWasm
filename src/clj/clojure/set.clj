@@ -79,8 +79,10 @@
 
 (defn map-invert
   [m]
-  ;; UPSTREAM-DIFF: no transient/persistent!; uses reduce-kv with plain assoc
-  (reduce-kv (fn [m k v] (assoc m v k)) {} m))
+  (persistent!
+   (reduce-kv (fn [m k v] (assoc! m v k))
+              (transient {})
+              m)))
 
 (defn join
   ([xrel yrel]

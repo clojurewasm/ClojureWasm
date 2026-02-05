@@ -22,8 +22,8 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. ~~20.1: Transient collections~~ — DONE (6 new vars + transient already counted)
-2. 20.2: Core.clj transient alignment (update-vals, update-keys, mapv, set fns → use transient)
+1. ~~20.1: Transient collections~~ — DONE
+2. ~~20.2: Core.clj transient alignment~~ — DONE
 3. 20.3: Chunked sequences — types + builtins (chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?) — 7 vars
 4. 20.4: Core.clj chunked seq paths (map, filter, doseq → chunked optimization)
 5. 20.5: Sorted-map-by, sorted-set-by with custom comparators — 2 vars
@@ -31,21 +31,22 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-20.2: Core.clj transient alignment
+20.3: Chunked sequences — types + builtins
 
-Replace UPSTREAM-DIFF implementations with transient-using upstream versions:
-- update-vals, update-keys (core.clj) — use transient/persistent!
-- mapv (core.clj) — use transient/persistent!
-- clojure.set functions — use transient/persistent!
+Design:
+- Add ArrayChunk (immutable chunk), ChunkBuffer (mutable builder), ChunkedCons (chunk + rest)
+- Builtins: chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?
+- ChunkBuffer: mutable array builder, finalized via (chunk buf) → ArrayChunk
+- ChunkedCons: first-chunk (ArrayChunk) + rest-seq (Value) — the chunked lazy-seq
+- chunked-seq? returns true for ChunkedCons
 
 ## Previous Task
 
-20.1 completed: Transient collections
-- Added TransientVector, TransientArrayMap, TransientHashSet types
-- Added transient_vector, transient_map, transient_set Value variants
-- 7 builtins: transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
+20.2 completed: Core.clj transient alignment
+- update-vals, update-keys → transient/persistent! (removed UPSTREAM-DIFF)
+- mapv → transient/persistent! (1-arity)
+- clojure.set/map-invert → transient/persistent!
 - Both VM + TreeWalk verified
-- Coverage: 504 → 510 done, 200 → 193 skip
 
 ## Completed Phases (reverse chronological)
 

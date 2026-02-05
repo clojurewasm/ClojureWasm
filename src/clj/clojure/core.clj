@@ -1118,21 +1118,22 @@
              (if (<= (k item) (k best)) item best))
            (min-key k x y) more)))
 
-;; UPSTREAM-DIFF: no transient/persistent!
 (defn update-vals
   [m f]
   (with-meta
-    (reduce-kv (fn [acc k v] (assoc acc k (f v)))
-               {} m)
+    (persistent!
+     (reduce-kv (fn [acc k v] (assoc! acc k (f v)))
+                (transient {})
+                m))
     (meta m)))
 
-;; UPSTREAM-DIFF: no transient/persistent!
 (defn update-keys
   [m f]
-  (with-meta
-    (reduce-kv (fn [acc k v] (assoc acc (f k) v))
-               {} m)
-    (meta m)))
+  (let [ret (persistent!
+             (reduce-kv (fn [acc k v] (assoc! acc (f k) v))
+                        (transient {})
+                        m))]
+    (with-meta ret (meta m))))
 
 (defn ffirst [x] (first (first x)))
 
@@ -1484,9 +1485,8 @@
   of second items in each coll, until any one of the colls is
   exhausted."
   ([f coll]
-   (vec (map f coll))))
-
-;; UPSTREAM-DIFF: uses (vec (map ...)) instead of transient/persistent!
+   (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)
+       persistent!)))
 
 (defmacro time
   "Evaluates expr and prints the time it took. Returns the value of expr."
