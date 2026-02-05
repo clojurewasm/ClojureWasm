@@ -13,9 +13,25 @@
 ; Author: Frantisek Sodomka, Robert Lachlan
 
 (ns clojure.test-clojure.multimethods
-  ;; CLJW: removed clojure.test-helper import (with-var-roots not available)
+  ;; CLJW: replaced clojure.test-helper import with inline with-var-roots impl
   (:use clojure.test)
   (:require [clojure.set :as set]))
+
+;; CLJW: inline with-var-roots from upstream clojure.test-helper
+(defn- set-var-roots [maplike]
+  (doseq [[v val] maplike]
+    (alter-var-root v (fn [_] val))))
+
+(defn- with-var-roots* [root-map f]
+  (let [originals (doall (map (fn [[v _]] [v (deref v)]) root-map))]
+    (set-var-roots root-map)
+    (try
+      (f)
+      (finally
+        (set-var-roots originals)))))
+
+(defmacro with-var-roots [root-map & body]
+  `(with-var-roots* ~root-map (fn [] ~@body)))
 
 ; http://clojure.org/multimethods
 
@@ -134,25 +150,26 @@
 ;; CLJW: JVM interop — Java class hierarchy derivation
 ;; (deftest derivation-world-bridges-to-java-inheritance ...)
 
-;; CLJW: with-var-roots not available (from clojure.test-helper)
-;; Simplified global hierarchy test without with-var-roots
 (deftest global-hierarchy-test
-  (testing "when you add some derivations..."
-    (derive ::lion ::cat)
-    (derive ::manx ::cat))
-  (testing "...isa? sees the derivations"
-    (is (isa? ::lion ::cat))
-    (is (not (isa? ::cat ::lion))))
-  (testing "... you can traverse the derivations"
-    (is (= #{::manx ::lion} (descendants ::cat)))
-    (is (= #{::cat} (parents ::manx)))
-    (is (= #{::cat} (ancestors ::manx))))
-  (testing "then, remove a derivation..."
-    (underive ::manx ::cat))
-  (testing "... traversals update accordingly"
-    (is (= #{::lion} (descendants ::cat)))
-    (is (nil? (parents ::manx)))
-    (is (nil? (ancestors ::manx)))))
+  (with-var-roots {#'clojure.core/global-hierarchy (make-hierarchy)}
+    (assert-valid-hierarchy @#'clojure.core/global-hierarchy)
+    (testing "when you add some derivations..."
+      (derive ::lion ::cat)
+      (derive ::manx ::cat)
+      (assert-valid-hierarchy @#'clojure.core/global-hierarchy))
+    (testing "...isa? sees the derivations"
+      (is (isa? ::lion ::cat))
+      (is (not (isa? ::cat ::lion))))
+    (testing "... you can traverse the derivations"
+      (is (= #{::manx ::lion} (descendants ::cat)))
+      (is (= #{::cat} (parents ::manx)))
+      (is (= #{::cat} (ancestors ::manx))))
+    (testing "then, remove a derivation..."
+      (underive ::manx ::cat))
+    (testing "... traversals update accordingly"
+      (is (= #{::lion} (descendants ::cat)))
+      (is (nil? (parents ::manx)))
+      (is (nil? (ancestors ::manx))))))
 
 (deftest basic-multimethod-test
   (testing "Check basic dispatch"

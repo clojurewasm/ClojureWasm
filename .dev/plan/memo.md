@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.10
+- Next task: 22c.11
 - Blockers: none
 
 ## Task Queue
@@ -24,7 +24,7 @@ Tier 2: Small implementation + new file ports
 - ~~22c.7: Port edn.clj (clojure.edn thin wrapper)~~
 - ~~22c.8: Port try_catch.clj (basic portable subset)~~
 - ~~22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)~~
-- 22c.10: Implement with-var-roots test helper + revive multimethods tests
+- ~~22c.10: Implement with-var-roots + heap-allocate VM + revive multimethods tests~~
 
 Tier 3: Medium implementation + new file ports
 - 22c.11: Implement eduction + IReduceInit (transducers)
@@ -38,15 +38,15 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.10)
+22c.11: Implement eduction + IReduceInit (transducers)
 
 ## Previous Task
 
-22c.9: Fix ##Inf/##NaN pr-str + float literal precision + string quote escaping
-- Float: Inf → ##Inf, -Inf → ##-Inf, NaN → ##NaN
-- Float: large values use {e} scientific notation with E (JVM compat)
-- String: pr-str now escapes ", \, \n, \t, \r inside strings
-- Restored edn.clj quoted string roundtrip test (42 assertions now)
+22c.10: Implement with-var-roots + heap-allocate VM + revive multimethods tests
+- with-var-roots: inline in multimethods.clj (set-var-roots, with-var-roots*, with-var-roots macro)
+- Fixed #'ns/name var resolution (analyzer: direct namespace lookup via env.findNamespace)
+- Fixed VM C stack overflow: heap-allocate VM struct (~1.5MB) in evalStringVM, bytecodeCallBridge
+- 9 tests, 123 assertions, both backends pass
 
 ## Handover Notes
 

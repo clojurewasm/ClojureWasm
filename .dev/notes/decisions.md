@@ -1618,3 +1618,19 @@ For REPL, per-form reader/analyzer output accumulates in the arena (acceptable t
 
 **Future**: Phase 24 may add `traceNode` to GC for proper Node collection, or use
 per-form arenas for VM (which doesn't need Nodes after compilation).
+
+## D71: Heap-Allocated VM Struct
+
+**Decision**: Always heap-allocate VM structs (via `allocator.create(VM)`) instead
+of placing them on the C call stack.
+
+**Rationale**: The VM struct is ~1.5MB due to its fixed-size operand stack
+(`[32768]Value`, Value=48 bytes). When allocated on the C call stack in
+`evalStringVM`, it consumes most of the available 8MB native stack. Nested calls
+through builtins → `callFnVal` → `bytecodeCallBridge` add additional stack frames,
+causing native stack overflow (SIGILL) for programs with enough total code.
+`bytecodeCallBridge` already heap-allocated; now `evalStringVM` and
+`EvalEngine.runVM` do the same.
+
+**Impact**: Fixes crash on larger Clojure programs (e.g., multimethods test suite).
+No performance impact — VM allocation is once per top-level form evaluation.

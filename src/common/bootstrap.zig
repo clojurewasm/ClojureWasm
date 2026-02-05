@@ -349,6 +349,9 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     if (gc != null) {
         // GC mode: GC owns all allocations. No manual retain/detach needed.
         // Don't call compiler.deinit() — GC traces FnProto internals via traceValue.
+        // Heap-allocate VM to avoid C stack overflow (VM struct is ~1.5MB).
+        const vm = env.allocator.create(VM) catch return error.CompileError;
+        defer env.allocator.destroy(vm);
         var last_value: Value = .nil;
         for (forms) |form| {
             const node = try analyzeForm(node_alloc, env, form);
@@ -358,7 +361,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             compiler.compile(node) catch return error.CompileError;
             compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
-            var vm = VM.initWithEnv(allocator, env);
+            vm.* = VM.initWithEnv(allocator, env);
             vm.gc = gc;
             last_value = vm.run(&compiler.chunk) catch return error.EvalError;
         }
@@ -403,8 +406,13 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         }
         if (detached.fn_objects.len > 0) allocator.free(detached.fn_objects);
 
-        var vm = VM.initWithEnv(allocator, env);
-        defer vm.deinit();
+        // Heap-allocate VM to avoid C stack overflow (VM struct is ~1.5MB).
+        const vm = env.allocator.create(VM) catch return error.CompileError;
+        vm.* = VM.initWithEnv(allocator, env);
+        defer {
+            vm.deinit();
+            env.allocator.destroy(vm);
+        }
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
 
         const vm_fns = vm.detachFnAllocations();

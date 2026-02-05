@@ -1453,10 +1453,19 @@ pub const Analyzer = struct {
         const ns = env.current_ns orelse {
             return self.analysisError(.syntax_error, "var requires a current namespace", form);
         };
-        const the_var = if (sym.ns) |ns_name|
-            ns.resolveQualified(ns_name, sym.name)
-        else
-            ns.resolve(sym.name);
+        const the_var = blk: {
+            if (sym.ns) |ns_name| {
+                // Try current namespace's aliases/mappings first
+                if (ns.resolveQualified(ns_name, sym.name)) |v| break :blk v;
+                // Try direct namespace lookup in env (for #'clojure.core/name etc.)
+                if (env.findNamespace(ns_name)) |target_ns| {
+                    if (target_ns.resolve(sym.name)) |v| break :blk v;
+                }
+                break :blk @as(?*var_mod.Var, null);
+            } else {
+                break :blk ns.resolve(sym.name);
+            }
+        };
         if (the_var) |v| {
             return self.makeConstant(.{ .var_ref = v });
         }

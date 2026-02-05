@@ -62,11 +62,16 @@ pub const EvalEngine = struct {
         try compiler.compile(n);
         try compiler.chunk.emitOp(.ret);
 
-        var vm = if (self.env) |env|
+        // Heap-allocate VM to avoid C stack overflow (VM struct is ~1.5MB).
+        const vm = try self.allocator.create(VM);
+        defer {
+            vm.deinit();
+            self.allocator.destroy(vm);
+        }
+        vm.* = if (self.env) |env|
             VM.initWithEnv(self.allocator, env)
         else
             VM.init(self.allocator);
-        defer vm.deinit();
         return vm.run(&compiler.chunk);
     }
 
