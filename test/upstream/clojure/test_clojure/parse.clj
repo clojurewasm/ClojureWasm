@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/parse.clj
 ;; Upstream lines: 102
-;; CLJW markers: 9
+;; CLJW markers: 12
 
 ;; CLJW: removed (:require clojure.test.check ...) and (:import java.util.UUID) — not available
 (ns clojure.test-clojure.parse
@@ -64,7 +64,15 @@
 
 ;; CLJW: test-gen-parse-double skipped — needs clojure.test.check (generative testing library)
 
-;; CLJW: test-parse-uuid skipped — no parse-uuid implementation
+;; CLJW: adapted — UUID/randomUUID replaced with hardcoded valid UUID string
+(deftest test-parse-uuid
+  (is (parse-uuid "550e8400-e29b-41d4-a716-446655440000"))
+  (is (nil? (parse-uuid "BOGUS"))) ;; nil on invalid uuid string
+  (are [s] ;; throw on invalid type (not string)
+    ;; CLJW: adapted — Throwable → Exception
+       (try (parse-uuid s) (is false) (catch Exception _ (is true)))
+    123
+    nil))
 
 (deftest test-parse-boolean
   (is (identical? true (parse-boolean "true")))

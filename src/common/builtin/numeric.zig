@@ -323,6 +323,37 @@ fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .float = val };
 }
 
+/// (parse-uuid s) — Parses string as UUID, returns the UUID string if valid, nil if not.
+/// Throws on non-string input. UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+fn parseUuidFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-uuid", .{args.len});
+    const s = switch (args[0]) {
+        .string => |str| str,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "parse-uuid expects a string argument", .{}),
+    };
+    if (isValidUuid(s)) {
+        return Value{ .string = s };
+    }
+    return .nil;
+}
+
+/// Validate UUID format: 8-4-4-4-12 hex digits with dashes.
+fn isValidUuid(s: []const u8) bool {
+    if (s.len != 36) return false;
+    // Check dash positions: 8, 13, 18, 23
+    if (s[8] != '-' or s[13] != '-' or s[18] != '-' or s[23] != '-') return false;
+    // Check all other positions are hex digits
+    for (s, 0..) |c, i| {
+        if (i == 8 or i == 13 or i == 18 or i == 23) continue;
+        if (!isHexDigit(c)) return false;
+    }
+    return true;
+}
+
+fn isHexDigit(c: u8) bool {
+    return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F');
+}
+
 /// (__pow base exp) — returns base raised to the power of exp (as double).
 pub fn powFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __pow", .{args.len});
@@ -581,6 +612,13 @@ pub const builtins = [_]BuiltinDef{
         .name = "parse-double",
         .func = &parseDoubleFn,
         .doc = "Parses the string argument as a double, returning nil if not valid.",
+        .arglists = "([s])",
+        .added = "1.11",
+    },
+    .{
+        .name = "parse-uuid",
+        .func = &parseUuidFn,
+        .doc = "Parses the string argument as a UUID. Returns the UUID if valid, nil if not.",
         .arglists = "([s])",
         .added = "1.11",
     },

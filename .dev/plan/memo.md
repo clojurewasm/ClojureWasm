@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
-- Coverage: 522/704 clojure.core vars done (0 todo, 181 skip)
-- Next task: 22c.6
+- Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
+- Next task: 22c.7
 - Blockers: none
 
 ## Task Queue
@@ -20,7 +20,7 @@ Tier 1: Revive skipped tests (features already implemented)
 
 Tier 2: Small implementation + new file ports
 - ~~22c.5: Implement find-keyword (F80) + revive keywords.clj test~~
-- 22c.6: Implement parse-uuid + revive parse.clj test
+- ~~22c.6: Implement parse-uuid + revive parse.clj test~~
 - 22c.7: Port edn.clj (clojure.edn thin wrapper)
 - 22c.8: Port try_catch.clj (basic portable subset)
 - 22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)

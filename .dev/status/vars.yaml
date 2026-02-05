@@ -457,7 +457,7 @@ vars:
     "parse-boolean": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "parse-double": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-long": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "parse-uuid": {type: function, status: skip, note: no UUID type}
+    "parse-uuid": {type: function, status: done, note: no UUID type}
     partial: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     partition: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "partition-all": {type: function, status: done, note: "core.clj like partition but includes trailing"}
