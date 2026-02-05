@@ -1575,3 +1575,23 @@ always see the Var bindings from their defining namespace. Our runtime-resolved 
 caused cross-namespace shadowing — e.g. `(deftest walk ...)` created a `walk` var that
 shadowed `clojure.walk/walk` when called from within clojure.walk functions. This
 namespace isolation is fundamental to Clojure's module system semantics.
+
+## D69: Mark-Sweep GC Allocator (Phase 23)
+
+**Decision**: Implement `MarkSweepGc` in `src/common/gc.zig` using HashMap-based
+allocation tracking rather than intrusive linked lists.
+
+**Architecture**:
+- `gc.zig`: `MarkSweepGc` wraps a backing `std.mem.Allocator`
+- Tracks all allocations in `AutoArrayHashMapUnmanaged(usize, AllocInfo)` keyed by pointer address
+- Provides `std.mem.Allocator` interface (alloc/resize/remap/free vtable) for runtime use
+- Provides `GcStrategy` interface (alloc/collect/shouldCollect/stats vtable)
+- `markPtr(ptr)`: marks a tracked allocation as live
+- `sweep()`: frees all unmarked allocations, resets marks for next cycle
+- HashMap uses backing allocator (not GC allocator) to avoid circular dependency
+- Allocation threshold controls `shouldCollect()` trigger
+
+**Rationale**: HashMap-based tracking is simpler and safer than intrusive linked lists
+(no pointer arithmetic, no alignment padding). Performance can be optimized in Phase 24
+if needed. The `std.mem.Allocator` wrapper enables drop-in replacement for the existing
+`ArenaGc.allocator()` throughout the runtime.

@@ -22,33 +22,31 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 23.1: GcAllocator core — mark-sweep allocator with allocation tracking
-2. 23.2: Value tracing — comptime-verified traceValue for all Value variants
-3. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
-4. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-5. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-6. 23.6: Verification — all tests pass, REPL memory bounded
+1. 23.2: Value tracing — comptime-verified traceValue for all Value variants
+2. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
+3. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+4. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+5. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-23.1: GcAllocator core — mark-sweep allocator with allocation tracking
-- Create src/native/gc/mark_sweep.zig
-- Implement GcStrategy vtable (alloc, collect, shouldCollect, stats)
-- Track allocations in intrusive linked list (GcHeader prepended to each object)
-- Mark phase: traverse from root set, set mark bit
-- Sweep phase: free all unmarked, reset mark bits
-- Allocation threshold for shouldCollect()
-- Unit tests for basic alloc/collect cycle
+23.2: Value tracing — comptime-verified traceValue for all Value variants
+- Add `traceValue(gc: *MarkSweepGc, val: Value) void` function
+- For each Value variant, mark all heap-allocated sub-pointers
+- Use comptime switch to ensure exhaustive coverage (compile error on new variant)
+- Recursive: e.g. vector traces each element, map traces all key-value pairs
+- Handle cycles in lazy-seq (guard against infinite recursion)
+- Unit tests: trace a value graph, sweep, verify only reachable survive
 
 ## Previous Task
 
-Phase 22 complete: 4 test files ported (36 tests, 289 assertions)
-- 22.1: transients (4 tests, 29 assertions)
-- 22.5: multimethods (9 tests, 102 assertions)
-- 22.6: transducers (14 tests, 90 assertions)
-- 22.7: vectors (9 tests, 68 assertions)
-- Major fixes: 15 transducer forms, multi-arity map/mapv, vector compare,
-  coll?/sequential? predicates, reduce-kv vectors, collectSeqItems expansion
+23.1: GcAllocator core — mark-sweep allocator with allocation tracking (D69)
+- Added MarkSweepGc to src/common/gc.zig
+- HashMap-based tracking (AutoArrayHashMapUnmanaged keyed by ptr address)
+- std.mem.Allocator vtable (alloc/resize/remap/free) for runtime use
+- GcStrategy vtable for collect/shouldCollect/stats
+- markPtr/sweep API, allocation threshold
+- 10 unit tests: init, alloc tracking, mark+sweep, multi-cycle, free, threshold
 
 ## Completed Phases (reverse chronological)
 
