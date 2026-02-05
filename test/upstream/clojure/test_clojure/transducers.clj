@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/transducers.clj
 ;; Upstream lines: 410
-;; CLJW markers: 8
+;; CLJW markers: 11
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -120,7 +120,50 @@
 
 ;; CLJW: skipped test-sequence-multi-xform — requires TransformerIterator.createMulti (JVM)
 
-;; CLJW: skipped test-eduction, test-eduction-completion — eduction not implemented (needs IReduceInit)
+;; CLJW: eduction now implemented via sequence (eager), tests revived
+(deftest test-eduction
+  (testing "one xform"
+    (is (= [1 2 3 4 5]
+           (eduction (map inc) (range 5)))))
+  (testing "multiple xforms"
+    (is (= ["2" "4"]
+           (eduction (map inc) (filter even?) (map str) (range 5)))))
+  (testing "materialize at the end"
+    (is (= [1 1 1 1 2 2 2 3 3 4]
+           (->> (range 5)
+                (eduction (mapcat range) (map inc))
+                sort)))
+    ;; CLJW: to-array is JVM interop; use vec directly
+    (is (= [1 1 2 1 2 3 1 2 3 4]
+           (vec (->> (range 5)
+                     (eduction (mapcat range) (map inc))))))
+    (is (= {1 4, 2 3, 3 2, 4 1}
+           (->> (range 5)
+                (eduction (mapcat range) (map inc))
+                frequencies)))
+    (is (= ["drib" "god" "hsif" "kravdraa" "tac"]
+           (->> ["cat" "dog" "fish" "bird" "aardvark"]
+                (eduction (map clojure.string/reverse))
+                (sort-by first)))))
+  (testing "expanding transducer with nils"
+    (is (= '(1 2 3 nil 4 5 6 nil)
+           (eduction cat [[1 2 3 nil] [4 5 6 nil]])))))
+
+(deftest test-eduction-completion
+  (testing "eduction completes inner xformed reducing fn"
+    (is (= [[0 1 2] [3 4 5] [6 7]]
+           (into []
+                 (comp cat (partition-all 3))
+                 (eduction (partition-all 5) (range 8))))))
+  (testing "outer reducing fn completed only once"
+    (let [counter (atom 0)
+          ;; outer rfn
+          rf      (completing conj #(do (swap! counter inc)
+                                        (vec %)))
+          coll    (eduction  (map inc) (range 5))
+          res     (transduce (map str) rf [] coll)]
+      (is (= 1 @counter))
+      (is (= ["1" "2" "3" "4" "5"] res)))))
 
 (deftest test-run!
   (is (nil? (run! identity [1])))

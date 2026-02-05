@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.11
+- Next task: 22c.12
 - Blockers: none
 
 ## Task Queue
@@ -27,7 +27,7 @@ Tier 2: Small implementation + new file ports
 - ~~22c.10: Implement with-var-roots + heap-allocate VM + revive multimethods tests~~
 
 Tier 3: Medium implementation + new file ports
-- 22c.11: Implement eduction + IReduceInit (transducers)
+- ~~22c.11: Implement eduction + sort-by/compare fix (transducers)~~
 - 22c.12: Implement iteration function (sequences)
 - 22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
 - 22c.14: Port ns_libs.clj
@@ -38,15 +38,16 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-22c.11: Implement eduction + IReduceInit (transducers)
+22c.12: Implement iteration function (sequences)
 
 ## Previous Task
 
-22c.10: Implement with-var-roots + heap-allocate VM + revive multimethods tests
-- with-var-roots: inline in multimethods.clj (set-var-roots, with-var-roots*, with-var-roots macro)
-- Fixed #'ns/name var resolution (analyzer: direct namespace lookup via env.findNamespace)
-- Fixed VM C stack overflow: heap-allocate VM struct (~1.5MB) in evalStringVM, bytecodeCallBridge
-- 9 tests, 123 assertions, both backends pass
+22c.11: Implement eduction + sort-by/compare fix (transducers)
+- eduction: eager sequence wrapper (UPSTREAM-DIFF: no deftype, uses sequence)
+- sort-by fix: support fn_val/multi_fn/keyword as keyfn (was builtin_fn only)
+- compareValues fix: add char comparison support (was missing → silent sort failure)
+- Revived test-eduction and test-eduction-completion in transducers.clj
+- 16 tests, 100 assertions, both backends pass
 
 ## Handover Notes
 

@@ -1692,6 +1692,14 @@
   ([xform coll & colls]
    (or (seq (into [] xform (apply map vector (cons coll colls)))) ())))
 
+;; UPSTREAM-DIFF: eduction returns eager sequence (upstream uses deftype Eduction + IReduceInit)
+(defn eduction
+  "Returns a reducible/iterable application of the transducers
+  to the items in coll. Transducers are applied in order as if
+  combined with comp."
+  [& xforms]
+  (sequence (apply comp (butlast xforms)) (last xforms)))
+
 ;; === Pure Clojure additions ===
 
 (defn random-sample

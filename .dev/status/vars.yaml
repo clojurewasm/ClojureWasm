@@ -264,7 +264,7 @@ vars:
     drop: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
-    eduction: {type: function, status: skip, note: needs IReduceInit protocol}
+    eduction: {type: function, status: done, note: needs IReduceInit protocol, notes: 'UPSTREAM-DIFF: eager sequence wrapper (no deftype)'}
     empty: {type: function, status: done, note: "Zig builtin"}
     "empty?": {type: function, status: done, note: "Zig builtin"}
     ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}

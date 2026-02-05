@@ -878,6 +878,11 @@ pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
         return std.math.order(fa, fb);
     }
 
+    // chars: compare by code point
+    if (a == .char and b == .char) {
+        return std.math.order(a.char, b.char);
+    }
+
     // strings
     if (a == .string and b == .string) {
         return std.mem.order(u8, a.string, b.string);
@@ -990,6 +995,7 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
     for (items, 0..) |item, i| {
         keys[i] = switch (keyfn) {
             .builtin_fn => |func| try func(allocator, &.{item}),
+            .fn_val, .multi_fn, .keyword => try bootstrap.callFnVal(allocator, keyfn, &.{item}),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "sort-by expects a function as keyfn, got {s}", .{@tagName(keyfn)}),
         };
     }
