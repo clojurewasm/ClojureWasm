@@ -45,6 +45,8 @@ pub const VMError = error{
     IndexError,
     ValueError,
     IoError,
+    AnalyzeError,
+    EvalError,
 };
 
 const STACK_MAX: usize = 256 * 128;
@@ -572,7 +574,7 @@ pub const VM = struct {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.Overflow, error.UserException,
             error.ArithmeticError, error.IndexError, error.ValueError,
-            error.IoError => true,
+            error.IoError, error.AnalyzeError, error.EvalError => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,
             error.InvalidInstruction => false,
         };

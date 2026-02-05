@@ -35,6 +35,8 @@ pub const TreeWalkError = error{
     ValueError,
     ArithmeticError,
     IoError,
+    AnalyzeError,
+    EvalError,
 };
 
 const MAX_LOCALS: usize = 256;
@@ -959,7 +961,8 @@ pub const TreeWalk = struct {
         return switch (e) {
             error.TypeError, error.ArityError, error.UndefinedVar,
             error.UserException, error.IndexError,
-            error.ValueError, error.ArithmeticError, error.IoError => true,
+            error.ValueError, error.ArithmeticError, error.IoError,
+            error.AnalyzeError, error.EvalError => true,
             error.StackOverflow, error.OutOfMemory => false,
         };
     }
