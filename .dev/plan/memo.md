@@ -17,24 +17,25 @@ Session handover document. Read at session start.
 | 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream             |
 | 22    | Test Porting Expansion   | done    | multimethods, transducers, transients, vectors  |
 | 23    | Production GC            | done    | Replace arena allocator                         |
-| 22b   | Test Porting Round 2     | pending | keywords, printer, protocols, math (~68 tests)  |
+| 22b   | Test Porting Round 2     | done    | keywords, printer, fn, parse, math, errors       |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT                  |
 | 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT                        |
 
 ## Task Queue
 
-Tier 2 — Port + implement (new namespace or feature):
-1. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
+Phase 22b complete. All actionable tasks done, rest deferred.
+Next: Phase 24 (Optimization)
 
-Deferred/skipped:
+Deferred/skipped (blocked on protocol/fixture support):
 - 22b.4 (test.clj) deferred — needs test-ns-hook/custom report/test-all-vars
 - 22b.5 (test_fixtures.clj) deferred — needs use-fixtures (not implemented)
 - 22b.6 (try_catch.clj) skipped — entirely JVM-specific (ReflectorTryCatchFixture)
 - 22b.8 (protocols.clj) deferred — defprotocol/defrecord VM-only, most tests JVM interop
+- 22b.11 (data.clj) deferred — needs clojure.data which requires defprotocol
 
 ## Current Task
 
-22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
+Phase 22b wrap-up: update roadmap, plan Phase 24
 
 ## Previous Task
 
