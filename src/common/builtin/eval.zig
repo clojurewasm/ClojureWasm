@@ -155,6 +155,42 @@ pub fn macroexpandFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// load-string
+// ============================================================
+
+/// (load-string s)
+/// Sequentially read and evaluate the set of forms contained in the string.
+pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to load-string", .{args.len});
+    const s = switch (args[0]) {
+        .string => |str| str,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-string expects a string, got {s}", .{@tagName(args[0])}),
+    };
+    if (s.len == 0) return .nil;
+
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+
+    var reader = Reader.init(allocator, s);
+    var result: Value = .nil;
+    while (true) {
+        const form_opt = reader.read() catch return error.ReadError;
+        const form = form_opt orelse break;
+        const val = macro.formToValue(allocator, form) catch return error.ReadError;
+        const eval_form = macro.valueToForm(allocator, val) catch return error.EvalError;
+
+        if (isDoForm(eval_form)) {
+            const body = eval_form.data.list[1..];
+            for (body) |sub_form| {
+                result = try evalOneForm(allocator, env, sub_form);
+            }
+        } else {
+            result = try evalOneForm(allocator, env, eval_form);
+        }
+    }
+    return result;
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -178,6 +214,13 @@ pub const builtins = [_]BuiltinDef{
         .func = macroexpand1Fn,
         .doc = "If form represents a macro form, returns its expansion, else returns form.",
         .arglists = "([form])",
+        .added = "1.0",
+    },
+    .{
+        .name = "load-string",
+        .func = loadStringFn,
+        .doc = "Sequentially read and evaluate the set of forms contained in the string.",
+        .arglists = "([s])",
         .added = "1.0",
     },
     .{

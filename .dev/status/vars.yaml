@@ -385,8 +385,8 @@ vars:
     "list?": {type: function, status: done, note: "Zig builtin"}
     load: {type: function, status: done}
     "load-file": {type: var, status: done, note: 'Zig builtin, reads + evals file'}
-    "load-reader": {type: function, status: todo}
-    "load-string": {type: function, status: todo}
+    "load-reader": {type: function, status: skip, note: needs Reader type}
+    "load-string": {type: function, status: done}
     "loaded-libs": {type: function, status: done}
     locking: {type: macro, status: todo}
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -517,8 +517,8 @@ vars:
     "re-matches": {type: function, status: done, note: "Zig builtin"}
     "re-pattern": {type: function, status: done, note: "Zig builtin"}
     "re-seq": {type: function, status: done, note: "Zig builtin"}
-    read: {type: function, status: todo}
-    read+string: {type: function, status: todo}
+    read: {type: function, status: skip, note: needs PushbackReader type}
+    read+string: {type: function, status: skip, note: needs PushbackReader type}
     "read-line": {type: function, status: done, note: "Zig builtin"}
     "read-string": {type: function, status: done, note: "Zig builtin"}
     "reader-conditional": {type: function, status: todo}

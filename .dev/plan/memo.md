@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D14
-- Coverage: 492/703 clojure.core vars done
+- Next task: D15
+- Coverage: 493/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -39,7 +39,6 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 - D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
   tagged-literal?, reader-conditional, reader-conditional?
 - D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
-- D14: Read system — read, load-string, load-reader
 - D15: Chunked seqs — chunk, chunk-append, chunk-buffer, chunk-first, chunk-next,
   chunk-rest, chunked-seq?
 - D16: Concurrency stubs — promise, deliver, future, future-call, future-done?,
@@ -51,11 +50,14 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D14: Read system — read, load-string, load-reader.
+D15: Chunked seqs — chunk, chunk-append, chunk-buffer, chunk-first, chunk-next,
+chunk-rest, chunked-seq?
 
 ## Previous Task
 
-D13 completed: Misc functions — munge and namespace-munge.
+D14 completed: Read system — load-string implemented as Zig builtin.
+- load-string: read all forms + eval sequentially (Reader loop)
+- read/load-reader/read+string: skip (need PushbackReader type)
 - munge: character map replacement (Compiler.CHAR_MAP equivalent)
 - namespace-munge: replace `-` with `_`
 - Skipped: destructure (compiler handles), find-keyword (F80), re-matcher/re-groups (needs Matcher type)

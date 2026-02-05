@@ -161,8 +161,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 247 + 2 (thread-bound?, var-raw-root)
-    try std.testing.expectEqual(249, builtin_count);
+    // 249 + 1 (load-string)
+    try std.testing.expectEqual(250, builtin_count);
 }
 
 test "comptime lookup finds +" {
