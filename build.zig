@@ -19,6 +19,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    // 64MB stack to support deep VM nesting (bytecodeCallBridge recursion).
+    // Default 8MB is insufficient for deeply nested fixture/test patterns.
+    exe.stack_size = 64 * 1024 * 1024;
     b.installArtifact(exe);
 
     // Run step

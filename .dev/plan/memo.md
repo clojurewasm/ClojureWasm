@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.13
+- Next task: 22c.14
 - Blockers: none
 
 ## Task Queue
@@ -29,7 +29,7 @@ Tier 2: Small implementation + new file ports
 Tier 3: Medium implementation + new file ports
 - ~~22c.11: Implement eduction + sort-by/compare fix (transducers)~~
 - ~~22c.12: Implement iteration function (sequences)~~
-- 22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
+- ~~22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)~~
 - 22c.14: Port ns_libs.clj
 - 22c.15: Port data.clj (implement clojure.data/diff)
 - 22c.16: Port protocols.clj (portable subset)
@@ -38,14 +38,15 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
+22c.14: Port ns_libs.clj
 
 ## Previous Task
 
-22c.12: Implement iteration function (sequences)
-- iteration: lazy-seq wrapper (UPSTREAM-DIFF: no reify/IReduceInit)
-- Revived test-iteration-opts and test-iteration (portable subset) in sequences.clj
-- 54 tests, 548 assertions, both backends pass
+22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)
+- Major clojure.test rewrite: report dynamic var, use-fixtures, test-var/test-vars/test-all-vars, compose-fixtures/join-fixtures
+- Fixture storage via atom-based registry (UPSTREAM-DIFF: no alter-meta! on namespaces)
+- Ported test_fixtures.clj: 6 tests, 8 assertions, both backends pass
+- build.zig: 64MB stack for VM (bytecodeCallBridge recursion depth)
 
 ## Handover Notes
 

@@ -1156,13 +1156,13 @@ vars:
     "*report-counters*": {type: dynamic-var, status: todo}
     "*stack-trace-depth*": {type: dynamic-var, status: todo}
     "*test-out*": {type: dynamic-var, status: todo}
-    "*testing-contexts*": {type: dynamic-var, status: todo}
+    "*testing-contexts*": {type: dynamic-var, status: done}
     "*testing-vars*": {type: dynamic-var, status: todo}
     are: {type: macro, status: done}
     "assert-any": {type: function, status: todo}
     "assert-expr": {type: var, status: todo}
     "assert-predicate": {type: function, status: todo}
-    "compose-fixtures": {type: function, status: todo}
+    "compose-fixtures": {type: function, status: done}
     deftest: {type: macro, status: done}
     "deftest-": {type: macro, status: todo}
     "do-report": {type: function, status: todo}
@@ -1171,23 +1171,23 @@ vars:
     "get-possibly-unbound-var": {type: function, status: todo}
     "inc-report-counter": {type: function, status: todo}
     is: {type: macro, status: done}
-    "join-fixtures": {type: function, status: todo}
-    report: {type: dynamic-var, status: todo}
+    "join-fixtures": {type: function, status: done}
+    report: {type: dynamic-var, status: done}
     "run-all-tests": {type: function, status: todo}
     "run-test": {type: macro, status: todo}
     "run-test-var": {type: function, status: todo}
     "run-tests": {type: function, status: done}
     "set-test": {type: macro, status: todo}
     "successful?": {type: function, status: todo}
-    "test-all-vars": {type: function, status: todo}
+    "test-all-vars": {type: function, status: done}
     "test-ns": {type: function, status: todo}
-    "test-var": {type: function, status: todo}
-    "test-vars": {type: function, status: todo}
+    "test-var": {type: function, status: done}
+    "test-vars": {type: function, status: done}
     testing: {type: macro, status: done}
-    "testing-contexts-str": {type: function, status: todo}
+    "testing-contexts-str": {type: function, status: done}
     "testing-vars-str": {type: function, status: todo}
     "try-expr": {type: macro, status: todo}
-    "use-fixtures": {type: var, status: todo}
+    "use-fixtures": {type: var, status: done}
     "with-test": {type: macro, status: todo}
     "with-test-out": {type: macro, status: todo}
   clojure_uuid:
