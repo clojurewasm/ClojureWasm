@@ -1427,13 +1427,11 @@
 ;; UPSTREAM-DIFF: pure Clojure, upstream uses Double/isInfinite
 (defn infinite? [num] (or (= num ##Inf) (= num ##-Inf)))
 
-;; UPSTREAM-DIFF: returns nil for non-string instead of throwing
+;; UPSTREAM-DIFF: explicit type check (upstream uses ^String type hint)
 (defn parse-boolean [s]
-  (when (string? s)
-    (case s
-      "true" true
-      "false" false
-      nil)))
+  (when-not (string? s)
+    (throw (ex-info (str "parse-boolean expects a string argument, got: " (type s)) {})))
+  (get {"true" true "false" false} s))
 
 ;; Seq utilities
 

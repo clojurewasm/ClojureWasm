@@ -306,7 +306,7 @@ fn parseLongFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-long", .{args.len});
     const s = switch (args[0]) {
         .string => |s| s,
-        else => return Value.nil,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "parse-long expects a string argument", .{}),
     };
     const val = std.fmt.parseInt(i64, s, 10) catch return Value.nil;
     return Value{ .integer = val };
@@ -317,7 +317,7 @@ fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-double", .{args.len});
     const s = switch (args[0]) {
         .string => |s| s,
-        else => return Value.nil,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "parse-double expects a string argument", .{}),
     };
     const val = std.fmt.parseFloat(f64, s) catch return Value.nil;
     return Value{ .float = val };
@@ -770,6 +770,6 @@ test "parse-double invalid returns nil" {
     try testing.expectEqual(Value.nil, try parseDoubleFn(test_alloc, &.{Value{ .string = "xyz" }}));
 }
 
-test "parse-long non-string returns nil" {
-    try testing.expectEqual(Value.nil, try parseLongFn(test_alloc, &.{Value{ .integer = 42 }}));
+test "parse-long non-string throws TypeError" {
+    try testing.expectError(error.TypeError, parseLongFn(test_alloc, &.{Value{ .integer = 42 }}));
 }

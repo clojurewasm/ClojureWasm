@@ -23,32 +23,30 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-Tier 1 — Port existing features (no new implementation needed):
-1. 22b.8: Port protocols.clj (721 lines, 25 tests, 60% portable)
-Note: 22b.4 (test.clj) deferred — needs test-ns-hook/custom report/test-all-vars
-Note: 22b.5 (test_fixtures.clj) deferred — needs use-fixtures (not implemented)
-Note: 22b.6 (try_catch.clj) skipped — entirely JVM-specific (ReflectorTryCatchFixture)
-
 Tier 2 — Port + implement (new namespace or feature):
-2. 22b.9: Port parse.clj (102 lines, 6 tests — needs parse-long/parse-double)
-3. 22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
-4. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
+1. 22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
+2. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
+
+Deferred/skipped:
+- 22b.4 (test.clj) deferred — needs test-ns-hook/custom report/test-all-vars
+- 22b.5 (test_fixtures.clj) deferred — needs use-fixtures (not implemented)
+- 22b.6 (try_catch.clj) skipped — entirely JVM-specific (ReflectorTryCatchFixture)
+- 22b.8 (protocols.clj) deferred — defprotocol/defrecord VM-only, most tests JVM interop
 
 ## Current Task
 
-22b.8: Port protocols.clj (721 lines, 25 tests, 60% portable)
-- Read upstream test/clojure/test_clojure/protocols.clj
-- Assess portability per test
-- Port with CLJW markers
+22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
+- Read upstream test/clojure/test_clojure/math.clj
+- Implement clojure.math namespace
+- Port tests with CLJW markers
 - Both backends must pass
 
 ## Previous Task
 
-22b.7: Port fn.clj (55 lines, 1 test, 50% portable)
-- Fixed eval panic: AnalyzeError/EvalError not in VMError/TreeWalkError error sets
-- Added AnalyzeError, EvalError to VMError and TreeWalkError
-- Updated isUserError switches to mark them catchable
-- 1 test ported (7 assertions), 1 assertion skipped (fn "a" [] accepted by our analyzer)
+22b.9: Port parse.clj (102 lines, 6 tests — needs parse-long/parse-double)
+- Fixed parse-long/parse-double/parse-boolean: non-string args now throw TypeError
+- Fixed parse-boolean: invalid strings return nil (not throw)
+- 3 tests ported (46 assertions), 3 tests skipped (test.check generative, parse-uuid)
 - Both backends pass
 - Three-allocator architecture (D70): GPA + node_arena + GC confirmed stable
 
