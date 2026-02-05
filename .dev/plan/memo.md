@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C17 (special.clj)
+- Next task: C18 (other_functions.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -50,23 +50,22 @@ Remaining (resume here after CX):
 - ~~C14: string.clj~~ done (114 assertions, regex macro roundtrip fix + clj_string.zig extensions)
 - ~~C15: clojure_set.clj~~ done (111 assertions, sorted-set builtin)
 - ~~C16: metadata.clj~~ done (41 assertions, vector-as-IFn + meta preservation fixes)
-- C17: special.clj (106 lines, many F## blockers — CX should resolve most)
+- ~~C17: special.clj~~ done (13 assertions, alias resolution in macro expansion)
 - C18: other_functions.clj (401 lines)
 - C19: numbers.clj (959 lines)
 - C20: evaluation.clj (226 lines)
 
 ## Current Task
 
-C17: special.clj (106 lines)
+C18: other_functions.clj (401 lines)
 
 ## Previous Task
 
-C16 completed: metadata.clj (41 assertions, 3 tests).
-- Vector-as-IFn: `([10 20 30] 1)` → `20` in both VM and TreeWalk.
-- Set-as-IFn fix: return stored element (not lookup key) to preserve metadata.
-- `merge`/`merge-with`: now preserve first map's metadata.
-- `select-keys`: now preserves source map's metadata via `(with-meta ... (meta m))`.
-- `set/project`/`set/rename`: now preserve set metadata via `(with-meta ... (meta xrel))`.
+C17 completed: special.clj (13 assertions, 9 tests).
+- Fixed `::alias/name` keyword resolution during macro expansion.
+- `formToValueWithNs` now takes `?*const Namespace` instead of `?[]const u8`.
+- Namespace alias resolution via `getAlias()` during `formToValue` conversion.
+- Also fixes `analyzeQuote` for `'::s/x` patterns.
 
 ## Handover Notes
 

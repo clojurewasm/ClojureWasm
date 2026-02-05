@@ -15,6 +15,7 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const collections = @import("collections.zig");
 const builtin_collections = @import("builtin/collections.zig");
+const Namespace = @import("namespace.zig").Namespace;
 
 /// Convert a Form to a runtime Value (for passing to macro functions).
 /// Collections are recursively converted. Source info preserved on lists/vectors.
@@ -23,8 +24,8 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
 }
 
 /// Convert a Form to a runtime Value, resolving auto-resolved keywords
-/// using the given current namespace name.
-pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const u8) Allocator.Error!Value {
+/// using the given namespace (for both current-ns and alias resolution).
+pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace) Allocator.Error!Value {
     return switch (form.data) {
         .nil => .nil,
         .boolean => |b| .{ .boolean = b },
@@ -33,13 +34,31 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const 
         .char => |c| .{ .char = c },
         .string => |s| .{ .string = s },
         .symbol => |sym| .{ .symbol = .{ .ns = sym.ns, .name = sym.name } },
-        .keyword => |sym| .{ .keyword = .{ .ns = if (sym.auto_resolve) (current_ns orelse sym.ns) else sym.ns, .name = sym.name } },
+        .keyword => |sym| blk: {
+            if (sym.auto_resolve) {
+                if (ns) |current_ns| {
+                    if (sym.ns) |alias| {
+                        // ::alias/name — resolve alias to full namespace
+                        const resolved = current_ns.getAlias(alias);
+                        break :blk .{ .keyword = .{ .ns = if (resolved) |r| r.name else alias, .name = sym.name } };
+                    } else {
+                        // ::name — use current namespace
+                        break :blk .{ .keyword = .{ .ns = current_ns.name, .name = sym.name } };
+                    }
+                } else {
+                    // No namespace available — fallback to sym.ns
+                    break :blk .{ .keyword = .{ .ns = sym.ns, .name = sym.name } };
+                }
+            } else {
+                break :blk .{ .keyword = .{ .ns = sym.ns, .name = sym.name } };
+            }
+        },
         .list => |items| {
             const vals = try allocator.alloc(Value, items.len);
             const c_lines = try allocator.alloc(u32, items.len);
             const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValueWithNs(allocator, item, current_ns);
+                vals[i] = try formToValueWithNs(allocator, item, ns);
                 c_lines[i] = item.line;
                 c_cols[i] = item.column;
             }
@@ -58,7 +77,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const 
             const c_lines = try allocator.alloc(u32, items.len);
             const c_cols = try allocator.alloc(u16, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValueWithNs(allocator, item, current_ns);
+                vals[i] = try formToValueWithNs(allocator, item, ns);
                 c_lines[i] = item.line;
                 c_cols[i] = item.column;
             }
@@ -75,7 +94,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const 
         .map => |items| {
             const vals = try allocator.alloc(Value, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValueWithNs(allocator, item, current_ns);
+                vals[i] = try formToValueWithNs(allocator, item, ns);
             }
             const m = try allocator.create(collections.PersistentArrayMap);
             m.* = .{ .entries = vals };
@@ -84,7 +103,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, current_ns: ?[]const 
         .set => |items| {
             const vals = try allocator.alloc(Value, items.len);
             for (items, 0..) |item, i| {
-                vals[i] = try formToValueWithNs(allocator, item, current_ns);
+                vals[i] = try formToValueWithNs(allocator, item, ns);
             }
             const s = try allocator.create(collections.PersistentHashSet);
             s.* = .{ .items = vals };

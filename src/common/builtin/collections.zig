@@ -636,10 +636,29 @@ pub fn vectorFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (hash-map & kvs) — creates a map from key-value pairs.
 pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "hash-map requires even number of args, got {d}", .{args.len});
-    const entries = try allocator.alloc(Value, args.len);
-    @memcpy(entries, args);
+    // Deduplicate: later values win for duplicate keys (JVM semantics)
+    var entries = std.ArrayList(Value).empty;
+    var i: usize = 0;
+    while (i < args.len) : (i += 2) {
+        const key = args[i];
+        const val = args[i + 1];
+        // Check if key already exists, update if so
+        var found = false;
+        var j: usize = 0;
+        while (j < entries.items.len) : (j += 2) {
+            if (entries.items[j].eql(key)) {
+                entries.items[j + 1] = val;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            try entries.append(allocator, key);
+            try entries.append(allocator, val);
+        }
+    }
     const map = try allocator.create(PersistentArrayMap);
-    map.* = .{ .entries = entries };
+    map.* = .{ .entries = entries.items };
     return Value{ .map = map };
 }
 

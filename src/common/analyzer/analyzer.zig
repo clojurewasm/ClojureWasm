@@ -316,9 +316,9 @@ pub const Analyzer = struct {
         if (arg_forms.len > arg_vals.len) {
             return self.analysisError(.arity_error, "too many macro arguments", form);
         }
-        const current_ns_name = if (self.env) |env| (if (env.current_ns) |ns| ns.name else null) else null;
+        const current_ns_ptr: ?*const @import("../namespace.zig").Namespace = if (self.env) |env| (if (env.current_ns) |ns| ns else null) else null;
         for (arg_forms, 0..) |af, i| {
-            arg_vals[i] = macro.formToValueWithNs(self.allocator, af, current_ns_name) catch return error.OutOfMemory;
+            arg_vals[i] = macro.formToValueWithNs(self.allocator, af, current_ns_ptr) catch return error.OutOfMemory;
         }
 
         // Call the macro function via unified dispatch
@@ -706,8 +706,8 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "quote requires exactly 1 argument", form);
         }
 
-        const quote_ns = if (self.env) |env| (if (env.current_ns) |ns| ns.name else null) else null;
-        const val = macro.formToValueWithNs(self.allocator, items[1], quote_ns) catch return error.OutOfMemory;
+        const quote_ns_ptr: ?*const @import("../namespace.zig").Namespace = if (self.env) |env| (if (env.current_ns) |ns| ns else null) else null;
+        const val = macro.formToValueWithNs(self.allocator, items[1], quote_ns_ptr) catch return error.OutOfMemory;
 
         const quote_data = self.allocator.create(node_mod.QuoteNode) catch return error.OutOfMemory;
         quote_data.* = .{
@@ -1855,7 +1855,12 @@ pub const Analyzer = struct {
                         } else if (sym_form.data == .keyword) {
                             bind_name = sym_form.data.keyword.name;
                             if (sym_form.data.keyword.ns) |ns| {
-                                lookup_ns = ns;
+                                if (sym_form.data.keyword.auto_resolve) {
+                                    // ::alias/x in :keys — resolve alias to full namespace
+                                    lookup_ns = self.resolveAutoNs(ns);
+                                } else {
+                                    lookup_ns = ns;
+                                }
                             } else if (sym_form.data.keyword.auto_resolve) {
                                 // ::x in :keys — resolve to current namespace
                                 lookup_ns = self.resolveAutoNs(null);
