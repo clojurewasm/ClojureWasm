@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: R (require/load/ns system)
-- Next task: Plan Phase R task queue
-- Coverage: 414/712 clojure.core vars done
+- Next task: R4 (upgrade require to file-based loading)
+- Coverage: 415/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -42,13 +42,15 @@ Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
 
 ## Current Task
 
-R3: `load` + path resolution.
+R4: Upgrade `require` to file-based loading.
 
 ## Previous Task
 
-R2 completed: `load-file` builtin.
-- Added loadFileFn to file_io.zig — reads file, evals via bootstrap.evalString
-- Works with ns switching in loaded files
+R3 completed: `load` + path resolution.
+- Added loadFn to ns_ops.zig with load path infrastructure
+- Load paths module-level array (default: ["."]), loaded libs tracking
+- IoError added to both VMError and TreeWalkError error sets + isUserError
+- *ns* preserved across load calls (save/restore)
 - Both backends pass
 
 ## Handover Notes

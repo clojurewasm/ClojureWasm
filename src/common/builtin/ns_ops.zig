@@ -13,6 +13,99 @@ const bootstrap = @import("../bootstrap.zig");
 const err = @import("../error.zig");
 
 // ============================================================
+// Load path infrastructure
+// ============================================================
+
+/// Load paths for file-based namespace loading (classpath equivalent).
+/// Default: just "." (current working directory).
+var load_paths: []const []const u8 = &default_load_paths;
+const default_load_paths = [_][]const u8{"."};
+
+/// Configure load paths (called from CLI --classpath).
+pub fn setLoadPaths(paths: []const []const u8) void {
+    load_paths = paths;
+}
+
+/// Loaded libs tracking (simple set, replaces *loaded-libs* Ref).
+var loaded_libs: std.StringHashMapUnmanaged(void) = .empty;
+var loaded_libs_allocator: ?Allocator = null;
+
+pub fn initLoadTracking(allocator: Allocator) void {
+    loaded_libs_allocator = allocator;
+}
+
+pub fn isLibLoaded(name: []const u8) bool {
+    return loaded_libs.contains(name);
+}
+
+pub fn markLibLoaded(name: []const u8) !void {
+    const alloc = loaded_libs_allocator orelse return;
+    if (!loaded_libs.contains(name)) {
+        const owned = try alloc.dupe(u8, name);
+        try loaded_libs.put(alloc, owned, {});
+    }
+}
+
+// ============================================================
+// load
+// ============================================================
+
+/// (load & paths)
+/// Loads Clojure code from resources relative to load paths.
+/// Path is classpath-relative (e.g. "/clojure/string" → searches for clojure/string.clj).
+/// Saves and restores *ns*.
+pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to load", .{});
+
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+
+    for (args) |arg| {
+        const path_str = switch (arg) {
+            .string => |s| s,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "load expects string paths, got {s}", .{@tagName(arg)}),
+        };
+
+        // Strip leading slash if present
+        const resource = if (path_str.len > 0 and path_str[0] == '/')
+            path_str[1..]
+        else
+            path_str;
+
+        // Save current namespace
+        const saved_ns = env.current_ns;
+
+        // Search load paths for the file
+        var loaded = false;
+        for (load_paths) |base| {
+            // Build full path: base/resource.clj
+            var buf: [4096]u8 = undefined;
+            const full_path = std.fmt.bufPrint(&buf, "{s}/{s}.clj", .{ base, resource }) catch continue;
+
+            const cwd = std.fs.cwd();
+            if (cwd.openFile(full_path, .{})) |file| {
+                defer file.close();
+                const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+                _ = bootstrap.evalString(allocator, env, content) catch return error.EvalError;
+                loaded = true;
+                break;
+            } else |_| {
+                continue;
+            }
+        }
+
+        // Restore namespace
+        env.current_ns = saved_ns;
+        bootstrap.syncNsVar(env);
+
+        if (!loaded) {
+            return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s}.clj on load path", .{resource});
+        }
+    }
+
+    return .nil;
+}
+
+// ============================================================
 // the-ns
 // ============================================================
 
@@ -574,6 +667,13 @@ pub const builtins = [_]BuiltinDef{
         .func = useFn,
         .doc = "Like require, but also refers to each lib's namespace.",
         .arglists = "([& args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "load",
+        .func = loadFn,
+        .doc = "Loads Clojure code from resources in classpath. A path is interpreted as classpath-relative if it begins with a slash.",
+        .arglists = "([& paths])",
         .added = "1.0",
     },
 };

@@ -214,7 +214,7 @@ pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
 }
 
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.
-fn syncNsVar(env: *Env) void {
+pub fn syncNsVar(env: *Env) void {
     const ns_name = if (env.current_ns) |ns| ns.name else "user";
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
