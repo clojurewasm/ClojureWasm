@@ -24,7 +24,7 @@ Session handover document. Read at session start.
 ## Task Queue
 
 Tier 1 — Port existing features (no new implementation needed):
-1. 22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
+1. 22b.4: Port test.clj (129 lines, 14 tests, 100% portable)
 3. 22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
 4. 22b.4: Port test.clj (129 lines, 14 tests, 100% portable)
 5. 22b.5: Port test_fixtures.clj (73 lines, 5 tests, 100% portable)
@@ -39,14 +39,16 @@ Tier 2 — Port + implement (new namespace or feature):
 
 ## Current Task
 
-22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
-- Read upstream test/clojure/test_clojure/errors.clj
+22b.4: Port test.clj (129 lines, 14 tests, 100% portable)
+- Read upstream test/clojure/test_clojure/test.clj
 - Port with CLJW markers
 - Both backends must pass
 
 ## Previous Task
 
-22b.2: Port printer.clj (195 lines, 13 tests, 90% portable)
+22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
+- 3 tests ported (6 assertions), 4 JVM-specific tests skipped
+- Fixed ex-info to normalize nil data to {} (JVM ExceptionInfo behavior)
 - Implemented *print-length* and *print-level* in value.zig formatPrStr
 - Added print_readably threadlocal flag for print vs pr semantics
 - Added lazy-seq realization during printing via threadlocal allocator

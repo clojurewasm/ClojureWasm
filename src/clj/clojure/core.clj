@@ -1261,8 +1261,8 @@
 ;; Exception helpers
 
 (defn ex-info
-  ([msg data] {:__ex_info true :message msg :data data :cause nil})
-  ([msg data cause] {:__ex_info true :message msg :data data :cause cause}))
+  ([msg data] {:__ex_info true :message msg :data (or data {}) :cause nil})
+  ([msg data cause] {:__ex_info true :message msg :data (or data {}) :cause cause}))
 
 (defn ex-data [ex]
   (when (map? ex) (:data ex)))
