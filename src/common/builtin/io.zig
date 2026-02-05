@@ -7,7 +7,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Value = @import("../value.zig").Value;
+const value_mod = @import("../value.zig");
+const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
@@ -51,12 +52,18 @@ fn writeOutputByte(byte: u8) void {
 /// (println x) => nil (prints x + newline)
 /// (println x y ...) => nil (prints space-separated + newline, non-readable)
 pub fn printlnFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    value_mod.setPrintReadably(false);
+    defer {
+        value_mod.setPrintAllocator(null);
+        value_mod.setPrintReadably(true);
+    }
     var buf: [4096]u8 = undefined;
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
         const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatStr(&w) catch break;
+        v.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     writeOutputByte('\n');
@@ -67,6 +74,8 @@ pub fn printlnFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (prn x) => nil (prints readable x + newline)
 /// (prn x y ...) => nil (prints space-separated readable + newline)
 pub fn prnFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    defer value_mod.setPrintAllocator(null);
     var buf: [4096]u8 = undefined;
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
@@ -83,12 +92,18 @@ pub fn prnFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (print x) => nil (prints x, no newline)
 /// (print x y ...) => nil (prints space-separated, non-readable, no newline)
 pub fn printFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    value_mod.setPrintReadably(false);
+    defer {
+        value_mod.setPrintAllocator(null);
+        value_mod.setPrintReadably(true);
+    }
     var buf: [4096]u8 = undefined;
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
         const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatStr(&w) catch break;
+        v.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     return .nil;
@@ -98,6 +113,8 @@ pub fn printFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (pr x) => nil (prints readable x, no newline)
 /// (pr x y ...) => nil (prints space-separated readable, no newline)
 pub fn prFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    defer value_mod.setPrintAllocator(null);
     var buf: [4096]u8 = undefined;
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {

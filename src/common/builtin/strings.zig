@@ -7,7 +7,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Value = @import("../value.zig").Value;
+const value_mod = @import("../value.zig");
+const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
@@ -58,6 +59,8 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
 pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return Value{ .string = "" };
 
+    value_mod.setPrintAllocator(allocator);
+    defer value_mod.setPrintAllocator(null);
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args, 0..) |arg, i| {
@@ -173,11 +176,17 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn printStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return Value{ .string = "" };
 
+    value_mod.setPrintAllocator(allocator);
+    value_mod.setPrintReadably(false);
+    defer {
+        value_mod.setPrintAllocator(null);
+        value_mod.setPrintReadably(true);
+    }
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args, 0..) |arg, i| {
         if (i > 0) try aw.writer.writeAll(" ");
-        try arg.formatStr(&aw.writer);
+        try arg.formatPrStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
     return Value{ .string = owned };
@@ -187,6 +196,8 @@ pub fn printStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (prn-str x) => readable representation of x + newline
 /// (prn-str x y ...) => readable representations separated by space + newline
 pub fn prnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    defer value_mod.setPrintAllocator(null);
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args, 0..) |arg, i| {
@@ -202,11 +213,17 @@ pub fn prnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (println-str x) => non-readable representation of x + newline
 /// (println-str x y ...) => non-readable representations separated by space + newline
 pub fn printlnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    value_mod.setPrintAllocator(allocator);
+    value_mod.setPrintReadably(false);
+    defer {
+        value_mod.setPrintAllocator(null);
+        value_mod.setPrintReadably(true);
+    }
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args, 0..) |arg, i| {
         if (i > 0) try aw.writer.writeAll(" ");
-        try arg.formatStr(&aw.writer);
+        try arg.formatPrStr(&aw.writer);
     }
     try aw.writer.writeAll("\n");
     const owned = try aw.toOwnedSlice();

@@ -26,6 +26,126 @@ pub const ChunkedCons = collections.ChunkedCons;
 
 const testing = std.testing;
 
+// --- Print state (threadlocal for *print-length*, *print-level*, lazy-seq realization) ---
+var print_length_var: ?*const Var = null;
+var print_level_var: ?*const Var = null;
+threadlocal var print_depth: u32 = 0;
+threadlocal var print_allocator: ?Allocator = null;
+threadlocal var print_readably: bool = true;
+
+/// Initialize cached Var pointers for print settings. Call once after bootstrap.
+pub fn initPrintVars(length_v: *const Var, level_v: *const Var) void {
+    print_length_var = length_v;
+    print_level_var = level_v;
+}
+
+/// Set the allocator used for realizing lazy-seqs during printing.
+/// Call before print operations, clear with null after.
+pub fn setPrintAllocator(alloc: ?Allocator) void {
+    print_allocator = alloc;
+}
+
+/// Set readable mode for printing. false = print (unquoted strings), true = pr (quoted).
+pub fn setPrintReadably(readably: bool) void {
+    print_readably = readably;
+}
+
+/// Check *print-level*: if current depth >= level, write "#" and return true.
+fn checkPrintLevel(w: *Writer) Writer.Error!bool {
+    const level = getPrintLevel() orelse return false;
+    if (print_depth >= level) {
+        try w.writeAll("#");
+        return true;
+    }
+    return false;
+}
+
+/// Print remaining elements of a seq (cons chain, list tail, lazy-seq tail).
+/// Used by cons and chunked_cons printers.
+fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Error!void {
+    var rest = start;
+    while (true) {
+        switch (rest) {
+            .cons => |rc| {
+                if (length) |len| {
+                    if (count.* >= @as(usize, @intCast(len))) {
+                        try w.writeAll(" ...");
+                        return;
+                    }
+                }
+                try w.writeAll(" ");
+                try rc.first.formatPrStr(w);
+                count.* += 1;
+                rest = rc.rest;
+            },
+            .nil => return,
+            .list => |lst| {
+                for (lst.items) |item| {
+                    if (length) |len| {
+                        if (count.* >= @as(usize, @intCast(len))) {
+                            try w.writeAll(" ...");
+                            return;
+                        }
+                    }
+                    try w.writeAll(" ");
+                    try item.formatPrStr(w);
+                    count.* += 1;
+                }
+                return;
+            },
+            .lazy_seq => |ls| {
+                if (ls.realized) |r| {
+                    rest = r;
+                    continue;
+                } else if (print_allocator) |alloc| {
+                    const realized = ls.realize(alloc) catch {
+                        try w.writeAll(" ...");
+                        return;
+                    };
+                    rest = realized;
+                    continue;
+                } else {
+                    try w.writeAll(" ...");
+                    return;
+                }
+            },
+            .chunked_cons => |cc| {
+                var i: usize = 0;
+                while (i < cc.chunk.count()) : (i += 1) {
+                    if (length) |len| {
+                        if (count.* >= @as(usize, @intCast(len))) {
+                            try w.writeAll(" ...");
+                            return;
+                        }
+                    }
+                    try w.writeAll(" ");
+                    const elem = cc.chunk.nth(i) orelse Value.nil;
+                    try elem.formatPrStr(w);
+                    count.* += 1;
+                }
+                if (cc.more == .nil) return;
+                rest = cc.more;
+            },
+            else => {
+                try w.writeAll(" . ");
+                try rest.formatPrStr(w);
+                return;
+            },
+        }
+    }
+}
+
+fn getPrintLength() ?i64 {
+    const v = (print_length_var orelse return null).deref();
+    return if (v == .integer) v.integer else null;
+}
+
+fn getPrintLevel() ?u32 {
+    const v = (print_level_var orelse return null).deref();
+    if (v == .integer and v.integer >= 0) return @intCast(v.integer);
+    return null;
+}
+
 /// Builtin function signature: allocator + args -> Value.
 pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
 
@@ -230,7 +350,10 @@ pub const Value = union(enum) {
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
-            .nil => try w.writeAll("nil"),
+            .nil => {
+                if (print_readably) try w.writeAll("nil");
+                // Non-readable: nil => "" (empty), matching Clojure str/print semantics
+            },
             .boolean => |b| try w.writeAll(if (b) "true" else "false"),
             .integer => |n| try w.print("{d}", .{n}),
             .float => |n| {
@@ -247,19 +370,32 @@ pub const Value = union(enum) {
                 }
                 if (!has_dot) try w.writeAll(".0");
             },
-            .char => |c| switch (c) {
-                '\n' => try w.writeAll("\\newline"),
-                '\r' => try w.writeAll("\\return"),
-                ' ' => try w.writeAll("\\space"),
-                '\t' => try w.writeAll("\\tab"),
-                else => {
-                    try w.writeAll("\\");
+            .char => |c| {
+                if (!print_readably) {
+                    // Non-readable: literal character
                     var buf: [4]u8 = undefined;
                     const len = std.unicode.utf8Encode(c, &buf) catch 0;
                     try w.writeAll(buf[0..len]);
-                },
+                } else switch (c) {
+                    '\n' => try w.writeAll("\\newline"),
+                    '\r' => try w.writeAll("\\return"),
+                    ' ' => try w.writeAll("\\space"),
+                    '\t' => try w.writeAll("\\tab"),
+                    else => {
+                        try w.writeAll("\\");
+                        var buf2: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(c, &buf2) catch 0;
+                        try w.writeAll(buf2[0..len]);
+                    },
+                }
             },
-            .string => |s| try w.print("\"{s}\"", .{s}),
+            .string => |s| {
+                if (print_readably) {
+                    try w.print("\"{s}\"", .{s});
+                } else {
+                    try w.writeAll(s);
+                }
+            },
             .symbol => |sym| {
                 if (sym.ns) |ns| {
                     try w.print("{s}/{s}", .{ ns, sym.name });
@@ -275,40 +411,83 @@ pub const Value = union(enum) {
                 }
             },
             .list => |lst| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("(");
+                print_depth += 1;
                 for (lst.items, 0..) |item, i| {
                     if (i > 0) try w.writeAll(" ");
+                    if (length) |len| {
+                        if (i >= @as(usize, @intCast(len))) {
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
                     try item.formatPrStr(w);
                 }
+                print_depth -= 1;
                 try w.writeAll(")");
             },
             .vector => |vec| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("[");
+                print_depth += 1;
                 for (vec.items, 0..) |item, i| {
                     if (i > 0) try w.writeAll(" ");
+                    if (length) |len| {
+                        if (i >= @as(usize, @intCast(len))) {
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
                     try item.formatPrStr(w);
                 }
+                print_depth -= 1;
                 try w.writeAll("]");
             },
             .map => |m| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("{");
+                print_depth += 1;
                 var i: usize = 0;
+                var pair_idx: usize = 0;
                 var is_first = true;
                 while (i < m.entries.len) : (i += 2) {
+                    if (length) |len| {
+                        if (pair_idx >= @as(usize, @intCast(len))) {
+                            if (!is_first) try w.writeAll(", ");
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
                     if (!is_first) try w.writeAll(", ");
                     is_first = false;
                     try m.entries[i].formatPrStr(w);
                     try w.writeAll(" ");
                     try m.entries[i + 1].formatPrStr(w);
+                    pair_idx += 1;
                 }
+                print_depth -= 1;
                 try w.writeAll("}");
             },
             .set => |s| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("#{");
+                print_depth += 1;
                 for (s.items, 0..) |item, i| {
                     if (i > 0) try w.writeAll(" ");
+                    if (length) |len| {
+                        if (i >= @as(usize, @intCast(len))) {
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
                     try item.formatPrStr(w);
                 }
+                print_depth -= 1;
                 try w.writeAll("}");
             },
             .fn_val => try w.writeAll("#<fn>"),
@@ -348,6 +527,13 @@ pub const Value = union(enum) {
             .lazy_seq => |ls| {
                 if (ls.realized) |r| {
                     try r.formatPrStr(w);
+                } else if (print_allocator) |alloc| {
+                    // Realize lazy-seq for printing (like JVM Clojure)
+                    const realized = ls.realize(alloc) catch {
+                        try w.writeAll("#<lazy-seq>");
+                        return;
+                    };
+                    try realized.formatPrStr(w);
                 } else {
                     try w.writeAll("#<lazy-seq>");
                 }
@@ -372,49 +558,54 @@ pub const Value = union(enum) {
             .transient_map => try w.writeAll("#<TransientMap>"),
             .transient_set => try w.writeAll("#<TransientSet>"),
             .chunked_cons => |cc| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("(");
+                print_depth += 1;
+                var count: usize = 0;
                 var i: usize = 0;
+                var truncated = false;
                 while (i < cc.chunk.count()) : (i += 1) {
-                    if (i > 0) try w.writeAll(" ");
+                    if (length) |len| {
+                        if (count >= @as(usize, @intCast(len))) {
+                            truncated = true;
+                            break;
+                        }
+                    }
+                    if (count > 0) try w.writeAll(" ");
                     const elem = cc.chunk.nth(i) orelse Value.nil;
                     try elem.formatPrStr(w);
+                    count += 1;
                 }
-                if (cc.more != .nil) try w.writeAll(" ...");
+                if (!truncated and cc.more != .nil) {
+                    // Print elements from rest chunks
+                    try printSeqRest(w, cc.more, length, &count);
+                }
+                print_depth -= 1;
                 try w.writeAll(")");
             },
             .chunk_buffer => try w.writeAll("#<ChunkBuffer>"),
             .array_chunk => try w.writeAll("#<ArrayChunk>"),
             .cons => |c| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
                 try w.writeAll("(");
-                try c.first.formatPrStr(w);
-                // Print rest elements
-                var rest = c.rest;
-                while (true) {
-                    switch (rest) {
-                        .cons => |rc| {
-                            try w.writeAll(" ");
-                            try rc.first.formatPrStr(w);
-                            rest = rc.rest;
-                        },
-                        .nil => break,
-                        .list => |lst| {
-                            for (lst.items) |item| {
-                                try w.writeAll(" ");
-                                try item.formatPrStr(w);
-                            }
-                            break;
-                        },
-                        .lazy_seq => {
-                            try w.writeAll(" ...");
-                            break;
-                        },
-                        else => {
-                            try w.writeAll(" . ");
-                            try rest.formatPrStr(w);
-                            break;
-                        },
+                print_depth += 1;
+                var count: usize = 0;
+                // Check print-length for first element
+                if (length) |len| {
+                    if (count >= @as(usize, @intCast(len))) {
+                        try w.writeAll("...");
+                        print_depth -= 1;
+                        try w.writeAll(")");
+                        return;
                     }
                 }
+                try c.first.formatPrStr(w);
+                count += 1;
+                // Print rest elements
+                try printSeqRest(w, c.rest, length, &count);
+                print_depth -= 1;
                 try w.writeAll(")");
             },
         }

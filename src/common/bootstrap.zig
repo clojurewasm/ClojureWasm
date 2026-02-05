@@ -69,6 +69,14 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
     }
+
+    // Initialize print Var caches for *print-length* and *print-level*
+    const val = @import("value.zig");
+    if (core_ns.resolve("*print-length*")) |pl_var| {
+        if (core_ns.resolve("*print-level*")) |pv_var| {
+            val.initPrintVars(pl_var, pv_var);
+        }
+    }
 }
 
 /// Load and evaluate clojure/walk.clj in the given Env.
