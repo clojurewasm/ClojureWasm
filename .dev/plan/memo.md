@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: R (require/load/ns system)
 - Next task: Plan Phase D
-- Coverage: 415/712 clojure.core vars done
+- Coverage: 460/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -58,9 +58,15 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D2: Dynamic vars batch — register stub vars.
+D3: Exception & var system — ex-cause, find-var, resolve, intern, loaded-libs.
 
 ## Previous Task
+
+D2 completed: Dynamic vars batch — 27 vars registered.
+- 21 dynamic vars in registerBuiltins (print, IO, reader, misc)
+- unquote/unquote-splicing as constant vars
+- char-escape-string, char-name-string, default-data-readers in core.clj
+- Status: 460 done, 131 skip, 112 todo
 
 D1 completed: JVM-skip batch — marked 124 JVM-specific vars as skip.
 - Agents (20), Java arrays (35), Refs/STM (10), Proxy/gen-class (11)

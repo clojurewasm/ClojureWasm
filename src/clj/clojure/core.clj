@@ -1617,6 +1617,27 @@
 ;; Dynamic vars (stubs for JVM compat)
 (def ^:dynamic *warn-on-reflection* false)
 
+;; Char tables (from core_print.clj)
+(def char-escape-string
+  {\newline "\\n"
+   \tab     "\\t"
+   \return  "\\r"
+   \"       "\\\""
+   \\       "\\\\"
+   \formfeed "\\f"
+   \backspace "\\b"})
+
+(def char-name-string
+  {\newline  "newline"
+   \tab      "tab"
+   \space    "space"
+   \backspace "backspace"
+   \formfeed "formfeed"
+   \return   "return"})
+
+;; Data reader constants
+(def default-data-readers {})
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)

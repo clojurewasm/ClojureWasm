@@ -9,6 +9,7 @@ const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const env_mod = @import("../env.zig");
 const Env = env_mod.Env;
+const Value = @import("../value.zig").Value;
 
 // Domain modules
 const arithmetic = @import("arithmetic.zig");
@@ -104,6 +105,45 @@ pub fn registerBuiltins(env: *Env) !void {
     ns_var.dynamic = true;
     ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "user" } });
     try user_ns.refer("*ns*", ns_var);
+
+    // Register dynamic vars with default values
+    const dynamic_vars = .{
+        .{ "*file*", Value.nil },
+        .{ "*command-line-args*", Value.nil },
+        .{ "*e", Value.nil },
+        .{ "*flush-on-newline*", Value{ .boolean = true } },
+        .{ "*print-dup*", Value{ .boolean = false } },
+        .{ "*print-length*", Value.nil },
+        .{ "*print-level*", Value.nil },
+        .{ "*print-meta*", Value{ .boolean = false } },
+        .{ "*print-namespace-maps*", Value{ .boolean = true } },
+        .{ "*print-readably*", Value{ .boolean = true } },
+        .{ "*read-eval*", Value{ .boolean = true } },
+        .{ "*data-readers*", Value.nil },
+        .{ "*default-data-reader-fn*", Value.nil },
+        .{ "*source-path*", Value.nil },
+        .{ "*unchecked-math*", Value{ .boolean = false } },
+        .{ "*verbose-defrecords*", Value{ .boolean = false } },
+        .{ "*repl*", Value{ .boolean = false } },
+        .{ "*err*", Value.nil }, // placeholder — no Java streams
+        .{ "*in*", Value.nil }, // placeholder — no Java streams
+        .{ "*out*", Value.nil }, // placeholder — no Java streams
+    };
+    inline for (dynamic_vars) |entry| {
+        const dv = try core_ns.intern(entry[0]);
+        dv.dynamic = true;
+        dv.bindRoot(entry[1]);
+        try user_ns.refer(entry[0], dv);
+    }
+
+    // Register constant vars
+    const unquote_var = try core_ns.intern("unquote");
+    unquote_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "unquote" } });
+    try user_ns.refer("unquote", unquote_var);
+
+    const unquote_splicing_var = try core_ns.intern("unquote-splicing");
+    unquote_splicing_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "unquote-splicing" } });
+    try user_ns.refer("unquote-splicing", unquote_splicing_var);
 
     // Register clojure.string namespace builtins
     const str_ns = try env.findOrCreateNamespace("clojure.string");
