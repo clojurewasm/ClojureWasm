@@ -786,12 +786,12 @@ test "core.clj - drop" {
     try registry.registerBuiltins(&env);
     try loadCore(alloc, &env);
 
-    const result = try evalString(alloc, &env, "(drop 2 (list 1 2 3 4 5))");
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
-    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[1]);
-    try testing.expectEqual(Value{ .integer = 5 }, result.list.items[2]);
+    const result = try evalString(alloc, &env, "(vec (drop 2 (list 1 2 3 4 5)))");
+    try testing.expect(result == .vector);
+    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expectEqual(Value{ .integer = 3 }, result.vector.items[0]);
+    try testing.expectEqual(Value{ .integer = 4 }, result.vector.items[1]);
+    try testing.expectEqual(Value{ .integer = 5 }, result.vector.items[2]);
 }
 
 test "core.clj - comment" {

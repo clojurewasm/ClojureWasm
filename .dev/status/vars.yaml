@@ -141,7 +141,7 @@ vars:
     atom: {type: function, status: done, note: "Zig builtin"}
     await: {type: function, status: todo}
     "await-for": {type: function, status: todo}
-    await1: {type: function, status: done, note: "core.clj stub"}
+    await1: {type: function, status: todo}
     bases: {type: function, status: todo}
     bean: {type: function, status: todo}
     bigdec: {type: function, status: todo}

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX1 (housekeeping: remove F51, fix F24)
+- Next task: CX2 (bound? takes var_ref)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -15,7 +15,7 @@ Session handover document. Read at session start.
 Phase CX: Resolve actionable F## items before continuing test porting.
 Detailed plan: `.dev/plan/phase-cx-plan.md`
 
-- CX1: Remove F51 + Fix F24 (housekeeping)
+- ~~CX1: Remove F51 + Fix F24 (housekeeping)~~ done
 - CX2: bound? takes var_ref (F86)
 - CX3: Math/System syntax routing (F89)
 - CX4: delay proper Value type (F91)
@@ -57,14 +57,14 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX1: Housekeeping — remove F51 from checklist, fix F24 (vars.yaml accuracy).
+CX2: bound? takes var_ref (F86) — change bound? to accept #'x instead of symbol.
 
 ## Previous Task
 
-C12 completed: Re-port sequences.clj — 301 assertions (was 188).
-- Added 15 new tests: cons, not-empty, ffirst, nnext, take-nth, nthrest, nthnext, drop-last, split-at, split-with, reductions, reductions-obeys-reduced, rand-nth, shuffle, CLJ-1633, range-meta
-- Fixed lazy-seq equality semantics (empty lazy-seq = () not nil, JVM LazySeq.equiv)
-- Fixed drop to return lazy-seq (empty result = () not nil)
+CX1 completed: Housekeeping.
+- Removed F51 from checklist (shuffle implemented)
+- Fixed await1 status done→todo in vars.yaml (was never implemented)
+- Fixed bootstrap.zig drop test (lazy-seq return type from C12)
 
 ## Handover Notes
 
