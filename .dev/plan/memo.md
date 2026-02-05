@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C18 (other_functions.clj)
+- Next task: C19 (numbers.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -51,21 +51,19 @@ Remaining (resume here after CX):
 - ~~C15: clojure_set.clj~~ done (111 assertions, sorted-set builtin)
 - ~~C16: metadata.clj~~ done (41 assertions, vector-as-IFn + meta preservation fixes)
 - ~~C17: special.clj~~ done (13 assertions, alias resolution in macro expansion)
-- C18: other_functions.clj (401 lines)
+- ~~C18: other_functions.clj~~ done (245 assertions, update-vals/keys metadata fix)
 - C19: numbers.clj (959 lines)
 - C20: evaluation.clj (226 lines)
 
 ## Current Task
 
-C18: other_functions.clj (401 lines)
+C19: numbers.clj (959 lines)
 
 ## Previous Task
 
-C17 completed: special.clj (13 assertions, 9 tests).
-- Fixed `::alias/name` keyword resolution during macro expansion.
-- `formToValueWithNs` now takes `?*const Namespace` instead of `?[]const u8`.
-- Namespace alias resolution via `getAlias()` during `formToValue` conversion.
-- Also fixes `analyzeQuote` for `'::s/x` patterns.
+C18 completed: other_functions.clj (245 assertions, 14 tests).
+- Fixed `update-vals`/`update-keys` to preserve metadata via `(with-meta ... (meta m))`.
+- Skipped: ratio literals (2/3), BigDecimal (0M), test-regex-matcher (JVM Matcher).
 
 ## Handover Notes
 

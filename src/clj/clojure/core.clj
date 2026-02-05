@@ -1102,17 +1102,21 @@
              (if (<= (k item) (k best)) item best))
            (min-key k x y) more)))
 
-;; UPSTREAM-DIFF: no transient/persistent!, no with-meta
+;; UPSTREAM-DIFF: no transient/persistent!
 (defn update-vals
   [m f]
-  (reduce-kv (fn [acc k v] (assoc acc k (f v)))
-             {} m))
+  (with-meta
+    (reduce-kv (fn [acc k v] (assoc acc k (f v)))
+               {} m)
+    (meta m)))
 
-;; UPSTREAM-DIFF: no transient/persistent!, no with-meta
+;; UPSTREAM-DIFF: no transient/persistent!
 (defn update-keys
   [m f]
-  (reduce-kv (fn [acc k v] (assoc acc (f k) v))
-             {} m))
+  (with-meta
+    (reduce-kv (fn [acc k v] (assoc acc (f k) v))
+               {} m)
+    (meta m)))
 
 (defn ffirst [x] (first (first x)))
 
