@@ -5,6 +5,8 @@
 
 const std = @import("std");
 const Alignment = std.mem.Alignment;
+const value_mod = @import("value.zig");
+const Value = value_mod.Value;
 
 /// Placeholder for GC root set. Will be populated when VM stack
 /// walking is implemented (Task 2.7+).
@@ -167,10 +169,30 @@ pub const MarkSweepGc = struct {
     }
 
     /// Mark a pointer as live. The pointer must have been allocated through this GC.
+    /// No-op if the pointer is not tracked (e.g. interned/static data).
     pub fn markPtr(self: *MarkSweepGc, ptr: anytype) void {
         const addr = @intFromPtr(ptr);
         if (self.allocations.getPtr(addr)) |info| {
             info.marked = true;
+        }
+    }
+
+    /// Mark a pointer and return true if it was newly marked.
+    /// Returns false if already marked (cycle detection) or not tracked.
+    pub fn markAndCheck(self: *MarkSweepGc, ptr: anytype) bool {
+        const addr = @intFromPtr(ptr);
+        if (self.allocations.getPtr(addr)) |info| {
+            if (info.marked) return false;
+            info.marked = true;
+            return true;
+        }
+        return false;
+    }
+
+    /// Mark a slice's backing memory (the raw allocation behind the pointer).
+    pub fn markSlice(self: *MarkSweepGc, slice: anytype) void {
+        if (slice.len > 0) {
+            self.markPtr(slice.ptr);
         }
     }
 
@@ -302,6 +324,277 @@ pub const MarkSweepGc = struct {
         };
     }
 };
+
+/// Trace all heap allocations reachable from a Value, marking them as live.
+/// Uses mark bits for cycle detection (already-marked pointers are skipped).
+/// Exhaustive switch ensures compile error if a new Value variant is added.
+///
+/// NOTE: Fn.proto and regex.compiled are opaque pointers — only the outer
+/// pointer is marked. Internal allocations (bytecode, constant pools) need
+/// separate tracing when root set walking is implemented (23.3+).
+pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
+    switch (val) {
+        // Primitives — no heap allocations
+        .nil, .boolean, .integer, .float, .char => {},
+
+        // String slice — mark backing array
+        .string => |s| gc.markSlice(s),
+
+        // Symbol — ns/name slices + optional meta
+        .symbol => |sym| {
+            if (sym.ns) |ns| gc.markSlice(ns);
+            gc.markSlice(sym.name);
+            if (sym.meta) |m| {
+                if (gc.markAndCheck(m)) traceValue(gc, m.*);
+            }
+        },
+
+        // Keyword — ns/name slices
+        .keyword => |kw| {
+            if (kw.ns) |ns| gc.markSlice(ns);
+            gc.markSlice(kw.name);
+        },
+
+        // Persistent list
+        .list => |l| {
+            if (gc.markAndCheck(l)) {
+                gc.markSlice(l.items);
+                for (l.items) |item| traceValue(gc, item);
+                if (l.meta) |m| {
+                    if (gc.markAndCheck(m)) traceValue(gc, m.*);
+                }
+                if (l.child_lines) |cl| gc.markSlice(cl);
+                if (l.child_columns) |cc| gc.markSlice(cc);
+            }
+        },
+
+        // Persistent vector
+        .vector => |v| {
+            if (gc.markAndCheck(v)) {
+                gc.markSlice(v.items);
+                for (v.items) |item| traceValue(gc, item);
+                if (v.meta) |m| {
+                    if (gc.markAndCheck(m)) traceValue(gc, m.*);
+                }
+                if (v.child_lines) |cl| gc.markSlice(cl);
+                if (v.child_columns) |cc| gc.markSlice(cc);
+            }
+        },
+
+        // Persistent array map
+        .map => |m| {
+            if (gc.markAndCheck(m)) {
+                gc.markSlice(m.entries);
+                for (m.entries) |entry| traceValue(gc, entry);
+                if (m.meta) |meta| {
+                    if (gc.markAndCheck(meta)) traceValue(gc, meta.*);
+                }
+                if (m.comparator) |c| traceValue(gc, c);
+            }
+        },
+
+        // Persistent hash set
+        .set => |s| {
+            if (gc.markAndCheck(s)) {
+                gc.markSlice(s.items);
+                for (s.items) |item| traceValue(gc, item);
+                if (s.meta) |meta| {
+                    if (gc.markAndCheck(meta)) traceValue(gc, meta.*);
+                }
+                if (s.comparator) |c| traceValue(gc, c);
+            }
+        },
+
+        // Function — closure bindings, extra arities, meta
+        .fn_val => |f| {
+            if (gc.markAndCheck(f)) {
+                gc.markPtr(f.proto); // opaque — only outer pointer
+                if (f.closure_bindings) |bindings| {
+                    gc.markSlice(bindings);
+                    for (bindings) |b| traceValue(gc, b);
+                }
+                if (f.extra_arities) |arities| {
+                    gc.markSlice(arities);
+                    for (arities) |a| gc.markPtr(a);
+                }
+                if (f.meta) |m| {
+                    if (gc.markAndCheck(m)) traceValue(gc, m.*);
+                }
+                if (f.defining_ns) |ns| gc.markSlice(ns);
+            }
+        },
+
+        // Builtin function — code pointer, nothing heap-allocated
+        .builtin_fn => {},
+
+        // Atom — value, meta, validator, watchers
+        .atom => |a| {
+            if (gc.markAndCheck(a)) {
+                traceValue(gc, a.value);
+                if (a.meta) |m| {
+                    if (gc.markAndCheck(m)) traceValue(gc, m.*);
+                }
+                if (a.validator) |v| traceValue(gc, v);
+                if (a.watch_keys) |wk| {
+                    gc.markSlice(wk);
+                    for (wk) |k| traceValue(gc, k);
+                }
+                if (a.watch_fns) |wf| {
+                    gc.markSlice(wf);
+                    for (wf) |f| traceValue(gc, f);
+                }
+            }
+        },
+
+        // Volatile ref
+        .volatile_ref => |v| {
+            if (gc.markAndCheck(v)) {
+                traceValue(gc, v.value);
+            }
+        },
+
+        // Regex pattern — source string + opaque compiled
+        .regex => |r| {
+            if (gc.markAndCheck(r)) {
+                gc.markSlice(r.source);
+                gc.markPtr(r.compiled);
+            }
+        },
+
+        // Protocol
+        .protocol => |p| {
+            if (gc.markAndCheck(p)) {
+                gc.markSlice(p.name);
+                gc.markSlice(p.method_sigs);
+                for (p.method_sigs) |sig| gc.markSlice(sig.name);
+                traceValue(gc, Value{ .map = p.impls });
+            }
+        },
+
+        // Protocol function
+        .protocol_fn => |pf| {
+            if (gc.markAndCheck(pf)) {
+                traceValue(gc, Value{ .protocol = pf.protocol });
+                gc.markSlice(pf.method_name);
+            }
+        },
+
+        // MultiFn — dispatch_fn, methods, prefer_table, hierarchy_var
+        .multi_fn => |mf| {
+            if (gc.markAndCheck(mf)) {
+                gc.markSlice(mf.name);
+                traceValue(gc, mf.dispatch_fn);
+                traceValue(gc, Value{ .map = mf.methods });
+                if (mf.prefer_table) |pt| {
+                    traceValue(gc, Value{ .map = pt });
+                }
+                if (mf.hierarchy_var) |hv| {
+                    traceValue(gc, Value{ .var_ref = hv });
+                }
+            }
+        },
+
+        // Lazy sequence — thunk + realized value
+        .lazy_seq => |ls| {
+            if (gc.markAndCheck(ls)) {
+                if (ls.thunk) |t| traceValue(gc, t);
+                if (ls.realized) |r| traceValue(gc, r);
+            }
+        },
+
+        // Cons cell — first + rest
+        .cons => |c| {
+            if (gc.markAndCheck(c)) {
+                traceValue(gc, c.first);
+                traceValue(gc, c.rest);
+            }
+        },
+
+        // Var reference — symbol, root value, metadata
+        .var_ref => |v| {
+            if (gc.markAndCheck(v)) {
+                if (v.sym.ns) |ns| gc.markSlice(ns);
+                gc.markSlice(v.sym.name);
+                if (v.sym.meta) |m| {
+                    if (gc.markAndCheck(m)) traceValue(gc, m.*);
+                }
+                gc.markSlice(v.ns_name);
+                traceValue(gc, v.root);
+                if (v.doc) |d| gc.markSlice(d);
+                if (v.arglists) |a| gc.markSlice(a);
+                if (v.added) |a| gc.markSlice(a);
+                if (v.since_cw) |s| gc.markSlice(s);
+                if (v.meta) |m| {
+                    traceValue(gc, Value{ .map = m });
+                }
+            }
+        },
+
+        // Delay — fn_val, cached, error_cached
+        .delay => |d| {
+            if (gc.markAndCheck(d)) {
+                if (d.fn_val) |f| traceValue(gc, f);
+                if (d.cached) |c| traceValue(gc, c);
+                if (d.error_cached) |e| traceValue(gc, e);
+            }
+        },
+
+        // Reduced — wrapped value
+        .reduced => |r| {
+            if (gc.markAndCheck(r)) {
+                traceValue(gc, r.value);
+            }
+        },
+
+        // Transient vector — mutable items buffer
+        .transient_vector => |tv| {
+            if (gc.markAndCheck(tv)) {
+                gc.markSlice(tv.items.items);
+                for (tv.items.items) |item| traceValue(gc, item);
+            }
+        },
+
+        // Transient map — mutable entries buffer
+        .transient_map => |tm| {
+            if (gc.markAndCheck(tm)) {
+                gc.markSlice(tm.entries.items);
+                for (tm.entries.items) |entry| traceValue(gc, entry);
+            }
+        },
+
+        // Transient set — mutable items buffer
+        .transient_set => |ts| {
+            if (gc.markAndCheck(ts)) {
+                gc.markSlice(ts.items.items);
+                for (ts.items.items) |item| traceValue(gc, item);
+            }
+        },
+
+        // Chunked cons — chunk + rest
+        .chunked_cons => |cc| {
+            if (gc.markAndCheck(cc)) {
+                traceValue(gc, Value{ .array_chunk = cc.chunk });
+                traceValue(gc, cc.more);
+            }
+        },
+
+        // Chunk buffer — mutable items
+        .chunk_buffer => |cb| {
+            if (gc.markAndCheck(cb)) {
+                gc.markSlice(cb.items.items);
+                for (cb.items.items) |item| traceValue(gc, item);
+            }
+        },
+
+        // Array chunk — immutable slice view
+        .array_chunk => |ac| {
+            if (gc.markAndCheck(ac)) {
+                gc.markSlice(ac.array);
+                for (ac.array[ac.off..ac.end]) |item| traceValue(gc, item);
+            }
+        },
+    }
+}
 
 // === Tests ===
 
@@ -523,4 +816,195 @@ test "MarkSweepGc strategy collect triggers sweep" {
 
     try std.testing.expectEqual(@as(usize, 0), gc.liveCount());
     try std.testing.expectEqual(@as(u64, 1), gc.collect_count);
+}
+
+// === traceValue Tests ===
+
+test "traceValue primitives are no-op" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    // Primitives don't allocate — tracing should be safe
+    traceValue(&gc, .nil);
+    traceValue(&gc, Value{ .boolean = true });
+    traceValue(&gc, Value{ .integer = 42 });
+    traceValue(&gc, Value{ .float = 3.14 });
+    traceValue(&gc, Value{ .char = 'A' });
+    try std.testing.expectEqual(@as(usize, 0), gc.liveCount());
+}
+
+test "traceValue keeps vector and items alive" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Create a vector [42 99]
+    const items = try a.alloc(Value, 2);
+    items[0] = Value{ .integer = 42 };
+    items[1] = Value{ .integer = 99 };
+
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    // Allocate an orphan that should be collected
+    _ = try a.create(value_mod.PersistentVector);
+
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+
+    // Trace the vector — keeps vec + items alive
+    traceValue(&gc, Value{ .vector = vec });
+    gc.sweep();
+
+    // vec struct + items array survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+}
+
+test "traceValue keeps nested vector alive" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Inner vector [1 2]
+    const inner_items = try a.alloc(Value, 2);
+    inner_items[0] = Value{ .integer = 1 };
+    inner_items[1] = Value{ .integer = 2 };
+    const inner = try a.create(value_mod.PersistentVector);
+    inner.* = .{ .items = inner_items };
+
+    // Outer vector [inner_vec]
+    const outer_items = try a.alloc(Value, 1);
+    outer_items[0] = Value{ .vector = inner };
+    const outer = try a.create(value_mod.PersistentVector);
+    outer.* = .{ .items = outer_items };
+
+    // Orphan
+    _ = try a.create(value_mod.PersistentVector);
+
+    try std.testing.expectEqual(@as(usize, 5), gc.liveCount());
+
+    traceValue(&gc, Value{ .vector = outer });
+    gc.sweep();
+
+    // outer + outer_items + inner + inner_items = 4, orphan freed
+    try std.testing.expectEqual(@as(usize, 4), gc.liveCount());
+}
+
+test "traceValue keeps cons chain alive" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // (cons 1 (cons 2 nil)) → two Cons cells
+    const c2 = try a.create(value_mod.Cons);
+    c2.* = .{ .first = Value{ .integer = 2 }, .rest = .nil };
+    const c1 = try a.create(value_mod.Cons);
+    c1.* = .{ .first = Value{ .integer = 1 }, .rest = Value{ .cons = c2 } };
+
+    // Orphan
+    _ = try a.create(value_mod.Cons);
+
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+
+    traceValue(&gc, Value{ .cons = c1 });
+    gc.sweep();
+
+    // c1 + c2 survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+}
+
+test "traceValue keeps map entries alive" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Map {:a 1} — entries = [keyword, integer]
+    const entries = try a.alloc(Value, 2);
+    entries[0] = Value{ .keyword = .{ .ns = null, .name = "a" } };
+    entries[1] = Value{ .integer = 1 };
+    const m = try a.create(value_mod.PersistentArrayMap);
+    m.* = .{ .entries = entries };
+
+    // Orphan
+    _ = try a.alloc(u8, 64);
+
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+
+    traceValue(&gc, Value{ .map = m });
+    gc.sweep();
+
+    // map + entries survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+}
+
+test "traceValue string marks backing array" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    const str = try a.alloc(u8, 5);
+    @memcpy(str, "hello");
+
+    // Orphan
+    _ = try a.alloc(u8, 32);
+
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+
+    traceValue(&gc, Value{ .string = str });
+    gc.sweep();
+
+    // String backing array survives, orphan freed
+    try std.testing.expectEqual(@as(usize, 1), gc.liveCount());
+}
+
+test "traceValue cycle detection via mark bit" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Create a vector and trace it twice — second trace should be a no-op
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 42 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    traceValue(&gc, Value{ .vector = vec });
+    // Trace again — markAndCheck should return false, preventing re-traversal
+    traceValue(&gc, Value{ .vector = vec });
+
+    gc.sweep();
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+}
+
+test "traceValue handles lazy_seq" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Create a realized lazy-seq pointing to a list
+    const list_items = try a.alloc(Value, 2);
+    list_items[0] = Value{ .integer = 1 };
+    list_items[1] = Value{ .integer = 2 };
+    const list = try a.create(value_mod.PersistentList);
+    list.* = .{ .items = list_items };
+
+    const ls = try a.create(value_mod.LazySeq);
+    ls.* = .{ .thunk = null, .realized = Value{ .list = list } };
+
+    // Orphan
+    _ = try a.create(value_mod.LazySeq);
+
+    try std.testing.expectEqual(@as(usize, 4), gc.liveCount());
+
+    traceValue(&gc, Value{ .lazy_seq = ls });
+    gc.sweep();
+
+    // ls + list + list_items survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
 }

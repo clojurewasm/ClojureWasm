@@ -22,31 +22,31 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 23.2: Value tracing — comptime-verified traceValue for all Value variants
-2. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
-3. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-4. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-5. 23.6: Verification — all tests pass, REPL memory bounded
+1. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
+2. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+3. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+4. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-23.2: Value tracing — comptime-verified traceValue for all Value variants
-- Add `traceValue(gc: *MarkSweepGc, val: Value) void` function
-- For each Value variant, mark all heap-allocated sub-pointers
-- Use comptime switch to ensure exhaustive coverage (compile error on new variant)
-- Recursive: e.g. vector traces each element, map traces all key-value pairs
-- Handle cycles in lazy-seq (guard against infinite recursion)
-- Unit tests: trace a value graph, sweep, verify only reachable survive
+23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
+- Populate RootSet struct with references to VM stack, global Namespaces, Var bindings
+- Add traceRoots(gc, roots) that walks all root references and calls traceValue
+- VM roots: stack slots (CallFrame.slots), global vars
+- TreeWalk roots: env bindings, global vars
+- Namespace registry: all interned Vars and their root values
+- Exception handler stack values
+- Unit tests: root set traversal marks reachable values
 
 ## Previous Task
 
-23.1: GcAllocator core — mark-sweep allocator with allocation tracking (D69)
-- Added MarkSweepGc to src/common/gc.zig
-- HashMap-based tracking (AutoArrayHashMapUnmanaged keyed by ptr address)
-- std.mem.Allocator vtable (alloc/resize/remap/free) for runtime use
-- GcStrategy vtable for collect/shouldCollect/stats
-- markPtr/sweep API, allocation threshold
-- 10 unit tests: init, alloc tracking, mark+sweep, multi-cycle, free, threshold
+23.2: Value tracing — comptime-verified traceValue for all Value variants
+- Added traceValue() to gc.zig — exhaustive switch on all 29 Value variants
+- markAndCheck() for cycle detection via mark bits
+- markSlice() for backing array marking
+- Recursive tracing: collections → items, cons → first/rest, lazy_seq → thunk/realized
+- 8 unit tests: primitives, vector, nested, cons, map, string, cycle, lazy_seq
+- NOTE: Fn.proto and regex.compiled are opaque — internal tracing deferred to 23.3+
 
 ## Completed Phases (reverse chronological)
 
