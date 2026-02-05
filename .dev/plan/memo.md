@@ -58,9 +58,16 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D1: JVM-skip batch — mark ~90 JVM-specific vars as skip.
+D2: Dynamic vars batch — register stub vars.
 
 ## Previous Task
+
+D1 completed: JVM-skip batch — marked 124 JVM-specific vars as skip.
+- Agents (20), Java arrays (35), Refs/STM (10), Proxy/gen-class (11)
+- Java compilation/reflection (7), print dispatch (4), streams (3)
+- Protocol system (6), internal constructors (7), misc JVM (10+)
+- JVM classloader vars (8), class? predicates, bound-fn
+- Status: 433 done, 132 skip, 138 todo (was 262)
 
 Phase R completed: require/load/ns system — all 7 tasks done.
 - R1: *ns* dynamic var with bootstrap sync
