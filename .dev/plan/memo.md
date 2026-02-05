@@ -11,14 +11,15 @@ Session handover document. Read at session start.
 
 ## Phase Roadmap (user-specified order)
 
-| Phase | Name                     | Status  | Key Goal                              |
-| ----- | ------------------------ | ------- | ------------------------------------- |
-| 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars) |
-| 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream   |
-| 22    | Test Porting Expansion   | done    | multimethods, protocols, transducers  |
-| 23    | Production GC            | active  | Replace arena allocator               |
-| 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
-| 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT              |
+| Phase | Name                     | Status  | Key Goal                                       |
+| ----- | ------------------------ | ------- | ---------------------------------------------- |
+| 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars)          |
+| 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream             |
+| 22    | Test Porting Expansion   | done    | multimethods, transducers, transients, vectors  |
+| 23    | Production GC            | active  | Replace arena allocator                         |
+| 22b   | Test Porting Round 2     | pending | keywords, printer, protocols, math (~68 tests)  |
+| 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT                  |
+| 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT                        |
 
 ## Task Queue
 
@@ -84,10 +85,11 @@ Notes that persist across sessions.
 - Plan: `.dev/plan/foundation-reset.md` (Phase A-D, with BE inserted)
 - Phase CX plan: `.dev/plan/phase-cx-plan.md`
 - Roadmap: `.dev/plan/roadmap.md`
-- **Phase order (user decision)**: A(infra) → B(upstream align) → F(tests) → C(GC) → D(optimize) → E(wasm)
-  - Mapped to Phase 20 → 21 → 22 → 23 → 24 → 25 in roadmap.md
-  - Rationale: transient/chunked enables more upstream code, tests benefit from wider coverage,
-    GC needed for production use, optimization after GC, wasm last as differentiation
+- **Phase order (user decision)**: 20(infra) → 21(upstream align) → 22(tests) → 23(GC) → 22b(tests2) → 24(optimize) → 25(wasm)
+  - 22b inserted between GC and Optimization (GC完了後にテスト追加、Optimization前の安全網)
+  - 22b Tier 1: keywords, printer, errors, protocols, try_catch, test, test_fixtures, fn
+  - 22b Tier 2: math(+clojure.math), parse, data(+clojure.data), ns_libs, repl
+  - See roadmap.md Phase 22b for full file list and portability assessment
 - Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`

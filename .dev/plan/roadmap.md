@@ -231,12 +231,50 @@ Replace arena allocator with real garbage collector.
 **Triggers**: Long-running REPL, memory benchmarks exceed bounds
 **Reference**: F2, F20 in checklist.md; .dev/future.md SS5
 
+### Phase 22b: Test Porting Round 2
+
+Post-GC test expansion. Port additional upstream test files that exercise
+implemented features. Provides regression safety net before Optimization.
+
+**Prerequisite**: Phase 23 (Production GC) complete
+
+**Tier 1 — Port (existing features, no new implementation):**
+
+| File              | Lines | Tests | Portable | Notes                      |
+| ----------------- | ----- | ----- | -------- | -------------------------- |
+| keywords.clj      |    31 |     1 |    100%  | Keyword creation & arity   |
+| printer.clj       |   195 |    13 |     90%  | print/pr formatting        |
+| errors.clj        |   119 |     7 |     85%  | Error/exception handling   |
+| protocols.clj     |   721 |    25 |     60%  | defprotocol/deftype/extend |
+| try_catch.clj     |    39 |     2 |     50%  | try/catch/finally          |
+| test.clj          |   129 |    14 |    100%  | clojure.test framework     |
+| test_fixtures.clj |    73 |     5 |    100%  | Test fixture mechanism     |
+| fn.clj            |    55 |     1 |     50%  | Function edge cases        |
+
+**Tier 2 — Port + implement (new namespace or feature needed):**
+
+| File         | Lines | Tests | Needs               | Notes            |
+| ------------ | ----- | ----- | ------------------- | ---------------- |
+| math.clj     |   326 |    41 | clojure.math ns     | Largest test set |
+| parse.clj    |   102 |     6 | parse-long/double   | Core parse fns   |
+| data.clj     |    32 |     1 | clojure.data ns     | diff function    |
+| ns_libs.clj  |     ? |    10 | ns/require edge cases | R1-R7 already done |
+| repl.clj     |     ? |     7 | doc/source/dir fns  | REPL utilities   |
+
+**Skip (JVM-only, 28 files):** agents, annotations, api, array_symbols, clearing,
+clojure_xml, compilation, data_structures_interop, genclass, generated_\*,
+generators, java_interop, main, method_thunks, ns_libs_load_later, parallel,
+param_tags, pprint, reflect, refs, rt, run_single_test, serialization, server, streams
+
+**Scope**: Tier 1 first (8 files, ~68 tests). Tier 2 if time permits.
+**Reference**: `.claude/rules/test-porting.md`
+
 ### Phase 24: Optimization
 
 Performance optimization pass, benchmark-driven.
 
 **Scope**: NaN boxing (F1), fused reduce (F21), persistent DS (F4), inline caching
-**Prerequisite**: Phase 23 (Production GC) complete
+**Prerequisite**: Phase 22b (Test Porting Round 2) complete
 **Reference**: See "Optimization Phase" in Phase Notes below; bench/README.md
 
 ### Phase 25: Wasm InterOp (FFI)
