@@ -207,7 +207,7 @@ vars:
     cond: {type: macro, status: done, note: 'CLJW: error on odd forms caught at analysis time (not runtime)'}
     "cond->": {type: macro, status: done, note: "macro in core.clj"}
     "cond->>": {type: macro, status: done, note: "macro in core.clj"}
-    condp: {type: macro, status: done, note: "UPSTREAM-DIFF: uses manual destructuring instead of split-at (bootstrap order)"}
+    condp: {type: macro, status: done, note: "UPSTREAM-DIFF (minor): uses manual destructuring instead of split-at (bootstrap order)"}
     conj: {type: function, status: done, note: "Zig builtin"}
     "conj!": {type: function, status: done}
     cons: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
@@ -230,7 +230,7 @@ vars:
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
-    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: simplified, no docstring/metadata/pre-post/inline'}
+    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF (permanent): simplified, no docstring/metadata/pre-post/inline (upstream is heavy Java interop)'}
     "defn-": {type: macro, status: done, note: "macro in core.clj"}
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
@@ -239,7 +239,7 @@ vars:
     deftype: {type: macro, status: skip, note: needs full type/protocol infrastructure}
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
-    deliver: {type: function, status: done, note: "UPSTREAM-DIFF: atom-based, no blocking deref"}
+    deliver: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
     denominator: {type: function, status: skip, note: no Ratio type}
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
@@ -253,9 +253,9 @@ vars:
     "distinct?": {type: function, status: done, note: "Zig builtin"}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
-    doseq: {type: macro, status: done, note: "UPSTREAM-DIFF: uses next/next instead of nnext (bootstrap order); no .nth Java interop"}
+    doseq: {type: macro, status: done, note: "UPSTREAM-DIFF (minor): uses next/next instead of nnext (bootstrap order); nth instead of .nth"}
     dosync: {type: macro, status: skip, note: JVM interop}
-    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF: inline validation instead of assert-args (bootstrap order)'}
+    dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF (minor): inline validation instead of assert-args (bootstrap order)'}
     doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
     "double-array": {type: function, status: skip, note: JVM interop}
@@ -388,7 +388,7 @@ vars:
     "load-reader": {type: function, status: skip, note: needs Reader type}
     "load-string": {type: function, status: done}
     "loaded-libs": {type: function, status: done}
-    locking: {type: macro, status: done, note: "UPSTREAM-DIFF: single-threaded no-op"}
+    locking: {type: macro, status: done, note: "UPSTREAM-DIFF (permanent): single-threaded no-op (no Java monitors)"}
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
     "long-array": {type: function, status: skip, note: JVM interop}
     longs: {type: function, status: skip, note: JVM interop}
@@ -490,7 +490,7 @@ vars:
     "println-str": {type: function, status: done, note: "Zig builtin"}
     prn: {type: function, status: done, note: "Zig builtin"}
     "prn-str": {type: function, status: done, note: "Zig builtin"}
-    promise: {type: function, status: done, note: "UPSTREAM-DIFF: atom-based, no blocking deref"}
+    promise: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
     proxy: {type: macro, status: skip, note: JVM interop}
     "proxy-call-with-super": {type: function, status: skip, note: JVM interop}
     "proxy-mappings": {type: function, status: skip, note: JVM interop}
@@ -575,7 +575,7 @@ vars:
     "seq?": {type: function, status: done, note: "Zig builtin"}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: skip, note: JVM interop}
-    sequence: {type: function, status: done, note: 'UPSTREAM-DIFF: eager via into (upstream uses TransformerIterator)'}
+    sequence: {type: function, status: done, note: 'UPSTREAM-DIFF (permanent): eager via into (upstream uses Java TransformerIterator)'}
     "sequential?": {type: function, status: done, note: "Zig builtin"}
     set: {type: function, status: done, note: "Zig builtin"}
     "set-agent-send-executor!": {type: function, status: skip, note: JVM interop}

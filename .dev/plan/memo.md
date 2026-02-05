@@ -14,7 +14,7 @@ Session handover document. Read at session start.
 | Phase | Name                     | Status  | Key Goal                              |
 | ----- | ------------------------ | ------- | ------------------------------------- |
 | 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars) |
-| 21    | Upstream Alignment       | active  | Replace UPSTREAM-DIFF with upstream   |
+| 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream   |
 | 22    | Test Porting Expansion   | pending | multimethods, protocols, transducers  |
 | 23    | Production GC            | pending | Replace arena allocator               |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
@@ -27,15 +27,15 @@ Session handover document. Read at session start.
 3. ~~21.3: condp — upstream-align (gensym, if-let, docstring)~~ — DONE
 4. ~~21.4: dotimes — add input validation~~ — DONE
 5. ~~21.5: doseq — upstream-align (gensym, backtick, single-loop chunk, validation)~~ — DONE
-6. 21.6: Skip audit — mark defn/sequence/deliver/promise/locking as permanent UPSTREAM-DIFF
+6. ~~21.6: Skip audit — mark permanent/minor UPSTREAM-DIFF~~ — DONE
 
 ## Current Task
 
-21.6: Skip audit — mark defn/sequence/deliver/promise/locking as permanent UPSTREAM-DIFF
+Phase 21 complete — plan next phase
 
 ## Previous Task
 
-21.5: doseq — upstream-align (gensym, backtick, single-loop chunk, validation)
+21.6: Skip audit — mark permanent/minor UPSTREAM-DIFF categories
 - 20.1-20.2: Transient collections (6 vars)
 - 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
 - 20.5: sorted-map-by, sorted-set-by (2 vars)
