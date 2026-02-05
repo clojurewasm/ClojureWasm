@@ -4,10 +4,9 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- Phase: 19 (Foundation Reset: Upstream Fidelity)
-- Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: Plan next phase
-- Coverage: 411/712 clojure.core vars done
+- Phase: R (require/load/ns system)
+- Next task: Plan Phase R task queue
+- Coverage: 412/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -57,7 +56,8 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-Phase C complete. Plan next phase.
+Phase 19 complete. Phase order reorganized: R (require/load/ns) → D (Parallel Expansion).
+Next: Plan Phase R task queue and begin implementation.
 
 ## Previous Task
 
@@ -92,8 +92,8 @@ Notes that persist across sessions.
 - Phase B: Complete — all F## items resolved (B0-B4)
 - Phase C: Faithful upstream test porting with CLJW markers (C1-C12 done, C13-C20 saved)
 - Phase CX: Known issue resolution (F51, F24, F68, F70-74, F80-83, F86-87, F89, F91, F94)
-- Phase D: Parallel expansion (new vars + test porting)
-- **Phase R** (after Phase 19): require/load/ns system — full file-based loading, see `roadmap.md`
+- **Phase R** (current): require/load/ns system — full file-based loading, see `roadmap.md`
+- Phase D (after Phase R): Parallel expansion (new vars + test porting)
 - Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`

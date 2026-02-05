@@ -147,7 +147,6 @@ Clojure/SCI. Var expansion resumes after this foundation is solid.
 - **C**: Faithful Test Porting — upstream tests with CLJW markers (C1-C12 done)
 - **CX**: Known Issue Resolution — resolve actionable F## items (inserted between C12 and C13)
 - **C** (cont.): Resume test porting from C13
-- **D**: Parallel Expansion — new vars with test-first approach
 
 **Plan**: `.dev/plan/foundation-reset.md`
 **Phase CX plan**: `.dev/plan/phase-cx-plan.md`
@@ -175,6 +174,16 @@ projects and `::alias/foo` keyword resolution via `:as` aliases.
 
 **Prerequisite**: Phase 19 complete (solid core foundation)
 **Reference**: Upstream `clojure/core.clj` (load, require, use, ns)
+
+### Phase D: Parallel Expansion
+
+New vars with test-first approach. Expand var coverage (412 → 500+).
+
+**Scope**: Implement remaining Tier 1 (Zig builtins) and Tier 2 (pure Clojure)
+vars with upstream tests. Mark Tier 3 (JVM-specific) as skip.
+
+**Prerequisite**: Phase R complete (multi-file loading enables richer testing)
+**Reference**: `.dev/status/vars.yaml`, `.claude/references/impl-tiers.md`
 
 ### Phase 20: Production GC
 

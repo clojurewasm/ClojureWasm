@@ -90,24 +90,21 @@ When working on test files under test/upstream/:
 
 ### When to Stop
 
-**Current goal: Complete through Phase CX + Phase C (upstream test porting).**
-Phase CX (known issue resolution) is inserted between C12 and C13.
-See `.dev/plan/phase-cx-plan.md` for CX tasks, `.dev/plan/memo.md` for queue.
-Do NOT stop between tasks, between phases, or at phase boundaries.
-Phase BE → Phase B → Phase C (C1-C12) → Phase CX → Phase C (C13-C20) is one continuous run.
+**Current goal: Complete Phase R (require/load/ns system).**
+See `.dev/plan/memo.md` for task queue and current state.
+Do NOT stop between tasks within a phase.
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase CX + Phase C are complete** (all CX fixes done + all upstream test files ported and verified)
+- **Phase R is complete** (full file-based require/load/ns working)
 
 Do NOT stop for:
 
-- Task Queue becoming empty (plan next phase and continue)
-- Phase boundary crossings (BE→B→C are continuous)
+- Task Queue becoming empty (plan next task and continue)
 - Session context getting large (compress and continue)
-- "Good stopping points" — there are none until Phase C is done
+- "Good stopping points" — there are none until Phase R is done
 
 When in doubt, **continue** — pick the most reasonable option and proceed.
 
