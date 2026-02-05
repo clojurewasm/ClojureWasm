@@ -1658,6 +1658,44 @@
          (finally
            (pop-thread-bindings))))))
 
+(defn with-bindings*
+  "Takes a map of Var/value pairs. Sets the vars to the corresponding
+  values during the execution of f."
+  [binding-map f & args]
+  (push-thread-bindings binding-map)
+  (try
+    (apply f args)
+    (finally
+      (pop-thread-bindings))))
+
+(defmacro with-bindings
+  "Takes a map of Var/value pairs. Installs the given bindings for the
+  execution of body."
+  [binding-map & body]
+  `(with-bindings* ~binding-map (fn [] ~@body)))
+
+(defn with-redefs-fn
+  "Temporarily redefines vars during the execution of func."
+  [binding-map func]
+  (let [root-bind (fn [m]
+                    (doseq [[a-var a-val] m]
+                      (var-set a-var a-val)))
+        old-vals (zipmap (keys binding-map)
+                         (map var-raw-root (keys binding-map)))]
+    (try
+      (root-bind binding-map)
+      (func)
+      (finally
+        (root-bind old-vals)))))
+
+(defmacro with-redefs
+  "Temporarily redefines vars while body executes."
+  [bindings & body]
+  (let [names (take-nth 2 bindings)
+        vals  (take-nth 2 (next bindings))
+        tempvar-map (zipmap (map (fn [n] (list 'var n)) names) vals)]
+    `(with-redefs-fn ~tempvar-map (fn [] ~@body))))
+
 ;; Dynamic vars (stubs for JVM compat)
 (def ^:dynamic *warn-on-reflection* false)
 

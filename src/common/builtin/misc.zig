@@ -179,6 +179,33 @@ pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// thread-bound?, var-raw-root
+// ============================================================
+
+/// (thread-bound? & vars) — true if all given vars have thread-local bindings.
+pub fn threadBoundPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to thread-bound?", .{});
+    for (args) |arg| {
+        const v = switch (arg) {
+            .var_ref => |vr| vr,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "thread-bound? expects Var args, got {s}", .{@tagName(arg)}),
+        };
+        if (!v.dynamic or !var_mod.hasThreadBinding(v)) return .{ .boolean = false };
+    }
+    return .{ .boolean = true };
+}
+
+/// (var-raw-root v) — returns the root value of a Var, bypassing thread-local bindings.
+fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-raw-root", .{args.len});
+    const v = switch (args[0]) {
+        .var_ref => |vr| vr,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "var-raw-root expects a Var, got {s}", .{@tagName(args[0])}),
+    };
+    return v.getRawRoot();
+}
+
+// ============================================================
 // alter-var-root
 // ============================================================
 
@@ -499,6 +526,20 @@ pub const builtins = [_]BuiltinDef{
         .func = popThreadBindingsFn,
         .doc = "Pops the frame of bindings most recently pushed with push-thread-bindings.",
         .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "thread-bound?",
+        .func = threadBoundPredFn,
+        .doc = "Returns true if all given vars have thread-local bindings.",
+        .arglists = "([& vars])",
+        .added = "1.0",
+    },
+    .{
+        .name = "var-raw-root",
+        .func = varRawRootFn,
+        .doc = "Returns the root value of a Var, bypassing thread-local bindings.",
+        .arglists = "([v])",
         .added = "1.0",
     },
     .{

@@ -636,7 +636,7 @@ vars:
     "tap>": {type: function, status: todo}
     test: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "the-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "thread-bound?": {type: function, status: todo}
+    "thread-bound?": {type: function, status: done}
     time: {type: macro, status: done, note: macro using __nano-time}
     "to-array": {type: function, status: skip, note: JVM interop}
     "to-array-2d": {type: function, status: skip, note: JVM interop}
@@ -700,17 +700,17 @@ vars:
     "when-not": {type: macro, status: done, note: "macro in core.clj"}
     "when-some": {type: macro, status: done}
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
-    "with-bindings": {type: macro, status: todo}
-    "with-bindings*": {type: function, status: todo}
+    "with-bindings": {type: macro, status: done}
+    "with-bindings*": {type: function, status: done}
     "with-in-str": {type: macro, status: skip, note: needs string reader + *in* input}
     "with-loading-context": {type: macro, status: todo}
-    "with-local-vars": {type: macro, status: todo}
+    "with-local-vars": {type: macro, status: skip, note: needs Var.create()}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: skip, note: needs .close interop}
     "with-out-str": {type: macro, status: done}
     "with-precision": {type: macro, status: todo}
-    "with-redefs": {type: macro, status: todo}
-    "with-redefs-fn": {type: function, status: todo}
+    "with-redefs": {type: macro, status: done}
+    "with-redefs-fn": {type: function, status: done}
     "xml-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "zero?": {type: function, status: done, note: "Zig builtin"}
     zipmap: {type: function, status: done, note: "Zig builtin"}

@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D12
-- Coverage: 485/703 clojure.core vars done
+- Next task: D13
+- Coverage: 490/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -39,8 +39,6 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 - D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
   tagged-literal?, reader-conditional, reader-conditional?
 - D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
-- D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
-  bound-fn, bound-fn*, thread-bound?
 - D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
   char-escape-string, char-name-string, find-keyword, re-groups, re-matcher
 - D14: Read system — read, load-string, load-reader
@@ -55,17 +53,18 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
-bound-fn, bound-fn*, thread-bound?
+D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
+char-escape-string, char-name-string, find-keyword, re-groups, re-matcher
 
 ## Previous Task
 
-D11 completed: IO macros — with-out-str implemented (output capture stack).
-- with-out-str: macro + push/pop-output-capture builtins, exception-safe, nestable
-- with-open: skip (needs .close interop)
-- with-in-str: skip (needs string reader + *in* input)
-
-D10 completed: Unchecked math — 9 remaining unchecked-* functions.
+D12 completed: Binding & redefs — 5 vars implemented.
+- thread-bound? builtin (checks hasThreadBinding)
+- var-raw-root builtin (bypasses thread-local for with-redefs-fn)
+- with-bindings*/with-bindings: push/pop thread bindings
+- with-redefs-fn/with-redefs: root binding swap with exception safety
+- with-local-vars: skip (needs Var.create()), bound-fn/bound-fn*: already skip
+- Status: 490 done, 134 skip, 79 todo
 - unchecked-divide-int/remainder-int: use quot/rem
 - unchecked-byte/short/int: bit-and + sign adjustment for truncation
 - unchecked-char: bit-and + char coercion
