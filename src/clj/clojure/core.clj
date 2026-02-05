@@ -1303,6 +1303,24 @@
 (defn unchecked-subtract-int [x y] (- x y))
 (defn unchecked-multiply [x y] (* x y))
 (defn unchecked-multiply-int [x y] (* x y))
+(defn unchecked-divide-int [x y] (quot x y))
+(defn unchecked-remainder-int [x y] (rem x y))
+
+;; Unchecked type coercion
+(defn unchecked-byte [x]
+  (let [v (bit-and (long x) 0xFF)]
+    (if (> v 127) (- v 256) v)))
+(defn unchecked-short [x]
+  (let [v (bit-and (long x) 0xFFFF)]
+    (if (> v 32767) (- v 65536) v)))
+(defn unchecked-char [x]
+  (char (bit-and (long x) 0xFFFF)))
+(defn unchecked-int [x]
+  (let [v (bit-and (long x) 0xFFFFFFFF)]
+    (if (> v 2147483647) (- v 4294967296) v)))
+(defn unchecked-long [x] (long x))
+(defn unchecked-float [x] (double x))
+(defn unchecked-double [x] (double x))
 
 ;; Auto-promoting arithmetic (no BigInt, so identical to checked)
 (def inc' inc)

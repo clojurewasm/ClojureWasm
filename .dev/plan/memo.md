@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D7
-- Coverage: 475/703 clojure.core vars done
+- Next task: D11
+- Coverage: 484/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -39,8 +39,6 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 - D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
   tagged-literal?, reader-conditional, reader-conditional?
 - D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
-- D10: Unchecked math — unchecked-byte/char/int/long/short/double/float,
-  unchecked-divide-int, unchecked-remainder-int
 - D11: IO macros — with-open, with-out-str, with-in-str
 - D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
   bound-fn, bound-fn*, thread-bound?
@@ -58,13 +56,16 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D7: Sorted collections — sorted-map-by, sorted-set-by, subseq, rsubseq.
+D11: IO macros — with-open, with-out-str, with-in-str.
 
 ## Previous Task
 
-D6 completed: refer-clojure + ns enhancements.
-- refer-clojure macro in core.clj, ns macro handles :refer-clojure
-- refer supports :exclude and :only filters, ns quotes filter args
+D10 completed: Unchecked math — 9 remaining unchecked-* functions.
+- unchecked-divide-int/remainder-int: use quot/rem
+- unchecked-byte/short/int: bit-and + sign adjustment for truncation
+- unchecked-char: bit-and + char coercion
+- unchecked-long/float/double: delegate to long/double
+- Status: 484 done, 131 skip, 88 todo
 - F95: VM intrinsic bypass for arithmetic ops (deferred)
 - Status: 475 done, 131 skip, 97 todo
 

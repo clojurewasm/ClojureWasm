@@ -648,23 +648,23 @@ vars:
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
     "unchecked-add": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-add-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
-    "unchecked-byte": {type: function, status: todo}
-    "unchecked-char": {type: function, status: todo}
+    "unchecked-byte": {type: function, status: done}
+    "unchecked-char": {type: function, status: done}
     "unchecked-dec": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-dec-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
-    "unchecked-divide-int": {type: function, status: todo}
-    "unchecked-double": {type: function, status: todo}
-    "unchecked-float": {type: function, status: todo}
+    "unchecked-divide-int": {type: function, status: done}
+    "unchecked-double": {type: function, status: done}
+    "unchecked-float": {type: function, status: done}
     "unchecked-inc": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-inc-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
-    "unchecked-int": {type: function, status: todo}
-    "unchecked-long": {type: function, status: todo}
+    "unchecked-int": {type: function, status: done}
+    "unchecked-long": {type: function, status: done}
     "unchecked-multiply": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-multiply-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-negate": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-negate-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
-    "unchecked-remainder-int": {type: function, status: todo}
-    "unchecked-short": {type: function, status: todo}
+    "unchecked-remainder-int": {type: function, status: done}
+    "unchecked-short": {type: function, status: done}
     "unchecked-subtract": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-subtract-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     underive: {type: function, status: done, note: core.clj hierarchy-aware}
