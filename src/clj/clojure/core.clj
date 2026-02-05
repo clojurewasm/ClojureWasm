@@ -67,7 +67,16 @@
    (lazy-seq
     (let [s (seq coll)]
       (when s
-        (cons (f (first s)) (map f (rest s))))))))
+        (if (chunked-seq? s)
+          (let [c (chunk-first s)
+                size (count c)
+                b (chunk-buffer size)]
+            (loop [i 0]
+              (when (< i size)
+                (chunk-append b (f (nth c i)))
+                (recur (inc i))))
+            (chunk-cons (chunk b) (map f (chunk-rest s))))
+          (cons (f (first s)) (map f (rest s)))))))))
 
 (defn filter
   ([pred]
@@ -83,9 +92,21 @@
    (lazy-seq
     (let [s (seq coll)]
       (when s
-        (if (pred (first s))
-          (cons (first s) (filter pred (rest s)))
-          (filter pred (rest s))))))))
+        (if (chunked-seq? s)
+          (let [c (chunk-first s)
+                size (count c)
+                b (chunk-buffer size)]
+            (loop [i 0]
+              (when (< i size)
+                (let [v (nth c i)]
+                  (when (pred v)
+                    (chunk-append b v)))
+                (recur (inc i))))
+            (chunk-cons (chunk b) (filter pred (chunk-rest s))))
+          (let [f (first s) r (rest s)]
+            (if (pred f)
+              (cons f (filter pred r))
+              (filter pred r)))))))))
 
 (defn reduce
   ([f coll]
@@ -696,13 +717,23 @@
       (reverse acc))))
 
 (defn keep [f coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (let [v (f (first s))]
-        (if (nil? v)
-          (recur (next s) acc)
-          (recur (next s) (cons v acc))))
-      (reverse acc))))
+  (lazy-seq
+   (when-let [s (seq coll)]
+     (if (chunked-seq? s)
+       (let [c (chunk-first s)
+             size (count c)
+             b (chunk-buffer size)]
+         (loop [i 0]
+           (when (< i size)
+             (let [x (f (nth c i))]
+               (when-not (nil? x)
+                 (chunk-append b x)))
+             (recur (inc i))))
+         (chunk-cons (chunk b) (keep f (chunk-rest s))))
+       (let [x (f (first s))]
+         (if (nil? x)
+           (keep f (rest s))
+           (cons x (keep f (rest s)))))))))
 
 (defn keep-indexed [f coll]
   (loop [s (seq coll) i 0 acc (list)]
@@ -922,7 +953,6 @@
        ~@body
        (recur))))
 
-;; UPSTREAM-DIFF: No chunked-seq optimization
 (defmacro doseq [seq-exprs & body]
   (let [step (fn step [recform exprs]
                (if (nil? (seq exprs))
@@ -945,17 +975,29 @@
                            recform2 (list 'recur (list 'next s))
                            steppair (step recform2 (rest (rest exprs)))
                            needrec (first steppair)
-                           subform (second steppair)]
+                           subform (second steppair)
+                           ;; Chunked path: inner loop over chunk elements
+                           chunk-body (list 'let ['__doseq_c__ (list 'chunk-first s)
+                                                  '__doseq_size__ (list 'count '__doseq_c__)]
+                                            (list 'loop ['__doseq_i__ 0]
+                                                  (list 'when (list '< '__doseq_i__ '__doseq_size__)
+                                                        (list 'let [k (list 'nth '__doseq_c__ '__doseq_i__)]
+                                                              subform)
+                                                        (list 'recur (list 'inc '__doseq_i__))))
+                                            (list 'recur (list 'chunk-rest s)))
+                           ;; Non-chunked path: first/next
+                           plain-body (if needrec
+                                        (list 'let [k (list 'first s)]
+                                              subform
+                                              recform2)
+                                        (list 'let [k (list 'first s)]
+                                              subform))]
                        [true
                         (list 'loop [s (list 'seq v)]
-                              (if needrec
-                                (list 'when s
-                                      (list 'let [k (list 'first s)]
-                                            subform
-                                            recform2))
-                                (list 'when s
-                                      (list 'let [k (list 'first s)]
-                                            subform))))])))))]
+                              (list 'when s
+                                    (list 'if (list 'chunked-seq? s)
+                                          chunk-body
+                                          plain-body)))])))))]
     (second (step nil (seq seq-exprs)))))
 
 (defn dorun [coll]

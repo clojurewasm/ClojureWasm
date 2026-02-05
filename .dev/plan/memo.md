@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 517/704 clojure.core vars done (0 todo, 186 skip)
-- Next: 20.4 (Core.clj chunked seq paths)
+- Next: 20.5 (Sorted-map-by, sorted-set-by)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -25,22 +25,25 @@ Session handover document. Read at session start.
 1. ~~20.1: Transient collections~~ — DONE
 2. ~~20.2: Core.clj transient alignment~~ — DONE
 3. ~~20.3: Chunked sequences — types + builtins~~ — DONE (8 builtins + chunk-cons)
-4. 20.4: Core.clj chunked seq paths (map, filter, doseq → chunked optimization)
+4. ~~20.4: Core.clj chunked seq paths~~ — DONE (map, filter, keep, doseq)
 5. 20.5: Sorted-map-by, sorted-set-by with custom comparators — 2 vars
 6. 20.6: subseq, rsubseq — 2 vars
 
 ## Current Task
 
-20.4: Core.clj chunked seq paths
-- Add chunked optimization to map, filter, doseq in core.clj
-- These use chunked-seq?, chunk-first, chunk-rest, chunk-cons, chunk-buffer, chunk-append, chunk
+20.5: Sorted-map-by, sorted-set-by with custom comparators
+- Need SortedArrayMap with custom comparator for sorted-map-by
+- Need SortedHashSet with custom comparator for sorted-set-by
+- Both maintain insertion order sorted by comparator
 
 ## Previous Task
 
-20.3 completed: Chunked sequences — types + builtins
-- ArrayChunk (immutable chunk), ChunkBuffer (mutable builder), ChunkedCons (chunk + rest seq)
-- 8 builtins: chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?, chunk-cons
-- ChunkedCons integrates with first/rest/seq/count/equality
+20.4 completed: Core.clj chunked seq paths
+- map: added chunked-seq? path with chunk-buffer/chunk-append/chunk-cons
+- filter: added chunked-seq? path with chunk-buffer/chunk-append/chunk-cons
+- keep: converted from eager to lazy + chunked-seq? path
+- doseq: added chunked-seq? code generation path
+- nth: added ArrayChunk support
 - Both VM + TreeWalk verified
 
 ## Completed Phases (reverse chronological)

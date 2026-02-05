@@ -364,6 +364,7 @@ pub fn nthFn(_: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0]) {
         .vector => |vec| vec.nth(uidx) orelse if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for vector of size {d}", .{ uidx, vec.items.len }),
         .list => |lst| if (uidx < lst.items.len) lst.items[uidx] else if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for list of size {d}", .{ uidx, lst.items.len }),
+        .array_chunk => |ac| ac.nth(uidx) orelse if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for chunk of size {d}", .{ uidx, ac.count() }),
         .nil => if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth on nil", .{}),
         else => err.setErrorFmt(.eval, .type_error, .{}, "nth not supported on {s}", .{@tagName(args[0])}),
     };
