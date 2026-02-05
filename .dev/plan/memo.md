@@ -16,35 +16,27 @@ Session handover document. Read at session start.
 | 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars)          |
 | 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream             |
 | 22    | Test Porting Expansion   | done    | multimethods, transducers, transients, vectors  |
-| 23    | Production GC            | active  | Replace arena allocator                         |
+| 23    | Production GC            | done    | Replace arena allocator                         |
 | 22b   | Test Porting Round 2     | pending | keywords, printer, protocols, math (~68 tests)  |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT                  |
 | 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT                        |
 
 ## Task Queue
 
-1. 23.6: Verification — all tests pass, REPL memory bounded
+(Phase 23 complete. Next: Phase 22b — Test Porting Round 2)
 
 ## Current Task
 
-23.6: Verification — all tests pass, REPL memory bounded
-- Run full test suite on both backends
-- Test REPL session for memory stability (multiple form evaluations)
-- Verify file execution mode
-- Confirm no GPA leaks in both modes
+Phase 23 complete. Ready for Phase 22b planning.
 
 ## Previous Task
 
-23.5: Integration — replace arena in main.zig, wire GC into VM/TW (D70)
-- Two-allocator architecture: GPA (infra) + MarkSweepGc (Values)
-- Env/Namespace/Var use GPA for stable infrastructure
-- Values/Fn/collections use GC allocator for automatic collection
-- VM: GC safe points work (bytecode properly marked in root set)
-- TreeWalk: GC safe points disabled (AST Nodes not traced, would be swept)
-- REPL: GC safe point between forms (root set = env namespaces)
-- Threshold reset after bootstrap prevents immediate sweep
-- Fixed Namespace.deinit/Env.deinit to free owned name strings (hidden by Arena)
-- Fixed bootstrap.zig GC/non-GC modes for compiler deinit and retained_protos
+23.6: Verification — all tests pass, REPL memory bounded
+- Full test suite: all pass
+- VM: basic + GC stress test (500 iters, closures, maps, transducers) OK
+- TreeWalk: same tests pass
+- GPA leak check: no leaks on VM or TreeWalk
+- Three-allocator architecture (D70): GPA + node_arena + GC confirmed stable
 
 ## Completed Phases (reverse chronological)
 
