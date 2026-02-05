@@ -1389,13 +1389,9 @@
 
 (defn nnext [x] (next (next x)))
 
-;; UPSTREAM-DIFF: uses take instead of 2-arg map (multi-coll map not supported)
 (defn drop-last
   ([coll] (drop-last 1 coll))
-  ([n coll]
-   (let [s (seq coll)
-         cnt (count s)]
-     (take (max 0 (- cnt n)) s))))
+  ([n coll] (map (fn [x _] x) coll (drop n coll))))
 
 (defn split-at [n coll]
   [(take n coll) (drop n coll)])

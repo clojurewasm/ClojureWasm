@@ -8,8 +8,10 @@
 
 (ns clojure.set)
 
-;; UPSTREAM-DIFF: bubble-max-key removed (identical? doesn't work with copied values);
-;; 3+ arg variants use simple reduce instead.
+(defn- bubble-max-key
+  [k coll]
+  (let [max (apply max-key k coll)]
+    (cons max (remove #(identical? max %) coll))))
 
 (defn union
   ([] #{})
@@ -19,7 +21,8 @@
      (reduce conj s2 s1)
      (reduce conj s1 s2)))
   ([s1 s2 & sets]
-   (reduce union (union s1 s2) sets)))
+   (let [bubbled-sets (bubble-max-key count (conj sets s2 s1))]
+     (reduce into (first bubbled-sets) (rest bubbled-sets)))))
 
 (defn intersection
   ([s1] s1)
@@ -32,7 +35,8 @@
                  (disj result item)))
              s1 s1)))
   ([s1 s2 & sets]
-   (reduce intersection (intersection s1 s2) sets)))
+   (let [bubbled-sets (bubble-max-key #(- (count %)) (conj sets s2 s1))]
+     (reduce intersection (first bubbled-sets) (rest bubbled-sets)))))
 
 (defn difference
   ([s1] s1)
