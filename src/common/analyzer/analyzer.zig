@@ -1186,8 +1186,19 @@ pub const Analyzer = struct {
             if (m_items[1].data != .vector) {
                 return self.analysisError(.value_error, "method arglist must be a vector", m_items[1]);
             }
+            // Method must take at least one arg (the 'this' parameter)
+            if (m_items[1].data.vector.len == 0) {
+                return self.analysisError(.value_error, "Definition of function in protocol must take at least one arg", mf);
+            }
+            // Check for duplicate method names
+            const method_name = m_items[0].data.symbol.name;
+            for (sigs.items) |existing| {
+                if (std.mem.eql(u8, existing.name, method_name)) {
+                    return self.analysisError(.value_error, "Function in protocol was redefined. Specify all arities in single definition", mf);
+                }
+            }
             sigs.append(self.allocator, .{
-                .name = m_items[0].data.symbol.name,
+                .name = method_name,
                 .arity = @intCast(m_items[1].data.vector.len),
             }) catch return error.OutOfMemory;
         }

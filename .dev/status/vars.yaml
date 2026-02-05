@@ -281,7 +281,7 @@ vars:
     "ex-info": {type: function, status: done, note: "Zig builtin"}
     "ex-message": {type: function, status: done, note: "Zig builtin"}
     extend: {type: function, status: skip, note: JVM interop}
-    "extend-protocol": {type: macro, status: skip, note: JVM interop}
+    "extend-protocol": {type: macro, status: done, notes: macro expanding to extend-type forms}
     "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
     extenders: {type: function, status: skip, note: JVM interop}
     "extends?": {type: function, status: skip, note: JVM interop}

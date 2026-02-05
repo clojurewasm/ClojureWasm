@@ -952,11 +952,18 @@
         (if (< i cnt)
           (recur (inc i) (f acc i (nth m i)))
           acc)))
-    (let [ks (keys m)]
-      (loop [s (seq ks) acc init]
+    (if (map? m)
+      (let [ks (keys m)]
+        (loop [s (seq ks) acc init]
+          (if s
+            (let [k (first s)]
+              (recur (next s) (f acc k (get m k))))
+            acc)))
+      ;; UPSTREAM-DIFF: fallback for seqs of map entries (JVM uses seqkvreduce)
+      (loop [s (seq m) acc init]
         (if s
-          (let [k (first s)]
-            (recur (next s) (f acc k (get m k))))
+          (let [entry (first s)]
+            (recur (next s) (f acc (key entry) (val entry))))
           acc)))))
 
 ;; Convenience accessors (last/butlast defined early for defn macro)
@@ -2168,6 +2175,20 @@
                {:__promise true :val val :delivered true}
                m)))
   p)
+
+;; Protocol helpers
+;; UPSTREAM-DIFF: extend-type is a special form, not a macro
+(defn- parse-impls [specs]
+  (loop [ret {} s specs]
+    (if (seq s)
+      (recur (assoc ret (first s) (take-while seq? (next s)))
+             (drop-while seq? (next s)))
+      ret)))
+
+(defmacro extend-protocol
+  [p & specs]
+  (let [impls (parse-impls specs)]
+    `(do ~@(map (fn [entry] `(extend-type ~(key entry) ~p ~@(val entry))) impls))))
 
 ;; Data reader constants
 (def default-data-readers {})

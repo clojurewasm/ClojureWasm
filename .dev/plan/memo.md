@@ -4,53 +4,34 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
-- Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.16
+- All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
+- Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
+- Phase 22c complete — loop ends here
+- Next phase: 24 (optimize) per roadmap
 - Blockers: none
 
 ## Task Queue
 
-Phase 22c — Test Gap Resolution (gap analysis: `.dev/plan/test-gap-analysis.md`)
-
-Tier 1: Revive skipped tests (features already implemented)
-- ~~22c.2: done in 22c.1~~
-- ~~22c.3: Revive with-redefs tests (vars — non-threaded subset)~~
-- ~~22c.4: Revive eval-based tests (special — non-JVM-exception subset)~~
-
-Tier 2: Small implementation + new file ports
-- ~~22c.5: Implement find-keyword (F80) + revive keywords.clj test~~
-- ~~22c.6: Implement parse-uuid + revive parse.clj test~~
-- ~~22c.7: Port edn.clj (clojure.edn thin wrapper)~~
-- ~~22c.8: Port try_catch.clj (basic portable subset)~~
-- ~~22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)~~
-- ~~22c.10: Implement with-var-roots + heap-allocate VM + revive multimethods tests~~
-
-Tier 3: Medium implementation + new file ports
-- ~~22c.11: Implement eduction + sort-by/compare fix (transducers)~~
-- ~~22c.12: Implement iteration function (sequences)~~
-- ~~22c.13: Port test.clj + test_fixtures.clj (use-fixtures impl)~~
-- ~~22c.14: Port ns_libs.clj~~
-- ~~22c.15: Port data.clj (implement clojure.data/diff)~~
-- 22c.16: Port protocols.clj (portable subset)
-
-Stop after 22c.16 — Phase 22c complete, loop ends.
+Phase 22c — COMPLETE (all 16 tasks done)
 
 ## Current Task
 
-22c.16: Port protocols.clj (portable subset)
+(none — Phase 22c complete)
 
 ## Previous Task
 
-22c.15: Port data.clj (implement clojure.data/diff)
-- Implemented clojure.data namespace (diff, equality-partition, diff-similar)
-- UPSTREAM-DIFF: type checks instead of protocols (no Java types)
-- Bootstrap-loaded via loadData in main.zig
-- 1 test, 13 assertions, both backends pass
+22c.16: Port protocols.clj (portable subset)
+- Fixed reduce-kv on seqs (fallback for seq of map entries)
+- Implemented extend-protocol macro (parse-impls + extend-type expansion)
+- Added defprotocol validation (min 1 arg, no duplicate methods)
+- Added F96 (VM protocol compilation) to checklist.md
+- 4 tests, 13 assertions, both backends pass
+- eval-based protocol tests work on both backends (eval uses TreeWalk internally)
 
 ## Handover Notes
 
-- **Gap analysis**: `.dev/plan/test-gap-analysis.md` (full inventory of skips + unported files)
+- **Phase 22c**: Complete. 16 tasks, all done. Gap analysis: `.dev/plan/test-gap-analysis.md`
+- **F96**: VM protocol compilation deferred — defprotocol/extend-type only TreeWalk
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
