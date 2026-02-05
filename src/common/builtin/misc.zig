@@ -492,6 +492,43 @@ pub fn hashCombineFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .integer = @as(i64, seed) };
 }
 
+// ============================================================
+// random-uuid
+// ============================================================
+
+/// (random-uuid) — returns a random UUID v4 string.
+pub fn randomUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to random-uuid", .{args.len});
+
+    // Generate 16 random bytes
+    var bytes: [16]u8 = undefined;
+    std.crypto.random.bytes(&bytes);
+
+    // Set version 4: byte[6] = (byte[6] & 0x0f) | 0x40
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    // Set variant 10: byte[8] = (byte[8] & 0x3f) | 0x80
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+    const hex = "0123456789abcdef";
+    var buf: [36]u8 = undefined;
+    var pos: usize = 0;
+    for (bytes, 0..) |b, i| {
+        buf[pos] = hex[b >> 4];
+        pos += 1;
+        buf[pos] = hex[b & 0x0f];
+        pos += 1;
+        // Dashes after bytes 3, 5, 7, 9
+        if (i == 3 or i == 5 or i == 7 or i == 9) {
+            buf[pos] = '-';
+            pos += 1;
+        }
+    }
+
+    const result = try allocator.dupe(u8, &buf);
+    return .{ .string = result };
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "gensym",
@@ -619,6 +656,13 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x y])",
         .added = "1.2",
     },
+    .{
+        .name = "random-uuid",
+        .func = randomUuidFn,
+        .doc = "Returns a pseudo-randomly generated java.util.UUID (as string in ClojureWasm).",
+        .arglists = "([])",
+        .added = "1.11",
+    },
 };
 
 // ============================================================
@@ -728,4 +772,34 @@ test "format - mixed" {
         .{ .integer = 10 },
     });
     try testing.expectEqualStrings("x is 10", result.string);
+}
+
+test "random-uuid - format" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try randomUuidFn(alloc, &[_]Value{});
+    try testing.expect(result == .string);
+    const uuid = result.string;
+    // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (36 chars)
+    try testing.expectEqual(@as(usize, 36), uuid.len);
+    try testing.expectEqual(@as(u8, '-'), uuid[8]);
+    try testing.expectEqual(@as(u8, '-'), uuid[13]);
+    try testing.expectEqual(@as(u8, '-'), uuid[18]);
+    try testing.expectEqual(@as(u8, '-'), uuid[23]);
+    // Version 4
+    try testing.expectEqual(@as(u8, '4'), uuid[14]);
+    // Variant: y must be 8, 9, a, or b
+    try testing.expect(uuid[19] == '8' or uuid[19] == '9' or uuid[19] == 'a' or uuid[19] == 'b');
+}
+
+test "random-uuid - uniqueness" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const r1 = try randomUuidFn(alloc, &[_]Value{});
+    const r2 = try randomUuidFn(alloc, &[_]Value{});
+    try testing.expect(!std.mem.eql(u8, r1.string, r2.string));
 }

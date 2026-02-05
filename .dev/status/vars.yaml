@@ -506,7 +506,7 @@ vars:
     "rand-int": {type: function, status: done, note: "Zig builtin"}
     "rand-nth": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "random-sample": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "random-uuid": {type: function, status: todo}
+    "random-uuid": {type: function, status: done, note: "builtin; returns string not UUID type"}
     range: {type: function, status: done, note: "Zig builtin"}
     "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}

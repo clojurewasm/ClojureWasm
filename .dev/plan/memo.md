@@ -4,9 +4,9 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- Phase: D (parallel expansion)
-- Next task: D16
-- Coverage: 503/704 clojure.core vars done
+- Phase: D (parallel expansion) — COMPLETE
+- Next task: plan next phase
+- Coverage: 504/704 clojure.core vars done (0 todo, 200 skip)
 - Blockers: none
 
 ## Task Queue
@@ -50,20 +50,19 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D16: random-uuid — implement as Zig builtin (last remaining todo var).
+Phase D complete. Planning next phase.
 
 ## Previous Task
+
+D16 completed: random-uuid — Zig builtin using std.crypto.random.
+- UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+- Returns string (no UUID type yet)
+- Last remaining todo var — 0 todo remaining
 
 D15 completed: Easy wins sweep — 10 vars implemented, ~50 skipped.
 - Implemented: locking, requiring-resolve, splitv-at, partitionv, partitionv-all,
   add-tap, remove-tap, tap>, promise, deliver
-- All pure Clojure in core.clj (no Zig builtins needed)
-- promise/deliver: simplified atom-based (no blocking deref)
-- tap system: synchronous stub (no async queue)
-- locking: single-threaded no-op
-- Batch skipped ~50 vars (chunked seqs, transients, sorted collections,
-  concurrency, new Value types needed)
-- Coverage: 493 → 503 done, 199 skip, 1 todo (random-uuid)
+- Coverage: 493 → 504 done, 200 skip, 0 todo
 
 D12 completed: Binding & redefs — 5 vars implemented.
 - thread-bound? builtin (checks hasThreadBinding)
