@@ -1717,6 +1717,29 @@
    \formfeed "formfeed"
    \return   "return"})
 
+;; Munge (Compiler.CHAR_MAP equivalent)
+(def ^:private munge-char-map
+  {\- "_", \: "_COLON_", \+ "_PLUS_", \> "_GT_", \< "_LT_",
+   \= "_EQ_", \~ "_TILDE_", \. "_DOT_",
+   \! "_BANG_", \@ "_CIRCA_", \# "_SHARP_",
+   \' "_SINGLEQUOTE_", \" "_DOUBLEQUOTE_",
+   \% "_PERCENT_", \^ "_CARET_", \& "_AMPERSAND_",
+   \* "_STAR_", \| "_BAR_", \{ "_LBRACE_", \} "_RBRACE_",
+   \[ "_LBRACK_", \] "_RBRACK_", \/ "_SLASH_",
+   \\ "_BSLASH_", \? "_QMARK_"})
+
+(defn munge
+  "Munge a name string into an idenitifier-safe string."
+  [s]
+  ((if (symbol? s) symbol str)
+   (apply str (map (fn [c] (or (get munge-char-map c) (str c)))
+                   (seq (str s))))))
+
+(defn namespace-munge
+  "Convert a Clojure namespace name to a legal identifier."
+  [ns]
+  (apply str (map (fn [c] (if (= c \-) \_ c)) (seq (str ns)))))
+
 ;; Data reader constants
 (def default-data-readers {})
 

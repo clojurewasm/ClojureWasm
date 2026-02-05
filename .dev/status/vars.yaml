@@ -244,7 +244,7 @@ vars:
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
     descendants: {type: function, status: done, note: core.clj hierarchy-aware}
-    destructure: {type: function, status: todo}
+    destructure: {type: function, status: skip, note: compiler handles destructuring directly}
     disj: {type: function, status: done, note: "Zig builtin"}
     "disj!": {type: function, status: todo}
     dissoc: {type: function, status: done, note: "Zig builtin"}
@@ -416,10 +416,10 @@ vars:
     "min-key": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "mix-collection-hash": {type: function, status: done}
     mod: {type: function, status: done, note: "VM intrinsic opcode"}
-    munge: {type: function, status: todo}
+    munge: {type: function, status: done}
     name: {type: function, status: done, note: "Zig builtin"}
     namespace: {type: function, status: done, note: "Zig builtin"}
-    "namespace-munge": {type: function, status: todo}
+    "namespace-munge": {type: function, status: done}
     "nat-int?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "neg-int?": {type: function, status: done, note: "Zig builtin"}
     "neg?": {type: function, status: done, note: "Zig builtin"}
@@ -512,8 +512,8 @@ vars:
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rationalize: {type: function, status: todo}
     "re-find": {type: function, status: done, note: "Zig builtin"}
-    "re-groups": {type: function, status: todo}
-    "re-matcher": {type: function, status: todo}
+    "re-groups": {type: function, status: skip, note: needs Matcher Value type}
+    "re-matcher": {type: function, status: skip, note: needs Matcher Value type}
     "re-matches": {type: function, status: done, note: "Zig builtin"}
     "re-pattern": {type: function, status: done, note: "Zig builtin"}
     "re-seq": {type: function, status: done, note: "Zig builtin"}

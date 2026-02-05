@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D13
-- Coverage: 490/703 clojure.core vars done
+- Next task: D14
+- Coverage: 492/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -39,8 +39,6 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 - D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
   tagged-literal?, reader-conditional, reader-conditional?
 - D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
-- D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
-  char-escape-string, char-name-string, find-keyword, re-groups, re-matcher
 - D14: Read system — read, load-string, load-reader
 - D15: Chunked seqs — chunk, chunk-append, chunk-buffer, chunk-first, chunk-next,
   chunk-rest, chunked-seq?
@@ -53,10 +51,14 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
-char-escape-string, char-name-string, find-keyword, re-groups, re-matcher
+D14: Read system — read, load-string, load-reader.
 
 ## Previous Task
+
+D13 completed: Misc functions — munge and namespace-munge.
+- munge: character map replacement (Compiler.CHAR_MAP equivalent)
+- namespace-munge: replace `-` with `_`
+- Skipped: destructure (compiler handles), find-keyword (F80), re-matcher/re-groups (needs Matcher type)
 
 D12 completed: Binding & redefs — 5 vars implemented.
 - thread-bound? builtin (checks hasThreadBinding)
