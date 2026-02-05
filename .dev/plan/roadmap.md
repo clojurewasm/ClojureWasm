@@ -185,7 +185,45 @@ vars with upstream tests. Mark Tier 3 (JVM-specific) as skip.
 **Prerequisite**: Phase R complete (multi-file loading enables richer testing)
 **Reference**: `.dev/status/vars.yaml`, `.claude/references/impl-tiers.md`
 
-### Phase 20: Production GC
+### Phase 20: Infrastructure Expansion (skip unblock)
+
+Implement collection types currently marked skip. Enables more upstream
+code to work verbatim and expands test porting coverage.
+
+**Scope**:
+
+1. **Transient collections** (~7 vars) — transient, persistent!, assoc!, conj!, etc.
+   PersistentVector/Map mutable versions. Performance-critical for bulk builds.
+2. **Chunked sequences** (~7 vars) — chunk, chunk-buffer, etc.
+   Batch lazy-seq processing. Upstream map/filter assume chunked support.
+3. **Sorted collections** (~4 vars) — sorted-map-by, sorted-set-by, subseq, rsubseq.
+   Comparator-based sorted collections.
+
+**Prerequisite**: Phase D complete
+**Reference**: `.dev/status/vars.yaml` (skip entries with "type not implemented")
+
+### Phase 21: Upstream Alignment (F94)
+
+Replace 13 UPSTREAM-DIFF simplified implementations with verbatim upstream.
+Improves correctness without changing external behavior.
+
+**Scope**: All vars with UPSTREAM-DIFF notes in vars.yaml
+**Quick check**: `grep UPSTREAM-DIFF .dev/status/vars.yaml`
+**Reference**: F94 in checklist.md, `.claude/rules/java-interop.md`
+
+### Phase 22: Test Porting Expansion
+
+Port additional upstream test files to expand coverage.
+
+**Scope**:
+- multimethods, protocols, transducers
+- java_interop (portable subset)
+- Any other portable upstream test files
+
+**Prerequisite**: Phase 20 (transient/chunked available widens testable surface)
+**Reference**: `.claude/rules/test-porting.md`
+
+### Phase 23: Production GC
 
 Replace arena allocator with real garbage collector.
 
@@ -193,27 +231,28 @@ Replace arena allocator with real garbage collector.
 **Triggers**: Long-running REPL, memory benchmarks exceed bounds
 **Reference**: F2, F20 in checklist.md; .dev/future.md SS5
 
-### Phase 21: Optimization
+### Phase 24: Optimization
 
 Performance optimization pass, benchmark-driven.
 
 **Scope**: NaN boxing (F1), fused reduce (F21), persistent DS (F4), inline caching
-**Prerequisite**: Phase 20 (Production GC) complete
+**Prerequisite**: Phase 23 (Production GC) complete
 **Reference**: See "Optimization Phase" in Phase Notes below; bench/README.md
 
-### Phase 22: Wasm InterOp (FFI)
+### Phase 25: Wasm InterOp (FFI)
 
 Call Wasm modules from native track.
 
 **Scope**: wasm/load, wasm/fn, WIT parser, Component Model
+**Prerequisite**: Phase 24 (Optimization) complete
 **Reference**: See "Wasm InterOp" in Phase Notes below; .dev/future.md SS1, SS4
 
-### Phase 23: wasm_rt Track
+### Phase 26: wasm_rt Track
 
 Compile entire runtime to Wasm.
 
 **Scope**: WasmGC delegate, wasm32-wasi target
-**Prerequisite**: Phase 22 (Wasm InterOp) complete
+**Prerequisite**: Phase 25 (Wasm InterOp) complete
 **Reference**: See "wasm_rt Track" in Phase Notes below; .dev/future.md SS7
 
 ---
@@ -258,7 +297,7 @@ When implementing IO/system functionality:
 
 ### Optimization Phase
 
-**Prerequisite**: Phase 20 (Production GC) complete
+**Prerequisite**: Phase 23 (Production GC) complete
 
 | ID  | Item                     | Trigger                            | Reference |
 | --- | ------------------------ | ---------------------------------- | --------- |
@@ -284,7 +323,7 @@ Target: VM outperforms TreeWalk on all benchmarks.
 
 ### Wasm InterOp (FFI)
 
-**Prerequisite**: Phase 21 (Optimization) complete
+**Prerequisite**: Phase 24 (Optimization) complete
 
 FFI for calling Wasm modules from native track. Distinct from wasm_rt.
 Beta has working implementation to reference.
@@ -316,7 +355,7 @@ Beta has working implementation to reference.
 
 ### wasm_rt Track
 
-**Prerequisite**: Phase 22 (Wasm InterOp) complete
+**Prerequisite**: Phase 25 (Wasm InterOp) complete
 
 Compile entire runtime to `.wasm`, run on WasmEdge/Wasmtime.
 

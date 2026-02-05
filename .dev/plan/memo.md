@@ -4,31 +4,46 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All major phases complete: CX, C13-C20, R, D
+- All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 504/704 clojure.core vars done (0 todo, 200 skip)
-- Next: plan new phase
+- Next: Phase 20 (Infrastructure Expansion — transient, chunked, sorted)
 - Blockers: none
+
+## Phase Roadmap (user-specified order)
+
+| Phase | Name                     | Status  | Key Goal                              |
+| ----- | ------------------------ | ------- | ------------------------------------- |
+| 20    | Infrastructure Expansion | active  | transient, chunked, sorted (~18 vars) |
+| 21    | Upstream Alignment       | pending | Replace 13 UPSTREAM-DIFF with upstream|
+| 22    | Test Porting Expansion   | pending | multimethods, protocols, transducers  |
+| 23    | Production GC            | pending | Replace arena allocator               |
+| 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
+| 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT              |
 
 ## Task Queue
 
-(empty — all planned phases complete, need to plan next)
+1. 20.1: Transient collections — types + builtins (transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!) — 7 vars
+2. 20.2: Core.clj transient alignment (update-vals, update-keys, mapv, set fns → use transient)
+3. 20.3: Chunked sequences — types + builtins (chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?) — 7 vars
+4. 20.4: Core.clj chunked seq paths (map, filter, doseq → chunked optimization)
+5. 20.5: Sorted-map-by, sorted-set-by with custom comparators — 2 vars
+6. 20.6: subseq, rsubseq — 2 vars
 
 ## Current Task
 
-Plan next phase. Candidates:
-- Phase 20: Production GC (replace arena allocator)
-- Phase 21: Optimization (NaN boxing, fused reduce)
-- New test porting round (expand coverage)
-- Infrastructure: transient collections, chunked seqs, sorted collections
-- Upstream alignment (F94): replace UPSTREAM-DIFF implementations
+20.1: Transient collections — types + builtins
+
+Design:
+- Add TransientVector, TransientArrayMap, TransientHashSet to collections.zig
+- Add transient_vector, transient_map, transient_set variants to Value union
+- Builtins: transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
+- Array-backed: mutable ArrayList-style buffer, "consumed" flag after persistent!
+- Fix vars.yaml: `transient` is incorrectly marked "done" (no actual impl)
+- TDD: Red → Green → Refactor per builtin
 
 ## Previous Task
 
-D16 completed: random-uuid — Zig builtin using std.crypto.random.
-- Last remaining todo var — 0 todo remaining
-
-D15 completed: Easy wins sweep — 10 vars implemented, ~50 skipped.
-- Coverage: 493 → 504 done, 200 skip, 0 todo
+Phase 20 planned: 6 tasks, ~18 vars total (transient 7, chunked 7, sorted 4)
 
 ## Completed Phases (reverse chronological)
 
@@ -69,6 +84,10 @@ Notes that persist across sessions.
 - Plan: `.dev/plan/foundation-reset.md` (Phase A-D, with BE inserted)
 - Phase CX plan: `.dev/plan/phase-cx-plan.md`
 - Roadmap: `.dev/plan/roadmap.md`
+- **Phase order (user decision)**: A(infra) → B(upstream align) → F(tests) → C(GC) → D(optimize) → E(wasm)
+  - Mapped to Phase 20 → 21 → 22 → 23 → 24 → 25 in roadmap.md
+  - Rationale: transient/chunked enables more upstream code, tests benefit from wider coverage,
+    GC needed for production use, optimization after GC, wasm last as differentiation
 - Dynamic binding: var.zig push/pop frame stack, `push-thread-bindings`/`pop-thread-bindings` builtins, `binding` macro, `set!` special form
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
