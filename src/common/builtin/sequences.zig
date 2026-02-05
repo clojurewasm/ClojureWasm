@@ -111,6 +111,23 @@ pub fn containsFn(_: Allocator, args: []const Value) anyerror!Value {
             .integer => |i| Value{ .boolean = i >= 0 and @as(usize, @intCast(i)) < vec.count() },
             else => Value{ .boolean = false },
         },
+        .transient_vector => |tv| switch (args[1]) {
+            .integer => |i| Value{ .boolean = i >= 0 and @as(usize, @intCast(i)) < tv.count() },
+            else => Value{ .boolean = false },
+        },
+        .transient_map => |tm| blk: {
+            var i: usize = 0;
+            while (i < tm.entries.items.len) : (i += 2) {
+                if (tm.entries.items[i].eql(args[1])) break :blk Value{ .boolean = true };
+            }
+            break :blk Value{ .boolean = false };
+        },
+        .transient_set => |ts| blk: {
+            for (ts.items.items) |item| {
+                if (item.eql(args[1])) break :blk Value{ .boolean = true };
+            }
+            break :blk Value{ .boolean = false };
+        },
         .nil => Value{ .boolean = false },
         else => err.setErrorFmt(.eval, .type_error, .{}, "contains? not supported on {s}", .{@tagName(args[0])}),
     };

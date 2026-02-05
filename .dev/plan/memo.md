@@ -22,7 +22,7 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 22.1: Port transients.clj (82 lines) — validate Phase 20 transient support
+1. ~~22.1: Port transients.clj (82 lines)~~ — DONE (4 tests, 29 assertions)
 2. 22.2: Port keywords.clj (31 lines) — keyword tests
 3. 22.3: Port fn.clj (55 lines) — function edge cases
 4. 22.4: Port try_catch.clj (39 lines) — exception handling
@@ -34,11 +34,11 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-22.1: Port transients.clj (82 lines)
+22.2: Port keywords.clj (31 lines)
 
 ## Previous Task
 
-Phase 21 complete (upstream alignment): cond, condp, dotimes, doseq aligned; UPSTREAM-DIFF classified
+22.1: Port transients.clj — 4 tests, 29 assertions. Fixed: get/contains?/find on transients, disj! variadic
 - 20.1-20.2: Transient collections (6 vars)
 - 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
 - 20.5: sorted-map-by, sorted-set-by (2 vars)

@@ -92,9 +92,15 @@ pub fn dissocBangFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (disj! tset val) — removes val from transient set.
 pub fn disjBangFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to disj!", .{args.len});
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to disj!", .{args.len});
     return switch (args[0]) {
-        .transient_set => |ts| Value{ .transient_set = ts.disj(args[1]) catch return transientConsumedError("disj!") },
+        .transient_set => |ts| {
+            var current = ts;
+            for (args[1..]) |key| {
+                current = current.disj(key) catch return transientConsumedError("disj!");
+            }
+            return Value{ .transient_set = current };
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "disj! not supported on {s}", .{@tagName(args[0])}),
     };
 }

@@ -355,6 +355,25 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
             break :blk vec.nth(@intCast(idx)) orelse not_found;
         },
         .set => |s| if (s.contains(args[1])) args[1] else not_found,
+        .transient_vector => |tv| blk: {
+            if (args[1] != .integer) break :blk not_found;
+            const idx = args[1].integer;
+            if (idx < 0 or @as(usize, @intCast(idx)) >= tv.items.items.len) break :blk not_found;
+            break :blk tv.items.items[@intCast(idx)];
+        },
+        .transient_map => |tm| blk: {
+            var i: usize = 0;
+            while (i < tm.entries.items.len) : (i += 2) {
+                if (tm.entries.items[i].eql(args[1])) break :blk tm.entries.items[i + 1];
+            }
+            break :blk not_found;
+        },
+        .transient_set => |ts| blk: {
+            for (ts.items.items) |item| {
+                if (item.eql(args[1])) break :blk args[1];
+            }
+            break :blk not_found;
+        },
         .nil => not_found,
         else => not_found,
     };
@@ -1301,8 +1320,44 @@ pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
             vec.* = .{ .items = pair };
             return Value{ .vector = vec };
         },
+        .vector => |vec| {
+            if (args[1] != .integer) return .nil;
+            const idx = args[1].integer;
+            if (idx < 0 or @as(usize, @intCast(idx)) >= vec.items.len) return .nil;
+            const pair = try allocator.alloc(Value, 2);
+            pair[0] = args[1];
+            pair[1] = vec.items[@intCast(idx)];
+            const v = try allocator.create(PersistentVector);
+            v.* = .{ .items = pair };
+            return Value{ .vector = v };
+        },
+        .transient_vector => |tv| {
+            if (args[1] != .integer) return .nil;
+            const idx = args[1].integer;
+            if (idx < 0 or @as(usize, @intCast(idx)) >= tv.items.items.len) return .nil;
+            const pair = try allocator.alloc(Value, 2);
+            pair[0] = args[1];
+            pair[1] = tv.items.items[@intCast(idx)];
+            const v = try allocator.create(PersistentVector);
+            v.* = .{ .items = pair };
+            return Value{ .vector = v };
+        },
+        .transient_map => |tm| {
+            var i: usize = 0;
+            while (i < tm.entries.items.len) : (i += 2) {
+                if (tm.entries.items[i].eql(args[1])) {
+                    const pair = try allocator.alloc(Value, 2);
+                    pair[0] = args[1];
+                    pair[1] = tm.entries.items[i + 1];
+                    const v = try allocator.create(PersistentVector);
+                    v.* = .{ .items = pair };
+                    return Value{ .vector = v };
+                }
+            }
+            return .nil;
+        },
         .nil => .nil,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "find expects a map, got {s}", .{@tagName(args[0])}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find expects a map or vector, got {s}", .{@tagName(args[0])}),
     };
 }
 
