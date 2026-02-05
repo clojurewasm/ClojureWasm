@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful test porting) in progress
-- Next task: C12 (Re-port sequences.clj)
+- Next task: C13 (clojure_walk.clj)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -26,7 +26,7 @@ Order: new small → re-port existing → new medium → new large.
 - ~~C9: Re-port control.clj~~ done (155 assertions, was 66)
 - ~~C10: Re-port predicates.clj~~ skip (already faithful, 143 assertions)
 - ~~C11: Re-port data_structures.clj~~ done (236 assertions, was 197, keys/vals nil-for-non-map fix)
-- C12: Re-port sequences.clj (upstream faithful)
+- ~~C12: Re-port sequences.clj~~ done (301 assertions, was 188, lazy-seq equality + drop lazy-seq)
 - C13: clojure_walk.clj (75 lines)
 - C14: string.clj (196 lines)
 - C15: clojure_set.clj (224 lines)
@@ -38,13 +38,14 @@ Order: new small → re-port existing → new medium → new large.
 
 ## Current Task
 
-C12: Re-port sequences.clj — faithful from upstream with CLJW markers.
+C13: Port clojure_walk.clj — upstream 75 lines, new test file.
 
 ## Previous Task
 
-C11 completed: Re-port data_structures.clj — 236 assertions (was 197).
-- Added nested-map-destructuring, array-map-arity, expanded contains?/keys/vals/assoc/hash-set
-- Fixed keys/vals to return nil for non-map types (match JVM RT.keys/RT.vals)
+C12 completed: Re-port sequences.clj — 301 assertions (was 188).
+- Added 15 new tests: cons, not-empty, ffirst, nnext, take-nth, nthrest, nthnext, drop-last, split-at, split-with, reductions, reductions-obeys-reduced, rand-nth, shuffle, CLJ-1633, range-meta
+- Fixed lazy-seq equality semantics (empty lazy-seq = () not nil, JVM LazySeq.equiv)
+- Fixed drop to return lazy-seq (empty result = () not nil)
 
 ## Handover Notes
 
