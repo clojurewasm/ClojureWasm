@@ -61,6 +61,7 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore user namespace and re-refer all core bindings
     env.current_ns = saved_ns;
+    syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = core_ns.mappings.iterator();
         while (iter.next()) |entry| {
@@ -92,6 +93,7 @@ pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore user namespace and re-refer walk bindings
     env.current_ns = saved_ns;
+    syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = walk_ns.mappings.iterator();
         while (iter.next()) |entry| {
@@ -130,6 +132,7 @@ pub fn loadTemplate(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore user namespace and re-refer template bindings
     env.current_ns = saved_ns;
+    syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = template_ns.mappings.iterator();
         while (iter.next()) |entry| {
@@ -169,6 +172,7 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore user namespace and re-refer test bindings
     env.current_ns = saved_ns;
+    syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = test_ns.mappings.iterator();
         while (iter.next()) |entry| {
@@ -200,10 +204,21 @@ pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore user namespace and re-refer set bindings
     env.current_ns = saved_ns;
+    syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = set_ns.mappings.iterator();
         while (iter.next()) |entry| {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+}
+
+/// Sync *ns* var with env.current_ns. Called after manual namespace switches.
+fn syncNsVar(env: *Env) void {
+    const ns_name = if (env.current_ns) |ns| ns.name else "user";
+    if (env.findNamespace("clojure.core")) |core| {
+        if (core.resolve("*ns*")) |ns_var| {
+            ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = ns_name } });
         }
     }
 }

@@ -99,6 +99,12 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
+    // Register *ns* dynamic var (tracks current namespace)
+    const ns_var = try core_ns.intern("*ns*");
+    ns_var.dynamic = true;
+    ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "user" } });
+    try user_ns.refer("*ns*", ns_var);
+
     // Register clojure.string namespace builtins
     const str_ns = try env.findOrCreateNamespace("clojure.string");
     for (clj_string_mod.builtins) |b| {

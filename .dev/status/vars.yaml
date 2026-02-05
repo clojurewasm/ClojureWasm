@@ -46,7 +46,7 @@ vars:
     "*command-line-args*": {type: var, status: todo}
     "*compile-files*": {type: var, status: todo}
     "*compile-path*": {type: var, status: todo}
-    "*compiler-options*": {type: var, status: todo}
+    "*compiler-options*": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     "*data-readers*": {type: dynamic-var, status: todo}
     "*default-data-reader-fn*": {type: dynamic-var, status: todo}
     "*e": {type: dynamic-var, status: todo}
@@ -56,7 +56,7 @@ vars:
     "*fn-loader*": {type: var, status: todo}
     "*in*": {type: var, status: todo}
     "*math-context*": {type: var, status: todo}
-    "*ns*": {type: var, status: todo}
+    "*ns*": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     "*out*": {type: var, status: todo}
     "*print-dup*": {type: var, status: todo}
     "*print-length*": {type: dynamic-var, status: todo}
@@ -95,7 +95,7 @@ vars:
     ">": {type: function, status: done, note: "VM intrinsic opcode"}
     ">=": {type: function, status: done, note: "VM intrinsic opcode"}
     "EMPTY-NODE": {type: var, status: todo}
-    Inst: {type: var, status: todo}
+    Inst: {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     "NaN?": {type: function, status: done, note: "core.clj (upstream uses Double/isNaN)"}
     "PrintWriter-on": {type: function, status: todo}
     "StackTraceElement->vec": {type: function, status: todo}
@@ -112,7 +112,7 @@ vars:
     aget: {type: function, status: todo}
     alength: {type: function, status: todo}
     alias: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "all-ns": {type: function, status: done, note: "Zig builtin"}
+    "all-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     alter: {type: function, status: todo}
     "alter-meta!": {type: function, status: done, note: "Zig builtin: mutates atom metadata"}
     "alter-var-root": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -162,7 +162,7 @@ vars:
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
     "boolean-array": {type: function, status: todo}
     "boolean?": {type: function, status: done, note: "Zig builtin"}
-    booleans: {type: function, status: todo}
+    booleans: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "bound-fn": {type: macro, status: todo}
     "bound-fn*": {type: function, status: todo}
     "bound?": {type: function, status: done, note: 'Takes var_ref or symbol (variadic)'}
@@ -184,7 +184,7 @@ vars:
     chunk: {type: function, status: todo}
     "chunk-append": {type: function, status: todo}
     "chunk-buffer": {type: function, status: todo}
-    "chunk-cons": {type: function, status: todo}
+    "chunk-cons": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "chunk-first": {type: function, status: todo}
     "chunk-next": {type: function, status: todo}
     "chunk-rest": {type: function, status: todo}
@@ -210,13 +210,13 @@ vars:
     condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
     conj: {type: function, status: done, note: "Zig builtin"}
     "conj!": {type: function, status: todo}
-    cons: {type: function, status: done, note: "Zig builtin"}
-    constantly: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "construct-proxy": {type: function, status: todo}
-    "contains?": {type: function, status: done, note: "Zig builtin"}
+    cons: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    constantly: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "construct-proxy": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "contains?": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     count: {type: function, status: done, note: "Zig builtin"}
     "counted?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "create-ns": {type: function, status: done, note: "Zig builtin"}
+    "create-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "create-struct": {type: function, status: todo}
     cycle: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -267,8 +267,8 @@ vars:
     eduction: {type: function, status: todo}
     empty: {type: function, status: done, note: "Zig builtin"}
     "empty?": {type: function, status: done, note: "Zig builtin"}
-    ensure: {type: function, status: todo}
-    "ensure-reduced": {type: function, status: done, note: "Zig builtin"}
+    ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ensure-reduced": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "enumeration-seq": {type: function, status: todo}
     "error-handler": {type: function, status: todo}
     "error-mode": {type: function, status: todo}
@@ -292,7 +292,7 @@ vars:
     filterv: {type: function, status: done, note: "core.clj (vec (filter pred coll))"}
     find: {type: function, status: done, note: "Zig builtin"}
     "find-keyword": {type: function, status: todo}
-    "find-ns": {type: function, status: done, note: "Zig builtin"}
+    "find-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "find-protocol-impl": {type: function, status: todo}
     "find-protocol-method": {type: function, status: todo}
     "find-var": {type: function, status: todo}
@@ -319,7 +319,7 @@ vars:
     "future?": {type: function, status: todo}
     "gen-class": {type: macro, status: todo}
     "gen-interface": {type: macro, status: todo}
-    gensym: {type: function, status: done, note: "Zig builtin"}
+    gensym: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     get: {type: function, status: done, note: "Zig builtin"}
     "get-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "get-method": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -342,16 +342,16 @@ vars:
     "if-some": {type: macro, status: done}
     "ifn?": {type: function, status: done, note: "Zig builtin"}
     import: {type: macro, status: todo}
-    "in-ns": {type: var, status: done, note: builtin (upstream is special form)}
+    "in-ns": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     inc: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "inc'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "infinite?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "init-proxy": {type: function, status: todo}
-    "inst-ms": {type: function, status: todo}
-    "inst-ms*": {type: function, status: todo}
-    "inst?": {type: function, status: todo}
-    "instance?": {type: function, status: done, note: "core.clj (= t (type x))"}
+    "inst-ms": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "inst-ms*": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "inst?": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "instance?": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     int: {type: function, status: done, note: builtin (upstream is pure clj)}
     "int-array": {type: function, status: todo}
     "int?": {type: function, status: done, note: "Zig builtin"}
@@ -433,17 +433,17 @@ vars:
     "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
     "not-every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
-    ns: {type: macro, status: done, note: 'UPSTREAM-DIFF: minimal impl, no :require/:use/:import'}
-    "ns-aliases": {type: function, status: todo}
-    "ns-imports": {type: function, status: todo}
-    "ns-interns": {type: function, status: done, note: "Zig builtin"}
-    "ns-map": {type: function, status: done, note: "Zig builtin"}
-    "ns-name": {type: function, status: done, note: "Zig builtin"}
-    "ns-publics": {type: function, status: done, note: "Zig builtin"}
-    "ns-refers": {type: function, status: todo}
-    "ns-resolve": {type: function, status: todo}
-    "ns-unalias": {type: function, status: todo}
-    "ns-unmap": {type: function, status: todo}
+    ns: {type: macro, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-aliases": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-imports": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-interns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "ns-map": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "ns-name": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "ns-publics": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "ns-refers": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-resolve": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-unalias": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-unmap": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     nth: {type: function, status: done, note: "Zig builtin"}
     nthnext: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     nthrest: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -529,7 +529,7 @@ vars:
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}
     reduced: {type: function, status: done, note: "Zig builtin"}
     "reduced?": {type: function, status: done, note: "Zig builtin"}
-    reductions: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    reductions: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     ref: {type: function, status: todo}
     "ref-history-count": {type: function, status: todo}
     "ref-max-history": {type: function, status: todo}
@@ -543,7 +543,7 @@ vars:
     remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
-    "remove-ns": {type: function, status: todo}
+    "remove-ns": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "remove-tap": {type: function, status: todo}
     "remove-watch": {type: function, status: todo}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
@@ -614,7 +614,7 @@ vars:
     "stream-into!": {type: function, status: todo}
     "stream-reduce!": {type: function, status: todo}
     "stream-seq!": {type: function, status: todo}
-    "stream-transduce!": {type: function, status: todo}
+    "stream-transduce!": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "string?": {type: function, status: done, note: "Zig builtin"}
     struct: {type: function, status: todo}
     "struct-map": {type: function, status: todo}
@@ -635,14 +635,14 @@ vars:
     "take-while": {type: function, status: done, note: "core.clj loop+pred"}
     "tap>": {type: function, status: todo}
     test: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "the-ns": {type: function, status: done, note: "Zig builtin"}
+    "the-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "thread-bound?": {type: function, status: todo}
     time: {type: macro, status: done, note: macro using __nano-time}
     "to-array": {type: function, status: todo}
     "to-array-2d": {type: function, status: todo}
     trampoline: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    transduce: {type: function, status: done, note: 'UPSTREAM-DIFF: uses reduce instead of coll-reduce protocol'}
-    transient: {type: function, status: todo}
+    transduce: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    transient: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "tree-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "true?": {type: function, status: done, note: "core.clj (= x true)"}
     type: {type: function, status: done, note: "Zig builtin returns keyword"}
@@ -671,7 +671,7 @@ vars:
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
     unreduced: {type: function, status: done, note: "Zig builtin"}
-    "unsigned-bit-shift-right": {type: function, status: done, note: "Zig builtin"}
+    "unsigned-bit-shift-right": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     update: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "update-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "update-keys": {type: function, status: done, note: core.clj reduce-kv based}

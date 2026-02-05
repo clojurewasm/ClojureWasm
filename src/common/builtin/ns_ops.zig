@@ -150,6 +150,14 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Switch current namespace
     env.current_ns = ns;
+
+    // Sync *ns* dynamic var
+    if (env.findNamespace("clojure.core")) |core| {
+        if (core.resolve("*ns*")) |ns_var| {
+            ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = ns.name } });
+        }
+    }
+
     return .{ .symbol = .{ .ns = null, .name = ns.name } };
 }
 
