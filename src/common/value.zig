@@ -357,18 +357,48 @@ pub const Value = union(enum) {
             .boolean => |b| try w.writeAll(if (b) "true" else "false"),
             .integer => |n| try w.print("{d}", .{n}),
             .float => |n| {
-                // Clojure always prints a decimal point for floats.
-                var buf: [32]u8 = undefined;
-                const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch "0";
-                try w.writeAll(s);
-                var has_dot = false;
-                for (s) |ch| {
-                    if (ch == '.' or ch == 'e' or ch == 'E') {
-                        has_dot = true;
-                        break;
+                // Handle special float values
+                if (std.math.isNan(n)) {
+                    try w.writeAll("##NaN");
+                } else if (std.math.isPositiveInf(n)) {
+                    try w.writeAll("##Inf");
+                } else if (std.math.isNegativeInf(n)) {
+                    try w.writeAll("##-Inf");
+                } else {
+                    // Try decimal format first (works for normal-range numbers)
+                    var dec_buf: [32]u8 = undefined;
+                    const dec_result = std.fmt.bufPrint(&dec_buf, "{d}", .{n});
+                    if (dec_result) |s| {
+                        try w.writeAll(s);
+                        var has_dot = false;
+                        for (s) |ch| {
+                            if (ch == '.' or ch == 'e' or ch == 'E') {
+                                has_dot = true;
+                                break;
+                            }
+                        }
+                        if (!has_dot) try w.writeAll(".0");
+                    } else |_| {
+                        // Decimal overflows buffer — use scientific notation
+                        var sci_buf: [32]u8 = undefined;
+                        const s = std.fmt.bufPrint(&sci_buf, "{e}", .{n}) catch "0.0";
+                        // Convert lowercase 'e' to uppercase 'E' for Clojure compatibility
+                        // and ensure mantissa has a decimal point
+                        var wrote_mantissa = false;
+                        var has_dot = false;
+                        for (s) |ch| {
+                            if (ch == 'e' or ch == 'E') {
+                                if (!has_dot) try w.writeAll(".0");
+                                try w.writeByte('E');
+                                wrote_mantissa = true;
+                            } else {
+                                if (ch == '.') has_dot = true;
+                                try w.writeByte(ch);
+                            }
+                        }
+                        if (!wrote_mantissa and !has_dot) try w.writeAll(".0");
                     }
                 }
-                if (!has_dot) try w.writeAll(".0");
             },
             .char => |c| {
                 if (!print_readably) {
@@ -391,7 +421,18 @@ pub const Value = union(enum) {
             },
             .string => |s| {
                 if (print_readably) {
-                    try w.print("\"{s}\"", .{s});
+                    try w.writeByte('"');
+                    for (s) |c| {
+                        switch (c) {
+                            '"' => try w.writeAll("\\\""),
+                            '\\' => try w.writeAll("\\\\"),
+                            '\n' => try w.writeAll("\\n"),
+                            '\t' => try w.writeAll("\\t"),
+                            '\r' => try w.writeAll("\\r"),
+                            else => try w.writeByte(c),
+                        }
+                    }
+                    try w.writeByte('"');
                 } else {
                     try w.writeAll(s);
                 }

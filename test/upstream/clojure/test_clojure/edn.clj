@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/edn.clj
 ;; Upstream lines: 39
-;; CLJW markers: 7
+;; CLJW markers: 6
 
 ;; CLJW: upstream uses clojure.test.generative (defspec) which is not available.
 ;; Replaced with manual roundtrip tests covering the same ednable/non-ednable types.
@@ -28,8 +28,7 @@
     ;; floats
     0.0 1.5 -3.14
     ;; strings
-    ;; CLJW: removed "with \"quotes\"" — pr-str quote escaping bug (tracked in 22c.9)
-    "" "hello" "hello world"
+    "" "hello" "hello world" "with \"quotes\""
     ;; keywords
     :a :foo/bar
     ;; symbols

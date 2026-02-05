@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.9
+- Next task: 22c.10
 - Blockers: none
 
 ## Task Queue
@@ -23,7 +23,7 @@ Tier 2: Small implementation + new file ports
 - ~~22c.6: Implement parse-uuid + revive parse.clj test~~
 - ~~22c.7: Port edn.clj (clojure.edn thin wrapper)~~
 - ~~22c.8: Port try_catch.clj (basic portable subset)~~
-- 22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)
+- ~~22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)~~
 - 22c.10: Implement with-var-roots test helper + revive multimethods tests
 
 Tier 3: Medium implementation + new file ports
@@ -38,14 +38,15 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.9)
+(next: 22c.10)
 
 ## Previous Task
 
-22c.8: Port try_catch.clj (basic portable subset)
-- Upstream 100% JVM interop → CLJW-ADD portable tests (ex-info/throw)
-- Fixed VM bug: try without catch/finally silently swallowed exceptions (added re-throw)
-- try_catch.clj: 8 tests, 18 assertions, both backends pass
+22c.9: Fix ##Inf/##NaN pr-str + float literal precision + string quote escaping
+- Float: Inf → ##Inf, -Inf → ##-Inf, NaN → ##NaN
+- Float: large values use {e} scientific notation with E (JVM compat)
+- String: pr-str now escapes ", \, \n, \t, \r inside strings
+- Restored edn.clj quoted string roundtrip test (42 assertions now)
 
 ## Handover Notes
 
