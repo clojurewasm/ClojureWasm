@@ -24,8 +24,7 @@ Session handover document. Read at session start.
 ## Task Queue
 
 Tier 1 — Port existing features (no new implementation needed):
-1. 22b.1: Port keywords.clj (31 lines, 1 test, 100% portable)
-2. 22b.2: Port printer.clj (195 lines, 13 tests, 90% portable)
+1. 22b.2: Port printer.clj (195 lines, 13 tests, 90% portable)
 3. 22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
 4. 22b.4: Port test.clj (129 lines, 14 tests, 100% portable)
 5. 22b.5: Port test_fixtures.clj (73 lines, 5 tests, 100% portable)
@@ -40,16 +39,19 @@ Tier 2 — Port + implement (new namespace or feature):
 
 ## Current Task
 
-22b.1: Port keywords.clj (31 lines, 1 test, 100% portable)
-- Read upstream test/clojure/test_clojure/keywords.clj
+22b.2: Port printer.clj (195 lines, 13 tests, 90% portable)
+- Read upstream test/clojure/test_clojure/printer.clj
 - Port with CLJW markers
 - Both backends must pass
 
 ## Previous Task
 
-23.6: Verification — all tests pass, REPL memory bounded
-- Full test suite: all pass
-- VM: basic + GC stress test (500 iters, closures, maps, transducers) OK
+22b.1: Port keywords.clj (31 lines, 1 test, 100% portable)
+- test-find-keyword: skipped (find-keyword F80 unimplemented)
+- arity-exceptions: 4 assertions, all pass
+- Fixed keyword arity error messages in VM, TreeWalk, collections.zig
+- Added setInfoFmt() to error.zig (void variant for cross-error-set callers)
+- Implemented JVM-compatible `(> 20)` format for arg counts > 20
 - TreeWalk: same tests pass
 - GPA leak check: no leaks on VM or TreeWalk
 - Three-allocator architecture (D70): GPA + node_arena + GC confirmed stable

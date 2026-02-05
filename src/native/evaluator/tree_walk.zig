@@ -311,7 +311,21 @@ pub const TreeWalk = struct {
 
         // Keyword-as-function: (:key map) => (get map :key)
         if (callee == .keyword) {
-            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            if (call_n.args.len < 1 or call_n.args.len > 2) {
+                const kw = callee.keyword;
+                if (call_n.args.len > 20) {
+                    if (kw.ns) |ns| {
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
+                    } else {
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}", .{kw.name});
+                    }
+                } else if (kw.ns) |ns| {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}/{s}", .{ call_n.args.len, ns, kw.name });
+                } else {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ call_n.args.len, kw.name });
+                }
+                return error.ArityError;
+            }
             const target = try self.run(call_n.args[0]);
             if (target == .map) {
                 return target.map.get(callee) orelse

@@ -80,6 +80,17 @@ pub fn setError(info: Info) Error {
     return kindToError(info.kind);
 }
 
+/// Store error info without returning an error tag (for callers with different error sets).
+pub fn setInfoFmt(phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) void {
+    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch "error message too long";
+    last_error = .{
+        .kind = kind,
+        .phase = phase,
+        .message = msg,
+        .location = location,
+    };
+}
+
 /// Store error info with formatted message.
 pub fn setErrorFmt(phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) Error {
     const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch "error message too long";

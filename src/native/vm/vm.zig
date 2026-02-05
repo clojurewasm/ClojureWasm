@@ -719,7 +719,21 @@ pub const VM = struct {
 
         // Keyword-as-function: (:key map) => (get map :key)
         if (callee == .keyword) {
-            if (arg_count < 1) return error.ArityError;
+            if (arg_count < 1 or arg_count > 2) {
+                const kw = callee.keyword;
+                if (arg_count > 20) {
+                    if (kw.ns) |ns| {
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
+                    } else {
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}", .{kw.name});
+                    }
+                } else if (kw.ns) |ns| {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}/{s}", .{ arg_count, ns, kw.name });
+                } else {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ arg_count, kw.name });
+                }
+                return error.ArityError;
+            }
             const map_arg = self.stack[fn_idx + 1];
             const result = if (map_arg == .map)
                 map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)

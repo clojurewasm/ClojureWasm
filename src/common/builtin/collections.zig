@@ -659,7 +659,20 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .fn_val => bootstrap.callFnVal(allocator, f, call_args),
         .keyword => |kw| blk: {
             // keyword as function: (:kw map) or (:kw map default)
-            if (call_args.len < 1 or call_args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keyword lookup", .{call_args.len});
+            if (call_args.len < 1 or call_args.len > 2) {
+                if (call_args.len > 20) {
+                    if (kw.ns) |ns| {
+                        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
+                    } else {
+                        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}", .{kw.name});
+                    }
+                }
+                if (kw.ns) |ns| {
+                    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}/{s}", .{ call_args.len, ns, kw.name });
+                } else {
+                    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ call_args.len, kw.name });
+                }
+            }
             const m = switch (call_args[0]) {
                 .map => |mp| mp,
                 else => break :blk if (call_args.len == 2) call_args[1] else .nil,
