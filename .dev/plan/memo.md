@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C19 (numbers.clj)
+- Next task: C20 (evaluation.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -52,18 +52,19 @@ Remaining (resume here after CX):
 - ~~C16: metadata.clj~~ done (41 assertions, vector-as-IFn + meta preservation fixes)
 - ~~C17: special.clj~~ done (13 assertions, alias resolution in macro expansion)
 - ~~C18: other_functions.clj~~ done (245 assertions, update-vals/keys metadata fix)
-- C19: numbers.clj (959 lines)
+- ~~C19: numbers.clj~~ done (209 assertions, bit-shift truncation fix)
 - C20: evaluation.clj (226 lines)
 
 ## Current Task
 
-C19: numbers.clj (959 lines)
+C20: evaluation.clj (226 lines)
 
 ## Previous Task
 
-C18 completed: other_functions.clj (245 assertions, 14 tests).
-- Fixed `update-vals`/`update-keys` to preserve metadata via `(with-meta ... (meta m))`.
-- Skipped: ratio literals (2/3), BigDecimal (0M), test-regex-matcher (JVM Matcher).
+C19 completed: numbers.clj (209 assertions, 20 tests).
+- Fixed bit-shift functions to truncate shift amount to low 6 bits (JVM semantics).
+- Ported: arithmetic (+,-,*,/), mod/rem/quot, predicates, bit ops, abs, NaN tests.
+- Skipped: ratio, BigDecimal, BigInt, Java arrays, generative tests, unchecked overflow.
 
 ## Handover Notes
 

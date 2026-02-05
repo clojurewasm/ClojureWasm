@@ -180,8 +180,8 @@ pub fn bitShiftLeftFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-shift-left", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
-    const shift: u6 = @intCast(n);
+    // JVM semantics: truncate shift amount to low 6 bits (n & 63)
+    const shift: u6 = @truncate(@as(u64, @bitCast(n)));
     return Value{ .integer = x << shift };
 }
 
@@ -190,8 +190,8 @@ pub fn bitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bit-shift-right", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
-    const shift: u6 = @intCast(n);
+    // JVM semantics: truncate shift amount to low 6 bits (n & 63)
+    const shift: u6 = @truncate(@as(u64, @bitCast(n)));
     return Value{ .integer = x >> shift };
 }
 
@@ -200,8 +200,8 @@ pub fn unsignedBitShiftRightFn(_: Allocator, args: []const Value) anyerror!Value
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unsigned-bit-shift-right", .{args.len});
     const x = try requireInt(args[0]);
     const n = try requireInt(args[1]);
-    if (n < 0 or n > 63) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Shift amount {d} out of range [0, 63]", .{n});
-    const shift: u6 = @intCast(n);
+    // JVM semantics: truncate shift amount to low 6 bits (n & 63)
+    const shift: u6 = @truncate(@as(u64, @bitCast(n)));
     const ux: u64 = @bitCast(x);
     return Value{ .integer = @bitCast(ux >> shift) };
 }
