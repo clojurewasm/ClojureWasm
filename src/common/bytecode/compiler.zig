@@ -713,6 +713,12 @@ pub const Compiler = struct {
             // Re-throw: exception value is still on stack
             try self.chunk.emitOp(.throw_ex);
             self.stack_depth -= 1;
+        } else {
+            // No catch, no finally: re-throw the exception so it propagates.
+            self.stack_depth = depth_before_body;
+            self.stack_depth += 1; // exception on stack (pushed by throw handler)
+            try self.chunk.emitOp(.throw_ex);
+            self.stack_depth -= 1;
         }
 
         // Both paths converge at body_depth

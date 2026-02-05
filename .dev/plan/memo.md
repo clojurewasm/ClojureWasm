@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 523/704 clojure.core vars done (0 todo, 180 skip)
-- Next task: 22c.8
+- Next task: 22c.9
 - Blockers: none
 
 ## Task Queue
@@ -22,7 +22,7 @@ Tier 2: Small implementation + new file ports
 - ~~22c.5: Implement find-keyword (F80) + revive keywords.clj test~~
 - ~~22c.6: Implement parse-uuid + revive parse.clj test~~
 - ~~22c.7: Port edn.clj (clojure.edn thin wrapper)~~
-- 22c.8: Port try_catch.clj (basic portable subset)
+- ~~22c.8: Port try_catch.clj (basic portable subset)~~
 - 22c.9: Fix ##Inf/##NaN pr-str + float literal precision (printer, math)
 - 22c.10: Implement with-var-roots test helper + revive multimethods tests
 
@@ -38,16 +38,14 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(next: 22c.8)
+(next: 22c.9)
 
 ## Previous Task
 
-22c.7: Port edn.clj (clojure.edn thin wrapper)
-- Registered clojure.edn namespace in registry.zig with edn-read-string builtin
-- Fixed pre-existing bug: read-string/load-string returned error.ReadError not in VMError → panic
-- Changed catch to error.EvalError (in VMError) for both core and edn read-string
-- edn.clj: 3 tests, 41 assertions, both backends pass
-- Note: quoted string roundtrip deferred (pr-str quote escaping → 22c.9)
+22c.8: Port try_catch.clj (basic portable subset)
+- Upstream 100% JVM interop → CLJW-ADD portable tests (ex-info/throw)
+- Fixed VM bug: try without catch/finally silently swallowed exceptions (added re-throw)
+- try_catch.clj: 8 tests, 18 assertions, both backends pass
 
 ## Handover Notes
 
