@@ -28,6 +28,7 @@ pub const TreeWalkError = error{
     UndefinedVar,
     TypeError,
     ArityError,
+    NameError,
     UserException,
     OutOfMemory,
     StackOverflow,
@@ -959,8 +960,8 @@ pub const TreeWalk = struct {
     /// Check if a TreeWalkError is a user-catchable runtime error.
     fn isUserError(e: TreeWalkError) bool {
         return switch (e) {
-            error.TypeError, error.ArityError, error.UndefinedVar,
-            error.UserException, error.IndexError,
+            error.TypeError, error.ArityError, error.NameError,
+            error.UndefinedVar, error.UserException, error.IndexError,
             error.ValueError, error.ArithmeticError, error.IoError,
             error.AnalyzeError, error.EvalError => true,
             error.StackOverflow, error.OutOfMemory => false,

@@ -76,6 +76,8 @@ pub const OpCode = enum(u8) {
     defmethod = 0x45,
     /// def with dynamic flag (operand: constant index u16 -> symbol name)
     def_dynamic = 0x46,
+    /// def with private flag (operand: constant index u16 -> symbol name)
+    def_private = 0x49,
     /// set! dynamic var (operand: constant index u16 -> symbol name)
     /// Stack: [new-value] -> [new-value] (value remains on stack)
     set_bang = 0x47,

@@ -36,6 +36,7 @@ pub const VMError = error{
     StackUnderflow,
     TypeError,
     ArityError,
+    NameError,
     UndefinedVar,
     OutOfMemory,
     InvalidInstruction,
@@ -407,7 +408,7 @@ pub const VM = struct {
                 var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
                 // Value remains on stack (net 0)
             },
-            .def, .def_macro, .def_dynamic => {
+            .def, .def_macro, .def_dynamic, .def_private => {
                 const val = self.pop();
                 const sym = frame.constants[instr.operand];
                 if (sym != .symbol) return error.InvalidInstruction;
@@ -417,6 +418,7 @@ pub const VM = struct {
                 v.bindRoot(val);
                 if (instr.op == .def_macro) v.setMacro(true);
                 if (instr.op == .def_dynamic) v.dynamic = true;
+                if (instr.op == .def_private) v.private = true;
                 try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
             },
 
@@ -571,8 +573,8 @@ pub const VM = struct {
     /// Check if a VMError is a user-catchable runtime error.
     fn isUserError(e: VMError) bool {
         return switch (e) {
-            error.TypeError, error.ArityError, error.UndefinedVar,
-            error.Overflow, error.UserException,
+            error.TypeError, error.ArityError, error.NameError,
+            error.UndefinedVar, error.Overflow, error.UserException,
             error.ArithmeticError, error.IndexError, error.ValueError,
             error.IoError, error.AnalyzeError, error.EvalError => true,
             error.StackOverflow, error.StackUnderflow, error.OutOfMemory,

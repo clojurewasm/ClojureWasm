@@ -434,14 +434,14 @@ vars:
     "not-every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
     ns: {type: macro, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "ns-aliases": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-aliases": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
     "ns-imports": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "ns-interns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-map": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-name": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-publics": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "ns-refers": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "ns-resolve": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "ns-refers": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
+    "ns-resolve": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
     "ns-unalias": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "ns-unmap": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     nth: {type: function, status: done, note: "Zig builtin"}

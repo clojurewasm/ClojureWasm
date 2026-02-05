@@ -575,8 +575,8 @@ pub const Compiler = struct {
         }
 
         // Emit def: pops value, pushes symbol (net 0)
-        // Use def_macro/def_dynamic opcode to preserve flags at runtime
-        const op: OpCode = if (node.is_macro) .def_macro else if (node.is_dynamic) .def_dynamic else .def;
+        // Use def_macro/def_dynamic/def_private opcode to preserve flags at runtime
+        const op: OpCode = if (node.is_macro) .def_macro else if (node.is_dynamic) .def_dynamic else if (node.is_private) .def_private else .def;
         try self.chunk.emit(op, idx);
     }
 

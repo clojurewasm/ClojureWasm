@@ -410,6 +410,102 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// ns-resolve
+// ============================================================
+
+/// (ns-resolve ns sym)
+/// (ns-resolve ns env sym) — env is a map of local bindings (ignored for resolution).
+/// Returns the var to which a symbol will be resolved in the namespace, else nil.
+pub fn nsResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-resolve", .{args.len});
+
+    // First arg: namespace (symbol or namespace)
+    const ns_name = switch (args[0]) {
+        .symbol => |s| s.name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol as first argument, got {s}", .{@tagName(args[0])}),
+    };
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const ns = env.findNamespace(ns_name) orelse return .nil;
+
+    // Last arg is always the symbol to resolve
+    const sym_arg = args[args.len - 1];
+    const sym_name = switch (sym_arg) {
+        .symbol => |s| s.name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(sym_arg)}),
+    };
+
+    // If 3-arg form, second arg is local env map — if symbol is in that map, return nil
+    if (args.len == 3) {
+        if (args[1] == .map) {
+            // Check if sym is a key in the local env map
+            const map_entries = args[1].map.entries;
+            var i: usize = 0;
+            while (i + 1 < map_entries.len) : (i += 2) {
+                if (map_entries[i] == .symbol) {
+                    if (std.mem.eql(u8, map_entries[i].symbol.name, sym_name)) {
+                        return .nil; // Symbol is locally bound, not resolved
+                    }
+                }
+            }
+        }
+    }
+
+    // Try to resolve in the namespace: mappings first, then refers
+    if (ns.resolve(sym_name)) |v| {
+        return .{ .var_ref = v };
+    }
+    if (ns.refers.get(sym_name)) |v| {
+        return .{ .var_ref = v };
+    }
+
+    return .nil;
+}
+
+// ============================================================
+// ns-aliases
+// ============================================================
+
+/// (ns-aliases ns)
+/// Returns a map of the aliases for the namespace.
+pub fn nsAliasesFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const ns = try resolveNs(args);
+    var count: usize = 0;
+    {
+        var iter = ns.aliases.iterator();
+        while (iter.next()) |_| count += 1;
+    }
+    if (count == 0) {
+        const m = try allocator.create(collections.PersistentArrayMap);
+        m.* = .{ .entries = &.{} };
+        return .{ .map = m };
+    }
+    const entries = try allocator.alloc(Value, count * 2);
+    var iter = ns.aliases.iterator();
+    var i: usize = 0;
+    while (iter.next()) |entry| {
+        entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        // Represent the aliased namespace as a symbol of its name
+        entries[i + 1] = .{ .symbol = .{ .ns = null, .name = entry.value_ptr.*.name } };
+        i += 2;
+    }
+    const m = try allocator.create(collections.PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return .{ .map = m };
+}
+
+// ============================================================
+// ns-refers
+// ============================================================
+
+/// (ns-refers ns)
+/// Returns a map of the refer mappings for the namespace.
+pub fn nsRefersFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    const ns = try resolveNs(args);
+    return varMapToValue(allocator, ns.refers);
+}
+
+// ============================================================
 // refer
 // ============================================================
 
@@ -436,10 +532,14 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
             if (std.mem.eql(u8, args[i].keyword.name, "only")) {
                 if (args[i + 1] == .vector) {
                     only_list = args[i + 1].vector.items;
+                } else if (args[i + 1] == .list) {
+                    only_list = args[i + 1].list.items;
                 }
             } else if (std.mem.eql(u8, args[i].keyword.name, "exclude")) {
                 if (args[i + 1] == .vector) {
                     exclude_list = args[i + 1].vector.items;
+                } else if (args[i + 1] == .list) {
+                    exclude_list = args[i + 1].list.items;
                 }
             }
         }
@@ -455,11 +555,16 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     if (only_list) |syms| {
-        // Refer only specified symbols
+        // Refer only specified symbols — validate existence and accessibility
         for (syms) |sym| {
             if (sym == .symbol) {
                 if (source_ns.resolve(sym.symbol.name)) |v| {
+                    if (v.isPrivate()) {
+                        return err.setErrorFmt(.eval, .name_error, .{}, "{s} is not public", .{sym.symbol.name});
+                    }
                     current_ns.refer(sym.symbol.name, v) catch {};
+                } else {
+                    return err.setErrorFmt(.eval, .name_error, .{}, "{s} does not exist", .{sym.symbol.name});
                 }
             }
         }
@@ -507,7 +612,8 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1])}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    const target_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+    const target_ns = env.findNamespace(ns_name) orelse
+        return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{ns_name});
     const current_ns = env.current_ns orelse return error.EvalError;
     try current_ns.setAlias(alias_name, target_ns);
     return .nil;
@@ -525,14 +631,27 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to require", .{});
+
     // Scan for top-level :reload / :reload-all flags
     var reload = false;
+    var has_lib_spec = false;
     for (args) |arg| {
         if (arg == .keyword) {
-            if (std.mem.eql(u8, arg.keyword.name, "reload")) reload = true;
-            if (std.mem.eql(u8, arg.keyword.name, "reload-all")) reload = true;
+            if (std.mem.eql(u8, arg.keyword.name, "reload")) {
+                reload = true;
+            } else if (std.mem.eql(u8, arg.keyword.name, "reload-all")) {
+                reload = true;
+            } else {
+                return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got keyword", .{});
+            }
+        } else {
+            has_lib_spec = true;
         }
     }
+
+    // If only flags and no lib specs, that's an error (e.g. (require :foo))
+    if (!has_lib_spec) return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got keyword", .{});
 
     for (args) |arg| {
         switch (arg) {
@@ -628,6 +747,8 @@ fn requireLib(allocator: Allocator, env: *@import("../env.zig").Env, ns_name: []
 pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const current_ns = env.current_ns orelse return error.EvalError;
+
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to use", .{});
 
     for (args) |arg| {
         switch (arg) {
@@ -786,6 +907,27 @@ pub const builtins = [_]BuiltinDef{
         .func = loadFn,
         .doc = "Loads Clojure code from resources in classpath. A path is interpreted as classpath-relative if it begins with a slash.",
         .arglists = "([& paths])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-resolve",
+        .func = nsResolveFn,
+        .doc = "Returns the var or Class to which a symbol will be resolved in the namespace (unless found in the environment), else nil.",
+        .arglists = "([ns sym] [ns env sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-aliases",
+        .func = nsAliasesFn,
+        .doc = "Returns a map of the aliases for the namespace.",
+        .arglists = "([ns])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-refers",
+        .func = nsRefersFn,
+        .doc = "Returns a map of the refer mappings for the namespace.",
+        .arglists = "([ns])",
         .added = "1.0",
     },
 };
