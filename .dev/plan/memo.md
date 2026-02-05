@@ -11,38 +11,54 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-Phase R: require/load/ns system — file-based namespace loading.
-Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
+Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
+262 todo vars: ~90 JVM-skip, ~170 implementable. Target: 433 → 550+.
 
-- R1: `*ns*` dynamic var — Clojure-accessible current namespace reference
-  - Create `*ns*` var in bootstrap, sync with env.current_ns
-  - Update in-ns to set `*ns*` binding when switching namespace
-- R2: `load-file` + load path infrastructure
-  - `load-file` reads file by path, evals all forms in sequence
-  - Add `*load-paths*` (default: ["."]) for classpath-equivalent
-  - CLI `--classpath` / `-cp` option to configure load paths
-- R3: `load` + path resolution
-  - `root-resource`: ns name → file path (clojure.string → /clojure/string.clj)
-  - Search load paths for the file
-  - `*loaded-libs*` dynamic var (atom wrapping set) for dedup tracking
-- R4: Upgrade `require` to file-based loading
-  - When ns not found → call load to find and eval the file
-  - `:reload` / `:reload-all` flag support
-  - Cyclic dependency detection via `*pending-paths*` stack
-  - `:as`, `:refer`, `:refer :all` (already partially implemented)
-- R5: Upgrade `use` to file-based + `refer-clojure`
-  - `use` = require + refer-all
-  - `refer-clojure` function for `:exclude` support in ns macro
-- R6: `ns` macro full implementation
-  - Upstream-faithful expansion: `:require`, `:use`, `:refer-clojure`
-  - `*file*` var set during load
-- R7: E2E test — multi-file project
-  - Create test project with inter-dependent .clj files
-  - Verify require/use/ns/alias/refer chain on both backends
+- D1: JVM-skip batch — mark ~90 JVM-specific vars as skip
+  - Agents: agent, agent-error, agent-errors, send, send-off, send-via, await, await-for,
+    await1, restart-agent, shutdown-agents, set-agent-send-executor/off-executor, etc.
+  - Java arrays: aclone, aget, alength, amap, areduce, aset-*, *-array, make-array,
+    into-array, to-array, to-array-2d, vector-of, floats, ints, longs, shorts, bytes, chars
+  - Refs/STM: ref, ref-set, alter, commute, dosync, sync, ref-history-*, io!
+  - Proxy/reify/gen-class: proxy-*, reify, gen-class, gen-interface, definterface
+  - Other JVM: compile, add-classpath, bean, bases, supers, class?, import, memfn,
+    get-proxy-class, init-proxy, update-proxy, proxy-call-with-super,
+    primitives-classnames, print-ctor, method-sig, resultset-seq
+- D2: Dynamic vars batch — register stub vars
+  - Print: *print-dup*, *print-length*, *print-level*, *print-meta*, *print-readably*,
+    *print-namespace-maps*, *flush-on-newline*
+  - IO: *err*, *in*, *out*, *file*, *e
+  - Reader: *read-eval*, *data-readers*, *default-data-reader-fn*
+  - Other: *command-line-args*, *source-path*, *repl*, *unchecked-math*,
+    *warn-on-reflection* (already skip?), *verbose-defrecords*
+- D3: Exception & var system — ex-cause, find-var, resolve, intern, loaded-libs
+- D4: Atom watchers & validators — add-watch, remove-watch, set-validator!, get-validator
+- D5: Hashing — hash-combine, hash-ordered-coll, hash-unordered-coll, mix-collection-hash
+- D6: refer-clojure + ns enhancements — refer-clojure with :exclude
+- D7: Sorted collections — sorted-map-by, sorted-set-by, subseq, rsubseq
+- D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
+  tagged-literal?, reader-conditional, reader-conditional?
+- D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
+- D10: Unchecked math — unchecked-byte/char/int/long/short/double/float,
+  unchecked-divide-int, unchecked-remainder-int
+- D11: IO macros — with-open, with-out-str, with-in-str
+- D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
+  bound-fn, bound-fn*, thread-bound?
+- D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
+  char-escape-string, char-name-string, find-keyword, re-groups, re-matcher
+- D14: Read system — read, load-string, load-reader
+- D15: Chunked seqs — chunk, chunk-append, chunk-buffer, chunk-first, chunk-next,
+  chunk-rest, chunked-seq?
+- D16: Concurrency stubs — promise, deliver, future, future-call, future-done?,
+  future-cancel, future-cancelled?, future?, pmap, pcalls, pvalues, locking
+- D17: Remaining misc — eduction, iteration, letfn, line-seq, file-seq,
+  add-tap, remove-tap, tap>, requiring-resolve, seque, defstruct, struct, struct-map,
+  create-struct, accessor, ->ArrayChunk, ->Eduction, ->Vec, ->VecNode, ->VecSeq,
+  EMPTY-NODE, PrintWriter-on, StackTraceElement->vec, Throwable->map
 
 ## Current Task
 
-Plan Phase D: Parallel expansion (new vars + test porting).
+D1: JVM-skip batch — mark ~90 JVM-specific vars as skip.
 
 ## Previous Task
 

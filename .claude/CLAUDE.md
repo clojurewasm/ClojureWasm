@@ -98,13 +98,13 @@ Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase R is complete** (full file-based require/load/ns working)
+- **Phase D is complete** (var coverage target 550+ reached)
 
 Do NOT stop for:
 
 - Task Queue becoming empty (plan next task and continue)
 - Session context getting large (compress and continue)
-- "Good stopping points" — there are none until Phase R is done
+- "Good stopping points" — there are none until Phase D is done
 
 When in doubt, **continue** — pick the most reasonable option and proceed.
 
