@@ -34,8 +34,14 @@ pub const Env = struct {
     /// Set by main.zig after bootstrap. VM and TreeWalk cast to *MarkSweepGc.
     gc: ?*anyopaque = null,
 
+    /// Arena for AST node allocations (reader/analyzer output).
+    /// Backed by env.allocator (GPA). Not tracked by GC — persists for
+    /// program lifetime. Prevents GC from sweeping AST Nodes that TreeWalk
+    /// closures reference during evaluation (D70).
+    node_arena: std.heap.ArenaAllocator,
+
     pub fn init(allocator: Allocator) Env {
-        return .{ .allocator = allocator };
+        return .{ .allocator = allocator, .node_arena = std.heap.ArenaAllocator.init(allocator) };
     }
 
     pub fn deinit(self: *Env) void {
@@ -46,6 +52,13 @@ pub const Env = struct {
             self.allocator.destroy(entry.value_ptr.*);
         }
         self.namespaces.deinit(self.allocator);
+        self.node_arena.deinit();
+    }
+
+    /// Allocator for reader/analyzer output (AST Nodes, Forms).
+    /// Not tracked by GC — Nodes persist for closure lifetime.
+    pub fn nodeAllocator(self: *Env) Allocator {
+        return self.node_arena.allocator();
     }
 
     /// Find an existing namespace by name, or create it if it doesn't exist.

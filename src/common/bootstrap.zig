@@ -263,7 +263,10 @@ fn analyzeForm(allocator: Allocator, env: *Env, form: Form) BootstrapError!*Node
 /// Reads, analyzes, and evaluates each top-level form sequentially.
 /// Returns the value of the last form, or nil if source is empty.
 pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
-    const forms = try readForms(allocator, source);
+    // Reader/analyzer use node_arena (GPA-backed, not GC-tracked) so AST Nodes
+    // survive GC sweeps. TreeWalk uses allocator (gc_alloc) for Value creation.
+    const node_alloc = env.nodeAllocator();
+    const forms = try readForms(node_alloc, source);
     if (forms.len == 0) return .nil;
 
     const prev = setupMacroEnv(env);
@@ -271,14 +274,11 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 
     // Note: tw is intentionally not deinit'd — closures created during
     // evaluation may be def'd into Vars and must outlive this scope.
-    // Note: tw.gc is NOT set here. TreeWalk references AST Nodes during
-    // evaluation, and GC would sweep them (they're not Values). GC safe
-    // points for the TreeWalk path happen between forms in the REPL loop.
     var tw = TreeWalk.initWithEnv(allocator, env);
 
     var last_value: Value = .nil;
     for (forms) |form| {
-        const node = try analyzeForm(allocator, env, form);
+        const node = try analyzeForm(node_alloc, env, form);
         last_value = tw.run(node) catch return error.EvalError;
     }
     return last_value;
@@ -291,7 +291,8 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 /// Compile source to bytecode and dump to stderr without executing.
 /// Dumps top-level chunks and all nested FnProtos.
 pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!void {
-    const forms = try readForms(allocator, source);
+    const node_alloc = env.nodeAllocator();
+    const forms = try readForms(node_alloc, source);
     if (forms.len == 0) return;
 
     const prev = setupMacroEnv(env);
@@ -302,7 +303,7 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
     var w = &aw.writer;
 
     for (forms, 0..) |form, form_idx| {
-        const node = try analyzeForm(allocator, env, form);
+        const node = try analyzeForm(node_alloc, env, form);
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
@@ -326,7 +327,10 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 }
 
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
-    const forms = try readForms(allocator, source);
+    // Reader/analyzer use node_arena (GPA-backed, not GC-tracked).
+    // Compiler/VM use allocator (gc_alloc) for bytecode and Values.
+    const node_alloc = env.nodeAllocator();
+    const forms = try readForms(node_alloc, source);
     if (forms.len == 0) return .nil;
 
     const prev = setupMacroEnv(env);
@@ -339,7 +343,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         // Don't call compiler.deinit() — GC traces FnProto internals via traceValue.
         var last_value: Value = .nil;
         for (forms) |form| {
-            const node = try analyzeForm(allocator, env, form);
+            const node = try analyzeForm(node_alloc, env, form);
 
             var compiler = Compiler.init(allocator);
             if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
@@ -373,7 +377,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
     var last_value: Value = .nil;
     for (forms) |form| {
-        const node = try analyzeForm(allocator, env, form);
+        const node = try analyzeForm(node_alloc, env, form);
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
