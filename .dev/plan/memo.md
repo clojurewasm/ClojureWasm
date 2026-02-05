@@ -22,7 +22,7 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 21.1: cond — add even-forms error check (upstream verbatim)
+1. ~~21.1: cond — add even-forms error check~~ — DONE
 2. 21.2: assert — add *assert* dynamic var
 3. 21.3: condp — add :>> modifier + no-match error (upstream verbatim)
 4. 21.4: dotimes — upstream verbatim (assert-args style)
@@ -31,10 +31,7 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-21.1: cond — add even-forms error check
-- Upstream uses IllegalArgumentException for odd forms
-- Replace with (throw (ex-info ...)) or (throw (str ...))
-- Simple change in core.clj
+21.2: assert — add *assert* dynamic var
 
 ## Previous Task
 

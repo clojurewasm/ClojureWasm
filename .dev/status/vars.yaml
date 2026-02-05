@@ -204,7 +204,7 @@ vars:
     complement: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     completing: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     concat: {type: function, status: done, note: "Zig builtin"}
-    cond: {type: macro, status: done, note: 'UPSTREAM-DIFF: no even-forms error check'}
+    cond: {type: macro, status: done, note: 'CLJW: error on odd forms caught at analysis time (not runtime)'}
     "cond->": {type: macro, status: done, note: "macro in core.clj"}
     "cond->>": {type: macro, status: done, note: "macro in core.clj"}
     condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}

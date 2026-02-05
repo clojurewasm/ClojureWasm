@@ -157,12 +157,14 @@
   other tests or exprs. (cond) returns nil."
   [& clauses]
   (when (seq clauses)
-    (let [test (first clauses)
-          then (first (rest clauses))
-          more (rest (rest clauses))]
-      (if (seq more)
-        `(if ~test ~then (cond ~@more))
-        `(if ~test ~then)))))
+    (if (next clauses) ;; CLJW: upstream throws IllegalArgumentException for odd forms
+      (let [test (first clauses)
+            then (first (next clauses)) ;; CLJW: (second) not yet available at bootstrap
+            more (next (next clauses))]
+        (if more
+          `(if ~test ~then (cond ~@more))
+          `(if ~test ~then)))
+      (throw (str "cond requires an even number of forms")))))
 
 (defmacro if-not [test then & more]
   `(if (not ~test) ~then ~(first more)))
