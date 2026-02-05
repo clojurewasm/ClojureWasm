@@ -41,6 +41,13 @@ pub const Atom = struct {
     value: Value,
     /// Metadata map (mutable via alter-meta! / reset-meta!).
     meta: ?*Value = null,
+    /// Validator function (called on swap!/reset!, must return truthy or throw).
+    validator: ?Value = null,
+    /// Watcher map: key → [key atom old new] callback fn.
+    /// Stored as parallel arrays of keys and fns for simplicity.
+    watch_keys: ?[]Value = null,
+    watch_fns: ?[]Value = null,
+    watch_count: usize = 0,
 };
 
 /// Volatile — non-atomic mutable reference type.

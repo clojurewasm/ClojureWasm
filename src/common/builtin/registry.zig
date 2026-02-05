@@ -161,8 +161,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 225 + 1 (alter-var-root) + 2 (prefer-method, prefers) + 1 (sorted-set) + 1 (load-file) + 1 (load)
-    try std.testing.expectEqual(237, builtin_count);
+    // 237 + 4 (add-watch, remove-watch, set-validator!, get-validator)
+    try std.testing.expectEqual(241, builtin_count);
 }
 
 test "comptime lookup finds +" {

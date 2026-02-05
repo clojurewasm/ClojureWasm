@@ -105,7 +105,7 @@ vars:
     aclone: {type: function, status: skip, note: JVM interop}
     "add-classpath": {type: function, status: skip, note: JVM interop}
     "add-tap": {type: function, status: todo}
-    "add-watch": {type: function, status: todo}
+    "add-watch": {type: function, status: done}
     agent: {type: function, status: skip, note: JVM interop}
     "agent-error": {type: function, status: skip, note: JVM interop}
     "agent-errors": {type: function, status: skip, note: JVM interop}
@@ -325,7 +325,7 @@ vars:
     "get-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "get-proxy-class": {type: function, status: skip, note: JVM interop}
     "get-thread-bindings": {type: function, status: skip, note: JVM interop}
-    "get-validator": {type: function, status: todo}
+    "get-validator": {type: function, status: done}
     "group-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "halt-when": {type: function, status: done}
     hash: {type: function, status: done, note: "Zig builtin"}
@@ -545,7 +545,7 @@ vars:
     "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-ns": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "remove-tap": {type: function, status: todo}
-    "remove-watch": {type: function, status: todo}
+    "remove-watch": {type: function, status: done}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}
     repeatedly: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     replace: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -582,7 +582,7 @@ vars:
     "set-agent-send-off-executor!": {type: function, status: skip, note: JVM interop}
     "set-error-handler!": {type: function, status: skip, note: "JVM interop"}
     "set-error-mode!": {type: function, status: skip, note: "JVM interop"}
-    "set-validator!": {type: function, status: todo}
+    "set-validator!": {type: function, status: done}
     "set?": {type: function, status: done, note: "Zig builtin"}
     short: {type: function, status: done, note: builtin (upstream is pure clj)}
     "short-array": {type: function, status: skip, note: JVM interop}

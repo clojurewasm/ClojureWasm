@@ -2,7 +2,7 @@
 //
 // Atoms provide mutable reference semantics in Clojure.
 // Volatiles provide non-atomic mutable references (thread-local mutation).
-// No watchers/validators in this minimal implementation.
+// Watchers and validators supported via add-watch, remove-watch, set-validator!, get-validator.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -73,11 +73,14 @@ pub fn delayCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (reset! atom new-val) => new-val
-pub fn resetBangFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn resetBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset!", .{args.len});
     return switch (args[0]) {
         .atom => |a| {
+            try validate(allocator, a, args[1]);
+            const old = a.value;
             a.value = args[1];
+            try notifyWatchers(allocator, a, args[0], old, args[1]);
             return args[1];
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "reset! expects an atom, got {s}", .{@tagName(args[0])}),
@@ -108,7 +111,10 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
 
+    try validate(allocator, atom_ptr, new_val);
+    const old_val = atom_ptr.value;
     atom_ptr.value = new_val;
+    try notifyWatchers(allocator, atom_ptr, args[0], old_val, new_val);
     return new_val;
 }
 
@@ -190,6 +196,131 @@ pub fn volatilePred(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .boolean = args[0] == .volatile_ref };
 }
 
+// ============================================================
+// Watchers & Validators
+// ============================================================
+
+/// Validate new value against atom's validator. Throws on invalid.
+fn validate(allocator: Allocator, a: *Atom, new_val: Value) !void {
+    if (a.validator) |vfn| {
+        const result = bootstrap.callFnVal(allocator, vfn, &.{new_val}) catch {
+            return throwInvalidState(allocator);
+        };
+        switch (result) {
+            .boolean => |b| {
+                if (!b) return throwInvalidState(allocator);
+            },
+            .nil => return throwInvalidState(allocator),
+            else => {},
+        }
+    }
+}
+
+/// Throw "Invalid reference state" as a catchable UserException (ex-info format).
+fn throwInvalidState(allocator: Allocator) !void {
+    // Build {:__ex_info true :message "Invalid reference state" :data {} :cause nil}
+    const entries = allocator.alloc(Value, 8) catch return error.OutOfMemory;
+    const empty_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+    empty_map.* = .{ .entries = &.{} };
+    entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
+    entries[1] = .{ .boolean = true };
+    entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
+    entries[3] = .{ .string = "Invalid reference state" };
+    entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
+    entries[5] = .{ .map = empty_map };
+    entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
+    entries[7] = .nil;
+    const map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+    map.* = .{ .entries = entries };
+    bootstrap.last_thrown_exception = Value{ .map = map };
+    return error.UserException;
+}
+
+/// Notify all watchers: (watch-fn key atom old-val new-val)
+fn notifyWatchers(allocator: Allocator, a: *Atom, atom_val: Value, old: Value, new: Value) !void {
+    if (a.watch_keys == null or a.watch_count == 0) return;
+    const keys = a.watch_keys.?;
+    const fns = a.watch_fns.?;
+    for (0..a.watch_count) |i| {
+        _ = bootstrap.callFnVal(allocator, fns[i], &.{ keys[i], atom_val, old, new }) catch {};
+    }
+}
+
+/// (add-watch atom key fn)
+pub fn addWatchFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to add-watch", .{args.len});
+    const a = switch (args[0]) {
+        .atom => |a| a,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "add-watch expects an atom, got {s}", .{@tagName(args[0])}),
+    };
+    const max_watches = 16;
+    if (a.watch_keys == null) {
+        a.watch_keys = try allocator.alloc(Value, max_watches);
+        a.watch_fns = try allocator.alloc(Value, max_watches);
+        a.watch_count = 0;
+    }
+    // Replace existing watcher with same key
+    for (0..a.watch_count) |i| {
+        if (a.watch_keys.?[i].eql(args[1])) {
+            a.watch_fns.?[i] = args[2];
+            return args[0];
+        }
+    }
+    if (a.watch_count >= max_watches) return err.setErrorFmt(.eval, .value_error, .{}, "Too many watchers on atom (max 16)", .{});
+    a.watch_keys.?[a.watch_count] = args[1];
+    a.watch_fns.?[a.watch_count] = args[2];
+    a.watch_count += 1;
+    return args[0];
+}
+
+/// (remove-watch atom key)
+pub fn removeWatchFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-watch", .{args.len});
+    const a = switch (args[0]) {
+        .atom => |a| a,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-watch expects an atom, got {s}", .{@tagName(args[0])}),
+    };
+    if (a.watch_keys == null or a.watch_count == 0) return args[0];
+    for (0..a.watch_count) |i| {
+        if (a.watch_keys.?[i].eql(args[1])) {
+            // Shift remaining watchers
+            var j = i;
+            while (j + 1 < a.watch_count) : (j += 1) {
+                a.watch_keys.?[j] = a.watch_keys.?[j + 1];
+                a.watch_fns.?[j] = a.watch_fns.?[j + 1];
+            }
+            a.watch_count -= 1;
+            break;
+        }
+    }
+    return args[0];
+}
+
+/// (set-validator! atom fn)
+pub fn setValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-validator!", .{args.len});
+    const a = switch (args[0]) {
+        .atom => |a| a,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-validator! expects an atom, got {s}", .{@tagName(args[0])}),
+    };
+    if (args[1] == .nil) {
+        a.validator = null;
+    } else {
+        a.validator = args[1];
+    }
+    return .nil;
+}
+
+/// (get-validator atom)
+pub fn getValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-validator", .{args.len});
+    const a = switch (args[0]) {
+        .atom => |a| a,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-validator expects an atom, got {s}", .{@tagName(args[0])}),
+    };
+    return a.validator orelse .nil;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "atom",
@@ -259,6 +390,34 @@ pub const builtins = [_]BuiltinDef{
         .func = &delayCreateFn,
         .doc = "Creates a Delay from a thunk function.",
         .arglists = "([thunk-fn])",
+        .added = "1.0",
+    },
+    .{
+        .name = "add-watch",
+        .func = &addWatchFn,
+        .doc = "Adds a watch function to an atom. The watch fn must be a fn of 4 args: a key, the reference, its old-state, its new-state.",
+        .arglists = "([reference key fn])",
+        .added = "1.0",
+    },
+    .{
+        .name = "remove-watch",
+        .func = &removeWatchFn,
+        .doc = "Removes a watch (set by add-watch) from a reference.",
+        .arglists = "([reference key])",
+        .added = "1.0",
+    },
+    .{
+        .name = "set-validator!",
+        .func = &setValidatorFn,
+        .doc = "Sets the validator-fn for a var/ref/agent/atom.",
+        .arglists = "([iref validator-fn])",
+        .added = "1.0",
+    },
+    .{
+        .name = "get-validator",
+        .func = &getValidatorFn,
+        .doc = "Gets the validator-fn for a var/ref/agent/atom.",
+        .arglists = "([iref])",
         .added = "1.0",
     },
 };
