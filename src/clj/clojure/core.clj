@@ -976,52 +976,62 @@
        ~@body
        (recur))))
 
-(defmacro doseq [seq-exprs & body]
+(defmacro doseq
+  "Repeatedly executes body (presumably for side-effects) with
+  bindings and filtering as provided by \"for\".  Does not retain
+  the head of the sequence. Returns nil."
+  [seq-exprs & body]
+  (when-not (vector? seq-exprs)
+    (throw (str "doseq requires a vector for its binding")))
+  (when-not (even? (count seq-exprs))
+    (throw (str "doseq requires an even number of forms in binding vector")))
   (let [step (fn step [recform exprs]
-               (if (nil? (seq exprs))
-                 [true (cons 'do body)]
+               (if-not exprs
+                 [true `(do ~@body)]
                  (let [k (first exprs)
                        v (second exprs)]
                    (if (keyword? k)
-                     (let [steppair (step recform (rest (rest exprs)))
-                           needrec (first steppair)
-                           subform (second steppair)]
+                     (let [steppair (step recform (next (next exprs)))
+                           needrec (steppair 0)
+                           subform (steppair 1)]
                        (cond
-                         (= k :let) [needrec (list 'let v subform)]
-                         (= k :while) [false (if needrec
-                                               (list 'when v subform recform)
-                                               (list 'when v subform))]
-                         (= k :when) [false (if needrec
-                                              (list 'if v (list 'do subform recform) recform)
-                                              (list 'if v subform recform))]))
-                     (let [s '__doseq_s__
-                           recform2 (list 'recur (list 'next s))
-                           steppair (step recform2 (rest (rest exprs)))
-                           needrec (first steppair)
-                           subform (second steppair)
-                           ;; Chunked path: inner loop over chunk elements
-                           chunk-body (list 'let ['__doseq_c__ (list 'chunk-first s)
-                                                  '__doseq_size__ (list 'count '__doseq_c__)]
-                                            (list 'loop ['__doseq_i__ 0]
-                                                  (list 'when (list '< '__doseq_i__ '__doseq_size__)
-                                                        (list 'let [k (list 'nth '__doseq_c__ '__doseq_i__)]
-                                                              subform)
-                                                        (list 'recur (list 'inc '__doseq_i__))))
-                                            (list 'recur (list 'chunk-rest s)))
-                           ;; Non-chunked path: first/next
-                           plain-body (if needrec
-                                        (list 'let [k (list 'first s)]
-                                              subform
-                                              recform2)
-                                        (list 'let [k (list 'first s)]
-                                              subform))]
+                         (= k :let) [needrec `(let ~v ~subform)]
+                         (= k :while) [false `(when ~v
+                                                ~subform
+                                                ~@(when needrec [recform]))]
+                         (= k :when) [false `(if ~v
+                                               (do
+                                                 ~subform
+                                                 ~@(when needrec [recform]))
+                                               ~recform)]))
+                     (let [seq- (gensym "seq_")
+                           chunk- (gensym "chunk_")
+                           count- (gensym "count_")
+                           i- (gensym "i_")
+                           recform `(recur (next ~seq-) nil 0 0)
+                           steppair (step recform (next (next exprs)))
+                           needrec (steppair 0)
+                           subform (steppair 1)
+                           recform-chunk
+                           `(recur ~seq- ~chunk- ~count- (unchecked-inc ~i-))
+                           steppair-chunk (step recform-chunk (next (next exprs)))
+                           subform-chunk (steppair-chunk 1)]
                        [true
-                        (list 'loop [s (list 'seq v)]
-                              (list 'when s
-                                    (list 'if (list 'chunked-seq? s)
-                                          chunk-body
-                                          plain-body)))])))))]
-    (second (step nil (seq seq-exprs)))))
+                        `(loop [~seq- (seq ~v), ~chunk- nil,
+                                ~count- 0, ~i- 0]
+                           (if (< ~i- ~count-)
+                             (let [~k (nth ~chunk- ~i-)]
+                               ~subform-chunk
+                               ~@(when needrec [recform-chunk]))
+                             (when-let [~seq- (seq ~seq-)]
+                               (if (chunked-seq? ~seq-)
+                                 (let [c# (chunk-first ~seq-)]
+                                   (recur (chunk-rest ~seq-) c#
+                                          (count c#) 0))
+                                 (let [~k (first ~seq-)]
+                                   ~subform
+                                   ~@(when needrec [recform]))))))])))))]
+    (nth (step nil (seq seq-exprs)) 1)))
 
 (defn dorun [coll]
   (loop [s (seq coll)]
