@@ -22,30 +22,28 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-2. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-3. 23.6: Verification — all tests pass, REPL memory bounded
+1. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+2. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-- Add shouldCollect check after allocations in VM execute loop
-- Add shouldCollect check in TreeWalk eval
-- When triggered: build RootSet from active stack/env, call traceRoots + sweep
-- VM: populate value_slices from stack[0..sp] + frame constants, env from self.env
-- TreeWalk: populate from locals[0..local_count] + recur_args, env from self.env
-- Threshold-based: only collect when bytes_allocated >= threshold
-- Unit test: verify GC runs during evaluation when threshold exceeded
+23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+- Replace ArenaGc with MarkSweepGc in main.zig
+- Wire gc pointer into VM and TreeWalk via .gc field
+- Remove manual allocated_* tracking from VM/TW (GC handles lifetime)
+- Update deinit to not double-free GC-tracked allocations
+- Both backends must still pass all tests
 
 ## Previous Task
 
-23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
-- Updated RootSet: value_slices, values, env fields
-- traceRoots: walks value slices + individual values + Env + dynamic binding stack
-- traceEnv → traceNamespace → traceVarRoots chain (infrastructure-agnostic)
-- traceBindingStack: walks var_mod.getCurrentBindingFrame() frame chain
-- Added getCurrentBindingFrame() public accessor to var.zig
-- 5 unit tests: stack slices, individual values, env vars, binding stack, combined
+23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+- Added collectIfNeeded(roots) to MarkSweepGc — trace + sweep + adaptive threshold
+- Updated gcCollect vtable to also trace roots before sweep
+- VM: gc field, maybeTriggerGc() builds RootSet from stack[0..sp] + frame constants + env
+- TreeWalk: gc field, maybeTriggerGc() builds RootSet from locals + recur_args + exception + env
+- VM safe point: after each stepInstruction() in execute() loop
+- TreeWalk safe point: at the top of run() before each node evaluation
+- 3 unit tests: collectIfNeeded trigger/no-op/threshold-growth
 
 ## Completed Phases (reverse chronological)
 

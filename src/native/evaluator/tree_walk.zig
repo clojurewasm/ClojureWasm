@@ -21,6 +21,7 @@ const multimethods_mod = @import("../../common/builtin/multimethods.zig");
 
 const var_mod = @import("../../common/var.zig");
 const err_mod = @import("../../common/error.zig");
+const gc_mod = @import("../../common/gc.zig");
 
 /// TreeWalk execution errors.
 pub const TreeWalkError = error{
@@ -66,6 +67,8 @@ pub const TreeWalk = struct {
     allocated_closures: std.ArrayList(*Closure) = .empty,
     /// Allocated Fn wrappers (for cleanup).
     allocated_fns: std.ArrayList(*value_mod.Fn) = .empty,
+    /// GC instance for automatic collection at safe points.
+    gc: ?*gc_mod.MarkSweepGc = null,
 
     pub fn init(allocator: Allocator) TreeWalk {
         return .{ .allocator = allocator };
@@ -91,11 +94,45 @@ pub const TreeWalk = struct {
 
     /// Evaluate a Node to a Value.
     pub fn run(self: *TreeWalk, n: *const Node) TreeWalkError!Value {
+        // GC safe point — collect if allocation threshold exceeded
+        self.maybeTriggerGc();
         return self.runNode(n) catch |e| {
             const src = n.source();
             err_mod.annotateLocation(.{ .line = src.line, .column = src.column, .file = src.file });
             return e;
         };
+    }
+
+    /// GC safe point: trigger collection if allocation threshold exceeded.
+    fn maybeTriggerGc(self: *TreeWalk) void {
+        const gc = self.gc orelse return;
+        if (gc.bytes_allocated < gc.threshold) return;
+
+        // Build root set from TreeWalk state
+        var slices_buf: [2][]const Value = undefined;
+        var slice_count: usize = 0;
+
+        if (self.local_count > 0) {
+            slices_buf[slice_count] = self.locals[0..self.local_count];
+            slice_count += 1;
+        }
+        if (self.recur_arg_count > 0) {
+            slices_buf[slice_count] = self.recur_args[0..self.recur_arg_count];
+            slice_count += 1;
+        }
+
+        var values_buf: [1]Value = undefined;
+        var value_count: usize = 0;
+        if (self.exception) |exc| {
+            values_buf[value_count] = exc;
+            value_count += 1;
+        }
+
+        gc.collectIfNeeded(.{
+            .value_slices = slices_buf[0..slice_count],
+            .values = values_buf[0..value_count],
+            .env = self.env,
+        });
     }
 
     fn runNode(self: *TreeWalk, n: *const Node) TreeWalkError!Value {

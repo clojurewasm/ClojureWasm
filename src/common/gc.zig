@@ -318,8 +318,9 @@ pub const MarkSweepGc = struct {
         return msAlloc(ptr, size, alignment, 0);
     }
 
-    fn gcCollect(ptr: *anyopaque, _: RootSet) void {
+    fn gcCollect(ptr: *anyopaque, roots: RootSet) void {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        traceRoots(self, roots);
         self.sweep();
     }
 
@@ -334,6 +335,18 @@ pub const MarkSweepGc = struct {
             .bytes_allocated = self.bytes_allocated,
             .alloc_count = self.alloc_count,
         };
+    }
+
+    /// Run a GC cycle if the allocation threshold has been reached.
+    /// Traces roots, sweeps dead allocations, and grows threshold if needed.
+    pub fn collectIfNeeded(self: *MarkSweepGc, roots: RootSet) void {
+        if (self.bytes_allocated < self.threshold) return;
+        traceRoots(self, roots);
+        self.sweep();
+        // Grow threshold if live set is still above it (avoid re-triggering every cycle)
+        if (self.bytes_allocated >= self.threshold) {
+            self.threshold = self.bytes_allocated * 2;
+        }
     }
 };
 
@@ -1260,4 +1273,79 @@ test "traceRoots combined: stack + env + bindings" {
 
     // 5 survive (stack_items, stack_vec, env_items, env_list, bound_cons), 2 orphans freed
     try std.testing.expectEqual(@as(usize, 5), gc_inst.liveCount());
+}
+
+// === collectIfNeeded Tests ===
+
+test "collectIfNeeded runs when threshold exceeded" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    gc_inst.threshold = 32;
+
+    const a = gc_inst.allocator();
+
+    // Allocate a vector (root) and an orphan
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 42 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+    _ = try a.alloc(u8, 64); // orphan, pushes over threshold
+
+    try std.testing.expect(gc_inst.bytes_allocated >= 32);
+    try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
+    try std.testing.expectEqual(@as(u64, 0), gc_inst.collect_count);
+
+    // Build root set with the vector as a stack value
+    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const slices = [_][]const Value{&stack_vals};
+    gc_inst.collectIfNeeded(.{ .value_slices = &slices });
+
+    // Should have collected (orphan freed)
+    try std.testing.expectEqual(@as(u64, 1), gc_inst.collect_count);
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "collectIfNeeded no-op below threshold" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    // Default 1MB threshold — won't be exceeded
+    const a = gc_inst.allocator();
+    _ = try a.create(u64);
+    _ = try a.create(u64);
+
+    gc_inst.collectIfNeeded(.{});
+
+    try std.testing.expectEqual(@as(u64, 0), gc_inst.collect_count);
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "collectIfNeeded grows threshold when live set exceeds it" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    gc_inst.threshold = 16; // very low
+
+    const a = gc_inst.allocator();
+
+    // Allocate live data exceeding threshold
+    const items = try a.alloc(Value, 10);
+    for (items, 0..) |*item, i| {
+        item.* = Value{ .integer = @intCast(i) };
+    }
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    const old_threshold = gc_inst.threshold;
+
+    // All data is rooted — nothing to collect
+    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const slices = [_][]const Value{&stack_vals};
+    gc_inst.collectIfNeeded(.{ .value_slices = &slices });
+
+    try std.testing.expectEqual(@as(u64, 1), gc_inst.collect_count);
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+    // Threshold grew since live set exceeded old threshold
+    try std.testing.expect(gc_inst.threshold > old_threshold);
 }

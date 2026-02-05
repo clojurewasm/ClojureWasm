@@ -26,6 +26,7 @@ const builtin_collections = @import("../../common/builtin/collections.zig");
 const arith = @import("../../common/builtin/arithmetic.zig");
 const bootstrap = @import("../../common/bootstrap.zig");
 const multimethods_mod = @import("../../common/builtin/multimethods.zig");
+const gc_mod = @import("../../common/gc.zig");
 
 /// VM execution errors.
 const err_mod = @import("../../common/error.zig");
@@ -93,6 +94,8 @@ pub const VM = struct {
     handler_count: usize,
     /// Runtime environment (Namespace/Var resolution).
     env: ?*Env,
+    /// GC instance for automatic collection at safe points.
+    gc: ?*gc_mod.MarkSweepGc = null,
 
     pub fn init(allocator: std.mem.Allocator) VM {
         return initWithEnv(allocator, null);
@@ -193,7 +196,27 @@ pub const VM = struct {
                 }
                 return e;
             }
+            // GC safe point — collect if allocation threshold exceeded
+            self.maybeTriggerGc();
         }
+    }
+
+    /// GC safe point: trigger collection if allocation threshold exceeded.
+    fn maybeTriggerGc(self: *VM) void {
+        const gc = self.gc orelse return;
+        if (gc.bytes_allocated < gc.threshold) return;
+
+        // Build root set from VM state
+        var slices: [FRAMES_MAX + 1][]const Value = undefined;
+        slices[0] = self.stack[0..self.sp];
+        for (0..self.frame_count) |i| {
+            slices[i + 1] = self.frames[i].constants;
+        }
+
+        gc.collectIfNeeded(.{
+            .value_slices = slices[0 .. self.frame_count + 1],
+            .env = self.env,
+        });
     }
 
     /// Execute one instruction. Returns a Value when execution is complete
