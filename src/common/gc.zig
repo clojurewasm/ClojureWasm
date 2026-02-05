@@ -7,10 +7,22 @@ const std = @import("std");
 const Alignment = std.mem.Alignment;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const env_mod = @import("env.zig");
+const ns_mod = @import("namespace.zig");
+const var_mod = @import("var.zig");
 
-/// Placeholder for GC root set. Will be populated when VM stack
-/// walking is implemented (Task 2.7+).
-pub const RootSet = struct {};
+/// GC root set — references to all live value sources.
+///
+/// Callers (VM, TreeWalk) populate this before GC collection.
+/// traceRoots() walks these sources and marks all reachable Values.
+pub const RootSet = struct {
+    /// Active evaluation stack slices (VM stack[0..sp], TW locals, etc.)
+    value_slices: []const []const Value = &.{},
+    /// Individual root Values (e.g. exception, current return value)
+    values: []const Value = &.{},
+    /// Environment (namespaces → vars → root values). May be null.
+    env: ?*const env_mod.Env = null,
+};
 
 /// GC allocation statistics.
 pub const Stats = struct {
@@ -596,6 +608,62 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
     }
 }
 
+/// Trace all root references, marking reachable Values as live.
+/// Walks value slices, individual values, Env namespaces, and dynamic binding stack.
+pub fn traceRoots(gc: *MarkSweepGc, roots: RootSet) void {
+    // 1. Trace value slices (VM stack, TW locals, constant pools, etc.)
+    for (roots.value_slices) |slice| {
+        for (slice) |val| traceValue(gc, val);
+    }
+    // 2. Trace individual values
+    for (roots.values) |val| traceValue(gc, val);
+    // 3. Trace environment (all namespaces → vars → root values)
+    if (roots.env) |env| traceEnv(gc, env);
+    // 4. Trace dynamic binding stack (global, single-thread)
+    traceBindingStack(gc);
+}
+
+/// Walk all namespaces in the environment.
+fn traceEnv(gc: *MarkSweepGc, env: *const env_mod.Env) void {
+    var ns_iter = env.namespaces.iterator();
+    while (ns_iter.next()) |ns_entry| {
+        traceNamespace(gc, ns_entry.value_ptr.*);
+    }
+}
+
+/// Trace all Vars in a namespace (mappings + refers).
+/// Does NOT markAndCheck the Namespace itself — it may not be GC-tracked.
+fn traceNamespace(gc: *MarkSweepGc, ns: *const ns_mod.Namespace) void {
+    var map_iter = ns.mappings.iterator();
+    while (map_iter.next()) |entry| {
+        traceVarRoots(gc, entry.value_ptr.*);
+    }
+    var ref_iter = ns.refers.iterator();
+    while (ref_iter.next()) |entry| {
+        traceVarRoots(gc, entry.value_ptr.*);
+    }
+}
+
+/// Trace the root value and metadata of a Var.
+/// Does NOT markAndCheck the Var itself — it may not be GC-tracked.
+fn traceVarRoots(gc: *MarkSweepGc, v: *const var_mod.Var) void {
+    traceValue(gc, v.root);
+    if (v.meta) |m| {
+        traceValue(gc, Value{ .map = m });
+    }
+}
+
+/// Walk the dynamic binding frame stack and trace all bound Values.
+fn traceBindingStack(gc: *MarkSweepGc) void {
+    var frame = var_mod.getCurrentBindingFrame();
+    while (frame) |f| {
+        for (f.entries) |entry| {
+            traceValue(gc, entry.val);
+        }
+        frame = f.prev;
+    }
+}
+
 // === Tests ===
 
 test "ArenaGc init creates valid instance" {
@@ -1007,4 +1075,189 @@ test "traceValue handles lazy_seq" {
 
     // ls + list + list_items survive, orphan freed
     try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+}
+
+// === traceRoots Tests ===
+
+test "traceRoots traces stack value slices" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    const a = gc_inst.allocator();
+
+    // Create a vector on the "stack"
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 42 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    // Orphan
+    _ = try a.create(value_mod.PersistentVector);
+
+    try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
+
+    // Simulate VM stack
+    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const slices = [_][]const Value{&stack_vals};
+    traceRoots(&gc_inst, .{ .value_slices = &slices });
+    gc_inst.sweep();
+
+    // vec + items survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "traceRoots traces individual values" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    const a = gc_inst.allocator();
+
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 1 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    _ = try a.alloc(u8, 64); // orphan
+
+    try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
+
+    const extra = [_]Value{Value{ .vector = vec }};
+    traceRoots(&gc_inst, .{ .values = &extra });
+    gc_inst.sweep();
+
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "traceRoots traces env namespaces and vars" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    const a = gc_inst.allocator();
+
+    // Use a separate arena for infrastructure (Env/Namespace/Var)
+    var infra_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer infra_arena.deinit();
+    const infra = infra_arena.allocator();
+
+    var env = env_mod.Env.init(infra);
+
+    const ns = try env.findOrCreateNamespace("test");
+
+    // Create a GC-allocated vector as var root
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 99 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    const v = try ns.intern("my-var");
+    v.root = Value{ .vector = vec };
+
+    // Orphan
+    _ = try a.create(value_mod.PersistentVector);
+
+    try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
+
+    traceRoots(&gc_inst, .{ .env = &env });
+    gc_inst.sweep();
+
+    // vec + items survive (via env → ns → var → root), orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "traceRoots traces dynamic binding stack" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    const a = gc_inst.allocator();
+
+    // Use arena for Var infrastructure
+    var infra_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer infra_arena.deinit();
+    const infra = infra_arena.allocator();
+
+    // Create a dynamic Var
+    const v = try infra.create(var_mod.Var);
+    v.* = .{
+        .sym = .{ .ns = null, .name = "dyn" },
+        .ns_name = "test",
+        .dynamic = true,
+    };
+
+    // Create a GC-allocated value bound to the Var
+    const items = try a.alloc(Value, 1);
+    items[0] = Value{ .integer = 7 };
+    const vec = try a.create(value_mod.PersistentVector);
+    vec.* = .{ .items = items };
+
+    // Push a binding frame
+    var entries = [_]var_mod.BindingEntry{.{ .var_ptr = v, .val = Value{ .vector = vec } }};
+    var frame = var_mod.BindingFrame{ .entries = &entries, .prev = null };
+    var_mod.pushBindings(&frame);
+    defer var_mod.popBindings();
+
+    // Orphan
+    _ = try a.create(value_mod.PersistentVector);
+
+    try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
+
+    traceRoots(&gc_inst, .{});
+    gc_inst.sweep();
+
+    // vec + items survive (via binding stack), orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc_inst.liveCount());
+}
+
+test "traceRoots combined: stack + env + bindings" {
+    var gc_inst = MarkSweepGc.init(std.testing.allocator);
+    defer gc_inst.deinit();
+
+    const a = gc_inst.allocator();
+
+    var infra_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer infra_arena.deinit();
+    const infra = infra_arena.allocator();
+
+    // 1. Stack value (vector)
+    const stack_items = try a.alloc(Value, 1);
+    stack_items[0] = Value{ .integer = 1 };
+    const stack_vec = try a.create(value_mod.PersistentVector);
+    stack_vec.* = .{ .items = stack_items };
+
+    // 2. Env var root (list)
+    var env = env_mod.Env.init(infra);
+    const ns = try env.findOrCreateNamespace("test");
+    const env_items = try a.alloc(Value, 1);
+    env_items[0] = Value{ .integer = 2 };
+    const env_list = try a.create(value_mod.PersistentList);
+    env_list.* = .{ .items = env_items };
+    const v = try ns.intern("x");
+    v.root = Value{ .list = env_list };
+
+    // 3. Binding stack value (cons)
+    const bound_cons = try a.create(value_mod.Cons);
+    bound_cons.* = .{ .first = Value{ .integer = 3 }, .rest = .nil };
+    const dyn_var = try infra.create(var_mod.Var);
+    dyn_var.* = .{ .sym = .{ .ns = null, .name = "d" }, .ns_name = "test", .dynamic = true };
+    var binding_entries = [_]var_mod.BindingEntry{.{ .var_ptr = dyn_var, .val = Value{ .cons = bound_cons } }};
+    var binding_frame = var_mod.BindingFrame{ .entries = &binding_entries, .prev = null };
+    var_mod.pushBindings(&binding_frame);
+    defer var_mod.popBindings();
+
+    // 4. Orphans
+    _ = try a.create(value_mod.PersistentVector);
+    _ = try a.alloc(u8, 32);
+
+    // Total: stack_items + stack_vec + env_items + env_list + bound_cons + 2 orphans = 7
+    try std.testing.expectEqual(@as(usize, 7), gc_inst.liveCount());
+
+    const stack_vals = [_]Value{Value{ .vector = stack_vec }};
+    const slices = [_][]const Value{&stack_vals};
+    traceRoots(&gc_inst, .{
+        .value_slices = &slices,
+        .env = &env,
+    });
+    gc_inst.sweep();
+
+    // 5 survive (stack_items, stack_vec, env_items, env_list, bound_cons), 2 orphans freed
+    try std.testing.expectEqual(@as(usize, 5), gc_inst.liveCount());
 }

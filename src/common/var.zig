@@ -135,6 +135,11 @@ pub const BindingFrame = struct {
 /// Global binding stack (single-thread — Wasm target).
 var current_frame: ?*BindingFrame = null;
 
+/// Return the current binding frame (for GC root traversal).
+pub fn getCurrentBindingFrame() ?*BindingFrame {
+    return current_frame;
+}
+
 /// Push a new binding frame.
 pub fn pushBindings(frame: *BindingFrame) void {
     frame.prev = current_frame;

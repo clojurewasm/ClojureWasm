@@ -22,31 +22,30 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
-2. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-3. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-4. 23.6: Verification — all tests pass, REPL memory bounded
+1. 23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+2. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
+3. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
-- Populate RootSet struct with references to VM stack, global Namespaces, Var bindings
-- Add traceRoots(gc, roots) that walks all root references and calls traceValue
-- VM roots: stack slots (CallFrame.slots), global vars
-- TreeWalk roots: env bindings, global vars
-- Namespace registry: all interned Vars and their root values
-- Exception handler stack values
-- Unit tests: root set traversal marks reachable values
+23.4: Safe points — allocation threshold trigger in VM + TreeWalk
+- Add shouldCollect check after allocations in VM execute loop
+- Add shouldCollect check in TreeWalk eval
+- When triggered: build RootSet from active stack/env, call traceRoots + sweep
+- VM: populate value_slices from stack[0..sp] + frame constants, env from self.env
+- TreeWalk: populate from locals[0..local_count] + recur_args, env from self.env
+- Threshold-based: only collect when bytes_allocated >= threshold
+- Unit test: verify GC runs during evaluation when threshold exceeded
 
 ## Previous Task
 
-23.2: Value tracing — comptime-verified traceValue for all Value variants
-- Added traceValue() to gc.zig — exhaustive switch on all 29 Value variants
-- markAndCheck() for cycle detection via mark bits
-- markSlice() for backing array marking
-- Recursive tracing: collections → items, cons → first/rest, lazy_seq → thunk/realized
-- 8 unit tests: primitives, vector, nested, cons, map, string, cycle, lazy_seq
-- NOTE: Fn.proto and regex.compiled are opaque — internal tracing deferred to 23.3+
+23.3: Root set — stack roots, global vars (Namespace/Var), exception handlers
+- Updated RootSet: value_slices, values, env fields
+- traceRoots: walks value slices + individual values + Env + dynamic binding stack
+- traceEnv → traceNamespace → traceVarRoots chain (infrastructure-agnostic)
+- traceBindingStack: walks var_mod.getCurrentBindingFrame() frame chain
+- Added getCurrentBindingFrame() public accessor to var.zig
+- 5 unit tests: stack slices, individual values, env vars, binding stack, combined
 
 ## Completed Phases (reverse chronological)
 
