@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
-- Coverage: 519/704 clojure.core vars done (0 todo, 184 skip)
-- Next: 20.6 (subseq, rsubseq)
+- Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
+- Next: Phase 20 complete — plan next tasks
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -27,26 +27,19 @@ Session handover document. Read at session start.
 3. ~~20.3: Chunked sequences — types + builtins~~ — DONE (8 builtins + chunk-cons)
 4. ~~20.4: Core.clj chunked seq paths~~ — DONE (map, filter, keep, doseq)
 5. ~~20.5: Sorted-map-by, sorted-set-by~~ — DONE (2 vars + sorted-set/sorted-map improved)
-6. 20.6: subseq, rsubseq — 2 vars
+6. ~~20.6: subseq, rsubseq~~ — DONE (2 vars)
 
 ## Current Task
 
-20.6: subseq, rsubseq
-- Implement subseq/rsubseq for sorted maps/sets
-- Need to work with comparator field on PersistentArrayMap/PersistentHashSet
+Phase 20 complete — all tasks done. Plan next.
 
 ## Previous Task
 
-20.5 completed: Sorted-map-by, sorted-set-by with custom comparators
-- Added comparator field to PersistentArrayMap and PersistentHashSet
-- sorted-map now stores comparator=.nil (natural ordering sentinel)
-- sorted-map-by: new builtin with custom comparator support
-- sorted-set now properly sorts items (was just delegating to hash-set)
-- sorted-set-by: new builtin with custom comparator support
-- assocFn, dissocFn, conjOne, disjFn, emptyFn all propagate comparator
-- assoc re-sorts entries when comparator is present
-- conj on sorted-set re-sorts items
-- compareWithComparator helper: .nil=natural, fn_val=custom
+20.6 completed: subseq, rsubseq
+- Zig builtins: iterate sorted entries, call test fn via callFnVal
+- Map entries returned as [key val] vectors, set entries as values
+- rsubseq reverses output
+- 3-arg (test key) and 5-arg (start-test start-key end-test end-key) forms
 - Both VM + TreeWalk verified
 
 ## Completed Phases (reverse chronological)

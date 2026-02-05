@@ -562,7 +562,7 @@ vars:
     reverse: {type: function, status: done, note: "portable to clj"}
     "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rseq: {type: function, status: done, note: builtin (upstream is pure clj)}
-    rsubseq: {type: function, status: skip, note: needs sorted data structure}
+    rsubseq: {type: function, status: done, note: builtin (upstream uses Java Sorted interface)}
     "run!": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "satisfies?": {type: function, status: done, note: "Zig builtin"}
     second: {type: function, status: done, note: "core.clj (first (next coll))"}
@@ -619,7 +619,7 @@ vars:
     struct: {type: function, status: skip, note: deprecated struct system}
     "struct-map": {type: function, status: skip, note: deprecated struct system}
     subs: {type: function, status: done, note: "Zig builtin"}
-    subseq: {type: function, status: skip, note: needs sorted data structure}
+    subseq: {type: function, status: done, note: builtin (upstream uses Java Sorted interface)}
     subvec: {type: function, status: done, note: "Zig builtin"}
     supers: {type: function, status: skip, note: JVM interop}
     "swap!": {type: function, status: done, note: "builtin-fn only (D8)"}

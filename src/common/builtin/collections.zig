@@ -1539,6 +1539,131 @@ fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: V
     return .eq;
 }
 
+/// (subseq sc test key) or (subseq sc start-test start-key end-test end-key)
+/// Returns a seq of entries from sorted collection matching test(s).
+pub fn subseqFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3 and args.len != 5)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to subseq", .{args.len});
+    return subseqImpl(allocator, args, false);
+}
+
+/// (rsubseq sc test key) or (rsubseq sc start-test start-key end-test end-key)
+/// Returns a reverse seq of entries from sorted collection matching test(s).
+pub fn rsubseqFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3 and args.len != 5)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rsubseq", .{args.len});
+    return subseqImpl(allocator, args, true);
+}
+
+/// Shared implementation for subseq and rsubseq.
+fn subseqImpl(allocator: Allocator, args: []const Value, reverse: bool) anyerror!Value {
+    const sc = args[0];
+
+    // Get comparator — must be sorted collection
+    const comp: Value = switch (sc) {
+        .map => |m| m.comparator orelse return err.setErrorFmt(.eval, .type_error, .{}, "subseq requires a sorted collection", .{}),
+        .set => |s| s.comparator orelse return err.setErrorFmt(.eval, .type_error, .{}, "subseq requires a sorted collection", .{}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "subseq requires a sorted collection, got {s}", .{@tagName(sc)}),
+    };
+
+    var result = std.ArrayList(Value).empty;
+
+    if (sc == .map) {
+        const entries = sc.map.entries;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            const entry_key = entries[i];
+            if (try testEntry(allocator, comp, entry_key, args)) {
+                // Create [key val] vector
+                const pair = try allocator.alloc(Value, 2);
+                pair[0] = entries[i];
+                pair[1] = entries[i + 1];
+                const vec = try allocator.create(PersistentVector);
+                vec.* = .{ .items = pair };
+                try result.append(allocator, Value{ .vector = vec });
+            }
+        }
+    } else {
+        // set
+        const items = sc.set.items;
+        for (items) |item| {
+            if (try testEntry(allocator, comp, item, args)) {
+                try result.append(allocator, item);
+            }
+        }
+    }
+    if (result.items.len == 0) return Value.nil;
+
+    if (reverse) {
+        // Reverse in place
+        var lo: usize = 0;
+        var hi: usize = result.items.len - 1;
+        while (lo < hi) {
+            const tmp = result.items[lo];
+            result.items[lo] = result.items[hi];
+            result.items[hi] = tmp;
+            lo += 1;
+            hi -= 1;
+        }
+    }
+
+    const list = try allocator.create(PersistentList);
+    list.* = .{ .items = result.items };
+    return Value{ .list = list };
+}
+
+/// Test whether an entry key passes the subseq test(s).
+/// For 3-arg: (test (compare entry-key key) 0)
+/// For 5-arg: (start-test (compare entry-key start-key) 0) AND (end-test (compare entry-key end-key) 0)
+fn testEntry(allocator: Allocator, comp: Value, entry_key: Value, args: []const Value) anyerror!bool {
+    const zero = Value{ .integer = 0 };
+
+    if (args.len == 3) {
+        const test_fn = args[1];
+        const key = args[2];
+        const cmp = try compareWithComparator(allocator, comp, entry_key, key);
+        const cmp_int = Value{ .integer = switch (cmp) {
+            .lt => -1,
+            .eq => 0,
+            .gt => 1,
+        } };
+        const test_result = try bootstrap.callFnVal(allocator, test_fn, &.{ cmp_int, zero });
+        return isTruthy(test_result);
+    } else {
+        // 5 args: sc start-test start-key end-test end-key
+        const start_test = args[1];
+        const start_key = args[2];
+        const end_test = args[3];
+        const end_key = args[4];
+
+        const cmp_start = try compareWithComparator(allocator, comp, entry_key, start_key);
+        const cmp_start_int = Value{ .integer = switch (cmp_start) {
+            .lt => -1,
+            .eq => 0,
+            .gt => 1,
+        } };
+        const start_result = try bootstrap.callFnVal(allocator, start_test, &.{ cmp_start_int, zero });
+        if (!isTruthy(start_result)) return false;
+
+        const cmp_end = try compareWithComparator(allocator, comp, entry_key, end_key);
+        const cmp_end_int = Value{ .integer = switch (cmp_end) {
+            .lt => -1,
+            .eq => 0,
+            .gt => 1,
+        } };
+        const end_result = try bootstrap.callFnVal(allocator, end_test, &.{ cmp_end_int, zero });
+        return isTruthy(end_result);
+    }
+}
+
+fn isTruthy(v: Value) bool {
+    return switch (v) {
+        .nil => false,
+        .boolean => |b| b,
+        else => true,
+    };
+}
+
 /// (empty coll) — empty collection of same type, or nil.
 pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to empty", .{args.len});
@@ -1840,6 +1965,20 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.1",
     },
     .{
+        .name = "subseq",
+        .func = &subseqFn,
+        .doc = "sc must be a sorted collection, test(s) one of <, <=, > or >=. Returns a seq of those entries with keys ek for which (test (.. sc comparator (compare ek key)) 0) is true.",
+        .arglists = "([sc test key] [sc start-test start-key end-test end-key])",
+        .added = "1.0",
+    },
+    .{
+        .name = "rsubseq",
+        .func = &rsubseqFn,
+        .doc = "sc must be a sorted collection, test(s) one of <, <=, > or >=. Returns a reverse seq of those entries with keys ek for which (test (.. sc comparator (compare ek key)) 0) is true.",
+        .arglists = "([sc test key] [sc start-test start-key end-test end-key])",
+        .added = "1.0",
+    },
+    .{
         .name = "rseq",
         .func = &rseqFn,
         .doc = "Returns, in constant time, a seq of the items in rev (which can be a vector), in reverse order. If rev is empty returns nil.",
@@ -2123,8 +2262,8 @@ test "count on various types" {
 }
 
 test "builtins table has 39 entries" {
-    // 37 + 1 (__seq-to-map) + 1 (sorted-set) + 2 (sorted-map-by, sorted-set-by)
-    try testing.expectEqual(41, builtins.len);
+    // 37 + 1 (__seq-to-map) + 1 (sorted-set) + 2 (sorted-map-by, sorted-set-by) + 2 (subseq, rsubseq)
+    try testing.expectEqual(43, builtins.len);
 }
 
 test "reverse list" {
@@ -2937,4 +3076,72 @@ test "sorted-set stores natural ordering comparator" {
     // Comparator stored
     try testing.expect(result.set.comparator != null);
     try testing.expect(result.set.comparator.? == .nil);
+}
+
+// --- subseq / rsubseq tests ---
+
+const arith = @import("arithmetic.zig");
+
+test "subseq on sorted-map with >" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (sorted-map :a 1 :b 2 :c 3)
+    const sm = try sortedMapFn(alloc, &.{
+        Value{ .keyword = .{ .name = "c", .ns = null } }, Value{ .integer = 3 },
+        Value{ .keyword = .{ .name = "a", .ns = null } }, Value{ .integer = 1 },
+        Value{ .keyword = .{ .name = "b", .ns = null } }, Value{ .integer = 2 },
+    });
+
+    // (subseq sm > :a) => ([:b 2] [:c 3])
+    const gt_fn = Value{ .builtin_fn = arith.builtins[9].func.? }; // ">"
+    const result = try subseqFn(alloc, &.{ sm, gt_fn, Value{ .keyword = .{ .name = "a", .ns = null } } });
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 2), result.list.items.len);
+    // First entry should be [:b 2]
+    try testing.expect(result.list.items[0] == .vector);
+    try testing.expect(result.list.items[0].vector.items[0].eql(.{ .keyword = .{ .name = "b", .ns = null } }));
+}
+
+test "subseq on sorted-set with >=" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (sorted-set 1 2 3 4 5)
+    const ss = try sortedSetFn(alloc, &.{
+        Value{ .integer = 3 }, Value{ .integer = 1 }, Value{ .integer = 5 },
+        Value{ .integer = 2 }, Value{ .integer = 4 },
+    });
+
+    // (subseq ss >= 3) => (3 4 5)
+    const ge_fn = Value{ .builtin_fn = arith.builtins[11].func.? }; // ">="
+    const result = try subseqFn(alloc, &.{ ss, ge_fn, Value{ .integer = 3 } });
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expect(result.list.items[0].eql(Value{ .integer = 3 }));
+    try testing.expect(result.list.items[1].eql(Value{ .integer = 4 }));
+    try testing.expect(result.list.items[2].eql(Value{ .integer = 5 }));
+}
+
+test "rsubseq on sorted-set with <=" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // (sorted-set 1 2 3 4 5)
+    const ss = try sortedSetFn(alloc, &.{
+        Value{ .integer = 3 }, Value{ .integer = 1 }, Value{ .integer = 5 },
+        Value{ .integer = 2 }, Value{ .integer = 4 },
+    });
+
+    // (rsubseq ss <= 3) => (3 2 1)
+    const le_fn = Value{ .builtin_fn = arith.builtins[10].func.? }; // "<="
+    const result = try rsubseqFn(alloc, &.{ ss, le_fn, Value{ .integer = 3 } });
+    try testing.expect(result == .list);
+    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expect(result.list.items[0].eql(Value{ .integer = 3 }));
+    try testing.expect(result.list.items[1].eql(Value{ .integer = 2 }));
+    try testing.expect(result.list.items[2].eql(Value{ .integer = 1 }));
 }
