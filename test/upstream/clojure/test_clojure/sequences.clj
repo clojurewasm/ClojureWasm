@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/sequences.clj
 ;; Upstream lines: 1654
-;; CLJW markers: 37
+;; CLJW markers: 35
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -21,17 +21,16 @@
 ;; CLJW: JVM interop — test-reduce requires into-array, Integer/TYPE, vector-of, .reduce
 ;; CLJW: JVM interop — test-into-IReduceInit requires reify, clojure.lang.IReduceInit
 ;; CLJW: JVM interop — reduce-with-varying-impls requires java.util.ArrayList
-;; CLJW: JVM interop — test-equality requires sequence, sorted-set, string seq
-;; CLJW: JVM interop — test-lazy-seq requires sorted-set, sorted-map, into-array, string seq
-;; CLJW: JVM interop — test-seq requires sorted-set, into-array, string seq
-;; CLJW: JVM interop — test-empty requires sorted-set, sorted-map, class, string seq
-;; CLJW: JVM interop — test-empty-sorted requires sorted-set-by
+;; CLJW: JVM interop — test-equality requires sequence, string seq
+;; CLJW: JVM interop — test-lazy-seq requires into-array, string seq
+;; CLJW: JVM interop — test-seq requires into-array, string seq
+;; CLJW: JVM interop — test-empty requires class, string seq
 
 ;; *** Tests ***
 
 ;; ========== cons ==========
 
-;; CLJW: adapted — removed into-array, sorted-set, string seq, set cons tests; Exception for IllegalArgumentException
+;; CLJW: adapted — removed into-array, string seq tests; Exception for IllegalArgumentException
 (deftest test-cons
   (is (thrown? Exception (cons 1 2)))
   (are [x y] (= x y)
@@ -44,7 +43,23 @@
     (cons 1 '(2 3)) '(1 2 3)
 
     (cons 1 []) [1]
-    (cons 1 [2 3]) [1 2 3]))
+    (cons 1 [2 3]) [1 2 3]
+
+    (cons 1 #{}) '(1)
+    (cons 1 (sorted-set 2 3)) '(1 2 3)))
+
+;; ========== empty-sorted ==========
+
+;; CLJW-ADD: revived — sorted-set/map features now implemented
+;; Tests that the comparator is preserved
+(deftest test-empty-sorted
+  (let [inv-compare (comp - compare)]
+    (are [x y] (= (first (into (empty x) x))
+                  (first y))
+      (sorted-set 1 2 3) (sorted-set 1 2 3)
+      (sorted-set-by inv-compare 1 2 3) (sorted-set-by inv-compare 1 2 3)
+      (sorted-map 1 :a 2 :b 3 :c) (sorted-map 1 :a 2 :b 3 :c)
+      (sorted-map-by inv-compare 1 :a 2 :b 3 :c) (sorted-map-by inv-compare 1 :a 2 :b 3 :c))))
 
 ;; ========== not-empty ==========
 
@@ -66,7 +81,7 @@
 
 ;; ========== first ==========
 
-;; CLJW: adapted — removed string, set, sorted-set, into-array, nil-key map tests
+;; CLJW: adapted — removed string, into-array tests
 (deftest test-first
   (are [x y] (= x y)
     (first nil) nil
@@ -83,7 +98,22 @@
     (first [nil]) nil
     (first [1 nil]) 1
 
+    ;; set
+    (first #{}) nil
+    (first #{1}) 1
+    (first (sorted-set 1 2 3)) 1
+
+    (first #{nil}) nil
+    (first (sorted-set 1 nil)) nil
+    (first (sorted-set nil 2)) nil
+    (first #{#{}}) #{}
+    (first (sorted-set [] nil)) nil
+
+    ;; map
     (first {}) nil
+    (first (sorted-map :a 1)) '(:a 1)
+    (first (sorted-map :a 1 :b 2 :c 3)) '(:a 1)
+
     (first [[]]) [])
   (is (not (nil? (first {:a 1})))))
 
@@ -115,7 +145,6 @@
 
 ;; ========== ffirst ==========
 
-;; CLJW: adapted — removed sorted-set tests
 (deftest test-ffirst
   (are [x y] (= x y)
     (ffirst nil) nil
@@ -143,7 +172,12 @@
     (fnext []) nil
     (fnext [1]) nil
     (fnext [1 2 3 4]) 2
-    (fnext {}) nil))
+    (fnext {}) nil
+    (fnext (sorted-map :a 1)) nil
+    (fnext (sorted-map :a 1 :b 2)) [:b 2]
+    (fnext #{}) nil
+    (fnext #{1}) nil
+    (fnext (sorted-set 1 2 3 4)) 2))
 
 ;; ========== nfirst ==========
 
@@ -159,7 +193,6 @@
 
 ;; ========== nnext ==========
 
-;; CLJW: adapted — removed sorted-map, sorted-set tests
 (deftest test-nnext
   (are [x y] (= x y)
     (nnext nil) nil
@@ -175,7 +208,14 @@
     (nnext [1 2 3 4]) '(3 4)
 
     (nnext {}) nil
-    (nnext #{}) nil))
+    (nnext (sorted-map :a 1)) nil
+    (nnext (sorted-map :a 1 :b 2)) nil
+    (nnext (sorted-map :a 1 :b 2 :c 3 :d 4)) '([:c 3] [:d 4])
+
+    (nnext #{}) nil
+    (nnext #{1}) nil
+    (nnext (sorted-set 1 2)) nil
+    (nnext (sorted-set 1 2 3 4)) '(3 4)))
 
 ;; ========== last ==========
 
@@ -210,7 +250,7 @@
     (nth [1 2 3] 5 :not-found) :not-found))
 
 ;; CLJW: JVM interop — test-nthnext+rest-on-0 requires string seq, into-array
-;; CLJW: JVM interop — test-nthnext+rest-on-pos requires string seq, sorted-set, into-array
+;; CLJW: JVM interop — test-nthnext+rest-on-pos requires string seq, into-array
 
 ;; ========== distinct ==========
 
@@ -490,7 +530,26 @@
     (partition -1 [1 2 3]) ()
     (partition -2 [1 2 3]) ()))
 
-;; CLJW: JVM interop — test-partitionv requires partitionv (not implemented)
+;; CLJW-ADD: revived — partitionv now implemented
+(deftest test-partitionv
+  (are [x y] (= x y)
+    (partitionv 2 [1 2 3]) '((1 2))
+    (partitionv 2 [1 2 3 4]) '((1 2) (3 4))
+    (partitionv 2 []) ()
+
+    (partitionv 2 3 [1 2 3 4 5 6 7]) '((1 2) (4 5))
+    (partitionv 2 3 [1 2 3 4 5 6 7 8]) '((1 2) (4 5) (7 8))
+    (partitionv 2 3 []) ()
+
+    (partitionv 1 []) ()
+    (partitionv 1 [1 2 3]) '((1) (2) (3))
+
+    (partitionv 4 4 [0 0 0] (range 10)) '([0 1 2 3] [4 5 6 7] [8 9 0 0])
+
+    (partitionv 5 [1 2 3]) ()
+
+    (partitionv -1 [1 2 3]) ()
+    (partitionv -2 [1 2 3]) ()))
 
 ;; ========== partition-all ==========
 
@@ -499,7 +558,12 @@
   (is (= (partition-all 4 [1 2 3 4 5 6 7 8 9])
          '((1 2 3 4) (5 6 7 8) (9)))))
 
-;; CLJW: JVM interop — test-partitionv-all requires partitionv-all (not implemented)
+;; CLJW-ADD: revived — partitionv-all now implemented
+(deftest test-partitionv-all
+  (is (= (partitionv-all 4 [1 2 3 4 5 6 7 8 9])
+         [[1 2 3 4] [5 6 7 8] [9]]))
+  (is (= (partitionv-all 4 2 [1 2 3 4 5 6 7 8 9])
+         [[1 2 3 4] [3 4 5 6] [5 6 7 8] [7 8 9] [9]])))
 
 ;; ========== every? / not-every? ==========
 
@@ -631,7 +695,15 @@
     (is (every? #{1 2 3 4} shuffled-seq))))
 
 ;; CLJW: JVM interop — test-ArrayIter requires clojure.lang.ArrayIter
-;; CLJW: JVM interop — test-subseq requires subseq/rsubseq (needs sorted-set)
+
+;; CLJW-ADD: revived — subseq/rsubseq + sorted-set now implemented
+(deftest test-subseq
+  (let [s1 (range 100)
+        s2 (into (sorted-set) s1)]
+    (is (= s1 (seq s2)))
+    (doseq [i (range 100)]
+      (is (= s1 (concat (subseq s2 < i) (subseq s2 >= i))))
+      (is (= (reverse s1) (concat (rsubseq s2 >= i) (rsubseq s2 < i)))))))
 
 ;; ========== CLJ-1633 ==========
 
@@ -641,7 +713,6 @@
 ;; CLJW: JVM interop — test-sort-retains-meta requires sort-by with keyword keyfn
 ;; CLJW: JVM interop — test-seqs-implements-iobj requires vector-of, instance?, Queue
 ;; CLJW: JVM interop — test-iteration-opts, test-iteration require iteration (not implemented)
-;; CLJW: JVM interop — test-reduce-on-coll-seqs requires sorted-map seq reduce
 ;; CLJW: JVM interop — infinite-seq-hash requires .hashCode/.hasheq method call
 ;; CLJW: JVM interop — longrange-equals-range, iteration-seq-equals-reduce (defspec)
 

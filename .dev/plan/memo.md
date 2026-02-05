@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22b complete (A, BE, B, C, CX, R, D, 20-23, 22b)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next: Phase 22c (Test Gap Resolution)
+- Next task: 22c.3
 - Blockers: none
 
 ## Task Queue
@@ -14,8 +14,7 @@ Session handover document. Read at session start.
 Phase 22c — Test Gap Resolution (gap analysis: `.dev/plan/test-gap-analysis.md`)
 
 Tier 1: Revive skipped tests (features already implemented)
-- 22c.1: Revive sorted-set/map tests (clojure_walk, control, sequences, data_structures)
-- 22c.2: Revive map-entry? test (clojure_walk) + partitionv test (sequences)
+- ~~22c.2: done in 22c.1~~
 - 22c.3: Revive with-redefs tests (vars — non-threaded subset)
 - 22c.4: Revive eval-based tests (special — non-JVM-exception subset)
 
@@ -39,13 +38,19 @@ Stop after 22c.16 — Phase 22c complete, loop ends.
 
 ## Current Task
 
-(none — start from 22c.1)
+(next: 22c.3)
 
 ## Previous Task
 
-22b.10: Port math.clj (327 lines, 41 tests — implemented clojure.math ns)
-- Created src/common/builtin/math.zig: 42 functions + 2 constants (PI, E)
-- 41 tests ported (256 assertions), both backends pass
+22c.1: Revive sorted-set/map tests (4 files, +3 new tests, ~200 new assertions)
+- Fixed boolean comparator in compareWithComparator (AFunction.compare semantics)
+- Fixed reverse to work on any seqable (lazy-seq, set, map, etc.)
+- clojure_walk.clj: revived sorted-set-by, sorted-map-by in walk + walk-mapentry test
+- control.clj: revived sorted-map, sorted-set in case test
+- sequences.clj: +test-empty-sorted, +test-partitionv, +test-partitionv-all, +test-subseq,
+  + sorted-set/map assertions in cons, first, fnext, nnext (52 tests, 543 assertions)
+- data_structures.clj: +test-sorted-map-keys, +test-sorted-set, +test-sorted-set-by,
+  +set-equality-test, +map-equality-test (24 tests, 497 assertions)
 
 ## Handover Notes
 

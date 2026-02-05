@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/control.clj
 ;; Upstream lines: 446
-;; CLJW markers: 23
+;; CLJW markers: 21
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -323,10 +323,9 @@
              :default)]
       (are [result input] (= result (test-fn input))
         :map {:a 1 :b 2}
-           ;; CLJW: removed — (sorted-map :a 1 :b 2), sorted-map not fully supported in case
+        :map (sorted-map :a 1 :b 2)
         :set #{3 2 1}
-           ;; CLJW: removed — (sorted-set 2 1 3), sorted-set not implemented
-        )))
+        :set (sorted-set 2 1 3))))
   ;; CLJW: JVM interop — test-number-equivalence requires 1N (BigInt)
   ;; CLJW: JVM interop — test-warn-boxing requires should-print-err-message, Object.
   ;; CLJW: JVM interop — test-sparse-ints requires 2r binary literal

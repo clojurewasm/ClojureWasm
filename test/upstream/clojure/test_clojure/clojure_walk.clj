@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/clojure_walk.clj
 ;; Upstream lines: 76
-;; CLJW markers: 5
+;; CLJW markers: 4
 
 ;; CLJW: ns form simplified — (:require) moved to top-level require call
 (ns clojure.test-clojure.clojure-walk
@@ -42,11 +42,12 @@
 
 (deftest walk
   "Checks that walk returns the correct result and type of collection"
-  ;; CLJW: removed sorted-set-by, sorted-map-by (not yet implemented)
   (let [colls ['(1 2 3)
                [1 2 3]
                #{1 2 3}
+               (sorted-set-by > 1 2 3)
                {:a 1, :b 2, :c 3}
+               (sorted-map-by > 1 10, 2 20, 3 30)
                (->Foo 1 2 3)
                (map->Foo {:a 1 :b 2 :c 3 :extra 4})]]
     (doseq [c colls]
@@ -61,12 +62,11 @@
         ;; CLJW: removed instance?/comparator check (JVM interop)
         ))))
 
-;; CLJW: walk-mapentry test skipped — map-entry? not yet implemented
-;; (deftest walk-mapentry
-;;   "Checks that walk preserves the MapEntry type. See CLJ-2031."
-;;   (let [coll [:html {:a ["b" 1]} ""]
-;;         f (fn [e] (if (and (vector? e) (not (map-entry? e))) (apply list e) e))]
-;;     (is (= (list :html {:a (list "b" 1)} "") (w/postwalk f coll)))))
+(deftest walk-mapentry
+  "Checks that walk preserves the MapEntry type. See CLJ-2031."
+  (let [coll [:html {:a ["b" 1]} ""]
+        f (fn [e] (if (and (vector? e) (not (map-entry? e))) (apply list e) e))]
+    (is (= (list :html {:a (list "b" 1)} "") (w/postwalk f coll)))))
 
 (defrecord RM [a])
 (deftest retain-meta

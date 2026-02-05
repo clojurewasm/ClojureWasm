@@ -542,15 +542,15 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (reverse coll) — returns a list of items in reverse order.
-/// nil returns empty list. Empty collection returns empty list.
+/// nil returns empty list. Works on any seqable collection.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
-    const items = switch (args[0]) {
-        .nil => &[_]Value{},
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "reverse not supported on {s}", .{@tagName(args[0])}),
-    };
+    if (args[0] == .nil) {
+        const empty_lst = try allocator.create(PersistentList);
+        empty_lst.* = .{ .items = &.{} };
+        return Value{ .list = empty_lst };
+    }
+    const items = try collectSeqItems(allocator, args[0]);
     if (items.len == 0) {
         const empty_lst = try allocator.create(PersistentList);
         empty_lst.* = .{ .items = &.{} };
@@ -1624,6 +1624,9 @@ fn sortSetItems(allocator: Allocator, items: []Value, comparator: Value) anyerro
 
 /// Compare two values using a comparator.
 /// .nil = natural ordering (compareValues), otherwise call as Clojure fn.
+/// Boolean comparators follow JVM AFunction.compare() semantics:
+///   (comp a b) → true  ⇒ -1 (a before b)
+///   (comp a b) → false ⇒ check (comp b a): true → 1 (b before a), false → 0 (equal)
 fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: Value) anyerror!std.math.Order {
     if (comparator == .nil) {
         return compareValues(a, b);
@@ -1633,7 +1636,12 @@ fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: V
     const n: i64 = switch (result) {
         .integer => |i| i,
         .float => |f| @intFromFloat(f),
-        .boolean => |bv| if (bv) @as(i64, -1) else 0,
+        .boolean => |bv| {
+            if (bv) return .lt;
+            // JVM AFunction.compare: false → call (comp b a) to distinguish gt from eq
+            const rev = try bootstrap.callFnVal(allocator, comparator, &.{ b, a });
+            return if (rev == .boolean and rev.boolean) .gt else .eq;
+        },
         else => return err.setErrorFmt(.eval, .type_error, .{}, "comparator must return a number, got {s}", .{@tagName(result)}),
     };
     if (n < 0) return .lt;

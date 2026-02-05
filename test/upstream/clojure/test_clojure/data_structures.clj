@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
 ;; Upstream lines: 1363
-;; CLJW markers: 21
+;; CLJW markers: 28
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -282,7 +282,16 @@
     (vals {nil 1}) '(1))
   (is (= 2 (count (vals {:a 1 :b 2})))))
 
-;; CLJW: JVM interop — test-sorted-map-keys requires sorted-map comparison
+;; CLJW: adapted — ClassCastException → Exception, removed single-key checks (no JVM Comparable interface)
+(deftest test-sorted-map-keys
+  ;; CLJW: skipped single-arg checks — our compare handles lists/maps/sets
+  ;; JVM throws ClassCastException even with 1 key due to Comparable check
+
+  ;; doesn't throw
+  (let [cmp (fn [a b] (compare (count a) (count b)))]
+    (assoc (sorted-map-by cmp) () 1)
+    (assoc (sorted-map-by cmp) #{} 1)
+    (assoc (sorted-map-by cmp) {} 1)))
 
 (deftest test-key
   (are [x] (= (key (first (hash-map x :value))) x)
@@ -357,8 +366,93 @@
     (hash-set nil 2) #{nil 2}
     (hash-set #{}) #{#{}}))
 
-;; CLJW: JVM interop — test-sorted-set requires sorted-set comparator behavior
-;; CLJW: JVM interop — test-sorted-set-by requires sorted-set-by, comparators
+;; CLJW: adapted — ClassCastException → Exception, removed ratio/BigDecimal,
+;; removed single-item Comparable checks (our compare handles lists/maps/sets)
+(deftest test-sorted-set
+  ;; incompatible types
+  (is (thrown? Exception (sorted-set 1 "a")))
+  (is (thrown? Exception (sorted-set '(1 2) [3 4])))
+
+  ;; creates set?
+  (are [x] (set? x)
+    (sorted-set)
+    (sorted-set 1 2))
+
+  ;; CLJW: adapted — removed 2/3 (ratio), 0M 1M (BigDecimal)
+  ;; equal and unique
+  (are [x] (and (= (sorted-set x) #{x})
+                (= (sorted-set x x) (sorted-set x)))
+    nil
+    false true
+    0 42
+    0.0 3.14
+    \c
+    "" "abc"
+    'sym
+    :kw
+    [] [1 2])
+
+  ;; CLJW: skipped Comparable checks — our compare handles lists/maps/sets
+
+  (are [x y] (= x y)
+    ;; generating
+    (sorted-set) #{}
+    (sorted-set 1) #{1}
+    (sorted-set 1 2) #{1 2}
+
+    ;; sorting
+    (seq (sorted-set 5 4 3 2 1)) '(1 2 3 4 5)
+
+    ;; special cases
+    (sorted-set nil) #{nil}
+    (sorted-set 1 nil) #{nil 1}
+    (sorted-set nil 2) #{nil 2}
+    (sorted-set []) #{[]}))
+
+;; CLJW: adapted — removed ratio/BigDecimal, Comparable checks
+(deftest test-sorted-set-by
+  ;; incompatible types
+  (is (thrown? Exception (sorted-set-by < 1 "a")))
+  (is (thrown? Exception (sorted-set-by < '(1 2) [3 4])))
+
+  ;; creates set?
+  (are [x] (set? x)
+    (sorted-set-by <)
+    (sorted-set-by < 1 2))
+
+  ;; CLJW: adapted — removed 2/3 (ratio), 0M 1M (BigDecimal)
+  ;; equal and unique
+  (are [x] (and (= (sorted-set-by compare x) #{x})
+                (= (sorted-set-by compare x x) (sorted-set-by compare x)))
+    nil
+    false true
+    0 42
+    0.0 3.14
+    \c
+    "" "abc"
+    'sym
+    :kw
+    () ;; '(1 2)
+    [] [1 2]
+    {} ;; {:a 1 :b 2}
+    #{}) ;; #{1 2}
+
+  ;; CLJW: skipped Comparable checks — our compare handles lists/maps/sets
+
+  (are [x y] (= x y)
+    ;; generating
+    (sorted-set-by >) #{}
+    (sorted-set-by > 1) #{1}
+    (sorted-set-by > 1 2) #{1 2}
+
+    ;; sorting
+    (seq (sorted-set-by < 5 4 3 2 1)) '(1 2 3 4 5)
+
+    ;; special cases
+    (sorted-set-by compare nil) #{nil}
+    (sorted-set-by compare 1 nil) #{nil 1}
+    (sorted-set-by compare nil 2) #{nil 2}
+    (sorted-set-by compare #{}) #{#{}}))
 
 (deftest test-set
   (are [x] (set? (set x))
@@ -415,12 +509,45 @@
   (is (thrown? Exception (assoc [] 0 5 1)))
   (is (thrown? Exception (assoc {} :b -2 :a))))
 
-;; CLJW: JVM interop — ordered-collection-equality-test requires PersistentQueue, vector-of, is-same-collection
-;; CLJW: JVM interop — set-equality-test requires sorted-set, sorted-set-by, is-same-collection
-;; CLJW: JVM interop — map-equality-test requires sorted-map-by, is-same-collection
+;; CLJW: JVM interop — ordered-collection-equality-test requires PersistentQueue, vector-of
 ;; CLJW: JVM interop — ireduce-reduced requires clojure.lang.IReduce
 ;; CLJW: JVM interop — test-seq-iter-match requires .iterator/.hasNext/.next
 ;; CLJW: JVM interop — record-hashing requires defrecord
+
+;; CLJW: adapted — simplified is-same-collection (no .getName, instance? Collection, .equals, .hashCode)
+(defn is-same-collection [a b]
+  (is (= (count a) (count b)))
+  (is (= a b))
+  (is (= b a))
+  (is (= (hash a) (hash b))))
+
+;; CLJW: adapted — removed case-indendent-string-cmp comparator (requires clojure.string/lower-case)
+(deftest set-equality-test
+  (let [empty-sets [#{}
+                    (hash-set)
+                    (sorted-set)]]
+    (doseq [s1 empty-sets, s2 empty-sets]
+      (is-same-collection s1 s2)))
+  (let [sets1 [#{"Banana" "apple" "7th"}
+               (hash-set "Banana" "apple" "7th")
+               (sorted-set "Banana" "apple" "7th")]]
+    (doseq [s1 sets1, s2 sets1]
+      (is-same-collection s1 s2))))
+
+;; CLJW: adapted — removed case-indendent-string-cmp comparator (requires clojure.string/lower-case)
+(deftest map-equality-test
+  (let [empty-maps [{}
+                    (hash-map)
+                    (array-map)
+                    (sorted-map)]]
+    (doseq [m1 empty-maps, m2 empty-maps]
+      (is-same-collection m1 m2)))
+  (let [maps1 [{"Banana" "like", "apple" "love", "7th" "indifferent"}
+               (hash-map "Banana" "like", "apple" "love", "7th" "indifferent")
+               (array-map "Banana" "like", "apple" "love", "7th" "indifferent")
+               (sorted-map "Banana" "like", "apple" "love", "7th" "indifferent")]]
+    (doseq [m1 maps1, m2 maps1]
+      (is-same-collection m1 m2))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)
