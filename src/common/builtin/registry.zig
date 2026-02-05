@@ -158,6 +158,16 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
+    // Register clojure.edn namespace builtins
+    const edn_ns = try env.findOrCreateNamespace("clojure.edn");
+    for (eval_mod.edn_builtins) |b| {
+        const v = try edn_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(.{ .builtin_fn = f });
+        }
+    }
+
     // Register clojure.math namespace builtins + constants
     const math_ns = try env.findOrCreateNamespace("clojure.math");
     for (math_mod.builtins) |b| {

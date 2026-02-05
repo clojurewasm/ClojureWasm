@@ -34,7 +34,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (s.len == 0) return .nil;
 
     var reader = Reader.init(allocator, s);
-    const form_opt = reader.read() catch return error.ReadError;
+    const form_opt = reader.read() catch return error.EvalError;
     const form = form_opt orelse return .nil;
     return macro.formToValue(allocator, form);
 }
@@ -173,9 +173,9 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var reader = Reader.init(allocator, s);
     var result: Value = .nil;
     while (true) {
-        const form_opt = reader.read() catch return error.ReadError;
+        const form_opt = reader.read() catch return error.EvalError;
         const form = form_opt orelse break;
-        const val = macro.formToValue(allocator, form) catch return error.ReadError;
+        const val = macro.formToValue(allocator, form) catch return error.EvalError;
         const eval_form = macro.valueToForm(allocator, val) catch return error.EvalError;
 
         if (isDoForm(eval_form)) {
@@ -188,6 +188,47 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
     return result;
+}
+
+// ============================================================
+// clojure.edn/read-string
+// ============================================================
+
+/// (clojure.edn/read-string s)
+/// (clojure.edn/read-string opts s)
+/// Reads one object from the string s in EDN format.
+/// opts is an optional map (currently ignored — reader is already EDN-safe).
+/// Returns nil when s is nil or empty.
+pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    switch (args.len) {
+        1 => {
+            // (edn/read-string s)
+            if (args[0] == .nil) return .nil;
+            const s = switch (args[0]) {
+                .string => |str| str,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string, got {s}", .{@tagName(args[0])}),
+            };
+            if (s.len == 0) return .nil;
+            var reader = Reader.init(allocator, s);
+            const form_opt = reader.read() catch return error.EvalError;
+            const form = form_opt orelse return .nil;
+            return macro.formToValue(allocator, form);
+        },
+        2 => {
+            // (edn/read-string opts s) — opts map currently ignored
+            if (args[1] == .nil) return .nil;
+            const s = switch (args[1]) {
+                .string => |str| str,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string as second arg, got {s}", .{@tagName(args[1])}),
+            };
+            if (s.len == 0) return .nil;
+            var reader = Reader.init(allocator, s);
+            const form_opt = reader.read() catch return error.EvalError;
+            const form = form_opt orelse return .nil;
+            return macro.formToValue(allocator, form);
+        },
+        else => return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clojure.edn/read-string", .{args.len}),
+    }
 }
 
 // ============================================================
@@ -229,6 +270,17 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Repeatedly calls macroexpand-1 on form until it no longer represents a macro form, then returns it.",
         .arglists = "([form])",
         .added = "1.0",
+    },
+};
+
+/// clojure.edn namespace builtins.
+pub const edn_builtins = [_]BuiltinDef{
+    .{
+        .name = "read-string",
+        .func = ednReadStringFn,
+        .doc = "Reads one object from the string s. Returns nil when s is nil or empty.",
+        .arglists = "([s] [opts s])",
+        .added = "1.5",
     },
 };
 
