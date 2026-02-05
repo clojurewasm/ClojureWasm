@@ -23,11 +23,27 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-(Phase 23 complete. Next: Phase 22b — Test Porting Round 2)
+Tier 1 — Port existing features (no new implementation needed):
+1. 22b.1: Port keywords.clj (31 lines, 1 test, 100% portable)
+2. 22b.2: Port printer.clj (195 lines, 13 tests, 90% portable)
+3. 22b.3: Port errors.clj (119 lines, 7 tests, 85% portable)
+4. 22b.4: Port test.clj (129 lines, 14 tests, 100% portable)
+5. 22b.5: Port test_fixtures.clj (73 lines, 5 tests, 100% portable)
+6. 22b.6: Port try_catch.clj (39 lines, 2 tests, 50% portable)
+7. 22b.7: Port fn.clj (55 lines, 1 test, 50% portable)
+8. 22b.8: Port protocols.clj (721 lines, 25 tests, 60% portable)
+
+Tier 2 — Port + implement (new namespace or feature):
+9. 22b.9: Port parse.clj (102 lines, 6 tests — needs parse-long/parse-double)
+10. 22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
+11. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
 
 ## Current Task
 
-Phase 23 complete. Ready for Phase 22b planning.
+22b.1: Port keywords.clj (31 lines, 1 test, 100% portable)
+- Read upstream test/clojure/test_clojure/keywords.clj
+- Port with CLJW markers
+- Both backends must pass
 
 ## Previous Task
 
