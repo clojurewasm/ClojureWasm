@@ -11,53 +11,38 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-Phase CX: Resolve actionable F## items before continuing test porting.
-Detailed plan: `.dev/plan/phase-cx-plan.md`
+Phase R: require/load/ns system — file-based namespace loading.
+Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
 
-- ~~CX1: Remove F51 + Fix F24 (housekeeping)~~ done
-- ~~CX2: bound? takes var_ref (F86)~~ done
-- ~~CX3: Math/System syntax routing (F89)~~ done
-- ~~CX4: delay proper Value type (F91)~~ done
-- ~~CX5: {:as x} seq-to-map coercion (F68)~~ done
-- ~~CX6: Namespaced destructuring (F70-F74)~~ done
-- ~~CX7: ::foo auto-resolved keyword (F81)~~ done
-- ~~CX8: Hierarchy system (F82 + F83)~~ done
-- ~~CX9: #'var inside deftest body (F87)~~ done
-- ~~CX10: UPSTREAM-DIFF quick fixes (F94 partial)~~ done
-
-## Saved Phase C Queue (resume after CX)
-
-Phase C: Faithful upstream test porting with CLJW markers.
-Order: new small → re-port existing → new medium → new large.
-
-Completed:
-- ~~C1: volatiles.clj~~ done
-- ~~C2: macros.clj~~ done
-- ~~C3: Re-port logic.clj~~ done (102 assertions)
-- ~~C4: Re-port for.clj~~ done (49 assertions, lazy seq infrastructure D65)
-- ~~C5: Re-port atoms.clj~~ done (12 assertions, *warn-on-reflection* stub)
-- ~~C6: delays.clj~~ done (6 assertions, delay exception caching)
-- ~~C7: def.clj~~ done (2 assertions, eval do sequential fix)
-- ~~C8: vars.clj~~ done (1 assertion, zipmap lazy seq fix)
-- ~~C9: Re-port control.clj~~ done (155 assertions, was 66)
-- ~~C10: Re-port predicates.clj~~ skip (already faithful, 143 assertions)
-- ~~C11: Re-port data_structures.clj~~ done (236 assertions, was 197, keys/vals nil-for-non-map fix)
-- ~~C12: Re-port sequences.clj~~ done (301 assertions, was 188, lazy-seq equality + drop lazy-seq)
-
-Remaining (resume here after CX):
-- ~~C13: clojure_walk.clj~~ done (23 assertions, D68 namespace isolation + metadata preservation)
-- ~~C14: string.clj~~ done (114 assertions, regex macro roundtrip fix + clj_string.zig extensions)
-- ~~C15: clojure_set.clj~~ done (111 assertions, sorted-set builtin)
-- ~~C16: metadata.clj~~ done (41 assertions, vector-as-IFn + meta preservation fixes)
-- ~~C17: special.clj~~ done (13 assertions, alias resolution in macro expansion)
-- ~~C18: other_functions.clj~~ done (245 assertions, update-vals/keys metadata fix)
-- ~~C19: numbers.clj~~ done (209 assertions, bit-shift truncation fix)
-- ~~C20: evaluation.clj~~ done (20 assertions, eval/literals/collections)
+- R1: `*ns*` dynamic var — Clojure-accessible current namespace reference
+  - Create `*ns*` var in bootstrap, sync with env.current_ns
+  - Update in-ns to set `*ns*` binding when switching namespace
+- R2: `load-file` + load path infrastructure
+  - `load-file` reads file by path, evals all forms in sequence
+  - Add `*load-paths*` (default: ["."]) for classpath-equivalent
+  - CLI `--classpath` / `-cp` option to configure load paths
+- R3: `load` + path resolution
+  - `root-resource`: ns name → file path (clojure.string → /clojure/string.clj)
+  - Search load paths for the file
+  - `*loaded-libs*` dynamic var (atom wrapping set) for dedup tracking
+- R4: Upgrade `require` to file-based loading
+  - When ns not found → call load to find and eval the file
+  - `:reload` / `:reload-all` flag support
+  - Cyclic dependency detection via `*pending-paths*` stack
+  - `:as`, `:refer`, `:refer :all` (already partially implemented)
+- R5: Upgrade `use` to file-based + `refer-clojure`
+  - `use` = require + refer-all
+  - `refer-clojure` function for `:exclude` support in ns macro
+- R6: `ns` macro full implementation
+  - Upstream-faithful expansion: `:require`, `:use`, `:refer-clojure`
+  - `*file*` var set during load
+- R7: E2E test — multi-file project
+  - Create test project with inter-dependent .clj files
+  - Verify require/use/ns/alias/refer chain on both backends
 
 ## Current Task
 
-Phase 19 complete. Phase order reorganized: R (require/load/ns) → D (Parallel Expansion).
-Next: Plan Phase R task queue and begin implementation.
+R1: `*ns*` dynamic var — Clojure-accessible current namespace reference.
 
 ## Previous Task
 
