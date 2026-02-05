@@ -186,7 +186,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             new_items[0] = x;
             @memcpy(new_items[1..], lst.items);
             const new_list = try allocator.create(PersistentList);
-            new_list.* = .{ .items = new_items };
+            new_list.* = .{ .items = new_items, .meta = lst.meta };
             return Value{ .list = new_list };
         },
         .vector => |vec| {
@@ -194,7 +194,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             @memcpy(new_items[0..vec.items.len], vec.items);
             new_items[vec.items.len] = x;
             const new_vec = try allocator.create(PersistentVector);
-            new_vec.* = .{ .items = new_items };
+            new_vec.* = .{ .items = new_items, .meta = vec.meta };
             return Value{ .vector = new_vec };
         },
         .set => |s| {
@@ -204,7 +204,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             @memcpy(new_items[0..s.items.len], s.items);
             new_items[s.items.len] = x;
             const new_set = try allocator.create(PersistentHashSet);
-            new_set.* = .{ .items = new_items };
+            new_set.* = .{ .items = new_items, .meta = s.meta };
             return Value{ .set = new_set };
         },
         .map => {
@@ -283,7 +283,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items };
+    new_map.* = .{ .entries = entries.items, .meta = if (base == .map) base.map.meta else null };
     return Value{ .map = new_map };
 }
 
@@ -317,7 +317,7 @@ fn assocVector(allocator: Allocator, vec: *const PersistentVector, kvs: []const 
     }
 
     const new_vec = try allocator.create(PersistentVector);
-    new_vec.* = .{ .items = items.items };
+    new_vec.* = .{ .items = items.items, .meta = vec.meta };
     return Value{ .vector = new_vec };
 }
 
@@ -992,6 +992,54 @@ pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set", .{args.len});
 
+    // Handle lazy_seq: realize then recurse
+    if (args[0] == .lazy_seq) {
+        const realized = try args[0].lazy_seq.realize(allocator);
+        const realized_args = [1]Value{realized};
+        return setCoerceFn(allocator, &realized_args);
+    }
+
+    // Handle cons: walk chain and collect items
+    if (args[0] == .cons) {
+        var result = std.ArrayList(Value).empty;
+        var current = args[0];
+        while (true) {
+            if (current == .cons) {
+                const item = current.cons.first;
+                var dup = false;
+                for (result.items) |existing| {
+                    if (existing.eql(item)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) try result.append(allocator, item);
+                current = current.cons.rest;
+            } else if (current == .lazy_seq) {
+                current = try current.lazy_seq.realize(allocator);
+            } else if (current == .nil) {
+                break;
+            } else if (current == .list) {
+                for (current.list.items) |item| {
+                    var dup = false;
+                    for (result.items) |existing| {
+                        if (existing.eql(item)) {
+                            dup = true;
+                            break;
+                        }
+                    }
+                    if (!dup) try result.append(allocator, item);
+                }
+                break;
+            } else {
+                break;
+            }
+        }
+        const new_set = try allocator.create(PersistentHashSet);
+        new_set.* = .{ .items = result.items };
+        return Value{ .set = new_set };
+    }
+
     // Handle map: convert to set of [k v] vectors
     if (args[0] == .map) {
         const m = args[0].map;
@@ -1325,22 +1373,22 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0]) {
         .vector => blk: {
             const new_vec = try allocator.create(PersistentVector);
-            new_vec.* = .{ .items = &.{} };
+            new_vec.* = .{ .items = &.{}, .meta = args[0].vector.meta };
             break :blk Value{ .vector = new_vec };
         },
         .list => blk: {
             const new_lst = try allocator.create(PersistentList);
-            new_lst.* = .{ .items = &.{} };
+            new_lst.* = .{ .items = &.{}, .meta = args[0].list.meta };
             break :blk Value{ .list = new_lst };
         },
         .map => blk: {
             const new_map = try allocator.create(PersistentArrayMap);
-            new_map.* = .{ .entries = &.{} };
+            new_map.* = .{ .entries = &.{}, .meta = args[0].map.meta };
             break :blk Value{ .map = new_map };
         },
         .set => blk: {
             const new_set = try allocator.create(PersistentHashSet);
-            new_set.* = .{ .items = &.{} };
+            new_set.* = .{ .items = &.{}, .meta = args[0].set.meta };
             break :blk Value{ .set = new_set };
         },
         .nil => .nil,

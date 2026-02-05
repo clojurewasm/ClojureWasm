@@ -332,6 +332,23 @@ pub const TreeWalk = struct {
         self.call_depth += 1;
         defer self.call_depth -= 1;
 
+        // Restore defining namespace for var resolution (D68).
+        // This ensures unqualified symbols resolve in the namespace where the
+        // function was defined, not the caller's namespace.
+        const saved_ns = if (self.env) |env| env.current_ns else null;
+        if (self.env) |env| {
+            if (callee_fn_val == .fn_val) {
+                if (callee_fn_val.fn_val.defining_ns) |def_ns_name| {
+                    if (env.findNamespace(def_ns_name)) |def_ns| {
+                        env.current_ns = def_ns;
+                    }
+                }
+            }
+        }
+        defer if (self.env) |env| {
+            env.current_ns = saved_ns;
+        };
+
         const fn_n = closure.fn_node;
 
         // Find matching arity
@@ -475,6 +492,7 @@ pub const TreeWalk = struct {
             .proto = closure,
             .kind = .treewalk,
             .closure_bindings = null,
+            .defining_ns = if (self.env) |env| if (env.current_ns) |ns| ns.name else null else null,
         };
         self.allocated_fns.append(self.allocator, fn_obj) catch return error.OutOfMemory;
 

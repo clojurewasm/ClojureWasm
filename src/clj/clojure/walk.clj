@@ -1,23 +1,21 @@
 ;; clojure.walk — generic tree walker with replacement
 ;;
 ;; Based on upstream clojure.walk by Stuart Sierra.
-;; Simplified version without metadata support.
 ;;
-;; UPSTREAM-DIFF: No metadata preservation (with-meta), no IMapEntry/IRecord handling.
+;; UPSTREAM-DIFF: No IMapEntry/IRecord handling.
 
 (ns clojure.walk)
 
 (defn walk
   "Traverses form, an arbitrary data structure. inner and outer are
   functions. Applies inner to each element of form, building up a
-  data structure of the same type, then applies outer to the result."
+  data structure of the same type, then applies outer to the result.
+  Recognizes all Clojure data structures. Consumes seqs as with doall."
   [inner outer form]
   (cond
-    (list? form) (outer (apply list (map inner form)))
-    (vector? form) (outer (vec (map inner form)))
-    (map? form) (outer (into {} (map inner form)))
-    (set? form) (outer (set (map inner form)))
-    (seq? form) (outer (doall (map inner form)))
+    (list? form) (outer (with-meta (apply list (map inner form)) (meta form)))
+    (seq? form) (outer (with-meta (doall (map inner form)) (meta form)))
+    (coll? form) (outer (into (empty form) (map inner form)))
     :else (outer form)))
 
 (defn postwalk

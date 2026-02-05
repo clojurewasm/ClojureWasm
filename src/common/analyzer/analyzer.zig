@@ -1267,8 +1267,10 @@ pub const Analyzer = struct {
 
     fn analyzeDefrecord(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (defrecord Name [fields])
-        // Expand to Form: (def ->Name (fn ->Name [field1 field2] (hash-map :field1 field1 ...)))
-        // Then re-analyze the constructed Form.
+        // Expand to:
+        //   (do
+        //     (def ->Name (fn ->Name [field1 field2 ...] (hash-map :field1 field1 ...)))
+        //     (def map->Name (fn map->Name [m] m)))
         if (items.len < 3) {
             return self.analysisError(.arity_error, "defrecord requires name and fields", form);
         }
@@ -1289,6 +1291,7 @@ pub const Analyzer = struct {
         }
 
         const ctor_name = std.fmt.allocPrint(self.allocator, "->{s}", .{rec_name}) catch return error.OutOfMemory;
+        const map_ctor_name = std.fmt.allocPrint(self.allocator, "map->{s}", .{rec_name}) catch return error.OutOfMemory;
 
         // Build (hash-map :field1 field1 :field2 field2 ...) as Forms
         const hm_form_count = 1 + fields.len * 2; // hash-map + pairs
@@ -1307,13 +1310,34 @@ pub const Analyzer = struct {
         fn_forms[3] = .{ .data = .{ .list = hm_forms } };
 
         // Build (def ->Name (fn ...))
-        const def_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
-        def_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "def" } } };
-        def_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
-        def_forms[2] = .{ .data = .{ .list = fn_forms } };
+        const def_ctor_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        def_ctor_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "def" } } };
+        def_ctor_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
+        def_ctor_forms[2] = .{ .data = .{ .list = fn_forms } };
 
-        const def_form = Form{ .data = .{ .list = def_forms } };
-        return self.analyze(def_form);
+        // Build (fn map->Name [m] m) — identity on map arg
+        const map_param = self.allocator.alloc(Form, 1) catch return error.OutOfMemory;
+        map_param[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "m" } } };
+        const map_fn_forms = self.allocator.alloc(Form, 4) catch return error.OutOfMemory;
+        map_fn_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
+        map_fn_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = map_ctor_name } } };
+        map_fn_forms[2] = .{ .data = .{ .vector = map_param } };
+        map_fn_forms[3] = .{ .data = .{ .symbol = .{ .ns = null, .name = "m" } } };
+
+        // Build (def map->Name (fn ...))
+        const def_map_ctor_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        def_map_ctor_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "def" } } };
+        def_map_ctor_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = map_ctor_name } } };
+        def_map_ctor_forms[2] = .{ .data = .{ .list = map_fn_forms } };
+
+        // Wrap in (do (def ->Name ...) (def map->Name ...))
+        const do_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        do_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "do" } } };
+        do_forms[1] = .{ .data = .{ .list = def_ctor_forms } };
+        do_forms[2] = .{ .data = .{ .list = def_map_ctor_forms } };
+
+        const do_form = Form{ .data = .{ .list = do_forms } };
+        return self.analyze(do_form);
     }
 
     fn analyzeDefmulti(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

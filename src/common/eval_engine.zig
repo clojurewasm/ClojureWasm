@@ -56,6 +56,9 @@ pub const EvalEngine = struct {
     pub fn runVM(self: *EvalEngine, n: *const Node) !Value {
         var compiler = Compiler.init(self.allocator);
         defer compiler.deinit();
+        if (self.env) |env| if (env.current_ns) |ns| {
+            compiler.current_ns_name = ns.name;
+        };
         try compiler.compile(n);
         try compiler.chunk.emitOp(.ret);
 

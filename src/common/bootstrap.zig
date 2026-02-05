@@ -152,6 +152,14 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
         test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
     }
 
+    // Refer clojure.walk bindings (are macro uses postwalk-replace)
+    if (env.findNamespace("clojure.walk")) |walk_ns| {
+        var walk_iter = walk_ns.mappings.iterator();
+        while (walk_iter.next()) |entry| {
+            test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+
     // Save current namespace and switch to clojure.test
     const saved_ns = env.current_ns;
     env.current_ns = test_ns;
@@ -279,6 +287,7 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
+        if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
@@ -329,6 +338,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
+        if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 

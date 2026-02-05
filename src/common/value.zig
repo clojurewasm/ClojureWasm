@@ -143,6 +143,10 @@ pub const Fn = struct {
     extra_arities: ?[]const *const anyopaque = null,
     /// Metadata map (Clojure IMeta protocol).
     meta: ?*const Value = null,
+    /// Namespace name where this function was defined (D68).
+    /// Used by TreeWalk to restore current_ns during execution so that
+    /// unqualified var references resolve in the defining namespace.
+    defining_ns: ?[]const u8 = null,
 };
 
 /// Runtime value — tagged union representation.

@@ -1,0 +1,83 @@
+;; Upstream: clojure/test/clojure/test_clojure/clojure_walk.clj
+;; Upstream lines: 76
+;; CLJW markers: 5
+
+;; CLJW: ns form simplified — (:require) moved to top-level require call
+(ns clojure.test-clojure.clojure-walk
+  (:use clojure.test))
+(require '[clojure.walk :as w])
+
+(deftest t-prewalk-replace
+  (is (= (w/prewalk-replace {:a :b} [:a {:a :a} (list 3 :c :a)])
+         [:b {:b :b} (list 3 :c :b)])))
+
+(deftest t-postwalk-replace
+  (is (= (w/postwalk-replace {:a :b} [:a {:a :a} (list 3 :c :a)])
+         [:b {:b :b} (list 3 :c :b)])))
+
+(deftest t-stringify-keys
+  (is (= (w/stringify-keys {:a 1, nil {:b 2 :c 3}, :d 4})
+         {"a" 1, nil {"b" 2 "c" 3}, "d" 4})))
+
+(deftest t-prewalk-order
+  (is (= (let [a (atom [])]
+           (w/prewalk (fn [form] (swap! a conj form) form)
+                      [1 2 {:a 3} (list 4 [5])])
+           @a)
+         [[1 2 {:a 3} (list 4 [5])]
+          1 2 {:a 3} [:a 3] :a 3 (list 4 [5])
+          4 [5] 5])))
+
+(deftest t-postwalk-order
+  (is (= (let [a (atom [])]
+           (w/postwalk (fn [form] (swap! a conj form) form)
+                       [1 2 {:a 3} (list 4 [5])])
+           @a)
+         [1 2
+          :a 3 [:a 3] {:a 3}
+          4 5 [5] (list 4 [5])
+          [1 2 {:a 3} (list 4 [5])]])))
+
+(defrecord Foo [a b c])
+
+(deftest walk
+  "Checks that walk returns the correct result and type of collection"
+  ;; CLJW: removed sorted-set-by, sorted-map-by (not yet implemented)
+  (let [colls ['(1 2 3)
+               [1 2 3]
+               #{1 2 3}
+               {:a 1, :b 2, :c 3}
+               (->Foo 1 2 3)
+               (map->Foo {:a 1 :b 2 :c 3 :extra 4})]]
+    (doseq [c colls]
+      (let [walked (w/walk identity identity c)]
+        (is (= c walked))
+        ;;(is (= (type c) (type walked)))
+        (if (map? c)
+          (is (= (w/walk #(update-in % [1] inc) #(reduce + (vals %)) c)
+                 (reduce + (map (comp inc val) c))))
+          (is (= (w/walk inc #(reduce + %) c)
+                 (reduce + (map inc c)))))
+        ;; CLJW: removed instance?/comparator check (JVM interop)
+        ))))
+
+;; CLJW: walk-mapentry test skipped — map-entry? not yet implemented
+;; (deftest walk-mapentry
+;;   "Checks that walk preserves the MapEntry type. See CLJ-2031."
+;;   (let [coll [:html {:a ["b" 1]} ""]
+;;         f (fn [e] (if (and (vector? e) (not (map-entry? e))) (apply list e) e))]
+;;     (is (= (list :html {:a (list "b" 1)} "") (w/postwalk f coll)))))
+
+(defrecord RM [a])
+(deftest retain-meta
+  (let [m {:foo true}]
+    (are [o] (= m (meta (w/postwalk identity (with-meta o m))))
+      '(1 2)
+      [1 2]
+      #{1 2}
+      {1 2}
+      (map inc (range 3))
+      (->RM 1))))
+
+;; CLJW-ADD: test runner invocation
+(run-tests)

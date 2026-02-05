@@ -1552,3 +1552,26 @@ on defmacro name (reader expands to `(with-meta name metadata)`).
 
 **Rationale**: Upstream Clojure macros like `assert`, `if-let`, `if-some` use multi-arity
 forms. Without this, core.clj cannot define these macros in their upstream shape.
+
+## D68: Namespace-Isolated Function Execution
+
+**Decision**: Capture the defining namespace on `Fn` objects and restore it during
+function calls, so that unqualified symbol resolution happens in the defining namespace
+rather than the caller's runtime namespace.
+
+**Architecture**:
+- `value.zig`: `Fn.defining_ns: ?[]const u8` — captures namespace name at definition time
+- `compiler.zig`: `current_ns_name` field propagated from bootstrap/eval_engine; set on Fn
+  objects in `emitFn`
+- `vm.zig`: `CallFrame.saved_ns` saves caller's namespace; `performCall` switches
+  `env.current_ns` to Fn's defining namespace; `ret` restores saved namespace
+- `tree_walk.zig`: `makeClosure` captures `env.current_ns.name`; `callClosure` saves/restores
+  `env.current_ns` around closure execution
+- `namespace.zig`: `resolveQualified` for own namespace uses `resolve()` (mappings + refers)
+  instead of just `mappings.get()`
+
+**Rationale**: JVM Clojure captures Var references at compile time, so function bodies
+always see the Var bindings from their defining namespace. Our runtime-resolved approach
+caused cross-namespace shadowing — e.g. `(deftest walk ...)` created a `walk` var that
+shadowed `clojure.walk/walk` when called from within clojure.walk functions. This
+namespace isolation is fundamental to Clojure's module system semantics.

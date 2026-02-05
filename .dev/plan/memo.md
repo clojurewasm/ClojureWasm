@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: C (Faithful Test Porting, resumed after CX)
-- Next task: C13 (clojure_walk.clj)
+- Next task: C14 (string.clj)
 - Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
@@ -46,7 +46,7 @@ Completed:
 - ~~C12: Re-port sequences.clj~~ done (301 assertions, was 188, lazy-seq equality + drop lazy-seq)
 
 Remaining (resume here after CX):
-- C13: clojure_walk.clj (75 lines)
+- ~~C13: clojure_walk.clj~~ done (23 assertions, D68 namespace isolation + metadata preservation)
 - C14: string.clj (196 lines)
 - C15: clojure_set.clj (224 lines)
 - C16: metadata.clj (239 lines)
@@ -57,19 +57,22 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-C13: clojure_walk.clj (75 lines)
+C14: string.clj (196 lines)
 
 ## Previous Task
 
-CX10 completed: UPSTREAM-DIFF quick fixes (F94 partial).
-- Multi-arity defmacro support in analyzer (D67): `analyzeDefmacro` now
-  handles `([params] body...) ...` forms and `^{:metadata}` on name
-- assert-args private macro for if-let/when-let/if-some/when-some validation
-- assert: multi-arity with `*assert*` check
-- cond/dotimes: docstrings, unchecked-inc
-- halt-when: `::halt` (was `:__halt`), dedupe: `::none` + `sequence`
-- sequence: 2-arity `(sequence xform coll)` added (eager via into)
-- Phase CX complete — all 10 tasks done
+C13 completed: clojure_walk.clj (23 assertions, 7 tests).
+- D68 namespace isolation: Fn.defining_ns captures defining namespace, VM/TreeWalk
+  save/restore env.current_ns on function call/return. Fixes cross-namespace
+  var shadowing (e.g. `(deftest walk ...)` no longer shadows `clojure.walk/walk`).
+- Metadata preservation in `conj`, `assoc`, `empty`: structural operations now
+  carry forward the source collection's metadata.
+- walk.clj updated to upstream pattern: `with-meta`+`(meta form)` for list/seq,
+  `(into (empty form) ...)` for other colls.
+- `set` builtin: added lazy_seq/cons support in setCoerceFn.
+- `defrecord`: now generates both `->Name` and `map->Name` constructors.
+- `are` macro: referred clojure.walk bindings into clojure.test namespace.
+- `namespace.zig`: `resolveQualified` for own namespace uses `resolve()` (mappings + refers).
 
 ## Handover Notes
 

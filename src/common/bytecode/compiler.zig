@@ -47,6 +47,10 @@ pub const Compiler = struct {
     /// Heap-allocated FnProtos and Fns (for cleanup).
     fn_protos: std.ArrayList(*const FnProto),
     fn_objects: std.ArrayList(*const Fn),
+    /// Namespace name at compile time. Used to fully-qualify unqualified var
+    /// references so that functions resolve vars in their defining namespace
+    /// rather than the caller's namespace at runtime (D68).
+    current_ns_name: ?[]const u8,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -60,6 +64,7 @@ pub const Compiler = struct {
             .loop_locals_base = 0,
             .fn_protos = .empty,
             .fn_objects = .empty,
+            .current_ns_name = null,
         };
     }
 
@@ -336,7 +341,12 @@ pub const Compiler = struct {
 
         // Create Fn template and store as constant
         const fn_obj = self.allocator.create(Fn) catch return error.OutOfMemory;
-        fn_obj.* = .{ .proto = primary_proto, .closure_bindings = null, .extra_arities = extra_arities };
+        fn_obj.* = .{
+            .proto = primary_proto,
+            .closure_bindings = null,
+            .extra_arities = extra_arities,
+            .defining_ns = self.current_ns_name,
+        };
         self.fn_objects.append(self.allocator, fn_obj) catch return error.OutOfMemory;
 
         const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
@@ -356,6 +366,7 @@ pub const Compiler = struct {
     ) CompileError!*FnProto {
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
+        fn_compiler.current_ns_name = self.current_ns_name;
 
         // Reserve slots for captured variables (they appear before params).
         // The VM places these on the stack before fn body runs,
@@ -708,7 +719,9 @@ pub const Compiler = struct {
     }
 
     fn emitVarRef(self: *Compiler, ref: node_mod.VarRefNode) CompileError!void {
-        // Store the var reference symbol as a constant
+        // Store the var reference symbol as a constant.
+        // Symbols are NOT fully-qualified here — namespace isolation is handled
+        // by setting Fn.defining_ns at closure creation time (D68).
         const sym_val = Value{ .symbol = .{ .ns = ref.ns, .name = ref.name } };
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         try self.chunk.emit(.var_load, idx);

@@ -67,6 +67,8 @@ const CallFrame = struct {
     lines: []const u32 = &.{},
     /// Source column per instruction (parallel to code) for error reporting.
     columns: []const u32 = &.{},
+    /// Saved current_ns before this call (restored on ret) for D68 namespace isolation.
+    saved_ns: ?*anyopaque = null,
 };
 
 /// Stack-based bytecode virtual machine.
@@ -263,6 +265,12 @@ pub const VM = struct {
             .ret => {
                 const result = self.pop();
                 const base = frame.base;
+                // Restore caller's namespace (D68)
+                if (self.env) |env| {
+                    if (frame.saved_ns) |ns_ptr| {
+                        env.current_ns = @ptrCast(@alignCast(ns_ptr));
+                    }
+                }
                 self.frame_count -= 1;
                 if (self.frame_count == 0) return result;
                 // Restore caller's stack: base-1 removes the fn_val slot
@@ -797,6 +805,17 @@ pub const VM = struct {
             self.sp += 1;
         }
 
+        // Switch current_ns to the function's defining namespace (D68).
+        var saved_ns_ptr: ?*anyopaque = null;
+        if (self.env) |env| {
+            saved_ns_ptr = if (env.current_ns) |ns| @ptrCast(ns) else null;
+            if (fn_obj.defining_ns) |def_ns_name| {
+                if (env.findNamespace(def_ns_name)) |def_ns| {
+                    env.current_ns = def_ns;
+                }
+            }
+        }
+
         // Push new call frame
         if (self.frame_count >= FRAMES_MAX) return error.StackOverflow;
         self.frames[self.frame_count] = .{
@@ -806,6 +825,7 @@ pub const VM = struct {
             .constants = proto.constants,
             .lines = proto.lines,
             .columns = proto.columns,
+            .saved_ns = saved_ns_ptr,
         };
         self.frame_count += 1;
     }

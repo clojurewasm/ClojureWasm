@@ -110,9 +110,9 @@ pub const Namespace = struct {
 
     /// Resolve a qualified symbol (ns_name/sym_name).
     pub fn resolveQualified(self: *const Namespace, ns_name: []const u8, sym_name: []const u8) ?*Var {
-        // Own namespace
+        // Own namespace: check mappings + refers (same as resolve)
         if (std.mem.eql(u8, ns_name, self.name)) {
-            return self.mappings.get(sym_name);
+            return self.resolve(sym_name);
         }
         // Alias
         if (self.aliases.get(ns_name)) |aliased_ns| {
