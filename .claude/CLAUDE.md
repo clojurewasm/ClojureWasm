@@ -90,15 +90,17 @@ When working on test files under test/upstream/:
 
 ### When to Stop
 
-**Current goal: Complete through Phase C (upstream test porting).**
+**Current goal: Complete through Phase CX + Phase C (upstream test porting).**
+Phase CX (known issue resolution) is inserted between C12 and C13.
+See `.dev/plan/phase-cx-plan.md` for CX tasks, `.dev/plan/memo.md` for queue.
 Do NOT stop between tasks, between phases, or at phase boundaries.
-Phase BE → Phase B → Phase C is one continuous run.
+Phase BE → Phase B → Phase C (C1-C12) → Phase CX → Phase C (C13-C20) is one continuous run.
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase C is complete** (all upstream test files ported and verified)
+- **Phase CX + Phase C are complete** (all CX fixes done + all upstream test files ported and verified)
 
 Do NOT stop for:
 
