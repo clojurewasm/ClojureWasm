@@ -9,6 +9,7 @@ const Value = @import("../value.zig").Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../error.zig");
+const bootstrap = @import("../bootstrap.zig");
 
 // ============================================================
 // Builtins
@@ -121,6 +122,34 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = owned };
 }
 
+// ============================================================
+// load-file
+// ============================================================
+
+/// (load-file path) => value
+/// Reads and evaluates all forms in the file at the given path.
+/// Returns the value of the last form.
+pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to load-file", .{args.len});
+    const path = switch (args[0]) {
+        .string => |s| s,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-file expects a string path, got {s}", .{@tagName(args[0])}),
+    };
+
+    // Read file content
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(path, .{}) catch
+        return err.setErrorFmt(.eval, .io_error, .{}, "Could not open file: {s}", .{path});
+    defer file.close();
+
+    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch
+        return err.setErrorFmt(.eval, .io_error, .{}, "Could not read file: {s}", .{path});
+
+    // Evaluate all forms using bootstrap pipeline
+    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    return bootstrap.evalString(allocator, env, content) catch return error.EvalError;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "slurp",
@@ -142,6 +171,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Opposite of slurp. Opens f with writer, writes content, then closes f.",
         .arglists = "([f content & options])",
         .added = "1.2",
+    },
+    .{
+        .name = "load-file",
+        .func = &loadFileFn,
+        .doc = "Sequentially read and evaluate the set of forms contained in the file.",
+        .arglists = "([name])",
+        .added = "1.0",
     },
 };
 

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: R (require/load/ns system)
 - Next task: Plan Phase R task queue
-- Coverage: 413/712 clojure.core vars done
+- Coverage: 414/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -42,13 +42,13 @@ Dependency chain: R1 → R2 → R3 → R4 → R5 → R6 → R7.
 
 ## Current Task
 
-R2: `load-file` + load path infrastructure.
+R3: `load` + path resolution.
 
 ## Previous Task
 
-R1 completed: `*ns*` dynamic var.
-- Created `*ns*` in registerBuiltins() as dynamic var with root 'user
-- Synced in inNsFn() and bootstrap loadX() restore points via syncNsVar()
+R2 completed: `load-file` builtin.
+- Added loadFileFn to file_io.zig — reads file, evals via bootstrap.evalString
+- Works with ns switching in loaded files
 - Both backends pass
 
 ## Handover Notes

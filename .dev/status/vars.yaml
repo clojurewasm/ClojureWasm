@@ -384,7 +384,7 @@ vars:
     "list*": {type: function, status: done, note: "Zig builtin"}
     "list?": {type: function, status: done, note: "Zig builtin"}
     load: {type: function, status: todo}
-    "load-file": {type: var, status: todo}
+    "load-file": {type: var, status: done, note: 'Zig builtin, reads + evals file'}
     "load-reader": {type: function, status: todo}
     "load-string": {type: function, status: todo}
     "loaded-libs": {type: function, status: todo}
