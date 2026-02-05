@@ -6,8 +6,8 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX8 (Hierarchy system)
-- Coverage: 402/712 clojure.core vars done
+- Next task: CX9 (#'var inside deftest body)
+- Coverage: 411/712 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -22,7 +22,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX5: {:as x} seq-to-map coercion (F68)~~ done
 - ~~CX6: Namespaced destructuring (F70-F74)~~ done
 - ~~CX7: ::foo auto-resolved keyword (F81)~~ done
-- CX8: Hierarchy system (F82 + F83)
+- ~~CX8: Hierarchy system (F82 + F83)~~ done
 - CX9: #'var inside deftest body (F87)
 - CX10: UPSTREAM-DIFF quick fixes (F94 partial)
 
@@ -57,16 +57,17 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX8: Hierarchy system (F82 + F83) — derive, isa?, prefer-method for multimethods.
+CX9: #'var inside deftest body (F87)
 
 ## Previous Task
 
-CX7 completed: ::foo auto-resolved keyword (F81).
-- SymbolRef.auto_resolve flag in form.zig
-- Reader sets flag for :: keywords
-- Analyzer resolves via env.current_ns (::foo) or ns.getAlias (::alias/foo)
-- macro.formToValueWithNs propagates resolution through macro expansion
-- Supports ::foo, ::keys, :keys [::x], ns switching, quoted ::foo
+CX8 completed: Hierarchy system (F82 + F83).
+- Part A: Hierarchy functions in core.clj (isa?, parents, ancestors, descendants, derive, underive)
+- global-hierarchy var + alter-var-root builtin in misc.zig
+- cons expanded to support set/map as second arg (needed by derive's tf helper)
+- Part B: prefer-method/prefers builtins in multimethods.zig
+- isa?-based multimethod dispatch (findBestMethod) in multimethods.zig
+- Both VM and TreeWalk dispatch updated to use findBestMethod
 - Both backends pass all E2E tests
 
 ## Handover Notes

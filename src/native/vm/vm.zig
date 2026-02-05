@@ -25,6 +25,7 @@ const PersistentHashSet = collections.PersistentHashSet;
 const builtin_collections = @import("../../common/builtin/collections.zig");
 const arith = @import("../../common/builtin/arithmetic.zig");
 const bootstrap = @import("../../common/bootstrap.zig");
+const multimethods_mod = @import("../../common/builtin/multimethods.zig");
 
 /// VM execution errors.
 const err_mod = @import("../../common/error.zig");
@@ -716,9 +717,8 @@ pub const VM = struct {
                 return @as(VMError, @errorCast(e));
             };
 
-            // Lookup method by dispatch value, fallback to :default
-            const method_fn = mf.methods.get(dispatch_val) orelse
-                mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
+            // Lookup method: exact match → isa? match → :default
+            const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
                 return error.TypeError;
 
             // Call the matched method

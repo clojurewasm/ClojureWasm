@@ -102,6 +102,8 @@ pub const MultiFn = struct {
     dispatch_fn: Value,
     /// Maps dispatch_value -> method function (Value).
     methods: *PersistentArrayMap,
+    /// Maps preferred_value -> set of values it is preferred over.
+    prefer_table: ?*PersistentArrayMap = null,
 };
 
 /// Cons cell — a pair of (first, rest) forming a linked sequence.

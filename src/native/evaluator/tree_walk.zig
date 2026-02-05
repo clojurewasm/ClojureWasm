@@ -17,6 +17,7 @@ const Value = value_mod.Value;
 const env_mod = @import("../../common/env.zig");
 const Env = env_mod.Env;
 const bootstrap = @import("../../common/bootstrap.zig");
+const multimethods_mod = @import("../../common/builtin/multimethods.zig");
 
 const var_mod = @import("../../common/var.zig");
 const err_mod = @import("../../common/error.zig");
@@ -723,12 +724,9 @@ pub const TreeWalk = struct {
         // Call dispatch function on args
         const dispatch_val = try self.callValue(mf.dispatch_fn, args);
 
-        // Lookup method by dispatch value
-        const method_fn = mf.methods.get(dispatch_val) orelse blk: {
-            // Try :default
-            break :blk mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
-                return error.TypeError;
-        };
+        // Lookup method: exact match → isa? match → :default
+        const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+            return error.TypeError;
 
         // Call the matched method
         return self.callValue(method_fn, args);

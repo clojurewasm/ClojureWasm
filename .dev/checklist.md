@@ -24,7 +24,5 @@ Check at session start for items that become actionable.
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
 | F80 | find-keyword function                       | Needs keyword intern table                                         |
-| F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |
-| F83 | prefer-method / prefers                     | Multimethod dispatch preference resolution                         |
 | F87 | #'var inside deftest body                   | Var quote resolves at analyze time, fails for deftest-local defs   |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |

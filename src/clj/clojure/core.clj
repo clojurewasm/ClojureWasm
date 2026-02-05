@@ -958,6 +958,7 @@
 (defn instance? [t x]
   (= t (type x)))
 
+;; Simple stub; redefined with hierarchy support after global-hierarchy
 (defn isa? [child parent]
   (= child parent))
 
@@ -1424,10 +1425,102 @@
             (list 'throw (list 'str "Assert failed: " (list 'pr-str (list 'quote x))))))))
 
 ;; Hierarchy
+
+(defn not-empty
+  "If coll is empty, returns nil, else coll"
+  [coll] (when (seq coll) coll))
+
 (defn make-hierarchy
   "Creates a hierarchy object for use with derive, isa? etc."
   []
   {:parents {} :descendants {} :ancestors {}})
+
+(def ^:private global-hierarchy (make-hierarchy))
+
+(defn isa?
+  "Returns true if (= child parent), or child is directly or indirectly
+  derived from parent, either via a relationship established via derive.
+  h must be a hierarchy obtained from make-hierarchy, if not supplied
+  defaults to the global hierarchy"
+  ([child parent] (isa? global-hierarchy child parent))
+  ([h child parent]
+   (or (= child parent)
+       (contains? ((:ancestors h) child) parent)
+       (and (vector? parent) (vector? child)
+            (= (count parent) (count child))
+            (loop [ret true i 0]
+              (if (or (not ret) (= i (count parent)))
+                ret
+                (recur (isa? h (nth child i) (nth parent i)) (inc i))))))))
+
+(defn parents
+  "Returns the immediate parents of tag, either via a relationship
+  established via derive. h must be a hierarchy obtained from
+  make-hierarchy, if not supplied defaults to the global hierarchy"
+  ([tag] (parents global-hierarchy tag))
+  ([h tag] (not-empty (get (:parents h) tag))))
+
+(defn ancestors
+  "Returns the immediate and indirect parents of tag, either via a
+  relationship established via derive. h must be a hierarchy obtained
+  from make-hierarchy, if not supplied defaults to the global hierarchy"
+  ([tag] (ancestors global-hierarchy tag))
+  ([h tag] (not-empty (get (:ancestors h) tag))))
+
+(defn descendants
+  "Returns the immediate and indirect children of tag, through a
+  relationship established via derive. h must be a hierarchy obtained
+  from make-hierarchy, if not supplied defaults to the global hierarchy."
+  ([tag] (descendants global-hierarchy tag))
+  ([h tag] (not-empty (get (:descendants h) tag))))
+
+(defn derive
+  "Establishes a parent/child relationship between parent and
+  tag. Parent must be a namespace-qualified symbol or keyword and
+  child can be either a namespace-qualified symbol or keyword.
+  h must be a hierarchy obtained from make-hierarchy, if not
+  supplied defaults to, and modifies, the global hierarchy."
+  ([tag parent]
+   (alter-var-root #'global-hierarchy derive tag parent) nil)
+  ([h tag parent]
+   (assert (not= tag parent))
+   (let [tp (:parents h)
+         td (:descendants h)
+         ta (:ancestors h)
+         tf (fn [m source sources target targets]
+              (reduce (fn [ret k]
+                        (assoc ret k
+                               (reduce conj (get targets k #{}) (cons target (targets target)))))
+                      m (cons source (sources source))))]
+     (or
+      (when-not (contains? (tp tag) parent)
+        (when (contains? (ta tag) parent)
+          (throw (str tag " already has " parent " as ancestor")))
+        (when (contains? (ta parent) tag)
+          (throw (str "Cyclic derivation: " parent " has " tag " as ancestor")))
+        {:parents (assoc (:parents h) tag (conj (get tp tag #{}) parent))
+         :ancestors (tf (:ancestors h) tag td parent ta)
+         :descendants (tf (:descendants h) parent ta tag td)})
+      h))))
+
+(defn underive
+  "Removes a parent/child relationship between parent and
+  tag. h must be a hierarchy obtained from make-hierarchy, if not
+  supplied defaults to, and modifies, the global hierarchy."
+  ([tag parent] (alter-var-root #'global-hierarchy underive tag parent) nil)
+  ([h tag parent]
+   (let [parentMap (:parents h)
+         childsParents (if (parentMap tag)
+                         (disj (parentMap tag) parent) #{})
+         newParents (if (not-empty childsParents)
+                      (assoc parentMap tag childsParents)
+                      (dissoc parentMap tag))
+         deriv-seq (flatten (map #(cons (key %) (interpose (key %) (val %)))
+                                 (seq newParents)))]
+     (if (contains? (parentMap tag) parent)
+       (reduce #(apply derive %1 %2) (make-hierarchy)
+               (partition 2 deriv-seq))
+       h))))
 
 ;; Version
 (def *clojure-version*

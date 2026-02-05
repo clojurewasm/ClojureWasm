@@ -143,6 +143,11 @@ pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
+        .set => |s| s.items,
+        .map => blk: {
+            const entries = try collectSeqItems(allocator, try seqFn(allocator, &.{args[1]}));
+            break :blk entries;
+        },
         else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq, got {s}", .{@tagName(args[1])}),
     };
 

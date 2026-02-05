@@ -9,6 +9,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const err = @import("../error.zig");
+const bootstrap = @import("../bootstrap.zig");
 
 // ============================================================
 // gensym
@@ -177,6 +178,33 @@ pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
     return .nil;
 }
 
+// ============================================================
+// alter-var-root
+// ============================================================
+
+/// (alter-var-root var f & args) — atomically alters the root binding of var
+/// by applying f to its current value plus any args.
+pub fn alterVarRootFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alter-var-root", .{args.len});
+    const v = switch (args[0]) {
+        .var_ref => |vr| vr,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-var-root expects a var, got {s}", .{@tagName(args[0])}),
+    };
+    const f = args[1];
+    const old_val = v.deref();
+
+    // Build call args: [old_val, extra_args...]
+    const call_args = allocator.alloc(Value, 1 + (args.len - 2)) catch return error.OutOfMemory;
+    call_args[0] = old_val;
+    for (args[2..], 0..) |a, i| {
+        call_args[1 + i] = a;
+    }
+
+    const new_val = bootstrap.callFnVal(allocator, f, call_args) catch |e| return e;
+    v.bindRoot(new_val);
+    return new_val;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "gensym",
@@ -211,6 +239,13 @@ pub const builtins = [_]BuiltinDef{
         .func = popThreadBindingsFn,
         .doc = "Pops the frame of bindings most recently pushed with push-thread-bindings.",
         .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "alter-var-root",
+        .func = &alterVarRootFn,
+        .doc = "Atomically alters the root binding of var by applying f to its current value plus any args.",
+        .arglists = "([v f & args])",
         .added = "1.0",
     },
 };

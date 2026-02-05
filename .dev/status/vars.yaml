@@ -115,9 +115,9 @@ vars:
     "all-ns": {type: function, status: done, note: "Zig builtin"}
     alter: {type: function, status: todo}
     "alter-meta!": {type: function, status: done, note: "Zig builtin: mutates atom metadata"}
-    "alter-var-root": {type: function, status: todo}
+    "alter-var-root": {type: function, status: done, note: builtin (upstream is pure clj)}
     amap: {type: macro, status: todo}
-    ancestors: {type: function, status: todo}
+    ancestors: {type: function, status: done, note: core.clj hierarchy-aware}
     and: {type: macro, status: done, note: "macro in core.clj"}
     "any?": {type: function, status: done, note: "core.clj always true"}
     apply: {type: function, status: done, note: "Zig builtin"}
@@ -242,8 +242,8 @@ vars:
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
     deref: {type: function, status: done, note: "Zig builtin"}
-    derive: {type: function, status: todo}
-    descendants: {type: function, status: todo}
+    derive: {type: function, status: done, note: core.clj hierarchy-aware}
+    descendants: {type: function, status: done, note: core.clj hierarchy-aware}
     destructure: {type: function, status: todo}
     disj: {type: function, status: done, note: "Zig builtin"}
     "disj!": {type: function, status: todo}
@@ -363,7 +363,7 @@ vars:
     "into-array": {type: function, status: todo}
     ints: {type: function, status: todo}
     "io!": {type: macro, status: todo}
-    "isa?": {type: function, status: done, note: "core.clj simplified (= child parent)"}
+    "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     iteration: {type: function, status: todo}
     "iterator-seq": {type: function, status: todo}
@@ -453,7 +453,7 @@ vars:
     "object-array": {type: function, status: todo}
     "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     or: {type: macro, status: done, note: "macro in core.clj"}
-    parents: {type: function, status: todo}
+    parents: {type: function, status: done, note: core.clj hierarchy-aware}
     "parse-boolean": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "parse-double": {type: function, status: done, note: builtin (upstream is pure clj)}
     "parse-long": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -475,8 +475,8 @@ vars:
     "pos?": {type: function, status: done, note: "Zig builtin"}
     pr: {type: function, status: done, note: "Zig builtin"}
     "pr-str": {type: function, status: done, note: "Zig builtin"}
-    "prefer-method": {type: function, status: todo}
-    prefers: {type: function, status: todo}
+    "prefer-method": {type: function, status: done}
+    prefers: {type: function, status: done}
     "preserving-reduced": {type: function, status: done, note: "private helper for cat"}
     "primitives-classnames": {type: var, status: todo}
     print: {type: function, status: done, note: "Zig builtin"}
@@ -667,7 +667,7 @@ vars:
     "unchecked-short": {type: function, status: todo}
     "unchecked-subtract": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
     "unchecked-subtract-int": {type: function, status: done, note: "core.clj wrapper (no overflow in Zig)"}
-    underive: {type: function, status: todo}
+    underive: {type: function, status: done, note: core.clj hierarchy-aware}
     unquote: {type: var, status: todo}
     "unquote-splicing": {type: var, status: todo}
     unreduced: {type: function, status: done, note: "Zig builtin"}
@@ -714,6 +714,10 @@ vars:
     "xml-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "zero?": {type: function, status: done, note: "Zig builtin"}
     zipmap: {type: function, status: done, note: "Zig builtin"}
+    global-hierarchy:
+      type: var
+      status: done
+      note: core.clj private hierarchy atom
   clojure_core_protocols:
     CollReduce: {type: var, status: todo}
     Datafiable: {type: var, status: todo}

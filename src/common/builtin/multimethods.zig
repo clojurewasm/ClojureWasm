@@ -9,9 +9,11 @@ const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const MultiFn = value_mod.MultiFn;
 const PersistentArrayMap = value_mod.PersistentArrayMap;
+const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../error.zig");
+const Env = @import("../env.zig").Env;
 
 /// (methods multifn) => map of dispatch-val -> method-fn
 pub fn methodsFn(_: Allocator, args: []const Value) anyerror!Value {
@@ -92,6 +94,237 @@ pub fn removeAllMethodsFn(allocator: Allocator, args: []const Value) anyerror!Va
     return args[0];
 }
 
+// ============================================================
+// prefer-method / prefers
+// ============================================================
+
+/// (prefer-method multifn dispatch-val-x dispatch-val-y)
+/// Causes the multimethod to prefer matches of dispatch-val-x over dispatch-val-y.
+pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to prefer-method", .{args.len});
+    const mf = switch (args[0]) {
+        .multi_fn => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefer-method expects a multimethod, got {s}", .{@tagName(args[0])}),
+    };
+    const preferred = args[1];
+    const over = args[2];
+
+    // Get or create prefer table
+    var pt = mf.prefer_table orelse blk: {
+        const new_pt = try allocator.create(PersistentArrayMap);
+        new_pt.* = .{ .entries = &.{} };
+        break :blk new_pt;
+    };
+
+    // Get existing set for preferred value, or create new one
+    var new_items: []Value = undefined;
+    if (pt.get(preferred)) |existing| {
+        if (existing == .set) {
+            // Add 'over' to existing set (skip if already present)
+            for (existing.set.items) |item| {
+                if (item.eql(over)) {
+                    // Already preferred, no-op
+                    return args[0];
+                }
+            }
+            const old = existing.set.items;
+            new_items = try allocator.alloc(Value, old.len + 1);
+            @memcpy(new_items[0..old.len], old);
+            new_items[old.len] = over;
+        } else {
+            new_items = try allocator.alloc(Value, 1);
+            new_items[0] = over;
+        }
+    } else {
+        new_items = try allocator.alloc(Value, 1);
+        new_items[0] = over;
+    }
+
+    const new_set = try allocator.create(PersistentHashSet);
+    new_set.* = .{ .items = new_items };
+    const set_val = Value{ .set = new_set };
+
+    // Assoc into prefer table
+    mf.prefer_table = try assocMap(allocator, pt, preferred, set_val);
+    return args[0];
+}
+
+/// (prefers multifn) => map of preferred dispatch values
+pub fn prefersFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to prefers", .{args.len});
+    const mf = switch (args[0]) {
+        .multi_fn => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefers expects a multimethod, got {s}", .{@tagName(args[0])}),
+    };
+    if (mf.prefer_table) |pt| {
+        return Value{ .map = pt };
+    }
+    const empty_map = try allocator.create(PersistentArrayMap);
+    empty_map.* = .{ .entries = &.{} };
+    return Value{ .map = empty_map };
+}
+
+// ============================================================
+// isa?-based multimethod dispatch
+// ============================================================
+
+/// Find the best method for a dispatch value, checking:
+/// 1. Exact match
+/// 2. isa?-based match (using global hierarchy)
+/// 3. :default fallback
+pub fn findBestMethod(mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Value {
+    // 1. Exact match
+    if (mf.methods.get(dispatch_val)) |m| return m;
+
+    // 2. isa?-based matching (only if hierarchy is available)
+    if (env) |e| {
+        if (getGlobalHierarchy(e)) |hierarchy_val| {
+            if (hierarchy_val == .map) {
+                if (findIsaMatch(mf, dispatch_val, hierarchy_val.map)) |m| return m;
+            }
+        }
+    }
+
+    // 3. :default
+    return mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } });
+}
+
+const Match = struct { key: Value, method: Value };
+
+fn getGlobalHierarchy(env: *Env) ?Value {
+    const core_ns = env.findNamespace("clojure.core") orelse return null;
+    const hier_var = core_ns.resolve("global-hierarchy") orelse return null;
+    const val = hier_var.deref();
+    if (val == .nil) return null;
+    return val;
+}
+
+fn findIsaMatch(mf: *const MultiFn, dispatch_val: Value, hierarchy: *const PersistentArrayMap) ?Value {
+    const ancestors_kw = Value{ .keyword = .{ .ns = null, .name = "ancestors" } };
+    const ancestors_map_val = hierarchy.get(ancestors_kw) orelse return null;
+    if (ancestors_map_val != .map) return null;
+    const ancestors_map = ancestors_map_val.map;
+
+    // Collect isa? matches
+    var matches_buf: [64]Match = undefined;
+    var match_count: usize = 0;
+
+    var i: usize = 0;
+    while (i + 1 < mf.methods.entries.len) : (i += 2) {
+        const method_key = mf.methods.entries[i];
+        const method_val = mf.methods.entries[i + 1];
+        // Skip exact match (already checked) and :default
+        if (method_key.eql(dispatch_val)) continue;
+        if (isDefaultKey(method_key)) continue;
+
+        if (isaCheck(ancestors_map, dispatch_val, method_key)) {
+            if (match_count < matches_buf.len) {
+                matches_buf[match_count] = .{ .key = method_key, .method = method_val };
+                match_count += 1;
+            }
+        }
+    }
+
+    if (match_count == 0) return null;
+    if (match_count == 1) return matches_buf[0].method;
+
+    // Multiple matches: use prefer_table to disambiguate
+    const matches = matches_buf[0..match_count];
+    if (mf.prefer_table) |pt| {
+        return resolveWithPrefers(matches, pt);
+    }
+
+    // No prefer table, return first match
+    return matches[0].method;
+}
+
+fn isaCheck(ancestors_map: *const PersistentArrayMap, child: Value, parent: Value) bool {
+    // Equality
+    if (child.eql(parent)) return true;
+
+    // Vector isa?: element-wise
+    if (child == .vector and parent == .vector) {
+        const c = child.vector.items;
+        const p = parent.vector.items;
+        if (c.len != p.len) return false;
+        for (c, p) |ci, pi| {
+            if (!isaCheck(ancestors_map, ci, pi)) return false;
+        }
+        return true;
+    }
+
+    // Hierarchy check: is parent in ancestors(child)?
+    if (ancestors_map.get(child)) |ancestor_set_val| {
+        if (ancestor_set_val == .set) {
+            for (ancestor_set_val.set.items) |item| {
+                if (item.eql(parent)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn isDefaultKey(key: Value) bool {
+    if (key != .keyword) return false;
+    if (key.keyword.ns != null) return false;
+    return std.mem.eql(u8, key.keyword.name, "default");
+}
+
+fn resolveWithPrefers(matches: []const Match, pt: *const PersistentArrayMap) ?Value {
+    for (matches) |candidate| {
+        var is_preferred = true;
+        for (matches) |other| {
+            if (candidate.key.eql(other.key)) continue;
+
+            // Check if candidate is preferred over other
+            if (isPreferred(pt, candidate.key, other.key)) continue;
+
+            // Check if other is preferred over candidate
+            if (isPreferred(pt, other.key, candidate.key)) {
+                is_preferred = false;
+                break;
+            }
+        }
+        if (is_preferred) return candidate.method;
+    }
+    return matches[0].method; // fallback
+}
+
+fn isPreferred(pt: *const PersistentArrayMap, preferred: Value, over: Value) bool {
+    if (pt.get(preferred)) |set_val| {
+        if (set_val == .set) {
+            for (set_val.set.items) |item| {
+                if (item.eql(over)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Assoc a key-value pair into a PersistentArrayMap, returning a new map.
+fn assocMap(allocator: Allocator, m: *PersistentArrayMap, key: Value, val: Value) !*PersistentArrayMap {
+    // Check if key already exists — update in place
+    var i: usize = 0;
+    while (i < m.entries.len) : (i += 2) {
+        if (m.entries[i].eql(key)) {
+            const new_entries = try allocator.alloc(Value, m.entries.len);
+            @memcpy(new_entries, m.entries);
+            new_entries[i + 1] = val;
+            const new_map = try allocator.create(PersistentArrayMap);
+            new_map.* = .{ .entries = new_entries };
+            return new_map;
+        }
+    }
+    // Key not found — append
+    const new_entries = try allocator.alloc(Value, m.entries.len + 2);
+    @memcpy(new_entries[0..m.entries.len], m.entries);
+    new_entries[m.entries.len] = key;
+    new_entries[m.entries.len + 1] = val;
+    const new_map = try allocator.create(PersistentArrayMap);
+    new_map.* = .{ .entries = new_entries };
+    return new_map;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "methods",
@@ -118,6 +351,20 @@ pub const builtins = [_]BuiltinDef{
         .name = "remove-all-methods",
         .func = &removeAllMethodsFn,
         .doc = "Removes all of the methods of multimethod.",
+        .arglists = "([multifn])",
+        .added = "1.0",
+    },
+    .{
+        .name = "prefer-method",
+        .func = &preferMethodFn,
+        .doc = "Causes the multimethod to prefer matches of dispatch-val-x over dispatch-val-y when there is a conflict",
+        .arglists = "([multifn dispatch-val-x dispatch-val-y])",
+        .added = "1.0",
+    },
+    .{
+        .name = "prefers",
+        .func = &prefersFn,
+        .doc = "Given a multimethod, returns a map of preferred value -> set of other values",
         .arglists = "([multifn])",
         .added = "1.0",
     },
