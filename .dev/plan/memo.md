@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next: Phase 20 complete — plan next tasks
+- Next: Phase 22 (Test Porting Expansion)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -15,27 +15,30 @@ Session handover document. Read at session start.
 | ----- | ------------------------ | ------- | ------------------------------------- |
 | 20    | Infrastructure Expansion | done    | transient, chunked, sorted (~18 vars) |
 | 21    | Upstream Alignment       | done    | Replace UPSTREAM-DIFF with upstream   |
-| 22    | Test Porting Expansion   | pending | multimethods, protocols, transducers  |
+| 22    | Test Porting Expansion   | active  | multimethods, protocols, transducers  |
 | 23    | Production GC            | pending | Replace arena allocator               |
 | 24    | Optimization             | pending | NaN boxing, fused reduce, HAMT        |
 | 25    | Wasm InterOp (FFI)      | pending | wasm/load, wasm/fn, WIT              |
 
 ## Task Queue
 
-1. ~~21.1: cond — add even-forms error check~~ — DONE
-2. ~~21.2: assert — already aligned~~ — DONE (note updated)
-3. ~~21.3: condp — upstream-align (gensym, if-let, docstring)~~ — DONE
-4. ~~21.4: dotimes — add input validation~~ — DONE
-5. ~~21.5: doseq — upstream-align (gensym, backtick, single-loop chunk, validation)~~ — DONE
-6. ~~21.6: Skip audit — mark permanent/minor UPSTREAM-DIFF~~ — DONE
+1. 22.1: Port transients.clj (82 lines) — validate Phase 20 transient support
+2. 22.2: Port keywords.clj (31 lines) — keyword tests
+3. 22.3: Port fn.clj (55 lines) — function edge cases
+4. 22.4: Port try_catch.clj (39 lines) — exception handling
+5. 22.5: Port multimethods.clj (271 lines) — roadmap target
+6. 22.6: Port transducers.clj (410 lines) — roadmap target
+7. 22.7: Port vectors.clj (491 lines) — comprehensive vector coverage
+8. 22.8: Port protocols.clj (721 lines) — roadmap target
+9. 22.9: Port math.clj (326 lines) — math functions
 
 ## Current Task
 
-Phase 21 complete — plan next phase
+22.1: Port transients.clj (82 lines)
 
 ## Previous Task
 
-21.6: Skip audit — mark permanent/minor UPSTREAM-DIFF categories
+Phase 21 complete (upstream alignment): cond, condp, dotimes, doseq aligned; UPSTREAM-DIFF classified
 - 20.1-20.2: Transient collections (6 vars)
 - 20.3-20.4: Chunked sequences (8 vars + core.clj paths)
 - 20.5: sorted-map-by, sorted-set-by (2 vars)
