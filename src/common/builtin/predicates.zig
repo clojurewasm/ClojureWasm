@@ -234,6 +234,9 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .transient_vector => "transient-vector",
         .transient_map => "transient-map",
         .transient_set => "transient-set",
+        .chunked_cons => "chunked-cons",
+        .chunk_buffer => "chunk-buffer",
+        .array_chunk => "array-chunk",
     };
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
@@ -335,6 +338,9 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .transient_vector => "transient_vector",
         .transient_map => "transient_map",
         .transient_set => "transient_set",
+        .chunked_cons => "chunked_cons",
+        .chunk_buffer => "chunk_buffer",
+        .array_chunk => "array_chunk",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
 }

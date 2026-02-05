@@ -294,6 +294,93 @@ pub const TransientHashSet = struct {
     }
 };
 
+/// ArrayChunk — immutable slice view over a Value array.
+/// Supports offset for efficient dropFirst without copying.
+pub const ArrayChunk = struct {
+    array: []const Value,
+    off: usize = 0,
+    end: usize,
+
+    pub fn initFull(array: []const Value) ArrayChunk {
+        return .{ .array = array, .off = 0, .end = array.len };
+    }
+
+    pub fn count(self: ArrayChunk) usize {
+        return self.end - self.off;
+    }
+
+    pub fn nth(self: ArrayChunk, i: usize) ?Value {
+        if (i >= self.count()) return null;
+        return self.array[self.off + i];
+    }
+
+    pub fn dropFirst(self: ArrayChunk) ?ArrayChunk {
+        if (self.off >= self.end) return null;
+        return .{ .array = self.array, .off = self.off + 1, .end = self.end };
+    }
+};
+
+/// ChunkBuffer — mutable builder for ArrayChunk.
+/// Created via (chunk-buffer n), elements added via (chunk-append b x),
+/// finalized via (chunk b) -> ArrayChunk.
+pub const ChunkBuffer = struct {
+    items: std.ArrayListUnmanaged(Value) = .empty,
+    consumed: bool = false,
+
+    pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !*ChunkBuffer {
+        const cb = try allocator.create(ChunkBuffer);
+        cb.* = .{};
+        try cb.items.ensureTotalCapacity(allocator, capacity);
+        return cb;
+    }
+
+    pub fn add(self: *ChunkBuffer, allocator: std.mem.Allocator, val: Value) !void {
+        if (self.consumed) return error.ChunkBufferConsumed;
+        try self.items.append(allocator, val);
+    }
+
+    pub fn toChunk(self: *ChunkBuffer, allocator: std.mem.Allocator) !*const ArrayChunk {
+        if (self.consumed) return error.ChunkBufferConsumed;
+        self.consumed = true;
+        const items = try allocator.alloc(Value, self.items.items.len);
+        @memcpy(items, self.items.items);
+        const chunk = try allocator.create(ArrayChunk);
+        chunk.* = ArrayChunk.initFull(items);
+        return chunk;
+    }
+
+    pub fn count(self: ChunkBuffer) usize {
+        return self.items.items.len;
+    }
+};
+
+/// ChunkedCons — a chunked sequence: first chunk + rest seq.
+/// first() returns chunk.nth(0), next() either drops within chunk
+/// or advances to rest seq.
+pub const ChunkedCons = struct {
+    chunk: *const ArrayChunk,
+    more: Value, // rest sequence (lazy-seq, list, nil, etc.)
+
+    pub fn first(self: ChunkedCons) Value {
+        return self.chunk.nth(0) orelse Value.nil;
+    }
+
+    pub fn next(self: *const ChunkedCons, allocator: std.mem.Allocator) !Value {
+        if (self.chunk.count() > 1) {
+            const new_chunk = try allocator.create(ArrayChunk);
+            new_chunk.* = self.chunk.dropFirst() orelse return self.more;
+            const new_cc = try allocator.create(ChunkedCons);
+            new_cc.* = .{ .chunk = new_chunk, .more = self.more };
+            return Value{ .chunked_cons = new_cc };
+        }
+        // Advance to rest
+        return switch (self.more) {
+            .nil => .nil,
+            else => self.more,
+        };
+    }
+};
+
 // === Tests ===
 
 test "PersistentList - empty" {

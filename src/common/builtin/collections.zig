@@ -45,6 +45,7 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized_args = [1]Value{realized};
             return firstFn(allocator, &realized_args);
         },
+        .chunked_cons => |cc| cc.first(),
         .string => |s| {
             if (s.len == 0) return .nil;
             const cp_len = std.unicode.utf8ByteSequenceLength(s[0]) catch 1;
@@ -100,6 +101,15 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const realized = try ls.realize(allocator);
             const realized_args = [1]Value{realized};
             return restFn(allocator, &realized_args);
+        },
+        .chunked_cons => |cc| {
+            const rest_val = try cc.next(allocator);
+            if (rest_val == .nil) {
+                const empty = try allocator.create(PersistentList);
+                empty.* = .{ .items = &.{} };
+                return Value{ .list = empty };
+            }
+            return rest_val;
         },
         .string => |s| blk: {
             if (s.len == 0) {
@@ -380,6 +390,18 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         const rest_count = try countFn(allocator, &rest_args);
         return Value{ .integer = n + rest_count.integer };
     }
+    if (args[0] == .chunked_cons) {
+        // Count by walking chunked_cons chain
+        var n: i64 = 0;
+        var current = args[0];
+        while (current == .chunked_cons) {
+            n += @intCast(current.chunked_cons.chunk.count());
+            current = current.chunked_cons.more;
+        }
+        const rest_args = [1]Value{current};
+        const rest_count = try countFn(allocator, &rest_args);
+        return Value{ .integer = n + rest_count.integer };
+    }
     return Value{ .integer = @intCast(switch (args[0]) {
         .list => |lst| lst.count(),
         .vector => |vec| vec.count(),
@@ -390,6 +412,7 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .transient_vector => |tv| tv.count(),
         .transient_map => |tm| tm.count(),
         .transient_set => |ts| ts.count(),
+        .array_chunk => |ac| ac.count(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "count not supported on {s}", .{@tagName(args[0])}),
     }) };
 }
@@ -416,6 +439,7 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return Value{ .list = lst };
         },
         .cons => args[0], // cons is always non-empty
+        .chunked_cons => args[0], // chunked_cons is always non-empty
         .map => |m| {
             const n = m.count();
             if (n == 0) return .nil;

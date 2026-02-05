@@ -702,6 +702,9 @@ pub const TreeWalk = struct {
             .transient_vector => "transient_vector",
             .transient_map => "transient_map",
             .transient_set => "transient_set",
+            .chunked_cons => "chunked_cons",
+            .chunk_buffer => "chunk_buffer",
+            .array_chunk => "array_chunk",
         };
     }
 

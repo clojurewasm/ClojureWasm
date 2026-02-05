@@ -994,6 +994,19 @@ fn writeValue(w: anytype, val: Value) void {
         .transient_vector => w.print("#<TransientVector>", .{}) catch {},
         .transient_map => w.print("#<TransientMap>", .{}) catch {},
         .transient_set => w.print("#<TransientSet>", .{}) catch {},
+        .chunked_cons => |cc| {
+            w.print("(", .{}) catch {};
+            var i: usize = 0;
+            while (i < cc.chunk.count()) : (i += 1) {
+                if (i > 0) w.print(" ", .{}) catch {};
+                const elem = cc.chunk.nth(i) orelse Value.nil;
+                writeValue(w, elem);
+            }
+            if (cc.more != .nil) w.print(" ...", .{}) catch {};
+            w.print(")", .{}) catch {};
+        },
+        .chunk_buffer => w.print("#<ChunkBuffer>", .{}) catch {},
+        .array_chunk => w.print("#<ArrayChunk>", .{}) catch {},
     }
 }
 

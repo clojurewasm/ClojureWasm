@@ -20,6 +20,9 @@ pub const PersistentHashSet = collections.PersistentHashSet;
 pub const TransientVector = collections.TransientVector;
 pub const TransientArrayMap = collections.TransientArrayMap;
 pub const TransientHashSet = collections.TransientHashSet;
+pub const ArrayChunk = collections.ArrayChunk;
+pub const ChunkBuffer = collections.ChunkBuffer;
+pub const ChunkedCons = collections.ChunkedCons;
 
 const testing = std.testing;
 
@@ -216,6 +219,11 @@ pub const Value = union(enum) {
     transient_map: *TransientArrayMap,
     transient_set: *TransientHashSet,
 
+    // Chunked sequences
+    chunked_cons: *const ChunkedCons,
+    chunk_buffer: *ChunkBuffer,
+    array_chunk: *const ArrayChunk,
+
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
@@ -360,6 +368,19 @@ pub const Value = union(enum) {
             .transient_vector => try w.writeAll("#<TransientVector>"),
             .transient_map => try w.writeAll("#<TransientMap>"),
             .transient_set => try w.writeAll("#<TransientSet>"),
+            .chunked_cons => |cc| {
+                try w.writeAll("(");
+                var i: usize = 0;
+                while (i < cc.chunk.count()) : (i += 1) {
+                    if (i > 0) try w.writeAll(" ");
+                    const elem = cc.chunk.nth(i) orelse Value.nil;
+                    try elem.formatPrStr(w);
+                }
+                if (cc.more != .nil) try w.writeAll(" ...");
+                try w.writeAll(")");
+            },
+            .chunk_buffer => try w.writeAll("#<ChunkBuffer>"),
+            .array_chunk => try w.writeAll("#<ArrayChunk>"),
             .cons => |c| {
                 try w.writeAll("(");
                 try c.first.formatPrStr(w);
@@ -445,8 +466,8 @@ pub const Value = union(enum) {
             return eqlLazySide(other.lazy_seq, self, self_tag, allocator);
         }
 
-        // Cons cells: compare as sequences
-        if (self_tag == .cons or other_tag == .cons) {
+        // Cons cells and chunked cons: compare as sequences
+        if (self_tag == .cons or other_tag == .cons or self_tag == .chunked_cons or other_tag == .chunked_cons) {
             return eqlConsSeq(self, other, allocator);
         }
 
@@ -512,6 +533,9 @@ pub const Value = union(enum) {
             .transient_vector => |a| a == other.transient_vector, // identity equality
             .transient_map => |a| a == other.transient_map, // identity equality
             .transient_set => |a| a == other.transient_set, // identity equality
+            .chunked_cons => unreachable, // handled by eqlConsSeq above
+            .chunk_buffer => |a| a == other.chunk_buffer, // identity equality
+            .array_chunk => |a| a == other.array_chunk, // identity equality
         };
     }
 
@@ -579,61 +603,103 @@ fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Tag, allocator: ?Allocat
     return realized.eqlImpl(other, allocator);
 }
 
-/// Compare a cons cell with another sequential value element-by-element.
-/// Handles cons vs cons, cons vs list/vector, list/vector vs cons.
+/// Compare a cons/chunked_cons with another sequential value element-by-element.
+/// Handles cons vs cons, cons vs list/vector, chunked_cons vs list/vector, etc.
 fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
     const a_tag = std.meta.activeTag(a);
     const b_tag = std.meta.activeTag(b);
 
-    // Both sequential (list/vector): handled by caller, shouldn't reach here
-    // At least one is cons
+    // Fast path: both cons
     if (a_tag == .cons and b_tag == .cons) {
-        // Both cons: element-wise
         if (!a.cons.first.eqlImpl(b.cons.first, allocator)) return false;
         return a.cons.rest.eqlImpl(b.cons.rest, allocator);
     }
-    // One cons, one sequential (or nil)
-    // Convert both to iterator-style comparison
-    if (a_tag == .cons) {
-        // a is cons, b is list/vector/nil
-        if (b_tag == .nil) {
-            return false; // cons is never empty
-        }
+
+    const is_a_walker = (a_tag == .cons or a_tag == .chunked_cons);
+    const is_b_walker = (b_tag == .cons or b_tag == .chunked_cons);
+
+    // One walker, one sequential (or nil)
+    if (is_a_walker and !is_b_walker) {
+        if (b_tag == .nil) return false;
         if (!isSequential(b_tag)) return false;
-        const b_items = sequentialItems(b);
-        var i: usize = 0;
-        var cur = a;
-        while (true) {
-            const cur_tag = std.meta.activeTag(cur);
-            if (cur_tag == .cons) {
-                if (i >= b_items.len) return false; // a has more
-                if (!cur.cons.first.eqlImpl(b_items[i], allocator)) return false;
-                cur = cur.cons.rest;
+        return eqlWalkVsItems(a, sequentialItems(b), allocator);
+    }
+    if (is_b_walker and !is_a_walker) {
+        return eqlConsSeq(b, a, allocator);
+    }
+
+    // Both walkers (cons/chunked_cons mix): flatten b then walk vs items
+    const alloc = allocator orelse return false;
+    var b_items: std.ArrayListUnmanaged(Value) = .empty;
+    var cur = b;
+    while (true) {
+        const cur_tag = std.meta.activeTag(cur);
+        if (cur_tag == .nil) break;
+        if (cur_tag == .cons) {
+            b_items.append(alloc, cur.cons.first) catch return false;
+            cur = cur.cons.rest;
+        } else if (cur_tag == .chunked_cons) {
+            const cc = cur.chunked_cons;
+            var j: usize = 0;
+            while (j < cc.chunk.count()) : (j += 1) {
+                b_items.append(alloc, cc.chunk.nth(j) orelse Value.nil) catch return false;
+            }
+            cur = cc.more;
+        } else if (isSequential(cur_tag)) {
+            for (sequentialItems(cur)) |item| {
+                b_items.append(alloc, item) catch return false;
+            }
+            break;
+        } else if (cur_tag == .lazy_seq) {
+            cur = cur.lazy_seq.realize(alloc) catch return false;
+        } else {
+            return false;
+        }
+    }
+    return eqlWalkVsItems(a, b_items.items, allocator);
+}
+
+/// Walk a cons/chunked_cons sequence and compare element-by-element against items.
+fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool {
+    var i: usize = 0;
+    var cur = seq;
+    while (true) {
+        const cur_tag = std.meta.activeTag(cur);
+        if (cur_tag == .cons) {
+            if (i >= items.len) return false;
+            if (!cur.cons.first.eqlImpl(items[i], allocator)) return false;
+            cur = cur.cons.rest;
+            i += 1;
+        } else if (cur_tag == .chunked_cons) {
+            const cc = cur.chunked_cons;
+            var j: usize = 0;
+            while (j < cc.chunk.count()) : (j += 1) {
+                if (i >= items.len) return false;
+                const elem = cc.chunk.nth(j) orelse Value.nil;
+                if (!elem.eqlImpl(items[i], allocator)) return false;
                 i += 1;
-            } else if (cur_tag == .nil) {
-                return i == b_items.len;
-            } else if (isSequential(cur_tag)) {
-                const rest_items = sequentialItems(cur);
-                if (i + rest_items.len != b_items.len) return false;
-                for (rest_items, 0..) |ri, j| {
-                    if (!ri.eqlImpl(b_items[i + j], allocator)) return false;
-                }
-                return true;
-            } else if (cur_tag == .lazy_seq) {
-                if (allocator) |alloc| {
-                    cur = cur.lazy_seq.realize(alloc) catch return false;
-                } else if (cur.lazy_seq.realized) |r| {
-                    cur = r;
-                } else {
-                    return false;
-                }
+            }
+            cur = cc.more;
+        } else if (cur_tag == .nil) {
+            return i == items.len;
+        } else if (isSequential(cur_tag)) {
+            const rest_items = sequentialItems(cur);
+            if (i + rest_items.len != items.len) return false;
+            for (rest_items, 0..) |ri, j| {
+                if (!ri.eqlImpl(items[i + j], allocator)) return false;
+            }
+            return true;
+        } else if (cur_tag == .lazy_seq) {
+            if (allocator) |alloc| {
+                cur = cur.lazy_seq.realize(alloc) catch return false;
+            } else if (cur.lazy_seq.realized) |r| {
+                cur = r;
             } else {
                 return false;
             }
+        } else {
+            return false;
         }
-    } else {
-        // b is cons, a is list/vector/nil — symmetric
-        return eqlConsSeq(b, a, allocator);
     }
 }
 

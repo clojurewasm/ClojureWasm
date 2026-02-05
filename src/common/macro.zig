@@ -201,7 +201,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         },
         .regex => |pat| Form{ .data = .{ .regex = pat.source } },
         // Non-data values become nil (shouldn't appear in macro output)
-        .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set => Form{ .data = .nil },
+        .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .chunked_cons, .chunk_buffer, .array_chunk => Form{ .data = .nil },
     };
 }
 

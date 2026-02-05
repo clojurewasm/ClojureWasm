@@ -181,14 +181,14 @@ vars:
     "char-name-string": {type: var, status: done, note: core.clj (from core_print.clj)}
     "char?": {type: function, status: done, note: "Zig builtin"}
     chars: {type: function, status: skip, note: JVM interop}
-    chunk: {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunk-append": {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunk-buffer": {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunk-cons": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "chunk-first": {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunk-next": {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunk-rest": {type: function, status: skip, note: needs chunked seq infrastructure}
-    "chunked-seq?": {type: function, status: skip, note: "needs chunked seq infrastructure"}
+    chunk: {type: function, status: done, note: builtin}
+    "chunk-append": {type: function, status: done, note: builtin}
+    "chunk-buffer": {type: function, status: done, note: builtin}
+    "chunk-cons": {type: function, status: done, note: 'builtin (upstream uses Java constructor)'}
+    "chunk-first": {type: function, status: done, note: builtin}
+    "chunk-next": {type: function, status: done, note: builtin}
+    "chunk-rest": {type: function, status: done, note: builtin}
+    "chunked-seq?": {type: function, status: done, note: "builtin"}
     class: {type: function, status: done, note: "Zig builtin alias of type"}
     "class?": {type: function, status: skip, note: "no Java class system"}
     "clear-agent-errors": {type: function, status: skip, note: JVM interop}

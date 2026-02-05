@@ -31,13 +31,14 @@ const multimethods_mod = @import("multimethods.zig");
 const file_io_mod = @import("file_io.zig");
 const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
+const chunk_mod = @import("chunk.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ file_io_mod.builtins ++ system_mod.builtins ++ transient_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ file_io_mod.builtins ++ system_mod.builtins ++ transient_mod.builtins ++ chunk_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -162,8 +163,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 251 + 7 (transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!)
-    try std.testing.expectEqual(258, builtin_count);
+    // 258 + 8 (chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?, chunk-cons)
+    try std.testing.expectEqual(266, builtin_count);
 }
 
 test "comptime lookup finds +" {

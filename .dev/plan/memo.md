@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
-- Coverage: 510/704 clojure.core vars done (0 todo, 193 skip)
-- Next: Phase 20 (Infrastructure Expansion — transient, chunked, sorted)
+- Coverage: 517/704 clojure.core vars done (0 todo, 186 skip)
+- Next: 20.4 (Core.clj chunked seq paths)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -24,28 +24,23 @@ Session handover document. Read at session start.
 
 1. ~~20.1: Transient collections~~ — DONE
 2. ~~20.2: Core.clj transient alignment~~ — DONE
-3. 20.3: Chunked sequences — types + builtins (chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?) — 7 vars
+3. ~~20.3: Chunked sequences — types + builtins~~ — DONE (8 builtins + chunk-cons)
 4. 20.4: Core.clj chunked seq paths (map, filter, doseq → chunked optimization)
 5. 20.5: Sorted-map-by, sorted-set-by with custom comparators — 2 vars
 6. 20.6: subseq, rsubseq — 2 vars
 
 ## Current Task
 
-20.3: Chunked sequences — types + builtins
-
-Design:
-- Add ArrayChunk (immutable chunk), ChunkBuffer (mutable builder), ChunkedCons (chunk + rest)
-- Builtins: chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?
-- ChunkBuffer: mutable array builder, finalized via (chunk buf) → ArrayChunk
-- ChunkedCons: first-chunk (ArrayChunk) + rest-seq (Value) — the chunked lazy-seq
-- chunked-seq? returns true for ChunkedCons
+20.4: Core.clj chunked seq paths
+- Add chunked optimization to map, filter, doseq in core.clj
+- These use chunked-seq?, chunk-first, chunk-rest, chunk-cons, chunk-buffer, chunk-append, chunk
 
 ## Previous Task
 
-20.2 completed: Core.clj transient alignment
-- update-vals, update-keys → transient/persistent! (removed UPSTREAM-DIFF)
-- mapv → transient/persistent! (1-arity)
-- clojure.set/map-invert → transient/persistent!
+20.3 completed: Chunked sequences — types + builtins
+- ArrayChunk (immutable chunk), ChunkBuffer (mutable builder), ChunkedCons (chunk + rest seq)
+- 8 builtins: chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?, chunk-cons
+- ChunkedCons integrates with first/rest/seq/count/equality
 - Both VM + TreeWalk verified
 
 ## Completed Phases (reverse chronological)
