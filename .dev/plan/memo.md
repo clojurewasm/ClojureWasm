@@ -24,8 +24,7 @@ Session handover document. Read at session start.
 ## Task Queue
 
 Tier 2 — Port + implement (new namespace or feature):
-1. 22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
-2. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
+1. 22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
 
 Deferred/skipped:
 - 22b.4 (test.clj) deferred — needs test-ns-hook/custom report/test-all-vars
@@ -35,20 +34,16 @@ Deferred/skipped:
 
 ## Current Task
 
-22b.10: Port math.clj (326 lines, 41 tests — needs clojure.math ns)
-- Read upstream test/clojure/test_clojure/math.clj
-- Implement clojure.math namespace
-- Port tests with CLJW markers
-- Both backends must pass
+22b.11: Port data.clj (32 lines, 1 test — needs clojure.data/diff)
 
 ## Previous Task
 
-22b.9: Port parse.clj (102 lines, 6 tests — needs parse-long/parse-double)
-- Fixed parse-long/parse-double/parse-boolean: non-string args now throw TypeError
-- Fixed parse-boolean: invalid strings return nil (not throw)
-- 3 tests ported (46 assertions), 3 tests skipped (test.check generative, parse-uuid)
+22b.10: Port math.clj (327 lines, 41 tests — implemented clojure.math ns)
+- Created src/common/builtin/math.zig: 42 functions + 2 constants (PI, E)
+- Registered in registry.zig following clojure.string pattern
+- Java Math.pow compatibility: |base|==1 && inf exponent → NaN
+- 41 tests ported (256 assertions), 13 CLJW markers
 - Both backends pass
-- Three-allocator architecture (D70): GPA + node_arena + GC confirmed stable
 
 ## Completed Phases (reverse chronological)
 

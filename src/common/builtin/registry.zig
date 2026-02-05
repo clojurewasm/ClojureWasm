@@ -32,6 +32,7 @@ const file_io_mod = @import("file_io.zig");
 const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
+const math_mod = @import("math.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -156,6 +157,20 @@ pub fn registerBuiltins(env: *Env) !void {
             v.bindRoot(.{ .builtin_fn = f });
         }
     }
+
+    // Register clojure.math namespace builtins + constants
+    const math_ns = try env.findOrCreateNamespace("clojure.math");
+    for (math_mod.builtins) |b| {
+        const v = try math_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(.{ .builtin_fn = f });
+        }
+    }
+    const pi_var = try math_ns.intern("PI");
+    pi_var.bindRoot(.{ .float = math_mod.PI });
+    const e_var = try math_ns.intern("E");
+    e_var.bindRoot(.{ .float = math_mod.E });
 
     env.current_ns = user_ns;
 }
