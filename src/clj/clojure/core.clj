@@ -1329,6 +1329,16 @@
 (defn -' ([x] (- x)) ([x y] (- x y)) ([x y & more] (apply - x y more)))
 (defn *' ([] 1) ([x] x) ([x y] (* x y)) ([x y & more] (apply * x y more)))
 
+;; === IO macros ===
+
+(defmacro with-out-str
+  "Evaluates exprs in a context in which *out* is bound to a fresh
+  buffer. Returns the string created by any nested printing calls."
+  [& body]
+  `(let [_# (push-output-capture)
+         _# (try (do ~@body) (catch Exception e# (pop-output-capture) (throw e#)))]
+     (pop-output-capture)))
+
 ;; === Transducer basics ===
 
 (defn transduce

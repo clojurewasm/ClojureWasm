@@ -5,8 +5,8 @@ Session handover document. Read at session start.
 ## Current State
 
 - Phase: D (parallel expansion)
-- Next task: D11
-- Coverage: 484/703 clojure.core vars done
+- Next task: D12
+- Coverage: 485/703 clojure.core vars done
 - Blockers: none
 
 ## Task Queue
@@ -39,7 +39,6 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 - D8: UUID/data readers — random-uuid, parse-uuid, uuid?, uri?, tagged-literal,
   tagged-literal?, reader-conditional, reader-conditional?
 - D9: Transient collections — transient, persistent!, assoc!, conj!, disj!, dissoc!, pop!
-- D11: IO macros — with-open, with-out-str, with-in-str
 - D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
   bound-fn, bound-fn*, thread-bound?
 - D13: Misc functions — destructure, map-entry?, munge, namespace-munge,
@@ -56,9 +55,15 @@ Phase D: Parallel expansion — implement remaining vars + skip JVM-only.
 
 ## Current Task
 
-D11: IO macros — with-open, with-out-str, with-in-str.
+D12: Binding & redefs — with-bindings, with-redefs, with-redefs-fn, with-local-vars,
+bound-fn, bound-fn*, thread-bound?
 
 ## Previous Task
+
+D11 completed: IO macros — with-out-str implemented (output capture stack).
+- with-out-str: macro + push/pop-output-capture builtins, exception-safe, nestable
+- with-open: skip (needs .close interop)
+- with-in-str: skip (needs string reader + *in* input)
 
 D10 completed: Unchecked math — 9 remaining unchecked-* functions.
 - unchecked-divide-int/remainder-int: use quot/rem

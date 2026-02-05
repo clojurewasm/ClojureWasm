@@ -161,8 +161,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 241 + 4 (mix-collection-hash, hash-ordered-coll, hash-unordered-coll, hash-combine)
-    try std.testing.expectEqual(245, builtin_count);
+    // 245 + 2 (push-output-capture, pop-output-capture)
+    try std.testing.expectEqual(247, builtin_count);
 }
 
 test "comptime lookup finds +" {

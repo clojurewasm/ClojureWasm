@@ -127,6 +127,55 @@ pub fn flushFn(_: Allocator, args: []const Value) anyerror!Value {
     return .nil;
 }
 
+// ============================================================
+// Output capture stack for with-out-str nesting
+// ============================================================
+
+const MAX_CAPTURE_DEPTH = 16;
+const CaptureState = struct {
+    buf: ?*std.ArrayListUnmanaged(u8),
+    alloc: ?Allocator,
+};
+
+var capture_stack: [MAX_CAPTURE_DEPTH]CaptureState = [_]CaptureState{.{ .buf = null, .alloc = null }} ** MAX_CAPTURE_DEPTH;
+var capture_depth: usize = 0;
+
+/// (push-output-capture) — start capturing output to a fresh buffer.
+fn pushOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to push-output-capture", .{args.len});
+    if (capture_depth >= MAX_CAPTURE_DEPTH) return err.setErrorFmt(.eval, .value_error, .{}, "Output capture stack overflow", .{});
+
+    // Save current state
+    capture_stack[capture_depth] = .{ .buf = capture_buf, .alloc = capture_alloc };
+    capture_depth += 1;
+
+    // Create new capture buffer
+    const buf = allocator.create(std.ArrayListUnmanaged(u8)) catch return error.OutOfMemory;
+    buf.* = .empty;
+    setOutputCapture(allocator, buf);
+
+    return .nil;
+}
+
+/// (pop-output-capture) — stop capturing, restore previous state, return captured string.
+fn popOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to pop-output-capture", .{args.len});
+    if (capture_depth == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Output capture stack underflow", .{});
+
+    // Get captured string
+    const result: Value = if (capture_buf) |buf| blk: {
+        const str = allocator.dupe(u8, buf.items) catch return error.OutOfMemory;
+        buf.deinit(capture_alloc.?);
+        break :blk .{ .string = str };
+    } else .{ .string = "" };
+
+    // Restore previous state
+    capture_depth -= 1;
+    setOutputCapture(capture_stack[capture_depth].alloc, capture_stack[capture_depth].buf);
+
+    return result;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "print",
@@ -167,6 +216,20 @@ pub const builtins = [_]BuiltinDef{
         .name = "flush",
         .func = &flushFn,
         .doc = "Flushes the output stream that is the current value of *out*.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "push-output-capture",
+        .func = &pushOutputCaptureFn,
+        .doc = "Start capturing output. Used internally by with-out-str.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "pop-output-capture",
+        .func = &popOutputCaptureFn,
+        .doc = "Stop capturing output, return captured string. Used internally by with-out-str.",
         .arglists = "([])",
         .added = "1.0",
     },
