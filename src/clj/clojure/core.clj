@@ -109,10 +109,11 @@
          (cons (first s) (take (dec n) (rest s))))))))
 
 (defn drop [n coll]
-  (loop [i n s (seq coll)]
-    (if (if (> i 0) s nil)
-      (recur (- i 1) (next s))
-      s)))
+  (lazy-seq
+   (loop [i n s (seq coll)]
+     (if (if (> i 0) s nil)
+       (recur (- i 1) (next s))
+       s))))
 
 (defn mapcat [f coll]
   ((fn step [cur remaining]

@@ -392,22 +392,13 @@ pub const Value = union(enum) {
             return a == b;
         }
 
-        // Lazy seqs: realize if allocator available, else check cached result
+        // Lazy seqs: realize and compare using JVM LazySeq.equiv() semantics.
+        // A realized-nil lazy-seq is an empty sequence (equals () or [], but NOT nil).
         if (self_tag == .lazy_seq) {
-            if (allocator) |alloc| {
-                const realized = self.lazy_seq.realize(alloc) catch return false;
-                return realized.eqlImpl(other, allocator);
-            }
-            if (self.lazy_seq.realized) |r| return r.eqlImpl(other, null);
-            return false;
+            return eqlLazySide(self.lazy_seq, other, other_tag, allocator);
         }
         if (other_tag == .lazy_seq) {
-            if (allocator) |alloc| {
-                const realized = other.lazy_seq.realize(alloc) catch return false;
-                return self.eqlImpl(realized, allocator);
-            }
-            if (other.lazy_seq.realized) |r| return self.eqlImpl(r, null);
-            return false;
+            return eqlLazySide(other.lazy_seq, self, self_tag, allocator);
         }
 
         // Cons cells: compare as sequences
@@ -506,6 +497,38 @@ fn sequentialItems(v: Value) []const Value {
         .vector => |vec| vec.items,
         else => unreachable,
     };
+}
+
+/// Lazy-seq equality following JVM LazySeq.equiv() semantics:
+/// - Realize the lazy-seq
+/// - If nil: it's an empty sequence — equal to other empty sequentials, NOT to nil
+/// - If non-nil: delegate to the realized value's equality
+fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Tag, allocator: ?Allocator) bool {
+    const realized = blk: {
+        if (allocator) |alloc| {
+            break :blk lazy.realize(alloc) catch return false;
+        }
+        break :blk lazy.realized orelse return false;
+    };
+    if (realized == .nil) {
+        // Empty lazy-seq: equal only to empty sequential types
+        if (other_tag == .nil) return false; // (= nil (lazy-seq nil)) => false
+        if (isSequential(other_tag)) {
+            return sequentialItems(other).len == 0;
+        }
+        if (other_tag == .cons) return false; // cons is never empty
+        if (other_tag == .lazy_seq) {
+            // Compare two lazy-seqs: both must realize to empty
+            if (allocator) |alloc| {
+                const other_realized = other.lazy_seq.realize(alloc) catch return false;
+                return other_realized == .nil;
+            }
+            if (other.lazy_seq.realized) |r| return r == .nil;
+            return false;
+        }
+        return false;
+    }
+    return realized.eqlImpl(other, allocator);
 }
 
 /// Compare a cons cell with another sequential value element-by-element.
