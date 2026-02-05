@@ -80,11 +80,11 @@ pub const VM = struct {
     sp: usize,
     frames: [FRAMES_MAX]CallFrame,
     frame_count: usize,
-    /// Allocated closures (for cleanup).
+    /// Allocated closures (for cleanup when GC is not active).
     allocated_fns: std.ArrayList(*const Fn),
-    /// Allocated collection backing arrays (for cleanup).
+    /// Allocated collection backing arrays (for cleanup when GC is not active).
     allocated_slices: std.ArrayList([]const Value),
-    /// Allocated collection structs — typed lists for proper deallocation.
+    /// Allocated collection structs (for cleanup when GC is not active).
     allocated_lists: std.ArrayList(*const PersistentList),
     allocated_vectors: std.ArrayList(*const PersistentVector),
     allocated_maps: std.ArrayList(*const PersistentArrayMap),
@@ -131,6 +131,7 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
+        if (self.gc != null) return; // GC handles all memory
         for (self.allocated_fns.items) |fn_ptr| {
             if (fn_ptr.closure_bindings) |cb| {
                 self.allocator.free(cb);
@@ -211,6 +212,10 @@ pub const VM = struct {
         slices[0] = self.stack[0..self.sp];
         for (0..self.frame_count) |i| {
             slices[i + 1] = self.frames[i].constants;
+            // Mark non-Value arrays that the VM is actively using
+            gc.markSlice(self.frames[i].code);
+            gc.markSlice(self.frames[i].lines);
+            gc.markSlice(self.frames[i].columns);
         }
 
         gc.collectIfNeeded(.{

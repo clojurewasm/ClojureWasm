@@ -55,9 +55,10 @@ pub const Namespace = struct {
     }
 
     pub fn deinit(self: *Namespace) void {
-        // Destroy Vars owned by this namespace.
+        // Destroy Vars and free their owned name strings.
         var iter = self.mappings.iterator();
         while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*); // owned_name from intern()
             self.allocator.destroy(entry.value_ptr.*);
         }
         self.mappings.deinit(self.allocator);

@@ -7,6 +7,7 @@ const std = @import("std");
 const Alignment = std.mem.Alignment;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
+const chunk_mod = @import("bytecode/chunk.zig");
 const env_mod = @import("env.zig");
 const ns_mod = @import("namespace.zig");
 const var_mod = @import("var.zig");
@@ -350,13 +351,35 @@ pub const MarkSweepGc = struct {
     }
 };
 
+/// Trace a Fn's proto pointer and its internal allocations.
+/// For bytecode Fns, proto is a *FnProto — trace code, constants, lines, columns.
+/// For treewalk Fns, proto is a *Closure — its captured_locals are traced via
+/// closure_bindings on the Fn struct (set during makeClosure).
+fn traceFnProto(gc: *MarkSweepGc, proto: *const anyopaque, kind: value_mod.FnKind) void {
+    switch (kind) {
+        .bytecode => {
+            const fp: *const chunk_mod.FnProto = @ptrCast(@alignCast(proto));
+            if (gc.markAndCheck(fp)) {
+                gc.markSlice(fp.code);
+                gc.markSlice(fp.constants);
+                // Trace Values in the constant pool
+                for (fp.constants) |c| traceValue(gc, c);
+                if (fp.lines.len > 0) gc.markSlice(fp.lines);
+                if (fp.columns.len > 0) gc.markSlice(fp.columns);
+                if (fp.capture_slots.len > 0) gc.markSlice(fp.capture_slots);
+                if (fp.name) |n| gc.markSlice(n);
+            }
+        },
+        .treewalk => {
+            // Closure struct — mark it. Captured locals are traced via Fn.closure_bindings.
+            gc.markPtr(proto);
+        },
+    }
+}
+
 /// Trace all heap allocations reachable from a Value, marking them as live.
 /// Uses mark bits for cycle detection (already-marked pointers are skipped).
 /// Exhaustive switch ensures compile error if a new Value variant is added.
-///
-/// NOTE: Fn.proto and regex.compiled are opaque pointers — only the outer
-/// pointer is marked. Internal allocations (bytecode, constant pools) need
-/// separate tracing when root set walking is implemented (23.3+).
 pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
     switch (val) {
         // Primitives — no heap allocations
@@ -430,17 +453,18 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
-        // Function — closure bindings, extra arities, meta
+        // Function — proto internals, closure bindings, extra arities, meta
         .fn_val => |f| {
             if (gc.markAndCheck(f)) {
-                gc.markPtr(f.proto); // opaque — only outer pointer
+                // Trace proto internals (bytecode arrays, constant pools, etc.)
+                traceFnProto(gc, f.proto, f.kind);
                 if (f.closure_bindings) |bindings| {
                     gc.markSlice(bindings);
                     for (bindings) |b| traceValue(gc, b);
                 }
                 if (f.extra_arities) |arities| {
                     gc.markSlice(arities);
-                    for (arities) |a| gc.markPtr(a);
+                    for (arities) |a| traceFnProto(gc, a, .bytecode);
                 }
                 if (f.meta) |m| {
                     if (gc.markAndCheck(m)) traceValue(gc, m.*);
@@ -625,7 +649,9 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
 /// Walks value slices, individual values, Env namespaces, and dynamic binding stack.
 pub fn traceRoots(gc: *MarkSweepGc, roots: RootSet) void {
     // 1. Trace value slices (VM stack, TW locals, constant pools, etc.)
+    //    Also mark the backing arrays themselves (they may be GC-tracked).
     for (roots.value_slices) |slice| {
+        gc.markSlice(slice);
         for (slice) |val| traceValue(gc, val);
     }
     // 2. Trace individual values

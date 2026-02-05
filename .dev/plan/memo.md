@@ -23,28 +23,28 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-2. 23.6: Verification — all tests pass, REPL memory bounded
+1. 23.6: Verification — all tests pass, REPL memory bounded
 
 ## Current Task
 
-23.5: Integration — replace arena in main.zig, remove VM/TW manual tracking
-- Replace ArenaGc with MarkSweepGc in main.zig
-- Wire gc pointer into VM and TreeWalk via .gc field
-- Remove manual allocated_* tracking from VM/TW (GC handles lifetime)
-- Update deinit to not double-free GC-tracked allocations
-- Both backends must still pass all tests
+23.6: Verification — all tests pass, REPL memory bounded
+- Run full test suite on both backends
+- Test REPL session for memory stability (multiple form evaluations)
+- Verify file execution mode
+- Confirm no GPA leaks in both modes
 
 ## Previous Task
 
-23.4: Safe points — allocation threshold trigger in VM + TreeWalk
-- Added collectIfNeeded(roots) to MarkSweepGc — trace + sweep + adaptive threshold
-- Updated gcCollect vtable to also trace roots before sweep
-- VM: gc field, maybeTriggerGc() builds RootSet from stack[0..sp] + frame constants + env
-- TreeWalk: gc field, maybeTriggerGc() builds RootSet from locals + recur_args + exception + env
-- VM safe point: after each stepInstruction() in execute() loop
-- TreeWalk safe point: at the top of run() before each node evaluation
-- 3 unit tests: collectIfNeeded trigger/no-op/threshold-growth
+23.5: Integration — replace arena in main.zig, wire GC into VM/TW (D70)
+- Two-allocator architecture: GPA (infra) + MarkSweepGc (Values)
+- Env/Namespace/Var use GPA for stable infrastructure
+- Values/Fn/collections use GC allocator for automatic collection
+- VM: GC safe points work (bytecode properly marked in root set)
+- TreeWalk: GC safe points disabled (AST Nodes not traced, would be swept)
+- REPL: GC safe point between forms (root set = env namespaces)
+- Threshold reset after bootstrap prevents immediate sweep
+- Fixed Namespace.deinit/Env.deinit to free owned name strings (hidden by Arena)
+- Fixed bootstrap.zig GC/non-GC modes for compiler deinit and retained_protos
 
 ## Completed Phases (reverse chronological)
 

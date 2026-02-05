@@ -13,23 +13,27 @@ const bootstrap = @import("common/bootstrap.zig");
 const Value = @import("common/value.zig").Value;
 const nrepl = @import("repl/nrepl.zig");
 const err = @import("common/error.zig");
+const gc_mod = @import("common/gc.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Use arena for Clojure evaluation (bulk free at exit)
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    // Two allocators:
+    //   allocator (GPA)   — for infrastructure (Env, Namespace, Var, HashMaps)
+    //   alloc (GC)        — for Values (Fn, collections, strings, reader/analyzer)
+    var gc = gc_mod.MarkSweepGc.init(allocator);
+    defer gc.deinit();
+    const alloc = gc.allocator();
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
         // No args — start REPL
-        var env = Env.init(alloc);
+        // Env uses GPA for infrastructure (Namespace/Var/HashMap internals)
+        var env = Env.init(allocator);
         defer env.deinit();
         registry.registerBuiltins(&env) catch {
             std.debug.print("Error: failed to register builtins\n", .{});
@@ -55,7 +59,11 @@ pub fn main() !void {
             std.debug.print("Error: failed to load clojure.set\n", .{});
             std.process.exit(1);
         };
-        runRepl(alloc, &env);
+        // Enable GC for REPL evaluation (bootstrap runs without GC).
+        // Reset threshold to avoid immediate sweep on first safe point.
+        gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+        env.gc = @ptrCast(&gc);
+        runRepl(alloc, &env, &gc);
         return;
     }
 
@@ -103,7 +111,7 @@ pub fn main() !void {
     if (expr) |e| {
         err.setSourceFile(null);
         err.setSourceText(e);
-        evalAndPrint(alloc, e, use_vm, dump_bytecode);
+        evalAndPrint(alloc, allocator, &gc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
         const max_file_size = 10 * 1024 * 1024; // 10MB
         const source = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
@@ -114,11 +122,11 @@ pub fn main() !void {
         defer allocator.free(source);
         err.setSourceFile(f);
         err.setSourceText(source);
-        evalAndPrint(alloc, source, use_vm, dump_bytecode);
+        evalAndPrint(alloc, allocator, &gc, source, use_vm, dump_bytecode);
     }
 }
 
-fn runRepl(allocator: Allocator, env: *Env) void {
+fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
 
@@ -180,6 +188,10 @@ fn runRepl(allocator: Allocator, env: *Env) void {
             reportError(eval_err);
         }
 
+        // GC safe point: between REPL forms, no AST nodes in use.
+        // Root set: env namespaces contain all live Values.
+        gc.collectIfNeeded(.{ .env = env });
+
         // Reset for next input
         input_len = 0;
         depth = 0;
@@ -239,34 +251,39 @@ fn countDelimiterDepth(source: []const u8) i32 {
     return d;
 }
 
-fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_bytecode: bool) void {
-    // Initialize environment
-    var env = Env.init(allocator);
+fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, use_vm: bool, dump_bytecode: bool) void {
+    // Env uses infra_alloc (GPA) for Namespace/Var/HashMap internals.
+    // bootstrap and evaluation use gc_alloc (MarkSweepGc) for Values.
+    var env = Env.init(infra_alloc);
     defer env.deinit();
     registry.registerBuiltins(&env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});
         std.process.exit(1);
     };
-    bootstrap.loadCore(allocator, &env) catch {
+    bootstrap.loadCore(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load core.clj\n", .{});
         std.process.exit(1);
     };
-    bootstrap.loadWalk(allocator, &env) catch {
+    bootstrap.loadWalk(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.walk\n", .{});
         std.process.exit(1);
     };
-    bootstrap.loadTemplate(allocator, &env) catch {
+    bootstrap.loadTemplate(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.template\n", .{});
         std.process.exit(1);
     };
-    bootstrap.loadTest(allocator, &env) catch {
+    bootstrap.loadTest(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.test\n", .{});
         std.process.exit(1);
     };
-    bootstrap.loadSet(allocator, &env) catch {
+    bootstrap.loadSet(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.set\n", .{});
         std.process.exit(1);
     };
+    // Enable GC for user evaluation (bootstrap runs without GC).
+    // Reset threshold to avoid immediate sweep on first safe point.
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
 
     // Dump bytecode if requested (VM only, dump to stderr then exit)
     if (dump_bytecode) {
@@ -274,7 +291,7 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
             std.debug.print("Error: --dump-bytecode requires VM backend (not --tree-walk)\n", .{});
             std.process.exit(1);
         }
-        bootstrap.dumpBytecodeVM(allocator, &env, source) catch |e| {
+        bootstrap.dumpBytecodeVM(gc_alloc, &env, source) catch |e| {
             reportError(e);
             std.process.exit(1);
         };
@@ -283,12 +300,12 @@ fn evalAndPrint(allocator: Allocator, source: []const u8, use_vm: bool, dump_byt
 
     // Evaluate using selected backend
     const result = if (use_vm)
-        bootstrap.evalStringVM(allocator, &env, source) catch |e| {
+        bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
             reportError(e);
             std.process.exit(1);
         }
     else
-        bootstrap.evalString(allocator, &env, source) catch |e| {
+        bootstrap.evalString(gc_alloc, &env, source) catch |e| {
             reportError(e);
             std.process.exit(1);
         };

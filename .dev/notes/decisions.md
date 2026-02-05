@@ -1595,3 +1595,28 @@ allocation tracking rather than intrusive linked lists.
 (no pointer arithmetic, no alignment padding). Performance can be optimized in Phase 24
 if needed. The `std.mem.Allocator` wrapper enables drop-in replacement for the existing
 `ArenaGc.allocator()` throughout the runtime.
+
+## D70: Two-Allocator Architecture + TreeWalk GC Policy (Phase 23.5)
+
+**Decision**: Use two allocators (GPA for infrastructure, GC for Values) and disable
+GC safe points during TreeWalk evaluation. GC only triggers in VM safe points and
+between REPL forms.
+
+**Architecture**:
+- GPA (infra_alloc): Env, Namespace, Var, HashMap backings — stable infrastructure
+- GC allocator (gc_alloc): Values (Fn, collections, strings, reader/analyzer output)
+- VM: GC safe points work correctly — bytecode/constants are marked in root set
+- TreeWalk: GC safe points DISABLED — TreeWalk references AST Nodes during evaluation
+  and GC would sweep them (Nodes are not Values, not traced)
+- REPL: GC safe point between form evaluations (root set = env namespaces)
+- Threshold reset after bootstrap prevents immediate sweep
+
+**Rationale**: The GC allocator tracks ALL allocations (Values and non-Values).
+During sweep, non-Value allocations (AST Nodes, reader Forms) that aren't in the
+root set get freed. The VM compiles to bytecode first, so it never references Nodes
+during execution. TreeWalk directly interprets the Node tree, so sweeping Nodes
+causes use-after-free. Disabling TreeWalk GC safe points is acceptable because
+TreeWalk is the secondary backend and per-form evaluations are short-lived.
+
+**Future**: Phase 24 may add AST node pinning or a separate arena for reader/analyzer
+to enable TreeWalk GC safe points for long-running programs.

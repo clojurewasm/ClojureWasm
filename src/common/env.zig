@@ -30,6 +30,10 @@ pub const Env = struct {
     /// Current namespace (set during evaluation).
     current_ns: ?*Namespace = null,
 
+    /// GC instance pointer (opaque to avoid circular import with gc.zig).
+    /// Set by main.zig after bootstrap. VM and TreeWalk cast to *MarkSweepGc.
+    gc: ?*anyopaque = null,
+
     pub fn init(allocator: Allocator) Env {
         return .{ .allocator = allocator };
     }
@@ -38,6 +42,7 @@ pub const Env = struct {
         var iter = self.namespaces.iterator();
         while (iter.next()) |entry| {
             entry.value_ptr.*.deinit();
+            self.allocator.free(entry.key_ptr.*); // owned_name from findOrCreateNamespace()
             self.allocator.destroy(entry.value_ptr.*);
         }
         self.namespaces.deinit(self.allocator);

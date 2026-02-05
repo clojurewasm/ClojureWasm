@@ -63,9 +63,9 @@ pub const TreeWalk = struct {
     call_depth: usize = 0,
     /// Exception value (set by throw).
     exception: ?Value = null,
-    /// Allocated closures (for cleanup).
+    /// Allocated closures (for cleanup when GC is not active).
     allocated_closures: std.ArrayList(*Closure) = .empty,
-    /// Allocated Fn wrappers (for cleanup).
+    /// Allocated Fn wrappers (for cleanup when GC is not active).
     allocated_fns: std.ArrayList(*value_mod.Fn) = .empty,
     /// GC instance for automatic collection at safe points.
     gc: ?*gc_mod.MarkSweepGc = null,
@@ -79,6 +79,7 @@ pub const TreeWalk = struct {
     }
 
     pub fn deinit(self: *TreeWalk) void {
+        if (self.gc != null) return; // GC handles all memory
         for (self.allocated_fns.items) |f| {
             self.allocator.destroy(f);
         }
@@ -553,7 +554,8 @@ pub const TreeWalk = struct {
         fn_obj.* = .{
             .proto = closure,
             .kind = .treewalk,
-            .closure_bindings = null,
+            // Set closure_bindings so GC traces captured values via traceValue fn_val path
+            .closure_bindings = if (captured.len > 0) captured else null,
             .defining_ns = if (self.env) |env| if (env.current_ns) |ns| ns.name else null else null,
         };
         self.allocated_fns.append(self.allocator, fn_obj) catch return error.OutOfMemory;

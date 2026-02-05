@@ -19,6 +19,7 @@ const predicates_mod = @import("builtin/predicates.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
 const VM = @import("../native/vm/vm.zig").VM;
+const gc_mod = @import("gc.zig");
 const builtin_collections = @import("builtin/collections.zig");
 
 /// Bootstrap error type.
@@ -270,6 +271,9 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 
     // Note: tw is intentionally not deinit'd — closures created during
     // evaluation may be def'd into Vars and must outlive this scope.
+    // Note: tw.gc is NOT set here. TreeWalk references AST Nodes during
+    // evaluation, and GC would sweep them (they're not Values). GC safe
+    // points for the TreeWalk path happen between forms in the REPL loop.
     var tw = TreeWalk.initWithEnv(allocator, env);
 
     var last_value: Value = .nil;
@@ -328,8 +332,28 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
 
-    // Accumulate fn allocations across forms so def'd fn_vals survive
-    // across Compiler boundaries (fix for use-after-free T9.5.1).
+    const gc: ?*gc_mod.MarkSweepGc = if (env.gc) |g| @ptrCast(@alignCast(g)) else null;
+
+    if (gc != null) {
+        // GC mode: GC owns all allocations. No manual retain/detach needed.
+        // Don't call compiler.deinit() — GC traces FnProto internals via traceValue.
+        var last_value: Value = .nil;
+        for (forms) |form| {
+            const node = try analyzeForm(allocator, env, form);
+
+            var compiler = Compiler.init(allocator);
+            if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+            compiler.compile(node) catch return error.CompileError;
+            compiler.chunk.emitOp(.ret) catch return error.CompileError;
+
+            var vm = VM.initWithEnv(allocator, env);
+            vm.gc = gc;
+            last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+        }
+        return last_value;
+    }
+
+    // Non-GC mode: manual retain/detach pattern (fix for use-after-free T9.5.1).
     var retained_protos: std.ArrayList(*const chunk_mod.FnProto) = .empty;
     defer {
         for (retained_protos.items) |proto| {
@@ -357,7 +381,6 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
-        // Detach fn allocations before deinit so they survive for later forms
         const detached = compiler.detachFnAllocations();
         for (detached.fn_protos) |p| {
             retained_protos.append(allocator, p) catch return error.CompileError;
@@ -372,8 +395,6 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         defer vm.deinit();
         last_value = vm.run(&compiler.chunk) catch return error.EvalError;
 
-        // Detach runtime-created Fn objects so they survive VM deinit
-        // (closures stored in Vars must outlive the VM that created them)
         const vm_fns = vm.detachFnAllocations();
         for (vm_fns) |f| {
             retained_fns.append(allocator, f) catch return error.CompileError;
