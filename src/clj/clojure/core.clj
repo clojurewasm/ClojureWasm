@@ -122,29 +122,64 @@
          (recur (f acc (first s)) (next s))
          acc)))))
 
-(defn take [n coll]
-  (lazy-seq
-   (when (pos? n)
-     (let [s (seq coll)]
-       (when s
-         (cons (first s) (take (dec n) (rest s))))))))
+;; vswap! must be defined before transducer forms that use it
+(defmacro vswap! [vol f & args]
+  `(vreset! ~vol (~f (deref ~vol) ~@args)))
 
-(defn drop [n coll]
-  (lazy-seq
-   (loop [i n s (seq coll)]
-     (if (if (> i 0) s nil)
-       (recur (- i 1) (next s))
-       s))))
+(defn take
+  ([n]
+   (fn [rf]
+     (let [nv (volatile! n)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [cur @nv
+                nxt (vswap! nv dec)
+                res (if (pos? cur)
+                      (rf result input)
+                      result)]
+            (if (not (pos? nxt))
+              (ensure-reduced res)
+              res)))))))
+  ([n coll]
+   (lazy-seq
+    (when (pos? n)
+      (let [s (seq coll)]
+        (when s
+          (cons (first s) (take (dec n) (rest s)))))))))
 
-(defn mapcat [f coll]
-  ((fn step [cur remaining]
-     (lazy-seq
-      (if (seq cur)
-        (cons (first cur) (step (rest cur) remaining))
-        (let [s (seq remaining)]
-          (when s
-            (step (f (first s)) (rest s)))))))
-   nil coll))
+(defn drop
+  ([n]
+   (fn [rf]
+     (let [nv (volatile! n)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [cur @nv]
+            (vswap! nv dec)
+            (if (pos? cur)
+              result
+              (rf result input))))))))
+  ([n coll]
+   (lazy-seq
+    (loop [i n s (seq coll)]
+      (if (if (> i 0) s nil)
+        (recur (- i 1) (next s))
+        s)))))
+
+(defn mapcat
+  ([f] (comp (map f) cat))
+  ([f coll]
+   ((fn step [cur remaining]
+      (lazy-seq
+       (if (seq cur)
+         (cons (first cur) (step (rest cur) remaining))
+         (let [s (seq remaining)]
+           (when s
+             (step (f (first s)) (rest s)))))))
+    nil coll)))
 
 ;; Core macros
 
@@ -446,17 +481,45 @@
            (reverse (cons (take n (concat chunk pad)) acc))
            (reverse acc)))))))
 
-(defn partition-by [f coll]
-  (loop [s (seq coll) acc (list) cur (list) prev nil started false]
-    (if s
-      (let [v (first s)
-            fv (f v)]
-        (if (if started (= fv prev) true)
-          (recur (next s) acc (cons v cur) fv true)
-          (recur (next s) (cons (reverse cur) acc) (list v) fv true)))
-      (if (seq cur)
-        (reverse (cons (reverse cur) acc))
-        (reverse acc)))))
+(defn partition-by
+  ([f]
+   (fn [rf]
+     (let [a (volatile! [])
+           pv (volatile! ::none)]
+       (fn
+         ([] (rf))
+         ([result]
+          (let [result (if (zero? (count @a))
+                         result
+                         (let [v @a]
+                           (vreset! a [])
+                           (unreduced (rf result v))))]
+            (rf result)))
+         ([result input]
+          (let [pval @pv
+                val (f input)]
+            (vreset! pv val)
+            (if (or (identical? pval ::none)
+                    (= val pval))
+              (do (vswap! a conj input)
+                  result)
+              (let [v @a]
+                (vreset! a [])
+                (let [ret (rf result v)]
+                  (when-not (reduced? ret)
+                    (vswap! a conj input))
+                  ret)))))))))
+  ([f coll]
+   (loop [s (seq coll) acc (list) cur (list) prev nil started false]
+     (if s
+       (let [v (first s)
+             fv (f v)]
+         (if (if started (= fv prev) true)
+           (recur (next s) acc (cons v cur) fv true)
+           (recur (next s) (cons (reverse cur) acc) (list v) fv true)))
+       (if (seq cur)
+         (reverse (cons (reverse cur) acc))
+         (reverse acc))))))
 
 (defn group-by [f coll]
   (reduce (fn [acc x]
@@ -490,22 +553,45 @@
       (when (every? identity ss)
         (concat (map first ss) (apply interleave (map rest ss))))))))
 
-(defn interpose [sep coll]
-  (loop [s (seq coll) acc (list) started false]
-    (if s
-      (if started
-        (recur (next s) (cons (first s) (cons sep acc)) true)
-        (recur (next s) (cons (first s) acc) true))
-      (reverse acc))))
+(defn interpose
+  ([sep]
+   (fn [rf]
+     (let [started (volatile! false)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (if @started
+            (let [sepr (rf result sep)]
+              (if (reduced? sepr)
+                sepr
+                (rf sepr input)))
+            (do
+              (vreset! started true)
+              (rf result input))))))))
+  ([sep coll]
+   (drop 1 (interleave (repeat sep) coll))))
 
-(defn distinct [coll]
-  (loop [s (seq coll) seen #{} acc (list)]
-    (if s
-      (let [x (first s)]
-        (if (contains? seen x)
-          (recur (next s) seen acc)
-          (recur (next s) (conj seen x) (cons x acc))))
-      (reverse acc))))
+(defn distinct
+  ([]
+   (fn [rf]
+     (let [seen (volatile! #{})]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (if (contains? @seen input)
+            result
+            (do (vswap! seen conj input)
+                (rf result input))))))))
+  ([coll]
+   (loop [s (seq coll) seen #{} acc (list)]
+     (if s
+       (let [x (first s)]
+         (if (contains? seen x)
+           (recur (next s) seen acc)
+           (recur (next s) (conj seen x) (cons x acc))))
+       (reverse acc)))))
 
 (defn frequencies [coll]
   (reduce (fn [acc x]
@@ -713,42 +799,77 @@
 
 ;; Additional HOFs
 
-(defn remove [pred coll]
-  (filter (complement pred) coll))
+(defn remove
+  ([pred] (filter (complement pred)))
+  ([pred coll]
+   (filter (complement pred) coll)))
 
-(defn map-indexed [f coll]
-  (loop [s (seq coll) i 0 acc (list)]
-    (if s
-      (recur (next s) (+ i 1) (cons (f i (first s)) acc))
-      (reverse acc))))
+(defn map-indexed
+  ([f]
+   (fn [rf]
+     (let [i (volatile! -1)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (rf result (f (vswap! i inc) input)))))))
+  ([f coll]
+   (loop [s (seq coll) i 0 acc (list)]
+     (if s
+       (recur (next s) (+ i 1) (cons (f i (first s)) acc))
+       (reverse acc)))))
 
-(defn keep [f coll]
-  (lazy-seq
-   (when-let [s (seq coll)]
-     (if (chunked-seq? s)
-       (let [c (chunk-first s)
-             size (count c)
-             b (chunk-buffer size)]
-         (loop [i 0]
-           (when (< i size)
-             (let [x (f (nth c i))]
-               (when-not (nil? x)
-                 (chunk-append b x)))
-             (recur (inc i))))
-         (chunk-cons (chunk b) (keep f (chunk-rest s))))
-       (let [x (f (first s))]
-         (if (nil? x)
-           (keep f (rest s))
-           (cons x (keep f (rest s)))))))))
+(defn keep
+  ([f]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result] (rf result))
+       ([result input]
+        (let [v (f input)]
+          (if (nil? v)
+            result
+            (rf result v)))))))
+  ([f coll]
+   (lazy-seq
+    (when-let [s (seq coll)]
+      (if (chunked-seq? s)
+        (let [c (chunk-first s)
+              size (count c)
+              b (chunk-buffer size)]
+          (loop [i 0]
+            (when (< i size)
+              (let [x (f (nth c i))]
+                (when-not (nil? x)
+                  (chunk-append b x)))
+              (recur (inc i))))
+          (chunk-cons (chunk b) (keep f (chunk-rest s))))
+        (let [x (f (first s))]
+          (if (nil? x)
+            (keep f (rest s))
+            (cons x (keep f (rest s))))))))))
 
-(defn keep-indexed [f coll]
-  (loop [s (seq coll) i 0 acc (list)]
-    (if s
-      (let [v (f i (first s))]
-        (if (nil? v)
-          (recur (next s) (+ i 1) acc)
-          (recur (next s) (+ i 1) (cons v acc))))
-      (reverse acc))))
+(defn keep-indexed
+  ([f]
+   (fn [rf]
+     (let [iv (volatile! -1)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [i (vswap! iv inc)
+                v (f i input)]
+            (if (nil? v)
+              result
+              (rf result v))))))))
+  ([f coll]
+   (loop [s (seq coll) i 0 acc (list)]
+     (if s
+       (let [v (f i (first s))]
+         (if (nil? v)
+           (recur (next s) (+ i 1) acc)
+           (recur (next s) (+ i 1) (cons v acc))))
+       (reverse acc)))))
 
 ;; Vector-returning variants
 
@@ -758,27 +879,71 @@
 (defn filterv [pred coll]
   (vec (filter pred coll)))
 
-(defn partition-all [n coll]
-  (loop [s (seq coll) acc (list)]
-    (let [chunk (take n s)]
-      (if (seq chunk)
-        (recur (drop n s) (cons chunk acc))
-        (reverse acc)))))
+(defn partition-all
+  ([n]
+   (fn [rf]
+     (let [a (volatile! [])]
+       (fn
+         ([] (rf))
+         ([result]
+          (let [result (if (zero? (count @a))
+                         result
+                         (let [v @a]
+                           (vreset! a [])
+                           (unreduced (rf result v))))]
+            (rf result)))
+         ([result input]
+          (vswap! a conj input)
+          (if (= n (count @a))
+            (let [v @a]
+              (vreset! a [])
+              (rf result v))
+            result))))))
+  ([n coll]
+   (loop [s (seq coll) acc (list)]
+     (let [chunk (take n s)]
+       (if (seq chunk)
+         (recur (drop n s) (cons chunk acc))
+         (reverse acc))))))
 
-(defn take-while [pred coll]
-  (lazy-seq
-   (let [s (seq coll)]
-     (when s
-       (when (pred (first s))
-         (cons (first s) (take-while pred (rest s))))))))
+(defn take-while
+  ([pred]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result] (rf result))
+       ([result input]
+        (if (pred input)
+          (rf result input)
+          (reduced result))))))
+  ([pred coll]
+   (lazy-seq
+    (let [s (seq coll)]
+      (when s
+        (when (pred (first s))
+          (cons (first s) (take-while pred (rest s)))))))))
 
-(defn drop-while [pred coll]
-  (loop [s (seq coll)]
-    (if s
-      (if (pred (first s))
-        (recur (next s))
-        s)
-      (list))))
+(defn drop-while
+  ([pred]
+   (fn [rf]
+     (let [dv (volatile! true)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [drop? @dv]
+            (if (and drop? (pred input))
+              result
+              (do
+                (vreset! dv nil)
+                (rf result input)))))))))
+  ([pred coll]
+   (loop [s (seq coll)]
+     (if s
+       (if (pred (first s))
+         (recur (next s))
+         s)
+       (list)))))
 
 (defn reduce-kv [f init m]
   (let [ks (keys m)]
@@ -1150,10 +1315,7 @@
          (let [~form temp#]
            ~@body)))))
 
-;; Volatile swap macro
-
-(defmacro vswap! [vol f & args]
-  `(vreset! ~vol (~f (deref ~vol) ~@args)))
+;; vswap! macro moved to before take — see line ~124
 
 ;; Function combinators — memoize and trampoline
 
@@ -1347,24 +1509,39 @@
               (reductions f (f init (first s)) (rest s))))))))
 
 (defn take-nth
-  "Returns a lazy seq of every nth item in coll."
-  [n coll]
-  (lazy-seq
-   (when-let [s (seq coll)]
-     (cons (first s) (take-nth n (drop n s))))))
+  "Returns a lazy seq of every nth item in coll.  Returns a stateful
+  transducer when no collection is provided."
+  ([n]
+   (fn [rf]
+     (let [iv (volatile! -1)]
+       (fn
+         ([] (rf))
+         ([result] (rf result))
+         ([result input]
+          (let [i (vswap! iv inc)]
+            (if (zero? (rem i n))
+              (rf result input)
+              result)))))))
+  ([n coll]
+   (lazy-seq
+    (when-let [s (seq coll)]
+      (cons (first s) (take-nth n (drop n s)))))))
 
 (defn replace
   "Given a map of replacement pairs and a vector/collection, returns a
   vector/seq with any elements = a key in smap replaced with the
-  corresponding val in smap."
-  [smap coll]
-  (if (vector? coll)
-    (reduce (fn [v i]
-              (if-let [e (find smap (nth v i))]
-                (assoc v i (val e))
-                v))
-            coll (range (count coll)))
-    (map (fn [x] (if-let [e (find smap x)] (val e) x)) coll)))
+  corresponding val in smap.  Returns a transducer when no collection
+  is provided."
+  ([smap]
+   (map (fn [x] (if-let [e (find smap x)] (val e) x))))
+  ([smap coll]
+   (if (vector? coll)
+     (reduce (fn [v i]
+               (if-let [e (find smap (nth v i))]
+                 (assoc v i (val e))
+                 v))
+             coll (range (count coll)))
+     (map (fn [x] (if-let [e (find smap x)] (val e) x)) coll))))
 
 ;; Unchecked arithmetic (no auto-promotion in ClojureWasm, so identical to checked)
 (defn unchecked-inc [x] (+ x 1))

@@ -65,7 +65,8 @@ fn isSet(v: Value) bool {
     return v == .set;
 }
 fn isColl(v: Value) bool {
-    return v == .list or v == .vector or v == .map or v == .set;
+    return v == .list or v == .vector or v == .map or v == .set or
+        v == .cons or v == .lazy_seq or v == .chunked_cons;
 }
 fn isList(v: Value) bool {
     return v == .list;
@@ -74,7 +75,7 @@ fn isChar(v: Value) bool {
     return v == .char;
 }
 fn isSequential(v: Value) bool {
-    return v == .list or v == .vector;
+    return v == .list or v == .vector or v == .cons or v == .lazy_seq or v == .chunked_cons;
 }
 fn isAssociative(v: Value) bool {
     return v == .map or v == .vector;
