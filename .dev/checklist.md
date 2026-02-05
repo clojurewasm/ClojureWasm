@@ -33,7 +33,6 @@ Check at session start for items that become actionable.
 | F81 | ::foo auto-resolved keyword                 | Reader needs Env access for `:current-ns/foo`                      |
 | F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |
 | F83 | prefer-method / prefers                     | Multimethod dispatch preference resolution                         |
-| F86 | bound? takes var_ref not symbol             | ClojureWasm bound? takes symbol, JVM takes var_ref                 |
 | F87 | #'var inside deftest body                   | Var quote resolves at analyze time, fails for deftest-local defs   |
 | F89 | Analyzer rewrite for System/Math            | Builtins exist but syntax routing missing                          |
 | F91 | delay proper Value type                     | Map-based delay; upstream uses clojure.lang.Delay class            |

@@ -234,20 +234,26 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
 
-/// (bound? sym) — true if the symbol resolves to a Var with a binding.
-/// Takes a quoted symbol, resolves in current namespace.
+/// (bound? & vars) — true if all vars have any bound value (root or thread-local).
+/// Takes var refs (#'x). Also accepts symbols for backward compat (defonce).
 pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bound?", .{args.len});
-    if (args[0] != .symbol) return err.setErrorFmt(.eval, .type_error, .{}, "bound? expects a symbol, got {s}", .{@tagName(args[0])});
-    const sym_name = args[0].symbol.name;
-    const env = current_env orelse return Value{ .boolean = false };
-    const ns = env.current_ns orelse return Value{ .boolean = false };
-    const v = ns.resolve(sym_name) orelse return Value{ .boolean = false };
-    // Var exists and has been bound (root != .nil means bound)
-    // Note: in full Clojure, unbound Vars are distinct from nil-bound.
-    // We treat existence in namespace as "bound" since intern + bindRoot
-    // is always paired in our implementation.
-    _ = v;
+    for (args) |arg| {
+        if (arg == .var_ref) {
+            // JVM-compatible: check if var has a root binding.
+            // In our implementation intern+bindRoot are always paired,
+            // so existing var_ref generally means bound.
+            const v = arg.var_ref;
+            if (v.root == .nil and !v.dynamic) return Value{ .boolean = false };
+        } else if (arg == .symbol) {
+            // Backward compat: resolve symbol in current namespace.
+            const sym_name = arg.symbol.name;
+            const env = current_env orelse return Value{ .boolean = false };
+            const ns = env.current_ns orelse return Value{ .boolean = false };
+            _ = ns.resolve(sym_name) orelse return Value{ .boolean = false };
+        } else {
+            return err.setErrorFmt(.eval, .type_error, .{}, "bound? expects a Var or symbol, got {s}", .{@tagName(arg)});
+        }
+    }
     return Value{ .boolean = true };
 }
 
@@ -606,7 +612,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "satisfies?", .func = &satisfiesPred, .doc = "Returns true if x satisfies the protocol.", .arglists = "([protocol x])", .added = "1.2" },
     .{ .name = "type", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "class", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
-    .{ .name = "bound?", .func = &boundPred, .doc = "Returns true if the var/symbol has been bound to a value.", .arglists = "([sym])", .added = "1.2" },
+    .{ .name = "bound?", .func = &boundPred, .doc = "Returns true if all of the vars provided as arguments have any bound value, root or thread-local.", .arglists = "([& vars])", .added = "1.2" },
     .{ .name = "var?", .func = &varPred, .doc = "Returns true if v is of type clojure.lang.Var.", .arglists = "([v])", .added = "1.0" },
     .{ .name = "var-get", .func = &varGetFn, .doc = "Gets the value in the var object.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "var-set", .func = &varSetFn, .doc = "Sets the value in the var object to val.", .arglists = "([x val])", .added = "1.0" },

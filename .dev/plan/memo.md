@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX2 (bound? takes var_ref)
+- Next task: CX3 (Math/System syntax routing)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -16,7 +16,7 @@ Phase CX: Resolve actionable F## items before continuing test porting.
 Detailed plan: `.dev/plan/phase-cx-plan.md`
 
 - ~~CX1: Remove F51 + Fix F24 (housekeeping)~~ done
-- CX2: bound? takes var_ref (F86)
+- ~~CX2: bound? takes var_ref (F86)~~ done
 - CX3: Math/System syntax routing (F89)
 - CX4: delay proper Value type (F91)
 - CX5: {:as x} seq-to-map coercion (F68)
@@ -57,14 +57,15 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX2: bound? takes var_ref (F86) — change bound? to accept #'x instead of symbol.
+CX3: Math/System syntax routing (F89) — route (Math/abs x) to builtins.
 
 ## Previous Task
 
-CX1 completed: Housekeeping.
-- Removed F51 from checklist (shuffle implemented)
-- Fixed await1 status done→todo in vars.yaml (was never implemented)
-- Fixed bootstrap.zig drop test (lazy-seq return type from C12)
+CX2 completed: bound? takes var_ref (F86).
+- Changed bound? to accept var_ref (JVM compatible) + symbol (backward compat)
+- Now variadic: (bound? #'x #'y) checks all vars
+- defonce unchanged (uses symbol mode)
+- Removed F86 from checklist
 
 ## Handover Notes
 

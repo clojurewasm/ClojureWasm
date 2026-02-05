@@ -165,7 +165,7 @@ vars:
     booleans: {type: function, status: todo}
     "bound-fn": {type: macro, status: todo}
     "bound-fn*": {type: function, status: todo}
-    "bound?": {type: function, status: done, note: 'Takes symbol, resolves in current ns'}
+    "bound?": {type: function, status: done, note: 'Takes var_ref or symbol (variadic)'}
     "bounded-count": {type: function, status: done, note: builtin (upstream is pure clj)}
     butlast: {type: function, status: done, note: "core.clj loop"}
     byte: {type: function, status: done, note: builtin (upstream is pure clj)}
