@@ -946,12 +946,18 @@
        (list)))))
 
 (defn reduce-kv [f init m]
-  (let [ks (keys m)]
-    (loop [s (seq ks) acc init]
-      (if s
-        (let [k (first s)]
-          (recur (next s) (f acc k (get m k))))
-        acc))))
+  (if (vector? m)
+    (let [cnt (count m)]
+      (loop [i 0 acc init]
+        (if (< i cnt)
+          (recur (inc i) (f acc i (nth m i)))
+          acc)))
+    (let [ks (keys m)]
+      (loop [s (seq ks) acc init]
+        (if s
+          (let [k (first s)]
+            (recur (next s) (f acc k (get m k))))
+          acc)))))
 
 ;; Convenience accessors (last/butlast defined early for defn macro)
 
@@ -1731,6 +1737,53 @@
       (do (f) :ok)
       :no-test)))
 
+;; Redefine map with multi-collection arities (needs and, every?, identity)
+(defn map
+  "Returns a lazy sequence consisting of the result of applying f to
+  the set of first items of each coll, followed by applying f to the
+  set of second items in each coll, until any one of the colls is
+  exhausted. Returns a transducer when no collection is provided."
+  ([f]
+   (fn [rf]
+     (fn
+       ([] (rf))
+       ([result] (rf result))
+       ([result input]
+        (rf result (f input))))))
+  ([f coll]
+   (lazy-seq
+    (let [s (seq coll)]
+      (when s
+        (if (chunked-seq? s)
+          (let [c (chunk-first s)
+                size (count c)
+                b (chunk-buffer size)]
+            (loop [i 0]
+              (when (< i size)
+                (chunk-append b (f (nth c i)))
+                (recur (inc i))))
+            (chunk-cons (chunk b) (map f (chunk-rest s))))
+          (cons (f (first s)) (map f (rest s))))))))
+  ([f c1 c2]
+   (lazy-seq
+    (let [s1 (seq c1) s2 (seq c2)]
+      (when (and s1 s2)
+        (cons (f (first s1) (first s2))
+              (map f (rest s1) (rest s2)))))))
+  ([f c1 c2 c3]
+   (lazy-seq
+    (let [s1 (seq c1) s2 (seq c2) s3 (seq c3)]
+      (when (and s1 s2 s3)
+        (cons (f (first s1) (first s2) (first s3))
+              (map f (rest s1) (rest s2) (rest s3)))))))
+  ([f c1 c2 c3 & colls]
+   (let [step (fn step [cs]
+                (lazy-seq
+                 (let [ss (map seq cs)]
+                   (when (every? identity ss)
+                     (cons (map first ss) (step (map rest ss)))))))]
+     (map #(apply f %) (step (conj colls c3 c2 c1))))))
+
 (defn mapv
   "Returns a vector consisting of the result of applying f to the
   set of first items of each coll, followed by applying f to the set
@@ -1738,7 +1791,13 @@
   exhausted."
   ([f coll]
    (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)
-       persistent!)))
+       persistent!))
+  ([f c1 c2]
+   (into [] (map f c1 c2)))
+  ([f c1 c2 c3]
+   (into [] (map f c1 c2 c3)))
+  ([f c1 c2 c3 & colls]
+   (into [] (apply map f c1 c2 c3 colls))))
 
 (defmacro time
   "Evaluates expr and prints the time it took. Returns the value of expr."

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
 - Coverage: 521/704 clojure.core vars done (0 todo, 182 skip)
-- Next task: 22.7 (Port vectors.clj)
+- Next task: 22.8 (Port protocols.clj)
 - Blockers: none
 
 ## Phase Roadmap (user-specified order)
@@ -28,22 +28,22 @@ Session handover document. Read at session start.
 4. ~~22.4: try_catch.clj — SKIP (100% JVM: Java exception classes + test fixtures)~~
 5. ~~22.5: Port multimethods.clj (271 lines)~~ — DONE (9 tests, 102 assertions)
 6. ~~22.6: Port transducers.clj (410 lines)~~ — DONE (14 tests, 90 assertions)
-7. 22.7: Port vectors.clj (491 lines) — comprehensive vector coverage
+7. ~~22.7: Port vectors.clj (491 lines)~~ — DONE (9 tests, 68 assertions)
 8. 22.8: Port protocols.clj (721 lines) — roadmap target
 9. 22.9: Port math.clj (326 lines) — math functions
 
 ## Current Task
 
-22.7: Port vectors.clj (491 lines)
+22.8: Port protocols.clj (721 lines)
 
 ## Previous Task
 
-22.6: Port transducers.clj — 14 tests, 90 assertions, 8 CLJW markers
-- Added 1-arity transducer forms to 15 core functions (take, drop, mapcat, partition-by, interpose, distinct, remove, map-indexed, keep, keep-indexed, partition-all, take-while, drop-while, take-nth, replace)
-- Moved vswap! macro before transducer forms (bootstrap order dependency)
-- Renamed shadowed variables in take/drop closures (compiler variable shadowing bug workaround)
-- Changed interpose 2-arity from eager loop to lazy (drop 1 (interleave (repeat sep) coll))
-- Fixed coll?/sequential? predicates to include .cons, .lazy_seq, .chunked_cons
+22.7: Port vectors.clj — 9 tests, 68 assertions, 16 CLJW markers
+- Added vector comparison to compareValues (element-by-element)
+- Added .map and .string handling to collectSeqItems
+- Added multi-collection arities to map (3, 4, variadic)
+- Added multi-collection arities to mapv (2, 3, variadic)
+- Fixed reduce-kv to support vectors (index-based iteration)
 
 ## Completed Phases (reverse chronological)
 

@@ -888,6 +888,18 @@ pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
         return std.mem.order(u8, a.symbol.name, b.symbol.name);
     }
 
+    // vectors: element-by-element comparison
+    if (a == .vector and b == .vector) {
+        const av = a.vector.items;
+        const bv = b.vector.items;
+        const min_len = @min(av.len, bv.len);
+        for (0..min_len) |i| {
+            const elem_ord = try compareValues(av[i], bv[i]);
+            if (elem_ord != .eq) return elem_ord;
+        }
+        return std.math.order(av.len, bv.len);
+    }
+
     return err.setErrorFmt(.eval, .type_error, .{}, "compare: cannot compare {s} and {s}", .{ @tagName(a), @tagName(b) });
 }
 
@@ -1046,6 +1058,28 @@ pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value 
             },
             .set => |s| {
                 for (s.items) |item| try items.append(allocator, item);
+                break;
+            },
+            .map => |m| {
+                var i: usize = 0;
+                while (i < m.entries.len) : (i += 2) {
+                    const pair = try allocator.alloc(Value, 2);
+                    pair[0] = m.entries[i];
+                    pair[1] = m.entries[i + 1];
+                    const vec = try allocator.create(PersistentVector);
+                    vec.* = .{ .items = pair };
+                    try items.append(allocator, Value{ .vector = vec });
+                }
+                break;
+            },
+            .string => |s| {
+                var i: usize = 0;
+                while (i < s.len) {
+                    const cl = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+                    const cp = std.unicode.utf8Decode(s[i..][0..cl]) catch s[i];
+                    try items.append(allocator, Value{ .char = cp });
+                    i += cl;
+                }
                 break;
             },
             .nil => break,
