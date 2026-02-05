@@ -34,5 +34,4 @@ Check at session start for items that become actionable.
 | F82 | Hierarchy system                            | derive, underive, parents, ancestors, descendants                  |
 | F83 | prefer-method / prefers                     | Multimethod dispatch preference resolution                         |
 | F87 | #'var inside deftest body                   | Var quote resolves at analyze time, fails for deftest-local defs   |
-| F91 | delay proper Value type                     | Map-based delay; upstream uses clojure.lang.Delay class            |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |

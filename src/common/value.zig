@@ -55,6 +55,14 @@ pub const Reduced = struct {
     value: Value,
 };
 
+/// Delay — lazy thunk with cached result. Force to evaluate.
+pub const Delay = struct {
+    fn_val: ?Value, // thunk (null after realization)
+    cached: ?Value, // cached result
+    error_cached: ?Value, // cached exception (re-thrown on subsequent force)
+    realized: bool,
+};
+
 /// Compiled regex pattern.
 pub const Pattern = struct {
     source: []const u8, // original pattern string
@@ -180,6 +188,9 @@ pub const Value = union(enum) {
 
     // Var reference — first-class Var value (#'foo)
     var_ref: *Var,
+
+    // Delay — lazy thunk with cached result
+    delay: *Delay,
 
     // Reduced — early termination wrapper for reduce
     reduced: *const Reduced,
@@ -315,6 +326,15 @@ pub const Value = union(enum) {
                 try w.writeAll("/");
                 try w.writeAll(v.sym.name);
             },
+            .delay => |d| {
+                if (d.realized) {
+                    try w.writeAll("#delay[");
+                    if (d.cached) |v| try v.formatPrStr(w) else try w.writeAll("nil");
+                    try w.writeAll("]");
+                } else {
+                    try w.writeAll("#delay[pending]");
+                }
+            },
             .reduced => |r| try r.value.formatPrStr(w),
             .cons => |c| {
                 try w.writeAll("(");
@@ -440,6 +460,7 @@ pub const Value = union(enum) {
             .lazy_seq => unreachable, // handled by early return above
             .var_ref => |a| a == other.var_ref, // identity equality
             .cons => unreachable, // handled by eqlConsSeq above
+            .delay => |a| a == other.delay, // identity equality
             .reduced => |a| a.value.eqlImpl(other.reduced.value, allocator),
             .map => |a| {
                 const b = other.map;

@@ -187,7 +187,16 @@ pub const TreeWalk = struct {
     /// Used for macro expansion: Analyzer calls macro fn_val with Value args.
     pub fn callValue(self: *TreeWalk, callee: Value, args: []const Value) TreeWalkError!Value {
         return switch (callee) {
-            .builtin_fn => |f| @errorCast(f(self.allocator, args)),
+            .builtin_fn => |f| {
+                const result = f(self.allocator, args) catch |e| {
+                    if (e == error.UserException and self.exception == null) {
+                        self.exception = bootstrap.last_thrown_exception;
+                        bootstrap.last_thrown_exception = null;
+                    }
+                    return @errorCast(e);
+                };
+                return result;
+            },
             .fn_val => |fn_ptr| {
                 if (fn_ptr.kind == .bytecode) {
                     const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
@@ -644,6 +653,7 @@ pub const TreeWalk = struct {
             .lazy_seq => "lazy_seq",
             .cons => "cons",
             .var_ref => "var",
+            .delay => "delay",
             .reduced => "reduced",
         };
     }
@@ -897,6 +907,11 @@ pub const TreeWalk = struct {
         if (result) |v| {
             return v;
         } else |e| {
+            // Preserve exception value from builtin → TreeWalk boundary
+            if (e == error.UserException and self.exception == null) {
+                self.exception = bootstrap.last_thrown_exception;
+                bootstrap.last_thrown_exception = null;
+            }
             return @errorCast(e);
         }
     }

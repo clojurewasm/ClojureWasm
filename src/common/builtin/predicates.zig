@@ -229,6 +229,7 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .lazy_seq => "lazy-seq",
         .cons => "cons",
         .var_ref => "var",
+        .delay => "delay",
         .reduced => "reduced",
     };
     return Value{ .keyword = .{ .ns = null, .name = name } };
@@ -255,6 +256,26 @@ pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
         }
     }
     return Value{ .boolean = true };
+}
+
+/// (__delay? x) — true if x is a Delay value.
+pub fn delayPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay?", .{args.len});
+    return Value{ .boolean = args[0] == .delay };
+}
+
+/// (__delay-realized? x) — true if delay has been realized.
+pub fn delayRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay-realized?", .{args.len});
+    if (args[0] != .delay) return Value{ .boolean = false };
+    return Value{ .boolean = args[0].delay.realized };
+}
+
+/// (__lazy-seq-realized? x) — true if lazy-seq has been realized.
+pub fn lazySeqRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __lazy-seq-realized?", .{args.len});
+    if (args[0] != .lazy_seq) return Value{ .boolean = false };
+    return Value{ .boolean = args[0].lazy_seq.realized != null };
 }
 
 /// (var? x) — true if x is a Var reference.
@@ -306,6 +327,7 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .lazy_seq => "lazy_seq",
         .cons => "cons",
         .var_ref => "var",
+        .delay => "delay",
         .reduced => "reduced",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
@@ -634,6 +656,9 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "decimal?", .func = &decimalPred, .doc = "Returns true if n is a BigDecimal.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "bounded-count", .func = &boundedCountFn, .doc = "If coll is counted? returns its count, else will count at most the first n elements of coll.", .arglists = "([n coll])", .added = "1.9" },
     .{ .name = "special-symbol?", .func = &specialSymbolPred, .doc = "Returns true if s names a special form.", .arglists = "([s])", .added = "1.5" },
+    .{ .name = "__delay?", .func = &delayPred, .doc = "Returns true if x is a Delay.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "__delay-realized?", .func = &delayRealizedPred, .doc = "Returns true if a delay has been realized.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "__lazy-seq-realized?", .func = &lazySeqRealizedPred, .doc = "Returns true if a lazy-seq has been realized.", .arglists = "([x])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -860,8 +885,8 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.reduced.value.eql(.{ .integer = 42 }));
 }
 
-test "builtins table has 51 entries" {
-    try testing.expectEqual(51, builtins.len);
+test "builtins table has 54 entries" {
+    try testing.expectEqual(54, builtins.len);
 }
 
 test "builtins all have func" {

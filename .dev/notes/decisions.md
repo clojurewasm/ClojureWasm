@@ -1518,3 +1518,23 @@ pattern keeps lazy seq transparent: no changes needed in most code.
 **Impact**: Infinite sequences work. `for` comprehensions with large ranges work.
 Syntax-quote expansion (which uses concat) now returns lazy seqs, handled
 transparently by valueToForm and withMetaFn.
+
+## D66: Delay Value Type
+
+**Context**: Delay was implemented as a map with `:__delay` sentinel key. This was
+fragile (type predicates relied on map key checks) and didn't support exception caching
+with identity preservation (identical? on re-thrown exceptions).
+
+**Decision**: Add dedicated `Delay` struct and `delay: *Delay` variant to Value union.
+Replace map-based delay in core.clj with `__delay-create` builtin.
+
+**Architecture**:
+- value.zig: `Delay { fn_val, cached, error_cached, realized }` struct + union variant
+- atom.zig: `forceDelay()` handles evaluation, caching, and exception caching
+- atom.zig: `delayCreateFn()` as `__delay-create` builtin
+- predicates.zig: `__delay?`, `__delay-realized?`, `__lazy-seq-realized?` builtins
+- core.clj: `delay` macro uses `__delay-create`, `force`/`delay?`/`realized?` use builtins
+- tree_walk.zig: `callBuiltinFn` now propagates UserException to self.exception
+
+**Rationale**: Proper Value variant enables correct type predicates, efficient dispatch,
+and exception caching with identity preservation (JVM Delay semantics).

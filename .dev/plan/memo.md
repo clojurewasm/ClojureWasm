@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - Phase: 19 (Foundation Reset: Upstream Fidelity)
 - Sub-phase: CX (Known Issue Resolution, inserted between C12 and C13)
-- Next task: CX4 (delay proper Value type)
+- Next task: CX5 ({:as x} seq-to-map coercion)
 - Coverage: 402/712 clojure.core vars done
 - Blockers: none
 
@@ -18,7 +18,7 @@ Detailed plan: `.dev/plan/phase-cx-plan.md`
 - ~~CX1: Remove F51 + Fix F24 (housekeeping)~~ done
 - ~~CX2: bound? takes var_ref (F86)~~ done
 - ~~CX3: Math/System syntax routing (F89)~~ done
-- CX4: delay proper Value type (F91)
+- ~~CX4: delay proper Value type (F91)~~ done
 - CX5: {:as x} seq-to-map coercion (F68)
 - CX6: Namespaced destructuring (F70-F74)
 - CX7: ::foo auto-resolved keyword (F81)
@@ -57,14 +57,16 @@ Remaining (resume here after CX):
 
 ## Current Task
 
-CX4: delay proper Value type (F91) — replace map-based delay with dedicated Value variant.
+CX5: {:as x} seq-to-map coercion (F68) — map destructuring :as binding coerces seqs to maps.
 
 ## Previous Task
 
-CX3 completed: Math/System syntax routing (F89).
-- Analyzer rewrites Math/abs → abs, Math/pow → __pow, System/getenv → __getenv, etc.
-- Added 5 new math builtins: __pow, __sqrt, __round, __ceil, __floor
-- Removed F89 from checklist
+CX4 completed: delay proper Value type (F91, D66).
+- Added Delay struct + delay variant to Value union
+- __delay-create builtin, __delay?/__delay-realized?/__lazy-seq-realized? predicates
+- Exception caching with identity preservation (JVM Delay semantics)
+- Fixed TreeWalk builtin exception propagation (callBuiltinFn)
+- Both backends pass all 6 delay test assertions
 
 ## Handover Notes
 

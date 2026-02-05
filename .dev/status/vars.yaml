@@ -237,8 +237,8 @@ vars:
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
     defstruct: {type: macro, status: todo}
     deftype: {type: macro, status: todo}
-    delay: {type: macro, status: done, note: "UPSTREAM-DIFF: map-based (upstream uses clojure.lang.Delay)"}
-    "delay?": {type: function, status: done, note: clj in core.clj}
+    delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
+    "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
     deliver: {type: function, status: todo}
     denominator: {type: function, status: todo}
     deref: {type: function, status: done, note: "Zig builtin"}
@@ -523,7 +523,7 @@ vars:
     "read-string": {type: function, status: done, note: "Zig builtin"}
     "reader-conditional": {type: function, status: todo}
     "reader-conditional?": {type: function, status: todo}
-    "realized?": {type: function, status: done, note: "core.clj checks delay :realized atom"}
+    "realized?": {type: function, status: done, note: "supports delay + lazy-seq"}
     "record?": {type: function, status: done, note: builtin (upstream is pure clj)}
     reduce: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "reduce-kv": {type: function, status: done, note: "core.clj via keys+get loop"}

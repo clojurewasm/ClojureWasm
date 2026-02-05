@@ -919,45 +919,22 @@
 
 ;; Delayed evaluation
 
-;; UPSTREAM-DIFF: Map-based delay (upstream uses clojure.lang.Delay Java class)
 (defmacro delay [& body]
-  `{:__delay true
-    :thunk (fn [] ~@body)
-    :value (atom nil)
-    :error (atom nil)
-    :realized (atom false)})
+  (list '__delay-create (cons 'fn (cons [] body))))
 
 (defn force [x]
-  (if (if (map? x) (:__delay x) false)
-    (if (deref (:realized x))
-      (if (deref (:error x))
-        (throw (deref (:error x)))
-        (deref (:value x)))
-      (try
-        (let [v ((:thunk x))]
-          (reset! (:value x) v)
-          (reset! (:realized x) true)
-          v)
-        (catch Exception e
-          (reset! (:error x) e)
-          (reset! (:realized x) true)
-          (throw e))))
+  (if (delay? x)
+    (deref x)
     x))
 
 (defn realized? [x]
-  (if (if (map? x) (:__delay x) false)
-    (deref (:realized x))
-    false))
+  (cond
+    (delay? x) (__delay-realized? x)
+    (= (type x) :lazy-seq) (__lazy-seq-realized? x)
+    :else false))
 
 (defn delay? [x]
-  (if (map? x) (if (:__delay x) true false) false))
-
-;; Override deref to handle delays via force (exception caching)
-(let [builtin-deref deref]
-  (defn deref [ref]
-    (if (delay? ref)
-      (force ref)
-      (builtin-deref ref))))
+  (__delay? x))
 
 ;; Basic predicates
 

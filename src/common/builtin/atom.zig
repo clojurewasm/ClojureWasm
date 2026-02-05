@@ -23,7 +23,7 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .atom = a };
 }
 
-/// (deref ref) => val  — works on atoms, volatiles, and delay maps
+/// (deref ref) => val  — works on atoms, volatiles, delays, vars
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
     return switch (args[0]) {
@@ -31,45 +31,45 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .volatile_ref => |v| v.value,
         .var_ref => |v| v.deref(),
         .reduced => |r| r.value,
-        .map => |m| {
-            // Delay map: {:__delay true, :thunk fn, :value atom, :realized atom}
-            const delay_key = Value{ .keyword = .{ .name = "__delay", .ns = null } };
-            if (m.get(delay_key)) |_| {
-                return derefDelay(allocator, m);
-            }
-            return err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])});
-        },
+        .delay => |d| forceDelay(allocator, d),
         else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])}),
     };
 }
 
-/// Force a delay map: if not realized, call thunk and cache result
-fn derefDelay(allocator: Allocator, m: *const value_mod.PersistentArrayMap) anyerror!Value {
-    const realized_key = Value{ .keyword = .{ .name = "realized", .ns = null } };
-    const value_key = Value{ .keyword = .{ .name = "value", .ns = null } };
-    const thunk_key = Value{ .keyword = .{ .name = "thunk", .ns = null } };
-
-    const realized_atom = (m.get(realized_key) orelse return error.TypeError);
-    if (realized_atom != .atom) return error.TypeError;
-
-    if (realized_atom.atom.value.eql(Value{ .boolean = true })) {
-        // Already realized — return cached value
-        const value_atom = (m.get(value_key) orelse return error.TypeError);
-        if (value_atom != .atom) return error.TypeError;
-        return value_atom.atom.value;
+/// Force a Delay value: evaluate thunk on first access, cache result.
+/// Exception caching: if thunk throws, the exception is cached and re-thrown
+/// on subsequent force calls (JVM Delay semantics).
+pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
+    if (d.realized) {
+        if (d.error_cached) |cached_ex| {
+            // Re-throw the cached exception
+            bootstrap.last_thrown_exception = cached_ex;
+            return error.UserException;
+        }
+        return d.cached orelse Value.nil;
     }
-
-    // Not yet realized — call thunk
-    const thunk = (m.get(thunk_key) orelse return error.TypeError);
-    const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| return e;
-
-    // Cache the result
-    const value_atom = (m.get(value_key) orelse return error.TypeError);
-    if (value_atom != .atom) return error.TypeError;
-    value_atom.atom.value = result;
-    realized_atom.atom.value = Value{ .boolean = true };
-
+    const thunk = d.fn_val orelse return Value.nil;
+    const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| {
+        // Cache the exception value for re-throwing on subsequent calls
+        d.realized = true;
+        d.fn_val = null;
+        if (e == error.UserException) {
+            d.error_cached = bootstrap.last_thrown_exception;
+        }
+        return e;
+    };
+    d.cached = result;
+    d.fn_val = null;
+    d.realized = true;
     return result;
+}
+
+/// (__delay-create thunk-fn) => delay value
+pub fn delayCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay-create", .{args.len});
+    const d = try allocator.create(value_mod.Delay);
+    d.* = .{ .fn_val = args[0], .cached = null, .error_cached = null, .realized = false };
+    return Value{ .delay = d };
 }
 
 /// (reset! atom new-val) => new-val
@@ -253,6 +253,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Returns true if x is a volatile.",
         .arglists = "([x])",
         .added = "1.7",
+    },
+    .{
+        .name = "__delay-create",
+        .func = &delayCreateFn,
+        .doc = "Creates a Delay from a thunk function.",
+        .arglists = "([thunk-fn])",
+        .added = "1.0",
     },
 };
 

@@ -522,6 +522,15 @@ fn writeValue(w: anytype, val: Value) void {
         .var_ref => |v| {
             w.print("#'{s}/{s}", .{ v.ns_name, v.sym.name }) catch {};
         },
+        .delay => |d| {
+            if (d.realized) {
+                w.print("#delay[", .{}) catch {};
+                if (d.cached) |v| writeValue(w, v) else w.print("nil", .{}) catch {};
+                w.print("]", .{}) catch {};
+            } else {
+                w.print("#delay[pending]", .{}) catch {};
+            }
+        },
         .reduced => |r| writeValue(w, r.value),
     }
 }
