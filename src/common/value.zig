@@ -17,6 +17,9 @@ pub const PersistentList = collections.PersistentList;
 pub const PersistentVector = collections.PersistentVector;
 pub const PersistentArrayMap = collections.PersistentArrayMap;
 pub const PersistentHashSet = collections.PersistentHashSet;
+pub const TransientVector = collections.TransientVector;
+pub const TransientArrayMap = collections.TransientArrayMap;
+pub const TransientHashSet = collections.TransientHashSet;
 
 const testing = std.testing;
 
@@ -208,6 +211,11 @@ pub const Value = union(enum) {
     // Reduced — early termination wrapper for reduce
     reduced: *const Reduced,
 
+    // Transient collections — mutable builders
+    transient_vector: *TransientVector,
+    transient_map: *TransientArrayMap,
+    transient_set: *TransientHashSet,
+
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
@@ -349,6 +357,9 @@ pub const Value = union(enum) {
                 }
             },
             .reduced => |r| try r.value.formatPrStr(w),
+            .transient_vector => try w.writeAll("#<TransientVector>"),
+            .transient_map => try w.writeAll("#<TransientMap>"),
+            .transient_set => try w.writeAll("#<TransientSet>"),
             .cons => |c| {
                 try w.writeAll("(");
                 try c.first.formatPrStr(w);
@@ -498,6 +509,9 @@ pub const Value = union(enum) {
                 }
                 return true;
             },
+            .transient_vector => |a| a == other.transient_vector, // identity equality
+            .transient_map => |a| a == other.transient_map, // identity equality
+            .transient_set => |a| a == other.transient_set, // identity equality
         };
     }
 

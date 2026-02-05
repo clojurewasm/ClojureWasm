@@ -699,6 +699,9 @@ pub const TreeWalk = struct {
             .var_ref => "var",
             .delay => "delay",
             .reduced => "reduced",
+            .transient_vector => "transient_vector",
+            .transient_map => "transient_map",
+            .transient_set => "transient_set",
         };
     }
 

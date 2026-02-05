@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All major phases complete: A, BE, B, C (C1-C20), CX (CX1-CX10), R, D (D1-D16)
-- Coverage: 504/704 clojure.core vars done (0 todo, 200 skip)
+- Coverage: 510/704 clojure.core vars done (0 todo, 193 skip)
 - Next: Phase 20 (Infrastructure Expansion — transient, chunked, sorted)
 - Blockers: none
 
@@ -22,7 +22,7 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-1. 20.1: Transient collections — types + builtins (transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!) — 7 vars
+1. ~~20.1: Transient collections~~ — DONE (6 new vars + transient already counted)
 2. 20.2: Core.clj transient alignment (update-vals, update-keys, mapv, set fns → use transient)
 3. 20.3: Chunked sequences — types + builtins (chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?) — 7 vars
 4. 20.4: Core.clj chunked seq paths (map, filter, doseq → chunked optimization)
@@ -31,19 +31,21 @@ Session handover document. Read at session start.
 
 ## Current Task
 
-20.1: Transient collections — types + builtins
+20.2: Core.clj transient alignment
 
-Design:
-- Add TransientVector, TransientArrayMap, TransientHashSet to collections.zig
-- Add transient_vector, transient_map, transient_set variants to Value union
-- Builtins: transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
-- Array-backed: mutable ArrayList-style buffer, "consumed" flag after persistent!
-- Fix vars.yaml: `transient` is incorrectly marked "done" (no actual impl)
-- TDD: Red → Green → Refactor per builtin
+Replace UPSTREAM-DIFF implementations with transient-using upstream versions:
+- update-vals, update-keys (core.clj) — use transient/persistent!
+- mapv (core.clj) — use transient/persistent!
+- clojure.set functions — use transient/persistent!
 
 ## Previous Task
 
-Phase 20 planned: 6 tasks, ~18 vars total (transient 7, chunked 7, sorted 4)
+20.1 completed: Transient collections
+- Added TransientVector, TransientArrayMap, TransientHashSet types
+- Added transient_vector, transient_map, transient_set Value variants
+- 7 builtins: transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
+- Both VM + TreeWalk verified
+- Coverage: 504 → 510 done, 200 → 193 skip
 
 ## Completed Phases (reverse chronological)
 

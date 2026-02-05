@@ -387,6 +387,9 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .set => |s| s.count(),
         .nil => @as(usize, 0),
         .string => |s| s.len,
+        .transient_vector => |tv| tv.count(),
+        .transient_map => |tm| tm.count(),
+        .transient_set => |ts| ts.count(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "count not supported on {s}", .{@tagName(args[0])}),
     }) };
 }

@@ -532,5 +532,8 @@ fn writeValue(w: anytype, val: Value) void {
             }
         },
         .reduced => |r| writeValue(w, r.value),
+        .transient_vector => w.print("#<TransientVector>", .{}) catch {},
+        .transient_map => w.print("#<TransientMap>", .{}) catch {},
+        .transient_set => w.print("#<TransientSet>", .{}) catch {},
     }
 }

@@ -135,7 +135,7 @@ vars:
     "aset-short": {type: function, status: skip, note: JVM interop}
     assert: {type: macro, status: done, note: 'UPSTREAM-DIFF: no *assert* dynamic var rebinding'}
     assoc: {type: function, status: done, note: "Zig builtin"}
-    "assoc!": {type: function, status: skip, note: "needs transient collections"}
+    "assoc!": {type: function, status: done}
     "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "associative?": {type: function, status: done, note: "Zig builtin"}
     atom: {type: function, status: done, note: "Zig builtin"}
@@ -209,7 +209,7 @@ vars:
     "cond->>": {type: macro, status: done, note: "macro in core.clj"}
     condp: {type: macro, status: done, note: "UPSTREAM-DIFF: no :>> modifier, no error on no-match"}
     conj: {type: function, status: done, note: "Zig builtin"}
-    "conj!": {type: function, status: skip, note: "needs transient collections"}
+    "conj!": {type: function, status: done}
     cons: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     constantly: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "construct-proxy": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
@@ -246,9 +246,9 @@ vars:
     descendants: {type: function, status: done, note: core.clj hierarchy-aware}
     destructure: {type: function, status: skip, note: compiler handles destructuring directly}
     disj: {type: function, status: done, note: "Zig builtin"}
-    "disj!": {type: function, status: skip, note: "needs transient collections"}
+    "disj!": {type: function, status: done}
     dissoc: {type: function, status: done, note: "Zig builtin"}
-    "dissoc!": {type: function, status: skip, note: "needs transient collections"}
+    "dissoc!": {type: function, status: done}
     distinct: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "distinct?": {type: function, status: done, note: "Zig builtin"}
     doall: {type: function, status: done, note: "core.clj dorun+return"}
@@ -466,10 +466,10 @@ vars:
     "partitionv-all": {type: function, status: done}
     pcalls: {type: function, status: skip, note: needs future}
     peek: {type: function, status: done, note: "Zig builtin"}
-    "persistent!": {type: function, status: skip, note: "needs transient collections"}
+    "persistent!": {type: function, status: done}
     pmap: {type: function, status: skip, note: needs future}
     pop: {type: function, status: done, note: "Zig builtin"}
-    "pop!": {type: function, status: skip, note: "needs transient collections"}
+    "pop!": {type: function, status: done}
     "pop-thread-bindings": {type: function, status: done}
     "pos-int?": {type: function, status: done, note: "Zig builtin"}
     "pos?": {type: function, status: done, note: "Zig builtin"}
