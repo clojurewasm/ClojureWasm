@@ -220,30 +220,30 @@ If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
 
 **Standard build mode: ReleaseSafe** (all benchmarks use this consistently).
 
-| Benchmark                | Baseline (ms) | After 24A.4 (ms) | Speedup | Category    |
+| Benchmark                | Baseline (ms) | After 24A.9 (ms) | Speedup | Category    |
 |--------------------------|---------------|-------------------|---------|-------------|
-| protocol_dispatch (10K)  | 52            | 29                | 1.8x    | dispatch    |
-| fib_loop                 | 56            | 29                | 1.9x    | computation |
-| atom_swap                | 51            | 30                | 1.7x    | concurrency |
-| keyword_lookup (100K)    | 59            | 35                | 1.7x    | collections |
-| tak                      | 53            | 36                | 1.5x    | computation |
-| map_ops                  | 62            | 38                | 1.6x    | collections |
-| nqueens                  | 61            | 40                | 1.5x    | hof         |
-| fib_recursive            | 542           | 41                | 13.2x   | computation |
-| arith_loop               | 98            | 72                | 1.4x    | computation |
-| nested_update (10K)      | 292           | 135               | 2.2x    | collections |
-| vector_ops               | 426           | 186               | 2.3x    | collections |
-| list_build               | 420           | 188               | 2.2x    | collections |
-| gc_stress (100K)         | 372           | 351               | 1.1x    | gc          |
-| string_ops (100K)        | 446           | 417               | 1.1x    | string      |
-| real_workload (10K)      | 1,286         | 513               | 2.5x    | composite   |
-| sieve                    | 2,152 (F97)   | 42 (F97)          | --      | hof         |
-| multimethod_dispatch(10K)| 2,373         | 1,985             | 1.2x    | dispatch    |
-| map_filter_reduce        | 4,013         | 1,315             | 3.1x    | collections |
-| transduce (10K)          | 8,409         | 3,043             | 2.8x    | sequences   |
-| lazy_chain (10K)         | 21,375        | 7,425             | 2.9x    | sequences   |
+| atom_swap                | 51            | 18                | 2.8x    | concurrency |
+| fib_loop                 | 56            | 19                | 2.9x    | computation |
+| protocol_dispatch (10K)  | 52            | 19                | 2.7x    | dispatch    |
+| tak                      | 53            | 23                | 2.3x    | computation |
+| keyword_lookup (100K)    | 59            | 24                | 2.5x    | collections |
+| map_ops                  | 62            | 26                | 2.4x    | collections |
+| fib_recursive            | 542           | 28                | 19.4x   | computation |
+| nqueens                  | 61            | 29                | 2.1x    | hof         |
+| arith_loop               | 98            | 61                | 1.6x    | computation |
+| nested_update (10K)      | 292           | 128               | 2.3x    | collections |
+| list_build               | 420           | 178               | 2.4x    | collections |
+| vector_ops               | 426           | 179               | 2.4x    | collections |
+| gc_stress (100K)         | 372           | 330               | 1.1x    | gc          |
+| string_ops (100K)        | 446           | 397               | 1.1x    | string      |
+| real_workload (10K)      | 1,286         | 496               | 2.6x    | composite   |
+| sieve                    | 2,152 (F97)   | 30 (F97)          | --      | hof         |
+| multimethod_dispatch(10K)| 2,373         | 2,127             | 1.1x    | dispatch    |
+| map_filter_reduce        | 4,013         | 1,281             | 3.1x    | collections |
+| transduce (10K)          | 8,409         | 2,893             | 2.9x    | sequences   |
+| lazy_chain (10K)         | 21,375        | 6,588             | 3.2x    | sequences   |
 
-### Optimizations applied (24A.1-24A.4)
+### Optimizations applied (24A.1-24A.9)
 
 - **24A.1**: Switch dispatch + batched GC (general 1.5-1.8x improvement)
 - **24A.2**: Stack argument buffer for TreeWalk (reduces heap alloc in interpreter)
@@ -252,26 +252,29 @@ If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
 - **24A.4**: Arithmetic fast-path inlining + @addWithOverflow — inline int+int
   arithmetic and comparison directly in VM step, avoid cross-file function calls.
   fib_recursive 542→41ms (13.2x) from eliminating function call overhead per operation.
+- **24A.5**: Monomorphic inline cache for protocol dispatch — small improvement (~10%)
+- **24A.9**: @branchHint(.unlikely) on error/rare paths — 28-40% on tight-loop benchmarks
+- **24A.10**: Skipped (blocked by F7, startup already 10ms)
 
 ### Key findings
 
-- **fib_recursive**: 542ms → 41ms (13.2x!). Inlining int+int arithmetic in VM step
-  eliminated function call overhead for ~33M operations in fib(25).
-- **Lazy-seq chain**: 21.4s → 7.4s (2.9x). Still slow due to per-element callFunction overhead.
+- **fib_recursive**: 542ms → 28ms (19.4x!). Combined inline arithmetic + branch hints.
+- **Lazy-seq chain**: 21.4s → 6.6s (3.2x). Still slow due to per-element callFunction overhead.
   Further improvement requires inlining simple closures or JIT compilation.
-- **Transducer pipeline**: 8.4s → 3.0s (2.8x). Same callFunction overhead bottleneck.
-- **multimethod_dispatch**: 2.4s → 2.0s (1.2x). Dispatch table lookup, mostly unaffected.
+- **Transducer pipeline**: 8.4s → 2.9s (2.9x). Same callFunction overhead bottleneck.
+- **multimethod_dispatch**: 2.4s → 2.1s (1.1x). Dispatch table lookup, mostly unaffected.
 - **sieve**: GC double-free (F97) makes timing unreliable.
-- **gc_stress**: No change — allocation-bound, awaits NaN boxing (24B.1).
+- **gc_stress**: Minimal change — allocation-bound, awaits NaN boxing (24B.1).
+- **Branch hints**: Surprisingly effective on tight loops (28-40%), modest on collection-heavy code.
 
 ## 9. Success Criteria
 
-| Benchmark          | Baseline (RS) | Current    | 24A target | 24B target | Babashka | JVM warm |
+| Benchmark          | Baseline (RS) | After 24A  | 24A target | 24B target | Babashka | JVM warm |
 |--------------------|---------------|------------|------------|------------|----------|----------|
-| fib_recursive      | 542ms         | **41ms**   | <50ms ✅   | <30ms      | 152ms    | 10ms     |
-| map_filter_reduce  | 4,013ms       | 1,315ms    | <200ms     | <100ms     | --       | --       |
-| arith_loop         | 98ms          | 72ms       | <50ms      | <30ms      | --       | --       |
-| lazy_chain         | 21,375ms      | 7,425ms    | <500ms     | <200ms     | --       | --       |
-| gc_stress          | 372ms         | 351ms      | baseline   | <50% base  | --       | --       |
+| fib_recursive      | 542ms         | **28ms**   | <50ms ✅   | <30ms ✅   | 152ms    | 10ms     |
+| map_filter_reduce  | 4,013ms       | 1,281ms    | <200ms     | <100ms     | --       | --       |
+| arith_loop         | 98ms          | 61ms       | <50ms      | <30ms      | --       | --       |
+| lazy_chain         | 21,375ms      | 6,588ms    | <500ms     | <200ms     | --       | --       |
+| gc_stress          | 372ms         | 330ms      | baseline   | <50% base  | --       | --       |
 
 **Gate**: Beat Babashka on all comparable benchmarks after 24A.

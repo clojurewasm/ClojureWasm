@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A active, task 24A.10
+- Phase 24A complete, Phase 24B active, task 24B.1
 - Blockers: none
 
 ## Task Queue
@@ -22,7 +22,7 @@ Phase 24A — Speed Optimization:
 8. ~~24A.7: Constant folding~~ (skip, minimal benchmark impact)
 9. ~~24A.8: Superinstructions~~ (skip, frame overhead dominates over dispatch)
 10. ~~24A.9: @branchHint annotations (VM hot paths)~~ (done)
-11. 24A.10: AOT bytecode bootstrap (partial, blocked by F7)
+11. ~~24A.10: AOT bytecode bootstrap~~ (skip, blocked by F7, startup already 10ms)
 
 Phase 24B — Memory Optimization:
 12. 24B.1: NaN boxing (48 bytes -> 8 bytes)
@@ -34,18 +34,19 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24A.10: AOT bytecode bootstrap (partial, blocked by F7)
-- Pre-compile core.clj to bytecode at build time
-- Blocked by F7 (bytecode serialization format)
-- Evaluate feasibility, may skip if F7 too complex
+24B.1: NaN boxing (Value: 48 bytes -> 8 bytes)
+- Transform Value tagged union from 48 bytes to 8 bytes using IEEE 754 NaN boxing
+- Reference: `ClojureWasmBeta/src/base/value.zig` (NaN boxing implementation)
+- Biggest architectural change in Phase 24 — affects all code that touches Value
+- Expected: Major improvement on collection/GC benchmarks (smaller cache footprint)
 
 ## Previous Task
 
 24A.9: @branchHint annotations (VM hot paths)
-- Added @branchHint(.unlikely) to 5 locations in vm.zig:
-  - executeUntil error path, GC trigger, push() overflow, performCall frame overflow, vmBinaryArith overflow
+- Added @branchHint(.unlikely) to 5 locations in vm.zig
 - Results: 28-40% improvement on tight-loop benchmarks (fib 41→28ms, tak 36→23ms)
-- Collection-heavy benchmarks: 3-11% improvement
+- Phase 24A summary: fib 542→28ms (19.4x), lazy_chain 21.4→6.6s (3.2x)
+- 24A.10 skipped (blocked by F7, startup already 10ms)
 
 ## Handover Notes
 
