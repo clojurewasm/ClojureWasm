@@ -1634,3 +1634,38 @@ causing native stack overflow (SIGILL) for programs with enough total code.
 
 **Impact**: Fixes crash on larger Clojure programs (e.g., multimethods test suite).
 No performance impact — VM allocation is once per top-level form evaluation.
+
+## D72: NaN Boxing — Value from 48 bytes to 8 bytes
+
+**Decision**: Replace Value tagged union (48 bytes) with NaN-boxed packed struct(u64)
+(8 bytes). Use IEEE 754 quiet NaN space to encode non-float values.
+
+**Encoding** (top 16 bits of u64):
+- `< 0xFFF9`: float (raw f64 bits, canonical NaN for actual NaN results)
+- `0xFFF9`: integer (48-bit signed, float promotion for overflow)
+- `0xFFFA`: heap pointer (bits 47-40 = HeapTag, bits 39-0 = address)
+- `0xFFFB`: constant (0=nil, 1=true, 2=false)
+- `0xFFFC`: char (u21 codepoint in lower bits)
+- `0xFFFD`: builtin function pointer (48-bit fn address)
+
+**HeapTag in pointer bits**: Instead of modifying heap struct layouts, encode the
+type tag (HeapTag enum) in bits 47-40 of the pointer payload. 40-bit address space
+(1TB) is sufficient for macOS ARM64 (measured: all addresses fit in 33 bits).
+
+**Integer range**: i48 (±140 trillion). Values outside this range promote to float,
+matching existing overflow-to-float semantics from 24A.4. Boxed i64 deferred (F99).
+
+**API migration**: Value.tag() method returns Tag enum for switch dispatch.
+- `switch (value)` → `switch (value.tag())`
+- `.integer => |i|` → `.integer => { const i = value.asInteger(); }`
+- `value == .nil` → `value.isNil()` or `value == Value.nil`
+- `.{ .integer = 42 }` → `Value.initInteger(42)`
+
+**Impact**: VM stack 1.5MB → 256KB (6x). Collection elements 6x smaller.
+Dramatically better cache utilization. No heap struct modifications needed.
+
+**Status: DEFERRED**. Migration requires changing 600+ call sites across 30+ files
+(every switch on Value, every Value literal construction, every field access). Attempted
+in Phase 24B.1 — value.zig rewrite compiles but call-site migration proved too invasive
+for incremental execution. Preserve design for future dedicated migration phase.
+Prototype saved at `/tmp/vp1.zig` + `/tmp/vp2.zig`.

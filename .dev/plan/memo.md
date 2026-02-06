@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B active, task 24B.1
+- Phase 24A complete, Phase 24B active, task 24B.2 (HAMT)
 - Blockers: none
 
 ## Task Queue
@@ -25,28 +25,29 @@ Phase 24A — Speed Optimization:
 11. ~~24A.10: AOT bytecode bootstrap~~ (skip, blocked by F7, startup already 10ms)
 
 Phase 24B — Memory Optimization:
-12. 24B.1: NaN boxing (48 bytes -> 8 bytes)
+12. ~~24B.1: NaN boxing~~ (deferred — too invasive, 600+ call-site changes, see D72)
 13. 24B.2: HAMT (persistent hash array mapped trie)
 14. 24B.3: RRB-Tree (conditional, if vector bottleneck)
-15. 24B.4: GC tuning (post NaN-boxing)
+15. 24B.4: GC tuning
 
 Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24B.1: NaN boxing (Value: 48 bytes -> 8 bytes)
-- Transform Value tagged union from 48 bytes to 8 bytes using IEEE 754 NaN boxing
-- Reference: `ClojureWasmBeta/src/base/value.zig` (NaN boxing implementation)
-- Biggest architectural change in Phase 24 — affects all code that touches Value
-- Expected: Major improvement on collection/GC benchmarks (smaller cache footprint)
+24B.2: HAMT (persistent hash array mapped trie)
+- Replace PersistentArrayMap for maps with >8 entries
+- 32-way branching, O(log32 n) lookup vs current O(n) linear scan
+- Zig: @popCount for population count, packed bitmap node layout
+- Structural sharing for immutable persistent updates
+- Reference: Clojure PersistentHashMap source, Bagwell (2001) "Ideal Hash Trees"
 
 ## Previous Task
 
-24A.9: @branchHint annotations (VM hot paths)
-- Added @branchHint(.unlikely) to 5 locations in vm.zig
-- Results: 28-40% improvement on tight-loop benchmarks (fib 41→28ms, tak 36→23ms)
-- Phase 24A summary: fib 542→28ms (19.4x), lazy_chain 21.4→6.6s (3.2x)
-- 24A.10 skipped (blocked by F7, startup already 10ms)
+24B.1: NaN boxing (DEFERRED)
+- value.zig rewrite to packed struct(u64) compiled successfully
+- Migration of 30+ call-site files proved too invasive (600+ errors)
+- Decision: defer to dedicated future phase (D72 updated)
+- Phase 24A complete: fib 542→28ms (19.4x), lazy_chain 21.4→6.6s (3.2x)
 
 ## Handover Notes
 
