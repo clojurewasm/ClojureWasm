@@ -76,6 +76,11 @@ const CallFrame = struct {
     saved_ns: ?*anyopaque = null,
 };
 
+/// Active VM reference for fused reduce (builtins can call back into VM).
+/// Set during execute(), cleared on return. Enables efficient function
+/// calls from builtins without creating new VM instances.
+pub var active_vm: ?*VM = null;
+
 /// Stack-based bytecode virtual machine.
 pub const VM = struct {
     allocator: std.mem.Allocator,
@@ -172,13 +177,22 @@ pub const VM = struct {
     }
 
     pub fn execute(self: *VM) VMError!Value {
+        const saved_active = active_vm;
+        active_vm = self;
+        defer active_vm = saved_active;
+        return self.executeUntil(0);
+    }
+
+    /// Execute instructions until frame_count drops to target_frame.
+    /// Used by execute() (target=0) and callFunction() (target=caller's frame).
+    fn executeUntil(self: *VM, target_frame: usize) VMError!Value {
         var gc_counter: u8 = 0;
         while (true) {
-            if (self.stepInstruction()) |maybe_result| {
+            if (self.stepInstructionTarget(target_frame)) |maybe_result| {
                 if (maybe_result) |result| return result;
             } else |e| {
                 // Annotate error with source location from current frame
-                if (self.frame_count > 0) {
+                if (self.frame_count > target_frame) {
                     const f = &self.frames[self.frame_count - 1];
                     if (f.lines.len > 0 and f.ip > 0) {
                         const line = f.lines[f.ip - 1];
@@ -209,6 +223,32 @@ pub const VM = struct {
         }
     }
 
+    /// Call a function value on the current VM, reusing its stack.
+    /// This avoids creating a new VM instance (which is ~500KB).
+    /// Used by fused reduce and other builtins that need efficient callbacks.
+    pub fn callFunction(self: *VM, fn_val: Value, args: []const Value) VMError!Value {
+        const saved_sp = self.sp;
+        const target_frame = self.frame_count;
+        try self.push(fn_val);
+        for (args) |arg| {
+            try self.push(arg);
+        }
+        try self.performCall(@intCast(args.len));
+
+        // Check if a frame was pushed (fn_val) or result is already on stack (builtins)
+        if (self.frame_count > target_frame) {
+            // A frame was pushed — execute until it returns
+            const result = try self.executeUntil(target_frame);
+            self.sp = saved_sp;
+            return result;
+        } else {
+            // Result already on stack (builtins, keywords, vectors, maps, etc.)
+            const result = self.pop();
+            self.sp = saved_sp;
+            return result;
+        }
+    }
+
     /// GC safe point: trigger collection if allocation threshold exceeded.
     fn maybeTriggerGc(self: *VM) void {
         const gc = self.gc orelse return;
@@ -233,7 +273,7 @@ pub const VM = struct {
 
     /// Execute one instruction. Returns a Value when execution is complete
     /// (ret from top-level or end-of-code), null to continue.
-    fn stepInstruction(self: *VM) VMError!?Value {
+    fn stepInstructionTarget(self: *VM, target_frame: usize) VMError!?Value {
         const frame = &self.frames[self.frame_count - 1];
         if (frame.ip >= frame.code.len) {
             return if (self.sp > 0) self.pop() else .nil;
@@ -308,7 +348,7 @@ pub const VM = struct {
                     }
                 }
                 self.frame_count -= 1;
-                if (self.frame_count == 0) return result;
+                if (self.frame_count == target_frame) return result;
                 // Restore caller's stack: base-1 removes the fn_val slot
                 self.sp = base - 1;
                 try self.push(result);

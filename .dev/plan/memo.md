@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A active, task 24A.2
+- Phase 24A active, task 24A.4
 - Blockers: none
 
 ## Task Queue
@@ -14,8 +14,8 @@ Session handover document. Read at session start.
 Phase 24A — Speed Optimization:
 1. ~~24A.0: Baseline measurement~~ (done)
 2. ~~24A.1: VM dispatch optimization~~ (done)
-3. 24A.2: Stack argument buffer (stack-local 1-4 args)
-4. 24A.3: Fused reduce (lazy-seq chain collapse)
+3. ~~24A.2: Stack argument buffer~~ (done)
+4. ~~24A.3: Fused reduce (lazy-seq chain collapse)~~ (done)
 5. 24A.4: Arithmetic fast-path widening (@addWithOverflow)
 6. 24A.5: Inline caching (protocol dispatch IC)
 7. 24A.6: Hash table bitmask optimization
@@ -34,19 +34,21 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24A.2: Stack argument buffer (stack-local 1-4 args)
-- Current: Every `call` allocates args on GC allocator
-- Target: Stack-local buffer for 1-4 args, zero-cost in Zig
-- Beta reference: `call_args_buf` eliminated 1M allocs in reduce
-- Expected: 2-5x on reduce-heavy benchmarks
+24A.4: Arithmetic fast-path widening (@addWithOverflow)
+- Verify int+int fast path in add/sub/mul opcodes
+- Add @addWithOverflow for overflow detection
+- Expected: 10-30% on computation benchmarks
 
 ## Previous Task
 
-24A.1: VM dispatch optimization
-- Converted performCall() from if-else chain to switch dispatch (jump table)
-- Extracted callFnVal() as separate function for fn_val path
-- Batched GC safe point from every instruction to every 256 instructions
-- Minimal Debug improvement (branch prediction benefits show in Release)
+24A.3: Fused reduce (lazy-seq chain collapse)
+- LazySeq Meta: tagged union (lazy_map, lazy_filter, lazy_take, range, iterate)
+- 6 new builtins: __zig-lazy-map/filter/take/range/iterate/reduce
+- fusedReduce: walks meta chain, extracts transforms + base source, iterates directly
+- VM.callFunction: reuses active VM stack for callbacks (avoids 500KB allocation per call)
+- active_vm module-level variable + executeUntil(target_frame) parameterization
+- core.clj map/filter/take/range/iterate/reduce redirected to Zig builtins
+- N=50000 verified correct on both VM + TreeWalk
 
 ## Handover Notes
 

@@ -218,6 +218,334 @@ fn allIntegers(args: []const Value) bool {
 }
 
 // ============================================================
+// Fused reduce — lazy-seq chain optimization (24A.3)
+// ============================================================
+
+const LazySeq = value_mod.LazySeq;
+const Cons = value_mod.Cons;
+const Reduced = value_mod.Reduced;
+const bootstrap = @import("../bootstrap.zig");
+const collections_builtin = @import("collections.zig");
+const vm_mod = @import("../../native/vm/vm.zig");
+
+/// Call a function efficiently: use active VM if available (avoids ~500KB VM allocation),
+/// otherwise fall back to bootstrap.callFnVal.
+fn callFn(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    if (vm_mod.active_vm) |vm| {
+        return vm.callFunction(fn_val, args) catch |e| {
+            return @as(anyerror, @errorCast(e));
+        };
+    }
+    return bootstrap.callFnVal(allocator, fn_val, args);
+}
+
+/// (__zig-lazy-map f coll) — creates a meta-annotated lazy-seq for map.
+pub fn zigLazyMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-map", .{args.len});
+    const meta = try allocator.create(LazySeq.Meta);
+    meta.* = .{ .lazy_map = .{ .f = args[0], .source = args[1] } };
+    const ls = try allocator.create(LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+    return Value{ .lazy_seq = ls };
+}
+
+/// (__zig-lazy-filter pred coll) — creates a meta-annotated lazy-seq for filter.
+pub fn zigLazyFilterFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-filter", .{args.len});
+    const meta = try allocator.create(LazySeq.Meta);
+    meta.* = .{ .lazy_filter = .{ .pred = args[0], .source = args[1] } };
+    const ls = try allocator.create(LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+    return Value{ .lazy_seq = ls };
+}
+
+/// (__zig-lazy-take n coll) — creates a meta-annotated lazy-seq for take.
+pub fn zigLazyTakeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-take", .{args.len});
+    const n_val = args[0];
+    const n: usize = switch (n_val) {
+        .integer => |i| if (i <= 0) 0 else @intCast(i),
+        .float => |f| if (f <= 0) 0 else @intFromFloat(f),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-take requires numeric n", .{}),
+    };
+    if (n == 0) return Value.nil;
+    const meta = try allocator.create(LazySeq.Meta);
+    meta.* = .{ .lazy_take = .{ .n = n, .source = args[1] } };
+    const ls = try allocator.create(LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+    return Value{ .lazy_seq = ls };
+}
+
+/// (__zig-lazy-range start end step) — creates a meta-annotated lazy-seq for range.
+pub fn zigLazyRangeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-range", .{args.len});
+    const start = switch (args[0]) {
+        .integer => |i| i,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-range requires integer args", .{}),
+    };
+    const end_val = switch (args[1]) {
+        .integer => |i| i,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-range requires integer args", .{}),
+    };
+    const step = switch (args[2]) {
+        .integer => |i| i,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-range requires integer args", .{}),
+    };
+    // Empty range check
+    if (step == 0 or (step > 0 and start >= end_val) or (step < 0 and start <= end_val))
+        return Value.nil;
+    const meta = try allocator.create(LazySeq.Meta);
+    meta.* = .{ .range = .{ .current = start, .end = end_val, .step = step } };
+    const ls = try allocator.create(LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+    return Value{ .lazy_seq = ls };
+}
+
+/// (__zig-lazy-iterate f x) — creates a meta-annotated lazy-seq for iterate.
+pub fn zigLazyIterateFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-iterate", .{args.len});
+    const meta = try allocator.create(LazySeq.Meta);
+    meta.* = .{ .iterate = .{ .f = args[0], .current = args[1] } };
+    const ls = try allocator.create(LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+    return Value{ .lazy_seq = ls };
+}
+
+/// (__zig-reduce f init coll) — fused reduce with lazy-seq chain optimization.
+/// Detects meta-annotated lazy-seq chains and fuses map/filter/take/range
+/// into a single pass without intermediate lazy-seq allocations.
+pub fn zigReduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-reduce", .{args.len});
+    const f = args[0];
+    const init = args[1];
+    const coll = args[2];
+
+    // Try fused path for meta-annotated lazy-seq chains
+    if (coll == .lazy_seq) {
+        if (coll.lazy_seq.meta != null) {
+            return fusedReduce(allocator, f, init, coll);
+        }
+    }
+
+    // Direct iteration for concrete collections
+    return reduceGeneric(allocator, f, init, coll);
+}
+
+const Transform = struct {
+    kind: enum { map, filter },
+    fn_val: Value,
+};
+
+/// Fused reduce: walk the lazy-seq meta chain, extract transforms + take + base source,
+/// then iterate the base source applying transforms inline.
+fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerror!Value {
+    // Walk the chain to extract: transforms[], take_n, base_source
+    var transforms: [16]Transform = undefined;
+    var transform_count: usize = 0;
+    var take_n: ?usize = null;
+    var current = coll;
+
+    while (current == .lazy_seq) {
+        const ls = current.lazy_seq;
+        const m = ls.meta orelse break;
+        switch (m.*) {
+            .lazy_map => |lm| {
+                if (transform_count >= 16) break;
+                transforms[transform_count] = .{ .kind = .map, .fn_val = lm.f };
+                transform_count += 1;
+                current = lm.source;
+            },
+            .lazy_filter => |lf| {
+                if (transform_count >= 16) break;
+                transforms[transform_count] = .{ .kind = .filter, .fn_val = lf.pred };
+                transform_count += 1;
+                current = lf.source;
+            },
+            .lazy_take => |lt| {
+                if (take_n != null) break; // nested takes not supported
+                take_n = lt.n;
+                current = lt.source;
+            },
+            .range, .iterate => break, // base source found
+        }
+    }
+
+    // If no transforms and no take, fallback to generic reduce
+    if (transform_count == 0 and take_n == null) {
+        return reduceGeneric(allocator, f, init, current);
+    }
+
+    // Fused iteration
+    var acc = init;
+    var remaining: usize = take_n orelse std.math.maxInt(usize);
+    var call_buf: [2]Value = undefined;
+
+    // Detect base source type
+    if (current == .lazy_seq) {
+        if (current.lazy_seq.meta) |m| {
+            switch (m.*) {
+                .range => |r| {
+                    // Direct range iteration (no lazy-seq allocation)
+                    var cur = r.current;
+                    while (remaining > 0) {
+                        if ((r.step > 0 and cur >= r.end) or (r.step < 0 and cur <= r.end)) break;
+                        var elem: Value = .{ .integer = cur };
+                        var skip = false;
+
+                        // Apply transforms in reverse (outermost was pushed first)
+                        var ti: usize = transform_count;
+                        while (ti > 0) {
+                            ti -= 1;
+                            switch (transforms[ti].kind) {
+                                .filter => {
+                                    const pred_result = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                                    if (!pred_result.isTruthy()) {
+                                        skip = true;
+                                        break;
+                                    }
+                                },
+                                .map => {
+                                    elem = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                                },
+                            }
+                        }
+
+                        cur += r.step;
+                        if (skip) continue;
+
+                        call_buf[0] = acc;
+                        call_buf[1] = elem;
+                        acc = try callFn(allocator,f, &call_buf);
+                        if (acc == .reduced) return acc.reduced.value;
+                        remaining -= 1;
+                    }
+                    return acc;
+                },
+                .iterate => |it| {
+                    // Direct iterate source
+                    var iter_cur = it.current;
+                    while (remaining > 0) {
+                        var elem = iter_cur;
+                        var skip = false;
+
+                        var ti: usize = transform_count;
+                        while (ti > 0) {
+                            ti -= 1;
+                            switch (transforms[ti].kind) {
+                                .filter => {
+                                    const pred_result = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                                    if (!pred_result.isTruthy()) {
+                                        skip = true;
+                                        break;
+                                    }
+                                },
+                                .map => {
+                                    elem = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                                },
+                            }
+                        }
+
+                        iter_cur = try callFn(allocator,it.f, &[1]Value{iter_cur});
+                        if (skip) continue;
+
+                        call_buf[0] = acc;
+                        call_buf[1] = elem;
+                        acc = try callFn(allocator,f, &call_buf);
+                        if (acc == .reduced) return acc.reduced.value;
+                        remaining -= 1;
+                    }
+                    return acc;
+                },
+                else => {},
+            }
+        }
+    }
+
+    // Fallback: iterate base source via seq/first/rest with transforms applied
+    var seq_cur = current;
+    while (remaining > 0) {
+        const seq_val = try collections_builtin.seqFn(allocator, &[1]Value{seq_cur});
+        if (seq_val == .nil) break;
+        var elem = try collections_builtin.firstFn(allocator, &[1]Value{seq_val});
+        seq_cur = try collections_builtin.restFn(allocator, &[1]Value{seq_val});
+        var skip = false;
+
+        var ti: usize = transform_count;
+        while (ti > 0) {
+            ti -= 1;
+            switch (transforms[ti].kind) {
+                .filter => {
+                    const pred_result = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                    if (!pred_result.isTruthy()) {
+                        skip = true;
+                        break;
+                    }
+                },
+                .map => {
+                    elem = try callFn(allocator,transforms[ti].fn_val, &[1]Value{elem});
+                },
+            }
+        }
+
+        if (skip) continue;
+
+        call_buf[0] = acc;
+        call_buf[1] = elem;
+        acc = try callFn(allocator,f, &call_buf);
+        if (acc == .reduced) return acc.reduced.value;
+        remaining -= 1;
+    }
+
+    return acc;
+}
+
+/// Generic reduce: iterate any collection via seq/first/rest.
+fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyerror!Value {
+    var acc = init;
+    var call_buf: [2]Value = undefined;
+
+    // Fast path for vectors and lists: direct slice iteration
+    switch (coll) {
+        .vector => |v| {
+            for (v.items) |item| {
+                call_buf[0] = acc;
+                call_buf[1] = item;
+                acc = try callFn(allocator,f, &call_buf);
+                if (acc == .reduced) return acc.reduced.value;
+            }
+            return acc;
+        },
+        .list => |l| {
+            for (l.items) |item| {
+                call_buf[0] = acc;
+                call_buf[1] = item;
+                acc = try callFn(allocator,f, &call_buf);
+                if (acc == .reduced) return acc.reduced.value;
+            }
+            return acc;
+        },
+        .nil => return acc,
+        else => {},
+    }
+
+    // Generic path: seq/first/rest iteration
+    var seq_cur = coll;
+    while (true) {
+        const seq_val = try collections_builtin.seqFn(allocator, &[1]Value{seq_cur});
+        if (seq_val == .nil) break;
+        const elem = try collections_builtin.firstFn(allocator, &[1]Value{seq_val});
+        seq_cur = try collections_builtin.restFn(allocator, &[1]Value{seq_val});
+
+        call_buf[0] = acc;
+        call_buf[1] = elem;
+        acc = try callFn(allocator,f, &call_buf);
+        if (acc == .reduced) return acc.reduced.value;
+    }
+
+    return acc;
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -276,6 +604,49 @@ pub const builtins = [_]BuiltinDef{
         .func = &valsFn,
         .doc = "Returns a sequence of the map's values, in the same order as (seq map).",
         .arglists = "([map])",
+        .added = "1.0",
+    },
+    // Fused reduce builtins (24A.3) — internal, called by core.clj
+    .{
+        .name = "__zig-lazy-map",
+        .func = &zigLazyMapFn,
+        .doc = "Internal: creates meta-annotated lazy-seq for map (fused reduce).",
+        .arglists = "([f coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__zig-lazy-filter",
+        .func = &zigLazyFilterFn,
+        .doc = "Internal: creates meta-annotated lazy-seq for filter (fused reduce).",
+        .arglists = "([pred coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__zig-lazy-take",
+        .func = &zigLazyTakeFn,
+        .doc = "Internal: creates meta-annotated lazy-seq for take (fused reduce).",
+        .arglists = "([n coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__zig-lazy-range",
+        .func = &zigLazyRangeFn,
+        .doc = "Internal: creates meta-annotated lazy-seq for range (fused reduce).",
+        .arglists = "([start end step])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__zig-lazy-iterate",
+        .func = &zigLazyIterateFn,
+        .doc = "Internal: creates meta-annotated lazy-seq for iterate (fused reduce).",
+        .arglists = "([f x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__zig-reduce",
+        .func = &zigReduceFn,
+        .doc = "Internal: fused reduce with lazy-seq chain optimization.",
+        .arglists = "([f init coll])",
         .added = "1.0",
     },
 };

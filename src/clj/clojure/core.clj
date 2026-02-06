@@ -64,19 +64,7 @@
        ([result input]
         (rf result (f input))))))
   ([f coll]
-   (lazy-seq
-    (let [s (seq coll)]
-      (when s
-        (if (chunked-seq? s)
-          (let [c (chunk-first s)
-                size (count c)
-                b (chunk-buffer size)]
-            (loop [i 0]
-              (when (< i size)
-                (chunk-append b (f (nth c i)))
-                (recur (inc i))))
-            (chunk-cons (chunk b) (map f (chunk-rest s))))
-          (cons (f (first s)) (map f (rest s)))))))))
+   (__zig-lazy-map f coll)))
 
 (defn filter
   ([pred]
@@ -89,38 +77,16 @@
           (rf result input)
           result)))))
   ([pred coll]
-   (lazy-seq
-    (let [s (seq coll)]
-      (when s
-        (if (chunked-seq? s)
-          (let [c (chunk-first s)
-                size (count c)
-                b (chunk-buffer size)]
-            (loop [i 0]
-              (when (< i size)
-                (let [v (nth c i)]
-                  (when (pred v)
-                    (chunk-append b v)))
-                (recur (inc i))))
-            (chunk-cons (chunk b) (filter pred (chunk-rest s))))
-          (let [f (first s) r (rest s)]
-            (if (pred f)
-              (cons f (filter pred r))
-              (filter pred r)))))))))
+   (__zig-lazy-filter pred coll)))
 
 (defn reduce
   ([f coll]
    (let [s (seq coll)]
      (if s
-       (reduce f (first s) (next s))
+       (__zig-reduce f (first s) (next s))
        (f))))
   ([f init coll]
-   (loop [acc init s (seq coll)]
-     (if (reduced? acc)
-       (unreduced acc)
-       (if s
-         (recur (f acc (first s)) (next s))
-         acc)))))
+   (__zig-reduce f init coll)))
 
 ;; vswap! must be defined before transducer forms that use it
 (defmacro vswap! [vol f & args]
@@ -143,11 +109,7 @@
               (ensure-reduced res)
               res)))))))
   ([n coll]
-   (lazy-seq
-    (when (pos? n)
-      (let [s (seq coll)]
-        (when s
-          (cons (first s) (take (dec n) (rest s)))))))))
+   (__zig-lazy-take n coll)))
 
 (defn drop
   ([n]
@@ -760,20 +722,24 @@
      (cat (concat x y) zs))))
 
 (defn iterate [f x]
-  (lazy-seq (cons x (iterate f (f x)))))
+  (__zig-lazy-iterate f x))
 
-;; Lazy range — shadows eager builtin for lazy seq support
+;; Lazy range — uses Zig meta-annotated lazy-seq for fused reduce optimization.
+;; Falls back to iterate for 0-arity (infinite range).
+;; Non-integer args fall back to lazy-seq (rare case).
 (defn range
   ([] (iterate inc 0))
   ([end] (range 0 end 1))
   ([start end] (range start end 1))
   ([start end step]
-   (lazy-seq
-    (cond
-      (and (pos? step) (< start end))
-      (cons start (range (+ start step) end step))
-      (and (neg? step) (> start end))
-      (cons start (range (+ start step) end step))))))
+   (if (and (integer? start) (integer? end) (integer? step))
+     (__zig-lazy-range start end step)
+     (lazy-seq
+      (cond
+        (and (pos? step) (< start end))
+        (cons start (range (+ start step) end step))
+        (and (neg? step) (> start end))
+        (cons start (range (+ start step) end step)))))))
 
 (defn repeat
   ([x] (lazy-seq (cons x (repeat x))))

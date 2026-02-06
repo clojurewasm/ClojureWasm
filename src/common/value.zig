@@ -252,18 +252,117 @@ pub const Cons = struct {
 /// Lazy sequence — thunk-based deferred evaluation with caching.
 /// The thunk is a zero-arg function that returns a seq (list/nil/cons).
 /// Once realized, the result is cached and the thunk is discarded.
+/// Optional `meta` field carries structural metadata for fused reduce (24A.3).
 pub const LazySeq = struct {
     thunk: ?Value, // fn of 0 args, null after realization
     realized: ?Value, // cached result, null before realization
+    meta: ?*const Meta = null, // structural metadata for fused reduce
 
-    /// Realize this lazy seq by calling the thunk via bootstrap.callFnVal.
+    /// Structural metadata for lazy-seq chain fusion.
+    /// When present, realize() uses this instead of thunk evaluation,
+    /// and fused reduce can walk the chain without intermediate allocations.
+    pub const Meta = union(enum) {
+        lazy_map: struct { f: Value, source: Value },
+        lazy_filter: struct { pred: Value, source: Value },
+        lazy_take: struct { n: usize, source: Value },
+        range: struct { current: i64, end: i64, step: i64 },
+        iterate: struct { f: Value, current: Value },
+    };
+
+    /// Realize this lazy seq by calling the thunk via bootstrap.callFnVal,
+    /// or by computing from structural metadata.
     pub fn realize(self: *LazySeq, allocator: std.mem.Allocator) anyerror!Value {
         if (self.realized) |r| return r;
+
+        if (self.meta) |m| {
+            const result = try realizeMeta(allocator, m);
+            self.realized = result;
+            return result;
+        }
+
         const thunk = self.thunk orelse return .nil;
         const result = try bootstrap.callFnVal(allocator, thunk, &.{});
         self.realized = result;
         self.thunk = null;
         return result;
+    }
+
+    /// Compute the realized value from structural metadata.
+    /// Returns a cons cell (first + rest lazy-seq) or nil.
+    fn realizeMeta(allocator: std.mem.Allocator, m: *const Meta) anyerror!Value {
+        const coll_builtins = @import("builtin/collections.zig");
+        switch (m.*) {
+            .lazy_map => |lm| {
+                const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lm.source});
+                if (seq_val == .nil) return .nil;
+                const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                const mapped = try bootstrap.callFnVal(allocator, lm.f, &[1]Value{first_elem});
+                const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                const rest_meta = try allocator.create(Meta);
+                rest_meta.* = .{ .lazy_map = .{ .f = lm.f, .source = rest_source } };
+                const rest_ls = try allocator.create(LazySeq);
+                rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                const cons_cell = try allocator.create(Cons);
+                cons_cell.* = .{ .first = mapped, .rest = .{ .lazy_seq = rest_ls } };
+                return Value{ .cons = cons_cell };
+            },
+            .lazy_filter => |lf| {
+                var current = lf.source;
+                while (true) {
+                    const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
+                    if (seq_val == .nil) return .nil;
+                    const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                    const pred_result = try bootstrap.callFnVal(allocator, lf.pred, &[1]Value{elem});
+                    if (pred_result.isTruthy()) {
+                        const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                        const rest_meta = try allocator.create(Meta);
+                        rest_meta.* = .{ .lazy_filter = .{ .pred = lf.pred, .source = rest_source } };
+                        const rest_ls = try allocator.create(LazySeq);
+                        rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                        const cons_cell = try allocator.create(Cons);
+                        cons_cell.* = .{ .first = elem, .rest = .{ .lazy_seq = rest_ls } };
+                        return Value{ .cons = cons_cell };
+                    }
+                    current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                }
+            },
+            .lazy_take => |lt| {
+                if (lt.n == 0) return .nil;
+                const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lt.source});
+                if (seq_val == .nil) return .nil;
+                const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                const rest_meta = try allocator.create(Meta);
+                rest_meta.* = .{ .lazy_take = .{ .n = lt.n - 1, .source = rest_source } };
+                const rest_ls = try allocator.create(LazySeq);
+                rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                const cons_cell = try allocator.create(Cons);
+                cons_cell.* = .{ .first = first_elem, .rest = .{ .lazy_seq = rest_ls } };
+                return Value{ .cons = cons_cell };
+            },
+            .range => |r| {
+                if ((r.step > 0 and r.current >= r.end) or
+                    (r.step < 0 and r.current <= r.end) or
+                    (r.step == 0)) return .nil;
+                const rest_meta = try allocator.create(Meta);
+                rest_meta.* = .{ .range = .{ .current = r.current + r.step, .end = r.end, .step = r.step } };
+                const rest_ls = try allocator.create(LazySeq);
+                rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                const cons_cell = try allocator.create(Cons);
+                cons_cell.* = .{ .first = .{ .integer = r.current }, .rest = .{ .lazy_seq = rest_ls } };
+                return Value{ .cons = cons_cell };
+            },
+            .iterate => |it| {
+                const next_val = try bootstrap.callFnVal(allocator, it.f, &[1]Value{it.current});
+                const rest_meta = try allocator.create(Meta);
+                rest_meta.* = .{ .iterate = .{ .f = it.f, .current = next_val } };
+                const rest_ls = try allocator.create(LazySeq);
+                rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                const cons_cell = try allocator.create(Cons);
+                cons_cell.* = .{ .first = it.current, .rest = .{ .lazy_seq = rest_ls } };
+                return Value{ .cons = cons_cell };
+            },
+        }
     }
 };
 

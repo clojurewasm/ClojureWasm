@@ -189,7 +189,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
 test "all_builtins count" {
     // 258 + 8 (chunk) + 2 (sorted-map-by, sorted-set-by) + 2 (subseq, rsubseq) + 3 (ns-resolve, ns-aliases, ns-refers)
-    try std.testing.expectEqual(275, builtin_count);
+    try std.testing.expectEqual(281, builtin_count);
 }
 
 test "comptime lookup finds +" {
