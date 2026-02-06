@@ -48,10 +48,11 @@ Master optimization plan for ClojureWasm.
 
 ### Measurement methodology
 
+- **Build mode: ReleaseSafe** (mandatory, never use Debug or ReleaseFast)
+- **Backend: VM** (primary benchmark target)
 - `hyperfine` for wall-clock, `time -l` for RSS
-- Both VM and TreeWalk
 - Comparison: Babashka, JVM Clojure (cold+warm), C, Zig
-- Record baseline with `--record --version="Pre-Phase24"`
+- Command: `bash bench/run_bench.sh --release-safe --backend=vm --record --version="..."`
 
 ## 3. Phase 24A: Speed Optimization
 
@@ -215,47 +216,58 @@ If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
 - Fallback paths: keep readable generic path alongside fast path
 - D## entries for each optimization trade-off decision
 
-## 8. Actual Baseline (Pre-Phase24, VM, ReleaseFast, Apple M4 Pro)
+## 8. Actual Baseline (Pre-Phase24, VM, ReleaseSafe, Apple M4 Pro)
 
-| Benchmark               | Release (ms) | Category    | Priority |
-|-------------------------|-------------|-------------|----------|
-| fib_loop                | 34          | computation | low      |
-| protocol_dispatch (10K) | 35          | dispatch    | low      |
-| tak                     | 37          | computation | low      |
-| keyword_lookup (100K)   | 41          | collections | low      |
-| map_ops                 | 41          | collections | low      |
-| nqueens                 | 46          | hof         | low      |
-| arith_loop              | 79          | computation | medium   |
-| nested_update (10K)     | 243         | collections | medium   |
-| gc_stress (100K)        | 350         | gc          | medium   |
-| vector_ops              | 353         | collections | medium   |
-| list_build              | 353         | collections | medium   |
-| string_ops (100K)       | 431         | string      | medium   |
-| fib_recursive           | 487         | computation | HIGH     |
-| real_workload (10K)     | 1,032       | composite   | HIGH     |
-| sieve                   | 1,714       | hof         | HIGH     |
-| multimethod_dispatch(10K)| 1,750      | dispatch    | HIGH     |
-| map_filter_reduce       | 3,565       | collections | HIGH     |
-| transduce (10K)         | 7,882       | sequences   | HIGH     |
-| lazy_chain (10K)        | 19,386      | sequences   | HIGH     |
+**Standard build mode: ReleaseSafe** (all benchmarks use this consistently).
+
+| Benchmark                | Baseline (ms) | After 24A.3 (ms) | Speedup | Category    |
+|--------------------------|---------------|-------------------|---------|-------------|
+| atom_swap                | 51            | 30                | 1.7x    | concurrency |
+| fib_loop                 | 56            | 31                | 1.8x    | computation |
+| protocol_dispatch (10K)  | 52            | 30                | 1.7x    | dispatch    |
+| tak                      | 53            | 33                | 1.6x    | computation |
+| keyword_lookup (100K)    | 59            | 36                | 1.6x    | collections |
+| map_ops                  | 62            | 37                | 1.7x    | collections |
+| nqueens                  | 61            | 42                | 1.5x    | hof         |
+| arith_loop               | 98            | 76                | 1.3x    | computation |
+| nested_update (10K)      | 292           | 140               | 2.1x    | collections |
+| gc_stress (100K)         | 372           | 372               | 1.0x    | gc          |
+| vector_ops               | 426           | 188               | 2.3x    | collections |
+| list_build               | 420           | 183               | 2.3x    | collections |
+| string_ops (100K)        | 446           | 414               | 1.1x    | string      |
+| fib_recursive            | 542           | 502               | 1.1x    | computation |
+| real_workload (10K)      | 1,286         | 509               | 2.5x    | composite   |
+| sieve                    | 2,152 (F97)   | 40 (F97)          | --      | hof         |
+| multimethod_dispatch(10K)| 2,373         | 2,150             | 1.1x    | dispatch    |
+| map_filter_reduce        | 4,013         | 1,287             | 3.1x    | collections |
+| transduce (10K)          | 8,409         | 3,209             | 2.6x    | sequences   |
+| lazy_chain (10K)         | 21,375        | 7,356             | 2.9x    | sequences   |
+
+### Optimizations applied (24A.1-24A.3)
+
+- **24A.1**: Switch dispatch + batched GC (general 1.5-1.8x improvement)
+- **24A.2**: Stack argument buffer for TreeWalk (reduces heap alloc in interpreter)
+- **24A.3**: Fused reduce (lazy-seq chain collapse) — eliminates intermediate lazy-seq
+  allocations but still requires per-element VM callFunction for closures
 
 ### Key findings
 
-- **Lazy-seq chain is the #1 bottleneck** (19.4s for 10K take). Fused reduce (24A.3) is critical.
-- **Transducer pipeline** (7.9s for 10K) should be much faster than lazy chain but isn't.
-- **multimethod_dispatch** is 50x slower than protocol_dispatch per call.
-- **fib_recursive** is anomalously slow in ReleaseFast (487ms > Debug 205ms). Needs investigation.
-- **sieve** triggers GC double-free warnings and is very slow (1.7s). GC bug (F97).
-- **map_filter_reduce** (3.6s) same root cause as lazy_chain — lazy-seq overhead.
+- **Lazy-seq chain**: 21.4s → 7.4s (2.9x). Still slow due to per-element callFunction overhead.
+  Further improvement requires inlining simple closures or JIT compilation.
+- **Transducer pipeline**: 8.4s → 3.2s (2.6x). Same callFunction overhead bottleneck.
+- **multimethod_dispatch**: 2.4s → 2.2s (1.1x). Dispatch table lookup, not affected by 24A.1-3.
+- **fib_recursive**: 542ms → 502ms (1.1x). Dominated by recursive call overhead.
+- **sieve**: GC double-free (F97) makes timing unreliable. Reads as 40ms but likely wrong.
+- **gc_stress**: No change — allocation-bound, awaits NaN boxing (24B.1).
 
 ## 9. Success Criteria
 
-| Benchmark          | Baseline (Release) | 24A target | 24B target | Babashka | JVM warm |
-|--------------------|-------------------|------------|------------|----------|----------|
-| fib_recursive      | 487ms             | <50ms      | <30ms      | 152ms    | 10ms     |
-| map_filter_reduce  | 3,565ms           | <200ms     | <100ms     | --       | --       |
-| arith_loop         | 79ms              | <50ms      | <30ms      | --       | --       |
-| lazy_chain         | 19,386ms          | <500ms     | <200ms     | --       | --       |
-| gc_stress          | 350ms             | baseline   | <50% base  | --       | --       |
+| Benchmark          | Baseline (RS) | Current    | 24A target | 24B target | Babashka | JVM warm |
+|--------------------|---------------|------------|------------|------------|----------|----------|
+| fib_recursive      | 542ms         | 502ms      | <50ms      | <30ms      | 152ms    | 10ms     |
+| map_filter_reduce  | 4,013ms       | 1,287ms    | <200ms     | <100ms     | --       | --       |
+| arith_loop         | 98ms          | 76ms       | <50ms      | <30ms      | --       | --       |
+| lazy_chain         | 21,375ms      | 7,356ms    | <500ms     | <200ms     | --       | --       |
+| gc_stress          | 372ms         | 372ms      | baseline   | <50% base  | --       | --       |
 
 **Gate**: Beat Babashka on all comparable benchmarks after 24A.

@@ -1,7 +1,9 @@
 # ClojureWasm Benchmark Results (v2)
 #
 # Schema: env + benchmarks (20) + latest + history
-# Measurement: bash bench/run_bench.sh --hyperfine
+# Build: ReleaseSafe (mandatory for all benchmarks)
+# Backend: VM
+# Measurement: bash bench/run_bench.sh --release-safe --backend=vm
 
 env:
   cpu: Apple M4 Pro
@@ -119,188 +121,94 @@ benchmarks:
     clj_file: "bench/benchmarks/20_real_workload/bench.clj"
 previous:
   date: "2026-02-06"
-  version: Pre-Phase24 VM
+  version: Pre-Phase24 VM ReleaseSafe
   results:
-    gc_stress:
-      clojurewasm:
-        time_ms: 3811
-        mem_mb: null
-    arith_loop:
-      clojurewasm:
-        time_ms: 486
-        mem_mb: null
-    map_filter_reduce:
-      clojurewasm:
-        time_ms: 10371
-        mem_mb: null
-    nested_update:
-      clojurewasm:
-        time_ms: 3904
-        mem_mb: null
-    transduce:
-      clojurewasm:
-        time_ms: 11240
-        mem_mb: null
-    keyword_lookup:
-      clojurewasm:
-        time_ms: 146
-        mem_mb: null
-    vector_ops:
-      clojurewasm:
-        time_ms: 2925
-        mem_mb: null
-    protocol_dispatch:
-      clojurewasm:
-        time_ms: 102
-        mem_mb: null
-    multimethod_dispatch:
-      clojurewasm:
-        time_ms: 73616
-        mem_mb: null
     fib_recursive:
-      clojurewasm:
-        time_ms: 205
-        mem_mb: null
-    map_ops:
-      clojurewasm:
-        time_ms: 160
-        mem_mb: null
-    real_workload:
-      clojurewasm:
-        time_ms: 15865
-        mem_mb: null
-    nqueens:
-      clojurewasm:
-        time_ms: 450
-        mem_mb: null
+      clojurewasm: {time_ms: 542}
     fib_loop:
-      clojurewasm:
-        time_ms: 97
-        mem_mb: null
-    list_build:
-      clojurewasm:
-        time_ms: 2902
-        mem_mb: null
-    string_ops:
-      clojurewasm:
-        time_ms: 2104
-        mem_mb: null
-    lazy_chain:
-      clojurewasm:
-        time_ms: 32507
-        mem_mb: null
-    sieve:
-      clojurewasm:
-        time_ms: 261
-        mem_mb: 1.0
-    atom_swap:
-      clojurewasm:
-        time_ms: 107
-        mem_mb: null
+      clojurewasm: {time_ms: 56}
     tak:
-      clojurewasm:
-        time_ms: 125
-        mem_mb: null
+      clojurewasm: {time_ms: 53}
+    arith_loop:
+      clojurewasm: {time_ms: 98}
+    map_filter_reduce:
+      clojurewasm: {time_ms: 4013}
+    vector_ops:
+      clojurewasm: {time_ms: 426}
+    map_ops:
+      clojurewasm: {time_ms: 62}
+    list_build:
+      clojurewasm: {time_ms: 420}
+    sieve:
+      clojurewasm: {time_ms: 2152, note: "F97 GC double-free"}
+    nqueens:
+      clojurewasm: {time_ms: 61}
+    atom_swap:
+      clojurewasm: {time_ms: 51}
+    gc_stress:
+      clojurewasm: {time_ms: 372}
+    lazy_chain:
+      clojurewasm: {time_ms: 21375}
+    transduce:
+      clojurewasm: {time_ms: 8409}
+    keyword_lookup:
+      clojurewasm: {time_ms: 59}
+    protocol_dispatch:
+      clojurewasm: {time_ms: 52}
+    nested_update:
+      clojurewasm: {time_ms: 292}
+    string_ops:
+      clojurewasm: {time_ms: 446}
+    multimethod_dispatch:
+      clojurewasm: {time_ms: 2373}
+    real_workload:
+      clojurewasm: {time_ms: 1286}
 latest:
   date: "2026-02-06"
-  version: Pre-Phase24 VM ReleaseFast
+  version: After 24A.3 VM ReleaseSafe
   results:
-    gc_stress:
-      clojurewasm:
-        time_ms: 350
-        mem_mb: null
-    arith_loop:
-      clojurewasm:
-        time_ms: 79
-        mem_mb: null
-    map_filter_reduce:
-      clojurewasm:
-        time_ms: 3565
-        mem_mb: null
-    nested_update:
-      clojurewasm:
-        time_ms: 243
-        mem_mb: null
-    transduce:
-      clojurewasm:
-        time_ms: 7882
-        mem_mb: null
-    keyword_lookup:
-      clojurewasm:
-        time_ms: 41
-        mem_mb: null
-    vector_ops:
-      clojurewasm:
-        time_ms: 353
-        mem_mb: null
-    protocol_dispatch:
-      clojurewasm:
-        time_ms: 35
-        mem_mb: null
-    multimethod_dispatch:
-      clojurewasm:
-        time_ms: 1750
-        mem_mb: null
     fib_recursive:
-      clojurewasm:
-        time_ms: 487
-        mem_mb: null
-    map_ops:
-      clojurewasm:
-        time_ms: 41
-        mem_mb: null
-    real_workload:
-      clojurewasm:
-        time_ms: 1032
-        mem_mb: null
-    nqueens:
-      clojurewasm:
-        time_ms: 46
-        mem_mb: null
+      clojurewasm: {time_ms: 502}
     fib_loop:
-      clojurewasm:
-        time_ms: 34
-        mem_mb: null
-    list_build:
-      clojurewasm:
-        time_ms: 353
-        mem_mb: null
-    string_ops:
-      clojurewasm:
-        time_ms: 431
-        mem_mb: null
-    lazy_chain:
-      clojurewasm:
-        time_ms: 19386
-        mem_mb: null
-    sieve:
-      clojurewasm:
-        time_ms: 1714
-        mem_mb: null
-    atom_swap:
-      clojurewasm:
-        time_ms: 34
-        mem_mb: null
+      clojurewasm: {time_ms: 31}
     tak:
-      clojurewasm:
-        time_ms: 37
-        mem_mb: null
-# Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)
+      clojurewasm: {time_ms: 33}
+    arith_loop:
+      clojurewasm: {time_ms: 76}
+    map_filter_reduce:
+      clojurewasm: {time_ms: 1287}
+    vector_ops:
+      clojurewasm: {time_ms: 188}
+    map_ops:
+      clojurewasm: {time_ms: 37}
+    list_build:
+      clojurewasm: {time_ms: 183}
+    sieve:
+      clojurewasm: {time_ms: 40, note: "F97 GC double-free, unreliable"}
+    nqueens:
+      clojurewasm: {time_ms: 42}
+    atom_swap:
+      clojurewasm: {time_ms: 30}
+    gc_stress:
+      clojurewasm: {time_ms: 372}
+    lazy_chain:
+      clojurewasm: {time_ms: 7356}
+    transduce:
+      clojurewasm: {time_ms: 3209}
+    keyword_lookup:
+      clojurewasm: {time_ms: 36}
+    protocol_dispatch:
+      clojurewasm: {time_ms: 30}
+    nested_update:
+      clojurewasm: {time_ms: 140}
+    string_ops:
+      clojurewasm: {time_ms: 414}
+    multimethod_dispatch:
+      clojurewasm: {time_ms: 2150}
+    real_workload:
+      clojurewasm: {time_ms: 509}
 history:
-  - date: "2026-02-02"
-    version: "Phase 3 complete (TreeWalk, Debug)"
-    results:
-      startup: {time_ms: 2.6, stddev_ms: 0.2}
-      fib30: {time_ms: 3240, stddev_ms: 30}
-      arith_loop: {time_ms: 1300, note: "approximate (time command)"}
-      higher_order: {time_ms: 3, note: "dominated by startup"}
-  - date: "2026-02-02"
-    version: Phase 5 baseline
-  - date: "2026-02-02"
-    version: Phase 10 VM baseline
-  - date: "2026-02-02"
-    version: Phase 10 TreeWalk
   - date: "2026-02-06"
-    version: Pre-Phase24 VM
+    version: Pre-Phase24 VM ReleaseSafe
   - date: "2026-02-06"
-    version: Pre-Phase24 VM ReleaseFast
+    version: After 24A.3 VM ReleaseSafe

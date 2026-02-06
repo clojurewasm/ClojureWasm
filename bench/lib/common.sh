@@ -50,14 +50,18 @@ measure_mem() {
   rm -f "$tmpfile"
 }
 
-# build_clojurewasm [--release]
+# build_clojurewasm [--release|--release-safe]
 # Builds ClojureWasm binary
 build_clojurewasm() {
-  local optimize=""
+  local optimize="" label=""
   if [[ "${1:-}" == "--release" ]]; then
     optimize="-Doptimize=ReleaseFast"
+    label="(ReleaseFast)"
+  elif [[ "${1:-}" == "--release-safe" ]]; then
+    optimize="-Doptimize=ReleaseSafe"
+    label="(ReleaseSafe)"
   fi
-  echo -e "${CYAN}Building ClojureWasm${RESET} ${optimize:+(ReleaseFast)}"
+  echo -e "${CYAN}Building ClojureWasm${RESET} ${label}"
   (cd "$PROJECT_ROOT" && zig build $optimize) || {
     echo -e "${RED}Build failed${RESET}"
     return 1

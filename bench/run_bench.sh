@@ -10,6 +10,7 @@
 #   bash bench/run_bench.sh --hyperfine  # Use hyperfine for precision
 #   bash bench/run_bench.sh --backend=vm # Use VM backend
 #   bash bench/run_bench.sh --release    # Build with ReleaseFast
+#   bash bench/run_bench.sh --release-safe # Build with ReleaseSafe (standard for benchmarks)
 
 set -euo pipefail
 
@@ -25,6 +26,7 @@ VERSION_LABEL=""
 USE_HYPERFINE=false
 BACKEND=""
 RELEASE=false
+RELEASE_SAFE=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -36,6 +38,7 @@ for arg in "$@"; do
     --hyperfine)     USE_HYPERFINE=true ;;
     --backend=vm)    BACKEND="--backend=vm" ;;
     --release)       RELEASE=true ;;
+    --release-safe)  RELEASE_SAFE=true ;;
     -h|--help)
       echo "Usage: bash bench/run_bench.sh [OPTIONS]"
       echo ""
@@ -48,6 +51,7 @@ for arg in "$@"; do
       echo "  --hyperfine       Use hyperfine for high-precision measurement"
       echo "  --backend=vm      Use VM backend (default: TreeWalk)"
       echo "  --release         Build with ReleaseFast optimization"
+      echo "  --release-safe    Build with ReleaseSafe optimization (standard)"
       echo "  -h, --help        Show this help"
       exit 0
       ;;
@@ -61,6 +65,8 @@ done
 # --- Build ClojureWasm ---
 if $RELEASE; then
   build_clojurewasm --release
+elif $RELEASE_SAFE; then
+  build_clojurewasm --release-safe
 else
   build_clojurewasm
 fi

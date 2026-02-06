@@ -126,12 +126,27 @@ When Task Queue empty:
 ## Build & Test
 
 ```bash
-zig build              # Build
+zig build              # Build (Debug)
 zig build test         # Run all tests
 zig build test -- "X"  # Specific test only
 ./zig-out/bin/cljw -e '(+ 1 2)'              # VM (default)
 ./zig-out/bin/cljw --tree-walk -e '(+ 1 2)'  # TreeWalk
 ./zig-out/bin/cljw path/to/file.clj           # File execution
+```
+
+## Benchmarks
+
+**Always use ReleaseSafe for benchmarks.** Never use Debug or ReleaseFast.
+
+```bash
+# Standard benchmark run (ReleaseSafe, VM backend)
+bash bench/run_bench.sh --release-safe --backend=vm
+# Record results
+bash bench/run_bench.sh --release-safe --backend=vm --record --version="Phase 24A.3"
+# Single benchmark
+bash bench/run_bench.sh --release-safe --backend=vm --bench=lazy_chain
+# Manual ReleaseSafe build
+zig build -Doptimize=ReleaseSafe
 ```
 
 ## Notice
