@@ -320,17 +320,24 @@ Performance optimization pass, benchmark-driven. Three sub-phases.
 | 24B.3 | RRB-Tree (conditional)       | O(log32 n) vector operations |
 | 24B.4 | GC tuning                    | Reduced pause times          |
 
-#### Phase 24C: JIT (conditional)
+#### Phase 24C: Portable Optimization (Babashka Parity)
 
-Proceed only if 24A/24B targets not met. Otherwise move to Phase 25.
+All portable optimizations that benefit both native and wasm_rt.
+Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory).
 
-| Task  | Item                         | Complexity |
-|-------|------------------------------|------------|
-| 24C.1 | Copy-and-patch JIT           | Medium     |
-| 24C.2 | Tracing JIT                  | High       |
-| 24C.3 | Superinstructions (extended) | Medium     |
+| Task  | Item                         | Target benchmarks                          |
+|-------|------------------------------|--------------------------------------------|
+| 24C.1 | Closure specialization       | lazy_chain, transduce, map_filter_reduce   |
+| 24C.2 | Multimethod dispatch opt     | multimethod_dispatch                       |
+| 24C.3 | String ops optimization      | string_ops                                 |
+| 24C.4 | Collection ops optimization  | vector_ops, list_build                     |
+| 24C.5 | GC optimization              | gc_stress, nested_update                   |
+| 24C.6 | NaN boxing (D72)             | ALL benchmarks (cache locality)            |
+| 24C.7 | F99 iterative realization    | deep lazy-seq chains, wasm prerequisite    |
+| 24C.8 | Constant folding             | general improvement                        |
 
-**Decision gate**: After 24B, measure against targets. Met -> Phase 25. Not met -> 24C.
+**Knowledge base**: `.claude/references/optimization-knowledge.md`
+**Benchmark recording**: Record after every task with `bench/record.sh`.
 
 ### Phase 25: Wasm InterOp (FFI)
 
@@ -418,7 +425,7 @@ When implementing IO/system functionality:
 **Success criteria**: Beat Babashka on all comparable benchmarks after 24A.
 Full targets in `.dev/plan/phase24-optimization.md` Section 8.
 
-**Decision gate**: 24A/24B complete -> evaluate targets -> Phase 25 or 24C.
+**Decision gate**: Phase 24C complete (all 20 benchmarks beat Babashka) -> Phase 25.
 
 ### Wasm InterOp (FFI)
 
@@ -461,7 +468,7 @@ Compile entire runtime to `.wasm`, run on WasmEdge/Wasmtime.
 | Aspect     | native               | wasm_rt                    |
 | ---------- | -------------------- | -------------------------- |
 | GC         | Self-impl semi-space | WasmGC delegate            |
-| NaN boxing | Yes                  | No (Wasm JIT incompatible) |
+| NaN boxing | Yes                  | Yes (f64 bit ops universal) |
 | Distribute | Single binary        | .wasm file                 |
 
 **Current status**: Stub (T4.13 verified 207KB wasm32-wasi binary)

@@ -83,7 +83,7 @@ Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase 24 is complete** (24B.4 done, or 24C if pursued — loop ends here)
+- **Phase 24 is complete** (24C done — all 20 benchmarks beat Babashka)
 - Phase 25 is complete (all planned phases done)
 
 Do NOT stop for:
@@ -217,5 +217,6 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Roadmap          | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
 | Deferred items   | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Design document  | `.dev/future.md`                     | When planning new phases or major features |
+| Optimization KB  | `.claude/references/optimization-knowledge.md` | Phase 24C planning, Babashka comparison    |
 | Bench history    | `bench/history.yaml`                 | Benchmark progression across optimizations |
 | Bytecode debug   | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

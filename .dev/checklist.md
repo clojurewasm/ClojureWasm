@@ -14,7 +14,7 @@ Check at session start for items that become actionable.
 
 | ID  | Item                                        | Trigger                                                            |
 | --- | ------------------------------------------- | ------------------------------------------------------------------ |
-| F1  | NaN boxing (Value optimization)             | fib(30) < 500ms target or memory pressure                         |
+| F1  | NaN boxing (Value optimization)             | Phase 24C.6 — Babashka parity target                              |
 | ~~F2~~  | ~~Real GC (replace arena)~~             | Done: Phase 23, MarkSweepGc (D69, D70)                            |
 | F3  | Ratio type (`1/3`)                          | SCI tests fail on float precision loss                             |
 | F4  | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                              |

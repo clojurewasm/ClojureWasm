@@ -2,7 +2,7 @@
 
 Master optimization plan for ClojureWasm.
 
-**Two-phase structure**: 24A (Speed) -> 24B (Memory) -> 24C (JIT, conditional)
+**Three-phase structure**: 24A (Speed) -> 24B (Memory) -> 24C (Portable Optimization)
 
 ## 1. Goals & Principles
 
@@ -169,30 +169,72 @@ Implementation order by dependency + ROI:
 - Evaluate Beta's nursery/generational prototype
 - Measure GC pause times
 
-## 5. Phase 24C: JIT (conditional)
+## 5. Phase 24C: Portable Optimization (Babashka Parity)
 
-Record as technical reference. Proceed only if 24A/24B targets not met.
+All optimizations in this phase benefit both native and wasm_rt targets.
+Goal: Beat Babashka on ALL 20 benchmarks in both speed AND memory.
 
-**Decision gate**: After 24B completion, measure against targets.
-If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
+**Knowledge base**: `.claude/references/optimization-knowledge.md`
+**Benchmark recording**: `bash bench/record.sh --id="24C.N" --reason="description"`
 
-### 24C.1: Copy-and-patch JIT
+### 24C.1: Closure specialization
 
-- Pre-compiled code templates, patched with runtime values
-- CPython 3.13 uses this approach
-- **Zig advantage**: comptime template generation
-- Lower complexity than tracing JIT
+- **Root cause**: callFn per element in fused reduce (289x slower on lazy_chain)
+- Detect simple closure patterns at compile time: `(fn [x] (op x const))`
+- Generate specialized code that avoids full VM dispatch per element
+- Alternative: lightweight call path skipping full frame setup for single-expression closures
+- **Targets**: lazy_chain, transduce, map_filter_reduce, sieve, real_workload
+- **Expected**: 10-100x on sequence benchmarks
 
-### 24C.2: Tracing JIT
+### 24C.2: Multimethod dispatch optimization
 
-- Record hot loop traces, compile to native
-- Multi-tier: Tier-1 threaded code, Tier-2 tracing
-- **Zig advantage**: Can leverage Zig x86/ARM backend (forklift project)
-- Highest complexity, highest potential payoff
+- **Gap**: 95x slower than Babashka (2,094ms vs 22ms)
+- Profile dispatch table lookup, identify per-call overhead sources
+- Consider: dedicated VM opcode, cached dispatch, method table inlining
+- **Expected**: 10-50x improvement
 
-### 24C.3: Superinstructions (extended)
+### 24C.3: String ops optimization
 
-- Profile-guided opcode fusion, wider scope than 24A.8
+- **Gap**: 15x slower than Babashka (419ms vs 28ms)
+- Profile concat/join/subs bottleneck
+- Potential: rope strings, pre-allocated buffers, reduce intermediate allocations
+- **Expected**: 5-15x improvement
+
+### 24C.4: Collection ops optimization
+
+- **Gap**: vector_ops 8.5x, list_build 8.3x slower than Babashka
+- Profile: transient path efficiency, cons allocation, conj performance
+- Potential: bump allocator for cons cells, optimized transient! path
+- **Expected**: 3-8x improvement
+
+### 24C.5: GC optimization
+
+- **Gap**: gc_stress 7.8x, nested_update 6.4x slower than Babashka
+- Evaluate: nursery/bump allocator (Beta reference: gc/nursery.zig)
+- Generational collection for short-lived allocations
+- **Expected**: 3-8x improvement on allocation-heavy benchmarks
+
+### 24C.6: NaN boxing (D72)
+
+- Value 48→8 bytes. 6x cache locality improvement for ALL benchmarks
+- Portable: works on wasm32 (f64 bit manipulation is universal)
+- ~600+ call sites need updating. Largest single refactoring effort
+- **Reference**: Beta value.zig for NaN boxing layout
+- **Expected**: 2-4x improvement on collection/sequence benchmarks from cache effects
+
+### 24C.7: F99 iterative lazy-seq realization
+
+- Convert realize→realizeMeta→seqFn mutual recursion to heap-based work stack
+- Removes 512MB stack size hack in build.zig
+- Required for wasm_rt (wasm has ~1MB stack)
+- Portable optimization that benefits native too
+- **Expected**: Enables deeper lazy-seq chains, slight speed improvement
+
+### 24C.8: Constant folding
+
+- Compile-time evaluation of constant expressions: `(+ 1 2)` → `3`
+- Analyzer pass before compilation
+- **Expected**: Moderate improvement on benchmarks with literal arithmetic
 
 ## 6. Zig-Specific Optimization Advantages
 
@@ -267,14 +309,34 @@ If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
 - **gc_stress**: Minimal change — allocation-bound, awaits NaN boxing (24B.1).
 - **Branch hints**: Surprisingly effective on tight loops (28-40%), modest on collection-heavy code.
 
-## 9. Success Criteria
+## 9. Success Criteria: Beat Babashka on ALL 20 Benchmarks
 
-| Benchmark          | Baseline (RS) | After 24A  | 24A target | 24B target | Babashka | JVM warm |
-|--------------------|---------------|------------|------------|------------|----------|----------|
-| fib_recursive      | 542ms         | **28ms**   | <50ms ✅   | <30ms ✅   | 152ms    | 10ms     |
-| map_filter_reduce  | 4,013ms       | 1,281ms    | <200ms     | <100ms     | --       | --       |
-| arith_loop         | 98ms          | 61ms       | <50ms      | <30ms      | --       | --       |
-| lazy_chain         | 21,375ms      | 6,588ms    | <500ms     | <200ms     | --       | --       |
-| gc_stress          | 372ms         | 330ms      | baseline   | <50% base  | --       | --       |
+**Gate**: CW must beat Babashka on every benchmark in BOTH speed AND memory.
+Measured with hyperfine (ReleaseSafe). Babashka measured single-run wall clock.
 
-**Gate**: Beat Babashka on all comparable benchmarks after 24A.
+### Current Status (post-24B)
+
+| Benchmark             | CW ms  | BB ms | CW/BB  | CW MB     | BB MB  | Status   |
+|-----------------------|--------|-------|--------|-----------|--------|----------|
+| fib_recursive         | 24     | 34    | 0.7x   | 23.8      | 38.6   | WIN      |
+| fib_loop              | 13     | 20    | 0.7x   | 23.8      | 31.4   | WIN      |
+| tak                   | 16     | 24    | 0.7x   | 23.8      | 34.1   | WIN      |
+| arith_loop            | 57     | 80    | 0.7x   | 23.8      | 76.9   | WIN      |
+| map_ops               | 13     | 20    | 0.7x   | 25.6      | 32.4   | WIN      |
+| keyword_lookup        | 20     | 26    | 0.8x   | 23.8      | 36.2   | WIN      |
+| protocol_dispatch     | 15     | 27    | 0.6x   | 23.9      | 36.4   | WIN      |
+| nqueens               | 26     | 30    | 0.9x   | 26.1      | 37.1   | WIN      |
+| atom_swap             | 15     | 19    | 0.8x   | 23.8      | 31.9   | WIN      |
+| gc_stress             | 329    | 42    | 7.8x   | 26.0      | 77.0   | LOSE spd |
+| nested_update         | 141    | 22    | 6.4x   | 27.7      | 37.0   | LOSE spd |
+| string_ops            | 419    | 28    | 15.0x  | 31.2      | 41.5   | LOSE spd |
+| list_build            | 174    | 21    | 8.3x   | 34.1      | 32.2   | LOSE     |
+| vector_ops            | 186    | 22    | 8.5x   | 34.2      | 34.6   | LOSE     |
+| real_workload         | 511    | 23    | 22.2x  | 45.2      | 41.6   | LOSE     |
+| map_filter_reduce     | 1293   | 22    | 58.8x  | 15367     | 37.7   | LOSE     |
+| sieve                 | 1675   | 22    | 76.1x  | 2998      | 36.2   | LOSE     |
+| multimethod_dispatch  | 2094   | 22    | 95.2x  | 83.1      | 33.5   | LOSE     |
+| transduce             | 3348   | 20    | 167x   | 30657     | 32.3   | LOSE     |
+| lazy_chain            | 6655   | 23    | 289x   | 30692     | 37.6   | LOSE     |
+
+**Score**: 9 WIN / 11 LOSE. Target: 20 WIN / 0 LOSE.
