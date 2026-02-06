@@ -6,7 +6,7 @@ Check at session start for items that become actionable.
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
-  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception, keyword_intern.table — module-level, single-thread only
+  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception, keyword_intern.table, collections._vec_gen_counter (24C.4) — module-level, single-thread only
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
 - [ ] D10: All code in English (identifiers, comments, commits)
 

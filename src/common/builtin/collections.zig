@@ -144,33 +144,17 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to cons", .{args.len});
     const x = args[0];
+    const rest = args[1];
 
-    // For lazy_seq or cons rest, return a Cons cell to preserve laziness
-    if (args[1] == .lazy_seq or args[1] == .cons) {
-        const cell = try allocator.create(value_mod.Cons);
-        cell.* = .{ .first = x, .rest = args[1] };
-        return Value{ .cons = cell };
+    // JVM Clojure: cons always returns a Cons cell (ISeq).
+    // Validate rest is seq-able, then wrap in Cons.
+    switch (rest) {
+        .nil, .list, .vector, .set, .cons, .lazy_seq, .map, .hash_map, .chunked_cons, .string => {},
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq, got {s}", .{@tagName(rest)}),
     }
-
-    const seq_items = switch (args[1]) {
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
-        .nil => @as([]const Value, &.{}),
-        .set => |s| s.items,
-        .map, .hash_map => blk: {
-            const entries = try collectSeqItems(allocator, try seqFn(allocator, &.{args[1]}));
-            break :blk entries;
-        },
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq, got {s}", .{@tagName(args[1])}),
-    };
-
-    const new_items = try allocator.alloc(Value, seq_items.len + 1);
-    new_items[0] = x;
-    @memcpy(new_items[1..], seq_items);
-
-    const new_list = try allocator.create(PersistentList);
-    new_list.* = .{ .items = new_items };
-    return Value{ .list = new_list };
+    const cell = try allocator.create(value_mod.Cons);
+    cell.* = .{ .first = x, .rest = rest };
+    return Value{ .cons = cell };
 }
 
 /// (conj coll x) — add to collection (front for list, back for vector).
@@ -203,11 +187,41 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             return Value{ .list = new_list };
         },
         .vector => |vec| {
-            const new_items = try allocator.alloc(Value, vec.items.len + 1);
-            @memcpy(new_items[0..vec.items.len], vec.items);
-            new_items[vec.items.len] = x;
+            // Geometric growth: try in-place extension if gen matches
+            if (vec._capacity > 0 and vec.items.len < vec._capacity) {
+                // Check generation tag stored in backing[_capacity]
+                const gen_slot = vec.items.ptr[vec._capacity];
+                if (gen_slot == .integer and gen_slot.integer == vec._gen) {
+                    // Extend in place — gen matches, no conflict
+                    const mutable_ptr: [*]Value = @constCast(vec.items.ptr);
+                    mutable_ptr[vec.items.len] = x;
+                    collections_mod._vec_gen_counter += 1;
+                    mutable_ptr[vec._capacity] = Value{ .integer = collections_mod._vec_gen_counter };
+                    const new_vec = try allocator.create(PersistentVector);
+                    new_vec.* = .{
+                        .items = vec.items.ptr[0 .. vec.items.len + 1],
+                        .meta = vec.meta,
+                        ._capacity = vec._capacity,
+                        ._gen = collections_mod._vec_gen_counter,
+                    };
+                    return Value{ .vector = new_vec };
+                }
+            }
+            // Fall through: allocate new backing with geometric growth
+            const old_len = vec.items.len;
+            const new_capacity = if (old_len < 4) 8 else old_len * 2;
+            const backing = try allocator.alloc(Value, new_capacity + 1); // +1 for gen tag
+            @memcpy(backing[0..old_len], vec.items);
+            backing[old_len] = x;
+            collections_mod._vec_gen_counter += 1;
+            backing[new_capacity] = Value{ .integer = collections_mod._vec_gen_counter };
             const new_vec = try allocator.create(PersistentVector);
-            new_vec.* = .{ .items = new_items, .meta = vec.meta };
+            new_vec.* = .{
+                .items = backing[0 .. old_len + 1],
+                .meta = vec.meta,
+                ._capacity = new_capacity,
+                ._gen = collections_mod._vec_gen_counter,
+            };
             return Value{ .vector = new_vec };
         },
         .set => |s| {
@@ -253,6 +267,12 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                 return result;
             }
             return err.setErrorFmt(.eval, .type_error, .{}, "conj on map expects vector or map, got {s}", .{@tagName(x)});
+        },
+        .cons => {
+            // (conj cons-seq x) — prepend to seq (like list)
+            const cell = try allocator.create(value_mod.Cons);
+            cell.* = .{ .first = x, .rest = coll };
+            return Value{ .cons = cell };
         },
         .nil => {
             // (conj nil x) => (x) — returns a list
@@ -2418,17 +2438,20 @@ test "cons prepends to list" {
     const items = [_]Value{ .{ .integer = 2 }, .{ .integer = 3 } };
     var lst = PersistentList{ .items = &items };
     const result = try consFn(arena.allocator(), &.{ Value{ .integer = 1 }, Value{ .list = &lst } });
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.count());
-    try testing.expect(result.list.first().eql(.{ .integer = 1 }));
+    // cons always returns Cons cell (JVM Clojure semantics)
+    try testing.expect(result == .cons);
+    try testing.expect(result.cons.first.eql(.{ .integer = 1 }));
+    try testing.expect(result.cons.rest == .list);
 }
 
 test "cons onto nil" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try consFn(arena.allocator(), &.{ Value{ .integer = 1 }, Value.nil });
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 1), result.list.count());
+    // cons onto nil returns Cons cell with nil rest
+    try testing.expect(result == .cons);
+    try testing.expect(result.cons.first.eql(.{ .integer = 1 }));
+    try testing.expect(result.cons.rest == .nil);
 }
 
 test "conj to list prepends" {

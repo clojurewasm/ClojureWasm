@@ -1227,9 +1227,9 @@ test "EvalEngine compare cons" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .list);
-    try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.list.items.len);
-    try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?.list.items[0]);
+    // cons returns Cons cell (JVM Clojure semantics)
+    try std.testing.expect(result.tw_value.? == .cons);
+    try std.testing.expectEqual(Value{ .integer = 0 }, result.tw_value.?.cons.first);
 }
 
 test "EvalEngine compare conj vector" {

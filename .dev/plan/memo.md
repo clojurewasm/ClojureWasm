@@ -6,8 +6,8 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-3 done)
-- Babashka comparison: CW wins ~13/20 (string_ops fixed: 398ms→28ms)
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-4 done)
+- Babashka comparison: CW wins 18/20 (15 speed+mem, 3 mem only)
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
 - Blockers: none
 
@@ -17,30 +17,33 @@ Phase 24C — Portable Optimization (Babashka Parity):
 1. ~~24C.1: Fix fused reduce — restore __zig-lazy-map in redefined map~~ DONE
 2. ~~24C.2: Multimethod dispatch optimization (95x gap)~~ DONE
 3. ~~24C.3: String ops optimization (15x gap)~~ DONE
-4. 24C.4: Collection ops optimization (vector_ops 8.5x, list_build 8.3x)
-5. 24C.5: GC optimization (gc_stress 7.8x, nested_update 6.4x)
+4. ~~24C.4: Collection ops optimization (vector_ops 8x, list_build 8.3x)~~ DONE
+5. 24C.5: GC optimization (gc_stress 7.7x, nested_update 5.6x)
 6. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks)
 7. 24C.7: F99 iterative lazy-seq realization (wasm prerequisite)
 8. 24C.8: Constant folding
 
 ## Current Task
 
-24C.4: Collection ops optimization (vector_ops 8x, list_build 8.3x).
-Both benchmarks show ~100ms user + ~72ms sys = ~178ms total. The heavy
-sys time suggests GC/allocation overhead from collection building.
-Profile vector_ops and list_build to identify allocation hot spots.
+24C.5: GC optimization (gc_stress 7.7x, nested_update 5.6x).
+gc_stress: 324ms (BB 42ms), nested_update: 124ms (BB 22ms).
+Both show high sys time, suggesting allocation/GC overhead.
+Profile to identify: allocation frequency, GC cycle cost, tracing overhead.
 
 ## Previous Task
 
-24C.3: String ops optimization (15x gap → 1.0x).
-- Root cause: `strSingle` used `Writer.Allocating` (dynamic buffer with multiple
-  alloc/free per call) for every integer-to-string conversion
-- Fix: stack-buffer fast paths for integer/boolean/keyword in `strSingle`:
-  - Integer: bufPrint to 24-byte stack buffer, single allocator.dupe
-  - Boolean: allocator.dupe of "true"/"false" literal
-  - Keyword: direct concatenation into allocated buffer
-- Results: 398ms→28ms (14.2x improvement), sys time 312ms→2ms (135x)
-  Now matches Babashka (28ms)
+24C.4: Collection ops optimization (vector_ops 8x→0.6x, list_build 8.3x→0.6x).
+Two optimizations:
+1. **Vector conj geometric growth**: PersistentVector gains `_capacity` and `_gen`
+   fields. Backing array allocated with 2x capacity + 1 gen-tag slot. Sequential
+   conj extends in-place when gen matches (COW detection via integer tag in last
+   slot). Branching triggers copy. Reduces allocations from O(N) to O(log N) and
+   copies from O(N²) to O(N). Results: 180ms→14ms (12.9x).
+2. **cons → Cons cells**: consFn always returns Cons cells (matching JVM Clojure
+   semantics) instead of copying into PersistentList. Each cons is O(1) instead
+   of O(N). Added `.cons` case to conjOne. Results: 178ms→13ms (13.7x).
+- Bonus: real_workload 501→50ms (uses vector conj), map_filter_reduce 179→14ms
+  (unexpected improvement from cons/vector changes).
 
 ## Handover Notes
 

@@ -8,6 +8,10 @@ const Value = @import("value.zig").Value;
 
 const testing = std.testing;
 
+/// Global generation counter for vector COW optimization.
+/// Monotonically increasing; used to detect concurrent modifications to shared backing arrays.
+pub var _vec_gen_counter: i64 = 0;
+
 /// Persistent list — array-backed for initial simplicity.
 pub const PersistentList = struct {
     items: []const Value,
@@ -34,7 +38,12 @@ pub const PersistentList = struct {
     }
 };
 
-/// Persistent vector — array-backed for initial simplicity.
+/// Persistent vector — array-backed with geometric growth optimization.
+///
+/// When created via conj with geometric growth, the backing array has
+/// `_capacity + 1` Value slots. The last slot (index _capacity) stores
+/// a generation tag (Value.integer) for copy-on-write detection.
+/// Sequential conj extends in-place when gen matches; branching triggers copy.
 pub const PersistentVector = struct {
     items: []const Value,
     meta: ?*const Value = null,
@@ -43,6 +52,10 @@ pub const PersistentVector = struct {
     /// Per-child source positions for macro expansion roundtrip preservation.
     child_lines: ?[]const u32 = null,
     child_columns: ?[]const u16 = null,
+    /// Geometric growth backing capacity (0 = no growth backing).
+    _capacity: usize = 0,
+    /// This vector's generation for COW detection.
+    _gen: i64 = 0,
 
     pub fn count(self: PersistentVector) usize {
         return self.items.len;
