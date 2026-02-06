@@ -247,3 +247,30 @@ entries:
       string_ops: {time_ms: 28, mem_mb: 31.1}
       multimethod_dispatch: {time_ms: 15, mem_mb: 23.9}
       real_workload: {time_ms: 23, mem_mb: 33.2}
+  - id: "24C.5b"
+    date: "2026-02-07"
+    reason: "Hot core recompilation (map/filter/comp) + range reduce fast-path — transduce 2134→19ms"
+    commit: "4168a61"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 25, mem_mb: 34.8}
+      fib_loop: {time_ms: 14, mem_mb: 34.8}
+      tak: {time_ms: 16, mem_mb: 34.8}
+      arith_loop: {time_ms: 57, mem_mb: 34.8}
+      map_filter_reduce: {time_ms: 17, mem_mb: 36.8}
+      vector_ops: {time_ms: 16, mem_mb: 36.9}
+      map_ops: {time_ms: 15, mem_mb: 36.6}
+      list_build: {time_ms: 15, mem_mb: 36.7}
+      sieve: {time_ms: 1645, mem_mb: 2485.1}
+      nqueens: {time_ms: 23, mem_mb: 35.4}
+      atom_swap: {time_ms: 14, mem_mb: 34.8}
+      gc_stress: {time_ms: 55, mem_mb: 36.7}
+      lazy_chain: {time_ms: 15, mem_mb: 34.8}
+      transduce: {time_ms: 15, mem_mb: 37.8}
+      keyword_lookup: {time_ms: 17, mem_mb: 34.8}
+      protocol_dispatch: {time_ms: 14, mem_mb: 34.8}
+      nested_update: {time_ms: 72, mem_mb: 38.2}
+      string_ops: {time_ms: 27, mem_mb: 42.1}
+      multimethod_dispatch: {time_ms: 15, mem_mb: 34.8}
+      real_workload: {time_ms: 24, mem_mb: 45.2}

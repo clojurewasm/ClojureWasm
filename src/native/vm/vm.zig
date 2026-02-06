@@ -1085,19 +1085,24 @@ pub const VM = struct {
 
             if (arg_count >= fixed) {
                 const rest_count = arg_count - fixed;
-                // Build rest list from stack values
-                const rest_items = self.allocator.alloc(Value, rest_count) catch return error.OutOfMemory;
-                for (0..rest_count) |i| {
-                    rest_items[i] = self.stack[args_start + fixed + i];
+                // Build rest list or nil from stack values
+                if (rest_count == 0) {
+                    // No rest args: rest param is nil (matches Clojure/TreeWalk behavior)
+                    self.stack[args_start + fixed] = .nil;
+                } else {
+                    const rest_items = self.allocator.alloc(Value, rest_count) catch return error.OutOfMemory;
+                    for (0..rest_count) |i| {
+                        rest_items[i] = self.stack[args_start + fixed + i];
+                    }
+                    const rest_list = self.allocator.create(PersistentList) catch return error.OutOfMemory;
+                    rest_list.* = .{ .items = rest_items };
+                    if (self.gc == null) self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
+                    self.stack[args_start + fixed] = .{ .list = rest_list };
                 }
-                const rest_list = self.allocator.create(PersistentList) catch return error.OutOfMemory;
-                rest_list.* = .{ .items = rest_items };
-                if (self.gc == null) self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
 
-                // Place list at the rest param slot, adjust sp
-                self.stack[args_start + fixed] = .{ .list = rest_list };
+                // Adjust sp: fixed params + 1 rest param (list or nil)
                 self.sp = args_start + fixed + 1;
-                current_arg_count = fixed + 1; // fixed params + 1 rest list
+                current_arg_count = fixed + 1; // fixed params + 1 rest param
             } else {
                 // Fewer args than fixed params: rest is nil
                 // This shouldn't normally happen due to arity check, but handle gracefully

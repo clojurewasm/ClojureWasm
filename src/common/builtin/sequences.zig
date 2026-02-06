@@ -554,6 +554,37 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
             }
             return acc;
         },
+        .lazy_seq => |ls| {
+            if (ls.meta) |m| {
+                switch (m.*) {
+                    .range => |r| {
+                        // Direct range iteration (no lazy-seq allocation)
+                        var cur = r.current;
+                        while (true) {
+                            if ((r.step > 0 and cur >= r.end) or (r.step < 0 and cur <= r.end)) break;
+                            call_buf[0] = acc;
+                            call_buf[1] = .{ .integer = cur };
+                            acc = try callFn(allocator, f, &call_buf);
+                            if (acc == .reduced) return acc.reduced.value;
+                            cur += r.step;
+                        }
+                        return acc;
+                    },
+                    .iterate => |it| {
+                        // Direct iterate iteration
+                        var cur = it.current;
+                        while (true) {
+                            call_buf[0] = acc;
+                            call_buf[1] = cur;
+                            acc = try callFn(allocator, f, &call_buf);
+                            if (acc == .reduced) return acc.reduced.value;
+                            cur = try callFn(allocator, it.f, &[1]Value{cur});
+                        }
+                    },
+                    else => {},
+                }
+            }
+        },
         .nil => return acc,
         else => {},
     }

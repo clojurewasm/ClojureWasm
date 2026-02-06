@@ -6,10 +6,10 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5 done)
-- Babashka comparison: CW wins 18/20 (16 speed+mem, 2 mem only)
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5b done)
+- Babashka comparison: CW wins speed 16/20, memory 18/20
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
-- Blockers: none
+- Blockers: F100 (nested_update regression from hot bootstrap)
 
 ## Task Queue
 
@@ -34,15 +34,15 @@ wasm compatibility notes. Beta reference: ClojureWasmBeta/src/base/value.zig.
 
 ## Previous Task
 
-24C.5: GC optimization (gc_stress 7.7x→1.1x, nested_update 5.6x→1.9x).
-**Free-pool recycling** in MarkSweepGc: dead allocations during sweep are cached
-in per-(size, alignment) free pools instead of rawFree. Next allocation of same
-size pops from free pool (avoids GPA rawAlloc + rawFree overhead). Entries are
-removed from HashMap during sweep and re-added on alloc from pool.
-- gc_stress: 324→46ms (7.0x improvement)
-- nested_update: 124→41ms (3.0x improvement)
-- real_workload: 50→23ms (2.2x improvement, now ties BB)
-- transduce: 3331→2134ms (1.6x improvement, bonus)
+24C.5b: Hot core recompilation — transduce 2134→15ms (142x, beats BB).
+**Root cause**: core.clj loaded via TreeWalk makes ALL core functions TreeWalk
+closures. Transducer step fns (map/filter/comp 1-arity) called in reduce hot
+loops dispatch through treewalkCallBridge (~200x overhead per call).
+**Fix**: D73 two-phase bootstrap — Phase 1 TreeWalk (fast), Phase 2 re-evaluates
+map/filter/comp via VM compiler (evalStringVMBootstrap) producing bytecode closures.
+Also: range/iterate fast-path in reduceGeneric (memory 30GB→0.9MB), VM variadic
+rest args nil fix (rest_count==0 returns nil not ()).
+**Trade-off**: nested_update 42→72ms (F100 — bytecode footprint cache side effect).
 
 ## Handover Notes
 
@@ -52,6 +52,7 @@ removed from HashMap during sweep and re-added on alloc from pool.
 - **F97**: RESOLVED — stack overflow in lazy-seq realization (512MB stack, meta tracing fix)
 - **F98**: fib_recursive slower in ReleaseFast than Debug (487ms vs 205ms)
 - **F99**: Iterative lazy-seq realization — task 24C.7
+- **F100**: nested_update regression 42→72ms from D73 hot bootstrap (cache/allocator side effect)
 - **NaN boxing (D72)**: 600+ call sites, task 24C.6. Portable (works on wasm too)
 - **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
 - Roadmap: `.dev/plan/roadmap.md`

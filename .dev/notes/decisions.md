@@ -1669,3 +1669,34 @@ Dramatically better cache utilization. No heap struct modifications needed.
 in Phase 24B.1 — value.zig rewrite compiles but call-site migration proved too invasive
 for incremental execution. Preserve design for future dedicated migration phase.
 Prototype saved at `/tmp/vp1.zig` + `/tmp/vp2.zig`.
+
+---
+
+## D73: Two-Phase Bootstrap — TreeWalk + VM Hot Recompilation
+
+**Date**: 2026-02-07
+**Context**: core.clj is loaded via TreeWalk (fast, ~10ms), but ALL core functions
+become TreeWalk closures. When VM calls these closures (e.g., transducer step functions
+in reduce hot loops), each call dispatches through treewalkCallBridge creating a new
+TreeWalk instance — ~200x slower than bytecode execution.
+
+**Decision**: Two-phase bootstrap in loadCore:
+1. Phase 1: Evaluate core.clj via TreeWalk (fast startup, all functions defined)
+2. Phase 2: Re-evaluate hot transducer functions (map, filter, comp) via VM compiler
+   (`evalStringVMBootstrap`), replacing TreeWalk closures with bytecode closures.
+
+**evalStringVMBootstrap**: Compiles and evaluates forms via Compiler+VM but intentionally
+does NOT deinit Compiler or VM — FnProtos and allocated Fn objects must persist because
+they are stored in Vars via def/defn.
+
+**Trade-offs**:
+- transduce: 2134→15ms (142x improvement, beats Babashka)
+- Startup overhead: +5ms (10→15ms)
+- nested_update regression: 42→72ms (cache/allocator indirect effect from additional
+  bytecode objects — investigated, confirmed as bytecode footprint side effect, not a bug)
+
+**Key finding**: The regression affects benchmarks that don't use map/filter/comp because
+bytecode Fn objects + FnProtos occupy cache/GPA space, impacting tight allocation loops.
+
+**VM variadic rest args fix** (concurrent bug fix): When rest_count==0, VM now returns
+`.nil` instead of empty PersistentList `()`. Matches Clojure spec and TreeWalk behavior.
