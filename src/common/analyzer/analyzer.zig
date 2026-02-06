@@ -1036,7 +1036,15 @@ pub const Analyzer = struct {
             }
         }
 
-        // Build fn body
+        // Pre-expand destructuring pattern BEFORE analyzing body
+        // This adds destructured vars (a, b from [a b]) to locals so they're in scope
+        var destr_bindings: std.ArrayList(node_mod.LetBinding) = .empty;
+        if (needs_destructure) {
+            const ref = try self.makeTempLocalRef(param_name, param_idx);
+            try self.expandBindingPattern(sym_form, ref, &destr_bindings, form);
+        }
+
+        // Build fn body - all vars (including destructured) now in scope
         var fn_body: *Node = undefined;
 
         if (is_last) {
@@ -1096,11 +1104,8 @@ pub const Analyzer = struct {
             fn_body.* = .{ .let_node = let_data };
         }
 
-        // If destructuring needed, wrap body in let
-        if (needs_destructure) {
-            const ref = try self.makeTempLocalRef(param_name, param_idx);
-            var destr_bindings: std.ArrayList(node_mod.LetBinding) = .empty;
-            try self.expandBindingPattern(sym_form, ref, &destr_bindings, form);
+        // Wrap with pre-built destructure bindings
+        if (destr_bindings.items.len > 0) {
             const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
             let_data.* = .{
                 .bindings = destr_bindings.toOwnedSlice(self.allocator) catch return error.OutOfMemory,

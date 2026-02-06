@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/for.clj
 ;; Upstream lines: 128
-;; CLJW markers: 6
+;; CLJW markers: 4
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -115,12 +115,12 @@
   (is (= (for [x ['a nil] y [x 'b]] [x y])
          '([a a] [a b] [nil nil] [nil b]))))
 
-;; CLJW: skipped Destructuring test — uses {:syms [a b c]} (F72) and Integer. JVM constructor
-;; (deftest-both Destructuring
-;;   (is (= (for [{:syms [a b c]} (map #(zipmap '(a b c) (range % 5)) (range 3))
-;;                x [a b c]]
-;;            (Integer. (str a b c x)))
-;;          '(120 121 122 1231 1232 1233 2342 2343 2344))))
+;; CLJW: Integer. -> parse-long (JVM interop)
+(deftest-both Destructuring
+  (is (= (for [{:syms [a b c]} (map #(zipmap '(a b c) (range % 5)) (range 3))
+               x [a b c]]
+           (parse-long (str a b c x)))
+         '(120 121 122 1231 1232 1233 2342 2343 2344))))
 
 (deftest-both Let
   (is (= (for [x (range 3) y (range 3) :let [z (+ x y)] :when (odd? z)] [x y z])
