@@ -380,7 +380,7 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (nth coll index) or (nth coll index not-found) — indexed access.
-pub fn nthFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn nthFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nth", .{args.len});
     const idx_val = args[1];
     if (idx_val != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nth expects integer index, got {s}", .{@tagName(idx_val)});
@@ -390,14 +390,48 @@ pub fn nthFn(_: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .index_error, .{}, "nth index out of bounds: {d}", .{idx});
     }
     const uidx: usize = @intCast(idx);
+    const not_found: ?Value = if (args.len == 3) args[2] else null;
 
     return switch (args[0]) {
-        .vector => |vec| vec.nth(uidx) orelse if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for vector of size {d}", .{ uidx, vec.items.len }),
-        .list => |lst| if (uidx < lst.items.len) lst.items[uidx] else if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for list of size {d}", .{ uidx, lst.items.len }),
-        .array_chunk => |ac| ac.nth(uidx) orelse if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for chunk of size {d}", .{ uidx, ac.count() }),
-        .nil => if (args.len == 3) args[2] else err.setErrorFmt(.eval, .index_error, .{}, "nth on nil", .{}),
+        .vector => |vec| vec.nth(uidx) orelse not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for vector of size {d}", .{ uidx, vec.items.len }),
+        .list => |lst| if (uidx < lst.items.len) lst.items[uidx] else not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for list of size {d}", .{ uidx, lst.items.len }),
+        .array_chunk => |ac| ac.nth(uidx) orelse not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for chunk of size {d}", .{ uidx, ac.count() }),
+        .nil => not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth on nil", .{}),
+        .lazy_seq, .cons => nthSeq(allocator, args[0], uidx, not_found),
+        .string => |s| nthString(s, uidx, not_found),
         else => err.setErrorFmt(.eval, .type_error, .{}, "nth not supported on {s}", .{@tagName(args[0])}),
     };
+}
+
+/// Walk seq to find nth element.
+fn nthSeq(allocator: Allocator, coll: Value, idx: usize, not_found: ?Value) anyerror!Value {
+    var current = coll;
+    var i: usize = 0;
+    while (i <= idx) {
+        const first_result = try firstFn(allocator, &.{current});
+        if (i == idx) {
+            // Check if we've exhausted the seq
+            if (current == .nil or (current == .lazy_seq and current.lazy_seq.realized != null and current.lazy_seq.realized.? == .nil)) {
+                return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
+            }
+            return first_result;
+        }
+        const rest_result = try restFn(allocator, &.{current});
+        if (rest_result == .nil) {
+            return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
+        }
+        current = rest_result;
+        i += 1;
+    }
+    return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
+}
+
+/// nth on string returns character at index.
+fn nthString(s: []const u8, idx: usize, not_found: ?Value) anyerror!Value {
+    if (idx >= s.len) {
+        return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for string of length {d}", .{ idx, s.len });
+    }
+    return Value{ .char = s[idx] };
 }
 
 /// (count coll) — number of elements.
@@ -991,7 +1025,9 @@ pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const items = switch (coll) {
         .list => |lst| lst.items,
         .vector => |vec| vec.items,
+        .set => |s| s.items,
         .nil => @as([]const Value, &.{}),
+        .lazy_seq, .cons => try collectSeqItems(allocator, coll),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "sort not supported on {s}", .{@tagName(coll)}),
     };
 
