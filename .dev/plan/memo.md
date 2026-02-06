@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A active, task 24A.5
+- Phase 24A active, task 24A.6
 - Blockers: none
 
 ## Task Queue
@@ -17,7 +17,7 @@ Phase 24A — Speed Optimization:
 3. ~~24A.2: Stack argument buffer~~ (done)
 4. ~~24A.3: Fused reduce (lazy-seq chain collapse)~~ (done)
 5. ~~24A.4: Arithmetic fast-path widening (@addWithOverflow)~~ (done)
-6. 24A.5: Inline caching (protocol dispatch IC)
+6. ~~24A.5: Inline caching (protocol dispatch IC)~~ (done)
 7. 24A.6: Hash table bitmask optimization
 8. 24A.7: Constant folding (analyzer pass)
 9. 24A.8: Superinstructions (opcode fusion)
@@ -34,20 +34,17 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24A.5: Inline caching (protocol dispatch IC)
-- Protocol dispatch: monomorphic IC at call sites
-- Cache (type, method_fn) per call site
-- Expected: 2-5x on protocol-heavy code
+24A.6: Hash table bitmask optimization
+- Power-of-two capacity + & instead of %
+- Verify if Zig std.HashMap already does this
 
 ## Previous Task
 
-24A.4: Arithmetic fast-path widening (@addWithOverflow)
-- Inlined int+int fast path in VM vmBinaryArith (avoid cross-file call to arithmetic.zig)
-- @addWithOverflow/@subWithOverflow/@mulWithOverflow for overflow detection
-- Inlined int+int fast path in vmBinaryCompare
-- Overflow promotes to float (matches Clojure auto-promotion)
-- fib_recursive: 542→41ms (13.2x!) from eliminating function call overhead
-- Also fixes correctness: ReleaseSafe no longer panics on integer overflow
+24A.5: Inline caching (protocol dispatch IC)
+- Monomorphic IC on ProtocolFn: caches (type_key → method_fn) per protocol method
+- Both VM + TreeWalk: skip 2 map lookups on cache hit
+- protocol_dispatch: 29→27ms (~10% improvement, already fast)
+- Pointer comparison fast path + fallback to string comparison
 
 ## Handover Notes
 

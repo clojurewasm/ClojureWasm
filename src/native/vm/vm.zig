@@ -15,6 +15,7 @@ const FnProto = chunk_mod.FnProto;
 const Value = chunk_mod.Value;
 const value_mod = @import("../../common/value.zig");
 const Fn = value_mod.Fn;
+const ProtocolFn = value_mod.ProtocolFn;
 const Env = @import("../../common/env.zig").Env;
 const Namespace = @import("../../common/namespace.zig").Namespace;
 const collections = @import("../../common/collections.zig");
@@ -957,11 +958,23 @@ pub const VM = struct {
                 if (arg_count < 1) return error.ArityError;
                 const first_arg = self.stack[fn_idx + 1];
                 const type_key = valueTypeKey(first_arg);
+                // Monomorphic inline cache: check if same type as last dispatch
+                const mutable_pf: *ProtocolFn = @constCast(pf);
+                if (mutable_pf.cached_type_key) |ck| {
+                    if (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)) {
+                        self.stack[fn_idx] = mutable_pf.cached_method;
+                        return self.performCall(arg_count);
+                    }
+                }
+                // Cache miss: full lookup
                 const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse
                     return error.TypeError;
                 if (method_map_val != .map) return error.TypeError;
                 const method_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse
                     return error.TypeError;
+                // Update cache
+                mutable_pf.cached_type_key = type_key;
+                mutable_pf.cached_method = method_fn;
                 self.stack[fn_idx] = method_fn;
                 return self.performCall(arg_count);
             },

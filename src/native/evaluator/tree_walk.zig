@@ -644,14 +644,24 @@ pub const TreeWalk = struct {
         if (args.len == 0) return error.ArityError;
         const type_key = valueTypeKey(args[0]);
 
-        // Lookup in protocol impls
+        // Monomorphic inline cache: check if same type as last dispatch
+        const mutable_pf: *value_mod.ProtocolFn = @constCast(pf);
+        if (mutable_pf.cached_type_key) |ck| {
+            if (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)) {
+                return self.callValue(mutable_pf.cached_method, args);
+            }
+        }
+
+        // Cache miss: full lookup
         const protocol = pf.protocol;
         const method_map_val = protocol.impls.get(.{ .string = type_key }) orelse return error.TypeError;
         if (method_map_val != .map) return error.TypeError;
         const method_map = method_map_val.map;
-
-        // Lookup method in method map
         const fn_val = method_map.get(.{ .string = pf.method_name }) orelse return error.TypeError;
+
+        // Update cache
+        mutable_pf.cached_type_key = type_key;
+        mutable_pf.cached_method = fn_val;
 
         // Call the impl function
         return self.callValue(fn_val, args);

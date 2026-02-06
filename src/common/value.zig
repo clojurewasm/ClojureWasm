@@ -227,6 +227,9 @@ pub const Protocol = struct {
 pub const ProtocolFn = struct {
     protocol: *Protocol,
     method_name: []const u8,
+    // Monomorphic inline cache (24A.5): caches last (type -> method) dispatch
+    cached_type_key: ?[]const u8 = null,
+    cached_method: Value = .nil,
 };
 
 /// MultiFn — multimethod with dispatch function.
