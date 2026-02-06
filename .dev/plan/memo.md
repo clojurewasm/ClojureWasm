@@ -4,11 +4,10 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
+- All phases through 24C complete (A, BE, B, C, CX, R, D, 20-24, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5c, 24C.7 done)
-- Babashka comparison: CW wins speed 19/20 (1 tied), Phase 24C complete
-- nested_update: 23ms vs BB 22ms (tied, ±1ms noise)
+- **Phase 24 COMPLETE** — CW wins speed 19/20, 1 tied (nested_update ±1ms)
+- Next: Phase 25 (Wasm InterOp)
 
 ## Task Queue
 
@@ -26,8 +25,8 @@ Phase 24C — Portable Optimization (Babashka Parity):
 
 ## Current Task
 
-Phase 24C complete! CW wins speed 19/20 (1 tied nested_update ±1ms).
-Assess Phase 24 completion and plan Phase 25 (wasm).
+Phase 24 COMPLETE. Next session: Plan Phase 25 (Wasm InterOp).
+See roadmap.md Phase 25 section for scope and .dev/future.md for design.
 
 ## Previous Task
 
