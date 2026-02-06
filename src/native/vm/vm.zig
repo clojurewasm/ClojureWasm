@@ -192,6 +192,7 @@ pub const VM = struct {
             if (self.stepInstructionTarget(target_frame)) |maybe_result| {
                 if (maybe_result) |result| return result;
             } else |e| {
+                @branchHint(.unlikely);
                 // Annotate error with source location from current frame
                 if (self.frame_count > target_frame) {
                     const f = &self.frames[self.frame_count - 1];
@@ -219,6 +220,7 @@ pub const VM = struct {
             // Batched GC safe point — check every 256 instructions
             gc_counter +%= 1;
             if (gc_counter == 0) {
+                @branchHint(.unlikely);
                 self.maybeTriggerGc();
             }
         }
@@ -817,7 +819,10 @@ pub const VM = struct {
     }
 
     pub fn push(self: *VM, val: Value) VMError!void {
-        if (self.sp >= STACK_MAX) return error.StackOverflow;
+        if (self.sp >= STACK_MAX) {
+            @branchHint(.unlikely);
+            return error.StackOverflow;
+        }
         self.stack[self.sp] = val;
         self.sp += 1;
     }
@@ -1076,7 +1081,10 @@ pub const VM = struct {
         }
 
         // Push new call frame
-        if (self.frame_count >= FRAMES_MAX) return error.StackOverflow;
+        if (self.frame_count >= FRAMES_MAX) {
+            @branchHint(.unlikely);
+            return error.StackOverflow;
+        }
         self.frames[self.frame_count] = .{
             .ip = 0,
             .base = fn_idx + 1,
@@ -1127,17 +1135,18 @@ pub const VM = struct {
                 .sub => @subWithOverflow(a.integer, b.integer),
                 .mul => @mulWithOverflow(a.integer, b.integer),
             };
-            if (result[1] == 0) {
-                try self.push(.{ .integer = result[0] });
+            if (result[1] != 0) {
+                @branchHint(.unlikely);
+                // Overflow: promote to float
+                self.saveVmArgSources();
+                try self.push(.{ .float = switch (op) {
+                    .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
+                    .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
+                    .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
+                } });
                 return;
             }
-            // Overflow: promote to float
-            self.saveVmArgSources();
-            try self.push(.{ .float = switch (op) {
-                .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
-                .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
-                .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
-            } });
+            try self.push(.{ .integer = result[0] });
             return;
         }
         self.saveVmArgSources();

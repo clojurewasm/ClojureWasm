@@ -165,50 +165,52 @@ previous:
       clojurewasm: {time_ms: 1286}
 latest:
   date: "2026-02-06"
-  version: After 24A.4 VM ReleaseSafe
+  version: After 24A.9 VM ReleaseSafe
   results:
     fib_recursive:
-      clojurewasm: {time_ms: 41}
+      clojurewasm: {time_ms: 28}
     fib_loop:
-      clojurewasm: {time_ms: 29}
+      clojurewasm: {time_ms: 19}
     tak:
-      clojurewasm: {time_ms: 36}
+      clojurewasm: {time_ms: 23}
     arith_loop:
-      clojurewasm: {time_ms: 72}
+      clojurewasm: {time_ms: 61}
     map_filter_reduce:
-      clojurewasm: {time_ms: 1315}
+      clojurewasm: {time_ms: 1281}
     vector_ops:
-      clojurewasm: {time_ms: 186}
+      clojurewasm: {time_ms: 179}
     map_ops:
-      clojurewasm: {time_ms: 38}
+      clojurewasm: {time_ms: 26}
     list_build:
-      clojurewasm: {time_ms: 188}
+      clojurewasm: {time_ms: 178}
     sieve:
-      clojurewasm: {time_ms: 42, note: "F97 GC double-free, unreliable"}
+      clojurewasm: {time_ms: 30, note: "F97 GC double-free, unreliable"}
     nqueens:
-      clojurewasm: {time_ms: 40}
-    atom_swap:
-      clojurewasm: {time_ms: 30}
-    gc_stress:
-      clojurewasm: {time_ms: 351}
-    lazy_chain:
-      clojurewasm: {time_ms: 7425}
-    transduce:
-      clojurewasm: {time_ms: 3043}
-    keyword_lookup:
-      clojurewasm: {time_ms: 35}
-    protocol_dispatch:
       clojurewasm: {time_ms: 29}
+    atom_swap:
+      clojurewasm: {time_ms: 18}
+    gc_stress:
+      clojurewasm: {time_ms: 330}
+    lazy_chain:
+      clojurewasm: {time_ms: 6588}
+    transduce:
+      clojurewasm: {time_ms: 2893}
+    keyword_lookup:
+      clojurewasm: {time_ms: 24}
+    protocol_dispatch:
+      clojurewasm: {time_ms: 19}
     nested_update:
-      clojurewasm: {time_ms: 135}
+      clojurewasm: {time_ms: 128}
     string_ops:
-      clojurewasm: {time_ms: 417}
+      clojurewasm: {time_ms: 397}
     multimethod_dispatch:
-      clojurewasm: {time_ms: 1985}
+      clojurewasm: {time_ms: 2127}
     real_workload:
-      clojurewasm: {time_ms: 513}
+      clojurewasm: {time_ms: 496}
 history:
   - date: "2026-02-06"
     version: Pre-Phase24 VM ReleaseSafe
   - date: "2026-02-06"
     version: After 24A.4 VM ReleaseSafe
+  - date: "2026-02-06"
+    version: After 24A.9 VM ReleaseSafe

@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A active, task 24A.6
+- Phase 24A active, task 24A.10
 - Blockers: none
 
 ## Task Queue
@@ -18,10 +18,10 @@ Phase 24A — Speed Optimization:
 4. ~~24A.3: Fused reduce (lazy-seq chain collapse)~~ (done)
 5. ~~24A.4: Arithmetic fast-path widening (@addWithOverflow)~~ (done)
 6. ~~24A.5: Inline caching (protocol dispatch IC)~~ (done)
-7. 24A.6: Hash table bitmask optimization
-8. 24A.7: Constant folding (analyzer pass)
-9. 24A.8: Superinstructions (opcode fusion)
-10. 24A.9: @branchHint annotations (VM hot paths)
+7. ~~24A.6: Hash table bitmask optimization~~ (N/A, Zig std already uses bitmask)
+8. ~~24A.7: Constant folding~~ (skip, minimal benchmark impact)
+9. ~~24A.8: Superinstructions~~ (skip, frame overhead dominates over dispatch)
+10. ~~24A.9: @branchHint annotations (VM hot paths)~~ (done)
 11. 24A.10: AOT bytecode bootstrap (partial, blocked by F7)
 
 Phase 24B — Memory Optimization:
@@ -34,17 +34,18 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24A.6: Hash table bitmask optimization
-- Power-of-two capacity + & instead of %
-- Verify if Zig std.HashMap already does this
+24A.10: AOT bytecode bootstrap (partial, blocked by F7)
+- Pre-compile core.clj to bytecode at build time
+- Blocked by F7 (bytecode serialization format)
+- Evaluate feasibility, may skip if F7 too complex
 
 ## Previous Task
 
-24A.5: Inline caching (protocol dispatch IC)
-- Monomorphic IC on ProtocolFn: caches (type_key → method_fn) per protocol method
-- Both VM + TreeWalk: skip 2 map lookups on cache hit
-- protocol_dispatch: 29→27ms (~10% improvement, already fast)
-- Pointer comparison fast path + fallback to string comparison
+24A.9: @branchHint annotations (VM hot paths)
+- Added @branchHint(.unlikely) to 5 locations in vm.zig:
+  - executeUntil error path, GC trigger, push() overflow, performCall frame overflow, vmBinaryArith overflow
+- Results: 28-40% improvement on tight-loop benchmarks (fib 41→28ms, tak 36→23ms)
+- Collection-heavy benchmarks: 3-11% improvement
 
 ## Handover Notes
 
