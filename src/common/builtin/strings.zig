@@ -43,7 +43,37 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
     const v = try collections.realizeValue(allocator, val);
     switch (v) {
         .nil => return Value{ .string = "" },
-        .string => return v, // already a string, return as-is
+        .string => return v,
+        .boolean => |b| {
+            const s: []const u8 = if (b) "true" else "false";
+            const owned = try allocator.dupe(u8, s);
+            return Value{ .string = owned };
+        },
+        .integer => |n| {
+            // Fast path: format into stack buffer, single allocation
+            var buf: [24]u8 = undefined;
+            const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch unreachable;
+            const owned = try allocator.dupe(u8, s);
+            return Value{ .string = owned };
+        },
+        .keyword => |kw| {
+            // Fast path: build :ns/name or :name directly
+            if (kw.ns) |ns| {
+                const len = 1 + ns.len + 1 + kw.name.len;
+                const owned = try allocator.alloc(u8, len);
+                owned[0] = ':';
+                @memcpy(owned[1 .. 1 + ns.len], ns);
+                owned[1 + ns.len] = '/';
+                @memcpy(owned[2 + ns.len ..], kw.name);
+                return Value{ .string = owned };
+            } else {
+                const len = 1 + kw.name.len;
+                const owned = try allocator.alloc(u8, len);
+                owned[0] = ':';
+                @memcpy(owned[1..], kw.name);
+                return Value{ .string = owned };
+            }
+        },
         else => {
             var aw: Writer.Allocating = .init(allocator);
             defer aw.deinit();

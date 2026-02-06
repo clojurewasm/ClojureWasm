@@ -118,7 +118,7 @@ From bench_improvement.yaml:
 - After VM backend: fib30=0.07s (2.1MB) — **27x improvement over TreeWalk**
 - Final (VM + all opts): fib30=69ms, map_filter=2.3ms
 
-## 4. Babashka Comparison (post-24C.2, 2026-02-07)
+## 4. Babashka Comparison (post-24C.3, 2026-02-07)
 
 Measured with single-run wall clock (BB) and hyperfine (CW), both cold start.
 BB startup ~20ms, CW startup ~10ms.
@@ -138,7 +138,7 @@ BB startup ~20ms, CW startup ~10ms.
 | lazy_chain            | 15     | 23    | 0.7x   | 23.8      | 37.6   | BOTH     |
 | gc_stress             | 329    | 42    | 7.8x   | 25.9      | 77.0   | mem only |
 | nested_update         | 124    | 22    | 5.6x   | 27.6      | 37.0   | mem only |
-| string_ops            | 398    | 28    | 14.2x  | 31.2      | 41.5   | mem only |
+| string_ops            | 28     | 28    | 1.0x   | 31.1      | 41.5   | BOTH     |
 | list_build            | 175    | 21    | 8.3x   | 34.0      | 32.2   | NEITHER  |
 | vector_ops            | 176    | 22    | 8.0x   | 34.1      | 34.6   | NEITHER  |
 | real_workload         | 499    | 23    | 21.7x  | 38.9      | 41.6   | mem only |
@@ -146,21 +146,22 @@ BB startup ~20ms, CW startup ~10ms.
 | multimethod_dispatch  | 14     | 22    | 0.6x   | 23.9      | 33.5   | BOTH     |
 | transduce             | 3233   | 20    | 162x   | 30657     | 32.3   | NEITHER  |
 
-**Summary**: CW wins 12/20 (speed+memory or memory only), loses 8/20.
-24C.2 fixed multimethod (93x→0.6x): 2053ms→14ms, now FASTER than Babashka.
+**Summary**: CW wins 13/20 (speed+memory or memory only), loses 7/20.
+24C.3 fixed string_ops (14x→1.0x): 398ms→28ms, now matches Babashka.
 Remaining gaps: transduce (162x), sieve (77x), real_workload (22x),
-string_ops (14x), list_build/vector_ops (8x), gc_stress (8x),
-map_filter_reduce (8x), nested_update (6x).
+list_build/vector_ops (8x), gc_stress (8x), map_filter_reduce (8x),
+nested_update (6x).
 
-### Performance Categories (post-24C.2)
+### Performance Categories (post-24C.3)
 
-**Category A: CW wins speed+memory (12 benchmarks)**
+**Category A: CW wins speed+memory (13 benchmarks)**
 fib_recursive, fib_loop, tak, arith_loop, map_ops, keyword_lookup,
-protocol_dispatch, nqueens, atom_swap, lazy_chain, multimethod_dispatch — all < BB
+protocol_dispatch, nqueens, atom_swap, lazy_chain, multimethod_dispatch,
+string_ops — all <= BB
 
 **Category B: CW loses speed, wins memory**
-gc_stress (7.8x), nested_update (5.6x), string_ops (14.2x),
-map_filter_reduce (8.0x), real_workload (21.7x)
+gc_stress (7.8x), nested_update (5.6x), map_filter_reduce (8.0x),
+real_workload (21.7x)
 
 **Category C: CW loses both**
 transduce (162x), sieve (77x), vector_ops (8.0x), list_build (8.3x)

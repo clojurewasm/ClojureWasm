@@ -6,8 +6,8 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-2 done)
-- Babashka comparison: CW wins ~12/20 (multimethod fixed: 2053ms→14ms)
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-3 done)
+- Babashka comparison: CW wins ~13/20 (string_ops fixed: 398ms→28ms)
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
 - Blockers: none
 
@@ -16,7 +16,7 @@ Session handover document. Read at session start.
 Phase 24C — Portable Optimization (Babashka Parity):
 1. ~~24C.1: Fix fused reduce — restore __zig-lazy-map in redefined map~~ DONE
 2. ~~24C.2: Multimethod dispatch optimization (95x gap)~~ DONE
-3. 24C.3: String ops optimization (15x gap)
+3. ~~24C.3: String ops optimization (15x gap)~~ DONE
 4. 24C.4: Collection ops optimization (vector_ops 8.5x, list_build 8.3x)
 5. 24C.5: GC optimization (gc_stress 7.8x, nested_update 6.4x)
 6. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks)
@@ -25,24 +25,22 @@ Phase 24C — Portable Optimization (Babashka Parity):
 
 ## Current Task
 
-24C.3: String ops optimization (15x gap — 398ms vs BB 28ms).
-String operations are heavily GC-bound (311ms sys time). Profile and optimize
-the string ops benchmark path — likely string allocation/concatenation overhead.
+24C.4: Collection ops optimization (vector_ops 8x, list_build 8.3x).
+Both benchmarks show ~100ms user + ~72ms sys = ~178ms total. The heavy
+sys time suggests GC/allocation overhead from collection building.
+Profile vector_ops and list_build to identify allocation hot spots.
 
 ## Previous Task
 
-24C.2: Multimethod dispatch optimization (95x gap → 0.6x).
-- Root cause: VM used bootstrap.callFnVal (creates new VM instance per call)
-  for both dispatch fn and method fn — 20000 VM creations for 10000 iterations
-- Fix: 3-layer optimization:
-  1. VM-native calls: self.callFunction for dispatch fn (reuses current VM)
-  2. 2-level monomorphic dispatch cache:
-     - Level 1: arg identity cache (skip dispatch fn call entirely)
-     - Level 2: dispatch-val cache (skip findBestMethod)
-  3. performCall for method fn (no VM creation)
-  4. Keyword dispatch fn inlining for (defmulti foo :type) pattern
-- Results: 2053ms→14ms (147x improvement), now faster than Babashka (22ms)
-- Both VM and TreeWalk optimized
+24C.3: String ops optimization (15x gap → 1.0x).
+- Root cause: `strSingle` used `Writer.Allocating` (dynamic buffer with multiple
+  alloc/free per call) for every integer-to-string conversion
+- Fix: stack-buffer fast paths for integer/boolean/keyword in `strSingle`:
+  - Integer: bufPrint to 24-byte stack buffer, single allocator.dupe
+  - Boolean: allocator.dupe of "true"/"false" literal
+  - Keyword: direct concatenation into allocated buffer
+- Results: 398ms→28ms (14.2x improvement), sys time 312ms→2ms (135x)
+  Now matches Babashka (28ms)
 
 ## Handover Notes
 
