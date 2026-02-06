@@ -10,7 +10,10 @@ const Value = value_mod.Value;
 const PersistentList = value_mod.PersistentList;
 const PersistentVector = value_mod.PersistentVector;
 const PersistentArrayMap = value_mod.PersistentArrayMap;
+const PersistentHashMap = value_mod.PersistentHashMap;
 const PersistentHashSet = value_mod.PersistentHashSet;
+const collections_mod = @import("../collections.zig");
+const HASH_MAP_THRESHOLD = collections_mod.HASH_MAP_THRESHOLD;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../bootstrap.zig");
@@ -28,7 +31,7 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .vector => |vec| if (vec.items.len > 0) vec.items[0] else .nil,
         .nil => .nil,
         .cons => |c| c.first,
-        .map => {
+        .map, .hash_map => {
             const s = try seqFn(allocator, args);
             if (s == .nil) return .nil;
             const seq_args = [1]Value{s};
@@ -77,7 +80,7 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             break :blk Value{ .list = new_list };
         },
         .cons => |c| c.rest,
-        .map => {
+        .map, .hash_map => {
             const s = try seqFn(allocator, args);
             if (s == .nil) {
                 const empty = try allocator.create(PersistentList);
@@ -154,7 +157,7 @@ pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .vector => |vec| vec.items,
         .nil => @as([]const Value, &.{}),
         .set => |s| s.items,
-        .map => blk: {
+        .map, .hash_map => blk: {
             const entries = try collectSeqItems(allocator, try seqFn(allocator, &.{args[1]}));
             break :blk entries;
         },
@@ -221,7 +224,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             new_set.* = .{ .items = new_items, .meta = s.meta, .comparator = s.comparator };
             return Value{ .set = new_set };
         },
-        .map => {
+        .map, .hash_map => {
             // (conj map [k v]) => (assoc map k v)
             if (x == .vector) {
                 const pair = x.vector;
@@ -232,6 +235,16 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                 // (conj map1 map2) => merge map2 into map1
                 var result = coll;
                 const entries = x.map.entries;
+                var i: usize = 0;
+                while (i < entries.len) : (i += 2) {
+                    const assoc_args = [_]Value{ result, entries[i], entries[i + 1] };
+                    result = try assocFn(allocator, &assoc_args);
+                }
+                return result;
+            } else if (x == .hash_map) {
+                // (conj map1 hash_map2) => merge hash_map2 into map1
+                var result = coll;
+                const entries = try x.hash_map.toEntries(allocator);
                 var i: usize = 0;
                 while (i < entries.len) : (i += 2) {
                     const assoc_args = [_]Value{ result, entries[i], entries[i + 1] };
@@ -263,6 +276,16 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Handle vector case
     if (base == .vector) {
         return assocVector(allocator, base.vector, args[1..]);
+    }
+
+    // Handle hash_map case — use HAMT assoc directly
+    if (base == .hash_map) {
+        var hm = base.hash_map;
+        var i: usize = 0;
+        while (i < args.len - 1) : (i += 2) {
+            hm = try hm.assoc(allocator, args[i + 1], args[i + 2]);
+        }
+        return Value{ .hash_map = hm };
     }
 
     // Handle map/nil case
@@ -301,6 +324,12 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Re-sort if this is a sorted map
     if (base_comp) |comp| {
         try sortMapEntries(allocator, entries.items, comp);
+    }
+
+    // Promote to HashMap if above threshold (skip for sorted maps)
+    if (base_comp == null and entries.items.len / 2 > HASH_MAP_THRESHOLD) {
+        const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
+        return Value{ .hash_map = hm };
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
@@ -348,6 +377,7 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
     const not_found: Value = if (args.len == 3) args[2] else .nil;
     return switch (args[0]) {
         .map => |m| m.get(args[1]) orelse not_found,
+        .hash_map => |hm| hm.get(args[1]) orelse not_found,
         .vector => |vec| blk: {
             if (args[1] != .integer) break :blk not_found;
             const idx = args[1].integer;
@@ -471,6 +501,7 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .list => |lst| lst.count(),
         .vector => |vec| vec.count(),
         .map => |m| m.count(),
+        .hash_map => |hm| hm.getCount(),
         .set => |s| s.count(),
         .nil => @as(usize, 0),
         .string => |s| s.len,
@@ -515,6 +546,26 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 const pair = try allocator.alloc(Value, 2);
                 pair[0] = m.entries[i];
                 pair[1] = m.entries[i + 1];
+                const vec = try allocator.create(PersistentVector);
+                vec.* = .{ .items = pair };
+                entry_vecs[idx] = Value{ .vector = vec };
+                idx += 1;
+            }
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = entry_vecs };
+            return Value{ .list = lst };
+        },
+        .hash_map => |hm| {
+            const n = hm.getCount();
+            if (n == 0) return .nil;
+            const flat = try hm.toEntries(allocator);
+            const entry_vecs = try allocator.alloc(Value, n);
+            var idx: usize = 0;
+            var i: usize = 0;
+            while (i < flat.len) : (i += 2) {
+                const pair = try allocator.alloc(Value, 2);
+                pair[0] = flat[i];
+                pair[1] = flat[i + 1];
                 const vec = try allocator.create(PersistentVector);
                 vec.* = .{ .items = pair };
                 entry_vecs[idx] = Value{ .vector = vec };
@@ -707,17 +758,27 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ call_args.len, kw.name });
                 }
             }
-            const m = switch (call_args[0]) {
-                .map => |mp| mp,
-                else => break :blk if (call_args.len == 2) call_args[1] else .nil,
-            };
-            break :blk m.get(Value{ .keyword = kw }) orelse
-                if (call_args.len == 2) call_args[1] else .nil;
+            const kw_val = Value{ .keyword = kw };
+            if (call_args[0] == .map) {
+                break :blk call_args[0].map.get(kw_val) orelse
+                    if (call_args.len == 2) call_args[1] else .nil;
+            } else if (call_args[0] == .hash_map) {
+                break :blk call_args[0].hash_map.get(kw_val) orelse
+                    if (call_args.len == 2) call_args[1] else .nil;
+            } else {
+                break :blk if (call_args.len == 2) call_args[1] else .nil;
+            }
         },
         .map => |m| blk: {
             // map as function: ({:a 1} :a) or ({:a 1} :a default)
             if (call_args.len < 1 or call_args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to map lookup", .{call_args.len});
             break :blk m.get(call_args[0]) orelse
+                if (call_args.len == 2) call_args[1] else .nil;
+        },
+        .hash_map => |hm| blk: {
+            // hash_map as function
+            if (call_args.len < 1 or call_args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to map lookup", .{call_args.len});
+            break :blk hm.get(call_args[0]) orelse
                 if (call_args.len == 2) call_args[1] else .nil;
         },
         .set => |s| blk: {
@@ -799,10 +860,21 @@ fn seqToMapFromSlice(allocator: Allocator, items: []const Value) anyerror!Value 
         return items[0];
     }
     // Clojure 1.11: if odd elements and last is a map, merge trailing map
-    if (items.len % 2 == 1 and items[items.len - 1] == .map) {
+    if (items.len % 2 == 1 and (items[items.len - 1] == .map or items[items.len - 1] == .hash_map)) {
         // Create map from preceding key-value pairs
         const base_map = try hashMapFn(allocator, items[0 .. items.len - 1]);
-        // Merge trailing map into base map
+        if (items[items.len - 1] == .hash_map) {
+            // Convert hash_map to flat entries and merge via assoc
+            const hm_entries = try items[items.len - 1].hash_map.toEntries(allocator);
+            var result = base_map;
+            var k: usize = 0;
+            while (k < hm_entries.len) : (k += 2) {
+                const assoc_args = [_]Value{ result, hm_entries[k], hm_entries[k + 1] };
+                result = try assocFn(allocator, &assoc_args);
+            }
+            return result;
+        }
+        // Merge trailing ArrayMap into base map
         const trailing = items[items.len - 1].map;
         return mergeInto(allocator, base_map, trailing);
     }
@@ -812,6 +884,15 @@ fn seqToMapFromSlice(allocator: Allocator, items: []const Value) anyerror!Value 
 /// Merge entries from src map into dst map (like Clojure's merge).
 /// Maps store flat arrays: [k1,v1,k2,v2,...]
 fn mergeInto(allocator: Allocator, base: Value, src: *const PersistentArrayMap) anyerror!Value {
+    if (base == .hash_map) {
+        // Merge src entries into hash_map using HAMT assoc
+        var hm = base.hash_map;
+        var i: usize = 0;
+        while (i < src.entries.len) : (i += 2) {
+            hm = try hm.assoc(allocator, src.entries[i], src.entries[i + 1]);
+        }
+        return Value{ .hash_map = hm };
+    }
     if (base != .map) return base;
     var entries: std.ArrayList(Value) = .empty;
     // Add all entries from base
@@ -853,15 +934,25 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (start >= args.len) return .nil;
 
     // Start with entries from first map
-    if (args[start] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(args[start])});
+    const first_entries: []const Value = if (args[start] == .map)
+        args[start].map.entries
+    else if (args[start] == .hash_map)
+        try args[start].hash_map.toEntries(allocator)
+    else
+        return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(args[start])});
+
     var entries = std.ArrayList(Value).empty;
-    try entries.appendSlice(allocator, args[start].map.entries);
+    try entries.appendSlice(allocator, first_entries);
 
     // Merge remaining maps left-to-right
     for (args[start + 1 ..]) |arg| {
         if (arg == .nil) continue;
-        if (arg != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(arg)});
-        const src = arg.map.entries;
+        const src: []const Value = if (arg == .map)
+            arg.map.entries
+        else if (arg == .hash_map)
+            try arg.hash_map.toEntries(allocator)
+        else
+            return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(arg)});
         var i: usize = 0;
         while (i < src.len) : (i += 2) {
             const key = src[i];
@@ -882,8 +973,15 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    // If result is large enough, return as hash_map
+    const n_pairs = entries.items.len / 2;
+    if (n_pairs > HASH_MAP_THRESHOLD) {
+        const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
+        return Value{ .hash_map = hm };
+    }
+    const first_meta: ?*const Value = if (args[start] == .map) args[start].map.meta else args[start].hash_map.meta;
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = args[start].map.meta };
+    new_map.* = .{ .entries = entries.items, .meta = first_meta };
     return Value{ .map = new_map };
 }
 
@@ -901,14 +999,24 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
     while (start < maps.len and maps[start] == .nil) : (start += 1) {}
     if (start >= maps.len) return .nil;
 
-    if (maps[start] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(maps[start])});
+    const first_entries: []const Value = if (maps[start] == .map)
+        maps[start].map.entries
+    else if (maps[start] == .hash_map)
+        try maps[start].hash_map.toEntries(allocator)
+    else
+        return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(maps[start])});
+
     var entries = std.ArrayList(Value).empty;
-    try entries.appendSlice(allocator, maps[start].map.entries);
+    try entries.appendSlice(allocator, first_entries);
 
     for (maps[start + 1 ..]) |arg| {
         if (arg == .nil) continue;
-        if (arg != .map) return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(arg)});
-        const src = arg.map.entries;
+        const src: []const Value = if (arg == .map)
+            arg.map.entries
+        else if (arg == .hash_map)
+            try arg.hash_map.toEntries(allocator)
+        else
+            return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(arg)});
         var i: usize = 0;
         while (i < src.len) : (i += 2) {
             const key = src[i];
@@ -933,8 +1041,15 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    // If result is large enough, return as hash_map
+    const n_pairs = entries.items.len / 2;
+    if (n_pairs > HASH_MAP_THRESHOLD) {
+        const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
+        return Value{ .hash_map = hm };
+    }
+    const first_meta: ?*const Value = if (maps[start] == .map) maps[start].map.meta else maps[start].hash_map.meta;
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = maps[start].map.meta };
+    new_map.* = .{ .entries = entries.items, .meta = first_meta };
     return Value{ .map = new_map };
 }
 
@@ -1175,6 +1290,19 @@ pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value 
                 }
                 break;
             },
+            .hash_map => |hm| {
+                const flat = try hm.toEntries(allocator);
+                var i: usize = 0;
+                while (i < flat.len) : (i += 2) {
+                    const pair = try allocator.alloc(Value, 2);
+                    pair[0] = flat[i];
+                    pair[1] = flat[i + 1];
+                    const vec = try allocator.create(PersistentVector);
+                    vec.* = .{ .items = pair };
+                    try items.append(allocator, Value{ .vector = vec });
+                }
+                break;
+            },
             .string => |s| {
                 var i: usize = 0;
                 while (i < s.len) {
@@ -1255,9 +1383,12 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Handle map: convert to set of [k v] vectors
-    if (args[0] == .map) {
-        const m = args[0].map;
-        const n = m.count();
+    if (args[0] == .map or args[0] == .hash_map) {
+        const flat: []const Value = if (args[0] == .map)
+            args[0].map.entries
+        else
+            try args[0].hash_map.toEntries(allocator);
+        const n = flat.len / 2;
         if (n == 0) {
             const new_set = try allocator.create(PersistentHashSet);
             new_set.* = .{ .items = &.{} };
@@ -1265,10 +1396,10 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
         var result = std.ArrayList(Value).empty;
         var i: usize = 0;
-        while (i < m.entries.len) : (i += 2) {
+        while (i < flat.len) : (i += 2) {
             const pair = try allocator.alloc(Value, 2);
-            pair[0] = m.entries[i];
-            pair[1] = m.entries[i + 1];
+            pair[0] = flat[i];
+            pair[1] = flat[i + 1];
             const vec = try allocator.create(PersistentVector);
             vec.* = .{ .items = pair };
             try result.append(allocator, Value{ .vector = vec });
@@ -1372,11 +1503,22 @@ pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) {
         // (dissoc map) — identity
         return switch (args[0]) {
-            .map => args[0],
+            .map, .hash_map => args[0],
             .nil => .nil,
             else => return err.setErrorFmt(.eval, .type_error, .{}, "dissoc expects a map, got {s}", .{@tagName(args[0])}),
         };
     }
+
+    // Handle hash_map case — use HAMT dissoc directly
+    if (args[0] == .hash_map) {
+        var hm = args[0].hash_map;
+        var ki: usize = 1;
+        while (ki < args.len) : (ki += 1) {
+            hm = try hm.dissoc(allocator, args[ki]);
+        }
+        return Value{ .hash_map = hm };
+    }
+
     const base_entries = switch (args[0]) {
         .map => |m| m.entries,
         .nil => return .nil,
@@ -1450,6 +1592,15 @@ pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0]) {
         .map => |m| {
             const v = m.get(args[1]) orelse return .nil;
+            const pair = try allocator.alloc(Value, 2);
+            pair[0] = args[1];
+            pair[1] = v;
+            const vec = try allocator.create(PersistentVector);
+            vec.* = .{ .items = pair };
+            return Value{ .vector = vec };
+        },
+        .hash_map => |hm| {
+            const v = hm.get(args[1]) orelse return .nil;
             const pair = try allocator.alloc(Value, 2);
             pair[0] = args[1];
             pair[1] = v;
@@ -1881,6 +2032,11 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .map => blk: {
             const new_map = try allocator.create(PersistentArrayMap);
             new_map.* = .{ .entries = &.{}, .meta = args[0].map.meta, .comparator = args[0].map.comparator };
+            break :blk Value{ .map = new_map };
+        },
+        .hash_map => blk: {
+            const new_map = try allocator.create(PersistentArrayMap);
+            new_map.* = .{ .entries = &.{}, .meta = args[0].hash_map.meta };
             break :blk Value{ .map = new_map };
         },
         .set => blk: {

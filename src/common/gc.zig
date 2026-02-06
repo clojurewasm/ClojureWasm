@@ -11,6 +11,8 @@ const chunk_mod = @import("bytecode/chunk.zig");
 const env_mod = @import("env.zig");
 const ns_mod = @import("namespace.zig");
 const var_mod = @import("var.zig");
+const collections = @import("collections.zig");
+const HAMTNode = collections.HAMTNode;
 
 /// GC root set — references to all live value sources.
 ///
@@ -351,6 +353,21 @@ pub const MarkSweepGc = struct {
     }
 };
 
+/// Recursively trace a HAMT node and all its descendants, marking
+/// key-value pairs and child node pointers as live.
+fn traceHAMTNode(gc: *MarkSweepGc, node: *const HAMTNode) void {
+    if (!gc.markAndCheck(node)) return; // already traced
+    gc.markSlice(node.kvs);
+    for (node.kvs) |kv| {
+        traceValue(gc, kv.key);
+        traceValue(gc, kv.val);
+    }
+    gc.markSlice(node.nodes);
+    for (node.nodes) |child| {
+        traceHAMTNode(gc, child);
+    }
+}
+
 /// Trace a Fn's proto pointer and its internal allocations.
 /// For bytecode Fns, proto is a *FnProto — trace code, constants, lines, columns.
 /// For treewalk Fns, proto is a *Closure — its captured_locals are traced via
@@ -438,6 +455,19 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                     if (gc.markAndCheck(meta)) traceValue(gc, meta.*);
                 }
                 if (m.comparator) |c| traceValue(gc, c);
+            }
+        },
+
+        // Persistent hash map (HAMT)
+        .hash_map => |hm| {
+            if (gc.markAndCheck(hm)) {
+                // Trace null-key entry if present
+                if (hm.has_null) traceValue(gc, hm.null_val);
+                // Traverse HAMT tree
+                if (hm.root) |root| traceHAMTNode(gc, root);
+                if (hm.meta) |meta| {
+                    if (gc.markAndCheck(meta)) traceValue(gc, meta.*);
+                }
             }
         },
 

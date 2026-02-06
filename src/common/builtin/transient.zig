@@ -28,6 +28,13 @@ pub fn transientFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0]) {
         .vector => |vec| Value{ .transient_vector = try TransientVector.initFrom(allocator, vec) },
         .map => |m| Value{ .transient_map = try TransientArrayMap.initFrom(allocator, m) },
+        .hash_map => |hm| blk: {
+            const entries = try hm.toEntries(allocator);
+            const tm = try allocator.create(TransientArrayMap);
+            tm.* = .{};
+            try tm.entries.appendSlice(allocator, entries);
+            break :blk Value{ .transient_map = tm };
+        },
         .set => |s| Value{ .transient_set = try TransientHashSet.initFrom(allocator, s) },
         else => err.setErrorFmt(.eval, .type_error, .{}, "transient not supported on {s}", .{@tagName(args[0])}),
     };

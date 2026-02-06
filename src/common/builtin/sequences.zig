@@ -10,6 +10,7 @@ const Value = value_mod.Value;
 const PersistentList = value_mod.PersistentList;
 const PersistentVector = value_mod.PersistentVector;
 const PersistentArrayMap = value_mod.PersistentArrayMap;
+const PersistentHashMap = value_mod.PersistentHashMap;
 const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
@@ -106,6 +107,7 @@ pub fn containsFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to contains?", .{args.len});
     return switch (args[0]) {
         .map => |m| Value{ .boolean = m.get(args[1]) != null },
+        .hash_map => |hm| Value{ .boolean = hm.containsKey(args[1]) },
         .set => |s| Value{ .boolean = s.contains(args[1]) },
         .vector => |vec| switch (args[1]) {
             .integer => |i| Value{ .boolean = i >= 0 and @as(usize, @intCast(i)) < vec.count() },
@@ -160,6 +162,20 @@ pub fn valFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keys", .{args.len});
     if (args[0] == .nil) return Value.nil;
+    if (args[0] == .hash_map) {
+        const hm = args[0].hash_map;
+        const n = hm.getCount();
+        if (n == 0) return Value.nil;
+        const flat = try hm.toEntries(allocator);
+        const items = try allocator.alloc(Value, n);
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            items[i] = flat[i * 2];
+        }
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = items };
+        return Value{ .list = lst };
+    }
     const m = switch (args[0]) {
         .map => |m| m,
         .list, .vector, .set, .string => return Value.nil,
@@ -182,6 +198,20 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vals", .{args.len});
     if (args[0] == .nil) return Value.nil;
+    if (args[0] == .hash_map) {
+        const hm = args[0].hash_map;
+        const n = hm.getCount();
+        if (n == 0) return Value.nil;
+        const flat = try hm.toEntries(allocator);
+        const items = try allocator.alloc(Value, n);
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            items[i] = flat[i * 2 + 1];
+        }
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = items };
+        return Value{ .list = lst };
+    }
     const m = switch (args[0]) {
         .map => |m| m,
         .list, .vector, .set, .string => return Value.nil,

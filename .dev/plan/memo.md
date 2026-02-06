@@ -26,7 +26,7 @@ Phase 24A — Speed Optimization:
 
 Phase 24B — Memory Optimization:
 12. ~~24B.1: NaN boxing~~ (deferred — too invasive, 600+ call-site changes, see D72)
-13. 24B.2: HAMT (persistent hash array mapped trie)
+13. ~~24B.2: HAMT (persistent hash array mapped trie)~~ (done)
 14. 24B.3: RRB-Tree (conditional, if vector bottleneck)
 15. 24B.4: GC tuning
 
@@ -34,20 +34,19 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24B.2: HAMT (persistent hash array mapped trie)
-- Replace PersistentArrayMap for maps with >8 entries
-- 32-way branching, O(log32 n) lookup vs current O(n) linear scan
-- Zig: @popCount for population count, packed bitmap node layout
-- Structural sharing for immutable persistent updates
-- Reference: Clojure PersistentHashMap source, Bagwell (2001) "Ideal Hash Trees"
+24B.3: RRB-Tree (conditional — evaluate if vector bottleneck exists)
+- Check vector_ops benchmark (179ms) for optimization potential
+- If vector operations dominate, implement RRB-Tree persistent vector
+- Otherwise skip to 24B.4 (GC tuning)
 
 ## Previous Task
 
-24B.1: NaN boxing (DEFERRED)
-- value.zig rewrite to packed struct(u64) compiled successfully
-- Migration of 30+ call-site files proved too invasive (600+ errors)
-- Decision: defer to dedicated future phase (D72 updated)
-- Phase 24A complete: fib 542→28ms (19.4x), lazy_chain 21.4→6.6s (3.2x)
+24B.2: HAMT (persistent hash array mapped trie) — DONE
+- Added PersistentHashMap with HAMT internals to collections.zig
+- Added hash_map Value variant, updated 13 files for full dispatch
+- ArrayMap promotes to HashMap above 8 entries
+- map_ops: 26ms → 13.7ms (1.9x), keyword_lookup: 24ms → 19.7ms (18%)
+- fib_recursive: 28ms → 23ms (no regression, slight improvement)
 
 ## Handover Notes
 

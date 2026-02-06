@@ -30,6 +30,7 @@ pub fn getMeta(val: Value) Value {
         .list => |l| if (l.meta) |m| m.* else .nil,
         .vector => |v| if (v.meta) |m| m.* else .nil,
         .map => |m| if (m.meta) |meta| meta.* else .nil,
+        .hash_map => |hm| if (hm.meta) |meta| meta.* else .nil,
         .set => |s| if (s.meta) |m| m.* else .nil,
         .fn_val => |f| if (f.meta) |m| m.* else .nil,
         .symbol => |s| if (s.meta) |m| m.* else .nil,
@@ -50,7 +51,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Validate meta is a map or nil
     switch (new_meta) {
-        .map, .nil => {},
+        .map, .hash_map, .nil => {},
         else => return err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a map for metadata, got {s}", .{@tagName(new_meta)}),
     }
 
@@ -75,6 +76,17 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const new_map = try allocator.create(PersistentArrayMap);
             new_map.* = .{ .entries = m.entries, .meta = meta_ptr };
             break :blk Value{ .map = new_map };
+        },
+        .hash_map => |hm| blk: {
+            const new_hm = try allocator.create(@import("../collections.zig").PersistentHashMap);
+            new_hm.* = .{
+                .count = hm.count,
+                .root = hm.root,
+                .has_null = hm.has_null,
+                .null_val = hm.null_val,
+                .meta = meta_ptr,
+            };
+            break :blk Value{ .hash_map = new_hm };
         },
         .set => |s| blk: {
             const new_set = try allocator.create(@import("../collections.zig").PersistentHashSet);
@@ -126,7 +138,7 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             call_args[0] = if (a.meta) |m| m.* else .nil;
             const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
             switch (new_meta) {
-                .map => {
+                .map, .hash_map => {
                     const ptr = try allocator.create(Value);
                     ptr.* = new_meta;
                     a.meta = ptr;
@@ -141,6 +153,13 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
             switch (new_meta) {
                 .map => |m| v.meta = @constCast(m),
+                .hash_map => {
+                    // Var meta is *const PersistentArrayMap; convert hash_map to ArrayMap
+                    const flat = try new_meta.hash_map.toEntries(allocator);
+                    const am = try allocator.create(PersistentArrayMap);
+                    am.* = .{ .entries = flat };
+                    v.meta = am;
+                },
                 .nil => v.meta = null,
                 else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }
@@ -162,7 +181,7 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     switch (ref) {
         .atom => |a| {
             switch (new_meta) {
-                .map => {
+                .map, .hash_map => {
                     const ptr = try allocator.create(Value);
                     ptr.* = new_meta;
                     a.meta = ptr;
@@ -175,6 +194,13 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .var_ref => |v| {
             switch (new_meta) {
                 .map => |m| v.meta = @constCast(m),
+                .hash_map => {
+                    // Var meta is *const PersistentArrayMap; convert hash_map to ArrayMap
+                    const flat = try new_meta.hash_map.toEntries(allocator);
+                    const am = try allocator.create(PersistentArrayMap);
+                    am.* = .{ .entries = flat };
+                    v.meta = am;
+                },
                 .nil => v.meta = null,
                 else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
             }

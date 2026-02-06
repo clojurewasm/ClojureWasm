@@ -180,6 +180,14 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             }
             return Form{ .data = .{ .map = forms } };
         },
+        .hash_map => |hm| {
+            const entries = try hm.toEntries(allocator);
+            const forms = try allocator.alloc(Form, entries.len);
+            for (entries, 0..) |item, i| {
+                forms[i] = try valueToForm(allocator, item);
+            }
+            return Form{ .data = .{ .map = forms } };
+        },
         .set => |s| {
             const forms = try allocator.alloc(Form, s.items.len);
             for (s.items, 0..) |item, i| {

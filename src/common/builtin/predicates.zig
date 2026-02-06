@@ -50,7 +50,7 @@ fn isSymbol(v: Value) bool {
     return v == .symbol;
 }
 fn isMap(v: Value) bool {
-    return v == .map;
+    return v == .map or v == .hash_map;
 }
 fn isVector(v: Value) bool {
     return v == .vector;
@@ -65,7 +65,7 @@ fn isSet(v: Value) bool {
     return v == .set;
 }
 fn isColl(v: Value) bool {
-    return v == .list or v == .vector or v == .map or v == .set or
+    return v == .list or v == .vector or v == .map or v == .hash_map or v == .set or
         v == .cons or v == .lazy_seq or v == .chunked_cons;
 }
 fn isList(v: Value) bool {
@@ -78,10 +78,10 @@ fn isSequential(v: Value) bool {
     return v == .list or v == .vector or v == .cons or v == .lazy_seq or v == .chunked_cons;
 }
 fn isAssociative(v: Value) bool {
-    return v == .map or v == .vector;
+    return v == .map or v == .hash_map or v == .vector;
 }
 fn isIFn(v: Value) bool {
-    return v == .fn_val or v == .builtin_fn or v == .keyword or v == .map or v == .set or v == .vector or v == .symbol;
+    return v == .fn_val or v == .builtin_fn or v == .keyword or v == .map or v == .hash_map or v == .set or v == .vector or v == .symbol;
 }
 
 // Builtin wrappers (matching BuiltinFn signature)
@@ -219,6 +219,7 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .list => "list",
         .vector => "vector",
         .map => "map",
+        .hash_map => "map",
         .set => "set",
         .fn_val, .builtin_fn => "function",
         .atom => "atom",
@@ -323,6 +324,7 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .list => "list",
         .vector => "vector",
         .map => "map",
+        .hash_map => "map",
         .set => "set",
         .fn_val, .builtin_fn => "function",
         .atom => "atom",

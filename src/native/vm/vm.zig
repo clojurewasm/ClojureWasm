@@ -919,6 +919,8 @@ pub const VM = struct {
                 const map_arg = self.stack[fn_idx + 1];
                 const result = if (map_arg == .map)
                     map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
+                else if (map_arg == .hash_map)
+                    map_arg.hash_map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
                 else if (arg_count >= 2)
                     self.stack[fn_idx + 2]
                 else
@@ -955,6 +957,14 @@ pub const VM = struct {
                 if (arg_count < 1) return error.ArityError;
                 const key = self.stack[fn_idx + 1];
                 const result = m.get(key) orelse
+                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .hash_map => |hm| {
+                if (arg_count < 1) return error.ArityError;
+                const key = self.stack[fn_idx + 1];
+                const result = hm.get(key) orelse
                     (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
                 self.sp = fn_idx;
                 try self.push(result);
@@ -1246,7 +1256,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .keyword => "keyword",
         .list => "list",
         .vector => "vector",
-        .map => "map",
+        .map, .hash_map => "map",
         .set => "set",
         .fn_val, .builtin_fn => "function",
         .atom => "atom",

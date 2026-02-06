@@ -16,6 +16,7 @@ pub const Var = var_mod.Var;
 pub const PersistentList = collections.PersistentList;
 pub const PersistentVector = collections.PersistentVector;
 pub const PersistentArrayMap = collections.PersistentArrayMap;
+pub const PersistentHashMap = collections.PersistentHashMap;
 pub const PersistentHashSet = collections.PersistentHashSet;
 pub const TransientVector = collections.TransientVector;
 pub const TransientArrayMap = collections.TransientArrayMap;
@@ -406,6 +407,7 @@ pub const Value = union(enum) {
     list: *const PersistentList,
     vector: *const PersistentVector,
     map: *const PersistentArrayMap,
+    hash_map: *const PersistentHashMap,
     set: *const PersistentHashSet,
 
     // Functions
@@ -615,6 +617,35 @@ pub const Value = union(enum) {
                 print_depth -= 1;
                 try w.writeAll("}");
             },
+            .hash_map => |hm| {
+                if (try checkPrintLevel(w)) return;
+                const length = getPrintLength();
+                try w.writeAll("{");
+                print_depth += 1;
+                // Collect entries for printing
+                const alloc = print_allocator orelse std.heap.page_allocator;
+                const entries = hm.toEntries(alloc) catch &[_]Value{};
+                var i: usize = 0;
+                var pair_idx: usize = 0;
+                var is_first = true;
+                while (i < entries.len) : (i += 2) {
+                    if (length) |len| {
+                        if (pair_idx >= @as(usize, @intCast(len))) {
+                            if (!is_first) try w.writeAll(", ");
+                            try w.writeAll("...");
+                            break;
+                        }
+                    }
+                    if (!is_first) try w.writeAll(", ");
+                    is_first = false;
+                    try entries[i].formatPrStr(w);
+                    try w.writeAll(" ");
+                    try entries[i + 1].formatPrStr(w);
+                    pair_idx += 1;
+                }
+                print_depth -= 1;
+                try w.writeAll("}");
+            },
             .set => |s| {
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
@@ -819,6 +850,13 @@ pub const Value = union(enum) {
             return true;
         }
 
+        // Cross-type map equality: ArrayMap and HashMap compare by entries
+        if ((self_tag == .map or self_tag == .hash_map) and
+            (other_tag == .map or other_tag == .hash_map))
+        {
+            return eqlMaps(self, self_tag, other, other_tag, allocator);
+        }
+
         if (self_tag != other_tag) return false;
 
         return switch (self) {
@@ -844,21 +882,7 @@ pub const Value = union(enum) {
             .cons => unreachable, // handled by eqlConsSeq above
             .delay => |a| a == other.delay, // identity equality
             .reduced => |a| a.value.eqlImpl(other.reduced.value, allocator),
-            .map => |a| {
-                const b = other.map;
-                if (a.count() != b.count()) return false;
-                var i: usize = 0;
-                while (i < a.entries.len) : (i += 2) {
-                    const key = a.entries[i];
-                    const val = a.entries[i + 1];
-                    if (b.get(key)) |bval| {
-                        if (!val.eqlImpl(bval, allocator)) return false;
-                    } else {
-                        return false;
-                    }
-                }
-                return true;
-            },
+            .map, .hash_map => unreachable, // handled by eqlMaps above
             .set => |a| {
                 const b = other.set;
                 if (a.count() != b.count()) return false;
@@ -1037,6 +1061,47 @@ fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool 
         } else {
             return false;
         }
+    }
+}
+
+/// Cross-type map equality: handles ArrayMap vs HashMap comparisons.
+fn eqlMaps(self: Value, self_tag: Tag, other: Value, other_tag: Tag, allocator: ?Allocator) bool {
+    // Get count from both sides
+    const self_count: usize = if (self_tag == .map) self.map.count() else self.hash_map.getCount();
+    const other_count: usize = if (other_tag == .map) other.map.count() else other.hash_map.getCount();
+    if (self_count != other_count) return false;
+
+    // Iterate self's entries and look up in other
+    if (self_tag == .map) {
+        const a = self.map;
+        var i: usize = 0;
+        while (i < a.entries.len) : (i += 2) {
+            const key = a.entries[i];
+            const val = a.entries[i + 1];
+            const bval = if (other_tag == .map) other.map.get(key) else other.hash_map.get(key);
+            if (bval) |bv| {
+                if (!val.eqlImpl(bv, allocator)) return false;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    } else {
+        // self is hash_map — collect entries and iterate
+        const alloc = allocator orelse return false;
+        const entries = self.hash_map.toEntries(alloc) catch return false;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            const key = entries[i];
+            const val = entries[i + 1];
+            const bval = if (other_tag == .map) other.map.get(key) else other.hash_map.get(key);
+            if (bval) |bv| {
+                if (!val.eqlImpl(bv, allocator)) return false;
+            } else {
+                return false;
+            }
+        }
+        return true;
     }
 }
 

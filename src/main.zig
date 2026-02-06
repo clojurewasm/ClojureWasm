@@ -503,6 +503,20 @@ fn writeValue(w: anytype, val: Value) void {
             }
             w.print("}}", .{}) catch {};
         },
+        .hash_map => |hm| {
+            w.print("{{", .{}) catch {};
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            const entries = hm.toEntries(arena.allocator()) catch &[_]Value{};
+            var i: usize = 0;
+            while (i < entries.len) : (i += 2) {
+                if (i > 0) w.print(", ", .{}) catch {};
+                writeValue(w, entries[i]);
+                w.print(" ", .{}) catch {};
+                writeValue(w, entries[i + 1]);
+            }
+            w.print("}}", .{}) catch {};
+        },
         .set => |s| {
             w.print("#{{", .{}) catch {};
             for (s.items, 0..) |item, i| {

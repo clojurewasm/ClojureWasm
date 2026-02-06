@@ -387,6 +387,406 @@ pub const ChunkedCons = struct {
     }
 };
 
+// ============================================================
+// PersistentHashMap — Hash Array Mapped Trie (HAMT)
+// ============================================================
+
+/// Threshold: ArrayMap promotes to HashMap above this count.
+pub const HASH_MAP_THRESHOLD = 8;
+
+/// Compute a 32-bit hash for HAMT dispatch.
+fn hashValue(v: Value) u32 {
+    const h = @import("builtin/predicates.zig").computeHash(v);
+    // Murmur3 finalizer mix for better bit distribution
+    var x: u32 = @truncate(@as(u64, @bitCast(h)));
+    x ^= x >> 16;
+    x *%= 0x85ebca6b;
+    x ^= x >> 13;
+    x *%= 0xc2b2ae35;
+    x ^= x >> 16;
+    return x;
+}
+
+/// HAMT node — sparse 32-way branching with bitmap indexing.
+pub const HAMTNode = struct {
+    data_map: u32 = 0, // Bits set for positions with inline key-value pairs
+    node_map: u32 = 0, // Bits set for positions with sub-node pointers
+    kvs: []const KV = &.{},
+    nodes: []const *const HAMTNode = &.{},
+
+    pub const KV = struct {
+        key: Value,
+        val: Value,
+    };
+
+    const EMPTY: HAMTNode = .{};
+
+    /// Get value for key, or null if not found.
+    pub fn get(self: *const HAMTNode, hash: u32, shift: u5, key: Value) ?Value {
+        const bit = bitpos(hash, shift);
+        if (self.data_map & bit != 0) {
+            const idx = bitmapIndex(self.data_map, bit);
+            if (self.kvs[idx].key.eql(key)) return self.kvs[idx].val;
+            return null;
+        }
+        if (self.node_map & bit != 0) {
+            const idx = bitmapIndex(self.node_map, bit);
+            return self.nodes[idx].get(hash, nextShift(shift), key);
+        }
+        return null;
+    }
+
+    /// Return a new node with the key-value pair added/replaced.
+    pub fn assoc(self: *const HAMTNode, allocator: std.mem.Allocator, hash: u32, shift: u5, key: Value, val: Value) !*const HAMTNode {
+        const bit = bitpos(hash, shift);
+
+        if (self.data_map & bit != 0) {
+            // Slot occupied by inline KV
+            const idx = bitmapIndex(self.data_map, bit);
+            const existing_key = self.kvs[idx].key;
+            if (existing_key.eql(key)) {
+                // Key match — replace value
+                if (self.kvs[idx].val.eql(val)) return self; // no change
+                const new_kvs = try allocator.alloc(KV, self.kvs.len);
+                @memcpy(new_kvs, self.kvs);
+                new_kvs[idx] = .{ .key = key, .val = val };
+                const new_node = try allocator.create(HAMTNode);
+                new_node.* = .{
+                    .data_map = self.data_map,
+                    .node_map = self.node_map,
+                    .kvs = new_kvs,
+                    .nodes = self.nodes,
+                };
+                return new_node;
+            }
+            // Hash collision at this level — push down
+            const existing_hash = hashValue(existing_key);
+            const sub_node = try createTwoNode(allocator, existing_hash, existing_key, self.kvs[idx].val, hash, key, val, nextShift(shift));
+            // Remove KV, add sub-node
+            const new_kvs = try allocator.alloc(KV, self.kvs.len - 1);
+            copyExcept(KV, new_kvs, self.kvs, idx);
+            const node_idx = bitmapIndex(self.node_map, bit);
+            const new_nodes = try allocator.alloc(*const HAMTNode, self.nodes.len + 1);
+            copyInsert(*const HAMTNode, new_nodes, self.nodes, node_idx, sub_node);
+            const new_node = try allocator.create(HAMTNode);
+            new_node.* = .{
+                .data_map = self.data_map ^ bit,
+                .node_map = self.node_map | bit,
+                .kvs = new_kvs,
+                .nodes = new_nodes,
+            };
+            return new_node;
+        }
+
+        if (self.node_map & bit != 0) {
+            // Slot occupied by sub-node — recurse
+            const idx = bitmapIndex(self.node_map, bit);
+            const child = self.nodes[idx];
+            const new_child = try child.assoc(allocator, hash, nextShift(shift), key, val);
+            if (new_child == child) return self; // no change
+            const new_nodes = try allocator.alloc(*const HAMTNode, self.nodes.len);
+            @memcpy(new_nodes, self.nodes);
+            new_nodes[idx] = new_child;
+            const new_node = try allocator.create(HAMTNode);
+            new_node.* = .{
+                .data_map = self.data_map,
+                .node_map = self.node_map,
+                .kvs = self.kvs,
+                .nodes = new_nodes,
+            };
+            return new_node;
+        }
+
+        // Empty slot — insert inline KV
+        const idx = bitmapIndex(self.data_map, bit);
+        const new_kvs = try allocator.alloc(KV, self.kvs.len + 1);
+        copyInsert(KV, new_kvs, self.kvs, idx, .{ .key = key, .val = val });
+        const new_node = try allocator.create(HAMTNode);
+        new_node.* = .{
+            .data_map = self.data_map | bit,
+            .node_map = self.node_map,
+            .kvs = new_kvs,
+            .nodes = self.nodes,
+        };
+        return new_node;
+    }
+
+    /// Return a new node without the given key, or null if node becomes empty.
+    pub fn dissoc(self: *const HAMTNode, allocator: std.mem.Allocator, hash: u32, shift: u5, key: Value) !?*const HAMTNode {
+        const bit = bitpos(hash, shift);
+
+        if (self.data_map & bit != 0) {
+            const idx = bitmapIndex(self.data_map, bit);
+            if (!self.kvs[idx].key.eql(key)) return self; // not found
+            // Remove this KV
+            if (self.kvs.len == 1 and self.nodes.len == 0) return null; // node empty
+            const new_kvs = try allocator.alloc(KV, self.kvs.len - 1);
+            copyExcept(KV, new_kvs, self.kvs, idx);
+            const new_node = try allocator.create(HAMTNode);
+            new_node.* = .{
+                .data_map = self.data_map ^ bit,
+                .node_map = self.node_map,
+                .kvs = new_kvs,
+                .nodes = self.nodes,
+            };
+            return new_node;
+        }
+
+        if (self.node_map & bit != 0) {
+            const idx = bitmapIndex(self.node_map, bit);
+            const child = self.nodes[idx];
+            const new_child = try child.dissoc(allocator, hash, nextShift(shift), key);
+            if (new_child) |nc| {
+                if (nc == child) return self; // no change
+                // Inline single-entry sub-nodes back into parent
+                if (nc.kvs.len == 1 and nc.nodes.len == 0) {
+                    // Pull the single KV up
+                    const kv = nc.kvs[0];
+                    const new_kvs = try allocator.alloc(KV, self.kvs.len + 1);
+                    const kv_idx = bitmapIndex(self.data_map, bit);
+                    copyInsert(KV, new_kvs, self.kvs, kv_idx, kv);
+                    const new_nodes = try allocator.alloc(*const HAMTNode, self.nodes.len - 1);
+                    copyExcept(*const HAMTNode, new_nodes, self.nodes, idx);
+                    const new_node = try allocator.create(HAMTNode);
+                    new_node.* = .{
+                        .data_map = self.data_map | bit,
+                        .node_map = self.node_map ^ bit,
+                        .kvs = new_kvs,
+                        .nodes = new_nodes,
+                    };
+                    return new_node;
+                }
+                const new_nodes = try allocator.alloc(*const HAMTNode, self.nodes.len);
+                @memcpy(new_nodes, self.nodes);
+                new_nodes[idx] = nc;
+                const new_node = try allocator.create(HAMTNode);
+                new_node.* = .{
+                    .data_map = self.data_map,
+                    .node_map = self.node_map,
+                    .kvs = self.kvs,
+                    .nodes = new_nodes,
+                };
+                return new_node;
+            } else {
+                // Child became empty — remove sub-node
+                if (self.kvs.len == 0 and self.nodes.len == 1) return null;
+                const new_nodes = try allocator.alloc(*const HAMTNode, self.nodes.len - 1);
+                copyExcept(*const HAMTNode, new_nodes, self.nodes, idx);
+                const new_node = try allocator.create(HAMTNode);
+                new_node.* = .{
+                    .data_map = self.data_map,
+                    .node_map = self.node_map ^ bit,
+                    .kvs = self.kvs,
+                    .nodes = new_nodes,
+                };
+                return new_node;
+            }
+        }
+
+        return self; // key not in this node
+    }
+
+    /// Count all key-value pairs in this subtree.
+    pub fn countEntries(self: *const HAMTNode) usize {
+        var n: usize = self.kvs.len;
+        for (self.nodes) |child| {
+            n += child.countEntries();
+        }
+        return n;
+    }
+
+    /// Collect all entries as flat [k1, v1, k2, v2, ...] for seq/iteration.
+    pub fn collectEntries(self: *const HAMTNode, allocator: std.mem.Allocator, out: *std.ArrayList(Value)) !void {
+        for (self.kvs) |kv| {
+            try out.append(allocator, kv.key);
+            try out.append(allocator, kv.val);
+        }
+        for (self.nodes) |child| {
+            try child.collectEntries(allocator, out);
+        }
+    }
+};
+
+/// Create a node with exactly two key-value pairs.
+fn createTwoNode(allocator: std.mem.Allocator, hash1: u32, key1: Value, val1: Value, hash2: u32, key2: Value, val2: Value, shift: u5) !*const HAMTNode {
+    const bit1 = bitpos(hash1, shift);
+    const bit2 = bitpos(hash2, shift);
+
+    if (bit1 != bit2) {
+        // Different positions — put both inline
+        const node = try allocator.create(HAMTNode);
+        const kvs = try allocator.alloc(HAMTNode.KV, 2);
+        if (bitmapIndex(bit1 | bit2, bit1) == 0) {
+            kvs[0] = .{ .key = key1, .val = val1 };
+            kvs[1] = .{ .key = key2, .val = val2 };
+        } else {
+            kvs[0] = .{ .key = key2, .val = val2 };
+            kvs[1] = .{ .key = key1, .val = val1 };
+        }
+        node.* = .{
+            .data_map = bit1 | bit2,
+            .kvs = kvs,
+        };
+        return node;
+    }
+
+    // Same position — need to go deeper
+    const child = try createTwoNode(allocator, hash1, key1, val1, hash2, key2, val2, nextShift(shift));
+    const node = try allocator.create(HAMTNode);
+    const nodes = try allocator.alloc(*const HAMTNode, 1);
+    nodes[0] = child;
+    node.* = .{
+        .node_map = bit1,
+        .nodes = nodes,
+    };
+    return node;
+}
+
+/// Extract 5-bit index from hash at given shift level.
+fn mask(hash: u32, shift: u5) u5 {
+    return @truncate(hash >> shift);
+}
+
+/// Bit position for the 5-bit index.
+fn bitpos(hash: u32, shift: u5) u32 {
+    return @as(u32, 1) << mask(hash, shift);
+}
+
+/// Count set bits below the given bit to find array index.
+fn bitmapIndex(bitmap: u32, bit: u32) usize {
+    return @popCount(bitmap & (bit -% 1));
+}
+
+/// Advance shift by 5 bits, wrapping at 30 (max 7 levels for 32-bit hash).
+fn nextShift(shift: u5) u5 {
+    return if (shift >= 25) 0 else shift + 5;
+}
+
+/// Copy src to dst, inserting elem at idx.
+fn copyInsert(comptime T: type, dst: []T, src: []const T, idx: usize, elem: T) void {
+    @memcpy(dst[0..idx], src[0..idx]);
+    dst[idx] = elem;
+    if (idx < src.len) @memcpy(dst[idx + 1 ..], src[idx..]);
+}
+
+/// Copy src to dst, skipping element at idx.
+fn copyExcept(comptime T: type, dst: []T, src: []const T, idx: usize) void {
+    @memcpy(dst[0..idx], src[0..idx]);
+    if (idx + 1 < src.len) @memcpy(dst[idx..], src[idx + 1 ..]);
+}
+
+/// Persistent hash map — HAMT-based, replaces ArrayMap for large maps.
+pub const PersistentHashMap = struct {
+    count: usize = 0,
+    root: ?*const HAMTNode = null,
+    has_null: bool = false,
+    null_val: Value = .nil,
+    meta: ?*const Value = null,
+
+    pub const EMPTY: PersistentHashMap = .{};
+
+    pub fn getCount(self: *const PersistentHashMap) usize {
+        return self.count;
+    }
+
+    pub fn get(self: *const PersistentHashMap, key: Value) ?Value {
+        if (key == .nil) {
+            return if (self.has_null) self.null_val else null;
+        }
+        const root = self.root orelse return null;
+        return root.get(hashValue(key), 0, key);
+    }
+
+    pub fn containsKey(self: *const PersistentHashMap, key: Value) bool {
+        return self.get(key) != null;
+    }
+
+    pub fn assoc(self: *const PersistentHashMap, allocator: std.mem.Allocator, key: Value, val: Value) !*const PersistentHashMap {
+        if (key == .nil) {
+            if (self.has_null and self.null_val.eql(val)) return self;
+            const new_map = try allocator.create(PersistentHashMap);
+            new_map.* = .{
+                .count = self.count + @as(usize, if (self.has_null) 0 else 1),
+                .root = self.root,
+                .has_null = true,
+                .null_val = val,
+                .meta = self.meta,
+            };
+            return new_map;
+        }
+        const hash = hashValue(key);
+        const empty_root = &HAMTNode.EMPTY;
+        const old_root = self.root orelse empty_root;
+        const new_root = try old_root.assoc(allocator, hash, 0, key, val);
+        if (new_root == old_root) return self; // no change
+        // Count: if old root didn't have this key, increment
+        const added: usize = if (old_root.get(hash, 0, key) == null) 1 else 0;
+        const new_map = try allocator.create(PersistentHashMap);
+        new_map.* = .{
+            .count = self.count + added,
+            .root = new_root,
+            .has_null = self.has_null,
+            .null_val = self.null_val,
+            .meta = self.meta,
+        };
+        return new_map;
+    }
+
+    pub fn dissoc(self: *const PersistentHashMap, allocator: std.mem.Allocator, key: Value) !*const PersistentHashMap {
+        if (key == .nil) {
+            if (!self.has_null) return self;
+            const new_map = try allocator.create(PersistentHashMap);
+            new_map.* = .{
+                .count = self.count - 1,
+                .root = self.root,
+                .has_null = false,
+                .null_val = .nil,
+                .meta = self.meta,
+            };
+            return new_map;
+        }
+        const root = self.root orelse return self;
+        const hash = hashValue(key);
+        const new_root = try root.dissoc(allocator, hash, 0, key);
+        if (new_root) |nr| {
+            if (nr == root) return self; // key not found
+        }
+        const new_map = try allocator.create(PersistentHashMap);
+        new_map.* = .{
+            .count = self.count - 1,
+            .root = new_root,
+            .has_null = self.has_null,
+            .null_val = self.null_val,
+            .meta = self.meta,
+        };
+        return new_map;
+    }
+
+    /// Collect all entries as flat [k1, v1, k2, v2, ...] for seq/iteration.
+    pub fn toEntries(self: *const PersistentHashMap, allocator: std.mem.Allocator) ![]const Value {
+        var out = std.ArrayList(Value).empty;
+        if (self.has_null) {
+            try out.append(allocator, .nil);
+            try out.append(allocator, self.null_val);
+        }
+        if (self.root) |root| {
+            try root.collectEntries(allocator, &out);
+        }
+        return out.items;
+    }
+
+    /// Create a PersistentHashMap from a flat [k1, v1, k2, v2, ...] array.
+    pub fn fromEntries(allocator: std.mem.Allocator, entries: []const Value) !*const PersistentHashMap {
+        const empty = &PersistentHashMap.EMPTY;
+        var m: *const PersistentHashMap = empty;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            m = try m.assoc(allocator, entries[i], entries[i + 1]);
+        }
+        return m;
+    }
+};
+
 // === Tests ===
 
 test "PersistentList - empty" {
@@ -464,4 +864,142 @@ test "PersistentHashSet - contains" {
     try testing.expectEqual(@as(usize, 3), s.count());
     try testing.expect(s.contains(.{ .integer = 2 }));
     try testing.expect(!s.contains(.{ .integer = 99 }));
+}
+
+// --- PersistentHashMap (HAMT) Tests ---
+
+test "PersistentHashMap - empty" {
+    const m = PersistentHashMap.EMPTY;
+    try testing.expectEqual(@as(usize, 0), m.getCount());
+    try testing.expect(m.get(.{ .integer = 1 }) == null);
+}
+
+test "PersistentHashMap - single assoc and get" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const m0 = &PersistentHashMap.EMPTY;
+    const m1 = try m0.assoc(alloc, .{ .integer = 42 }, .{ .integer = 100 });
+    try testing.expectEqual(@as(usize, 1), m1.getCount());
+    const v = m1.get(.{ .integer = 42 });
+    try testing.expect(v != null);
+    try testing.expect(v.?.eql(.{ .integer = 100 }));
+    // Original unchanged
+    try testing.expectEqual(@as(usize, 0), m0.getCount());
+}
+
+test "PersistentHashMap - multiple assocs" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
+    // Insert 20 entries
+    for (0..20) |i| {
+        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) * 10 });
+    }
+    try testing.expectEqual(@as(usize, 20), m.getCount());
+    // Verify all entries
+    for (0..20) |i| {
+        const v = m.get(.{ .integer = @intCast(i) });
+        try testing.expect(v != null);
+        try testing.expect(v.?.eql(.{ .integer = @as(i64, @intCast(i)) * 10 }));
+    }
+    // Missing key
+    try testing.expect(m.get(.{ .integer = 99 }) == null);
+}
+
+test "PersistentHashMap - key replacement" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const m0 = &PersistentHashMap.EMPTY;
+    const m1 = try m0.assoc(alloc, .{ .integer = 1 }, .{ .integer = 10 });
+    const m2 = try m1.assoc(alloc, .{ .integer = 1 }, .{ .integer = 20 });
+    try testing.expectEqual(@as(usize, 1), m2.getCount());
+    try testing.expect(m2.get(.{ .integer = 1 }).?.eql(.{ .integer = 20 }));
+    // Old version preserved
+    try testing.expect(m1.get(.{ .integer = 1 }).?.eql(.{ .integer = 10 }));
+}
+
+test "PersistentHashMap - nil key" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const m0 = &PersistentHashMap.EMPTY;
+    const m1 = try m0.assoc(alloc, .nil, .{ .integer = 42 });
+    try testing.expectEqual(@as(usize, 1), m1.getCount());
+    try testing.expect(m1.get(.nil).?.eql(.{ .integer = 42 }));
+    // Dissoc nil key
+    const m2 = try m1.dissoc(alloc, .nil);
+    try testing.expectEqual(@as(usize, 0), m2.getCount());
+    try testing.expect(m2.get(.nil) == null);
+}
+
+test "PersistentHashMap - dissoc" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
+    for (0..5) |i| {
+        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) * 10 });
+    }
+    try testing.expectEqual(@as(usize, 5), m.getCount());
+
+    const m2 = try m.dissoc(alloc, .{ .integer = 2 });
+    try testing.expectEqual(@as(usize, 4), m2.getCount());
+    try testing.expect(m2.get(.{ .integer = 2 }) == null);
+    try testing.expect(m2.get(.{ .integer = 0 }) != null);
+    try testing.expect(m2.get(.{ .integer = 4 }) != null);
+    // Original unchanged
+    try testing.expectEqual(@as(usize, 5), m.getCount());
+}
+
+test "PersistentHashMap - large map (100 entries)" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
+    for (0..100) |i| {
+        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) + 1000 });
+    }
+    try testing.expectEqual(@as(usize, 100), m.getCount());
+    for (0..100) |i| {
+        const v = m.get(.{ .integer = @intCast(i) });
+        try testing.expect(v != null);
+        try testing.expect(v.?.eql(.{ .integer = @as(i64, @intCast(i)) + 1000 }));
+    }
+}
+
+test "PersistentHashMap - toEntries" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
+    m = try m.assoc(alloc, .{ .integer = 1 }, .{ .integer = 10 });
+    m = try m.assoc(alloc, .{ .integer = 2 }, .{ .integer = 20 });
+
+    const entries = try m.toEntries(alloc);
+    try testing.expectEqual(@as(usize, 4), entries.len); // 2 pairs = 4 values
+}
+
+test "PersistentHashMap - fromEntries" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const entries = [_]Value{
+        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+    };
+    const m = try PersistentHashMap.fromEntries(alloc, &entries);
+    try testing.expectEqual(@as(usize, 2), m.getCount());
+    try testing.expect(m.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 1 }));
+    try testing.expect(m.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 2 }));
 }

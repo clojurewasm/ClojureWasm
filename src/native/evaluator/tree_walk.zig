@@ -263,6 +263,10 @@ pub const TreeWalk = struct {
                     return args[0].map.get(callee) orelse
                         if (args.len == 2) args[1] else .nil;
                 }
+                if (args[0] == .hash_map) {
+                    return args[0].hash_map.get(callee) orelse
+                        if (args.len == 2) args[1] else .nil;
+                }
                 return if (args.len == 2) args[1] else .nil;
             },
             .vector => |vec| {
@@ -285,6 +289,12 @@ pub const TreeWalk = struct {
                 // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
                 if (args.len < 1 or args.len > 2) return error.ArityError;
                 return m.get(args[0]) orelse
+                    if (args.len == 2) args[1] else .nil;
+            },
+            .hash_map => |hm| {
+                // Hash-map-as-function
+                if (args.len < 1 or args.len > 2) return error.ArityError;
+                return hm.get(args[0]) orelse
                     if (args.len == 2) args[1] else .nil;
             },
             .var_ref => |v| {
@@ -335,6 +345,10 @@ pub const TreeWalk = struct {
                 return target.map.get(callee) orelse
                     if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
             }
+            if (target == .hash_map) {
+                return target.hash_map.get(callee) orelse
+                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            }
             return if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
@@ -363,6 +377,14 @@ pub const TreeWalk = struct {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
             return callee.map.get(target) orelse
+                if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+        }
+
+        // Hash-map-as-function
+        if (callee == .hash_map) {
+            if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
+            const target = try self.run(call_n.args[0]);
+            return callee.hash_map.get(target) orelse
                 if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
         }
 
@@ -775,7 +797,7 @@ pub const TreeWalk = struct {
             .keyword => "keyword",
             .list => "list",
             .vector => "vector",
-            .map => "map",
+            .map, .hash_map => "map",
             .set => "set",
             .fn_val, .builtin_fn => "function",
             .atom => "atom",
