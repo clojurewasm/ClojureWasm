@@ -112,6 +112,27 @@ const hot_core_defs =
     \\                   (when (every? identity ss)
     \\                     (cons (map first ss) (step (map rest ss)))))))]
     \\     (map #(apply f %) (step (conj colls c3 c2 c1))))))
+    \\(defn get-in [m ks]
+    \\  (reduce get m ks))
+    \\(defn assoc-in [m ks v]
+    \\  (let [k (first ks)
+    \\        ks-rest (next ks)]
+    \\    (if ks-rest
+    \\      (assoc m k (assoc-in (get m k) ks-rest v))
+    \\      (assoc m k v))))
+    \\(defn update-in
+    \\  ([m ks f]
+    \\   (let [k (first ks)
+    \\         ks-rest (next ks)]
+    \\     (if ks-rest
+    \\       (assoc m k (update-in (get m k) ks-rest f))
+    \\       (assoc m k (f (get m k))))))
+    \\  ([m ks f & args]
+    \\   (let [k (first ks)
+    \\         ks-rest (next ks)]
+    \\     (if ks-rest
+    \\       (assoc m k (apply update-in (get m k) ks-rest f args))
+    \\       (assoc m k (apply f (get m k) args))))))
 ;
 
 /// Load and evaluate core.clj in the given Env.

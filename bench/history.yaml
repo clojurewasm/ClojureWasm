@@ -274,3 +274,30 @@ entries:
       string_ops: {time_ms: 27, mem_mb: 42.1}
       multimethod_dispatch: {time_ms: 15, mem_mb: 34.8}
       real_workload: {time_ms: 24, mem_mb: 45.2}
+  - id: "24C.5c"
+    date: "2026-02-07"
+    reason: "Extend hot bootstrap with update-in/assoc-in/get-in — nested_update 72→40ms"
+    commit: "2a431a8"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 24, mem_mb: 34.9}
+      fib_loop: {time_ms: 14, mem_mb: 34.9}
+      tak: {time_ms: 16, mem_mb: 34.9}
+      arith_loop: {time_ms: 58, mem_mb: 34.9}
+      map_filter_reduce: {time_ms: 17, mem_mb: 36.9}
+      vector_ops: {time_ms: 17, mem_mb: 37.0}
+      map_ops: {time_ms: 15, mem_mb: 36.7}
+      list_build: {time_ms: 17, mem_mb: 36.9}
+      sieve: {time_ms: 1645, mem_mb: 2485.2}
+      nqueens: {time_ms: 24, mem_mb: 35.5}
+      atom_swap: {time_ms: 15, mem_mb: 34.9}
+      gc_stress: {time_ms: 56, mem_mb: 36.8}
+      lazy_chain: {time_ms: 15, mem_mb: 34.9}
+      transduce: {time_ms: 17, mem_mb: 38.0}
+      keyword_lookup: {time_ms: 22, mem_mb: 34.9}
+      protocol_dispatch: {time_ms: 15, mem_mb: 34.9}
+      nested_update: {time_ms: 40, mem_mb: 38.2}
+      string_ops: {time_ms: 28, mem_mb: 42.3}
+      multimethod_dispatch: {time_ms: 16, mem_mb: 34.9}
+      real_workload: {time_ms: 23, mem_mb: 45.3}

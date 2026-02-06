@@ -142,14 +142,14 @@ BB startup ~20ms, CW startup ~15ms (was ~10ms, +5ms from hot bootstrap D73).
 | string_ops            | 27     | 28    | 1.0x   | 42.1      | 41.5   | SPEED    |
 | real_workload         | 24     | 23    | 1.0x   | 45.2      | 41.6   | tied     |
 | gc_stress             | 55     | 42    | 1.3x   | 26.8      | 77.0   | mem only |
-| nested_update         | 72     | 22    | 3.3x   | 38.2      | 37.0   | NEITHER  |
+| nested_update         | 40     | 22    | 1.8x   | 38.2      | 37.0   | mem only |
 | sieve                 | 1645   | 22    | 74.8x  | 2997      | 36.2   | NEITHER  |
 | transduce             | 15     | 20    | 0.8x   | 34.8      | 32.3   | BOTH     |
 
-**Summary**: CW wins speed 16/20, wins memory 18/20.
+**Summary**: CW wins speed 17/20, wins memory 18/20.
 24C.5b: transduce 2134→15ms (142x improvement, beats BB!) via D73 two-phase bootstrap.
-Trade-off: nested_update 42→72ms (F100 — cache/allocator side effect from bytecode objects).
-Remaining gaps: sieve (75x), nested_update (3.3x), gc_stress (1.3x).
+24C.5c: nested_update 72→40ms by adding update-in/assoc-in/get-in to hot bootstrap (F100 resolved).
+Remaining gaps: sieve (75x), nested_update (1.8x), gc_stress (1.3x).
 
 ### Performance Categories (post-24C.5b)
 
@@ -159,10 +159,10 @@ map_ops, list_build, keyword_lookup, protocol_dispatch, nqueens, atom_swap,
 lazy_chain, multimethod_dispatch, string_ops, transduce
 
 **Category B: CW wins memory only (2 benchmarks)**
-gc_stress (1.3x speed), real_workload (1.0x tied)
+gc_stress (1.3x speed), nested_update (1.8x speed)
 
-**Category C: CW loses both or loses badly (2 benchmarks)**
-sieve (75x), nested_update (3.3x — F100)
+**Category C: CW loses both or loses badly (1 benchmark)**
+sieve (75x)
 
 ### Memory Hotspots (post-24B, hyperfine measured)
 

@@ -6,10 +6,10 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5b done)
-- Babashka comparison: CW wins speed 16/20, memory 18/20
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5c done)
+- Babashka comparison: CW wins speed 17/20, memory 18/20
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
-- Blockers: F100 (nested_update regression from hot bootstrap)
+- Blockers: none (F100 resolved)
 
 ## Task Queue
 
@@ -52,7 +52,7 @@ rest args nil fix (rest_count==0 returns nil not ()).
 - **F97**: RESOLVED — stack overflow in lazy-seq realization (512MB stack, meta tracing fix)
 - **F98**: fib_recursive slower in ReleaseFast than Debug (487ms vs 205ms)
 - **F99**: Iterative lazy-seq realization — task 24C.7
-- **F100**: nested_update regression 42→72ms from D73 hot bootstrap (cache/allocator side effect)
+- **F100**: RESOLVED — adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms
 - **NaN boxing (D72)**: 600+ call sites, task 24C.6. Portable (works on wasm too)
 - **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
 - Roadmap: `.dev/plan/roadmap.md`
