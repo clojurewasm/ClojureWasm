@@ -12,7 +12,7 @@ Session handover document. Read at session start.
 ## Task Queue
 
 Phase 24A — Speed Optimization:
-1. 24A.0: Baseline measurement (add 9 benchmarks, profile)
+1. ~~24A.0: Baseline measurement~~ (done)
 2. 24A.1: VM dispatch optimization (function pointer table)
 3. 24A.2: Stack argument buffer (stack-local 1-4 args)
 4. 24A.3: Fused reduce (lazy-seq chain collapse)
@@ -32,29 +32,26 @@ Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24A.0: Baseline measurement
-- Add 9 new benchmarks (12-20)
-- Run all 20 benchmarks with --record
-- Profile hotspots
+24A.1: VM dispatch optimization (function pointer table)
+- Replace switch(instr.op) with comptime-generated function pointer table
+- Expected: 10-30% VM throughput improvement
 
 ## Previous Task
 
-F96: VM protocol compilation
-- Added defprotocol (0x4A) + extend_type_method (0x4B) opcodes
-- Compiler: emitDefprotocol + emitExtendType (removed InvalidNode fallback)
-- VM: defprotocol/extend_type_method handlers + protocol_fn dispatch in performCall
-- bootstrap.callFnVal: added .protocol_fn case for cross-backend dispatch
-- tree_walk.zig: made valueTypeKey pub for bootstrap access
-- vm.zig: duplicated mapTypeKey/valueTypeKey (avoid circular imports)
-- Added direct (non-eval) protocol tests: 5 tests, 18 assertions, both backends
-- F96 removed from checklist.md
+24A.0: Baseline measurement
+- Added 9 new benchmarks (12-20): gc_stress, lazy_chain, transduce, keyword_lookup,
+  protocol_dispatch, nested_update, string_ops, multimethod_dispatch, real_workload
+- Recorded Pre-Phase24 baseline (Debug + ReleaseFast, VM)
+- Top bottlenecks: lazy_chain(19.4s), transduce(7.9s), map_filter_reduce(3.6s),
+  multimethod_dispatch(1.75s), sieve(1.7s)
+- Found F97 (GC double-free in sieve) and F98 (fib_recursive ReleaseFast anomaly)
+- Optimization priority targets are lazy-seq chain and allocation overhead
 
 ## Handover Notes
 
-- **Phase 22c**: Complete. 16 tasks, all done. Gap analysis: `.dev/plan/test-gap-analysis.md`
-- **Phase 24 plan**: `.dev/plan/phase24-optimization.md` — master optimization document
-- **F96**: Resolved. Protocols now compile to VM bytecode and work on both backends.
-- **D28 fully superseded**: All formerly TreeWalk-only features now on both backends.
+- **Phase 24 plan**: `.dev/plan/phase24-optimization.md` — actual baseline data added
+- **F97**: GC double-free in sieve benchmark (vm.zig:336 allocated_fns)
+- **F98**: fib_recursive slower in ReleaseFast than Debug (487ms vs 205ms)
 - **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`

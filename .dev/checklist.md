@@ -26,4 +26,6 @@ Check at session start for items that become actionable.
 | ~~F80~~ | ~~find-keyword function~~                | Done: 22c.5, keyword_intern.zig                                   |
 | F94 | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
+| F97 | GC double-free in sieve benchmark            | vm.zig:336 allocated_fns.append triggers double-free under GC pressure |
+| F98 | fib_recursive ReleaseFast anomaly            | 487ms Release > 205ms Debug — investigate Zig optimizer interaction |
 | ~~F96~~ | ~~VM protocol compilation~~             | Done: defprotocol/extend-type in compiler.zig + vm.zig + bootstrap.zig |

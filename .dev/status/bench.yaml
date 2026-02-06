@@ -1,6 +1,6 @@
 # ClojureWasm Benchmark Results (v2)
 #
-# Schema: env + benchmarks (11) + latest + history
+# Schema: env + benchmarks (20) + latest + history
 # Measurement: bash bench/run_bench.sh --hyperfine
 
 env:
@@ -72,101 +72,218 @@ benchmarks:
     category: state
     expected: 10000
     clj_file: "bench/benchmarks/11_atom_swap/bench.clj"
+  gc_stress:
+    description: "Allocation-heavy loop creating 100K short-lived maps"
+    category: gc
+    expected: 5000050000
+    clj_file: "bench/benchmarks/12_gc_stress/bench.clj"
+  lazy_chain:
+    description: "Lazy seq chain (range->map->filter->take->reduce) 10K elements"
+    category: sequences
+    expected: 299970000
+    clj_file: "bench/benchmarks/13_lazy_chain/bench.clj"
+  transduce:
+    description: "Transducer pipeline (comp map filter) over 10K elements"
+    category: sequences
+    expected: 74985000
+    clj_file: "bench/benchmarks/14_transduce/bench.clj"
+  keyword_lookup:
+    description: "Keyword map access in tight loop (100K iterations)"
+    category: collections
+    expected: 9500000
+    clj_file: "bench/benchmarks/15_keyword_lookup/bench.clj"
+  protocol_dispatch:
+    description: "Protocol method call in tight loop (10K iterations)"
+    category: dispatch
+    expected: 149985000
+    clj_file: "bench/benchmarks/16_protocol_dispatch/bench.clj"
+  nested_update:
+    description: "update-in/get-in on 3-level nested map (10K iterations)"
+    category: collections
+    expected: 10000
+    clj_file: "bench/benchmarks/17_nested_update/bench.clj"
+  string_ops:
+    description: "str conversion + count in tight loop (100K iterations)"
+    category: string
+    expected: 488890
+    clj_file: "bench/benchmarks/18_string_ops/bench.clj"
+  multimethod_dispatch:
+    description: "defmulti dispatch in tight loop (10K iterations)"
+    category: dispatch
+    expected: 70000
+    clj_file: "bench/benchmarks/19_multimethod_dispatch/bench.clj"
+  real_workload:
+    description: "Data transform pipeline: build records, filter, map, reduce"
+    category: composite
+    expected: 33336666
+    clj_file: "bench/benchmarks/20_real_workload/bench.clj"
 previous:
-  date: "2026-02-02"
-  version: Phase 10 VM baseline
+  date: "2026-02-06"
+  version: Pre-Phase24 VM
   results:
+    gc_stress:
+      clojurewasm:
+        time_ms: 3811
+        mem_mb: null
     arith_loop:
       clojurewasm:
-        time_ms: 213
+        time_ms: 486
         mem_mb: null
     map_filter_reduce:
       clojurewasm:
-        time_ms: 623
+        time_ms: 10371
+        mem_mb: null
+    nested_update:
+      clojurewasm:
+        time_ms: 3904
+        mem_mb: null
+    transduce:
+      clojurewasm:
+        time_ms: 11240
+        mem_mb: null
+    keyword_lookup:
+      clojurewasm:
+        time_ms: 146
         mem_mb: null
     vector_ops:
       clojurewasm:
-        time_ms: 133
+        time_ms: 2925
+        mem_mb: null
+    protocol_dispatch:
+      clojurewasm:
+        time_ms: 102
+        mem_mb: null
+    multimethod_dispatch:
+      clojurewasm:
+        time_ms: 73616
         mem_mb: null
     fib_recursive:
       clojurewasm:
-        time_ms: 54
+        time_ms: 205
         mem_mb: null
     map_ops:
       clojurewasm:
-        time_ms: 26
+        time_ms: 160
+        mem_mb: null
+    real_workload:
+      clojurewasm:
+        time_ms: 15865
         mem_mb: null
     nqueens:
       clojurewasm:
-        time_ms: 78
+        time_ms: 450
         mem_mb: null
     fib_loop:
       clojurewasm:
-        time_ms: 10
+        time_ms: 97
         mem_mb: null
     list_build:
       clojurewasm:
-        time_ms: 129
+        time_ms: 2902
+        mem_mb: null
+    string_ops:
+      clojurewasm:
+        time_ms: 2104
+        mem_mb: null
+    lazy_chain:
+      clojurewasm:
+        time_ms: 32507
         mem_mb: null
     sieve:
       clojurewasm:
-        time_ms: 299
-        mem_mb: null
+        time_ms: 261
+        mem_mb: 1.0
     atom_swap:
       clojurewasm:
-        time_ms: 19
+        time_ms: 107
         mem_mb: null
     tak:
       clojurewasm:
-        time_ms: 22
+        time_ms: 125
         mem_mb: null
 latest:
-  date: "2026-02-02"
-  version: Phase 10 TreeWalk
+  date: "2026-02-06"
+  version: Pre-Phase24 VM ReleaseFast
   results:
+    gc_stress:
+      clojurewasm:
+        time_ms: 350
+        mem_mb: null
     arith_loop:
       clojurewasm:
-        time_ms: 840
+        time_ms: 79
         mem_mb: null
     map_filter_reduce:
       clojurewasm:
-        time_ms: 381
+        time_ms: 3565
+        mem_mb: null
+    nested_update:
+      clojurewasm:
+        time_ms: 243
+        mem_mb: null
+    transduce:
+      clojurewasm:
+        time_ms: 7882
+        mem_mb: null
+    keyword_lookup:
+      clojurewasm:
+        time_ms: 41
         mem_mb: null
     vector_ops:
       clojurewasm:
-        time_ms: 145
+        time_ms: 353
+        mem_mb: null
+    protocol_dispatch:
+      clojurewasm:
+        time_ms: 35
+        mem_mb: null
+    multimethod_dispatch:
+      clojurewasm:
+        time_ms: 1750
         mem_mb: null
     fib_recursive:
       clojurewasm:
-        time_ms: 494
+        time_ms: 487
         mem_mb: null
     map_ops:
       clojurewasm:
-        time_ms: 27
+        time_ms: 41
+        mem_mb: null
+    real_workload:
+      clojurewasm:
+        time_ms: 1032
         mem_mb: null
     nqueens:
       clojurewasm:
-        time_ms: 214
+        time_ms: 46
         mem_mb: null
     fib_loop:
       clojurewasm:
-        time_ms: 11
+        time_ms: 34
         mem_mb: null
     list_build:
       clojurewasm:
-        time_ms: 135
+        time_ms: 353
+        mem_mb: null
+    string_ops:
+      clojurewasm:
+        time_ms: 431
+        mem_mb: null
+    lazy_chain:
+      clojurewasm:
+        time_ms: 19386
         mem_mb: null
     sieve:
       clojurewasm:
-        time_ms: 86
+        time_ms: 1714
         mem_mb: null
     atom_swap:
       clojurewasm:
-        time_ms: 28
+        time_ms: 34
         mem_mb: null
     tak:
       clojurewasm:
-        time_ms: 124
+        time_ms: 37
         mem_mb: null
 # Phase 3 baseline results (TreeWalk, Debug, Apple M4 Pro)
 history:
@@ -183,3 +300,7 @@ history:
     version: Phase 10 VM baseline
   - date: "2026-02-02"
     version: Phase 10 TreeWalk
+  - date: "2026-02-06"
+    version: Pre-Phase24 VM
+  - date: "2026-02-06"
+    version: Pre-Phase24 VM ReleaseFast

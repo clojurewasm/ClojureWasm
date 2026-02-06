@@ -1,0 +1,4 @@
+name: "Keyword Lookup"
+category: collections
+expected_output: "9500000"
+description: "Keyword map access in tight loop (100K iterations) — measures map lookup overhead"

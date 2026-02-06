@@ -1,0 +1,4 @@
+name: "GC Stress"
+category: gc
+expected_output: "5000050000"
+description: "Allocation-heavy loop creating 100K short-lived maps — measures GC pressure"

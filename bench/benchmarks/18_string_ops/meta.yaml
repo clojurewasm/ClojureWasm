@@ -1,0 +1,4 @@
+name: "String Ops"
+category: string
+expected_output: "488890"
+description: "str conversion + count in tight loop (100K iterations) — measures string overhead"

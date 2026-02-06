@@ -1,0 +1,4 @@
+name: "Transduce"
+category: sequences
+expected_output: "74985000"
+description: "Transducer pipeline (comp map filter) over 10K elements — measures transducer overhead"

@@ -195,14 +195,47 @@ If targets met -> Phase 25 (Wasm). If not -> evaluate 24C options.
 - Fallback paths: keep readable generic path alongside fast path
 - D## entries for each optimization trade-off decision
 
-## 8. Success Criteria
+## 8. Actual Baseline (Pre-Phase24, VM, ReleaseFast, Apple M4 Pro)
 
-| Benchmark          | Current (VM) | 24A target | 24B target | Babashka | JVM warm |
-|--------------------|--------------|------------|------------|----------|----------|
-| fib_recursive      | 54ms         | <30ms      | <20ms      | 152ms    | 10ms     |
-| map_filter_reduce  | 623ms        | <50ms      | <30ms      | --       | --       |
-| arith_loop         | 213ms        | <100ms     | <60ms      | --       | --       |
-| lazy_chain (new)   | TBD          | <100ms     | <50ms      | --       | --       |
-| gc_stress (new)    | TBD          | baseline   | <50% base  | --       | --       |
+| Benchmark               | Release (ms) | Category    | Priority |
+|-------------------------|-------------|-------------|----------|
+| fib_loop                | 34          | computation | low      |
+| protocol_dispatch (10K) | 35          | dispatch    | low      |
+| tak                     | 37          | computation | low      |
+| keyword_lookup (100K)   | 41          | collections | low      |
+| map_ops                 | 41          | collections | low      |
+| nqueens                 | 46          | hof         | low      |
+| arith_loop              | 79          | computation | medium   |
+| nested_update (10K)     | 243         | collections | medium   |
+| gc_stress (100K)        | 350         | gc          | medium   |
+| vector_ops              | 353         | collections | medium   |
+| list_build              | 353         | collections | medium   |
+| string_ops (100K)       | 431         | string      | medium   |
+| fib_recursive           | 487         | computation | HIGH     |
+| real_workload (10K)     | 1,032       | composite   | HIGH     |
+| sieve                   | 1,714       | hof         | HIGH     |
+| multimethod_dispatch(10K)| 1,750      | dispatch    | HIGH     |
+| map_filter_reduce       | 3,565       | collections | HIGH     |
+| transduce (10K)         | 7,882       | sequences   | HIGH     |
+| lazy_chain (10K)        | 19,386      | sequences   | HIGH     |
+
+### Key findings
+
+- **Lazy-seq chain is the #1 bottleneck** (19.4s for 10K take). Fused reduce (24A.3) is critical.
+- **Transducer pipeline** (7.9s for 10K) should be much faster than lazy chain but isn't.
+- **multimethod_dispatch** is 50x slower than protocol_dispatch per call.
+- **fib_recursive** is anomalously slow in ReleaseFast (487ms > Debug 205ms). Needs investigation.
+- **sieve** triggers GC double-free warnings and is very slow (1.7s). GC bug (F97).
+- **map_filter_reduce** (3.6s) same root cause as lazy_chain — lazy-seq overhead.
+
+## 9. Success Criteria
+
+| Benchmark          | Baseline (Release) | 24A target | 24B target | Babashka | JVM warm |
+|--------------------|-------------------|------------|------------|----------|----------|
+| fib_recursive      | 487ms             | <50ms      | <30ms      | 152ms    | 10ms     |
+| map_filter_reduce  | 3,565ms           | <200ms     | <100ms     | --       | --       |
+| arith_loop         | 79ms              | <50ms      | <30ms      | --       | --       |
+| lazy_chain         | 19,386ms          | <500ms     | <200ms     | --       | --       |
+| gc_stress          | 350ms             | baseline   | <50% base  | --       | --       |
 
 **Gate**: Beat Babashka on all comparable benchmarks after 24A.
