@@ -290,11 +290,47 @@ portable upstream test files, implement small missing features as needed.
 
 ### Phase 24: Optimization
 
-Performance optimization pass, benchmark-driven.
+Performance optimization pass, benchmark-driven. Three sub-phases.
 
-**Scope**: NaN boxing (F1), fused reduce (F21), persistent DS (F4), inline caching
-**Prerequisite**: Phase 22b (Test Porting Round 2) complete
-**Reference**: See "Optimization Phase" in Phase Notes below; bench/README.md
+**Detailed plan**: `.dev/plan/phase24-optimization.md`
+**Prerequisite**: Phase 22c (Test Gap Resolution) complete
+
+#### Phase 24A: Speed Optimization
+
+| Task  | Item                         | Expected impact              |
+|-------|------------------------------|------------------------------|
+| 24A.0 | Baseline measurement         | Add 9 benchmarks, profile    |
+| 24A.1 | VM dispatch optimization     | 10-30% VM throughput         |
+| 24A.2 | Stack argument buffer        | 2-5x reduce-heavy benchmarks |
+| 24A.3 | Fused reduce                 | 10-100x lazy-seq benchmarks  |
+| 24A.4 | Arithmetic fast-path         | 10-30% computation           |
+| 24A.5 | Inline caching               | 2-5x protocol dispatch       |
+| 24A.6 | Hash table bitmask           | Up to 2x hash lookups        |
+| 24A.7 | Constant folding             | Moderate (compile-time eval) |
+| 24A.8 | Superinstructions            | 5-15% general code           |
+
+**Gate**: Beat Babashka on all comparable benchmarks.
+
+#### Phase 24B: Memory Optimization
+
+| Task  | Item                         | Expected impact              |
+|-------|------------------------------|------------------------------|
+| 24B.1 | NaN boxing (F1)              | Value: 48 -> 8 bytes (6x)   |
+| 24B.2 | HAMT (F4)                    | O(log32 n) map operations    |
+| 24B.3 | RRB-Tree (conditional)       | O(log32 n) vector operations |
+| 24B.4 | GC tuning                    | Reduced pause times          |
+
+#### Phase 24C: JIT (conditional)
+
+Proceed only if 24A/24B targets not met. Otherwise move to Phase 25.
+
+| Task  | Item                         | Complexity |
+|-------|------------------------------|------------|
+| 24C.1 | Copy-and-patch JIT           | Medium     |
+| 24C.2 | Tracing JIT                  | High       |
+| 24C.3 | Superinstructions (extended) | Medium     |
+
+**Decision gate**: After 24B, measure against targets. Met -> Phase 25. Not met -> 24C.
 
 ### Phase 25: Wasm InterOp (FFI)
 
@@ -354,19 +390,22 @@ When implementing IO/system functionality:
 
 ### Optimization Phase
 
-**Prerequisite**: Phase 23 (Production GC) complete
+**Prerequisite**: Phase 22c (Test Gap Resolution) complete
+**Detailed plan**: `.dev/plan/phase24-optimization.md`
 
-| ID  | Item                     | Trigger                            | Reference |
-| --- | ------------------------ | ---------------------------------- | --------- |
-| F1  | NaN boxing               | fib(30) < 500ms or memory pressure | D1, SS5   |
-| F21 | 3-layer separation       | Fused reduce without GC coupling   | SS5       |
-| F4  | Persistent DS (HAMT/RRB) | Collection benchmarks bottleneck   | D9        |
+| ID  | Item                     | Phase | Reference |
+| --- | ------------------------ | ----- | --------- |
+| F1  | NaN boxing               | 24B.1 | D1, SS5   |
+| F21 | 3-layer separation       | 24A.3 | SS5       |
+| F4  | Persistent DS (HAMT/RRB) | 24B.2 | D9        |
 
-**Targets**:
+**Zig-native optimization strategy**:
 
-1. NaN boxing — Value representation (f64 bit tricks), native track only
-2. Fused reduce — Collapse map/filter/reduce chains (Beta: 27GB → 2MB)
-3. Inline caching — Protocol method calls, keyword lookup
+- comptime function pointer table for VM dispatch (24A.1)
+- Stack-local argument buffers instead of GC allocation (24A.2)
+- Fused reduce: collapse lazy-seq chains at compile-time (24A.3, Beta: 27GB -> 2MB)
+- NaN boxing: `@bitCast`, packed structs, 48->8 byte Value (24B.1)
+- HAMT: `@popCount`, packed bits for population count (24B.2)
 
 **Benchmark baseline** (Phase 10):
 
@@ -376,7 +415,10 @@ When implementing IO/system functionality:
 | arith_loop        | 840ms    | 213ms | VM 4x faster             |
 | map_filter_reduce | 381ms    | 623ms | VM slower (hybrid issue) |
 
-Target: VM outperforms TreeWalk on all benchmarks.
+**Success criteria**: Beat Babashka on all comparable benchmarks after 24A.
+Full targets in `.dev/plan/phase24-optimization.md` Section 8.
+
+**Decision gate**: 24A/24B complete -> evaluate targets -> Phase 25 or 24C.
 
 ### Wasm InterOp (FFI)
 
