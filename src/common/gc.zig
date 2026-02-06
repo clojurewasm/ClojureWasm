@@ -673,6 +673,11 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                             traceValue(gc, lf.pred);
                             traceValue(gc, lf.source);
                         },
+                        .lazy_filter_chain => |lfc| {
+                            gc.markSlice(lfc.preds);
+                            for (lfc.preds) |pred| traceValue(gc, pred);
+                            traceValue(gc, lfc.source);
+                        },
                         .lazy_take => |lt| {
                             traceValue(gc, lt.source);
                         },

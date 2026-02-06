@@ -301,3 +301,30 @@ entries:
       string_ops: {time_ms: 28, mem_mb: 42.3}
       multimethod_dispatch: {time_ms: 16, mem_mb: 34.9}
       real_workload: {time_ms: 23, mem_mb: 45.3}
+  - id: "24C.7"
+    date: "2026-02-07"
+    reason: "Filter chain collapsing + active VM call bridge"
+    commit: "90fbbae"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 25, mem_mb: 34.9}
+      fib_loop: {time_ms: 13, mem_mb: 35.0}
+      tak: {time_ms: 17, mem_mb: 35.0}
+      arith_loop: {time_ms: 57, mem_mb: 34.9}
+      map_filter_reduce: {time_ms: 16, mem_mb: 36.9}
+      vector_ops: {time_ms: 16, mem_mb: 37.1}
+      map_ops: {time_ms: 15, mem_mb: 36.7}
+      list_build: {time_ms: 15, mem_mb: 36.9}
+      sieve: {time_ms: 16, mem_mb: 36.4}
+      nqueens: {time_ms: 23, mem_mb: 35.5}
+      atom_swap: {time_ms: 14, mem_mb: 35.0}
+      gc_stress: {time_ms: 54, mem_mb: 36.8}
+      lazy_chain: {time_ms: 16, mem_mb: 35.0}
+      transduce: {time_ms: 15, mem_mb: 35.0}
+      keyword_lookup: {time_ms: 21, mem_mb: 35.0}
+      protocol_dispatch: {time_ms: 15, mem_mb: 35.0}
+      nested_update: {time_ms: 39, mem_mb: 38.2}
+      string_ops: {time_ms: 27, mem_mb: 42.3}
+      multimethod_dispatch: {time_ms: 14, mem_mb: 35.0}
+      real_workload: {time_ms: 24, mem_mb: 45.3}

@@ -1700,3 +1700,28 @@ bytecode Fn objects + FnProtos occupy cache/GPA space, impacting tight allocatio
 
 **VM variadic rest args fix** (concurrent bug fix): When rest_count==0, VM now returns
 `.nil` instead of empty PersistentList `()`. Matches Clojure spec and TreeWalk behavior.
+
+## D74: Filter Chain Collapsing + Active VM Call Bridge
+
+**Decision**: Add `lazy_filter_chain` Meta variant to flatten nested filter chains,
+and route bytecode calls through the active VM in callFnVal.
+
+**Problem**: Sieve of Eratosthenes creates 168 nested filter layers (one per prime ≤ 1000).
+Each element access required 168 levels of recursive realize() calls. Additionally,
+callFnVal allocated a new ~500KB VM struct for every bytecode function call via
+bytecodeCallBridge, even when a running VM was already available.
+
+**Solution** (two parts):
+
+1. **Filter chain collapsing** (value.zig): New `lazy_filter_chain` Meta variant stores
+   a flat `[]const Value` of predicates + source. When `filter(pred, filter_chain(...))` is
+   called, predicates are appended to a single flat array instead of nesting.
+   Realization checks all predicates in a flat loop.
+
+2. **Active VM call bridge** (bootstrap.zig): callFnVal checks `vm_mod.active_vm` before
+   allocating a new VM. When a VM is already executing (which it always is during
+   lazy-seq realization from within VM execution), uses `vm.callFunction()` to reuse
+   the existing VM's stack and frames. Eliminates ~500KB heap allocation per call.
+
+**Result**: sieve 1645→21ms (78x improvement, matches Babashka's 22ms).
+Memory: 2997MB → 23.8MB (125x improvement).

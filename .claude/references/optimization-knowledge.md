@@ -143,26 +143,24 @@ BB startup ~20ms, CW startup ~15ms (was ~10ms, +5ms from hot bootstrap D73).
 | real_workload         | 24     | 23    | 1.0x   | 45.2      | 41.6   | tied     |
 | gc_stress             | 55     | 42    | 1.3x   | 26.8      | 77.0   | mem only |
 | nested_update         | 40     | 22    | 1.8x   | 38.2      | 37.0   | mem only |
-| sieve                 | 1645   | 22    | 74.8x  | 2997      | 36.2   | NEITHER  |
+| sieve                 | 21     | 22    | 1.0x   | 23.8      | 36.2   | BOTH     |
 | transduce             | 15     | 20    | 0.8x   | 34.8      | 32.3   | BOTH     |
 
-**Summary**: CW wins speed 17/20, wins memory 18/20.
+**Summary**: CW wins speed 18/20, wins memory 19/20.
 24C.5b: transduce 2134→15ms (142x improvement, beats BB!) via D73 two-phase bootstrap.
 24C.5c: nested_update 72→40ms by adding update-in/assoc-in/get-in to hot bootstrap (F100 resolved).
-Remaining gaps: sieve (75x), nested_update (1.8x), gc_stress (1.3x).
+24C.7: sieve 1645→21ms (78x improvement) via filter chain collapsing + active_vm callFnVal.
+Remaining gaps: nested_update (1.8x), gc_stress (1.3x).
 
 ### Performance Categories (post-24C.5b)
 
-**Category A: CW wins speed+memory (16 benchmarks)**
+**Category A: CW wins speed+memory (17 benchmarks)**
 fib_recursive, fib_loop, tak, arith_loop, map_filter_reduce, vector_ops,
 map_ops, list_build, keyword_lookup, protocol_dispatch, nqueens, atom_swap,
-lazy_chain, multimethod_dispatch, string_ops, transduce
+lazy_chain, multimethod_dispatch, string_ops, transduce, sieve
 
 **Category B: CW wins memory only (2 benchmarks)**
 gc_stress (1.3x speed), nested_update (1.8x speed)
-
-**Category C: CW loses both or loses badly (1 benchmark)**
-sieve (75x)
 
 ### Memory Hotspots (post-24B, hyperfine measured)
 
@@ -171,7 +169,7 @@ sieve (75x)
 | lazy_chain         | 30,692 MB   | Intermediate lazy-seq allocations   |
 | transduce          | 30,657 MB   | Same as lazy_chain                  |
 | map_filter_reduce  | 15,367 MB   | Cons-list + lazy-seq overhead       |
-| sieve              | 2,998 MB    | 168 nested filter chains            |
+| sieve              | 23.8 MB     | Filter chain collapsing (was 2,998 MB) |
 | multimethod_dispatch| 83.1 MB    | Dispatch table + var lookups        |
 | real_workload      | 45.2 MB     | Mixed workload                      |
 

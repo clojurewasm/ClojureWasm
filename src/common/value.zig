@@ -301,6 +301,7 @@ pub const LazySeq = struct {
     pub const Meta = union(enum) {
         lazy_map: struct { f: Value, source: Value },
         lazy_filter: struct { pred: Value, source: Value },
+        lazy_filter_chain: struct { preds: []const Value, source: Value },
         lazy_take: struct { n: usize, source: Value },
         range: struct { current: i64, end: i64, step: i64 },
         iterate: struct { f: Value, current: Value },
@@ -361,6 +362,33 @@ pub const LazySeq = struct {
                         return Value{ .cons = cons_cell };
                     }
                     current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                }
+            },
+            .lazy_filter_chain => |lfc| {
+                // Flat iteration: check ALL predicates on each element, no deep recursion.
+                // This collapses N nested filters into a single-level loop.
+                var current = lfc.source;
+                outer: while (true) {
+                    const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
+                    if (seq_val == .nil) return .nil;
+                    const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
+                    // Check all predicates (innermost first)
+                    for (lfc.preds) |pred| {
+                        const pred_result = try bootstrap.callFnVal(allocator, pred, &[1]Value{elem});
+                        if (!pred_result.isTruthy()) {
+                            current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                            continue :outer;
+                        }
+                    }
+                    // All predicates passed — create cons cell with rest chain
+                    const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
+                    const rest_meta = try allocator.create(Meta);
+                    rest_meta.* = .{ .lazy_filter_chain = .{ .preds = lfc.preds, .source = rest_source } };
+                    const rest_ls = try allocator.create(LazySeq);
+                    rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                    const cons_cell = try allocator.create(Cons);
+                    cons_cell.* = .{ .first = elem, .rest = .{ .lazy_seq = rest_ls } };
+                    return Value{ .cons = cons_cell };
                 }
             },
             .lazy_take => |lt| {

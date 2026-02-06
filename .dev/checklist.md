@@ -28,6 +28,6 @@ Check at session start for items that become actionable.
 | F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | ~~F97~~ | ~~GC double-free in sieve benchmark~~    | Resolved: stack overflow from deep lazy-seq realization (512MB stack + meta tracing fix) |
 | F98 | fib_recursive ReleaseFast anomaly            | 487ms Release > 205ms Debug — investigate Zig optimizer interaction |
-| F99 | Iterative lazy-seq realization engine       | Wasm stack is limited (~1MB). Current realize→realizeMeta→seqFn mutual recursion uses ~381KB/frame (Debug) per nesting level. Phase 25 (Wasm) will need heap-based work stack to replace call stack recursion. |
+| F99 | Iterative lazy-seq realization engine       | D74 filter chain collapsing fixes sieve (168 nested filters → flat array). General realize→realizeMeta→seqFn recursion still exists for non-filter cases. Phase 25 (Wasm) may need heap-based work stack for deep map/take chains. |
 | ~~F100~~ | ~~nested_update regression from hot bootstrap~~ | Resolved: adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms (24C.5c) |
 | ~~F96~~ | ~~VM protocol compilation~~             | Done: defprotocol/extend-type in compiler.zig + vm.zig + bootstrap.zig |

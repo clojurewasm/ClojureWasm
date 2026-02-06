@@ -280,10 +280,50 @@ pub fn zigLazyMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (__zig-lazy-filter pred coll) — creates a meta-annotated lazy-seq for filter.
+/// Detects nested filter chains and collapses them into a single lazy_filter_chain,
+/// eliminating deep recursion during realization (fixes sieve 168-level nesting).
 pub fn zigLazyFilterFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-filter", .{args.len});
+    const pred = args[0];
+    const source = args[1];
+
+    // Detect and collapse nested filter chains
+    if (source == .lazy_seq) {
+        const src_ls = source.lazy_seq;
+        if (src_ls.realized == null) {
+            if (src_ls.meta) |m| {
+                switch (m.*) {
+                    .lazy_filter => |inner| {
+                        // Collapse: filter(pred, filter(inner_pred, src)) → chain([inner_pred, pred], src)
+                        const preds = try allocator.alloc(Value, 2);
+                        preds[0] = inner.pred;
+                        preds[1] = pred;
+                        const meta = try allocator.create(LazySeq.Meta);
+                        meta.* = .{ .lazy_filter_chain = .{ .preds = preds, .source = inner.source } };
+                        const ls = try allocator.create(LazySeq);
+                        ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+                        return Value{ .lazy_seq = ls };
+                    },
+                    .lazy_filter_chain => |inner_chain| {
+                        // Extend existing chain
+                        const preds = try allocator.alloc(Value, inner_chain.preds.len + 1);
+                        @memcpy(preds[0..inner_chain.preds.len], inner_chain.preds);
+                        preds[inner_chain.preds.len] = pred;
+                        const meta = try allocator.create(LazySeq.Meta);
+                        meta.* = .{ .lazy_filter_chain = .{ .preds = preds, .source = inner_chain.source } };
+                        const ls = try allocator.create(LazySeq);
+                        ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+                        return Value{ .lazy_seq = ls };
+                    },
+                    else => {},
+                }
+            }
+        }
+    }
+
+    // Default: single filter
     const meta = try allocator.create(LazySeq.Meta);
-    meta.* = .{ .lazy_filter = .{ .pred = args[0], .source = args[1] } };
+    meta.* = .{ .lazy_filter = .{ .pred = pred, .source = source } };
     const ls = try allocator.create(LazySeq);
     ls.* = .{ .thunk = null, .realized = null, .meta = meta };
     return Value{ .lazy_seq = ls };
@@ -390,6 +430,14 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
                 transforms[transform_count] = .{ .kind = .filter, .fn_val = lf.pred };
                 transform_count += 1;
                 current = lf.source;
+            },
+            .lazy_filter_chain => |lfc| {
+                for (lfc.preds) |pred| {
+                    if (transform_count >= 16) break;
+                    transforms[transform_count] = .{ .kind = .filter, .fn_val = pred };
+                    transform_count += 1;
+                }
+                current = lfc.source;
             },
             .lazy_take => |lt| {
                 if (take_n != null) break; // nested takes not supported

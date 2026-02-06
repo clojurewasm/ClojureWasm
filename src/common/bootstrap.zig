@@ -18,7 +18,8 @@ const TreeWalk = @import("../native/evaluator/tree_walk.zig").TreeWalk;
 const predicates_mod = @import("builtin/predicates.zig");
 const chunk_mod = @import("bytecode/chunk.zig");
 const Compiler = @import("bytecode/compiler.zig").Compiler;
-const VM = @import("../native/vm/vm.zig").VM;
+const vm_mod = @import("../native/vm/vm.zig");
+const VM = vm_mod.VM;
 const gc_mod = @import("gc.zig");
 const builtin_collections = @import("builtin/collections.zig");
 
@@ -588,6 +589,12 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
         .builtin_fn => |f| return f(allocator, args),
         .fn_val => |fn_obj| {
             if (fn_obj.kind == .bytecode) {
+                // Use active VM if available (avoids ~500KB heap allocation per call)
+                if (vm_mod.active_vm) |vm| {
+                    return vm.callFunction(fn_val, args) catch |e| {
+                        return @as(anyerror, @errorCast(e));
+                    };
+                }
                 return bytecodeCallBridge(allocator, fn_val, args);
             } else {
                 return treewalkCallBridge(allocator, fn_val, args);

@@ -6,10 +6,10 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5c done)
-- Babashka comparison: CW wins speed 17/20, memory 18/20
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5c, 24C.7 done)
+- Babashka comparison: CW wins speed 18/20, memory 19/20
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
-- Blockers: none (F100 resolved)
+- Remaining gaps: nested_update (1.8x), gc_stress (1.3x)
 
 ## Task Queue
 
@@ -19,30 +19,23 @@ Phase 24C — Portable Optimization (Babashka Parity):
 3. ~~24C.3: String ops optimization (15x gap)~~ DONE
 4. ~~24C.4: Collection ops optimization (vector_ops 8x, list_build 8.3x)~~ DONE
 5. ~~24C.5: GC optimization (gc_stress 7.7x, nested_update 5.6x)~~ DONE
-6. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks)
-7. 24C.7: F99 iterative lazy-seq realization (wasm prerequisite)
+6. ~~24C.7: Filter chain collapsing + active VM call bridge (sieve 75x)~~ DONE
+7. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks) — deferred, 600+ call sites
 8. 24C.8: Constant folding
+9. 24C.9: Remaining gaps — nested_update (1.8x), gc_stress (1.3x)
 
 ## Current Task
 
-24C.6: NaN boxing (D72, Value 48→8B, all benchmarks).
-Current Value is a tagged union at 48 bytes. NaN boxing encodes all values in
-8 bytes using IEEE 754 NaN payload bits. This improves cache locality (~6x),
-reduces allocation sizes, and benefits wasm linear memory.
-600+ call sites need migration. See optimization-knowledge.md section 5 for
-wasm compatibility notes. Beta reference: ClojureWasmBeta/src/base/value.zig.
+24C.9: Close remaining gaps — nested_update (1.8x BB) and gc_stress (1.3x BB).
+These are the last 2 benchmarks where CW doesn't win speed.
+nested_update: 41ms vs BB 22ms. gc_stress: 63ms vs BB 42ms.
 
 ## Previous Task
 
-24C.5b: Hot core recompilation — transduce 2134→15ms (142x, beats BB).
-**Root cause**: core.clj loaded via TreeWalk makes ALL core functions TreeWalk
-closures. Transducer step fns (map/filter/comp 1-arity) called in reduce hot
-loops dispatch through treewalkCallBridge (~200x overhead per call).
-**Fix**: D73 two-phase bootstrap — Phase 1 TreeWalk (fast), Phase 2 re-evaluates
-map/filter/comp via VM compiler (evalStringVMBootstrap) producing bytecode closures.
-Also: range/iterate fast-path in reduceGeneric (memory 30GB→0.9MB), VM variadic
-rest args nil fix (rest_count==0 returns nil not ()).
-**Trade-off**: nested_update 42→72ms (F100 — bytecode footprint cache side effect).
+24C.7: Filter chain collapsing + active VM call bridge — sieve 1645→21ms (78x improvement).
+D74: New lazy_filter_chain Meta variant flattens 168 nested filter layers into flat pred array.
+callFnVal now routes bytecode calls through active_vm when available (avoids ~500KB heap alloc).
+Memory: 2997MB → 23.8MB (125x improvement). Beats BB's 22ms.
 
 ## Handover Notes
 
@@ -51,7 +44,7 @@ rest args nil fix (rest_count==0 returns nil not ()).
 - **Benchmark history**: `bench/history.yaml` — record after every optimization task
 - **F97**: RESOLVED — stack overflow in lazy-seq realization (512MB stack, meta tracing fix)
 - **F98**: fib_recursive slower in ReleaseFast than Debug (487ms vs 205ms)
-- **F99**: Iterative lazy-seq realization — task 24C.7
+- **F99**: Partially resolved by D74 filter chain collapsing. General recursion remains for Phase 25.
 - **F100**: RESOLVED — adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms
 - **NaN boxing (D72)**: 600+ call sites, task 24C.6. Portable (works on wasm too)
 - **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
