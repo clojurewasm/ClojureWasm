@@ -11,7 +11,7 @@ Optimizations are classified by whether they benefit both native and wasm_rt tar
 | Optimization             | Impact | Status       | Notes                                |
 |--------------------------|--------|--------------|--------------------------------------|
 | NaN boxing (Value 48→8B) | HIGH   | Deferred D72 | Cache locality 6x, wasm linear mem   |
-| Closure specialization   | HIGH   | Not started  | Eliminates callFn overhead in fused reduce |
+| Closure specialization   | HIGH   | N/A          | Root cause was map redef, not callFn (24C.1) |
 | Constant folding         | MEDIUM | Skipped 24A.7| Compile-time `(+ 1 2)` → `3`        |
 | Fused reduce             | HIGH   | Done 24A.3   | But callFn per element still slow    |
 | HAMT                     | MEDIUM | Done 24B.2   | Shared data structure                |
@@ -118,7 +118,7 @@ From bench_improvement.yaml:
 - After VM backend: fib30=0.07s (2.1MB) — **27x improvement over TreeWalk**
 - Final (VM + all opts): fib30=69ms, map_filter=2.3ms
 
-## 4. Babashka Comparison (post-24B, 2026-02-07)
+## 4. Babashka Comparison (post-24C.1, 2026-02-07)
 
 Measured with single-run wall clock (BB) and hyperfine (CW), both cold start.
 BB startup ~20ms, CW startup ~10ms.
@@ -126,43 +126,44 @@ BB startup ~20ms, CW startup ~10ms.
 | Benchmark             | CW ms  | BB ms | CW/BB  | CW MB     | BB MB  | CW wins? |
 |-----------------------|--------|-------|--------|-----------|--------|----------|
 | fib_recursive         | 24     | 34    | 0.7x   | 23.8      | 38.6   | BOTH     |
-| fib_loop              | 13     | 20    | 0.7x   | 23.8      | 31.4   | BOTH     |
-| tak                   | 16     | 24    | 0.7x   | 23.8      | 34.1   | BOTH     |
+| fib_loop              | 12     | 20    | 0.6x   | 23.8      | 31.4   | BOTH     |
+| tak                   | 17     | 24    | 0.7x   | 23.8      | 34.1   | BOTH     |
 | arith_loop            | 57     | 80    | 0.7x   | 23.8      | 76.9   | BOTH     |
+| map_filter_reduce     | 179    | 22    | 8.1x   | 34.0      | 37.7   | mem only |
 | map_ops               | 13     | 20    | 0.7x   | 25.6      | 32.4   | BOTH     |
 | keyword_lookup        | 20     | 26    | 0.8x   | 23.8      | 36.2   | BOTH     |
-| protocol_dispatch     | 15     | 27    | 0.6x   | 23.9      | 36.4   | BOTH     |
-| nqueens               | 26     | 30    | 0.9x   | 26.1      | 37.1   | BOTH     |
-| atom_swap             | 15     | 19    | 0.8x   | 23.8      | 31.9   | BOTH     |
-| gc_stress             | 329    | 42    | 7.8x   | 26.0      | 77.0   | mem only |
-| nested_update         | 141    | 22    | 6.4x   | 27.7      | 37.0   | mem only |
-| string_ops            | 419    | 28    | 15.0x  | 31.2      | 41.5   | mem only |
-| list_build            | 174    | 21    | 8.3x   | 34.1      | 32.2   | NEITHER  |
-| vector_ops            | 186    | 22    | 8.5x   | 34.2      | 34.6   | NEITHER  |
-| real_workload         | 511    | 23    | 22.2x  | 45.2      | 41.6   | NEITHER  |
-| map_filter_reduce     | 1293   | 22    | 58.8x  | 15367     | 37.7   | NEITHER  |
-| sieve                 | 1675   | 22    | 76.1x  | 2998      | 36.2   | NEITHER  |
-| multimethod_dispatch  | 2094   | 22    | 95.2x  | 83.1      | 33.5   | NEITHER  |
+| protocol_dispatch     | 13     | 27    | 0.5x   | 23.8      | 36.4   | BOTH     |
+| nqueens               | 25     | 30    | 0.8x   | 26.0      | 37.1   | BOTH     |
+| atom_swap             | 13     | 19    | 0.7x   | 23.8      | 31.9   | BOTH     |
+| lazy_chain            | 17     | 23    | 0.7x   | 23.8      | 37.6   | BOTH     |
+| gc_stress             | 328    | 42    | 7.8x   | 25.9      | 77.0   | mem only |
+| nested_update         | 126    | 22    | 5.7x   | 27.6      | 37.0   | mem only |
+| string_ops            | 403    | 28    | 14.4x  | 31.2      | 41.5   | mem only |
+| list_build            | 178    | 21    | 8.5x   | 34.0      | 32.2   | NEITHER  |
+| vector_ops            | 178    | 22    | 8.1x   | 34.1      | 34.6   | NEITHER  |
+| real_workload         | 504    | 23    | 21.9x  | 38.9      | 41.6   | mem only |
+| sieve                 | 1704   | 22    | 77.5x  | 2998      | 36.2   | NEITHER  |
+| multimethod_dispatch  | 2053   | 22    | 93.3x  | 83.0      | 33.5   | NEITHER  |
 | transduce             | 3348   | 20    | 167x   | 30657     | 32.3   | NEITHER  |
-| lazy_chain            | 6655   | 23    | 289x   | 30692     | 37.6   | NEITHER  |
 
-**Summary**: CW wins 9/20 (speed+memory), loses 11/20.
-CW wins computation-heavy tight-loop benchmarks. Loses ALL collection/sequence
-benchmarks, often by 10-300x. Root cause: callFn overhead + lazy-seq allocation.
+**Summary**: CW wins 11/20 (speed or memory), loses 9/20.
+24C.1 fixed lazy_chain (289x→0.7x) and improved map_filter_reduce (59x→8.1x).
+Remaining gaps: transduce (167x), multimethod (93x), sieve (77x), real_workload (22x),
+string_ops (14x), list_build/vector_ops (8x), gc_stress (8x), nested_update (6x).
 
-### Performance Categories
+### Performance Categories (post-24C.1)
 
-**Category A: CW wins (tight VM loop)**
+**Category A: CW wins speed+memory (11 benchmarks)**
 fib_recursive, fib_loop, tak, arith_loop, map_ops, keyword_lookup,
-protocol_dispatch, nqueens, atom_swap — all < BB
+protocol_dispatch, nqueens, atom_swap, lazy_chain — all < BB
 
-**Category B: CW loses speed, wins memory (GC overhead)**
-gc_stress (7.8x), nested_update (6.4x), string_ops (15x)
+**Category B: CW loses speed, wins memory**
+gc_stress (7.8x), nested_update (5.7x), string_ops (14.4x),
+map_filter_reduce (8.1x), real_workload (21.9x)
 
-**Category C: CW loses both (lazy-seq + callFn bottleneck)**
-lazy_chain (289x), transduce (167x), multimethod_dispatch (95x),
-sieve (76x), map_filter_reduce (59x), real_workload (22x),
-vector_ops (8.5x), list_build (8.3x)
+**Category C: CW loses both**
+transduce (167x), multimethod_dispatch (93x), sieve (77x),
+vector_ops (8.1x), list_build (8.5x)
 
 ### Memory Hotspots (post-24B, hyperfine measured)
 
