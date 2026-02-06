@@ -77,13 +77,13 @@ Key points: implement don't skip, no assertion reduction, both backends, CLJW ma
 See `.dev/plan/memo.md` for task queue and current state.
 Do NOT stop between tasks within a phase.
 
-**Phase order**: ... → **22c(test gaps)** → 24(optimize) → 25(wasm)
+**Phase order**: ... → 22c(test gaps) → **24(optimize)** → 25(wasm)
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase 22c is complete** (22c.16 done — loop ends here)
+- **Phase 24 is complete** (24B.4 done, or 24C if pursued — loop ends here)
 - Phase 25 is complete (all planned phases done)
 
 Do NOT stop for:
@@ -102,7 +102,7 @@ Run before every commit:
 2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
 4. **memo.md**: Advance to next task
-   - Update `Next task:` in Current State
+   - Update `## Current Task` with next task details
    - Remove completed task from Task Queue
    - Update Handover Notes if status changed (done/architecture/new info)
 5. **test-porting.md**: When changing test/upstream/ files:
