@@ -562,7 +562,6 @@ pub const Analyzer = struct {
                     .pattern = p,
                     .syn_name = syn_name,
                     .syn_idx = idx,
-                    .is_variadic_map = variadic and p.data == .map,
                 }) catch return error.OutOfMemory;
                 has_destructuring = true;
             } else {
@@ -576,12 +575,11 @@ pub const Analyzer = struct {
             var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
             for (destructure_patterns.items) |entry| {
                 const ref_node = try self.makeTempLocalRef(entry.syn_name, entry.syn_idx);
-                const init_node = if (entry.is_variadic_map)
-                    // (fn [& {:keys [x]}] ...) — convert rest list to map via (apply hash-map rest)
-                    try self.makeApplyHashMapCall(ref_node)
-                else
-                    ref_node;
-                try self.expandBindingPattern(entry.pattern, init_node, &bindings_list, form);
+                // Note: for variadic map patterns (fn [& {:keys [x]}] ...),
+                // we pass the raw rest args and let expandMapPattern's __seq-to-map
+                // handle coercion. This supports Clojure 1.11 semantics where
+                // (f {:a 1}) passes the map directly rather than as key-value pairs.
+                try self.expandBindingPattern(entry.pattern, ref_node, &bindings_list, form);
             }
 
             const inner_body = try self.analyzeBody(body_forms, form);
@@ -620,7 +618,6 @@ pub const Analyzer = struct {
         pattern: Form,
         syn_name: []const u8,
         syn_idx: u32,
-        is_variadic_map: bool = false,
     };
 
     fn makeSyntheticParamName(self: *Analyzer, idx: usize) AnalyzeError![]const u8 {
@@ -2081,17 +2078,6 @@ pub const Analyzer = struct {
             }
         }
         return null;
-    }
-
-    /// Generate (apply hash-map rest-list) call node.
-    /// Converts flat key-value rest args list into a map for & {:keys [...]} destructuring.
-    fn makeApplyHashMapCall(self: *Analyzer, rest_node: *Node) AnalyzeError!*Node {
-        const hash_map_ref = self.allocator.create(Node) catch return error.OutOfMemory;
-        hash_map_ref.* = .{ .var_ref = .{ .ns = null, .name = "hash-map", .source = .{} } };
-        const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
-        args[0] = hash_map_ref;
-        args[1] = rest_node;
-        return self.makeBuiltinCall("apply", args);
     }
 
     fn makeBuiltinCall(self: *Analyzer, name: []const u8, args: []*Node) AnalyzeError!*Node {

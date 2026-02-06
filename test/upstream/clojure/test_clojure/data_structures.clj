@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
 ;; Upstream lines: 1363
-;; CLJW markers: 28
+;; CLJW markers: 29
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -548,6 +548,33 @@
                (sorted-map "Banana" "like", "apple" "love", "7th" "indifferent")]]
     (doseq [m1 maps1, m2 maps1]
       (is-same-collection m1 m2))))
+
+(deftest singleton-map-in-destructure-context
+  (let [sample-map {:a 1 :b 2}
+        {:keys [a] :as m1} (list sample-map)]
+    (is (= m1 sample-map))
+    (is (= a 1))))
+
+;; CLJW: adapted — removed partial tests (partial not yet implemented),
+;; removed seq-to-map-for-destructuring (internal fn not in core)
+(deftest trailing-map-destructuring
+  (let [sample-map {:a 1 :b 2}
+        add  (fn [& {:keys [a b]}] (+ a b))
+        addn (fn [n & {:keys [a b]}] (+ n a b))]
+    (testing "that kwargs are applied properly given a map in place of the key/val pairs"
+      (is (= 3 (add  :a 1 :b 2)))
+      (is (= 3 (add  {:a 1 :b 2})))
+      (is (= 13 (addn 10 :a 1 :b 2)))
+      (is (= 13 (addn 10 {:a 1 :b 2}))))
+    (testing "built maps"
+      (let [{:as m1} (list :a 1 :b 2)
+            {:as m2} (list :a 1 :b 2 {:c 3})
+            {:as m3} (list :a 1 :b 2 {:a 0})
+            {:keys [a4] :as m4} (list nil)]
+        (is (= m1 {:a 1 :b 2}))
+        (is (= m2 {:a 1 :b 2 :c 3}))
+        (is (= m3 {:a 0 :b 2}))
+        (is (= a4 nil))))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)

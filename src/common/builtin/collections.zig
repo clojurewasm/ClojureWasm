@@ -734,30 +734,78 @@ pub fn hashMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (__seq-to-map x) — coerce seq-like values to maps for map destructuring.
-/// Seqs/lists are converted via hash-map semantics. Non-seqs pass through unchanged.
+/// Implements Clojure 1.11 seq-to-map-for-destructuring semantics:
+/// - If seq has exactly 1 element that's a map: return that map directly
+/// - If seq has odd elements and last is a map: merge trailing map into key-value pairs
+/// - Otherwise: treat as key-value pairs and create map
+/// - Non-seqs pass through unchanged
 pub fn seqToMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __seq-to-map", .{args.len});
     return switch (args[0]) {
         .nil => .nil, // JVM: (seq? nil) → false, passes through
-        .list => |lst| {
-            if (lst.items.len == 0) {
-                const map = try allocator.create(PersistentArrayMap);
-                map.* = .{ .entries = &.{} };
-                return Value{ .map = map };
-            }
-            return hashMapFn(allocator, lst.items);
-        },
-        .cons, .lazy_seq => {
-            const items = try collectSeqItems(allocator, args[0]);
-            if (items.len == 0) {
-                const map = try allocator.create(PersistentArrayMap);
-                map.* = .{ .entries = &.{} };
-                return Value{ .map = map };
-            }
-            return hashMapFn(allocator, items);
-        },
+        .list => |lst| seqToMapFromSlice(allocator, lst.items),
+        .cons, .lazy_seq => seqToMapFromSlice(allocator, try collectSeqItems(allocator, args[0])),
         else => args[0], // maps, vectors, etc. pass through
     };
+}
+
+/// Helper for seqToMapFn: convert slice to map with Clojure 1.11 semantics.
+/// Matches JVM (seq-to-map-for-destructuring s):
+/// - (next s) truthy → createAsIfByAssoc (handles trailing map)
+/// - (seq s) truthy (1 element) → (first s)
+/// - otherwise → empty map
+fn seqToMapFromSlice(allocator: Allocator, items: []const Value) anyerror!Value {
+    if (items.len == 0) {
+        const map = try allocator.create(PersistentArrayMap);
+        map.* = .{ .entries = &.{} };
+        return Value{ .map = map };
+    }
+    // Clojure 1.11: single element → return it directly (even if nil)
+    if (items.len == 1) {
+        return items[0];
+    }
+    // Clojure 1.11: if odd elements and last is a map, merge trailing map
+    if (items.len % 2 == 1 and items[items.len - 1] == .map) {
+        // Create map from preceding key-value pairs
+        const base_map = try hashMapFn(allocator, items[0 .. items.len - 1]);
+        // Merge trailing map into base map
+        const trailing = items[items.len - 1].map;
+        return mergeInto(allocator, base_map, trailing);
+    }
+    return hashMapFn(allocator, items);
+}
+
+/// Merge entries from src map into dst map (like Clojure's merge).
+/// Maps store flat arrays: [k1,v1,k2,v2,...]
+fn mergeInto(allocator: Allocator, base: Value, src: *const PersistentArrayMap) anyerror!Value {
+    if (base != .map) return base;
+    var entries: std.ArrayList(Value) = .empty;
+    // Add all entries from base
+    for (base.map.entries) |v| {
+        entries.append(allocator, v) catch return error.OutOfMemory;
+    }
+    // Merge entries from src (overwrite existing keys)
+    var i: usize = 0;
+    while (i < src.entries.len) : (i += 2) {
+        const src_key = src.entries[i];
+        const src_val = src.entries[i + 1];
+        var found = false;
+        var j: usize = 0;
+        while (j < entries.items.len) : (j += 2) {
+            if (entries.items[j].eql(src_key)) {
+                entries.items[j + 1] = src_val;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            entries.append(allocator, src_key) catch return error.OutOfMemory;
+            entries.append(allocator, src_val) catch return error.OutOfMemory;
+        }
+    }
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = entries.items };
+    return Value{ .map = map };
 }
 
 /// (merge & maps) — returns a map that consists of the rest of the maps conj-ed onto the first.
