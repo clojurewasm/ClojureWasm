@@ -1,0 +1,114 @@
+env:
+  cpu: Apple M4 Pro
+  ram: 48 GB
+  os: Darwin 25.2.0
+  tool: hyperfine
+entries:
+  - id: "pre-24"
+    date: "2026-02-06"
+    reason: "Pre-Phase24 baseline (reconstructed from git)"
+    commit: "eab994b"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 542, mem_mb: 0}
+      fib_loop: {time_ms: 56, mem_mb: 0}
+      tak: {time_ms: 53, mem_mb: 0}
+      arith_loop: {time_ms: 98, mem_mb: 0}
+      map_filter_reduce: {time_ms: 4013, mem_mb: 0}
+      vector_ops: {time_ms: 426, mem_mb: 0}
+      map_ops: {time_ms: 62, mem_mb: 0}
+      list_build: {time_ms: 420, mem_mb: 0}
+      sieve: {time_ms: 2152, mem_mb: 0}
+      nqueens: {time_ms: 61, mem_mb: 0}
+      atom_swap: {time_ms: 51, mem_mb: 0}
+      gc_stress: {time_ms: 372, mem_mb: 0}
+      lazy_chain: {time_ms: 21375, mem_mb: 0}
+      transduce: {time_ms: 8409, mem_mb: 0}
+      keyword_lookup: {time_ms: 59, mem_mb: 0}
+      protocol_dispatch: {time_ms: 52, mem_mb: 0}
+      nested_update: {time_ms: 292, mem_mb: 0}
+      string_ops: {time_ms: 446, mem_mb: 0}
+      multimethod_dispatch: {time_ms: 2373, mem_mb: 0}
+      real_workload: {time_ms: 1286, mem_mb: 0}
+  - id: "24A.3"
+    date: "2026-02-06"
+    reason: "After fused reduce + dispatch + stack arg buffer (reconstructed from git)"
+    commit: "f0ef5c8"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 502, mem_mb: 0}
+      fib_loop: {time_ms: 31, mem_mb: 0}
+      tak: {time_ms: 33, mem_mb: 0}
+      arith_loop: {time_ms: 76, mem_mb: 0}
+      map_filter_reduce: {time_ms: 1287, mem_mb: 0}
+      vector_ops: {time_ms: 188, mem_mb: 0}
+      map_ops: {time_ms: 37, mem_mb: 0}
+      list_build: {time_ms: 183, mem_mb: 0}
+      sieve: {time_ms: 40, mem_mb: 0}
+      nqueens: {time_ms: 42, mem_mb: 0}
+      atom_swap: {time_ms: 30, mem_mb: 0}
+      gc_stress: {time_ms: 372, mem_mb: 0}
+      lazy_chain: {time_ms: 7356, mem_mb: 0}
+      transduce: {time_ms: 3209, mem_mb: 0}
+      keyword_lookup: {time_ms: 36, mem_mb: 0}
+      protocol_dispatch: {time_ms: 30, mem_mb: 0}
+      nested_update: {time_ms: 140, mem_mb: 0}
+      string_ops: {time_ms: 414, mem_mb: 0}
+      multimethod_dispatch: {time_ms: 2150, mem_mb: 0}
+      real_workload: {time_ms: 509, mem_mb: 0}
+  - id: "24A.9"
+    date: "2026-02-07"
+    reason: "Phase 24A complete — arith fast-path + IC + branchHint (reconstructed from git)"
+    commit: "5443dd6"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 28, mem_mb: 0}
+      fib_loop: {time_ms: 19, mem_mb: 0}
+      tak: {time_ms: 23, mem_mb: 0}
+      arith_loop: {time_ms: 61, mem_mb: 0}
+      map_filter_reduce: {time_ms: 1281, mem_mb: 0}
+      vector_ops: {time_ms: 179, mem_mb: 0}
+      map_ops: {time_ms: 26, mem_mb: 0}
+      list_build: {time_ms: 178, mem_mb: 0}
+      sieve: {time_ms: 30, mem_mb: 0}
+      nqueens: {time_ms: 29, mem_mb: 0}
+      atom_swap: {time_ms: 18, mem_mb: 0}
+      gc_stress: {time_ms: 330, mem_mb: 0}
+      lazy_chain: {time_ms: 6588, mem_mb: 0}
+      transduce: {time_ms: 2893, mem_mb: 0}
+      keyword_lookup: {time_ms: 24, mem_mb: 0}
+      protocol_dispatch: {time_ms: 19, mem_mb: 0}
+      nested_update: {time_ms: 128, mem_mb: 0}
+      string_ops: {time_ms: 397, mem_mb: 0}
+      multimethod_dispatch: {time_ms: 2127, mem_mb: 0}
+      real_workload: {time_ms: 496, mem_mb: 0}
+  - id: "post-24B"
+    date: "2026-02-07"
+    reason: "Phase 24B complete (hyperfine measured)"
+    commit: "fc5525f"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 24, mem_mb: 23.8}
+      fib_loop: {time_ms: 13, mem_mb: 23.8}
+      tak: {time_ms: 16, mem_mb: 23.8}
+      arith_loop: {time_ms: 57, mem_mb: 23.8}
+      map_filter_reduce: {time_ms: 1293, mem_mb: 15367.4}
+      vector_ops: {time_ms: 186, mem_mb: 34.2}
+      map_ops: {time_ms: 13, mem_mb: 25.6}
+      list_build: {time_ms: 174, mem_mb: 34.1}
+      sieve: {time_ms: 1675, mem_mb: 2998.0}
+      nqueens: {time_ms: 26, mem_mb: 26.1}
+      atom_swap: {time_ms: 15, mem_mb: 23.8}
+      gc_stress: {time_ms: 329, mem_mb: 26.0}
+      lazy_chain: {time_ms: 6655, mem_mb: 30692.6}
+      transduce: {time_ms: 3348, mem_mb: 30657.5}
+      keyword_lookup: {time_ms: 20, mem_mb: 23.8}
+      protocol_dispatch: {time_ms: 15, mem_mb: 23.9}
+      nested_update: {time_ms: 141, mem_mb: 27.7}
+      string_ops: {time_ms: 419, mem_mb: 31.2}
+      multimethod_dispatch: {time_ms: 2094, mem_mb: 83.1}
+      real_workload: {time_ms: 511, mem_mb: 45.2}

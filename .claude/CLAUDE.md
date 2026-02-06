@@ -139,15 +139,26 @@ zig build test -- "X"  # Specific test only
 **Always use ReleaseSafe for benchmarks.** Never use Debug or ReleaseFast.
 
 ```bash
-# Standard benchmark run (ReleaseSafe, VM backend)
+# Run all benchmarks (display only)
 bash bench/run_bench.sh --release-safe --backend=vm
-# Record results
-bash bench/run_bench.sh --release-safe --backend=vm --record --version="Phase 24A.3"
 # Single benchmark
 bash bench/run_bench.sh --release-safe --backend=vm --bench=lazy_chain
+
+# Record to history (hyperfine, auto-builds ReleaseSafe)
+bash bench/record.sh --id="24C.1" --reason="Closure specialization"
+# Single benchmark record
+bash bench/record.sh --id="24C.1" --reason="test" --bench=fib_recursive
+# Overwrite existing entry
+bash bench/record.sh --id="24C.1" --reason="re-measure" --overwrite
+# Delete entry
+bash bench/record.sh --delete="24C.1"
+
 # Manual ReleaseSafe build
 zig build -Doptimize=ReleaseSafe
 ```
+
+History: `bench/history.yaml` — all entries with id, date, reason, commit, time_ms, mem_mb.
+**Record after every optimization task.** Use task ID as entry id (e.g. "24C.1").
 
 ## Notice
 
@@ -206,4 +217,5 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Roadmap          | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
 | Deferred items   | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Design document  | `.dev/future.md`                     | When planning new phases or major features |
+| Bench history    | `bench/history.yaml`                 | Benchmark progression across optimizations |
 | Bytecode debug   | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
