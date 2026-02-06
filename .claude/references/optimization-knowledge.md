@@ -118,7 +118,7 @@ From bench_improvement.yaml:
 - After VM backend: fib30=0.07s (2.1MB) — **27x improvement over TreeWalk**
 - Final (VM + all opts): fib30=69ms, map_filter=2.3ms
 
-## 4. Babashka Comparison (post-24C.4, 2026-02-07)
+## 4. Babashka Comparison (post-24C.5, 2026-02-07)
 
 Measured with hyperfine (CW) and single-run wall clock (BB), both cold start.
 BB startup ~20ms, CW startup ~10ms.
@@ -127,43 +127,42 @@ BB startup ~20ms, CW startup ~10ms.
 |-----------------------|--------|-------|--------|-----------|--------|----------|
 | fib_recursive         | 23     | 34    | 0.7x   | 23.8      | 38.6   | BOTH     |
 | fib_loop              | 12     | 20    | 0.6x   | 23.8      | 31.4   | BOTH     |
-| tak                   | 16     | 24    | 0.7x   | 23.8      | 34.1   | BOTH     |
-| arith_loop            | 55     | 80    | 0.7x   | 23.8      | 76.9   | BOTH     |
-| map_filter_reduce     | 14     | 22    | 0.6x   | 25.8      | 37.7   | BOTH     |
-| vector_ops            | 14     | 22    | 0.6x   | 25.8      | 34.6   | BOTH     |
-| map_ops               | 13     | 20    | 0.7x   | 25.6      | 32.4   | BOTH     |
+| tak                   | 14     | 24    | 0.6x   | 23.8      | 34.1   | BOTH     |
+| arith_loop            | 57     | 80    | 0.7x   | 23.8      | 76.9   | BOTH     |
+| map_filter_reduce     | 15     | 22    | 0.7x   | 25.7      | 37.7   | BOTH     |
+| vector_ops            | 15     | 22    | 0.7x   | 26.0      | 34.6   | BOTH     |
+| map_ops               | 13     | 20    | 0.7x   | 25.5      | 32.4   | BOTH     |
 | list_build            | 13     | 21    | 0.6x   | 25.7      | 32.2   | BOTH     |
 | keyword_lookup        | 20     | 26    | 0.8x   | 23.8      | 36.2   | BOTH     |
-| protocol_dispatch     | 14     | 27    | 0.5x   | 23.8      | 36.4   | BOTH     |
+| protocol_dispatch     | 15     | 27    | 0.6x   | 23.8      | 36.4   | BOTH     |
 | nqueens               | 22     | 30    | 0.7x   | 24.3      | 37.1   | BOTH     |
 | atom_swap             | 13     | 19    | 0.7x   | 23.8      | 31.9   | BOTH     |
-| lazy_chain            | 13     | 23    | 0.6x   | 23.8      | 37.6   | BOTH     |
-| multimethod_dispatch  | 14     | 22    | 0.6x   | 23.9      | 33.5   | BOTH     |
+| lazy_chain            | 14     | 23    | 0.6x   | 23.8      | 37.6   | BOTH     |
+| multimethod_dispatch  | 15     | 22    | 0.7x   | 23.9      | 33.5   | BOTH     |
 | string_ops            | 28     | 28    | 1.0x   | 31.1      | 41.5   | BOTH     |
-| real_workload         | 50     | 23    | 2.2x   | 35.5      | 41.6   | mem only |
-| nested_update         | 124    | 22    | 5.6x   | 27.7      | 37.0   | mem only |
-| gc_stress             | 324    | 42    | 7.7x   | 25.9      | 77.0   | mem only |
-| sieve                 | 1651   | 22    | 75x    | 2997      | 36.2   | NEITHER  |
-| transduce             | 3331   | 20    | 167x   | 30657     | 32.3   | NEITHER  |
+| real_workload         | 23     | 23    | 1.0x   | 33.2      | 41.6   | BOTH     |
+| gc_stress             | 46     | 42    | 1.1x   | 25.2      | 77.0   | mem only |
+| nested_update         | 41     | 22    | 1.9x   | 27.0      | 37.0   | mem only |
+| sieve                 | 1665   | 22    | 75.7x  | 2997      | 36.2   | NEITHER  |
+| transduce             | 2134   | 20    | 106.7x | 30657     | 32.3   | NEITHER  |
 
 **Summary**: CW wins 18/20 (speed+memory or memory only), loses 2/20.
-24C.4 fixed vector_ops (180→14ms), list_build (178→13ms), real_workload (501→50ms),
-map_filter_reduce (179→14ms — unexpected bonus from cons/vector changes).
-Remaining gaps: transduce (167x), sieve (75x), gc_stress (7.7x),
-nested_update (5.6x), real_workload (2.2x).
+24C.5 fixed gc_stress (324→46ms, 7.0x), nested_update (124→41ms, 3.0x),
+real_workload (50→23ms, 2.2x), transduce (3331→2134ms, 1.6x) via GC free-pool.
+Remaining gaps: transduce (107x), sieve (76x), nested_update (1.9x), gc_stress (1.1x).
 
-### Performance Categories (post-24C.4)
+### Performance Categories (post-24C.5)
 
-**Category A: CW wins speed+memory (15 benchmarks)**
+**Category A: CW wins speed+memory (16 benchmarks)**
 fib_recursive, fib_loop, tak, arith_loop, map_filter_reduce, vector_ops,
 map_ops, list_build, keyword_lookup, protocol_dispatch, nqueens, atom_swap,
-lazy_chain, multimethod_dispatch, string_ops
+lazy_chain, multimethod_dispatch, string_ops, real_workload
 
-**Category B: CW loses speed, wins memory (3 benchmarks)**
-real_workload (2.2x), nested_update (5.6x), gc_stress (7.7x)
+**Category B: CW loses speed, wins memory (2 benchmarks)**
+nested_update (1.9x), gc_stress (1.1x)
 
 **Category C: CW loses both (2 benchmarks)**
-transduce (167x), sieve (75x)
+transduce (107x), sieve (76x)
 
 ### Memory Hotspots (post-24B, hyperfine measured)
 

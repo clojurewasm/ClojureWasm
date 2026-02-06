@@ -220,3 +220,30 @@ entries:
       string_ops: {time_ms: 28, mem_mb: 31.1}
       multimethod_dispatch: {time_ms: 14, mem_mb: 23.9}
       real_workload: {time_ms: 50, mem_mb: 35.5}
+  - id: "24C.5"
+    date: "2026-02-07"
+    reason: "GC free-pool recycling"
+    commit: "ee105b8"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 23, mem_mb: 23.8}
+      fib_loop: {time_ms: 12, mem_mb: 23.8}
+      tak: {time_ms: 14, mem_mb: 23.8}
+      arith_loop: {time_ms: 57, mem_mb: 23.8}
+      map_filter_reduce: {time_ms: 15, mem_mb: 25.7}
+      vector_ops: {time_ms: 15, mem_mb: 26.0}
+      map_ops: {time_ms: 13, mem_mb: 25.5}
+      list_build: {time_ms: 13, mem_mb: 25.7}
+      sieve: {time_ms: 1665, mem_mb: 2996.8}
+      nqueens: {time_ms: 22, mem_mb: 24.3}
+      atom_swap: {time_ms: 13, mem_mb: 23.8}
+      gc_stress: {time_ms: 46, mem_mb: 25.2}
+      lazy_chain: {time_ms: 14, mem_mb: 23.8}
+      transduce: {time_ms: 2134, mem_mb: 30656.7}
+      keyword_lookup: {time_ms: 20, mem_mb: 23.8}
+      protocol_dispatch: {time_ms: 15, mem_mb: 23.8}
+      nested_update: {time_ms: 41, mem_mb: 27.0}
+      string_ops: {time_ms: 28, mem_mb: 31.1}
+      multimethod_dispatch: {time_ms: 15, mem_mb: 23.9}
+      real_workload: {time_ms: 23, mem_mb: 33.2}

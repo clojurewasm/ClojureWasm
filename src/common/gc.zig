@@ -137,6 +137,24 @@ pub const MarkSweepGc = struct {
     alloc_count: u64 = 0,
     collect_count: u64 = 0,
     threshold: usize = 1024 * 1024, // 1MB default
+    free_pools: [MAX_FREE_POOLS]FreePool = [_]FreePool{.{}} ** MAX_FREE_POOLS,
+    free_pool_count: u8 = 0,
+
+    /// Free-list node — overlaid on freed allocation memory.
+    const FreeNode = struct {
+        next: ?*FreeNode,
+    };
+
+    /// Per-(size, alignment) free pool for recycling dead allocations.
+    const FreePool = struct {
+        size: usize = 0,
+        alignment: Alignment = .@"1",
+        head: ?*FreeNode = null,
+        count: u32 = 0,
+    };
+
+    const MAX_FREE_POOLS = 16;
+    const MAX_FREE_PER_POOL = 4096;
 
     pub const AllocInfo = struct {
         len: usize,
@@ -167,10 +185,20 @@ pub const MarkSweepGc = struct {
         const keys = self.allocations.keys();
         const vals = self.allocations.values();
         for (keys, vals) |addr, info| {
-            const ptr: [*]u8 = @ptrFromInt(addr);
-            self.backing.rawFree(ptr[0..info.len], info.alignment, 0);
+            const p: [*]u8 = @ptrFromInt(addr);
+            self.backing.rawFree(p[0..info.len], info.alignment, 0);
         }
         self.allocations.deinit(self.backing);
+        // Free all cached free-pool entries through backing
+        for (self.free_pools[0..self.free_pool_count]) |pool| {
+            var node = pool.head;
+            while (node) |n| {
+                const next = n.next;
+                const p: [*]u8 = @ptrCast(n);
+                self.backing.rawFree(p[0..pool.size], pool.alignment, 0);
+                node = next;
+            }
+        }
     }
 
     /// Returns a std.mem.Allocator that tracks all allocations through this GC.
@@ -211,7 +239,7 @@ pub const MarkSweepGc = struct {
         }
     }
 
-    /// Sweep all unmarked allocations, freeing their memory.
+    /// Sweep all unmarked allocations, recycling to free pools or freeing.
     /// Marked allocations have their mark bit reset for the next cycle.
     pub fn sweep(self: *MarkSweepGc) void {
         var freed_bytes: usize = 0;
@@ -223,14 +251,19 @@ pub const MarkSweepGc = struct {
                 const keys = self.allocations.keys();
                 const addr = keys[i];
                 const info = vals[i];
-                const ptr: [*]u8 = @ptrFromInt(addr);
-                self.backing.rawFree(ptr[0..info.len], info.alignment, 0);
                 freed_bytes += info.len;
                 freed_count += 1;
+                // Remove from HashMap first
                 self.allocations.swapRemoveAt(i);
+                // Try to recycle into free pool (avoids rawFree + future rawAlloc)
+                if (!self.addToFreePool(addr, info.len, info.alignment)) {
+                    // Can't recycle — actually free through backing
+                    const p: [*]u8 = @ptrFromInt(addr);
+                    self.backing.rawFree(p[0..info.len], info.alignment, 0);
+                }
                 // Don't increment — swapRemove moved last element to i
             } else {
-                self.allocations.values()[i].marked = false;
+                vals[i].marked = false;
                 i += 1;
             }
         }
@@ -244,10 +277,59 @@ pub const MarkSweepGc = struct {
         return self.allocations.count();
     }
 
+    // --- Free pool helpers ---
+
+    /// Find a free pool matching (size, alignment), or create one if space available.
+    fn findOrCreatePool(self: *MarkSweepGc, size: usize, alignment: Alignment) ?*FreePool {
+        for (self.free_pools[0..self.free_pool_count]) |*pool| {
+            if (pool.size == size and pool.alignment == alignment) return pool;
+        }
+        if (self.free_pool_count < MAX_FREE_POOLS) {
+            const pool = &self.free_pools[self.free_pool_count];
+            pool.* = .{ .size = size, .alignment = alignment };
+            self.free_pool_count += 1;
+            return pool;
+        }
+        return null;
+    }
+
+    /// Try to add a dead allocation to a free pool for recycling.
+    fn addToFreePool(self: *MarkSweepGc, addr: usize, size: usize, alignment: Alignment) bool {
+        if (size < @sizeOf(FreeNode)) return false;
+        const pool = self.findOrCreatePool(size, alignment) orelse return false;
+        if (pool.count >= MAX_FREE_PER_POOL) return false;
+        const node: *FreeNode = @ptrFromInt(addr);
+        node.next = pool.head;
+        pool.head = node;
+        pool.count += 1;
+        return true;
+    }
+
     // --- std.mem.Allocator VTable implementations ---
 
     fn msAlloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        // Try free pool first — exact (size, alignment) match, O(1) pop
+        for (self.free_pools[0..self.free_pool_count]) |*pool| {
+            if (pool.size == len and pool.alignment == alignment) {
+                if (pool.head) |node| {
+                    pool.head = node.next;
+                    pool.count -= 1;
+                    const result: [*]u8 = @ptrCast(node);
+                    // Re-add to HashMap (was removed during sweep)
+                    self.allocations.put(self.backing, @intFromPtr(result), .{
+                        .len = len,
+                        .alignment = alignment,
+                        .marked = false,
+                    }) catch return null;
+                    self.bytes_allocated += len;
+                    self.alloc_count += 1;
+                    return result;
+                }
+                break; // Pool exists but empty — fall through to backing
+            }
+        }
+        // Slow path: allocate from backing
         const result = self.backing.rawAlloc(len, alignment, ret_addr) orelse return null;
         self.allocations.put(self.backing, @intFromPtr(result), .{
             .len = len,
@@ -311,6 +393,8 @@ pub const MarkSweepGc = struct {
             self.bytes_allocated -|= info.len;
             self.alloc_count -|= 1;
             _ = self.allocations.swapRemove(addr);
+            // Try to recycle into free pool (avoids rawFree)
+            if (self.addToFreePool(addr, info.len, info.alignment)) return;
         }
         self.backing.rawFree(memory, alignment, ret_addr);
     }
