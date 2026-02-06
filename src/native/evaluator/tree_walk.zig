@@ -41,6 +41,7 @@ pub const TreeWalkError = error{
 };
 
 const MAX_LOCALS: usize = 256;
+const MAX_STACK_ARGS: usize = 8; // Stack buffer for call args (covers 99%+ of calls)
 const MAX_CALL_DEPTH: usize = 512;
 
 /// TreeWalk closure — captures fn node + local bindings at definition time.
@@ -368,8 +369,13 @@ pub const TreeWalk = struct {
         // Var-as-IFn: (#'f args) => deref var, then dispatch
         if (callee == .var_ref) {
             const derefed = callee.var_ref.deref();
-            const arg_vals = self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory;
-            defer self.allocator.free(arg_vals);
+            var vr_buf: [MAX_STACK_ARGS]Value = undefined;
+            const vr_heap: ?[]Value = if (call_n.args.len > MAX_STACK_ARGS)
+                (self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory)
+            else
+                null;
+            defer if (vr_heap) |ha| self.allocator.free(ha);
+            const arg_vals = vr_heap orelse vr_buf[0..call_n.args.len];
             for (call_n.args, 0..) |arg, i| {
                 arg_vals[i] = try self.run(arg);
             }
@@ -380,10 +386,15 @@ pub const TreeWalk = struct {
         if (callee != .fn_val) return error.TypeError;
         const fn_ptr = callee.fn_val;
 
-        // Evaluate args (heap-allocated to reduce stack frame size)
+        // Evaluate args (stack buffer for small arg counts, heap fallback)
         const arg_count = call_n.args.len;
-        const arg_vals = self.allocator.alloc(Value, arg_count) catch return error.OutOfMemory;
-        defer self.allocator.free(arg_vals);
+        var fn_args_buf: [MAX_STACK_ARGS]Value = undefined;
+        const fn_heap: ?[]Value = if (arg_count > MAX_STACK_ARGS)
+            (self.allocator.alloc(Value, arg_count) catch return error.OutOfMemory)
+        else
+            null;
+        defer if (fn_heap) |ha| self.allocator.free(ha);
+        const arg_vals = fn_heap orelse fn_args_buf[0..arg_count];
         for (call_n.args, 0..) |arg, i| {
             arg_vals[i] = try self.run(arg);
         }
@@ -440,12 +451,15 @@ pub const TreeWalk = struct {
         defer self.allocator.free(saved_locals);
         @memcpy(saved_locals, self.locals[0..saved_count]);
 
-        // Save recur state (full buffer — inner calls may change arg_count)
+        // Save recur state (only used slots, not full MAX_LOCALS buffer)
         const saved_recur_pending = self.recur_pending;
         const saved_recur_arg_count = self.recur_arg_count;
-        const saved_recur_args = self.allocator.alloc(Value, MAX_LOCALS) catch return error.OutOfMemory;
+        const recur_save_count = if (saved_recur_arg_count > 0) saved_recur_arg_count else 0;
+        const saved_recur_args = self.allocator.alloc(Value, recur_save_count) catch return error.OutOfMemory;
         defer self.allocator.free(saved_recur_args);
-        @memcpy(saved_recur_args, &self.recur_args);
+        if (recur_save_count > 0) {
+            @memcpy(saved_recur_args, self.recur_args[0..recur_save_count]);
+        }
 
         // Reset locals to captured state (fn body uses idx from 0)
         self.local_count = 0;
@@ -511,7 +525,9 @@ pub const TreeWalk = struct {
                 self.local_count = saved_count;
                 self.recur_pending = saved_recur_pending;
                 self.recur_arg_count = saved_recur_arg_count;
-                @memcpy(&self.recur_args, saved_recur_args);
+                if (recur_save_count > 0) {
+                    @memcpy(self.recur_args[0..recur_save_count], saved_recur_args);
+                }
                 return e;
             };
 
@@ -531,7 +547,9 @@ pub const TreeWalk = struct {
             // Restore recur state
             self.recur_pending = saved_recur_pending;
             self.recur_arg_count = saved_recur_arg_count;
-            @memcpy(&self.recur_args, saved_recur_args);
+            if (recur_save_count > 0) {
+                @memcpy(self.recur_args[0..recur_save_count], saved_recur_args);
+            }
 
             return result;
         }
@@ -610,8 +628,14 @@ pub const TreeWalk = struct {
     }
 
     fn callProtocolFn(self: *TreeWalk, pf: *const value_mod.ProtocolFn, arg_nodes: []const *Node) TreeWalkError!Value {
-        // Evaluate all arguments
-        const args = self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory;
+        // Evaluate all arguments (stack buffer for small arg counts)
+        var pf_buf: [MAX_STACK_ARGS]Value = undefined;
+        const pf_heap: ?[]Value = if (arg_nodes.len > MAX_STACK_ARGS)
+            (self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory)
+        else
+            null;
+        defer if (pf_heap) |ha| self.allocator.free(ha);
+        const args = pf_heap orelse pf_buf[0..arg_nodes.len];
         for (arg_nodes, 0..) |arg_node, i| {
             args[i] = try self.run(arg_node);
         }
@@ -830,8 +854,14 @@ pub const TreeWalk = struct {
     }
 
     fn callMultiFn(self: *TreeWalk, mf: *const value_mod.MultiFn, arg_nodes: []const *Node) TreeWalkError!Value {
-        // Evaluate all arguments
-        const args = self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory;
+        // Evaluate all arguments (stack buffer for small arg counts)
+        var mf_buf: [MAX_STACK_ARGS]Value = undefined;
+        const mf_heap: ?[]Value = if (arg_nodes.len > MAX_STACK_ARGS)
+            (self.allocator.alloc(Value, arg_nodes.len) catch return error.OutOfMemory)
+        else
+            null;
+        defer if (mf_heap) |ha| self.allocator.free(ha);
+        const args = mf_heap orelse mf_buf[0..arg_nodes.len];
         for (arg_nodes, 0..) |arg_node, i| {
             args[i] = try self.run(arg_node);
         }
