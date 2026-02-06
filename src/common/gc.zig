@@ -573,11 +573,32 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
-        // Lazy sequence — thunk + realized value
+        // Lazy sequence — thunk + realized value + structural metadata
         .lazy_seq => |ls| {
             if (gc.markAndCheck(ls)) {
                 if (ls.thunk) |t| traceValue(gc, t);
                 if (ls.realized) |r| traceValue(gc, r);
+                if (ls.meta) |m| {
+                    gc.markPtr(m);
+                    switch (m.*) {
+                        .lazy_map => |lm| {
+                            traceValue(gc, lm.f);
+                            traceValue(gc, lm.source);
+                        },
+                        .lazy_filter => |lf| {
+                            traceValue(gc, lf.pred);
+                            traceValue(gc, lf.source);
+                        },
+                        .lazy_take => |lt| {
+                            traceValue(gc, lt.source);
+                        },
+                        .iterate => |it| {
+                            traceValue(gc, it.f);
+                            traceValue(gc, it.current);
+                        },
+                        .range => {},
+                    }
+                }
             }
         },
 
@@ -1144,6 +1165,39 @@ test "traceValue handles lazy_seq" {
 
     // ls + list + list_items survive, orphan freed
     try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+}
+
+test "traceValue handles lazy_seq with meta (lazy_filter)" {
+    var gc = MarkSweepGc.init(std.testing.allocator);
+    defer gc.deinit();
+
+    const a = gc.allocator();
+
+    // Create a source list that lazy_filter references
+    const list_items = try a.alloc(Value, 3);
+    list_items[0] = Value{ .integer = 2 };
+    list_items[1] = Value{ .integer = 3 };
+    list_items[2] = Value{ .integer = 4 };
+    const source_list = try a.create(value_mod.PersistentList);
+    source_list.* = .{ .items = list_items };
+
+    // Create a lazy_seq with lazy_filter meta (pred is nil placeholder, source is list)
+    const meta = try a.create(value_mod.LazySeq.Meta);
+    meta.* = .{ .lazy_filter = .{ .pred = .nil, .source = Value{ .list = source_list } } };
+    const ls = try a.create(value_mod.LazySeq);
+    ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+
+    // Orphan allocation that should be freed
+    _ = try a.create(value_mod.PersistentList);
+
+    // ls + meta + source_list + list_items + orphan = 5
+    try std.testing.expectEqual(@as(usize, 5), gc.liveCount());
+
+    traceValue(&gc, Value{ .lazy_seq = ls });
+    gc.sweep();
+
+    // ls + meta + source_list + list_items survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 4), gc.liveCount());
 }
 
 // === traceRoots Tests ===

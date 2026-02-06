@@ -19,9 +19,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    // 64MB stack to support deep VM nesting (bytecodeCallBridge recursion).
-    // Default 8MB is insufficient for deeply nested fixture/test patterns.
-    exe.stack_size = 64 * 1024 * 1024;
+    // 512MB stack for Debug builds — deeply nested lazy-seq realization
+    // (e.g. sieve of Eratosthenes with 168 nested filters) creates ~381KB
+    // frames per recursion level in Debug mode. ReleaseSafe needs ~64MB.
+    exe.stack_size = 512 * 1024 * 1024;
     b.installArtifact(exe);
 
     // Run step

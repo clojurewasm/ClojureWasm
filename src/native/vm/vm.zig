@@ -380,7 +380,7 @@ pub const VM = struct {
                         .extra_arities = fn_obj.extra_arities,
                         .defining_ns = fn_obj.defining_ns,
                     };
-                    self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
                     try self.push(.{ .fn_val = new_fn });
                 } else {
                     // No capture needed, push the template directly
@@ -566,7 +566,7 @@ pub const VM = struct {
                 const protocol = self.allocator.create(value_mod.Protocol) catch return error.OutOfMemory;
                 const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                 empty_map.* = .{ .entries = &.{} };
-                self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
                 protocol.* = .{
                     .name = name_sym.symbol.name,
                     .method_sigs = method_sigs,
@@ -625,13 +625,13 @@ pub const VM = struct {
                     if (ex_val != .map) return error.TypeError;
                     const old_map = ex_val.map;
                     const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
-                    self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
                     @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
                     new_entries[old_map.entries.len] = .{ .string = method_name };
                     new_entries[old_map.entries.len + 1] = method_fn;
                     const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_method_map.* = .{ .entries = new_entries };
-                    self.allocated_maps.append(self.allocator, new_method_map) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_maps.append(self.allocator, new_method_map) catch return error.OutOfMemory;
                     // Update impls: replace the type_key -> method_map entry
                     const impls = protocol.impls;
                     var i: usize = 0;
@@ -645,23 +645,23 @@ pub const VM = struct {
                 } else {
                     // New type — create method map and add to impls
                     const method_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
-                    self.allocated_slices.append(self.allocator, method_entries) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_slices.append(self.allocator, method_entries) catch return error.OutOfMemory;
                     method_entries[0] = .{ .string = method_name };
                     method_entries[1] = method_fn;
                     const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     method_map.* = .{ .entries = method_entries };
-                    self.allocated_maps.append(self.allocator, method_map) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_maps.append(self.allocator, method_map) catch return error.OutOfMemory;
 
                     // Add type_key -> method_map to impls
                     const old_impls = protocol.impls;
                     const new_impls_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
-                    self.allocated_slices.append(self.allocator, new_impls_entries) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_slices.append(self.allocator, new_impls_entries) catch return error.OutOfMemory;
                     @memcpy(new_impls_entries[0..old_impls.entries.len], old_impls.entries);
                     new_impls_entries[old_impls.entries.len] = .{ .string = type_key };
                     new_impls_entries[old_impls.entries.len + 1] = .{ .map = method_map };
                     const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_impls.* = .{ .entries = new_impls_entries };
-                    self.allocated_maps.append(self.allocator, new_impls) catch return error.OutOfMemory;
+                    if (self.gc == null) self.allocated_maps.append(self.allocator, new_impls) catch return error.OutOfMemory;
                     protocol.impls = new_impls;
                 }
 
@@ -776,11 +776,11 @@ pub const VM = struct {
 
         // Build {:__ex_info true :message msg :data {} :cause nil}
         const entries = self.allocator.alloc(Value, 8) catch return error.OutOfMemory;
-        self.allocated_slices.append(self.allocator, entries) catch return error.OutOfMemory;
+        if (self.gc == null) self.allocated_slices.append(self.allocator, entries) catch return error.OutOfMemory;
 
         const empty_map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
         empty_map.* = .{ .entries = &.{} };
-        self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
+        if (self.gc == null) self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
 
         entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
         entries[1] = .{ .boolean = true };
@@ -793,7 +793,7 @@ pub const VM = struct {
 
         const map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
         map.* = .{ .entries = entries };
-        self.allocated_maps.append(self.allocator, map) catch return error.OutOfMemory;
+        if (self.gc == null) self.allocated_maps.append(self.allocator, map) catch return error.OutOfMemory;
 
         return .{ .map = map };
     }
@@ -846,7 +846,7 @@ pub const VM = struct {
 
         // Pop values into a new slice
         const items = self.allocator.alloc(Value, count) catch return error.OutOfMemory;
-        self.allocated_slices.append(self.allocator, items) catch return error.OutOfMemory;
+        if (self.gc == null) self.allocated_slices.append(self.allocator, items) catch return error.OutOfMemory;
 
         // Pop in reverse order to maintain original order
         var i: usize = count;
@@ -859,25 +859,25 @@ pub const VM = struct {
             .list => {
                 const lst = self.allocator.create(PersistentList) catch return error.OutOfMemory;
                 lst.* = .{ .items = items };
-                self.allocated_lists.append(self.allocator, lst) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_lists.append(self.allocator, lst) catch return error.OutOfMemory;
                 try self.push(.{ .list = lst });
             },
             .vec => {
                 const vec = self.allocator.create(PersistentVector) catch return error.OutOfMemory;
                 vec.* = .{ .items = items };
-                self.allocated_vectors.append(self.allocator, vec) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_vectors.append(self.allocator, vec) catch return error.OutOfMemory;
                 try self.push(.{ .vector = vec });
             },
             .map => {
                 const m = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
                 m.* = .{ .entries = items };
-                self.allocated_maps.append(self.allocator, m) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_maps.append(self.allocator, m) catch return error.OutOfMemory;
                 try self.push(.{ .map = m });
             },
             .set => {
                 const s = self.allocator.create(PersistentHashSet) catch return error.OutOfMemory;
                 s.* = .{ .items = items };
-                self.allocated_sets.append(self.allocator, s) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_sets.append(self.allocator, s) catch return error.OutOfMemory;
                 try self.push(.{ .set = s });
             },
         }
@@ -1047,7 +1047,7 @@ pub const VM = struct {
                 }
                 const rest_list = self.allocator.create(PersistentList) catch return error.OutOfMemory;
                 rest_list.* = .{ .items = rest_items };
-                self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
+                if (self.gc == null) self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
 
                 // Place list at the rest param slot, adjust sp
                 self.stack[args_start + fixed] = .{ .list = rest_list };

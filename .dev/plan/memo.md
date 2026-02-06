@@ -6,7 +6,8 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B active, task 24B.2 (HAMT)
+- Phase 24A complete, Phase 24B complete
+- Decision gate: evaluate targets → Phase 25 or 24C
 - Blockers: none
 
 ## Task Queue
@@ -27,33 +28,34 @@ Phase 24A — Speed Optimization:
 Phase 24B — Memory Optimization:
 12. ~~24B.1: NaN boxing~~ (deferred — too invasive, 600+ call-site changes, see D72)
 13. ~~24B.2: HAMT (persistent hash array mapped trie)~~ (done)
-14. 24B.3: RRB-Tree (conditional, if vector bottleneck)
-15. 24B.4: GC tuning
+14. ~~24B.3: RRB-Tree~~ (skip — vector_ops 179ms not dominant bottleneck)
+15. ~~24B.4: GC tuning~~ (done)
 
 Decision gate after 24B: targets met -> Phase 25. Not met -> evaluate 24C (JIT).
 
 ## Current Task
 
-24B.3: RRB-Tree (conditional — evaluate if vector bottleneck exists)
-- Check vector_ops benchmark (179ms) for optimization potential
-- If vector operations dominate, implement RRB-Tree persistent vector
-- Otherwise skip to 24B.4 (GC tuning)
+Decision gate: evaluate Phase 24 targets and plan next phase.
 
 ## Previous Task
 
-24B.2: HAMT (persistent hash array mapped trie) — DONE
-- Added PersistentHashMap with HAMT internals to collections.zig
-- Added hash_map Value variant, updated 13 files for full dispatch
-- ArrayMap promotes to HashMap above 8 entries
-- map_ops: 26ms → 13.7ms (1.9x), keyword_lookup: 24ms → 19.7ms (18%)
-- fib_recursive: 28ms → 23ms (no regression, slight improvement)
+24B.4: GC tuning — DONE
+- Eliminated redundant allocated_* list tracking in VM when GC active (17 guards)
+- Fixed GC traceValue: LazySeq.meta (lazy_filter/map/take/iterate) was not traced
+- F97 resolved: root cause was stack overflow from deep lazy-seq realization chain
+  (168 nested filters × ~381KB/frame in Debug build), not GC collection.
+  Fix: build.zig stack_size 64MB → 512MB.
+- GC threshold tuning experiments (4MB, adaptive) regressed — kept 1MB default
+- gc_stress benchmark: within noise (~320ms), HashMap-based GC limits further gains
 
 ## Handover Notes
 
 - **Phase 24 plan**: `.dev/plan/phase24-optimization.md` — actual baseline data added
-- **F97**: GC double-free in sieve benchmark (vm.zig:336 allocated_fns)
+- **F97**: RESOLVED — stack overflow in lazy-seq realization (512MB stack, meta tracing fix)
 - **F98**: fib_recursive slower in ReleaseFast than Debug (487ms vs 205ms)
 - **deftype/reify**: Permanent skip — no JVM class generation. defrecord covers data use cases.
+- **Phase 25 prep**: Deep lazy-seq realization uses Zig call stack recursion.
+  Wasm has limited stack → may need iterative realization engine in Phase 25.
 - Roadmap: `.dev/plan/roadmap.md`
 - Test porting rules: `.claude/rules/test-porting.md`
 - Interop patterns: `.claude/references/interop-patterns.md`
