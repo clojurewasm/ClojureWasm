@@ -118,6 +118,26 @@ Implementation order by dependency + ROI:
 - Profile top N sequences, comptime-generate handlers
 - **Expected**: 5-15% on general code
 
+### 24A.9: @branchHint annotations
+
+- Add `@branchHint(.likely)` / `@branchHint(.unlikely)` to VM hot paths
+- **Targets**: execute loop error path (unlikely), performCall fn_val (likely),
+  stack overflow checks (unlikely), GC threshold checks (unlikely)
+- **Zig advantage**: Direct LLVM branch weight metadata, no runtime cost
+- **Expected**: 5-10% on all benchmarks (better branch prediction in Release)
+
+### 24A.10: AOT bytecode bootstrap (partial)
+
+- **Current**: core.clj is `@embedFile`'d as source text, parsed+evaluated at runtime
+- **Target**: Pre-serialize Reader AST or pre-compile non-macro forms to bytecode
+- **Blocker**: F7 (macro body serialization) prevents full AOT. Partial approach:
+  1. Pre-parse core.clj to serialized Reader AST (skip re-parsing at startup)
+  2. Or pre-compile all non-defmacro forms, eval macros at runtime
+  3. Embed pre-compiled bytecode via `@embedFile`
+- **Zig advantage**: `@embedFile` + comptime deserialization
+- **Impact**: Bootstrap startup time reduction (currently dominates short-running programs)
+- **Reference**: D18 (hybrid architecture), T4.7 (full AOT, blocked by F7)
+
 ## 4. Phase 24B: Memory Optimization
 
 ### 24B.1: NaN Boxing (Value: 48 bytes -> 8 bytes)
