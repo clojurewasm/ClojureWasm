@@ -209,9 +209,18 @@ backend: vm
 results:
 ENTRYEOF
 
-for key in "${!BENCH_RESULTS[@]}"; do
-  IFS=':' read -r t m <<< "${BENCH_RESULTS[$key]}"
-  echo "  $key: {time_ms: $t, mem_mb: $m}" >> "$ENTRY_FILE"
+# Canonical order for consistent history.yaml output
+BENCH_ORDER=(
+  fib_recursive fib_loop tak arith_loop map_filter_reduce
+  vector_ops map_ops list_build sieve nqueens
+  atom_swap gc_stress lazy_chain transduce keyword_lookup
+  protocol_dispatch nested_update string_ops multimethod_dispatch real_workload
+)
+for key in "${BENCH_ORDER[@]}"; do
+  if [[ -v "BENCH_RESULTS[$key]" ]]; then
+    IFS=':' read -r t m <<< "${BENCH_RESULTS[$key]}"
+    echo "  $key: {time_ms: $t, mem_mb: $m}" >> "$ENTRY_FILE"
+  fi
 done
 
 # Append entry to history

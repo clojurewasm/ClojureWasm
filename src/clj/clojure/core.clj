@@ -1746,19 +1746,8 @@
        ([result input]
         (rf result (f input))))))
   ([f coll]
-   (lazy-seq
-    (let [s (seq coll)]
-      (when s
-        (if (chunked-seq? s)
-          (let [c (chunk-first s)
-                size (count c)
-                b (chunk-buffer size)]
-            (loop [i 0]
-              (when (< i size)
-                (chunk-append b (f (nth c i)))
-                (recur (inc i))))
-            (chunk-cons (chunk b) (map f (chunk-rest s))))
-          (cons (f (first s)) (map f (rest s))))))))
+   ;; CLJW: use __zig-lazy-map for fused reduce optimization (meta-annotated lazy-seq)
+   (__zig-lazy-map f coll))
   ([f c1 c2]
    (lazy-seq
     (let [s1 (seq c1) s2 (seq c2)]

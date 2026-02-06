@@ -6,15 +6,15 @@ Session handover document. Read at session start.
 
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
-- Phase 24A complete, Phase 24B complete, Phase 24C starting
-- Babashka comparison: CW wins 9/20, loses 11/20 benchmarks
+- Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1 done)
+- Babashka comparison: CW wins ~11/20 (lazy_chain fixed: 6655ms→17ms)
 - Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
 - Blockers: none
 
 ## Task Queue
 
 Phase 24C — Portable Optimization (Babashka Parity):
-1. 24C.1: Closure specialization (callFn bottleneck — 289x gap on lazy_chain)
+1. ~~24C.1: Fix fused reduce — restore __zig-lazy-map in redefined map~~ DONE
 2. 24C.2: Multimethod dispatch optimization (95x gap)
 3. 24C.3: String ops optimization (15x gap)
 4. 24C.4: Collection ops optimization (vector_ops 8.5x, list_build 8.3x)
@@ -25,17 +25,18 @@ Phase 24C — Portable Optimization (Babashka Parity):
 
 ## Current Task
 
-24C.1: Closure specialization — eliminate callFn overhead per element in fused reduce.
-Detect simple closure patterns at compile time and generate specialized code.
-See `.claude/references/optimization-knowledge.md` Section 2 for analysis.
+24C.2: Multimethod dispatch optimization (95x gap — 2053ms vs BB 22ms).
+Multimethod lookup currently goes through full hierarchy search per call.
+Profile and optimize the dispatch path.
 
 ## Previous Task
 
-Phase 24 planning — benchmark system + Babashka comparison + knowledge base.
-- Created bench/record.sh (hyperfine + memory tracking)
-- Created .claude/references/optimization-knowledge.md
-- Babashka comparison: 9 WIN / 11 LOSE, biggest gaps in lazy-seq/collection ops
-- Root cause: callFn per element in fused reduce (VM dispatch overhead)
+24C.1: Fix fused reduce — restore __zig-lazy-map in redefined map.
+- Root cause: `map` was redefined at line 1736 in core.clj (for multi-collection arities)
+  but the 2-arity was changed from `(__zig-lazy-map f coll)` to standard lazy-seq,
+  causing fused reduce to NEVER trigger
+- Fix: restored `(__zig-lazy-map f coll)` for 2-arity in redefined map
+- Results: lazy_chain 6655ms→17ms (391x), map_filter_reduce 1293ms→179ms (7.2x)
 
 ## Handover Notes
 
