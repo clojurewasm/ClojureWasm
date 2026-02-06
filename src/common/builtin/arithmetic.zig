@@ -115,10 +115,17 @@ pub const ArithOp = enum { add, sub, mul };
 
 pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
     if (a == .integer and b == .integer) {
-        return .{ .integer = switch (op) {
-            .add => a.integer + b.integer,
-            .sub => a.integer - b.integer,
-            .mul => a.integer * b.integer,
+        const result = switch (op) {
+            .add => @addWithOverflow(a.integer, b.integer),
+            .sub => @subWithOverflow(a.integer, b.integer),
+            .mul => @mulWithOverflow(a.integer, b.integer),
+        };
+        if (result[1] == 0) return .{ .integer = result[0] };
+        // Overflow: promote to float (matches Clojure auto-promotion)
+        return .{ .float = switch (op) {
+            .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
+            .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
+            .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
         } };
     }
     const fa = toFloat(a) catch {

@@ -165,50 +165,50 @@ previous:
       clojurewasm: {time_ms: 1286}
 latest:
   date: "2026-02-06"
-  version: After 24A.3 VM ReleaseSafe
+  version: After 24A.4 VM ReleaseSafe
   results:
     fib_recursive:
-      clojurewasm: {time_ms: 502}
+      clojurewasm: {time_ms: 41}
     fib_loop:
-      clojurewasm: {time_ms: 31}
+      clojurewasm: {time_ms: 29}
     tak:
-      clojurewasm: {time_ms: 33}
+      clojurewasm: {time_ms: 36}
     arith_loop:
-      clojurewasm: {time_ms: 76}
+      clojurewasm: {time_ms: 72}
     map_filter_reduce:
-      clojurewasm: {time_ms: 1287}
+      clojurewasm: {time_ms: 1315}
     vector_ops:
-      clojurewasm: {time_ms: 188}
+      clojurewasm: {time_ms: 186}
     map_ops:
-      clojurewasm: {time_ms: 37}
+      clojurewasm: {time_ms: 38}
     list_build:
-      clojurewasm: {time_ms: 183}
+      clojurewasm: {time_ms: 188}
     sieve:
-      clojurewasm: {time_ms: 40, note: "F97 GC double-free, unreliable"}
+      clojurewasm: {time_ms: 42, note: "F97 GC double-free, unreliable"}
     nqueens:
-      clojurewasm: {time_ms: 42}
+      clojurewasm: {time_ms: 40}
     atom_swap:
       clojurewasm: {time_ms: 30}
     gc_stress:
-      clojurewasm: {time_ms: 372}
+      clojurewasm: {time_ms: 351}
     lazy_chain:
-      clojurewasm: {time_ms: 7356}
+      clojurewasm: {time_ms: 7425}
     transduce:
-      clojurewasm: {time_ms: 3209}
+      clojurewasm: {time_ms: 3043}
     keyword_lookup:
-      clojurewasm: {time_ms: 36}
+      clojurewasm: {time_ms: 35}
     protocol_dispatch:
-      clojurewasm: {time_ms: 30}
+      clojurewasm: {time_ms: 29}
     nested_update:
-      clojurewasm: {time_ms: 140}
+      clojurewasm: {time_ms: 135}
     string_ops:
-      clojurewasm: {time_ms: 414}
+      clojurewasm: {time_ms: 417}
     multimethod_dispatch:
-      clojurewasm: {time_ms: 2150}
+      clojurewasm: {time_ms: 1985}
     real_workload:
-      clojurewasm: {time_ms: 509}
+      clojurewasm: {time_ms: 513}
 history:
   - date: "2026-02-06"
     version: Pre-Phase24 VM ReleaseSafe
   - date: "2026-02-06"
-    version: After 24A.3 VM ReleaseSafe
+    version: After 24A.4 VM ReleaseSafe

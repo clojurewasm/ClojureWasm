@@ -1107,6 +1107,26 @@ pub const VM = struct {
     fn vmBinaryArith(self: *VM, comptime op: arith.ArithOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
+        // Inline int+int fast path with overflow detection
+        if (a == .integer and b == .integer) {
+            const result = switch (op) {
+                .add => @addWithOverflow(a.integer, b.integer),
+                .sub => @subWithOverflow(a.integer, b.integer),
+                .mul => @mulWithOverflow(a.integer, b.integer),
+            };
+            if (result[1] == 0) {
+                try self.push(.{ .integer = result[0] });
+                return;
+            }
+            // Overflow: promote to float
+            self.saveVmArgSources();
+            try self.push(.{ .float = switch (op) {
+                .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
+                .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
+                .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
+            } });
+            return;
+        }
         self.saveVmArgSources();
         try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
     }
@@ -1125,6 +1145,16 @@ pub const VM = struct {
     fn vmBinaryCompare(self: *VM, comptime op: arith.CompareOp) VMError!void {
         const b = self.pop();
         const a = self.pop();
+        // Inline int+int fast path
+        if (a == .integer and b == .integer) {
+            try self.push(.{ .boolean = switch (op) {
+                .lt => a.integer < b.integer,
+                .le => a.integer <= b.integer,
+                .gt => a.integer > b.integer,
+                .ge => a.integer >= b.integer,
+            } });
+            return;
+        }
         self.saveVmArgSources();
         try self.push(.{ .boolean = arith.compareFn(a, b, op) catch return error.TypeError });
     }
