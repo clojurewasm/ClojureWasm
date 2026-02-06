@@ -72,7 +72,15 @@ pub const EvalEngine = struct {
             VM.initWithEnv(self.allocator, env)
         else
             VM.init(self.allocator);
-        return vm.run(&compiler.chunk);
+        const result = try vm.run(&compiler.chunk);
+        // Detach collection tracking so deinit doesn't free returned values.
+        // The arena allocator (used by EvalEngine tests) handles cleanup.
+        vm.allocated_slices = .empty;
+        vm.allocated_lists = .empty;
+        vm.allocated_vectors = .empty;
+        vm.allocated_maps = .empty;
+        vm.allocated_sets = .empty;
+        return result;
     }
 
     /// Run both backends and compare results.

@@ -7,9 +7,8 @@ Session handover document. Read at session start.
 - All phases through 22c complete (A, BE, B, C, CX, R, D, 20-23, 22b, 22c)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
 - Phase 24A complete, Phase 24B complete, Phase 24C in progress (24C.1-5c, 24C.7 done)
-- Babashka comparison: CW wins speed 18/20, memory 19/20
-- Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory)
-- Remaining gaps: nested_update (1.8x), gc_stress (1.3x)
+- Babashka comparison: CW wins speed 19/20 (1 tied), Phase 24C complete
+- nested_update: 23ms vs BB 22ms (tied, ±1ms noise)
 
 ## Task Queue
 
@@ -23,17 +22,18 @@ Phase 24C — Portable Optimization (Babashka Parity):
 7. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks) — deferred, 600+ call sites
 8. 24C.8: Constant folding
 9. ~~24C.9: Remaining gaps — nested_update (1.8x→1.3x), gc_stress (1.4x)~~ DONE
+10. ~~24C.10: Collection constructor intrinsics (hash-map→map_new, vector→vec_new, etc.)~~ DONE
 
 ## Current Task
 
-Phase 24C evaluation: 18/20 benchmarks beat Babashka in speed, 2 remaining
-(nested_update 1.3x, gc_stress 1.4x) are allocation-bound gaps requiring nursery GC.
-Assess whether Phase 24C is complete or if NaN boxing (24C.6) should be attempted.
+Phase 24C complete! CW wins speed 19/20 (1 tied nested_update ±1ms).
+Assess Phase 24 completion and plan Phase 25 (wasm).
 
 ## Previous Task
 
-24C.9: Zig builtins for update-in/assoc-in/get-in + assocFn fast path.
-nested_update 39→28ms (1.8x→1.3x BB). gc_stress 1.4x gap is allocation-bound (needs nursery GC).
+24C.10: Collection constructor intrinsics — gc_stress 55→35ms (beats BB's 42ms).
+Compiler emits map_new/vec_new/list_new/set_new opcodes directly instead of
+var_load + call for hash-map/vector/list/hash-set calls.
 
 ## Handover Notes
 

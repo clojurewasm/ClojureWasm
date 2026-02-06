@@ -459,6 +459,28 @@ pub const Compiler = struct {
                     return;
                 }
             }
+
+            // Collection constructor intrinsics: hash-map, vector, hash-set, list
+            // Emit direct opcodes instead of var_load + call to avoid namespace lookup overhead
+            if (collectionConstructorOp(name)) |info| {
+                const n_args = node.args.len;
+                for (node.args) |arg| {
+                    try self.compile(arg); // +1 each
+                }
+                const operand: u16 = if (info.is_map)
+                    @intCast(n_args / 2) // map_new operand = pair count
+                else
+                    @intCast(n_args);
+                try self.chunk.emit(info.op, operand);
+                // All collection ops: pop elements, push 1 result
+                // map_new(N) pops 2N push 1; vec/list/set_new(N) pop N push 1
+                if (n_args > 0) {
+                    self.stack_depth -= @as(u16, @intCast(n_args)) - 1;
+                } else {
+                    self.stack_depth += 1; // empty collection: push 1
+                }
+                return;
+            }
         }
 
         // General call: compile callee + args
@@ -557,6 +579,24 @@ pub const Compiler = struct {
         };
         inline for (map) |entry| {
             if (std.mem.eql(u8, name, entry[0])) return entry[1];
+        }
+        return null;
+    }
+
+    const CollectionOpInfo = struct {
+        op: chunk_mod.OpCode,
+        is_map: bool,
+    };
+
+    fn collectionConstructorOp(name: []const u8) ?CollectionOpInfo {
+        const map = .{
+            .{ "hash-map", chunk_mod.OpCode.map_new, true },
+            .{ "vector", chunk_mod.OpCode.vec_new, false },
+            .{ "hash-set", chunk_mod.OpCode.set_new, false },
+            .{ "list", chunk_mod.OpCode.list_new, false },
+        };
+        inline for (map) |entry| {
+            if (std.mem.eql(u8, name, entry[0])) return .{ .op = entry[1], .is_map = entry[2] };
         }
         return null;
     }

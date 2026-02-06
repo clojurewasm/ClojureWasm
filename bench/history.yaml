@@ -328,3 +328,30 @@ entries:
       string_ops: {time_ms: 27, mem_mb: 42.3}
       multimethod_dispatch: {time_ms: 14, mem_mb: 35.0}
       real_workload: {time_ms: 24, mem_mb: 45.3}
+  - id: "24C.10"
+    date: "2026-02-07"
+    reason: "Collection constructor intrinsics (hash-map→map_new)"
+    commit: "d1e6809"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 24, mem_mb: 34.8}
+      fib_loop: {time_ms: 13, mem_mb: 34.8}
+      tak: {time_ms: 17, mem_mb: 34.8}
+      arith_loop: {time_ms: 57, mem_mb: 34.8}
+      map_filter_reduce: {time_ms: 17, mem_mb: 36.8}
+      vector_ops: {time_ms: 15, mem_mb: 37.0}
+      map_ops: {time_ms: 14, mem_mb: 36.6}
+      list_build: {time_ms: 15, mem_mb: 36.8}
+      sieve: {time_ms: 16, mem_mb: 36.4}
+      nqueens: {time_ms: 22, mem_mb: 35.4}
+      atom_swap: {time_ms: 14, mem_mb: 34.9}
+      gc_stress: {time_ms: 35, mem_mb: 37.0}
+      lazy_chain: {time_ms: 16, mem_mb: 34.9}
+      transduce: {time_ms: 16, mem_mb: 34.9}
+      keyword_lookup: {time_ms: 21, mem_mb: 34.9}
+      protocol_dispatch: {time_ms: 15, mem_mb: 34.9}
+      nested_update: {time_ms: 23, mem_mb: 38.2}
+      string_ops: {time_ms: 27, mem_mb: 42.2}
+      multimethod_dispatch: {time_ms: 15, mem_mb: 34.9}
+      real_workload: {time_ms: 22, mem_mb: 44.9}
