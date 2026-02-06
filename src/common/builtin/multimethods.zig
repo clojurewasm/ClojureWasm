@@ -74,6 +74,7 @@ pub fn removeMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
     const new_map = try allocator.create(PersistentArrayMap);
     new_map.* = .{ .entries = new_entries };
     mf.methods = new_map;
+    mf.invalidateCache();
 
     return args[0];
 }
@@ -90,6 +91,7 @@ pub fn removeAllMethodsFn(allocator: Allocator, args: []const Value) anyerror!Va
     const empty_map = try allocator.create(PersistentArrayMap);
     empty_map.* = .{ .entries = &.{} };
     mf.methods = empty_map;
+    mf.invalidateCache();
 
     return args[0];
 }
@@ -146,6 +148,7 @@ pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
 
     // Assoc into prefer table
     mf.prefer_table = try assocMap(allocator, pt, preferred, set_val);
+    mf.invalidateCache();
     return args[0];
 }
 

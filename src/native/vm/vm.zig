@@ -527,6 +527,7 @@ pub const VM = struct {
                 const new_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                 new_map.* = .{ .entries = new_entries };
                 mf.methods = new_map;
+                mf.invalidateCache();
 
                 try self.push(method_fn);
             },
@@ -998,17 +999,61 @@ pub const VM = struct {
                 return self.performCall(arg_count);
             },
             .multi_fn => |mf| {
+                // Use mutable pointer for cache reads/writes (avoid const optimization)
+                const mf_mut: *value_mod.MultiFn = @constCast(mf);
+
+                // Level 1: Arg identity cache — skip dispatch fn call entirely
+                if (arg_count >= 1 and mf_mut.cached_arg_valid) {
+                    if (value_mod.MultiFn.argIdentityKey(self.stack[fn_idx + 1])) |key| {
+                        if (key == mf_mut.cached_arg_key) {
+                            self.stack[fn_idx] = mf_mut.cached_method;
+                            return self.performCall(arg_count);
+                        }
+                    }
+                }
+
                 const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
-                const dispatch_val = bootstrap.callFnVal(self.allocator, mf.dispatch_fn, args) catch |e| {
-                    return @as(VMError, @errorCast(e));
+
+                // Get dispatch value
+                const dispatch_val = blk: {
+                    // Fast path: keyword dispatch fn — (defmulti foo :type)
+                    if (mf.dispatch_fn == .keyword) {
+                        if (arg_count >= 1) {
+                            const first = self.stack[fn_idx + 1];
+                            if (first == .map) {
+                                break :blk first.map.get(mf.dispatch_fn) orelse Value.nil;
+                            }
+                        }
+                        break :blk Value.nil;
+                    }
+                    // General case: call dispatch fn using current VM (not bootstrap)
+                    break :blk try self.callFunction(mf.dispatch_fn, args);
                 };
-                const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
-                    return error.TypeError;
-                const result = bootstrap.callFnVal(self.allocator, method_fn, args) catch |e| {
-                    return @as(VMError, @errorCast(e));
+
+                // Level 2: Dispatch-val cache — skip findBestMethod
+                const method_fn = blk: {
+                    if (mf_mut.cached_dispatch_val) |cdv| {
+                        if (cdv.eql(dispatch_val)) break :blk mf_mut.cached_method;
+                    }
+                    // Cache miss: full lookup
+                    const m = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+                        return error.TypeError;
+                    mf_mut.cached_dispatch_val = dispatch_val;
+                    mf_mut.cached_method = m;
+                    break :blk m;
                 };
-                self.sp = fn_idx;
-                try self.push(result);
+
+                // Update arg identity cache
+                if (arg_count >= 1) {
+                    if (value_mod.MultiFn.argIdentityKey(self.stack[fn_idx + 1])) |key| {
+                        mf_mut.cached_arg_key = key;
+                        mf_mut.cached_arg_valid = true;
+                    }
+                }
+
+                // Call method via performCall (not bootstrap)
+                self.stack[fn_idx] = method_fn;
+                return self.performCall(arg_count);
             },
             else => return error.TypeError,
         }

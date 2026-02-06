@@ -881,6 +881,7 @@ pub const TreeWalk = struct {
         const new_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
         new_map.* = .{ .entries = new_entries };
         mf.methods = new_map;
+        mf.invalidateCache();
 
         return method_fn;
     }
@@ -898,12 +899,45 @@ pub const TreeWalk = struct {
             args[i] = try self.run(arg_node);
         }
 
-        // Call dispatch function on args
-        const dispatch_val = try self.callValue(mf.dispatch_fn, args);
+        // Level 1: Arg identity cache — skip dispatch fn call entirely
+        if (arg_nodes.len >= 1 and mf.cached_arg_valid) {
+            if (value_mod.MultiFn.argIdentityKey(args[0])) |key| {
+                if (key == mf.cached_arg_key) {
+                    return self.callValue(mf.cached_method, args);
+                }
+            }
+        }
 
-        // Lookup method: exact match → isa? match → :default
-        const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
-            return error.TypeError;
+        // Get dispatch value (fast path for keyword dispatch fn)
+        const dispatch_val = if (mf.dispatch_fn == .keyword) blk: {
+            if (arg_nodes.len >= 1 and args[0] == .map) {
+                break :blk args[0].map.get(mf.dispatch_fn) orelse Value.nil;
+            }
+            break :blk Value.nil;
+        } else try self.callValue(mf.dispatch_fn, args);
+
+        // Level 2: Dispatch-val cache — skip findBestMethod
+        const method_fn = blk: {
+            if (mf.cached_dispatch_val) |cdv| {
+                if (cdv.eql(dispatch_val)) break :blk mf.cached_method;
+            }
+            // Cache miss: full lookup
+            const m = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+                return error.TypeError;
+            const mf_mut: *value_mod.MultiFn = @constCast(mf);
+            mf_mut.cached_dispatch_val = dispatch_val;
+            mf_mut.cached_method = m;
+            break :blk m;
+        };
+
+        // Update arg identity cache
+        const mf_mut: *value_mod.MultiFn = @constCast(mf);
+        if (arg_nodes.len >= 1) {
+            if (value_mod.MultiFn.argIdentityKey(args[0])) |key| {
+                mf_mut.cached_arg_key = key;
+                mf_mut.cached_arg_valid = true;
+            }
+        }
 
         // Call the matched method
         return self.callValue(method_fn, args);

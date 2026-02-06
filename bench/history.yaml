@@ -139,3 +139,30 @@ entries:
       string_ops: {time_ms: 403, mem_mb: 31.2}
       multimethod_dispatch: {time_ms: 2053, mem_mb: 83.0}
       real_workload: {time_ms: 504, mem_mb: 38.9}
+  - id: "24C.2"
+    date: "2026-02-07"
+    reason: "Multimethod dispatch: VM-native calls + 2-level cache"
+    commit: "1bd0f76"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 24, mem_mb: 23.8}
+      fib_loop: {time_ms: 12, mem_mb: 23.8}
+      tak: {time_ms: 16, mem_mb: 23.8}
+      arith_loop: {time_ms: 57, mem_mb: 23.8}
+      map_filter_reduce: {time_ms: 177, mem_mb: 34.0}
+      vector_ops: {time_ms: 176, mem_mb: 34.1}
+      map_ops: {time_ms: 15, mem_mb: 25.6}
+      list_build: {time_ms: 175, mem_mb: 34.0}
+      sieve: {time_ms: 1684, mem_mb: 2997.9}
+      nqueens: {time_ms: 24, mem_mb: 26.0}
+      atom_swap: {time_ms: 13, mem_mb: 23.8}
+      gc_stress: {time_ms: 329, mem_mb: 25.9}
+      lazy_chain: {time_ms: 15, mem_mb: 23.8}
+      transduce: {time_ms: 3233, mem_mb: 30657.4}
+      keyword_lookup: {time_ms: 22, mem_mb: 23.8}
+      protocol_dispatch: {time_ms: 13, mem_mb: 23.8}
+      nested_update: {time_ms: 124, mem_mb: 27.6}
+      string_ops: {time_ms: 398, mem_mb: 31.2}
+      multimethod_dispatch: {time_ms: 14, mem_mb: 23.9}
+      real_workload: {time_ms: 499, mem_mb: 38.9}

@@ -244,6 +244,39 @@ pub const MultiFn = struct {
     /// Optional custom hierarchy Var (from :hierarchy option).
     /// When set, deref'd to get the hierarchy map instead of global-hierarchy.
     hierarchy_var: ?*Var = null,
+    // Monomorphic dispatch cache (24C.2): caches last dispatch lookup.
+    // Level 1: arg identity cache — skip dispatch fn call entirely
+    cached_arg_key: usize = 0,
+    cached_arg_valid: bool = false,
+    // Level 2: dispatch-val cache — skip findBestMethod
+    cached_dispatch_val: ?Value = null,
+    cached_method: Value = .nil,
+
+    /// Invalidate the dispatch cache (call after method table changes).
+    pub fn invalidateCache(self: *MultiFn) void {
+        self.cached_arg_valid = false;
+        self.cached_arg_key = 0;
+        self.cached_dispatch_val = null;
+        self.cached_method = .nil;
+    }
+
+    /// Get identity key for a Value (pointer for heap types, hash for value types).
+    /// Returns null for types that shouldn't be identity-cached.
+    pub fn argIdentityKey(val: Value) ?usize {
+        return switch (val) {
+            .map => |p| @intFromPtr(p),
+            .hash_map => |p| @intFromPtr(p),
+            .vector => |p| @intFromPtr(p),
+            .set => |p| @intFromPtr(p),
+            .keyword => |k| @intFromPtr(k.name.ptr),
+            .integer => |i| @as(usize, @bitCast(@as(i64, i))),
+            .boolean => |b| @intFromBool(b),
+            .nil => 0xDEAD, // sentinel for nil
+            .string => |s| @intFromPtr(s.ptr) ^ s.len,
+            .symbol => |s| @intFromPtr(s.name.ptr),
+            else => null,
+        };
+    }
 };
 
 /// Cons cell — a pair of (first, rest) forming a linked sequence.
