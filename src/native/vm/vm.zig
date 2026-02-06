@@ -172,6 +172,7 @@ pub const VM = struct {
     }
 
     pub fn execute(self: *VM) VMError!Value {
+        var gc_counter: u8 = 0;
         while (true) {
             if (self.stepInstruction()) |maybe_result| {
                 if (maybe_result) |result| return result;
@@ -200,8 +201,11 @@ pub const VM = struct {
                 }
                 return e;
             }
-            // GC safe point — collect if allocation threshold exceeded
-            self.maybeTriggerGc();
+            // Batched GC safe point — check every 256 instructions
+            gc_counter +%= 1;
+            if (gc_counter == 0) {
+                self.maybeTriggerGc();
+            }
         }
     }
 
@@ -840,139 +844,110 @@ pub const VM = struct {
         const fn_idx = self.sp - arg_count - 1;
         const callee = self.stack[fn_idx];
 
-        // Builtin function dispatch
-        if (callee == .builtin_fn) {
-            const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
-            const result = callee.builtin_fn(self.allocator, args) catch |e| {
-                return @as(VMError, @errorCast(e));
-            };
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
-        }
-
-        // Keyword-as-function: (:key map) => (get map :key)
-        if (callee == .keyword) {
-            if (arg_count < 1 or arg_count > 2) {
-                const kw = callee.keyword;
-                if (arg_count > 20) {
-                    if (kw.ns) |ns| {
-                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
+        // Switch dispatch: single jump table instead of sequential if-else chain
+        switch (callee) {
+            .fn_val => |fn_obj| return self.callFnVal(fn_idx, fn_obj, callee, arg_count),
+            .builtin_fn => |bfn| {
+                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+                const result = bfn(self.allocator, args) catch |e| {
+                    return @as(VMError, @errorCast(e));
+                };
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .keyword => |kw| {
+                if (arg_count < 1 or arg_count > 2) {
+                    if (arg_count > 20) {
+                        if (kw.ns) |ns| {
+                            err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
+                        } else {
+                            err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}", .{kw.name});
+                        }
+                    } else if (kw.ns) |ns| {
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}/{s}", .{ arg_count, ns, kw.name });
                     } else {
-                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}", .{kw.name});
+                        err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ arg_count, kw.name });
                     }
-                } else if (kw.ns) |ns| {
-                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}/{s}", .{ arg_count, ns, kw.name });
-                } else {
-                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: :{s}", .{ arg_count, kw.name });
+                    return error.ArityError;
                 }
-                return error.ArityError;
-            }
-            const map_arg = self.stack[fn_idx + 1];
-            const result = if (map_arg == .map)
-                map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
-            else if (arg_count >= 2)
-                self.stack[fn_idx + 2] // default value
-            else
-                Value.nil;
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
-        }
-
-        // Set-as-function: (#{:a :b} :a) => :a or nil
-        if (callee == .set) {
-            if (arg_count < 1) return error.ArityError;
-            const key = self.stack[fn_idx + 1];
-            const result = callee.set.get(key) orelse Value.nil;
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
-        }
-
-        // Vector-as-function: ([10 20 30] 1) => (nth vec idx)
-        if (callee == .vector) {
-            if (arg_count < 1) return error.ArityError;
-            const idx_val = self.stack[fn_idx + 1];
-            if (idx_val != .integer) return error.TypeError;
-            const idx = idx_val.integer;
-            if (idx < 0 or idx >= @as(i64, @intCast(callee.vector.items.len))) {
-                if (arg_count >= 2) {
-                    const result = self.stack[fn_idx + 2];
-                    self.sp = fn_idx;
-                    try self.push(result);
-                    return;
+                const map_arg = self.stack[fn_idx + 1];
+                const result = if (map_arg == .map)
+                    map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
+                else if (arg_count >= 2)
+                    self.stack[fn_idx + 2]
+                else
+                    Value.nil;
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .set => |s| {
+                if (arg_count < 1) return error.ArityError;
+                const key = self.stack[fn_idx + 1];
+                const result = s.get(key) orelse Value.nil;
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .vector => |v| {
+                if (arg_count < 1) return error.ArityError;
+                const idx_val = self.stack[fn_idx + 1];
+                if (idx_val != .integer) return error.TypeError;
+                const idx = idx_val.integer;
+                if (idx < 0 or idx >= @as(i64, @intCast(v.items.len))) {
+                    if (arg_count >= 2) {
+                        const result = self.stack[fn_idx + 2];
+                        self.sp = fn_idx;
+                        try self.push(result);
+                        return;
+                    }
+                    return error.IndexError;
                 }
-                return error.IndexError;
-            }
-            const result = callee.vector.items[@intCast(idx)];
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
+                const result = v.items[@intCast(idx)];
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .map => |m| {
+                if (arg_count < 1) return error.ArityError;
+                const key = self.stack[fn_idx + 1];
+                const result = m.get(key) orelse
+                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .protocol_fn => |pf| {
+                if (arg_count < 1) return error.ArityError;
+                const first_arg = self.stack[fn_idx + 1];
+                const type_key = valueTypeKey(first_arg);
+                const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse
+                    return error.TypeError;
+                if (method_map_val != .map) return error.TypeError;
+                const method_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse
+                    return error.TypeError;
+                self.stack[fn_idx] = method_fn;
+                return self.performCall(arg_count);
+            },
+            .var_ref => |v| {
+                self.stack[fn_idx] = v.deref();
+                return self.performCall(arg_count);
+            },
+            .multi_fn => |mf| {
+                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+                const dispatch_val = bootstrap.callFnVal(self.allocator, mf.dispatch_fn, args) catch |e| {
+                    return @as(VMError, @errorCast(e));
+                };
+                const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+                    return error.TypeError;
+                const result = bootstrap.callFnVal(self.allocator, method_fn, args) catch |e| {
+                    return @as(VMError, @errorCast(e));
+                };
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            else => return error.TypeError,
         }
+    }
 
-        // Map-as-function: ({:a 1} :b) => (get map key) or default
-        if (callee == .map) {
-            if (arg_count < 1) return error.ArityError;
-            const key = self.stack[fn_idx + 1];
-            const result = callee.map.get(key) orelse
-                (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
-        }
-
-        // Protocol function dispatch
-        if (callee == .protocol_fn) {
-            const pf = callee.protocol_fn;
-            if (arg_count < 1) return error.ArityError;
-            const first_arg = self.stack[fn_idx + 1];
-            const type_key = valueTypeKey(first_arg);
-
-            const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse
-                return error.TypeError;
-            if (method_map_val != .map) return error.TypeError;
-            const method_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse
-                return error.TypeError;
-
-            // Replace callee with resolved method fn and re-dispatch
-            self.stack[fn_idx] = method_fn;
-            return self.performCall(arg_count);
-        }
-
-        // Var-as-IFn: (#'f args) => deref var, then call
-        if (callee == .var_ref) {
-            self.stack[fn_idx] = callee.var_ref.deref();
-            return self.performCall(arg_count);
-        }
-
-        // MultiFn dispatch: call dispatch_fn, lookup method, call method
-        if (callee == .multi_fn) {
-            const mf = callee.multi_fn;
-            const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
-
-            // Call dispatch function
-            const dispatch_val = bootstrap.callFnVal(self.allocator, mf.dispatch_fn, args) catch |e| {
-                return @as(VMError, @errorCast(e));
-            };
-
-            // Lookup method: exact match → isa? match → :default
-            const method_fn = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
-                return error.TypeError;
-
-            // Call the matched method
-            const result = bootstrap.callFnVal(self.allocator, method_fn, args) catch |e| {
-                return @as(VMError, @errorCast(e));
-            };
-            self.sp = fn_idx;
-            try self.push(result);
-            return;
-        }
-
-        if (callee != .fn_val) return error.TypeError;
-
-        const fn_obj = callee.fn_val;
-
+    /// Handle fn_val call — extracted for readability
+    fn callFnVal(self: *VM, fn_idx: usize, fn_obj: *const Fn, callee: Value, arg_count: u16) VMError!void {
         // TreeWalk closures: dispatch via unified callFnVal
         if (fn_obj.kind == .treewalk) {
             const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
