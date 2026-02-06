@@ -22,20 +22,18 @@ Phase 24C — Portable Optimization (Babashka Parity):
 6. ~~24C.7: Filter chain collapsing + active VM call bridge (sieve 75x)~~ DONE
 7. 24C.6: NaN boxing (D72, Value 48→8B, all benchmarks) — deferred, 600+ call sites
 8. 24C.8: Constant folding
-9. 24C.9: Remaining gaps — nested_update (1.8x), gc_stress (1.3x)
+9. ~~24C.9: Remaining gaps — nested_update (1.8x→1.3x), gc_stress (1.4x)~~ DONE
 
 ## Current Task
 
-24C.9: Close remaining gaps — nested_update (1.8x BB) and gc_stress (1.3x BB).
-These are the last 2 benchmarks where CW doesn't win speed.
-nested_update: 41ms vs BB 22ms. gc_stress: 63ms vs BB 42ms.
+Phase 24C evaluation: 18/20 benchmarks beat Babashka in speed, 2 remaining
+(nested_update 1.3x, gc_stress 1.4x) are allocation-bound gaps requiring nursery GC.
+Assess whether Phase 24C is complete or if NaN boxing (24C.6) should be attempted.
 
 ## Previous Task
 
-24C.7: Filter chain collapsing + active VM call bridge — sieve 1645→21ms (78x improvement).
-D74: New lazy_filter_chain Meta variant flattens 168 nested filter layers into flat pred array.
-callFnVal now routes bytecode calls through active_vm when available (avoids ~500KB heap alloc).
-Memory: 2997MB → 23.8MB (125x improvement). Beats BB's 22ms.
+24C.9: Zig builtins for update-in/assoc-in/get-in + assocFn fast path.
+nested_update 39→28ms (1.8x→1.3x BB). gc_stress 1.4x gap is allocation-bound (needs nursery GC).
 
 ## Handover Notes
 

@@ -113,27 +113,16 @@ const hot_core_defs =
     \\                   (when (every? identity ss)
     \\                     (cons (map first ss) (step (map rest ss)))))))]
     \\     (map #(apply f %) (step (conj colls c3 c2 c1))))))
-    \\(defn get-in [m ks]
-    \\  (reduce get m ks))
-    \\(defn assoc-in [m ks v]
-    \\  (let [k (first ks)
-    \\        ks-rest (next ks)]
-    \\    (if ks-rest
-    \\      (assoc m k (assoc-in (get m k) ks-rest v))
-    \\      (assoc m k v))))
+    \\(defn get-in
+    \\  ([m ks] (__zig-get-in m ks))
+    \\  ([m ks not-found] (__zig-get-in m ks not-found)))
+    \\(defn assoc-in [m ks v] (__zig-assoc-in m ks v))
     \\(defn update-in
-    \\  ([m ks f]
-    \\   (let [k (first ks)
-    \\         ks-rest (next ks)]
-    \\     (if ks-rest
-    \\       (assoc m k (update-in (get m k) ks-rest f))
-    \\       (assoc m k (f (get m k))))))
-    \\  ([m ks f & args]
-    \\   (let [k (first ks)
-    \\         ks-rest (next ks)]
-    \\     (if ks-rest
-    \\       (assoc m k (apply update-in (get m k) ks-rest f args))
-    \\       (assoc m k (apply f (get m k) args))))))
+    \\  ([m ks f] (__zig-update-in m ks f))
+    \\  ([m ks f a] (__zig-update-in m ks f a))
+    \\  ([m ks f a b] (__zig-update-in m ks f a b))
+    \\  ([m ks f a b c] (__zig-update-in m ks f a b c))
+    \\  ([m ks f a b c & args] (apply __zig-update-in m ks f a b c args)))
 ;
 
 /// Load and evaluate core.clj in the given Env.
