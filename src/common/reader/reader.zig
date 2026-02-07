@@ -461,6 +461,7 @@ pub const Reader = struct {
             return self.makeError(.syntax_error, "Expected ( after #?", open);
         }
 
+        var cljw_form: ?Form = null;
         var clj_form: ?Form = null;
         var default_form: ?Form = null;
 
@@ -483,13 +484,17 @@ pub const Reader = struct {
             }
             const val_form = try self.readForm(val_tok);
 
-            if (std.mem.eql(u8, kw_name, "clj")) {
+            if (std.mem.eql(u8, kw_name, "cljw")) {
+                cljw_form = val_form;
+            } else if (std.mem.eql(u8, kw_name, "clj")) {
                 clj_form = val_form;
             } else if (std.mem.eql(u8, kw_name, "default")) {
                 default_form = val_form;
             }
         }
 
+        // Priority: :cljw > :clj > :default
+        if (cljw_form) |f| return f;
         if (clj_form) |f| return f;
         if (default_form) |f| return f;
         return Form{ .data = .nil, .line = token.line, .column = token.column };

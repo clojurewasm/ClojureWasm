@@ -2183,7 +2183,37 @@
     `(do ~@(map (fn [entry] `(extend-type ~(key entry) ~p ~@(val entry))) impls))))
 
 ;; Data reader constants
-(def default-data-readers {})
+;; CLJW: def doesn't support docstring form (def name "doc" val)
+(def default-data-readers
+  {'inst identity   ; CLJW: returns string (no Date type)
+   'uuid identity}) ; CLJW: returns string (no UUID type)
+
+(defn tagged-literal
+  "Constructs a data representation of a tagged literal from a
+  tag symbol and a form."
+  {:added "1.7"}
+  [tag form]
+  {:tag tag :form form})
+
+(defn tagged-literal?
+  "Return true if the value is the data representation
+  of a tagged literal"
+  {:added "1.7"}
+  [value]
+  (and (map? value) (contains? value :tag) (contains? value :form)
+       (symbol? (:tag value))))
+
+(defn reader-conditional
+  "Constructs a data representation of a reader conditional."
+  {:added "1.7"}
+  [form splicing?]
+  {:form form :splicing? splicing?})
+
+(defn reader-conditional?
+  "Return true if the value is the data representation of a reader conditional"
+  {:added "1.7"}
+  [value]
+  (and (map? value) (contains? value :form) (contains? value :splicing?)))
 
 ;; REPL result vars
 (def *1 nil)

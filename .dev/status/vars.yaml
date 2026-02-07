@@ -521,8 +521,8 @@ vars:
     read+string: {type: function, status: skip, note: needs PushbackReader type}
     "read-line": {type: function, status: done, note: "Zig builtin"}
     "read-string": {type: function, status: done, note: "Zig builtin"}
-    "reader-conditional": {type: function, status: skip, note: needs ReaderConditional Value type}
-    "reader-conditional?": {type: function, status: skip, note: "needs ReaderConditional Value type"}
+    "reader-conditional": {type: function, status: done, note: "UPSTREAM-DIFF: returns map instead of ReaderConditional type"}
+    "reader-conditional?": {type: function, status: done, note: "UPSTREAM-DIFF: checks map shape instead of type"}
     "realized?": {type: function, status: done, note: "supports delay + lazy-seq"}
     "record?": {type: function, status: done, note: builtin (upstream is pure clj)}
     reduce: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -627,8 +627,8 @@ vars:
     symbol: {type: function, status: done, note: "Zig builtin"}
     "symbol?": {type: function, status: done, note: "Zig builtin"}
     sync: {type: macro, status: skip, note: JVM interop}
-    "tagged-literal": {type: function, status: skip, note: needs TaggedLiteral Value type}
-    "tagged-literal?": {type: function, status: skip, note: "needs TaggedLiteral Value type"}
+    "tagged-literal": {type: function, status: done, note: "UPSTREAM-DIFF: returns map instead of TaggedLiteral type"}
+    "tagged-literal?": {type: function, status: done, note: "UPSTREAM-DIFF: checks map shape instead of type"}
     take: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "take-nth": {type: function, status: done, note: "core.clj (upstream is pure clj)"}

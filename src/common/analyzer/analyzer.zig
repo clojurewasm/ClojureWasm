@@ -115,6 +115,38 @@ pub const Analyzer = struct {
         return self.makeConstant(Value.initRegex(pat));
     }
 
+    fn analyzeTag(self: *Analyzer, t: @import("../reader/form.zig").TaggedLiteral, form: Form) AnalyzeError!*Node {
+        const tag_name = t.tag;
+
+        // Built-in tags: #inst and #uuid just pass through the form value
+        if (std.mem.eql(u8, tag_name, "inst") or std.mem.eql(u8, tag_name, "uuid")) {
+            return self.analyze(t.form.*);
+        }
+
+        // General case: (tagged-literal '<tag-symbol> <form-value>)
+        const tag_sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = tag_name });
+        const quote_data = self.allocator.create(node_mod.QuoteNode) catch return error.OutOfMemory;
+        quote_data.* = .{ .value = tag_sym_val, .source = self.sourceFromForm(form) };
+        const tag_const = self.allocator.create(Node) catch return error.OutOfMemory;
+        tag_const.* = .{ .quote_node = quote_data };
+
+        const form_node = try self.analyze(t.form.*);
+
+        const callee = self.allocator.create(Node) catch return error.OutOfMemory;
+        callee.* = .{ .var_ref = .{ .ns = null, .name = "tagged-literal", .source = self.sourceFromForm(form) } };
+
+        const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        args[0] = tag_const;
+        args[1] = form_node;
+
+        const call = self.allocator.create(node_mod.CallNode) catch return error.OutOfMemory;
+        call.* = .{ .callee = callee, .args = args, .source = self.sourceFromForm(form) };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .call_node = call };
+        return n;
+    }
+
     fn makeLocalRef(self: *Analyzer, name: []const u8, idx: u32, form: Form) AnalyzeError!*Node {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .local_ref = .{
@@ -203,7 +235,7 @@ pub const Analyzer = struct {
             .map => |items| self.analyzeMap(items, form),
             .set => |items| self.analyzeSet(items, form),
             .regex => |pattern| self.analyzeRegex(pattern, form),
-            .tag => self.makeConstant(Value.nil_val), // tagged literals deferred
+            .tag => |t| self.analyzeTag(t, form),
         };
     }
 

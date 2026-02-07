@@ -39,7 +39,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.3c cljw.edn support~~
 - ~~30.4a letfn implementation~~
 - ~~30.4b with-open macro~~
-- 30.4c tagged-literal + reader-conditional
+- ~~30.4c tagged-literal + reader-conditional~~
 - 30.4d with-local-vars + with-in-str
 - 30.4e Remaining type predicates
 - 30.5a doc macro
@@ -49,13 +49,14 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.4c — tagged-literal + reader-conditional. EDN portability for .cljc files.
+30.4d — with-local-vars + with-in-str. Macro completeness.
 
 ## Previous Task
 
-30.4b — with-open macro. Added close function and with-open macro to core.clj.
-Uses (close x) instead of (.close x) Java interop. try/finally cleanup
-pattern, multiple bindings supported. Tested on both backends.
+30.4c — tagged-literal + reader-conditional. #inst and #uuid return string
+values. Custom tags produce tagged-literal maps via analyzer call generation.
+Reader conditionals now support :cljw platform tag (priority: cljw > clj > default).
+Added tagged-literal, tagged-literal?, reader-conditional, reader-conditional?.
 
 ## Known Issues
 
