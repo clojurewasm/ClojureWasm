@@ -30,6 +30,9 @@ fn solve(row: usize) void {
 
 pub fn main() !void {
     solve(0);
-    const stdout = std.io.getStdOut().writer();
+    var buf: [4096]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &writer.interface;
     try stdout.print("{d}\n", .{solutions});
+    try stdout.flush();
 }

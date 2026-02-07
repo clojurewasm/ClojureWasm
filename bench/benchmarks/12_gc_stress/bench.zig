@@ -1,23 +1,18 @@
 const std = @import("std");
 
+const Triple = struct { a: i64, b: i64, c: i64 };
+
 pub fn main() !void {
+    const n = 100000;
+    var sum: i64 = 0;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-    var map = std.AutoHashMap(i64, i64).init(alloc);
-    defer map.deinit();
-
-    const n: i64 = 1000;
-    var i: i64 = 0;
-    while (i < n) : (i += 1) {
-        try map.put(i, i);
+    for (0..n) |i| {
+        const m = try alloc.create(Triple);
+        m.* = .{ .a = @intCast(i), .b = @as(i64, @intCast(i)) + 1, .c = @as(i64, @intCast(i)) + 2 };
+        sum += m.b;
+        alloc.destroy(m);
     }
-
-    var sum: i64 = 0;
-    i = 0;
-    while (i < n) : (i += 1) {
-        sum += map.get(i).?;
-    }
-
     var buf: [4096]u8 = undefined;
     var writer = std.fs.File.stdout().writer(&buf);
     const stdout = &writer.interface;

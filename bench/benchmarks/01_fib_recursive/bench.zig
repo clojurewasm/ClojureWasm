@@ -6,6 +6,9 @@ fn fib(n: i64) i64 {
 }
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    var buf: [4096]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &writer.interface;
     try stdout.print("{d}\n", .{fib(25)});
+    try stdout.flush();
 }

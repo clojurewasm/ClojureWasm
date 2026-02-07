@@ -18,6 +18,9 @@ pub fn main() !void {
     for (2..limit + 1) |k| {
         if (sieve[k]) count += 1;
     }
-    const stdout = std.io.getStdOut().writer();
+    var buf: [4096]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &writer.interface;
     try stdout.print("{d}\n", .{count});
+    try stdout.flush();
 }

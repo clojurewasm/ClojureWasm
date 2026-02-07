@@ -6,6 +6,9 @@ fn tak(x: i64, y: i64, z: i64) i64 {
 }
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    var buf: [4096]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &writer.interface;
     try stdout.print("{d}\n", .{tak(18, 12, 6)});
+    try stdout.flush();
 }
