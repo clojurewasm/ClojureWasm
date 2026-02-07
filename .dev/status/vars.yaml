@@ -949,17 +949,17 @@ vars:
     "type-reflect": {type: function, status: todo}
     typename: {type: function, status: todo}
   clojure_repl:
-    apropos: {type: function, status: todo}
+    apropos: {type: function, status: done, notes: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
     demunge: {type: function, status: todo}
-    dir: {type: macro, status: todo}
-    "dir-fn": {type: function, status: todo}
-    doc: {type: macro, status: todo}
-    "find-doc": {type: function, status: todo}
-    pst: {type: function, status: todo}
+    dir: {type: macro, status: done}
+    "dir-fn": {type: function, status: done}
+    doc: {type: macro, status: done}
+    "find-doc": {type: function, status: done}
+    pst: {type: function, status: done, notes: "UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
     "root-cause": {type: function, status: todo}
     "set-break-handler!": {type: function, status: todo}
-    source: {type: macro, status: todo}
-    "source-fn": {type: function, status: todo}
+    source: {type: macro, status: done}
+    "source-fn": {type: function, status: done, notes: "UPSTREAM-DIFF: paren-counting instead of reader-based"}
     "stack-element-str": {type: function, status: todo}
     "thread-stopper": {type: function, status: todo}
   clojure_set:

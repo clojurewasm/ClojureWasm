@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 28.1 complete (A, BE, B, C, CX, R, D, 20-28.1, 22b, 22c, 24.5)
-- Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
+- Coverage: 535/704 clojure.core vars done, 8 clojure.repl vars done
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 28.1 COMPLETE** — Single Binary Builder MVP (1.7MB binary)
 - **Phase 29 SKIPPED** — File splitting impractical (Zig struct constraint),
@@ -41,22 +41,22 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.4b with-open macro~~
 - ~~30.4c tagged-literal + reader-conditional~~
 - ~~30.4d with-local-vars + with-in-str~~
-- 30.4e Remaining type predicates
-- 30.5a doc macro
-- 30.5b dir
-- 30.5c apropos + find-doc
-- 30.5d source + pst
+- ~~30.4e Remaining type predicates~~ (N/A: bytes?/uri?/uuid? need new Value types)
+- ~~30.5a doc macro~~
+- ~~30.5b dir~~
+- ~~30.5c apropos + find-doc~~
+- ~~30.5d source + pst~~
 
 ## Current Task
 
-30.4e — Remaining type predicates. bytes?, uri?, uuid? etc.
+Phase 30 complete. Planning next phase.
 
 ## Previous Task
 
-30.4d — with-local-vars + with-in-str. with-local-vars implemented using
-create-local-var builtin + push/pop-thread-bindings. Fixed var-set to use
-setThreadBinding (was incorrectly using bindRoot). Added __var-bind-root for
-with-redefs-fn. with-in-str deferred (requires *in*/StringReader).
+30.5a-d — clojure.repl functions (doc, dir, apropos, find-doc, source, pst).
+Added Var meta synthesis (getVarMeta in metadata.zig). Fixed resolve to use
+*ns* dynamic var instead of env.current_ns (core.clj functions couldn't
+resolve user-ns vars). source-fn uses paren-counting for form extraction.
 
 ## Known Issues
 

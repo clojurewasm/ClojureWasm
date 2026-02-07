@@ -18,8 +18,9 @@ const testing = std.testing;
 // meta — return metadata map from a value
 // ============================================================
 
-pub fn metaFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn metaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to meta", .{args.len});
+    if (args[0].tag() == .var_ref) return getVarMeta(allocator, args[0].asVarRef());
     return getMeta(args[0]);
 }
 
@@ -38,6 +39,94 @@ pub fn getMeta(val: Value) Value {
         .var_ref => if (val.asVarRef().meta) |m| Value.initMap(m) else Value.nil_val,
         else => Value.nil_val,
     };
+}
+
+/// Build a synthetic metadata map for a Var, merging struct fields with user meta.
+/// JVM Clojure returns :name, :ns, :doc, :arglists, :macro, :added, :file, :line.
+fn getVarMeta(allocator: Allocator, v: *const var_mod.Var) !Value {
+    // Count entries: always :name and :ns, then optional fields
+    var count: usize = 2; // :name, :ns
+    if (v.doc != null) count += 1;
+    if (v.arglists != null) count += 1;
+    if (v.added != null) count += 1;
+    if (v.file != null) count += 1;
+    if (v.line > 0) count += 1;
+    if (v.macro) count += 1;
+    if (v.dynamic) count += 1;
+    if (v.private) count += 1;
+
+    // Count user meta entries
+    var user_meta_len: usize = 0;
+    if (v.meta) |m| user_meta_len = m.entries.len / 2;
+    count += user_meta_len;
+
+    const entries = allocator.alloc(Value, count * 2) catch return error.OutOfMemory;
+    var i: usize = 0;
+
+    // :name
+    entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "name" });
+    entries[i + 1] = Value.initSymbol(allocator, .{ .ns = null, .name = v.sym.name });
+    i += 2;
+
+    // :ns
+    entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "ns" });
+    entries[i + 1] = Value.initSymbol(allocator, .{ .ns = null, .name = v.ns_name });
+    i += 2;
+
+    if (v.doc) |doc| {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "doc" });
+        entries[i + 1] = Value.initString(allocator, doc);
+        i += 2;
+    }
+    if (v.arglists) |arglists| {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "arglists" });
+        entries[i + 1] = Value.initString(allocator, arglists);
+        i += 2;
+    }
+    if (v.added) |added| {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "added" });
+        entries[i + 1] = Value.initString(allocator, added);
+        i += 2;
+    }
+    if (v.file) |file| {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "file" });
+        entries[i + 1] = Value.initString(allocator, file);
+        i += 2;
+    }
+    if (v.line > 0) {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "line" });
+        entries[i + 1] = Value.initInteger(@intCast(v.line));
+        i += 2;
+    }
+    if (v.macro) {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "macro" });
+        entries[i + 1] = Value.true_val;
+        i += 2;
+    }
+    if (v.dynamic) {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "dynamic" });
+        entries[i + 1] = Value.true_val;
+        i += 2;
+    }
+    if (v.private) {
+        entries[i] = Value.initKeyword(allocator, .{ .ns = null, .name = "private" });
+        entries[i + 1] = Value.true_val;
+        i += 2;
+    }
+
+    // Merge user meta
+    if (v.meta) |m| {
+        var j: usize = 0;
+        while (j < m.entries.len) : (j += 2) {
+            entries[i] = m.entries[j];
+            entries[i + 1] = m.entries[j + 1];
+            i += 2;
+        }
+    }
+
+    const map = allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
+    map.* = .{ .entries = entries[0..i] };
+    return Value.initMap(map);
 }
 
 // ============================================================

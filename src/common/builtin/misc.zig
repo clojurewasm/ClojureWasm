@@ -423,28 +423,46 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
         else => return Value.nil_val,
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    const current = env.current_ns orelse return Value.nil_val;
+
+    // 2-arity: (resolve ns sym) — first arg is ns
+    const ns = if (args.len == 2) blk: {
+        const ns_arg = switch (args[0].tag()) {
+            .symbol => args[0].asSymbol().name,
+            else => return Value.nil_val,
+        };
+        break :blk env.findNamespace(ns_arg) orelse return Value.nil_val;
+    } else blk: {
+        // 1-arity: use *ns* dynamic var (like JVM Clojure)
+        const core = env.findNamespace("clojure.core") orelse break :blk env.current_ns orelse return Value.nil_val;
+        const ns_var = core.resolve("*ns*") orelse break :blk env.current_ns orelse return Value.nil_val;
+        const ns_val = ns_var.deref();
+        const ns_name = switch (ns_val.tag()) {
+            .symbol => ns_val.asSymbol().name,
+            else => break :blk env.current_ns orelse return Value.nil_val,
+        };
+        break :blk env.findNamespace(ns_name) orelse env.current_ns orelse return Value.nil_val;
+    };
 
     // Qualified symbol
     if (sym.ns) |ns_name| {
         // Check alias first
-        if (current.getAlias(ns_name)) |target_ns| {
-            if (target_ns.resolve(sym.name)) |_| {
-                return args[args.len - 1];
+        if (ns.getAlias(ns_name)) |target_ns| {
+            if (target_ns.resolve(sym.name)) |v| {
+                return Value.initVarRef(v);
             }
         }
         // Try direct namespace
-        if (env.findNamespace(ns_name)) |ns| {
-            if (ns.resolve(sym.name)) |_| {
-                return args[args.len - 1];
+        if (env.findNamespace(ns_name)) |target_ns| {
+            if (target_ns.resolve(sym.name)) |v| {
+                return Value.initVarRef(v);
             }
         }
         return Value.nil_val;
     }
 
-    // Unqualified — search current ns
-    if (current.resolve(sym.name)) |_| {
-        return args[args.len - 1];
+    // Unqualified — search ns
+    if (ns.resolve(sym.name)) |v| {
+        return Value.initVarRef(v);
     }
     return Value.nil_val;
 }
