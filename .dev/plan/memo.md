@@ -19,12 +19,12 @@ Phase 24.5 — Mini-Refactor (Pre-Wasm Cleanup):
 
 ## Current Task
 
-24.5.3: D3 violation audit — catalog all module-level mutable state.
+24.5.4: File size documentation — measure and annotate future split candidates.
 
 ## Previous Task
 
-24.5.2: Naming audit — conventions consistent. Import alias _mod suffix
-inconsistency noted (Phase 27 scope). No changes needed.
+24.5.3: D3 violation audit — 28 mutable state sites in 11 files cataloged.
+See .dev/notes/mutable-state-audit.md.
 
 ## Handover Notes
 
