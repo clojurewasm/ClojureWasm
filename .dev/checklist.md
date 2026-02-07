@@ -36,7 +36,7 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                            | Future major phase — trace-based or method-based. See optimization-backlog.md |
 | ~~F100~~ | ~~nested_update regression from hot bootstrap~~ | Resolved: adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms (24C.5c) |
 | ~~F96~~ | ~~VM protocol compilation~~             | Done: defprotocol/extend-type in compiler.zig + vm.zig + bootstrap.zig |
-| F106 | Single binary builder (`cljw build`)       | Phase 28 — @embedFile user .clj + .wasm pre-linking                    |
+| ~~F106~~ | ~~Single binary builder (`cljw build`)~~ | Done: Phase 28.1, binary trailer approach (source embedding)           |
 | F107 | cider-nrepl op compatibility               | Phase 30 — eval, complete, info, stacktrace, ns-list middleware        |
 | F108 | Skip var recovery pass                     | Phase 30 — re-evaluate 178 skipped vars for Zig equivalents            |
 | F109 | Zero-config project model                  | Phase 30 — auto-detect src/, require resolution, optional cljw.edn     |

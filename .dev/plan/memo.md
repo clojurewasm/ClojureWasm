@@ -22,24 +22,23 @@ Phase order: ~~27 (NaN boxing)~~ -> **28 (single binary)** -> 29 (restructure)
 
 ## Task Queue
 
-Phase 28.1 — Source Embedding (MVP):
-
-1. **28.1a**: Embedded source detection at startup
-2. **28.1b**: `build` subcommand implementation
-3. **28.1c**: Built binary CLI args as `*command-line-args*`
-4. **28.1d**: Integration test (build + run + verify)
+Phase 28.1 COMPLETE. Next: Phase 28 wrap-up and Phase 29 planning.
 
 ## Current Task
 
-28.1a: Add readEmbeddedSource() to main.zig. Uses std.fs.selfExePath() to
-read own binary, checks last 12 bytes for "CLJW" magic trailer. If found,
-extracts .clj source payload and evaluates it (embedded mode).
+Phase 28.1 complete. All sub-tasks done:
+- 28.1a: readEmbeddedSource() — self exe path + trailer magic check
+- 28.1b: handleBuildCommand() — copy self + append source + trailer
+- 28.1c: setCommandLineArgs() — populate *command-line-args* from argv
+- 28.1d: Verified: hello.clj, fib.clj with args, ReleaseSafe 1.7MB
 
 ## Previous Task
 
-27.4 DONE: Benchmarked NaN boxing results — 17-44% faster, 44-57% less memory.
-19/20 benchmarks faster (avg -33%). All 20 benchmarks reduced memory (avg -53%).
-Only regression: string_ops +7% (HeapString indirection).
+28.1 DONE: Single binary builder MVP. Binary trailer approach:
+[cljw binary] + [.clj source] + [u64 size] + "CLJW" magic.
+readEmbeddedSource() detects trailer at startup. handleBuildCommand()
+creates embedded binary. *command-line-args* populated from argv.
+ReleaseSafe: 1.7MB single binary. Verified with hello.clj + fib.clj.
 
 ## Known Issues from Phase 27
 

@@ -1,9 +1,10 @@
 // ClojureWasm CLI entry point.
 //
 // Usage:
-//   cljw -e "expr"    Evaluate expression and print result
-//   cljw file.clj     Evaluate file and print last result
-//   cljw              Start interactive REPL
+//   cljw -e "expr"           Evaluate expression and print result
+//   cljw file.clj            Evaluate file and print last result
+//   cljw                     Start interactive REPL
+//   cljw build f.clj -o app  Build single binary with embedded source
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -11,10 +12,16 @@ const Env = @import("common/env.zig").Env;
 const registry = @import("common/builtin/registry.zig");
 const bootstrap = @import("common/bootstrap.zig");
 const Value = @import("common/value.zig").Value;
+const collections = @import("common/collections.zig");
 const nrepl = @import("repl/nrepl.zig");
 const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
+
+/// Magic trailer bytes appended to built binaries.
+const embed_magic = "CLJW";
+/// Trailer size: u64 payload_size (8) + magic (4) = 12 bytes.
+const embed_trailer_size = 12;
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -34,6 +41,22 @@ pub fn main() !void {
     // Initialize keyword intern table (uses GPA for permanent keyword strings)
     keyword_intern.init(allocator);
     defer keyword_intern.deinit();
+
+    // Check for embedded source (built binary via `cljw build`).
+    // If this binary has a CLJW trailer, run the embedded source and exit.
+    if (readEmbeddedSource(allocator)) |source| {
+        defer allocator.free(source);
+        err.setSourceFile("<embedded>");
+        err.setSourceText(source);
+        evalEmbedded(alloc, allocator, &gc, source, args[1..]);
+        return;
+    }
+
+    // Handle `build` subcommand: cljw build <file> [-o <output>]
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "build")) {
+        handleBuildCommand(allocator, args[2..]);
+        return;
+    }
 
     if (args.len < 2) {
         // No args — start REPL
@@ -614,4 +637,199 @@ fn writeValue(w: anytype, val: Value) void {
         .wasm_module => w.print("#<WasmModule>", .{}) catch {},
         .wasm_fn => w.print("#<WasmFn {s}>", .{val.asWasmFn().name}) catch {},
     }
+}
+
+// === Single Binary Builder (Phase 28) ===
+
+/// Read embedded source from this binary's CLJW trailer.
+/// Returns null if no trailer found (normal cljw binary).
+fn readEmbeddedSource(allocator: Allocator) ?[]const u8 {
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const self_path = std.fs.selfExePath(&path_buf) catch return null;
+    const file = std.fs.openFileAbsolute(self_path, .{}) catch return null;
+    defer file.close();
+    const stat = file.stat() catch return null;
+    const file_size = stat.size;
+    if (file_size < embed_trailer_size) return null;
+
+    // Read trailer (last 12 bytes)
+    file.seekTo(file_size - embed_trailer_size) catch return null;
+    var trailer: [embed_trailer_size]u8 = undefined;
+    const n = file.readAll(&trailer) catch return null;
+    if (n != embed_trailer_size) return null;
+
+    // Check magic
+    if (!std.mem.eql(u8, trailer[8..12], embed_magic)) return null;
+
+    // Extract payload size
+    const payload_size = std.mem.readInt(u64, trailer[0..8], .little);
+    if (payload_size == 0 or payload_size > file_size - embed_trailer_size) return null;
+
+    // Read payload
+    file.seekTo(file_size - embed_trailer_size - payload_size) catch return null;
+    const source = allocator.alloc(u8, @intCast(payload_size)) catch return null;
+    const bytes_read = file.readAll(source) catch {
+        allocator.free(source);
+        return null;
+    };
+    if (bytes_read != @as(usize, @intCast(payload_size))) {
+        allocator.free(source);
+        return null;
+    }
+    return source;
+}
+
+/// Evaluate embedded source and exit. Used by built binaries.
+fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, cli_args: []const [:0]const u8) void {
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadCore(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load core.clj\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadWalk(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.walk\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadTemplate(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.template\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadTest(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.test\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadSet(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.set\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadData(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.data\n", .{});
+        std.process.exit(1);
+    };
+
+    // Set *command-line-args*
+    setCommandLineArgs(gc_alloc, &env, cli_args);
+
+    // Enable GC
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Evaluate using VM backend
+    _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+}
+
+/// Set *command-line-args* to a list of string Values.
+fn setCommandLineArgs(gc_alloc: Allocator, env: *Env, cli_args: []const [:0]const u8) void {
+    if (cli_args.len == 0) return; // leave as nil
+
+    const core_ns = env.findNamespace("clojure.core") orelse return;
+    const v = core_ns.resolve("*command-line-args*") orelse return;
+
+    // Build list of string Values
+    const items = gc_alloc.alloc(Value, cli_args.len) catch return;
+    for (cli_args, 0..) |arg, i| {
+        const duped = gc_alloc.dupe(u8, arg) catch return;
+        items[i] = Value.initString(gc_alloc, duped);
+    }
+    const list = gc_alloc.create(collections.PersistentList) catch return;
+    list.* = .{ .items = items };
+    v.bindRoot(Value.initList(list));
+}
+
+/// Handle `cljw build <file> [-o <output>]` subcommand.
+fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) void {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+
+    var source_file: ?[]const u8 = null;
+    var output_file: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < build_args.len) : (i += 1) {
+        if (std.mem.eql(u8, build_args[i], "-o")) {
+            i += 1;
+            if (i >= build_args.len) {
+                _ = stderr.write("Error: -o requires an output file argument\n") catch {};
+                std.process.exit(1);
+            }
+            output_file = build_args[i];
+        } else {
+            source_file = build_args[i];
+        }
+    }
+
+    if (source_file == null) {
+        _ = stderr.write("Usage: cljw build <source.clj> [-o <output>]\n") catch {};
+        std.process.exit(1);
+    }
+
+    // Read user source
+    const max_file_size = 10 * 1024 * 1024; // 10MB
+    const user_source = std.fs.cwd().readFileAlloc(allocator, source_file.?, max_file_size) catch {
+        _ = stderr.write("Error: could not read source file\n") catch {};
+        std.process.exit(1);
+    };
+    defer allocator.free(user_source);
+
+    // Determine output filename (default: strip .clj extension)
+    const out_name = output_file orelse blk: {
+        const src = source_file.?;
+        if (std.mem.endsWith(u8, src, ".clj")) {
+            break :blk src[0 .. src.len - 4];
+        }
+        break :blk src;
+    };
+
+    // Read self binary
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const self_path = std.fs.selfExePath(&path_buf) catch {
+        _ = stderr.write("Error: could not determine self executable path\n") catch {};
+        std.process.exit(1);
+    };
+    const self_bytes = std.fs.cwd().readFileAlloc(allocator, self_path, 100 * 1024 * 1024) catch {
+        _ = stderr.write("Error: could not read self executable\n") catch {};
+        std.process.exit(1);
+    };
+    defer allocator.free(self_bytes);
+
+    // Write output: [self binary] + [user source] + [u64 source_len] + "CLJW"
+    const out_file = std.fs.cwd().createFile(out_name, .{ .mode = 0o755 }) catch {
+        _ = stderr.write("Error: could not create output file\n") catch {};
+        std.process.exit(1);
+    };
+    defer out_file.close();
+
+    out_file.writeAll(self_bytes) catch {
+        _ = stderr.write("Error: write failed\n") catch {};
+        std.process.exit(1);
+    };
+    out_file.writeAll(user_source) catch {
+        _ = stderr.write("Error: write failed\n") catch {};
+        std.process.exit(1);
+    };
+    // Write payload size as u64 LE
+    const size_bytes = std.mem.toBytes(std.mem.nativeTo(u64, @as(u64, @intCast(user_source.len)), .little));
+    out_file.writeAll(&size_bytes) catch {
+        _ = stderr.write("Error: write failed\n") catch {};
+        std.process.exit(1);
+    };
+    out_file.writeAll(embed_magic) catch {
+        _ = stderr.write("Error: write failed\n") catch {};
+        std.process.exit(1);
+    };
+
+    // Report success
+    const total_size = self_bytes.len + user_source.len + embed_trailer_size;
+    var msg_buf: [256]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&msg_buf);
+    const w = stream.writer();
+    w.print("Built: {s} ({d} bytes, source: {d} bytes)\n", .{ out_name, total_size, user_source.len }) catch {};
+    _ = stdout.write(stream.getWritten()) catch {};
 }
