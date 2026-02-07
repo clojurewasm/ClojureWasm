@@ -139,10 +139,10 @@ pub const Compiler = struct {
     // --- Emit methods ---
 
     fn emitConstant(self: *Compiler, val: Value) CompileError!void {
-        switch (val) {
+        switch (val.tag()) {
             .nil => try self.chunk.emitOp(.nil),
-            .boolean => |b| {
-                if (b) {
+            .boolean => {
+                if (val.asBoolean()) {
                     try self.chunk.emitOp(.true_val);
                 } else {
                     try self.chunk.emitOp(.false_val);
@@ -349,7 +349,7 @@ pub const Compiler = struct {
         };
         self.fn_objects.append(self.allocator, fn_obj) catch return error.OutOfMemory;
 
-        const idx = self.chunk.addConstant(.{ .fn_val = fn_obj }) catch
+        const idx = self.chunk.addConstant(Value.initFn(fn_obj)) catch
             return error.TooManyConstants;
 
         // Closure operand: just the constant index (capture info is in FnProto).
@@ -518,11 +518,11 @@ pub const Compiler = struct {
             0 => {
                 // (+) => 0, (*) => 1, (-) and (/) are arity errors
                 if (is_add) {
-                    const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
+                    const idx = self.chunk.addConstant(Value.initInteger(0)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                 } else if (is_mul) {
-                    const idx = self.chunk.addConstant(.{ .integer = 1 }) catch return error.TooManyConstants;
+                    const idx = self.chunk.addConstant(Value.initInteger(1)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                 } else {
@@ -532,7 +532,7 @@ pub const Compiler = struct {
             1 => {
                 if (is_sub) {
                     // (- x) => (0 - x)
-                    const idx = self.chunk.addConstant(.{ .integer = 0 }) catch return error.TooManyConstants;
+                    const idx = self.chunk.addConstant(Value.initInteger(0)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                     try self.compile(args[0]); // +1
@@ -540,7 +540,7 @@ pub const Compiler = struct {
                     self.stack_depth -= 1; // binary: 2 → 1
                 } else if (std.mem.eql(u8, name, "/")) {
                     // (/ x) => (1.0 / x)
-                    const idx = self.chunk.addConstant(.{ .float = 1.0 }) catch return error.TooManyConstants;
+                    const idx = self.chunk.addConstant(Value.initFloat(1.0)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                     try self.compile(args[0]); // +1
@@ -622,7 +622,7 @@ pub const Compiler = struct {
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
         // Push symbol name as constant
-        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.sym_name } };
+        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.sym_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile init expression if present
@@ -641,7 +641,7 @@ pub const Compiler = struct {
 
     fn emitSetBang(self: *Compiler, node: *const node_mod.SetNode) CompileError!void {
         // (set! var-sym expr) — mutate thread-local binding
-        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.var_name } };
+        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.var_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         // Compile expression (pushes value)
         try self.compile(node.expr); // +1
@@ -651,7 +651,7 @@ pub const Compiler = struct {
 
     fn emitDefmulti(self: *Compiler, node: *const node_mod.DefMultiNode) CompileError!void {
         // Push name as constant
-        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.name } };
+        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile optional hierarchy var reference (must be on stack BEFORE dispatch fn)
@@ -676,7 +676,7 @@ pub const Compiler = struct {
 
     fn emitDefmethod(self: *Compiler, node: *const node_mod.DefMethodNode) CompileError!void {
         // Push multimethod name as constant
-        const sym_val = Value{ .symbol = .{ .ns = null, .name = node.multi_name } };
+        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.multi_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile dispatch value
@@ -700,19 +700,19 @@ pub const Compiler = struct {
 
     fn emitDefprotocol(self: *Compiler, node: *const node_mod.DefProtocolNode) CompileError!void {
         // Constant[idx] = protocol name symbol
-        const name_sym = Value{ .symbol = .{ .ns = null, .name = node.name } };
+        const name_sym = Value.initSymbol(.{ .ns = null, .name = node.name });
         const idx = self.chunk.addConstant(name_sym) catch return error.TooManyConstants;
 
         // Constant[idx+1] = sigs vector: [name1, arity1, name2, arity2, ...]
         const sigs_len = node.method_sigs.len * 2;
         const sigs_items = self.allocator.alloc(Value, sigs_len) catch return error.OutOfMemory;
         for (node.method_sigs, 0..) |sig, i| {
-            sigs_items[i * 2] = .{ .string = sig.name };
-            sigs_items[i * 2 + 1] = .{ .integer = @intCast(sig.arity) };
+            sigs_items[i * 2] = Value.initString(sig.name);
+            sigs_items[i * 2 + 1] = Value.initInteger(@intCast(sig.arity));
         }
         const sigs_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
         sigs_vec.* = .{ .items = sigs_items };
-        _ = self.chunk.addConstant(.{ .vector = sigs_vec }) catch return error.TooManyConstants;
+        _ = self.chunk.addConstant(Value.initVector(sigs_vec)) catch return error.TooManyConstants;
 
         // Emit opcode: [] -> [protocol]
         try self.chunk.emit(.defprotocol, idx);
@@ -732,12 +732,12 @@ pub const Compiler = struct {
 
             // Create meta vector: [type_name, protocol_name, method_name]
             const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
-            meta_items[0] = .{ .string = node.type_name };
-            meta_items[1] = .{ .string = node.protocol_name };
-            meta_items[2] = .{ .string = method.name };
+            meta_items[0] = Value.initString(node.type_name);
+            meta_items[1] = Value.initString(node.protocol_name);
+            meta_items[2] = Value.initString(method.name);
             const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
             meta_vec.* = .{ .items = meta_items };
-            const meta_idx = self.chunk.addConstant(.{ .vector = meta_vec }) catch return error.TooManyConstants;
+            const meta_idx = self.chunk.addConstant(Value.initVector(meta_vec)) catch return error.TooManyConstants;
 
             // extend_type_method: pops fn, pushes nil (net 0)
             try self.chunk.emit(.extend_type_method, meta_idx);
@@ -852,7 +852,7 @@ pub const Compiler = struct {
         // Store the var reference symbol as a constant.
         // Symbols are NOT fully-qualified here — namespace isolation is handled
         // by setting Fn.defining_ns at closure creation time (D68).
-        const sym_val = Value{ .symbol = .{ .ns = ref.ns, .name = ref.name } };
+        const sym_val = Value.initSymbol(.{ .ns = ref.ns, .name = ref.name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         try self.chunk.emit(.var_load, idx);
         self.stack_depth += 1;
@@ -881,7 +881,7 @@ test "compile constant nil" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    const node = Node{ .constant = .{ .value = .nil } };
+    const node = Node{ .constant = .{ .value = Value.nil_val } };
     try compiler.compile(&node);
 
     try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
@@ -894,7 +894,7 @@ test "compile constant true/false" {
     {
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        const node = Node{ .constant = .{ .value = .{ .boolean = true } } };
+        const node = Node{ .constant = .{ .value = Value.true_val } };
         try compiler.compile(&node);
         try std.testing.expectEqual(OpCode.true_val, compiler.chunk.code.items[0].op);
     }
@@ -902,7 +902,7 @@ test "compile constant true/false" {
     {
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        const node = Node{ .constant = .{ .value = .{ .boolean = false } } };
+        const node = Node{ .constant = .{ .value = Value.false_val } };
         try compiler.compile(&node);
         try std.testing.expectEqual(OpCode.false_val, compiler.chunk.code.items[0].op);
     }
@@ -913,7 +913,7 @@ test "compile constant integer" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    const node = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    const node = Node{ .constant = .{ .value = Value.initInteger(42) } };
     try compiler.compile(&node);
 
     try std.testing.expectEqual(@as(usize, 1), compiler.chunk.code.items.len);
@@ -928,9 +928,9 @@ test "compile if_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
-    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var test_n = Node{ .constant = .{ .value = Value.true_val } };
+    var then_n = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var else_n = Node{ .constant = .{ .value = Value.initInteger(2) } };
 
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
@@ -955,8 +955,8 @@ test "compile if_node without else" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
-    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var test_n = Node{ .constant = .{ .value = Value.true_val } };
+    var then_n = Node{ .constant = .{ .value = Value.initInteger(1) } };
 
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
@@ -980,8 +980,8 @@ test "compile do_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var stmt1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var stmt2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var stmt1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var stmt2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var stmts = [_]*Node{ &stmt1, &stmt2 };
 
     var do_data = node_mod.DoNode{
@@ -1021,8 +1021,8 @@ test "compile call_node" {
     defer compiler.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "f", .source = .{} } };
-    var arg1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var arg2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var arg1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var arg2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &arg1, &arg2 };
 
     var call_data = node_mod.CallNode{
@@ -1046,7 +1046,7 @@ test "compile def_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var init_expr = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    var init_expr = Node{ .constant = .{ .value = Value.initInteger(42) } };
     var def_data = node_mod.DefNode{
         .sym_name = "x",
         .init = &init_expr,
@@ -1071,7 +1071,7 @@ test "compile quote_node" {
     defer compiler.deinit();
 
     var quote_data = node_mod.QuoteNode{
-        .value = .{ .integer = 99 },
+        .value = Value.initInteger(99),
         .source = .{},
     };
     const node = Node{ .quote_node = &quote_data };
@@ -1087,7 +1087,7 @@ test "compile throw_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var expr = Node{ .constant = .{ .value = .{ .string = "error!" } } };
+    var expr = Node{ .constant = .{ .value = Value.initString("error!") } };
     var throw_data = node_mod.ThrowNode{
         .expr = &expr,
         .source = .{},
@@ -1106,7 +1106,7 @@ test "compile let_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var init_val = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var init_val = Node{ .constant = .{ .value = Value.initInteger(1) } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
     };

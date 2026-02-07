@@ -352,7 +352,7 @@ pub fn syncNsVar(env: *Env) void {
     const ns_name = if (env.current_ns) |ns| ns.name else "user";
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
-            ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = ns_name } });
+            ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = ns_name }));
         }
     }
 }
@@ -400,7 +400,7 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // survive GC sweeps. TreeWalk uses allocator (gc_alloc) for Value creation.
     const node_alloc = env.nodeAllocator();
     const forms = try readForms(node_alloc, source);
-    if (forms.len == 0) return .nil;
+    if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -409,7 +409,7 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // evaluation may be def'd into Vars and must outlive this scope.
     var tw = TreeWalk.initWithEnv(allocator, env);
 
-    var last_value: Value = .nil;
+    var last_value: Value = Value.nil_val;
     for (forms) |form| {
         const node = try analyzeForm(node_alloc, env, form);
         last_value = tw.run(node) catch return error.EvalError;
@@ -464,7 +464,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     // Compiler/VM use allocator (gc_alloc) for bytecode and Values.
     const node_alloc = env.nodeAllocator();
     const forms = try readForms(node_alloc, source);
-    if (forms.len == 0) return .nil;
+    if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -477,7 +477,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         // Heap-allocate VM to avoid C stack overflow (VM struct is ~1.5MB).
         const vm = env.allocator.create(VM) catch return error.CompileError;
         defer env.allocator.destroy(vm);
-        var last_value: Value = .nil;
+        var last_value: Value = Value.nil_val;
         for (forms) |form| {
             const node = try analyzeForm(node_alloc, env, form);
 
@@ -511,7 +511,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         retained_fns.deinit(allocator);
     }
 
-    var last_value: Value = .nil;
+    var last_value: Value = Value.nil_val;
     for (forms) |form| {
         const node = try analyzeForm(node_alloc, env, form);
 
@@ -557,7 +557,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     const node_alloc = env.nodeAllocator();
     const forms = try readForms(node_alloc, source);
-    if (forms.len == 0) return .nil;
+    if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -567,7 +567,7 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
     const vm = env.allocator.create(VM) catch return error.CompileError;
     defer env.allocator.destroy(vm);
 
-    var last_value: Value = .nil;
+    var last_value: Value = Value.nil_val;
     for (forms) |form| {
         const node = try analyzeForm(node_alloc, env, form);
 
@@ -601,9 +601,10 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
 /// This is the critical path for fused reduce callbacks and makes deep
 /// predicate chains (sieve's 168 filters) feasible.
 pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    switch (fn_val) {
-        .builtin_fn => |f| return f(allocator, args),
-        .fn_val => |fn_obj| {
+    switch (fn_val.tag()) {
+        .builtin_fn => return fn_val.asBuiltinFn()(allocator, args),
+        .fn_val => {
+            const fn_obj = fn_val.asFn();
             if (fn_obj.kind == .bytecode) {
                 // Active VM bridge: reuse existing VM stack (avoids ~500KB heap alloc)
                 if (vm_mod.active_vm) |vm| {
@@ -616,62 +617,68 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
                 return treewalkCallBridge(allocator, fn_val, args);
             }
         },
-        .multi_fn => |mf| {
+        .multi_fn => {
+            const mf = fn_val.asMultiFn();
             // Dispatch: call dispatch_fn, lookup method, call method
             const dispatch_val = try callFnVal(allocator, mf.dispatch_fn, args);
             const method_fn = mf.methods.get(dispatch_val) orelse
-                mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } }) orelse
+                mf.methods.get(Value.initKeyword(.{ .ns = null, .name = "default" })) orelse
                 return error.TypeError;
             return callFnVal(allocator, method_fn, args);
         },
-        .keyword => |kw| {
+        .keyword => {
+            const kw = fn_val.asKeyword();
             // Keyword-as-function: (:key map) => (get map :key)
             if (args.len < 1) return error.TypeError;
-            if (args[0] == .wasm_module and args.len == 1) {
-                const wm = args[0].wasm_module;
+            if (args[0].tag() == .wasm_module and args.len == 1) {
+                const wm = args[0].asWasmModule();
                 return if (wm.getExportFn(kw.name)) |wf|
-                    Value{ .wasm_fn = wf }
+                    Value.initWasmFn(wf)
                 else
-                    Value.nil;
+                    Value.nil_val;
             }
-            if (args[0] == .map) {
-                return args[0].map.get(fn_val) orelse
-                    if (args.len >= 2) args[1] else Value.nil;
+            if (args[0].tag() == .map) {
+                return args[0].asMap().get(fn_val) orelse
+                    if (args.len >= 2) args[1] else Value.nil_val;
             }
-            return if (args.len >= 2) args[1] else Value.nil;
+            return if (args.len >= 2) args[1] else Value.nil_val;
         },
-        .map => |m| {
+        .map => {
+            const m = fn_val.asMap();
             // Map-as-function: ({:a 1} :b) => (get map key)
             if (args.len < 1) return error.TypeError;
             return m.get(args[0]) orelse
-                if (args.len >= 2) args[1] else Value.nil;
+                if (args.len >= 2) args[1] else Value.nil_val;
         },
-        .set => |s| {
+        .set => {
+            const s = fn_val.asSet();
             // Set-as-function: (#{:a :b} :a) => :a or nil
             if (args.len < 1) return error.TypeError;
-            return if (s.contains(args[0])) args[0] else Value.nil;
+            return if (s.contains(args[0])) args[0] else Value.nil_val;
         },
-        .wasm_module => |wm| {
+        .wasm_module => {
+            const wm = fn_val.asWasmModule();
             // Module-as-function: (mod :add) => cached WasmFn
             if (args.len != 1) return error.ArityError;
-            const name = switch (args[0]) {
-                .keyword => |kw| kw.name,
-                .string => |s| s,
+            const name = switch (args[0].tag()) {
+                .keyword => args[0].asKeyword().name,
+                .string => args[0].asString(),
                 else => return error.TypeError,
             };
             return if (wm.getExportFn(name)) |wf|
-                Value{ .wasm_fn = wf }
+                Value.initWasmFn(wf)
             else
-                Value.nil;
+                Value.nil_val;
         },
-        .wasm_fn => |wf| return wf.call(allocator, args),
-        .var_ref => |v| return callFnVal(allocator, v.deref(), args),
-        .protocol_fn => |pf| {
+        .wasm_fn => return fn_val.asWasmFn().call(allocator, args),
+        .var_ref => return callFnVal(allocator, fn_val.asVarRef().deref(), args),
+        .protocol_fn => {
+            const pf = fn_val.asProtocolFn();
             if (args.len == 0) return error.ArityError;
             const type_key = TreeWalk.valueTypeKey(args[0]);
-            const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse return error.TypeError;
-            if (method_map_val != .map) return error.TypeError;
-            const impl_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse return error.TypeError;
+            const method_map_val = pf.protocol.impls.get(Value.initString(type_key)) orelse return error.TypeError;
+            if (method_map_val.tag() != .map) return error.TypeError;
+            const impl_fn = method_map_val.asMap().get(Value.initString(pf.method_name)) orelse return error.TypeError;
             return callFnVal(allocator, impl_fn, args);
         },
         else => return error.TypeError,
@@ -735,25 +742,25 @@ const registry = @import("builtin/registry.zig");
 /// Test helper: evaluate expression and check integer result.
 fn expectEvalInt(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: i64) !void {
     const result = try evalString(alloc, env, source);
-    try testing.expectEqual(Value{ .integer = expected }, result);
+    try testing.expectEqual(Value.initInteger(expected), result);
 }
 
 /// Test helper: evaluate expression and check boolean result.
 fn expectEvalBool(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: bool) !void {
     const result = try evalString(alloc, env, source);
-    try testing.expectEqual(Value{ .boolean = expected }, result);
+    try testing.expectEqual(Value.initBoolean(expected), result);
 }
 
 /// Test helper: evaluate expression and check nil result.
 fn expectEvalNil(alloc: std.mem.Allocator, env: *Env, source: []const u8) !void {
     const result = try evalString(alloc, env, source);
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 /// Test helper: evaluate expression and check string result.
 fn expectEvalStr(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: []const u8) !void {
     const result = try evalString(alloc, env, source);
-    try testing.expectEqualStrings(expected, result.string);
+    try testing.expectEqualStrings(expected, result.asString());
 }
 
 test "evalString - simple constant" {
@@ -766,7 +773,7 @@ test "evalString - simple constant" {
     try registry.registerBuiltins(&env);
 
     const result = try evalString(alloc, &env, "42");
-    try testing.expectEqual(Value{ .integer = 42 }, result);
+    try testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "evalString - function call" {
@@ -779,7 +786,7 @@ test "evalString - function call" {
     try registry.registerBuiltins(&env);
 
     const result = try evalString(alloc, &env, "(+ 1 2)");
-    try testing.expectEqual(Value{ .integer = 3 }, result);
+    try testing.expectEqual(Value.initInteger(3), result);
 }
 
 test "evalString - multiple forms returns last" {
@@ -792,7 +799,7 @@ test "evalString - multiple forms returns last" {
     try registry.registerBuiltins(&env);
 
     const result = try evalString(alloc, &env, "1 2 3");
-    try testing.expectEqual(Value{ .integer = 3 }, result);
+    try testing.expectEqual(Value.initInteger(3), result);
 }
 
 test "evalString - def + reference" {
@@ -805,7 +812,7 @@ test "evalString - def + reference" {
     try registry.registerBuiltins(&env);
 
     const result = try evalString(alloc, &env, "(def x 10) (+ x 5)");
-    try testing.expectEqual(Value{ .integer = 15 }, result);
+    try testing.expectEqual(Value.initInteger(15), result);
 }
 
 test "evalString - defmacro and macro use" {
@@ -824,7 +831,7 @@ test "evalString - defmacro and macro use" {
         \\(defmacro my-const [x] x)
         \\(my-const 42)
     );
-    try testing.expectEqual(Value{ .integer = 42 }, result);
+    try testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "evalString - defn macro from core" {
@@ -853,7 +860,7 @@ test "evalString - defn macro from core" {
     const result = try evalString(alloc, &env,
         \\(add1 10)
     );
-    try testing.expectEqual(Value{ .integer = 11 }, result);
+    try testing.expectEqual(Value.initInteger(11), result);
 }
 
 test "evalString - when macro" {
@@ -873,11 +880,11 @@ test "evalString - when macro" {
 
     // when true -> returns body result
     const r1 = try evalString(alloc, &env, "(when true 42)");
-    try testing.expectEqual(Value{ .integer = 42 }, r1);
+    try testing.expectEqual(Value.initInteger(42), r1);
 
     // when false -> returns nil
     const r2 = try evalString(alloc, &env, "(when false 42)");
-    try testing.expectEqual(Value.nil, r2);
+    try testing.expectEqual(Value.nil_val, r2);
 }
 
 test "loadCore - core.clj defines defn and when" {
@@ -908,7 +915,7 @@ test "loadCore - core.clj defines defn and when" {
         \\(defn double [x] (+ x x))
         \\(double 21)
     );
-    try testing.expectEqual(Value{ .integer = 42 }, result);
+    try testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "evalString - higher-order function call" {
@@ -927,7 +934,7 @@ test "evalString - higher-order function call" {
         \\(defn inc [x] (+ x 1))
         \\(apply1 inc 41)
     );
-    try testing.expectEqual(Value{ .integer = 42 }, result);
+    try testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "evalString - loop/recur" {
@@ -947,7 +954,7 @@ test "evalString - loop/recur" {
         \\    sum
         \\    (recur (+ i 1) (+ sum i))))
     );
-    try testing.expectEqual(Value{ .integer = 45 }, result);
+    try testing.expectEqual(Value.initInteger(45), result);
 }
 
 test "core.clj - next returns nil for empty" {
@@ -962,11 +969,11 @@ test "core.clj - next returns nil for empty" {
 
     // next of single-element list should be nil
     const r1 = try evalString(alloc, &env, "(next (list 1))");
-    try testing.expectEqual(Value.nil, r1);
+    try testing.expectEqual(Value.nil_val, r1);
 
     // next of multi-element list should be non-nil
     const r2 = try evalString(alloc, &env, "(next (list 1 2))");
-    try testing.expect(r2 == .list);
+    try testing.expect(r2.tag() == .list);
 }
 
 test "core.clj - map" {
@@ -984,11 +991,11 @@ test "core.clj - map" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
-    try testing.expectEqual(Value{ .integer = 3 }, result.list.items[1]);
-    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[2]);
+    try testing.expect(result.tag() == .list);
+    try testing.expectEqual(@as(usize, 3), result.asList().items.len);
+    try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
+    try testing.expectEqual(Value.initInteger(3), result.asList().items[1]);
+    try testing.expectEqual(Value.initInteger(4), result.asList().items[2]);
 }
 
 test "core.clj - filter" {
@@ -1006,11 +1013,11 @@ test "core.clj - filter" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
-    try testing.expectEqual(Value{ .integer = 4 }, result.list.items[1]);
-    try testing.expectEqual(Value{ .integer = 6 }, result.list.items[2]);
+    try testing.expect(result.tag() == .list);
+    try testing.expectEqual(@as(usize, 3), result.asList().items.len);
+    try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
+    try testing.expectEqual(Value.initInteger(4), result.asList().items[1]);
+    try testing.expectEqual(Value.initInteger(6), result.asList().items[2]);
 }
 
 test "core.clj - reduce" {
@@ -1026,7 +1033,7 @@ test "core.clj - reduce" {
     // reduce using core.clj definition
     _ = try evalString(alloc, &env, "(defn add [a b] (+ a b))");
     const result = try evalString(alloc, &env, "(reduce add 0 (list 1 2 3))");
-    try testing.expectEqual(Value{ .integer = 6 }, result);
+    try testing.expectEqual(Value.initInteger(6), result);
 }
 
 test "core.clj - take" {
@@ -1043,10 +1050,10 @@ test "core.clj - take" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 2), result.list.items.len);
-    try testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
-    try testing.expectEqual(Value{ .integer = 2 }, result.list.items[1]);
+    try testing.expect(result.tag() == .list);
+    try testing.expectEqual(@as(usize, 2), result.asList().items.len);
+    try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
+    try testing.expectEqual(Value.initInteger(2), result.asList().items[1]);
 }
 
 test "core.clj - drop" {
@@ -1060,11 +1067,11 @@ test "core.clj - drop" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(vec (drop 2 (list 1 2 3 4 5)))");
-    try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
-    try testing.expectEqual(Value{ .integer = 3 }, result.vector.items[0]);
-    try testing.expectEqual(Value{ .integer = 4 }, result.vector.items[1]);
-    try testing.expectEqual(Value{ .integer = 5 }, result.vector.items[2]);
+    try testing.expect(result.tag() == .vector);
+    try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
+    try testing.expectEqual(Value.initInteger(3), result.asVector().items[0]);
+    try testing.expectEqual(Value.initInteger(4), result.asVector().items[1]);
+    try testing.expectEqual(Value.initInteger(5), result.asVector().items[2]);
 }
 
 test "core.clj - comment" {
@@ -1078,7 +1085,7 @@ test "core.clj - comment" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(comment 1 2 3)");
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "core.clj - cond" {
@@ -1097,7 +1104,7 @@ test "core.clj - cond" {
         \\  true 1
         \\  true 2)
     );
-    try testing.expectEqual(Value{ .integer = 1 }, r1);
+    try testing.expectEqual(Value.initInteger(1), r1);
 
     // Second branch true
     const r2 = try evalString(alloc, &env,
@@ -1105,7 +1112,7 @@ test "core.clj - cond" {
         \\  false 1
         \\  true 2)
     );
-    try testing.expectEqual(Value{ .integer = 2 }, r2);
+    try testing.expectEqual(Value.initInteger(2), r2);
 
     // No branch matches -> nil
     const r3 = try evalString(alloc, &env,
@@ -1113,7 +1120,7 @@ test "core.clj - cond" {
         \\  false 1
         \\  false 2)
     );
-    try testing.expectEqual(Value.nil, r3);
+    try testing.expectEqual(Value.nil_val, r3);
 }
 
 test "core.clj - if-not" {
@@ -1127,10 +1134,10 @@ test "core.clj - if-not" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(if-not false 1 2)");
-    try testing.expectEqual(Value{ .integer = 1 }, r1);
+    try testing.expectEqual(Value.initInteger(1), r1);
 
     const r2 = try evalString(alloc, &env, "(if-not true 1 2)");
-    try testing.expectEqual(Value{ .integer = 2 }, r2);
+    try testing.expectEqual(Value.initInteger(2), r2);
 }
 
 test "core.clj - when-not" {
@@ -1144,10 +1151,10 @@ test "core.clj - when-not" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(when-not false 42)");
-    try testing.expectEqual(Value{ .integer = 42 }, r1);
+    try testing.expectEqual(Value.initInteger(42), r1);
 
     const r2 = try evalString(alloc, &env, "(when-not true 42)");
-    try testing.expectEqual(Value.nil, r2);
+    try testing.expectEqual(Value.nil_val, r2);
 }
 
 test "core.clj - and/or" {
@@ -1162,21 +1169,21 @@ test "core.clj - and/or" {
 
     // and
     const a1 = try evalString(alloc, &env, "(and true true)");
-    try testing.expectEqual(Value{ .boolean = true }, a1);
+    try testing.expectEqual(Value.true_val, a1);
     const a2 = try evalString(alloc, &env, "(and true false)");
-    try testing.expectEqual(Value{ .boolean = false }, a2);
+    try testing.expectEqual(Value.false_val, a2);
     const a3 = try evalString(alloc, &env, "(and nil 42)");
-    try testing.expectEqual(Value.nil, a3);
+    try testing.expectEqual(Value.nil_val, a3);
     const a4 = try evalString(alloc, &env, "(and 1 2 3)");
-    try testing.expectEqual(Value{ .integer = 3 }, a4);
+    try testing.expectEqual(Value.initInteger(3), a4);
 
     // or
     const o1 = try evalString(alloc, &env, "(or nil false 42)");
-    try testing.expectEqual(Value{ .integer = 42 }, o1);
+    try testing.expectEqual(Value.initInteger(42), o1);
     const o2 = try evalString(alloc, &env, "(or nil false)");
-    try testing.expectEqual(Value{ .boolean = false }, o2);
+    try testing.expectEqual(Value.false_val, o2);
     const o3 = try evalString(alloc, &env, "(or 1 2)");
-    try testing.expectEqual(Value{ .integer = 1 }, o3);
+    try testing.expectEqual(Value.initInteger(1), o3);
 }
 
 test "core.clj - identity/constantly/complement" {
@@ -1190,15 +1197,15 @@ test "core.clj - identity/constantly/complement" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(identity 42)");
-    try testing.expectEqual(Value{ .integer = 42 }, r1);
+    try testing.expectEqual(Value.initInteger(42), r1);
 
     const r2 = try evalString(alloc, &env, "((constantly 99) 1 2 3)");
-    try testing.expectEqual(Value{ .integer = 99 }, r2);
+    try testing.expectEqual(Value.initInteger(99), r2);
 
     const r3 = try evalString(alloc, &env, "((complement nil?) 42)");
-    try testing.expectEqual(Value{ .boolean = true }, r3);
+    try testing.expectEqual(Value.true_val, r3);
     const r4 = try evalString(alloc, &env, "((complement nil?) nil)");
-    try testing.expectEqual(Value{ .boolean = false }, r4);
+    try testing.expectEqual(Value.false_val, r4);
 }
 
 test "core.clj - thread-first" {
@@ -1216,7 +1223,7 @@ test "core.clj - thread-first" {
 
     // (-> 5 inc double) => (double (inc 5)) => 12
     const r1 = try evalString(alloc, &env, "(-> 5 inc double)");
-    try testing.expectEqual(Value{ .integer = 12 }, r1);
+    try testing.expectEqual(Value.initInteger(12), r1);
 }
 
 test "core.clj - thread-last" {
@@ -1235,9 +1242,9 @@ test "core.clj - thread-last" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const r1 = try builtin_collections.realizeValue(alloc, raw_r1);
-    try testing.expect(r1 == .list);
-    try testing.expectEqual(@as(usize, 3), r1.list.items.len);
-    try testing.expectEqual(Value{ .integer = 2 }, r1.list.items[0]);
+    try testing.expect(r1.tag() == .list);
+    try testing.expectEqual(@as(usize, 3), r1.asList().items.len);
+    try testing.expectEqual(Value.initInteger(2), r1.asList().items[0]);
 }
 
 test "core.clj - defn-" {
@@ -1252,7 +1259,7 @@ test "core.clj - defn-" {
 
     _ = try evalString(alloc, &env, "(defn- private-fn [x] (+ x 10))");
     const result = try evalString(alloc, &env, "(private-fn 5)");
-    try testing.expectEqual(Value{ .integer = 15 }, result);
+    try testing.expectEqual(Value.initInteger(15), result);
 }
 
 test "core.clj - dotimes" {
@@ -1267,7 +1274,7 @@ test "core.clj - dotimes" {
 
     // dotimes returns nil (side-effect macro)
     const result = try evalString(alloc, &env, "(dotimes [i 3] i)");
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // =========================================================================
@@ -1532,7 +1539,7 @@ test "SCI - defn-" {
 /// Test helper: evaluate expression via VM and check integer result.
 fn expectVMEvalInt(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: i64) !void {
     const result = try evalStringVM(alloc, env, source);
-    try testing.expectEqual(Value{ .integer = expected }, result);
+    try testing.expectEqual(Value.initInteger(expected), result);
 }
 
 test "evalStringVM - basic arithmetic" {
@@ -1658,7 +1665,7 @@ test "evalString - fn-level recur (TreeWalk)" {
 
     const result = try evalString(alloc, &env,
         "((fn [n] (if (> n 0) (recur (dec n)) n)) 3)");
-    try testing.expectEqual(Value{ .integer = 0 }, result);
+    try testing.expectEqual(Value.initInteger(0), result);
 }
 
 test "evalStringVM - higher-order fn (map via dispatcher)" {
@@ -2010,7 +2017,7 @@ test "defprotocol - basic definition" {
     // If not defined, this will error
     const greet_val = try evalString(alloc, &env, "greet");
     // It should be a protocol_fn value
-    try testing.expect(greet_val == .protocol_fn);
+    try testing.expect(greet_val.tag() == .protocol_fn);
 
     // extend-type and protocol dispatch
     _ = try evalString(alloc, &env,
@@ -2603,7 +2610,7 @@ test "lazy-seq - take from infinite sequence" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try std.testing.expect(result == .list or result == .vector);
+    try std.testing.expect(result.tag() == .list or result.tag() == .vector);
 }
 
 test "core.clj - mapv" {
@@ -2617,11 +2624,11 @@ test "core.clj - mapv" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(mapv inc [1 2 3])");
-    try std.testing.expect(result == .vector);
-    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result.vector.items[0]);
-    try std.testing.expectEqual(Value{ .integer = 3 }, result.vector.items[1]);
-    try std.testing.expectEqual(Value{ .integer = 4 }, result.vector.items[2]);
+    try std.testing.expect(result.tag() == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.asVector().items.len);
+    try std.testing.expectEqual(Value.initInteger(2), result.asVector().items[0]);
+    try std.testing.expectEqual(Value.initInteger(3), result.asVector().items[1]);
+    try std.testing.expectEqual(Value.initInteger(4), result.asVector().items[2]);
 }
 
 test "core.clj - reduce-kv" {
@@ -2638,7 +2645,7 @@ test "core.clj - reduce-kv" {
     const result = try evalString(alloc, &env,
         \\(reduce-kv (fn [acc k v] (+ acc v)) 0 {:a 1 :b 2 :c 3})
     );
-    try std.testing.expectEqual(Value{ .integer = 6 }, result);
+    try std.testing.expectEqual(Value.initInteger(6), result);
 }
 
 test "core.clj - reduce-kv builds new map" {
@@ -2655,9 +2662,9 @@ test "core.clj - reduce-kv builds new map" {
     const result = try evalString(alloc, &env,
         \\(reduce-kv (fn [acc k v] (assoc acc k (inc v))) {} {:a 1 :b 2})
     );
-    try std.testing.expect(result == .map);
+    try std.testing.expect(result.tag() == .map);
     // Check the map has 2 entries with incremented values
-    try std.testing.expectEqual(@as(usize, 2), result.map.count());
+    try std.testing.expectEqual(@as(usize, 2), result.asMap().count());
 }
 
 test "core.clj - filterv" {
@@ -2672,11 +2679,11 @@ test "core.clj - filterv" {
 
     _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
     const result = try evalString(alloc, &env, "(filterv even? [1 2 3 4 5 6])");
-    try std.testing.expect(result == .vector);
-    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result.vector.items[0]);
-    try std.testing.expectEqual(Value{ .integer = 4 }, result.vector.items[1]);
-    try std.testing.expectEqual(Value{ .integer = 6 }, result.vector.items[2]);
+    try std.testing.expect(result.tag() == .vector);
+    try std.testing.expectEqual(@as(usize, 3), result.asVector().items.len);
+    try std.testing.expectEqual(Value.initInteger(2), result.asVector().items[0]);
+    try std.testing.expectEqual(Value.initInteger(4), result.asVector().items[1]);
+    try std.testing.expectEqual(Value.initInteger(6), result.asVector().items[2]);
 }
 
 test "core.clj - partition-all" {
@@ -2694,16 +2701,16 @@ test "core.clj - partition-all" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
     // First chunk: (1 2 3)
-    const chunk1 = try builtin_collections.realizeValue(alloc, result.list.items[0]);
-    try std.testing.expect(chunk1 == .list);
-    try std.testing.expectEqual(@as(usize, 3), chunk1.list.items.len);
+    const chunk1 = try builtin_collections.realizeValue(alloc, result.asList().items[0]);
+    try std.testing.expect(chunk1.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 3), chunk1.asList().items.len);
     // Second chunk: (4 5) — incomplete
-    const chunk2 = try builtin_collections.realizeValue(alloc, result.list.items[1]);
-    try std.testing.expect(chunk2 == .list);
-    try std.testing.expectEqual(@as(usize, 2), chunk2.list.items.len);
+    const chunk2 = try builtin_collections.realizeValue(alloc, result.asList().items[1]);
+    try std.testing.expect(chunk2.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 2), chunk2.asList().items.len);
 }
 
 test "core.clj - take-while" {
@@ -2721,11 +2728,11 @@ test "core.clj - take-while" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try std.testing.expectEqual(Value{ .integer = 3 }, result.list.items[0]);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result.list.items[1]);
-    try std.testing.expectEqual(Value{ .integer = 1 }, result.list.items[2]);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.asList().items.len);
+    try std.testing.expectEqual(Value.initInteger(3), result.asList().items[0]);
+    try std.testing.expectEqual(Value.initInteger(2), result.asList().items[1]);
+    try std.testing.expectEqual(Value.initInteger(1), result.asList().items[2]);
 }
 
 test "core.clj - drop-while" {
@@ -2740,10 +2747,10 @@ test "core.clj - drop-while" {
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
     const result = try evalString(alloc, &env, "(drop-while pos? [3 2 1 0 -1])");
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
-    try std.testing.expectEqual(Value{ .integer = 0 }, result.list.items[0]);
-    try std.testing.expectEqual(Value{ .integer = -1 }, result.list.items[1]);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
+    try std.testing.expectEqual(Value.initInteger(0), result.asList().items[0]);
+    try std.testing.expectEqual(Value.initInteger(-1), result.asList().items[1]);
 }
 
 test "core.clj - last" {
@@ -2757,13 +2764,13 @@ test "core.clj - last" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(last [1 2 3 4 5])");
-    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+    try std.testing.expectEqual(Value.initInteger(5), result);
 
     const r2 = try evalString(alloc, &env, "(last [42])");
-    try std.testing.expectEqual(Value{ .integer = 42 }, r2);
+    try std.testing.expectEqual(Value.initInteger(42), r2);
 
     const r3 = try evalString(alloc, &env, "(last [])");
-    try std.testing.expectEqual(Value.nil, r3);
+    try std.testing.expectEqual(Value.nil_val, r3);
 }
 
 test "core.clj - butlast" {
@@ -2777,13 +2784,13 @@ test "core.clj - butlast" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(butlast [1 2 3 4])");
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try std.testing.expectEqual(Value{ .integer = 1 }, result.list.items[0]);
-    try std.testing.expectEqual(Value{ .integer = 3 }, result.list.items[2]);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.asList().items.len);
+    try std.testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
+    try std.testing.expectEqual(Value.initInteger(3), result.asList().items[2]);
 
     const r2 = try evalString(alloc, &env, "(butlast [1])");
-    try std.testing.expectEqual(Value.nil, r2);
+    try std.testing.expectEqual(Value.nil_val, r2);
 }
 
 test "core.clj - second" {
@@ -2797,7 +2804,7 @@ test "core.clj - second" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(second [10 20 30])");
-    try std.testing.expectEqual(Value{ .integer = 20 }, result);
+    try std.testing.expectEqual(Value.initInteger(20), result);
 }
 
 test "core.clj - fnext" {
@@ -2812,7 +2819,7 @@ test "core.clj - fnext" {
 
     // fnext = first of next = second
     const result = try evalString(alloc, &env, "(fnext [10 20 30])");
-    try std.testing.expectEqual(Value{ .integer = 20 }, result);
+    try std.testing.expectEqual(Value.initInteger(20), result);
 }
 
 test "core.clj - nfirst" {
@@ -2827,9 +2834,9 @@ test "core.clj - nfirst" {
 
     // nfirst = next of first; first of [[1 2] [3 4]] is [1 2], next of that is (2)
     const result = try evalString(alloc, &env, "(nfirst [[1 2] [3 4]])");
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 1), result.list.items.len);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result.list.items[0]);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 1), result.asList().items.len);
+    try std.testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
 }
 
 test "core.clj - not-empty" {
@@ -2844,12 +2851,12 @@ test "core.clj - not-empty" {
 
     // non-empty collection returns itself
     const r1 = try evalString(alloc, &env, "(not-empty [1 2 3])");
-    try std.testing.expect(r1 == .vector);
-    try std.testing.expectEqual(@as(usize, 3), r1.vector.items.len);
+    try std.testing.expect(r1.tag() == .vector);
+    try std.testing.expectEqual(@as(usize, 3), r1.asVector().items.len);
 
     // empty collection returns nil
     const r2 = try evalString(alloc, &env, "(not-empty [])");
-    try std.testing.expectEqual(Value.nil, r2);
+    try std.testing.expectEqual(Value.nil_val, r2);
 }
 
 test "core.clj - every-pred" {
@@ -2867,10 +2874,10 @@ test "core.clj - every-pred" {
 
     // every-pred combines two predicates
     const r1 = try evalString(alloc, &env, "((every-pred pos? even?) 4)");
-    try std.testing.expect(r1 != Value.nil);
+    try std.testing.expect(r1.tag() != .nil);
 
     const r2 = try evalString(alloc, &env, "((every-pred pos? even?) 3)");
-    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+    try std.testing.expect(r2.tag() == .boolean and r2.asBoolean() == false);
 }
 
 test "core.clj - some-fn" {
@@ -2888,11 +2895,11 @@ test "core.clj - some-fn" {
 
     // some-fn: at least one predicate returns truthy
     const r1 = try evalString(alloc, &env, "((some-fn pos? even?) -2)");
-    try std.testing.expect(r1 != Value.nil);
+    try std.testing.expect(r1.tag() != .nil);
 
     const r2 = try evalString(alloc, &env, "((some-fn pos? even?) -3)");
     // -3 is not positive and not even => falsy (false or nil depending on or impl)
-    try std.testing.expect(r2 == Value.nil or (r2 == .boolean and r2.boolean == false));
+    try std.testing.expect(r2.tag() == .nil or (r2.tag() == .boolean and r2.asBoolean() == false));
 }
 
 test "core.clj - fnil" {
@@ -2907,11 +2914,11 @@ test "core.clj - fnil" {
 
     // fnil replaces nil with default
     const result = try evalString(alloc, &env, "((fnil inc 0) nil)");
-    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+    try std.testing.expectEqual(Value.initInteger(1), result);
 
     // non-nil passes through
     const r2 = try evalString(alloc, &env, "((fnil inc 0) 5)");
-    try std.testing.expectEqual(Value{ .integer = 6 }, r2);
+    try std.testing.expectEqual(Value.initInteger(6), r2);
 }
 
 test "core.clj - doseq" {
@@ -2931,7 +2938,7 @@ test "core.clj - doseq" {
         \\    (swap! a + x))
         \\  (deref a))
     );
-    try std.testing.expectEqual(Value{ .integer = 6 }, result);
+    try std.testing.expectEqual(Value.initInteger(6), result);
 }
 
 test "core.clj - doall" {
@@ -2949,8 +2956,8 @@ test "core.clj - doall" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw_result);
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }
 
 test "core.clj - dorun" {
@@ -2965,7 +2972,7 @@ test "core.clj - dorun" {
 
     // dorun walks seq, returns nil
     const result = try evalString(alloc, &env, "(dorun (map inc [1 2 3]))");
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "core.clj - while" {
@@ -2985,7 +2992,7 @@ test "core.clj - while" {
         \\    (swap! a + 1))
         \\  (deref a))
     );
-    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+    try std.testing.expectEqual(Value.initInteger(5), result);
 }
 
 test "core.clj - case" {
@@ -2999,11 +3006,11 @@ test "core.clj - case" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(case 2 1 :a 2 :b 3 :c)");
-    try std.testing.expect(r1 == .keyword);
+    try std.testing.expect(r1.tag() == .keyword);
 
     // default case
     const r2 = try evalString(alloc, &env, "(case 99 1 :a 2 :b :default)");
-    try std.testing.expect(r2 == .keyword);
+    try std.testing.expect(r2.tag() == .keyword);
 }
 
 test "core.clj - condp" {
@@ -3022,7 +3029,7 @@ test "core.clj - condp" {
         \\  2 :b
         \\  3 :c)
     );
-    try std.testing.expect(result == .keyword);
+    try std.testing.expect(result.tag() == .keyword);
 }
 
 test "core.clj - declare" {
@@ -3038,12 +3045,12 @@ test "core.clj - declare" {
     _ = try evalString(alloc, &env, "(declare my-forward-fn)");
     // Should be nil (declared but not defined)
     const result = try evalString(alloc, &env, "my-forward-fn");
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 
     // Now define it
     _ = try evalString(alloc, &env, "(defn my-forward-fn [x] (+ x 1))");
     const r2 = try evalString(alloc, &env, "(my-forward-fn 5)");
-    try std.testing.expectEqual(Value{ .integer = 6 }, r2);
+    try std.testing.expectEqual(Value.initInteger(6), r2);
 }
 
 test "core.clj - delay and force" {
@@ -3061,7 +3068,7 @@ test "core.clj - delay and force" {
         \\(let [d (delay (+ 1 2))]
         \\  (force d))
     );
-    try std.testing.expectEqual(Value{ .integer = 3 }, result);
+    try std.testing.expectEqual(Value.initInteger(3), result);
 }
 
 test "core.clj - delay memoizes" {
@@ -3083,7 +3090,7 @@ test "core.clj - delay memoizes" {
         \\  (deref counter))
     );
     // Counter should be 1 (thunk evaluated only once)
-    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+    try std.testing.expectEqual(Value.initInteger(1), result);
 }
 
 test "core.clj - realized?" {
@@ -3104,10 +3111,10 @@ test "core.clj - realized?" {
         \\      (list before after))))
     );
     // before=false, after=true
-    try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
-    try std.testing.expect(result.list.items[0] == .boolean and result.list.items[0].boolean == false);
-    try std.testing.expect(result.list.items[1] == .boolean and result.list.items[1].boolean == true);
+    try std.testing.expect(result.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
+    try std.testing.expect(result.asList().items[0].tag() == .boolean and result.asList().items[0].asBoolean() == false);
+    try std.testing.expect(result.asList().items[1].tag() == .boolean and result.asList().items[1].asBoolean() == true);
 }
 
 test "core.clj - boolean" {
@@ -3121,13 +3128,13 @@ test "core.clj - boolean" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(boolean 42)");
-    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+    try std.testing.expect(r1.tag() == .boolean and r1.asBoolean() == true);
 
     const r2 = try evalString(alloc, &env, "(boolean nil)");
-    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+    try std.testing.expect(r2.tag() == .boolean and r2.asBoolean() == false);
 
     const r3 = try evalString(alloc, &env, "(boolean false)");
-    try std.testing.expect(r3 == .boolean and r3.boolean == false);
+    try std.testing.expect(r3.tag() == .boolean and r3.asBoolean() == false);
 }
 
 test "core.clj - true? false? some? any?" {
@@ -3141,25 +3148,25 @@ test "core.clj - true? false? some? any?" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(true? true)");
-    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+    try std.testing.expect(r1.tag() == .boolean and r1.asBoolean() == true);
 
     const r2 = try evalString(alloc, &env, "(true? 1)");
-    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+    try std.testing.expect(r2.tag() == .boolean and r2.asBoolean() == false);
 
     const r3 = try evalString(alloc, &env, "(false? false)");
-    try std.testing.expect(r3 == .boolean and r3.boolean == true);
+    try std.testing.expect(r3.tag() == .boolean and r3.asBoolean() == true);
 
     const r4 = try evalString(alloc, &env, "(false? nil)");
-    try std.testing.expect(r4 == .boolean and r4.boolean == false);
+    try std.testing.expect(r4.tag() == .boolean and r4.asBoolean() == false);
 
     const r5 = try evalString(alloc, &env, "(some? 42)");
-    try std.testing.expect(r5 == .boolean and r5.boolean == true);
+    try std.testing.expect(r5.tag() == .boolean and r5.asBoolean() == true);
 
     const r6 = try evalString(alloc, &env, "(some? nil)");
-    try std.testing.expect(r6 == .boolean and r6.boolean == false);
+    try std.testing.expect(r6.tag() == .boolean and r6.asBoolean() == false);
 
     const r7 = try evalString(alloc, &env, "(any? nil)");
-    try std.testing.expect(r7 == .boolean and r7.boolean == true);
+    try std.testing.expect(r7.tag() == .boolean and r7.asBoolean() == true);
 }
 
 test "core.clj - type" {
@@ -3174,24 +3181,24 @@ test "core.clj - type" {
 
     // type returns keyword for value type
     const r1 = try evalString(alloc, &env, "(type 42)");
-    try std.testing.expect(r1 == .keyword);
-    try std.testing.expectEqualStrings("integer", r1.keyword.name);
+    try std.testing.expect(r1.tag() == .keyword);
+    try std.testing.expectEqualStrings("integer", r1.asKeyword().name);
 
     const r2 = try evalString(alloc, &env, "(type \"hello\")");
-    try std.testing.expect(r2 == .keyword);
-    try std.testing.expectEqualStrings("string", r2.keyword.name);
+    try std.testing.expect(r2.tag() == .keyword);
+    try std.testing.expectEqualStrings("string", r2.asKeyword().name);
 
     const r3 = try evalString(alloc, &env, "(type :foo)");
-    try std.testing.expect(r3 == .keyword);
-    try std.testing.expectEqualStrings("keyword", r3.keyword.name);
+    try std.testing.expect(r3.tag() == .keyword);
+    try std.testing.expectEqualStrings("keyword", r3.asKeyword().name);
 
     const r4 = try evalString(alloc, &env, "(type [1 2])");
-    try std.testing.expect(r4 == .keyword);
-    try std.testing.expectEqualStrings("vector", r4.keyword.name);
+    try std.testing.expect(r4.tag() == .keyword);
+    try std.testing.expectEqualStrings("vector", r4.asKeyword().name);
 
     const r5 = try evalString(alloc, &env, "(type nil)");
-    try std.testing.expect(r5 == .keyword);
-    try std.testing.expectEqualStrings("nil", r5.keyword.name);
+    try std.testing.expect(r5.tag() == .keyword);
+    try std.testing.expectEqualStrings("nil", r5.asKeyword().name);
 }
 
 test "core.clj - instance?" {
@@ -3205,10 +3212,10 @@ test "core.clj - instance?" {
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(instance? :integer 42)");
-    try std.testing.expect(r1 == .boolean and r1.boolean == true);
+    try std.testing.expect(r1.tag() == .boolean and r1.asBoolean() == true);
 
     const r2 = try evalString(alloc, &env, "(instance? :string 42)");
-    try std.testing.expect(r2 == .boolean and r2.boolean == false);
+    try std.testing.expect(r2.tag() == .boolean and r2.asBoolean() == false);
 }
 
 test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
@@ -3229,7 +3236,7 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
 
     // map with fn callback — wrap in vec to force realization within VM context
     const r1 = try evalStringVM(alloc, &env, "(vec (map (fn [x] (* x x)) [1 2 3]))");
-    try testing.expect(r1 == .vector);
+    try testing.expect(r1.tag() == .vector);
     var buf: [256]u8 = undefined;
     var w: std.Io.Writer = .fixed(&buf);
     try r1.formatPrStr(&w);
@@ -3237,7 +3244,7 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
 
     // filter with fn callback — wrap in vec to force realization within VM context
     const r2 = try evalStringVM(alloc, &env, "(vec (filter (fn [x] (> x 2)) [1 2 3 4 5]))");
-    try testing.expect(r2 == .vector);
+    try testing.expect(r2.tag() == .vector);
     var buf2: [256]u8 = undefined;
     var w2: std.Io.Writer = .fixed(&buf2);
     try r2.formatPrStr(&w2);
@@ -3245,7 +3252,7 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
 
     // reduce with fn callback
     const r3 = try evalStringVM(alloc, &env, "(reduce (fn [acc x] (+ acc x)) 0 [1 2 3 4 5])");
-    try testing.expectEqual(Value{ .integer = 15 }, r3);
+    try testing.expectEqual(Value.initInteger(15), r3);
 }
 
 // === eval / read-string / macroexpand integration tests ===
@@ -3274,8 +3281,8 @@ test "read-string returns vector" {
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(read-string \"[1 2 3]\")");
-    try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expect(result.tag() == .vector);
+    try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
 }
 
 test "eval builtin - (eval '(+ 1 2))" {
@@ -3347,10 +3354,10 @@ test "macroexpand-1 expands when macro" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw);
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     // First element should be 'if' symbol
-    try testing.expect(result.list.items[0] == .symbol);
-    try testing.expectEqualStrings("if", result.list.items[0].symbol.name);
+    try testing.expect(result.asList().items[0].tag() == .symbol);
+    try testing.expectEqualStrings("if", result.asList().items[0].asSymbol().name);
 }
 
 test "macroexpand fully expands nested macros" {
@@ -3368,7 +3375,7 @@ test "macroexpand fully expands nested macros" {
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
     const result = try builtin_collections.realizeValue(alloc, raw);
-    try testing.expect(result == .list);
-    try testing.expect(result.list.items[0] == .symbol);
-    try testing.expectEqualStrings("if", result.list.items[0].symbol.name);
+    try testing.expect(result.tag() == .list);
+    try testing.expect(result.asList().items[0].tag() == .symbol);
+    try testing.expectEqualStrings("if", result.asList().items[0].asSymbol().name);
 }

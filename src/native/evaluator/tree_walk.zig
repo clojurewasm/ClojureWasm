@@ -161,11 +161,11 @@ pub const TreeWalk = struct {
                 } else if (if_n.else_node) |else_n| {
                     return self.run(else_n);
                 } else {
-                    return .nil;
+                    return Value.nil_val;
                 }
             },
             .do_node => |do_n| {
-                if (do_n.statements.len == 0) return .nil;
+                if (do_n.statements.len == 0) return Value.nil_val;
                 for (do_n.statements[0 .. do_n.statements.len - 1]) |stmt| {
                     _ = try self.run(stmt);
                 }
@@ -234,8 +234,9 @@ pub const TreeWalk = struct {
     /// Call a function Value with pre-evaluated arguments.
     /// Used for macro expansion: Analyzer calls macro fn_val with Value args.
     pub fn callValue(self: *TreeWalk, callee: Value, args: []const Value) TreeWalkError!Value {
-        return switch (callee) {
-            .builtin_fn => |f| {
+        return switch (callee.tag()) {
+            .builtin_fn => {
+                const f = callee.asBuiltinFn();
                 const result = f(self.allocator, args) catch |e| {
                     if (e == error.UserException and self.exception == null) {
                         self.exception = bootstrap.last_thrown_exception;
@@ -245,7 +246,8 @@ pub const TreeWalk = struct {
                 };
                 return result;
             },
-            .fn_val => |fn_ptr| {
+            .fn_val => {
+                const fn_ptr = callee.asFn();
                 if (fn_ptr.kind == .bytecode) {
                     const result = bootstrap.callFnVal(self.allocator, callee, args) catch |e| {
                         // Preserve exception value from VM → TreeWalk boundary
@@ -260,73 +262,81 @@ pub const TreeWalk = struct {
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, callee, args);
             },
-            .keyword => |kw| {
+            .keyword => {
+                const kw = callee.asKeyword();
                 // Keyword-as-function: (:key map) => (get map :key)
                 if (args.len < 1 or args.len > 2) return error.ArityError;
-                if (args[0] == .wasm_module and args.len == 1) {
+                if (args[0].tag() == .wasm_module and args.len == 1) {
                     // Keyword lookup on wasm_module: (:add mod) => cached WasmFn
-                    const wm = args[0].wasm_module;
+                    const wm = args[0].asWasmModule();
                     return if (wm.getExportFn(kw.name)) |wf|
-                        Value{ .wasm_fn = wf }
+                        Value.initWasmFn(wf)
                     else
-                        Value.nil;
+                        Value.nil_val;
                 }
-                if (args[0] == .map) {
-                    return args[0].map.get(callee) orelse
-                        if (args.len == 2) args[1] else .nil;
+                if (args[0].tag() == .map) {
+                    return args[0].asMap().get(callee) orelse
+                        if (args.len == 2) args[1] else Value.nil_val;
                 }
-                if (args[0] == .hash_map) {
-                    return args[0].hash_map.get(callee) orelse
-                        if (args.len == 2) args[1] else .nil;
+                if (args[0].tag() == .hash_map) {
+                    return args[0].asHashMap().get(callee) orelse
+                        if (args.len == 2) args[1] else Value.nil_val;
                 }
-                return if (args.len == 2) args[1] else .nil;
+                return if (args.len == 2) args[1] else Value.nil_val;
             },
-            .vector => |vec| {
+            .vector => {
+                const vec = callee.asVector();
                 // Vector-as-function: ([10 20 30] 1) => 20
                 if (args.len < 1 or args.len > 2) return error.ArityError;
-                if (args[0] != .integer) return error.TypeError;
-                const idx = args[0].integer;
+                if (args[0].tag() != .integer) return error.TypeError;
+                const idx = args[0].asInteger();
                 if (idx < 0 or idx >= @as(i64, @intCast(vec.items.len))) {
                     if (args.len == 2) return args[1];
                     return error.IndexError;
                 }
                 return vec.items[@intCast(idx)];
             },
-            .set => |set| {
+            .set => {
+                const set = callee.asSet();
                 // Set-as-function: (#{:a :b} :a) => :a, (#{:a :b} :c) => nil
                 if (args.len < 1 or args.len > 2) return error.ArityError;
-                return set.get(args[0]) orelse if (args.len == 2) args[1] else .nil;
+                return set.get(args[0]) orelse if (args.len == 2) args[1] else Value.nil_val;
             },
-            .map => |m| {
+            .map => {
+                const m = callee.asMap();
                 // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
                 if (args.len < 1 or args.len > 2) return error.ArityError;
                 return m.get(args[0]) orelse
-                    if (args.len == 2) args[1] else .nil;
+                    if (args.len == 2) args[1] else Value.nil_val;
             },
-            .hash_map => |hm| {
+            .hash_map => {
+                const hm = callee.asHashMap();
                 // Hash-map-as-function
                 if (args.len < 1 or args.len > 2) return error.ArityError;
                 return hm.get(args[0]) orelse
-                    if (args.len == 2) args[1] else .nil;
+                    if (args.len == 2) args[1] else Value.nil_val;
             },
-            .wasm_module => |wm| {
+            .wasm_module => {
+                const wm = callee.asWasmModule();
                 // Module-as-function: (mod :add) => cached WasmFn
                 if (args.len != 1) return error.ArityError;
-                const name = switch (args[0]) {
-                    .keyword => |kw| kw.name,
-                    .string => |s| s,
+                const name = switch (args[0].tag()) {
+                    .keyword => args[0].asKeyword().name,
+                    .string => args[0].asString(),
                     else => return error.TypeError,
                 };
                 return if (wm.getExportFn(name)) |wf|
-                    Value{ .wasm_fn = wf }
+                    Value.initWasmFn(wf)
                 else
-                    Value.nil;
+                    Value.nil_val;
             },
-            .var_ref => |v| {
+            .var_ref => {
+                const v = callee.asVarRef();
                 // Var-as-IFn: (#'f x) => (f x)
                 return self.callValue(v.deref(), args);
             },
-            .wasm_fn => |wf| {
+            .wasm_fn => {
+                const wf = callee.asWasmFn();
                 return wf.call(self.allocator, args) catch |e| {
                     return @errorCast(e);
                 };
@@ -339,24 +349,24 @@ pub const TreeWalk = struct {
         const callee = try self.run(call_n.callee);
 
         // Builtin function dispatch (runtime_fn via BuiltinFn pointer)
-        if (callee == .builtin_fn) {
-            return self.callBuiltinFn(callee.builtin_fn, call_n.args);
+        if (callee.tag() == .builtin_fn) {
+            return self.callBuiltinFn(callee.asBuiltinFn(), call_n.args);
         }
 
         // Protocol function dispatch
-        if (callee == .protocol_fn) {
-            return self.callProtocolFn(callee.protocol_fn, call_n.args);
+        if (callee.tag() == .protocol_fn) {
+            return self.callProtocolFn(callee.asProtocolFn(), call_n.args);
         }
 
         // Multimethod dispatch
-        if (callee == .multi_fn) {
-            return self.callMultiFn(callee.multi_fn, call_n.args);
+        if (callee.tag() == .multi_fn) {
+            return self.callMultiFn(callee.asMultiFn(), call_n.args);
         }
 
         // Keyword-as-function: (:key map) => (get map :key)
-        if (callee == .keyword) {
+        if (callee.tag() == .keyword) {
             if (call_n.args.len < 1 or call_n.args.len > 2) {
-                const kw = callee.keyword;
+                const kw = callee.asKeyword();
                 if (call_n.args.len > 20) {
                     if (kw.ns) |ns| {
                         err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args (> 20) passed to: :{s}/{s}", .{ ns, kw.name });
@@ -371,78 +381,78 @@ pub const TreeWalk = struct {
                 return error.ArityError;
             }
             const target = try self.run(call_n.args[0]);
-            if (target == .wasm_module and call_n.args.len == 1) {
-                const wm = target.wasm_module;
-                return if (wm.getExportFn(callee.keyword.name)) |wf|
-                    Value{ .wasm_fn = wf }
+            if (target.tag() == .wasm_module and call_n.args.len == 1) {
+                const wm = target.asWasmModule();
+                return if (wm.getExportFn(callee.asKeyword().name)) |wf|
+                    Value.initWasmFn(wf)
                 else
-                    Value.nil;
+                    Value.nil_val;
             }
-            if (target == .map) {
-                return target.map.get(callee) orelse
-                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            if (target.tag() == .map) {
+                return target.asMap().get(callee) orelse
+                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
             }
-            if (target == .hash_map) {
-                return target.hash_map.get(callee) orelse
-                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            if (target.tag() == .hash_map) {
+                return target.asHashMap().get(callee) orelse
+                    if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
             }
-            return if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            return if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
         }
 
         // Vector-as-function: ([10 20 30] 1) => 20
-        if (callee == .vector) {
+        if (callee.tag() == .vector) {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const idx_val = try self.run(call_n.args[0]);
-            if (idx_val != .integer) return error.TypeError;
-            const idx = idx_val.integer;
-            if (idx < 0 or idx >= @as(i64, @intCast(callee.vector.items.len))) {
+            if (idx_val.tag() != .integer) return error.TypeError;
+            const idx = idx_val.asInteger();
+            if (idx < 0 or idx >= @as(i64, @intCast(callee.asVector().items.len))) {
                 if (call_n.args.len == 2) return try self.run(call_n.args[1]);
                 return error.IndexError;
             }
-            return callee.vector.items[@intCast(idx)];
+            return callee.asVector().items[@intCast(idx)];
         }
 
         // Set-as-function: (#{:a :b} :a) => :a
-        if (callee == .set) {
+        if (callee.tag() == .set) {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
-            return callee.set.get(target) orelse if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            return callee.asSet().get(target) orelse if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
         }
 
         // Map-as-function: ({:a 1} :b) => (get {:a 1} :b)
-        if (callee == .map) {
+        if (callee.tag() == .map) {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
-            return callee.map.get(target) orelse
-                if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            return callee.asMap().get(target) orelse
+                if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
         }
 
         // Hash-map-as-function
-        if (callee == .hash_map) {
+        if (callee.tag() == .hash_map) {
             if (call_n.args.len < 1 or call_n.args.len > 2) return error.ArityError;
             const target = try self.run(call_n.args[0]);
-            return callee.hash_map.get(target) orelse
-                if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+            return callee.asHashMap().get(target) orelse
+                if (call_n.args.len == 2) try self.run(call_n.args[1]) else Value.nil_val;
         }
 
         // Wasm module-as-function: (mod :add) => cached WasmFn
-        if (callee == .wasm_module) {
+        if (callee.tag() == .wasm_module) {
             if (call_n.args.len != 1) return error.ArityError;
             const key = try self.run(call_n.args[0]);
-            const name = switch (key) {
-                .keyword => |kw| kw.name,
-                .string => |s| s,
+            const name = switch (key.tag()) {
+                .keyword => key.asKeyword().name,
+                .string => key.asString(),
                 else => return error.TypeError,
             };
-            return if (callee.wasm_module.getExportFn(name)) |wf|
-                Value{ .wasm_fn = wf }
+            return if (callee.asWasmModule().getExportFn(name)) |wf|
+                Value.initWasmFn(wf)
             else
-                Value.nil;
+                Value.nil_val;
         }
 
         // Var-as-IFn: (#'f args) => deref var, then dispatch
-        if (callee == .var_ref) {
-            const derefed = callee.var_ref.deref();
+        if (callee.tag() == .var_ref) {
+            const derefed = callee.asVarRef().deref();
             var vr_buf: [MAX_STACK_ARGS]Value = undefined;
             const vr_heap: ?[]Value = if (call_n.args.len > MAX_STACK_ARGS)
                 (self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory)
@@ -457,8 +467,8 @@ pub const TreeWalk = struct {
         }
 
         // Wasm function call
-        if (callee == .wasm_fn) {
-            const wf = callee.wasm_fn;
+        if (callee.tag() == .wasm_fn) {
+            const wf = callee.asWasmFn();
             var wf_buf: [MAX_STACK_ARGS]Value = undefined;
             const wf_heap: ?[]Value = if (call_n.args.len > MAX_STACK_ARGS)
                 (self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory)
@@ -475,8 +485,8 @@ pub const TreeWalk = struct {
         }
 
         // Closure call
-        if (callee != .fn_val) return error.TypeError;
-        const fn_ptr = callee.fn_val;
+        if (callee.tag() != .fn_val) return error.TypeError;
+        const fn_ptr = callee.asFn();
 
         // Evaluate args (stack buffer for small arg counts, heap fallback)
         const arg_count = call_n.args.len;
@@ -520,8 +530,8 @@ pub const TreeWalk = struct {
         // function was defined, not the caller's namespace.
         const saved_ns = if (self.env) |env| env.current_ns else null;
         if (self.env) |env| {
-            if (callee_fn_val == .fn_val) {
-                if (callee_fn_val.fn_val.defining_ns) |def_ns_name| {
+            if (callee_fn_val.tag() == .fn_val) {
+                if (callee_fn_val.asFn().defining_ns) |def_ns_name| {
                     if (env.findNamespace(def_ns_name)) |def_ns| {
                         env.current_ns = def_ns;
                     }
@@ -586,14 +596,14 @@ pub const TreeWalk = struct {
             // Collect remaining args into a PersistentList
             const rest_args = args[fixed_count..];
             const rest_val: Value = if (rest_args.len == 0)
-                .nil
+                Value.nil_val
             else blk: {
                 const collections = @import("../../common/collections.zig");
                 const items = self.allocator.alloc(Value, rest_args.len) catch return error.OutOfMemory;
                 @memcpy(items, rest_args);
                 const lst = self.allocator.create(collections.PersistentList) catch return error.OutOfMemory;
                 lst.* = .{ .items = items };
-                break :blk Value{ .list = lst };
+                break :blk Value.initList(lst);
             };
             if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
             self.locals[self.local_count] = rest_val;
@@ -687,7 +697,7 @@ pub const TreeWalk = struct {
         };
         self.allocated_fns.append(self.allocator, fn_obj) catch return error.OutOfMemory;
 
-        return Value{ .fn_val = fn_obj };
+        return Value.initFn(fn_obj);
     }
 
     // --- Def ---
@@ -707,7 +717,7 @@ pub const TreeWalk = struct {
         if (def_n.is_dynamic) v.dynamic = true;
         if (def_n.is_private) v.private = true;
 
-        return Value{ .symbol = .{ .ns = ns.name, .name = v.sym.name } };
+        return Value.initSymbol(.{ .ns = ns.name, .name = v.sym.name });
     }
 
     fn runSetBang(self: *TreeWalk, set_n: *const node_mod.SetNode) TreeWalkError!Value {
@@ -746,10 +756,10 @@ pub const TreeWalk = struct {
 
         // Cache miss: full lookup
         const protocol = pf.protocol;
-        const method_map_val = protocol.impls.get(.{ .string = type_key }) orelse return error.TypeError;
-        if (method_map_val != .map) return error.TypeError;
-        const method_map = method_map_val.map;
-        const fn_val = method_map.get(.{ .string = pf.method_name }) orelse return error.TypeError;
+        const method_map_val = protocol.impls.get(Value.initString(type_key)) orelse return error.TypeError;
+        if (method_map_val.tag() != .map) return error.TypeError;
+        const method_map = method_map_val.asMap();
+        const fn_val = method_map.get(Value.initString(pf.method_name)) orelse return error.TypeError;
 
         // Update cache
         mutable_pf.cached_type_key = type_key;
@@ -782,7 +792,7 @@ pub const TreeWalk = struct {
 
         // Bind protocol name
         const proto_var = ns.intern(dp_n.name) catch return error.OutOfMemory;
-        proto_var.bindRoot(.{ .protocol = protocol });
+        proto_var.bindRoot(Value.initProtocol(protocol));
 
         // Bind each method as a ProtocolFn var
         for (dp_n.method_sigs) |sig| {
@@ -792,10 +802,10 @@ pub const TreeWalk = struct {
                 .method_name = sig.name,
             };
             const method_var = ns.intern(sig.name) catch return error.OutOfMemory;
-            method_var.bindRoot(.{ .protocol_fn = pf });
+            method_var.bindRoot(Value.initProtocolFn(pf));
         }
 
-        return Value{ .protocol = protocol };
+        return Value.initProtocol(protocol);
     }
 
     fn runExtendType(self: *TreeWalk, et_n: *const node_mod.ExtendTypeNode) TreeWalkError!Value {
@@ -805,8 +815,8 @@ pub const TreeWalk = struct {
         // Resolve protocol
         const proto_var = ns.resolve(et_n.protocol_name) orelse return error.UndefinedVar;
         const proto_val = proto_var.deref();
-        if (proto_val != .protocol) return error.TypeError;
-        const protocol = proto_val.protocol;
+        if (proto_val.tag() != .protocol) return error.TypeError;
+        const protocol = proto_val.asProtocol();
 
         // Map type name to type key
         const type_key = mapTypeKey(et_n.type_name);
@@ -815,7 +825,7 @@ pub const TreeWalk = struct {
         const method_count = et_n.methods.len;
         const entries = self.allocator.alloc(Value, method_count * 2) catch return error.OutOfMemory;
         for (et_n.methods, 0..) |method, i| {
-            entries[i * 2] = .{ .string = method.name };
+            entries[i * 2] = Value.initString(method.name);
             entries[i * 2 + 1] = try self.makeClosure(method.fn_node);
         }
         const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
@@ -825,13 +835,13 @@ pub const TreeWalk = struct {
         const old_impls = protocol.impls;
         const new_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
         @memcpy(new_entries[0..old_impls.entries.len], old_impls.entries);
-        new_entries[old_impls.entries.len] = .{ .string = type_key };
-        new_entries[old_impls.entries.len + 1] = .{ .map = method_map };
+        new_entries[old_impls.entries.len] = Value.initString(type_key);
+        new_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
         const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
         new_impls.* = .{ .entries = new_entries };
         protocol.impls = new_impls;
 
-        return .nil;
+        return Value.nil_val;
     }
 
     /// Map user-facing type name to internal type key.
@@ -856,7 +866,7 @@ pub const TreeWalk = struct {
 
     /// Get type key string for a runtime value.
     pub fn valueTypeKey(val: Value) []const u8 {
-        return switch (val) {
+        return switch (val.tag()) {
             .nil => "nil",
             .boolean => "boolean",
             .integer => "integer",
@@ -905,8 +915,8 @@ pub const TreeWalk = struct {
         var hierarchy_var: ?*value_mod.Var = null;
         if (dm_n.hierarchy_node) |h_node| {
             const h_val = try self.run(h_node);
-            if (h_val == .var_ref) {
-                hierarchy_var = h_val.var_ref;
+            if (h_val.tag() == .var_ref) {
+                hierarchy_var = h_val.asVarRef();
             }
         }
 
@@ -923,9 +933,9 @@ pub const TreeWalk = struct {
 
         // Bind to var
         const v = ns.intern(dm_n.name) catch return error.OutOfMemory;
-        v.bindRoot(.{ .multi_fn = mf });
+        v.bindRoot(Value.initMultiFn(mf));
 
-        return Value{ .multi_fn = mf };
+        return Value.initMultiFn(mf);
     }
 
     fn runDefmethod(self: *TreeWalk, dm_n: *const node_mod.DefMethodNode) TreeWalkError!Value {
@@ -935,8 +945,8 @@ pub const TreeWalk = struct {
         // Resolve the multimethod
         const mf_var = ns.resolve(dm_n.multi_name) orelse return error.UndefinedVar;
         const mf_val = mf_var.deref();
-        if (mf_val != .multi_fn) return error.TypeError;
-        const mf = mf_val.multi_fn;
+        if (mf_val.tag() != .multi_fn) return error.TypeError;
+        const mf = mf_val.asMultiFn();
 
         // Evaluate dispatch value
         const dispatch_val = try self.run(dm_n.dispatch_val);
@@ -981,11 +991,11 @@ pub const TreeWalk = struct {
         }
 
         // Get dispatch value (fast path for keyword dispatch fn)
-        const dispatch_val = if (mf.dispatch_fn == .keyword) blk: {
-            if (arg_nodes.len >= 1 and args[0] == .map) {
-                break :blk args[0].map.get(mf.dispatch_fn) orelse Value.nil;
+        const dispatch_val = if (mf.dispatch_fn.tag() == .keyword) blk: {
+            if (arg_nodes.len >= 1 and args[0].tag() == .map) {
+                break :blk args[0].asMap().get(mf.dispatch_fn) orelse Value.nil_val;
             }
-            break :blk Value.nil;
+            break :blk Value.nil_val;
         } else try self.callValue(mf.dispatch_fn, args);
 
         // Level 2: Dispatch-val cache — skip findBestMethod
@@ -1027,7 +1037,7 @@ pub const TreeWalk = struct {
             .thunk = thunk,
             .realized = null,
         };
-        return Value{ .lazy_seq = ls };
+        return Value.initLazySeq(ls);
     }
 
     // --- Loop / Recur ---
@@ -1072,7 +1082,7 @@ pub const TreeWalk = struct {
         }
         self.recur_arg_count = recur_n.args.len;
         self.recur_pending = true;
-        return .nil; // value is ignored; loop checks recur_pending
+        return Value.nil_val; // value is ignored; loop checks recur_pending
     }
 
     // --- Throw / Try ---
@@ -1088,7 +1098,7 @@ pub const TreeWalk = struct {
             if (isUserError(e)) {
                 if (try_n.catch_clause) |catch_c| {
                     const ex_val = if (e == error.UserException)
-                        (self.exception orelse .nil)
+                        (self.exception orelse Value.nil_val)
                     else
                         self.createRuntimeException(e);
                     self.exception = null;
@@ -1150,21 +1160,21 @@ pub const TreeWalk = struct {
         };
 
         // Build {:__ex_info true :message msg :data {} :cause nil}
-        const entries = self.allocator.alloc(Value, 8) catch return .nil;
-        const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return .nil;
+        const entries = self.allocator.alloc(Value, 8) catch return Value.nil_val;
+        const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
         empty_map.* = .{ .entries = &.{} };
-        entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
-        entries[1] = .{ .boolean = true };
-        entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
-        entries[3] = .{ .string = msg };
-        entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
-        entries[5] = .{ .map = empty_map };
-        entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
-        entries[7] = .nil;
+        entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+        entries[1] = Value.true_val;
+        entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
+        entries[3] = Value.initString(msg);
+        entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+        entries[5] = Value.initMap(empty_map);
+        entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+        entries[7] = Value.nil_val;
 
-        const map = self.allocator.create(value_mod.PersistentArrayMap) catch return .nil;
+        const map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
         map.* = .{ .entries = entries };
-        return .{ .map = map };
+        return Value.initMap(map);
     }
 
     // --- Builtin function dispatch (runtime_fn) ---
@@ -1204,30 +1214,30 @@ pub const TreeWalk = struct {
 
 test "TreeWalk constant nil" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = .nil } };
+    const n = Node{ .constant = .{ .value = Value.nil_val } };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "TreeWalk constant integer" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    const n = Node{ .constant = .{ .value = Value.initInteger(42) } };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "TreeWalk constant boolean" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = .{ .boolean = true } } };
+    const n = Node{ .constant = .{ .value = Value.true_val } };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .boolean = true }, result);
+    try std.testing.expectEqual(Value.true_val, result);
 }
 
 test "TreeWalk if true branch" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .{ .value = .{ .boolean = true } } };
-    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var test_n = Node{ .constant = .{ .value = Value.true_val } };
+    var then_n = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var else_n = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -1236,14 +1246,14 @@ test "TreeWalk if true branch" {
     };
     const n = Node{ .if_node = &if_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+    try std.testing.expectEqual(Value.initInteger(1), result);
 }
 
 test "TreeWalk if false branch" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .{ .value = .{ .boolean = false } } };
-    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var else_n = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var test_n = Node{ .constant = .{ .value = Value.false_val } };
+    var then_n = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var else_n = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -1252,13 +1262,13 @@ test "TreeWalk if false branch" {
     };
     const n = Node{ .if_node = &if_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result);
+    try std.testing.expectEqual(Value.initInteger(2), result);
 }
 
 test "TreeWalk if nil is falsy" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var test_n = Node{ .constant = .{ .value = .nil } };
-    var then_n = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var test_n = Node{ .constant = .{ .value = Value.nil_val } };
+    var then_n = Node{ .constant = .{ .value = Value.initInteger(1) } };
     var if_data = node_mod.IfNode{
         .test_node = &test_n,
         .then_node = &then_n,
@@ -1267,13 +1277,13 @@ test "TreeWalk if nil is falsy" {
     };
     const n = Node{ .if_node = &if_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "TreeWalk do node" {
     var tw = TreeWalk.init(std.testing.allocator);
-    var stmt1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var stmt2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var stmt1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var stmt2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var stmts = [_]*Node{ &stmt1, &stmt2 };
     var do_data = node_mod.DoNode{
         .statements = &stmts,
@@ -1281,7 +1291,7 @@ test "TreeWalk do node" {
     };
     const n = Node{ .do_node = &do_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result);
+    try std.testing.expectEqual(Value.initInteger(2), result);
 }
 
 test "TreeWalk do empty" {
@@ -1293,13 +1303,13 @@ test "TreeWalk do empty" {
     };
     const n = Node{ .do_node = &do_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "TreeWalk let node" {
     // (let [x 10] x) => 10
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_val = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var init_val = Node{ .constant = .{ .value = Value.initInteger(10) } };
     var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
@@ -1311,14 +1321,14 @@ test "TreeWalk let node" {
     };
     const n = Node{ .let_node = &let_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+    try std.testing.expectEqual(Value.initInteger(10), result);
 }
 
 test "TreeWalk let two bindings" {
     // (let [x 10 y 20] y) => 20
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_x = Node{ .constant = .{ .value = .{ .integer = 10 } } };
-    var init_y = Node{ .constant = .{ .value = .{ .integer = 20 } } };
+    var init_x = Node{ .constant = .{ .value = Value.initInteger(10) } };
+    var init_y = Node{ .constant = .{ .value = Value.initInteger(20) } };
     var body = Node{ .local_ref = .{ .name = "y", .idx = 1, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_x },
@@ -1331,13 +1341,13 @@ test "TreeWalk let two bindings" {
     };
     const n = Node{ .let_node = &let_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 20 }, result);
+    try std.testing.expectEqual(Value.initInteger(20), result);
 }
 
 test "TreeWalk let restores locals" {
     // After let completes, locals are restored
     var tw = TreeWalk.init(std.testing.allocator);
-    var init_val = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var init_val = Node{ .constant = .{ .value = Value.initInteger(10) } };
     var body = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_val },
@@ -1357,19 +1367,19 @@ test "TreeWalk let restores locals" {
 test "TreeWalk quote node" {
     var tw = TreeWalk.init(std.testing.allocator);
     var quote_data = node_mod.QuoteNode{
-        .value = .{ .symbol = .{ .ns = null, .name = "foo" } },
+        .value = Value.initSymbol(.{ .ns = null, .name = "foo" }),
         .source = .{},
     };
     const n = Node{ .quote_node = &quote_data };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(.{ .symbol = .{ .ns = null, .name = "foo" } }));
+    try std.testing.expect(result.eql(Value.initSymbol(.{ .ns = null, .name = "foo" })));
 }
 
 test "TreeWalk constant string" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = .{ .string = "hello" } } };
+    const n = Node{ .constant = .{ .value = Value.initString("hello") } };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(.{ .string = "hello" }));
+    try std.testing.expect(result.eql(Value.initString("hello")));
 }
 
 test "TreeWalk fn and call" {
@@ -1389,7 +1399,7 @@ test "TreeWalk fn and call" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    var arg = Node{ .constant = .{ .value = Value.initInteger(42) } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1398,7 +1408,7 @@ test "TreeWalk fn and call" {
     };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "TreeWalk fn with two params" {
@@ -1418,8 +1428,8 @@ test "TreeWalk fn with two params" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var arg2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var arg1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var arg2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &arg1, &arg2 };
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1428,7 +1438,7 @@ test "TreeWalk fn with two params" {
     };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result);
+    try std.testing.expectEqual(Value.initInteger(2), result);
 }
 
 test "TreeWalk arithmetic builtins" {
@@ -1443,13 +1453,13 @@ test "TreeWalk arithmetic builtins" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(3) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(4) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+    try std.testing.expectEqual(Value.initInteger(7), result);
 }
 
 test "TreeWalk subtraction" {
@@ -1463,13 +1473,13 @@ test "TreeWalk subtraction" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "-", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(10) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(3) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+    try std.testing.expectEqual(Value.initInteger(7), result);
 }
 
 test "TreeWalk multiplication" {
@@ -1483,13 +1493,13 @@ test "TreeWalk multiplication" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "*", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 6 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 7 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(6) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(7) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "TreeWalk division returns float" {
@@ -1503,13 +1513,13 @@ test "TreeWalk division returns float" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(10) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(4) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .float = 2.5 }, result);
+    try std.testing.expectEqual(Value.initFloat(2.5), result);
 }
 
 test "TreeWalk comparison" {
@@ -1524,13 +1534,13 @@ test "TreeWalk comparison" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 2 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .boolean = true }, result);
+    try std.testing.expectEqual(Value.true_val, result);
 }
 
 test "TreeWalk def and var_ref" {
@@ -1547,7 +1557,7 @@ test "TreeWalk def and var_ref" {
     defer tw.deinit();
 
     // (def x 42)
-    var init_node = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    var init_node = Node{ .constant = .{ .value = Value.initInteger(42) } };
     var def_data = node_mod.DefNode{
         .sym_name = "x",
         .init = &init_node,
@@ -1559,7 +1569,7 @@ test "TreeWalk def and var_ref" {
     // x => 42
     const var_node = Node{ .var_ref = .{ .ns = null, .name = "x", .source = .{} } };
     const result = try tw.run(&var_node);
-    try std.testing.expect(result.eql(.{ .integer = 42 }));
+    try std.testing.expect(result.eql(Value.initInteger(42)));
 }
 
 test "TreeWalk loop/recur" {
@@ -1575,7 +1585,7 @@ test "TreeWalk loop/recur" {
 
     // Build AST
     var i_ref = Node{ .local_ref = .{ .name = "i", .idx = 0, .source = .{} } };
-    var const_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
+    var const_5 = Node{ .constant = .{ .value = Value.initInteger(5) } };
     var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var lt_args = [_]*Node{ &i_ref, &const_5 };
     var lt_call_data = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
@@ -1583,7 +1593,7 @@ test "TreeWalk loop/recur" {
 
     // recur: (recur (+ i 1))
     var i_ref2 = Node{ .local_ref = .{ .name = "i", .idx = 0, .source = .{} } };
-    var const_1 = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var const_1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
     var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var add_args = [_]*Node{ &i_ref2, &const_1 };
     var add_call_data = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
@@ -1603,7 +1613,7 @@ test "TreeWalk loop/recur" {
     var body = Node{ .if_node = &if_data };
 
     // loop
-    var init_0 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
+    var init_0 = Node{ .constant = .{ .value = Value.initInteger(0) } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "i", .init = &init_0 },
     };
@@ -1614,7 +1624,7 @@ test "TreeWalk loop/recur" {
     };
     const n = Node{ .loop_node = &loop_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+    try std.testing.expectEqual(Value.initInteger(5), result);
 }
 
 test "TreeWalk closure captures locals" {
@@ -1648,7 +1658,7 @@ test "TreeWalk closure captures locals" {
     var fn_node = Node{ .fn_node = &fn_data };
 
     // ((fn [y] (+ x y)) 5)
-    var arg_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
+    var arg_5 = Node{ .constant = .{ .value = Value.initInteger(5) } };
     var call_args = [_]*Node{&arg_5};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1658,7 +1668,7 @@ test "TreeWalk closure captures locals" {
     var call_node = Node{ .call_node = &call_data };
 
     // (let [x 10] ...)
-    var init_10 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var init_10 = Node{ .constant = .{ .value = Value.initInteger(10) } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_10 },
     };
@@ -1669,7 +1679,7 @@ test "TreeWalk closure captures locals" {
     };
     const n = Node{ .let_node = &let_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 15 }, result);
+    try std.testing.expectEqual(Value.initInteger(15), result);
 }
 
 test "TreeWalk throw and try" {
@@ -1677,7 +1687,7 @@ test "TreeWalk throw and try" {
     var tw = TreeWalk.init(allocator);
 
     // (try (throw "oops") (catch e e))
-    var throw_expr = Node{ .constant = .{ .value = .{ .string = "oops" } } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString("oops") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var body = Node{ .throw_node = &throw_data };
 
@@ -1694,14 +1704,14 @@ test "TreeWalk throw and try" {
     };
     const n = Node{ .try_node = &try_data };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(.{ .string = "oops" }));
+    try std.testing.expect(result.eql(Value.initString("oops")));
 }
 
 test "TreeWalk throw without catch propagates" {
     const allocator = std.testing.allocator;
     var tw = TreeWalk.init(allocator);
 
-    var throw_expr = Node{ .constant = .{ .value = .{ .string = "error" } } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString("error") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     const n = Node{ .throw_node = &throw_data };
     try std.testing.expectError(error.UserException, tw.run(&n));
@@ -1721,15 +1731,15 @@ test "TreeWalk collection intrinsic via registry" {
     var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
     defer tw.deinit();
 
-    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    const items = [_]Value{ Value.initInteger(10), Value.initInteger(20), Value.initInteger(30) };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "first", .source = .{} } };
-    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
+    var arg = Node{ .constant = .{ .value = Value.initVector(&vec) } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+    try std.testing.expectEqual(Value.initInteger(10), result);
 }
 
 test "TreeWalk count via registry" {
@@ -1746,15 +1756,15 @@ test "TreeWalk count via registry" {
     var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
     defer tw.deinit();
 
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     var vec = collections_mod.PersistentVector{ .items = &items };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "count", .source = .{} } };
-    var arg = Node{ .constant = .{ .value = Value{ .vector = &vec } } };
+    var arg = Node{ .constant = .{ .value = Value.initVector(&vec) } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 3 }, result);
+    try std.testing.expectEqual(Value.initInteger(3), result);
 }
 
 test "TreeWalk arithmetic via registry-registered Env" {
@@ -1771,11 +1781,11 @@ test "TreeWalk arithmetic via registry-registered Env" {
     defer tw.deinit();
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = .{ .integer = 3 } } };
-    var a2 = Node{ .constant = .{ .value = .{ .integer = 4 } } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(3) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(4) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+    try std.testing.expectEqual(Value.initInteger(7), result);
 }

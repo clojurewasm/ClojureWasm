@@ -289,7 +289,7 @@ pub const VM = struct {
     fn stepInstructionTarget(self: *VM, target_frame: usize) VMError!?Value {
         const frame = &self.frames[self.frame_count - 1];
         if (frame.ip >= frame.code.len) {
-            return if (self.sp > 0) self.pop() else .nil;
+            return if (self.sp > 0) self.pop() else Value.nil_val;
         }
 
         const instr = frame.code[frame.ip];
@@ -298,9 +298,9 @@ pub const VM = struct {
         switch (instr.op) {
             // [A] Constants
             .const_load => try self.push(frame.constants[instr.operand]),
-            .nil => try self.push(.nil),
-            .true_val => try self.push(.{ .boolean = true }),
-            .false_val => try self.push(.{ .boolean = false }),
+            .nil => try self.push(Value.nil_val),
+            .true_val => try self.push(Value.true_val),
+            .false_val => try self.push(Value.false_val),
 
             // [B] Stack
             .pop => _ = self.pop(),
@@ -372,7 +372,7 @@ pub const VM = struct {
 
                 const template = frame.constants[const_idx];
                 if (template != .fn_val) return error.TypeError;
-                const fn_obj = template.fn_val;
+                const fn_obj = template.asFn();
                 const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
 
                 if (proto.capture_count > 0) {
@@ -391,7 +391,7 @@ pub const VM = struct {
                         .defining_ns = fn_obj.defining_ns,
                     };
                     if (self.gc == null) self.allocated_fns.append(self.allocator, new_fn) catch return error.OutOfMemory;
-                    try self.push(.{ .fn_val = new_fn });
+                    try self.push(Value.initFn(new_fn));
                 } else {
                     // No capture needed, push the template directly
                     try self.push(template);
@@ -435,15 +435,16 @@ pub const VM = struct {
                 if (sym != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                var v = if (sym.symbol.ns) |ns_name|
-                    ns.resolveQualified(ns_name, sym.symbol.name)
+                const sym_val = sym.asSymbol();
+                var v = if (sym_val.ns) |ns_name|
+                    ns.resolveQualified(ns_name, sym_val.name)
                 else
-                    ns.resolve(sym.symbol.name);
+                    ns.resolve(sym_val.name);
                 // Fallback: look up namespace by full name in env registry
                 if (v == null) {
-                    if (sym.symbol.ns) |ns_name| {
+                    if (sym_val.ns) |ns_name| {
                         if (env.namespaces.get(ns_name)) |target_ns| {
-                            v = target_ns.resolve(sym.symbol.name);
+                            v = target_ns.resolve(sym_val.name);
                         }
                     }
                 }
@@ -460,7 +461,7 @@ pub const VM = struct {
                 if (sym != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                const v = ns.resolve(sym.symbol.name) orelse return error.UndefinedVar;
+                const v = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
                 const var_mod = @import("../../common/var.zig");
                 var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
                 // Value remains on stack (net 0)
@@ -471,12 +472,12 @@ pub const VM = struct {
                 if (sym != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
+                const v = ns.intern(sym.asSymbol().name) catch return error.OutOfMemory;
                 v.bindRoot(val);
                 if (instr.op == .def_macro) v.setMacro(true);
                 if (instr.op == .def_dynamic) v.dynamic = true;
                 if (instr.op == .def_private) v.private = true;
-                try self.push(.{ .symbol = .{ .ns = ns.name, .name = v.sym.name } });
+                try self.push(Value.initSymbol(.{ .ns = ns.name, .name = v.sym.name }));
             },
 
             .defmulti => {
@@ -489,7 +490,7 @@ pub const VM = struct {
                 if (has_hierarchy) {
                     const h_val = self.pop();
                     if (h_val == .var_ref) {
-                        hierarchy_var = h_val.var_ref;
+                        hierarchy_var = h_val.asVarRef();
                     }
                 }
 
@@ -503,16 +504,16 @@ pub const VM = struct {
                 const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                 empty_map.* = .{ .entries = &.{} };
                 mf.* = .{
-                    .name = sym.symbol.name,
+                    .name = sym.asSymbol().name,
                     .dispatch_fn = dispatch_fn,
                     .methods = empty_map,
                     .hierarchy_var = hierarchy_var,
                 };
 
                 // Bind to var
-                const v = ns.intern(sym.symbol.name) catch return error.OutOfMemory;
-                v.bindRoot(.{ .multi_fn = mf });
-                try self.push(.{ .multi_fn = mf });
+                const v = ns.intern(sym.asSymbol().name) catch return error.OutOfMemory;
+                v.bindRoot(Value.initMultiFn(mf));
+                try self.push(Value.initMultiFn(mf));
             },
             .defmethod => {
                 const method_fn = self.pop();
@@ -523,10 +524,10 @@ pub const VM = struct {
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
                 // Resolve multimethod
-                const mf_var = ns.resolve(sym.symbol.name) orelse return error.UndefinedVar;
+                const mf_var = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
                 const mf_val = mf_var.deref();
                 if (mf_val != .multi_fn) return error.TypeError;
-                const mf = mf_val.multi_fn;
+                const mf = mf_val.asMultiFn();
 
                 // Add method: assoc dispatch_val -> method_fn
                 const old = mf.methods;
@@ -546,7 +547,7 @@ pub const VM = struct {
                 const thunk = self.pop();
                 const ls = self.allocator.create(value_mod.LazySeq) catch return error.OutOfMemory;
                 ls.* = .{ .thunk = thunk, .realized = null };
-                try self.push(.{ .lazy_seq = ls });
+                try self.push(Value.initLazySeq(ls));
             },
 
             .defprotocol => {
@@ -560,7 +561,7 @@ pub const VM = struct {
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
                 // Parse sigs vector: [name1, arity1, name2, arity2, ...]
-                const sigs_items = sigs_val.vector.items;
+                const sigs_items = sigs_val.asVector().items;
                 const sig_count = sigs_items.len / 2;
                 const method_sigs = self.allocator.alloc(value_mod.MethodSig, sig_count) catch return error.OutOfMemory;
                 for (0..sig_count) |i| {
@@ -568,8 +569,8 @@ pub const VM = struct {
                     const m_arity = sigs_items[i * 2 + 1];
                     if (m_name != .string or m_arity != .integer) return error.InvalidInstruction;
                     method_sigs[i] = .{
-                        .name = m_name.string,
-                        .arity = @intCast(m_arity.integer),
+                        .name = m_name.asString(),
+                        .arity = @intCast(m_arity.asInteger()),
                     };
                 }
 
@@ -579,14 +580,14 @@ pub const VM = struct {
                 empty_map.* = .{ .entries = &.{} };
                 if (self.gc == null) self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
                 protocol.* = .{
-                    .name = name_sym.symbol.name,
+                    .name = name_sym.asSymbol().name,
                     .method_sigs = method_sigs,
                     .impls = empty_map,
                 };
 
                 // Bind protocol to var
-                const proto_var = ns.intern(name_sym.symbol.name) catch return error.OutOfMemory;
-                proto_var.bindRoot(.{ .protocol = protocol });
+                const proto_var = ns.intern(name_sym.asSymbol().name) catch return error.OutOfMemory;
+                proto_var.bindRoot(Value.initProtocol(protocol));
 
                 // Create ProtocolFn for each method and bind to vars
                 for (method_sigs) |sig| {
@@ -596,10 +597,10 @@ pub const VM = struct {
                         .method_name = sig.name,
                     };
                     const method_var = ns.intern(sig.name) catch return error.OutOfMemory;
-                    method_var.bindRoot(.{ .protocol_fn = pf });
+                    method_var.bindRoot(Value.initProtocolFn(pf));
                 }
 
-                try self.push(.{ .protocol = protocol });
+                try self.push(Value.initProtocol(protocol));
             },
 
             .extend_type_method => {
@@ -609,7 +610,7 @@ pub const VM = struct {
                 // Read meta vector: [type_name, protocol_name, method_name]
                 const meta_val = frame.constants[instr.operand];
                 if (meta_val != .vector) return error.InvalidInstruction;
-                const meta = meta_val.vector.items;
+                const meta = meta_val.asVector().items;
                 if (meta.len != 3) return error.InvalidInstruction;
                 const type_name_val = meta[0];
                 const proto_name_val = meta[1];
@@ -617,9 +618,9 @@ pub const VM = struct {
                 if (type_name_val != .string or proto_name_val != .string or method_name_val != .string)
                     return error.InvalidInstruction;
 
-                const type_key = mapTypeKey(type_name_val.string);
-                const proto_name = proto_name_val.string;
-                const method_name = method_name_val.string;
+                const type_key = mapTypeKey(type_name_val.asString());
+                const proto_name = proto_name_val.asString();
+                const method_name = method_name_val.asString();
 
                 // Resolve protocol
                 const env = self.env orelse return error.UndefinedVar;
@@ -627,18 +628,18 @@ pub const VM = struct {
                 const proto_var = ns.resolve(proto_name) orelse return error.UndefinedVar;
                 const proto_val = proto_var.deref();
                 if (proto_val != .protocol) return error.TypeError;
-                const protocol = proto_val.protocol;
+                const protocol = proto_val.asProtocol();
 
                 // Get or create method map for this type in protocol.impls
-                const existing = protocol.impls.get(.{ .string = type_key });
+                const existing = protocol.impls.get(Value.initString(type_key));
                 if (existing) |ex_val| {
                     // Existing method map for this type — add method
                     if (ex_val != .map) return error.TypeError;
-                    const old_map = ex_val.map;
+                    const old_map = ex_val.asMap();
                     const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
                     @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
-                    new_entries[old_map.entries.len] = .{ .string = method_name };
+                    new_entries[old_map.entries.len] = Value.initString(method_name);
                     new_entries[old_map.entries.len + 1] = method_fn;
                     const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_method_map.* = .{ .entries = new_entries };
@@ -647,9 +648,9 @@ pub const VM = struct {
                     const impls = protocol.impls;
                     var i: usize = 0;
                     while (i < impls.entries.len) : (i += 2) {
-                        if (impls.entries[i].eql(.{ .string = type_key })) {
+                        if (impls.entries[i].eql(Value.initString(type_key))) {
                             // Mutate in place — protocol.impls is mutable
-                            @constCast(impls.entries)[i + 1] = .{ .map = new_method_map };
+                            @constCast(impls.entries)[i + 1] = Value.initMap(new_method_map);
                             break;
                         }
                     }
@@ -657,7 +658,7 @@ pub const VM = struct {
                     // New type — create method map and add to impls
                     const method_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, method_entries) catch return error.OutOfMemory;
-                    method_entries[0] = .{ .string = method_name };
+                    method_entries[0] = Value.initString(method_name);
                     method_entries[1] = method_fn;
                     const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     method_map.* = .{ .entries = method_entries };
@@ -668,15 +669,15 @@ pub const VM = struct {
                     const new_impls_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, new_impls_entries) catch return error.OutOfMemory;
                     @memcpy(new_impls_entries[0..old_impls.entries.len], old_impls.entries);
-                    new_impls_entries[old_impls.entries.len] = .{ .string = type_key };
-                    new_impls_entries[old_impls.entries.len + 1] = .{ .map = method_map };
+                    new_impls_entries[old_impls.entries.len] = Value.initString(type_key);
+                    new_impls_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
                     const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_impls.* = .{ .entries = new_impls_entries };
                     if (self.gc == null) self.allocated_maps.append(self.allocator, new_impls) catch return error.OutOfMemory;
                     protocol.impls = new_impls;
                 }
 
-                try self.push(.nil);
+                try self.push(Value.nil_val);
             },
 
             // [K] Exceptions
@@ -740,12 +741,12 @@ pub const VM = struct {
                 const b = self.pop();
                 const a = self.pop();
                 // Use eqlAlloc to realize nested lazy-seqs during comparison
-                try self.push(.{ .boolean = a.eqlAlloc(b, self.allocator) });
+                try self.push(Value.initBoolean(a.eqlAlloc(b, self.allocator)));
             },
             .neq => {
                 const b = self.pop();
                 const a = self.pop();
-                try self.push(.{ .boolean = !a.eqlAlloc(b, self.allocator) });
+                try self.push(Value.initBoolean(!a.eqlAlloc(b, self.allocator)));
             },
 
             // [Z] Debug
@@ -793,20 +794,20 @@ pub const VM = struct {
         empty_map.* = .{ .entries = &.{} };
         if (self.gc == null) self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
 
-        entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
-        entries[1] = .{ .boolean = true };
-        entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
-        entries[3] = .{ .string = msg };
-        entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
-        entries[5] = .{ .map = empty_map };
-        entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
-        entries[7] = .nil;
+        entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+        entries[1] = Value.true_val;
+        entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
+        entries[3] = Value.initString(msg);
+        entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+        entries[5] = Value.initMap(empty_map);
+        entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+        entries[7] = Value.nil_val;
 
         const map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
         map.* = .{ .entries = entries };
         if (self.gc == null) self.allocated_maps.append(self.allocator, map) catch return error.OutOfMemory;
 
-        return .{ .map = map };
+        return Value.initMap(map);
     }
 
     /// Dispatch a runtime error to the nearest exception handler.
@@ -871,25 +872,25 @@ pub const VM = struct {
                 const lst = self.allocator.create(PersistentList) catch return error.OutOfMemory;
                 lst.* = .{ .items = items };
                 if (self.gc == null) self.allocated_lists.append(self.allocator, lst) catch return error.OutOfMemory;
-                try self.push(.{ .list = lst });
+                try self.push(Value.initList(lst));
             },
             .vec => {
                 const vec = self.allocator.create(PersistentVector) catch return error.OutOfMemory;
                 vec.* = .{ .items = items };
                 if (self.gc == null) self.allocated_vectors.append(self.allocator, vec) catch return error.OutOfMemory;
-                try self.push(.{ .vector = vec });
+                try self.push(Value.initVector(vec));
             },
             .map => {
                 const m = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
                 m.* = .{ .entries = items };
                 if (self.gc == null) self.allocated_maps.append(self.allocator, m) catch return error.OutOfMemory;
-                try self.push(.{ .map = m });
+                try self.push(Value.initMap(m));
             },
             .set => {
                 const s = self.allocator.create(PersistentHashSet) catch return error.OutOfMemory;
                 s.* = .{ .items = items };
                 if (self.gc == null) self.allocated_sets.append(self.allocator, s) catch return error.OutOfMemory;
-                try self.push(.{ .set = s });
+                try self.push(Value.initSet(s));
             },
         }
     }
@@ -909,9 +910,10 @@ pub const VM = struct {
         //  - protocol_fn: type-based dispatch with monomorphic inline cache (24A.5)
         //  - multi_fn: value-based dispatch with 2-level cache (24C.2)
         //  - var_ref: deref and re-dispatch
-        switch (callee) {
-            .fn_val => |fn_obj| return self.callFnVal(fn_idx, fn_obj, callee, arg_count),
-            .builtin_fn => |bfn| {
+        switch (callee.tag()) {
+            .fn_val => return self.callFnVal(fn_idx, callee.asFn(), callee, arg_count),
+            .builtin_fn => {
+                const bfn = callee.asBuiltinFn();
                 const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
                 const result = bfn(self.allocator, args) catch |e| {
                     return @as(VMError, @errorCast(e));
@@ -919,7 +921,8 @@ pub const VM = struct {
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .keyword => |kw| {
+            .keyword => {
+                const kw = callee.asKeyword();
                 if (arg_count < 1 or arg_count > 2) {
                     if (arg_count > 20) {
                         if (kw.ns) |ns| {
@@ -937,34 +940,35 @@ pub const VM = struct {
                 const map_arg = self.stack[fn_idx + 1];
                 const result = if (map_arg == .wasm_module and arg_count == 1) blk: {
                     // Keyword lookup on wasm_module: (:add mod) => cached WasmFn
-                    const wm = map_arg.wasm_module;
+                    const wm = map_arg.asWasmModule();
                     break :blk if (wm.getExportFn(kw.name)) |wf|
-                        Value{ .wasm_fn = wf }
+                        Value.initWasmFn(wf)
                     else
-                        Value.nil;
+                        Value.nil_val;
                 } else if (map_arg == .map)
-                    map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
+                    map_arg.asMap().get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val)
                 else if (map_arg == .hash_map)
-                    map_arg.hash_map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
+                    map_arg.asHashMap().get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val)
                 else if (arg_count >= 2)
                     self.stack[fn_idx + 2]
                 else
-                    Value.nil;
+                    Value.nil_val;
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .set => |s| {
+            .set => {
                 if (arg_count < 1) return error.ArityError;
                 const key = self.stack[fn_idx + 1];
-                const result = s.get(key) orelse Value.nil;
+                const result = callee.asSet().get(key) orelse Value.nil_val;
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .vector => |v| {
+            .vector => {
+                const v = callee.asVector();
                 if (arg_count < 1) return error.ArityError;
                 const idx_val = self.stack[fn_idx + 1];
                 if (idx_val != .integer) return error.TypeError;
-                const idx = idx_val.integer;
+                const idx = idx_val.asInteger();
                 if (idx < 0 or idx >= @as(i64, @intCast(v.items.len))) {
                     if (arg_count >= 2) {
                         const result = self.stack[fn_idx + 2];
@@ -978,39 +982,41 @@ pub const VM = struct {
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .map => |m| {
+            .map => {
                 if (arg_count < 1) return error.ArityError;
                 const key = self.stack[fn_idx + 1];
-                const result = m.get(key) orelse
-                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+                const result = callee.asMap().get(key) orelse
+                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val);
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .hash_map => |hm| {
+            .hash_map => {
                 if (arg_count < 1) return error.ArityError;
                 const key = self.stack[fn_idx + 1];
-                const result = hm.get(key) orelse
-                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+                const result = callee.asHashMap().get(key) orelse
+                    (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val);
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .wasm_module => |wm| {
+            .wasm_module => {
+                const wm = callee.asWasmModule();
                 // Module-as-function: (mod :add) => cached WasmFn
                 if (arg_count != 1) return error.ArityError;
                 const key = self.stack[fn_idx + 1];
-                const name = switch (key) {
-                    .keyword => |kw| kw.name,
-                    .string => |s| s,
+                const name = switch (key.tag()) {
+                    .keyword => key.asKeyword().name,
+                    .string => key.asString(),
                     else => return error.TypeError,
                 };
                 const result = if (wm.getExportFn(name)) |wf|
-                    Value{ .wasm_fn = wf }
+                    Value.initWasmFn(wf)
                 else
-                    Value.nil;
+                    Value.nil_val;
                 self.sp = fn_idx;
                 try self.push(result);
             },
-            .protocol_fn => |pf| {
+            .protocol_fn => {
+                const pf = callee.asProtocolFn();
                 // Protocol dispatch with monomorphic inline cache (24A.5).
                 //
                 // Full dispatch requires: type_key lookup -> impls map scan ->
@@ -1032,10 +1038,10 @@ pub const VM = struct {
                     }
                 }
                 // Cache miss: full protocol lookup (type_key -> method_map -> method_fn)
-                const method_map_val = pf.protocol.impls.get(.{ .string = type_key }) orelse
+                const method_map_val = pf.protocol.impls.get(Value.initString(type_key)) orelse
                     return error.TypeError;
                 if (method_map_val != .map) return error.TypeError;
-                const method_fn = method_map_val.map.get(.{ .string = pf.method_name }) orelse
+                const method_fn = method_map_val.asMap().get(Value.initString(pf.method_name)) orelse
                     return error.TypeError;
                 // Update cache for next call
                 mutable_pf.cached_type_key = type_key;
@@ -1043,11 +1049,12 @@ pub const VM = struct {
                 self.stack[fn_idx] = method_fn;
                 return self.performCall(arg_count);
             },
-            .var_ref => |v| {
-                self.stack[fn_idx] = v.deref();
+            .var_ref => {
+                self.stack[fn_idx] = callee.asVarRef().deref();
                 return self.performCall(arg_count);
             },
-            .multi_fn => |mf| {
+            .multi_fn => {
+                const mf = callee.asMultiFn();
                 // Multimethod dispatch with 2-level monomorphic cache (24C.2).
                 //
                 // Without caching, each multimethod call requires:
@@ -1083,10 +1090,10 @@ pub const VM = struct {
                         if (arg_count >= 1) {
                             const first = self.stack[fn_idx + 1];
                             if (first == .map) {
-                                break :blk first.map.get(mf.dispatch_fn) orelse Value.nil;
+                                break :blk first.asMap().get(mf.dispatch_fn) orelse Value.nil_val;
                             }
                         }
-                        break :blk Value.nil;
+                        break :blk Value.nil_val;
                     }
                     // General case: call dispatch fn using current VM (not bootstrap)
                     break :blk try self.callFunction(mf.dispatch_fn, args);
@@ -1117,7 +1124,8 @@ pub const VM = struct {
                 self.stack[fn_idx] = method_fn;
                 return self.performCall(arg_count);
             },
-            .wasm_fn => |wf| {
+            .wasm_fn => {
+                const wf = callee.asWasmFn();
                 const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
                 const result = wf.call(self.allocator, args) catch |e| {
                     return @as(VMError, @errorCast(e));
@@ -1158,7 +1166,7 @@ pub const VM = struct {
                 // Build rest list or nil from stack values
                 if (rest_count == 0) {
                     // No rest args: rest param is nil (matches Clojure/TreeWalk behavior)
-                    self.stack[args_start + fixed] = .nil;
+                    self.stack[args_start + fixed] = Value.nil_val;
                 } else {
                     const rest_items = self.allocator.alloc(Value, rest_count) catch return error.OutOfMemory;
                     for (0..rest_count) |i| {
@@ -1167,7 +1175,7 @@ pub const VM = struct {
                     const rest_list = self.allocator.create(PersistentList) catch return error.OutOfMemory;
                     rest_list.* = .{ .items = rest_items };
                     if (self.gc == null) self.allocated_lists.append(self.allocator, rest_list) catch return error.OutOfMemory;
-                    self.stack[args_start + fixed] = .{ .list = rest_list };
+                    self.stack[args_start + fixed] = Value.initList(rest_list);
                 }
 
                 // Adjust sp: fixed params + 1 rest param (list or nil)
@@ -1270,23 +1278,25 @@ pub const VM = struct {
         const a = self.pop();
         // Fast path: both operands are integers — inline arithmetic with overflow check
         if (a == .integer and b == .integer) {
+            const ai = a.asInteger();
+            const bi = b.asInteger();
             const result = switch (op) {
-                .add => @addWithOverflow(a.integer, b.integer),
-                .sub => @subWithOverflow(a.integer, b.integer),
-                .mul => @mulWithOverflow(a.integer, b.integer),
+                .add => @addWithOverflow(ai, bi),
+                .sub => @subWithOverflow(ai, bi),
+                .mul => @mulWithOverflow(ai, bi),
             };
             if (result[1] != 0) {
                 @branchHint(.unlikely);
                 // Overflow: promote to float
                 self.saveVmArgSources();
-                try self.push(.{ .float = switch (op) {
-                    .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
-                    .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
-                    .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
-                } });
+                try self.push(Value.initFloat(switch (op) {
+                    .add => @as(f64, @floatFromInt(ai)) + @as(f64, @floatFromInt(bi)),
+                    .sub => @as(f64, @floatFromInt(ai)) - @as(f64, @floatFromInt(bi)),
+                    .mul => @as(f64, @floatFromInt(ai)) * @as(f64, @floatFromInt(bi)),
+                }));
                 return;
             }
-            try self.push(.{ .integer = result[0] });
+            try self.push(Value.initInteger(result[0]));
             return;
         }
         self.saveVmArgSources();
@@ -1309,16 +1319,18 @@ pub const VM = struct {
         const a = self.pop();
         // Inline int+int fast path
         if (a == .integer and b == .integer) {
-            try self.push(.{ .boolean = switch (op) {
-                .lt => a.integer < b.integer,
-                .le => a.integer <= b.integer,
-                .gt => a.integer > b.integer,
-                .ge => a.integer >= b.integer,
-            } });
+            const ai = a.asInteger();
+            const bi = b.asInteger();
+            try self.push(Value.initBoolean(switch (op) {
+                .lt => ai < bi,
+                .le => ai <= bi,
+                .gt => ai > bi,
+                .ge => ai >= bi,
+            }));
             return;
         }
         self.saveVmArgSources();
-        try self.push(.{ .boolean = arith.compareFn(a, b, op) catch return error.TypeError });
+        try self.push(Value.initBoolean(arith.compareFn(a, b, op) catch return error.TypeError));
     }
 
     /// Save arg sources from VM debug info for the current binary op instruction.
@@ -1375,7 +1387,7 @@ fn mapTypeKey(type_name: []const u8) []const u8 {
 /// Get type key string for a runtime value.
 /// Duplicated from tree_walk.zig to avoid circular imports.
 fn valueTypeKey(val: Value) []const u8 {
-    return switch (val) {
+    return switch (val.tag()) {
         .nil => "nil",
         .boolean => "boolean",
         .integer => "integer",
@@ -1444,7 +1456,7 @@ test "VM run true/false constants" {
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .boolean = true }, result);
+        try std.testing.expectEqual(Value.true_val, result);
     }
     {
         var chunk = Chunk.init(std.testing.allocator);
@@ -1453,7 +1465,7 @@ test "VM run true/false constants" {
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .boolean = false }, result);
+        try std.testing.expectEqual(Value.false_val, result);
     }
 }
 
@@ -1461,13 +1473,13 @@ test "VM run const_load integer" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const idx = try chunk.addConstant(.{ .integer = 42 });
+    const idx = try chunk.addConstant(Value.initInteger(42));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.ret);
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "VM pop discards value" {
@@ -1488,7 +1500,7 @@ test "VM dup duplicates top" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const idx = try chunk.addConstant(.{ .integer = 7 });
+    const idx = try chunk.addConstant(Value.initInteger(7));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.dup);
     try chunk.emitOp(.pop); // pop the duplicate
@@ -1496,7 +1508,7 @@ test "VM dup duplicates top" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+    try std.testing.expectEqual(Value.initInteger(7), result);
 }
 
 test "VM local_load and local_store" {
@@ -1504,8 +1516,8 @@ test "VM local_load and local_store" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c10 = try chunk.addConstant(.{ .integer = 10 });
-    const c20 = try chunk.addConstant(.{ .integer = 20 });
+    const c10 = try chunk.addConstant(Value.initInteger(10));
+    const c20 = try chunk.addConstant(Value.initInteger(20));
     try chunk.emit(.const_load, c10); // stack: [10]
     try chunk.emit(.const_load, c20); // stack: [10, 20]
     try chunk.emit(.local_load, 0); // push slot 0 (=10) -> stack: [10, 20, 10]
@@ -1513,7 +1525,7 @@ test "VM local_load and local_store" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+    try std.testing.expectEqual(Value.initInteger(10), result);
 }
 
 test "VM jump_if_false (if true 1 2)" {
@@ -1522,8 +1534,8 @@ test "VM jump_if_false (if true 1 2)" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c1 = try chunk.addConstant(.{ .integer = 1 });
-    const c2 = try chunk.addConstant(.{ .integer = 2 });
+    const c1 = try chunk.addConstant(Value.initInteger(1));
+    const c2 = try chunk.addConstant(Value.initInteger(2));
 
     try chunk.emitOp(.true_val); // 0
     const jif = try chunk.emitJump(.jump_if_false); // 1
@@ -1536,15 +1548,15 @@ test "VM jump_if_false (if true 1 2)" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 1 }, result);
+    try std.testing.expectEqual(Value.initInteger(1), result);
 }
 
 test "VM jump_if_false (if false 1 2)" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c1 = try chunk.addConstant(.{ .integer = 1 });
-    const c2 = try chunk.addConstant(.{ .integer = 2 });
+    const c1 = try chunk.addConstant(Value.initInteger(1));
+    const c2 = try chunk.addConstant(Value.initInteger(2));
 
     try chunk.emitOp(.false_val); // 0
     const jif = try chunk.emitJump(.jump_if_false); // 1
@@ -1557,7 +1569,7 @@ test "VM jump_if_false (if false 1 2)" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 2 }, result);
+    try std.testing.expectEqual(Value.initInteger(2), result);
 }
 
 test "VM integer arithmetic" {
@@ -1565,43 +1577,43 @@ test "VM integer arithmetic" {
     {
         var chunk = Chunk.init(std.testing.allocator);
         defer chunk.deinit();
-        const c3 = try chunk.addConstant(.{ .integer = 3 });
-        const c4 = try chunk.addConstant(.{ .integer = 4 });
+        const c3 = try chunk.addConstant(Value.initInteger(3));
+        const c4 = try chunk.addConstant(Value.initInteger(4));
         try chunk.emit(.const_load, c3);
         try chunk.emit(.const_load, c4);
         try chunk.emitOp(.add);
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .integer = 7 }, result);
+        try std.testing.expectEqual(Value.initInteger(7), result);
     }
     // (- 10 3) = 7
     {
         var chunk = Chunk.init(std.testing.allocator);
         defer chunk.deinit();
-        const c10 = try chunk.addConstant(.{ .integer = 10 });
-        const c3 = try chunk.addConstant(.{ .integer = 3 });
+        const c10 = try chunk.addConstant(Value.initInteger(10));
+        const c3 = try chunk.addConstant(Value.initInteger(3));
         try chunk.emit(.const_load, c10);
         try chunk.emit(.const_load, c3);
         try chunk.emitOp(.sub);
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .integer = 7 }, result);
+        try std.testing.expectEqual(Value.initInteger(7), result);
     }
     // (* 6 7) = 42
     {
         var chunk = Chunk.init(std.testing.allocator);
         defer chunk.deinit();
-        const c6 = try chunk.addConstant(.{ .integer = 6 });
-        const c7 = try chunk.addConstant(.{ .integer = 7 });
+        const c6 = try chunk.addConstant(Value.initInteger(6));
+        const c7 = try chunk.addConstant(Value.initInteger(7));
         try chunk.emit(.const_load, c6);
         try chunk.emit(.const_load, c7);
         try chunk.emitOp(.mul);
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .integer = 42 }, result);
+        try std.testing.expectEqual(Value.initInteger(42), result);
     }
 }
 
@@ -1610,29 +1622,29 @@ test "VM comparison operators" {
     {
         var chunk = Chunk.init(std.testing.allocator);
         defer chunk.deinit();
-        const c1 = try chunk.addConstant(.{ .integer = 1 });
-        const c2 = try chunk.addConstant(.{ .integer = 2 });
+        const c1 = try chunk.addConstant(Value.initInteger(1));
+        const c2 = try chunk.addConstant(Value.initInteger(2));
         try chunk.emit(.const_load, c1);
         try chunk.emit(.const_load, c2);
         try chunk.emitOp(.lt);
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .boolean = true }, result);
+        try std.testing.expectEqual(Value.true_val, result);
     }
     // (> 1 2) = false
     {
         var chunk = Chunk.init(std.testing.allocator);
         defer chunk.deinit();
-        const c1 = try chunk.addConstant(.{ .integer = 1 });
-        const c2 = try chunk.addConstant(.{ .integer = 2 });
+        const c1 = try chunk.addConstant(Value.initInteger(1));
+        const c2 = try chunk.addConstant(Value.initInteger(2));
         try chunk.emit(.const_load, c1);
         try chunk.emit(.const_load, c2);
         try chunk.emitOp(.gt);
         try chunk.emitOp(.ret);
         var vm = VM.init(std.testing.allocator);
         const result = try vm.run(&chunk);
-        try std.testing.expectEqual(Value{ .boolean = false }, result);
+        try std.testing.expectEqual(Value.false_val, result);
     }
 }
 
@@ -1640,30 +1652,30 @@ test "VM float arithmetic" {
     // (+ 1.5 2.5) = 4.0
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const c1 = try chunk.addConstant(.{ .float = 1.5 });
-    const c2 = try chunk.addConstant(.{ .float = 2.5 });
+    const c1 = try chunk.addConstant(Value.initFloat(1.5));
+    const c2 = try chunk.addConstant(Value.initFloat(2.5));
     try chunk.emit(.const_load, c1);
     try chunk.emit(.const_load, c2);
     try chunk.emitOp(.add);
     try chunk.emitOp(.ret);
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .float = 4.0 }, result);
+    try std.testing.expectEqual(Value.initFloat(4.0), result);
 }
 
 test "VM mixed int/float arithmetic" {
     // (+ 1 2.5) = 3.5
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const c1 = try chunk.addConstant(.{ .integer = 1 });
-    const c2 = try chunk.addConstant(.{ .float = 2.5 });
+    const c1 = try chunk.addConstant(Value.initInteger(1));
+    const c2 = try chunk.addConstant(Value.initFloat(2.5));
     try chunk.emit(.const_load, c1);
     try chunk.emit(.const_load, c2);
     try chunk.emitOp(.add);
     try chunk.emitOp(.ret);
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .float = 3.5 }, result);
+    try std.testing.expectEqual(Value.initFloat(3.5), result);
 }
 
 test "VM closure creates fn_val" {
@@ -1686,7 +1698,7 @@ test "VM closure creates fn_val" {
     defer chunk.deinit();
 
     // Store FnProto pointer as fn_val constant (VM reads proto from Fn)
-    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const fn_obj = Value.initFn(&.{ .proto = &proto, .closure_bindings = null });
     const idx = try chunk.addConstant(fn_obj);
     try chunk.emit(.closure, idx);
     try chunk.emitOp(.ret);
@@ -1702,7 +1714,7 @@ test "VM call simple function" {
         .{ .op = .const_load, .operand = 0 },
         .{ .op = .ret },
     };
-    const fn_constants = [_]Value{.{ .integer = 42 }};
+    const fn_constants = [_]Value{Value.initInteger(42)};
     const proto = FnProto{
         .name = null,
         .arity = 0,
@@ -1715,7 +1727,7 @@ test "VM call simple function" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const fn_obj = Value.initFn(&.{ .proto = &proto, .closure_bindings = null });
     const idx = try chunk.addConstant(fn_obj);
     try chunk.emit(.closure, idx);
     try chunk.emit(.call, 0);
@@ -1723,7 +1735,7 @@ test "VM call simple function" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "VM call function with args" {
@@ -1747,10 +1759,10 @@ test "VM call function with args" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const fn_obj = Value{ .fn_val = &.{ .proto = &proto, .closure_bindings = null } };
+    const fn_obj = Value.initFn(&.{ .proto = &proto, .closure_bindings = null });
     const fn_idx = try chunk.addConstant(fn_obj);
-    const c3 = try chunk.addConstant(.{ .integer = 3 });
-    const c4 = try chunk.addConstant(.{ .integer = 4 });
+    const c3 = try chunk.addConstant(Value.initInteger(3));
+    const c4 = try chunk.addConstant(Value.initInteger(4));
 
     try chunk.emit(.closure, fn_idx);
     try chunk.emit(.const_load, c3);
@@ -1760,7 +1772,7 @@ test "VM call function with args" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 7 }, result);
+    try std.testing.expectEqual(Value.initInteger(7), result);
 }
 
 test "VM closure with capture" {
@@ -1800,10 +1812,10 @@ test "VM closure with capture" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c10 = try chunk.addConstant(.{ .integer = 10 });
-    const fn_template = Value{ .fn_val = &.{ .proto = &inner_proto, .closure_bindings = null } };
+    const c10 = try chunk.addConstant(Value.initInteger(10));
+    const fn_template = Value.initFn(&.{ .proto = &inner_proto, .closure_bindings = null });
     const fn_idx = try chunk.addConstant(fn_template);
-    const c5 = try chunk.addConstant(.{ .integer = 5 });
+    const c5 = try chunk.addConstant(Value.initInteger(5));
 
     try chunk.emit(.const_load, c10); // push 10
     try chunk.emit(.closure, fn_idx); // create closure capturing [10]
@@ -1814,7 +1826,7 @@ test "VM closure with capture" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 15 }, result);
+    try std.testing.expectEqual(Value.initInteger(15), result);
 }
 
 test "VM compiler+vm integration: (fn [x] x) called" {
@@ -1839,7 +1851,7 @@ test "VM compiler+vm integration: (fn [x] x) called" {
         .source = .{},
     };
     var fn_node = Node{ .fn_node = &fn_data };
-    var arg = Node{ .constant = .{ .value = .{ .integer = 42 } } };
+    var arg = Node{ .constant = .{ .value = Value.initInteger(42) } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1854,7 +1866,7 @@ test "VM compiler+vm integration: (fn [x] x) called" {
     var vm = VM.init(allocator);
     defer vm.deinit();
     const result = try vm.run(&compiler.chunk);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "VM compiler+vm integration: closure capture via let" {
@@ -1893,7 +1905,7 @@ test "VM compiler+vm integration: closure capture via let" {
     var fn_node = Node{ .fn_node = &fn_data };
 
     // Call: ((fn [y] (+ x y)) 5)
-    var arg_5 = Node{ .constant = .{ .value = .{ .integer = 5 } } };
+    var arg_5 = Node{ .constant = .{ .value = Value.initInteger(5) } };
     var call_args = [_]*Node{&arg_5};
     var call_data = node_mod.CallNode{
         .callee = &fn_node,
@@ -1903,7 +1915,7 @@ test "VM compiler+vm integration: closure capture via let" {
     var call_node = Node{ .call_node = &call_data };
 
     // let: (let [x 10] ...)
-    var init_10 = Node{ .constant = .{ .value = .{ .integer = 10 } } };
+    var init_10 = Node{ .constant = .{ .value = Value.initInteger(10) } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_10 },
     };
@@ -1934,13 +1946,13 @@ test "VM compiler+vm integration: closure capture via let" {
 test "VM nop does nothing" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const idx = try chunk.addConstant(.{ .integer = 99 });
+    const idx = try chunk.addConstant(Value.initInteger(99));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.nop);
     try chunk.emitOp(.ret);
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 99 }, result);
+    try std.testing.expectEqual(Value.initInteger(99), result);
 }
 
 test "VM var_load resolves pre-defined Var" {
@@ -1954,19 +1966,19 @@ test "VM var_load resolves pre-defined Var" {
     const ns = try env.findOrCreateNamespace("user");
     env.current_ns = ns;
     const v = try ns.intern("x");
-    v.bindRoot(.{ .integer = 42 });
+    v.bindRoot(Value.initInteger(42));
 
     // Bytecode: var_load (symbol "x"), ret
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
     var vm = VM.initWithEnv(std.testing.allocator, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 42 }, result);
+    try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "VM def creates and binds a Var" {
@@ -1983,8 +1995,8 @@ test "VM def creates and binds a Var" {
     // Bytecode: const_load(42), def(symbol "x"), ret
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
-    const val_idx = try chunk.addConstant(.{ .integer = 42 });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const val_idx = try chunk.addConstant(Value.initInteger(42));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
     try chunk.emitOp(.ret);
@@ -1995,12 +2007,12 @@ test "VM def creates and binds a Var" {
 
     // def returns a symbol with ns/name
     try std.testing.expect(result == .symbol);
-    try std.testing.expectEqualStrings("x", result.symbol.name);
-    try std.testing.expectEqualStrings("user", result.symbol.ns.?);
+    try std.testing.expectEqualStrings("x", result.asSymbol().name);
+    try std.testing.expectEqualStrings("user", result.asSymbol().ns.?);
 
     // Var should be bound in namespace
     const v = ns.resolve("x").?;
-    try std.testing.expect(v.deref().eql(.{ .integer = 42 }));
+    try std.testing.expect(v.deref().eql(Value.initInteger(42)));
 }
 
 test "VM def then var_load round-trip" {
@@ -2018,21 +2030,21 @@ test "VM def then var_load round-trip" {
     defer chunk.deinit();
 
     // (def x 10)
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
-    const val_idx = try chunk.addConstant(.{ .integer = 10 });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const val_idx = try chunk.addConstant(Value.initInteger(10));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
     try chunk.emitOp(.pop); // discard def result
 
     // x (var_load)
-    const var_sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    const var_sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, var_sym_idx);
     try chunk.emitOp(.ret);
 
     var vm = VM.initWithEnv(std.testing.allocator, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 10 }, result);
+    try std.testing.expectEqual(Value.initInteger(10), result);
 }
 
 test "VM var_load undefined var returns error" {
@@ -2047,7 +2059,7 @@ test "VM var_load undefined var returns error" {
 
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "nonexistent" } });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "nonexistent" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2059,7 +2071,7 @@ test "VM var_load undefined var returns error" {
 test "VM var_load without env returns error" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = null, .name = "x" } });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2079,18 +2091,18 @@ test "VM var_load qualified symbol" {
     const ns = try env.findOrCreateNamespace("user");
     env.current_ns = ns;
     const v = try ns.intern("x");
-    v.bindRoot(.{ .integer = 99 });
+    v.bindRoot(Value.initInteger(99));
 
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(.{ .symbol = .{ .ns = "user", .name = "x" } });
+    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = "user", .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
     var vm = VM.initWithEnv(std.testing.allocator, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value{ .integer = 99 }, result);
+    try std.testing.expectEqual(Value.initInteger(99), result);
 }
 
 test "VM compiler+vm: loop/recur counts to 5" {
@@ -2105,14 +2117,14 @@ test "VM compiler+vm: loop/recur counts to 5" {
 
     // Build AST
     // loop binding: x = 0
-    var init_0 = Node{ .constant = .{ .value = .{ .integer = 0 } } };
+    var init_0 = Node{ .constant = .{ .value = Value.initInteger(0) } };
     const bindings = [_]node_mod.LetBinding{
         .{ .name = "x", .init = &init_0 },
     };
 
     // test: (< x 5)
     var x_ref1 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var five = Node{ .constant = .{ .value = .{ .integer = 5 } } };
+    var five = Node{ .constant = .{ .value = Value.initInteger(5) } };
     var lt_callee = Node{ .var_ref = .{ .ns = null, .name = "<", .source = .{} } };
     var lt_args = [_]*Node{ &x_ref1, &five };
     var lt_call = node_mod.CallNode{ .callee = &lt_callee, .args = &lt_args, .source = .{} };
@@ -2120,7 +2132,7 @@ test "VM compiler+vm: loop/recur counts to 5" {
 
     // then: (recur (+ x 1))
     var x_ref2 = Node{ .local_ref = .{ .name = "x", .idx = 0, .source = .{} } };
-    var one = Node{ .constant = .{ .value = .{ .integer = 1 } } };
+    var one = Node{ .constant = .{ .value = Value.initInteger(1) } };
     var add_callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
     var add_args = [_]*Node{ &x_ref2, &one };
     var add_call = node_mod.CallNode{ .callee = &add_callee, .args = &add_args, .source = .{} };
@@ -2155,7 +2167,7 @@ test "VM compiler+vm: loop/recur counts to 5" {
     var vm = VM.init(allocator);
     defer vm.deinit();
     const result = try vm.run(&compiler.chunk);
-    try std.testing.expectEqual(Value{ .integer = 5 }, result);
+    try std.testing.expectEqual(Value.initInteger(5), result);
 }
 
 test "VM vec_new creates vector" {
@@ -2163,9 +2175,9 @@ test "VM vec_new creates vector" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c1 = try chunk.addConstant(.{ .integer = 1 });
-    const c2 = try chunk.addConstant(.{ .integer = 2 });
-    const c3 = try chunk.addConstant(.{ .integer = 3 });
+    const c1 = try chunk.addConstant(Value.initInteger(1));
+    const c2 = try chunk.addConstant(Value.initInteger(2));
+    const c3 = try chunk.addConstant(Value.initInteger(3));
     try chunk.emit(.const_load, c1);
     try chunk.emit(.const_load, c2);
     try chunk.emit(.const_load, c3);
@@ -2176,18 +2188,18 @@ test "VM vec_new creates vector" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .vector);
-    try std.testing.expectEqual(@as(usize, 3), result.vector.items.len);
-    try std.testing.expect(result.vector.items[0].eql(.{ .integer = 1 }));
-    try std.testing.expect(result.vector.items[1].eql(.{ .integer = 2 }));
-    try std.testing.expect(result.vector.items[2].eql(.{ .integer = 3 }));
+    try std.testing.expectEqual(@as(usize, 3), result.asVector().items.len);
+    try std.testing.expect(result.asVector().items[0].eql(Value.initInteger(1)));
+    try std.testing.expect(result.asVector().items[1].eql(Value.initInteger(2)));
+    try std.testing.expect(result.asVector().items[2].eql(Value.initInteger(3)));
 }
 
 test "VM list_new creates list" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c1 = try chunk.addConstant(.{ .integer = 10 });
-    const c2 = try chunk.addConstant(.{ .integer = 20 });
+    const c1 = try chunk.addConstant(Value.initInteger(10));
+    const c2 = try chunk.addConstant(Value.initInteger(20));
     try chunk.emit(.const_load, c1);
     try chunk.emit(.const_load, c2);
     try chunk.emit(.list_new, 2);
@@ -2197,9 +2209,9 @@ test "VM list_new creates list" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .list);
-    try std.testing.expectEqual(@as(usize, 2), result.list.items.len);
-    try std.testing.expect(result.list.items[0].eql(.{ .integer = 10 }));
-    try std.testing.expect(result.list.items[1].eql(.{ .integer = 20 }));
+    try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
+    try std.testing.expect(result.asList().items[0].eql(Value.initInteger(10)));
+    try std.testing.expect(result.asList().items[1].eql(Value.initInteger(20)));
 }
 
 test "VM map_new creates map" {
@@ -2207,10 +2219,10 @@ test "VM map_new creates map" {
     defer chunk.deinit();
 
     // {:a 1 :b 2} -> 4 values, map_new 2 (pairs)
-    const ka = try chunk.addConstant(.{ .keyword = .{ .ns = null, .name = "a" } });
-    const v1 = try chunk.addConstant(.{ .integer = 1 });
-    const kb = try chunk.addConstant(.{ .keyword = .{ .ns = null, .name = "b" } });
-    const v2 = try chunk.addConstant(.{ .integer = 2 });
+    const ka = try chunk.addConstant(Value.initKeyword(.{ .ns = null, .name = "a" }));
+    const v1 = try chunk.addConstant(Value.initInteger(1));
+    const kb = try chunk.addConstant(Value.initKeyword(.{ .ns = null, .name = "b" }));
+    const v2 = try chunk.addConstant(Value.initInteger(2));
     try chunk.emit(.const_load, ka);
     try chunk.emit(.const_load, v1);
     try chunk.emit(.const_load, kb);
@@ -2222,7 +2234,7 @@ test "VM map_new creates map" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .map);
-    try std.testing.expectEqual(@as(usize, 2), result.map.count());
+    try std.testing.expectEqual(@as(usize, 2), result.asMap().count());
 }
 
 test "VM try/catch handles throw" {
@@ -2250,7 +2262,7 @@ test "VM try/catch handles throw" {
     defer compiler.deinit();
 
     // AST: (try (throw "err") (catch e e))
-    var throw_expr = Node{ .constant = .{ .value = .{ .string = "err" } } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString("err") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var throw_node = Node{ .throw_node = &throw_data };
 
@@ -2274,14 +2286,14 @@ test "VM try/catch handles throw" {
     defer vm.deinit();
     const result = try vm.run(&compiler.chunk);
     try std.testing.expect(result == .string);
-    try std.testing.expectEqualStrings("err", result.string);
+    try std.testing.expectEqualStrings("err", result.asString());
 }
 
 test "VM throw without handler returns UserException" {
     // (throw "err") without try/catch
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const idx = try chunk.addConstant(.{ .string = "oops" });
+    const idx = try chunk.addConstant(Value.initString("oops"));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.throw_ex);
     try chunk.emitOp(.ret);
@@ -2295,8 +2307,8 @@ test "VM set_new creates set" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
 
-    const c1 = try chunk.addConstant(.{ .integer = 1 });
-    const c2 = try chunk.addConstant(.{ .integer = 2 });
+    const c1 = try chunk.addConstant(Value.initInteger(1));
+    const c2 = try chunk.addConstant(Value.initInteger(2));
     try chunk.emit(.const_load, c1);
     try chunk.emit(.const_load, c2);
     try chunk.emit(.set_new, 2);
@@ -2306,7 +2318,7 @@ test "VM set_new creates set" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .set);
-    try std.testing.expectEqual(@as(usize, 2), result.set.count());
+    try std.testing.expectEqual(@as(usize, 2), result.asSet().count());
 }
 
 test "VM empty vec_new" {
@@ -2319,5 +2331,5 @@ test "VM empty vec_new" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .vector);
-    try std.testing.expectEqual(@as(usize, 0), result.vector.items.len);
+    try std.testing.expectEqual(@as(usize, 0), result.asVector().items.len);
 }

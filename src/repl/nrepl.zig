@@ -430,7 +430,7 @@ fn opEval(
         else
             "evaluation failed";
 
-        setReplVar(state, "*e", .{ .string = err_msg });
+        setReplVar(state, "*e", Value.initString(err_msg));
 
         sendEvalError(stream, msg, err_msg, allocator);
     }
@@ -758,7 +758,7 @@ fn setReplVar(state: *ServerState, name: []const u8, val: Value) void {
 /// Copy one REPL var's value to another (*3 = *2, *2 = *1).
 fn updateReplVar(state: *ServerState, target: []const u8, source: []const u8) void {
     if (state.env.current_ns) |ns| {
-        const src_val = if (ns.resolve(source)) |v| v.deref() else Value.nil;
+        const src_val = if (ns.resolve(source)) |v| v.deref() else Value.nil_val;
         if (ns.resolve(target)) |tv| {
             tv.bindRoot(src_val);
         }
@@ -885,27 +885,30 @@ fn sendError(
 /// Format a Value as a Clojure-readable string.
 /// Equivalent to pr-str semantics.
 fn writeValue(w: anytype, val: Value) void {
-    switch (val) {
+    switch (val.tag()) {
         .nil => w.print("nil", .{}) catch {},
-        .boolean => |b| w.print("{}", .{b}) catch {},
-        .integer => |i| w.print("{d}", .{i}) catch {},
-        .float => |f| w.print("{d}", .{f}) catch {},
-        .string => |s| w.print("\"{s}\"", .{s}) catch {},
-        .keyword => |k| {
+        .boolean => w.print("{}", .{val.asBoolean()}) catch {},
+        .integer => w.print("{d}", .{val.asInteger()}) catch {},
+        .float => w.print("{d}", .{val.asFloat()}) catch {},
+        .string => w.print("\"{s}\"", .{val.asString()}) catch {},
+        .keyword => {
+            const k = val.asKeyword();
             if (k.ns) |ns| {
                 w.print(":{s}/{s}", .{ ns, k.name }) catch {};
             } else {
                 w.print(":{s}", .{k.name}) catch {};
             }
         },
-        .symbol => |s| {
+        .symbol => {
+            const s = val.asSymbol();
             if (s.ns) |ns| {
                 w.print("{s}/{s}", .{ ns, s.name }) catch {};
             } else {
                 w.print("{s}", .{s.name}) catch {};
             }
         },
-        .list => |lst| {
+        .list => {
+            const lst = val.asList();
             w.print("(", .{}) catch {};
             for (lst.items, 0..) |item, i| {
                 if (i > 0) w.print(" ", .{}) catch {};
@@ -913,7 +916,8 @@ fn writeValue(w: anytype, val: Value) void {
             }
             w.print(")", .{}) catch {};
         },
-        .vector => |vec| {
+        .vector => {
+            const vec = val.asVector();
             w.print("[", .{}) catch {};
             for (vec.items, 0..) |item, i| {
                 if (i > 0) w.print(" ", .{}) catch {};
@@ -921,7 +925,8 @@ fn writeValue(w: anytype, val: Value) void {
             }
             w.print("]", .{}) catch {};
         },
-        .map => |m| {
+        .map => {
+            const m = val.asMap();
             w.print("{{", .{}) catch {};
             var i: usize = 0;
             while (i < m.entries.len) : (i += 2) {
@@ -932,7 +937,8 @@ fn writeValue(w: anytype, val: Value) void {
             }
             w.print("}}", .{}) catch {};
         },
-        .hash_map => |hm| {
+        .hash_map => {
+            const hm = val.asHashMap();
             w.print("{{", .{}) catch {};
             // Use arena allocator for temporary entry collection
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -947,7 +953,8 @@ fn writeValue(w: anytype, val: Value) void {
             }
             w.print("}}", .{}) catch {};
         },
-        .set => |s| {
+        .set => {
+            const s = val.asSet();
             w.print("#{{", .{}) catch {};
             for (s.items, 0..) |item, i| {
                 if (i > 0) w.print(" ", .{}) catch {};
@@ -957,46 +964,57 @@ fn writeValue(w: anytype, val: Value) void {
         },
         .fn_val => w.print("#<fn>", .{}) catch {},
         .builtin_fn => w.print("#<builtin>", .{}) catch {},
-        .atom => |a| {
+        .atom => {
+            const a = val.asAtom();
             w.print("(atom ", .{}) catch {};
             writeValue(w, a.value);
             w.print(")", .{}) catch {};
         },
-        .volatile_ref => |v| {
+        .volatile_ref => {
+            const v = val.asVolatile();
             w.print("#<volatile ", .{}) catch {};
             writeValue(w, v.value);
             w.print(">", .{}) catch {};
         },
-        .regex => |p| {
+        .regex => {
+            const p = val.asRegex();
             w.print("#\"{s}\"", .{p.source}) catch {};
         },
-        .char => |c| {
+        .char => {
+            const c = val.asChar();
             var buf: [4]u8 = undefined;
             const len = std.unicode.utf8Encode(c, &buf) catch 0;
             _ = w.write("\\") catch {};
             _ = w.write(buf[0..len]) catch {};
         },
-        .protocol => |p| w.print("#<protocol {s}>", .{p.name}) catch {},
-        .protocol_fn => |pf| w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {},
-        .multi_fn => |mf| w.print("#<multifn {s}>", .{mf.name}) catch {},
-        .lazy_seq => |ls| {
+        .protocol => w.print("#<protocol {s}>", .{val.asProtocol().name}) catch {},
+        .protocol_fn => {
+            const pf = val.asProtocolFn();
+            w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {};
+        },
+        .multi_fn => w.print("#<multifn {s}>", .{val.asMultiFn().name}) catch {},
+        .lazy_seq => {
+            const ls = val.asLazySeq();
             if (ls.realized) |r| {
                 writeValue(w, r);
             } else {
                 w.print("#<lazy-seq>", .{}) catch {};
             }
         },
-        .cons => |c| {
+        .cons => {
+            const c = val.asCons();
             w.print("(", .{}) catch {};
             writeValue(w, c.first);
             w.print(" . ", .{}) catch {};
             writeValue(w, c.rest);
             w.print(")", .{}) catch {};
         },
-        .var_ref => |v| {
+        .var_ref => {
+            const v = val.asVarRef();
             w.print("#'{s}/{s}", .{ v.ns_name, v.sym.name }) catch {};
         },
-        .delay => |d| {
+        .delay => {
+            const d = val.asDelay();
             if (d.realized) {
                 w.print("#delay[", .{}) catch {};
                 if (d.cached) |v| writeValue(w, v) else w.print("nil", .{}) catch {};
@@ -1005,25 +1023,26 @@ fn writeValue(w: anytype, val: Value) void {
                 w.print("#delay[pending]", .{}) catch {};
             }
         },
-        .reduced => |r| writeValue(w, r.value),
+        .reduced => writeValue(w, val.asReduced().value),
         .transient_vector => w.print("#<TransientVector>", .{}) catch {},
         .transient_map => w.print("#<TransientMap>", .{}) catch {},
         .transient_set => w.print("#<TransientSet>", .{}) catch {},
-        .chunked_cons => |cc| {
+        .chunked_cons => {
+            const cc = val.asChunkedCons();
             w.print("(", .{}) catch {};
             var i: usize = 0;
             while (i < cc.chunk.count()) : (i += 1) {
                 if (i > 0) w.print(" ", .{}) catch {};
-                const elem = cc.chunk.nth(i) orelse Value.nil;
+                const elem = cc.chunk.nth(i) orelse Value.nil_val;
                 writeValue(w, elem);
             }
-            if (cc.more != .nil) w.print(" ...", .{}) catch {};
+            if (cc.more.tag() != .nil) w.print(" ...", .{}) catch {};
             w.print(")", .{}) catch {};
         },
         .chunk_buffer => w.print("#<ChunkBuffer>", .{}) catch {},
         .array_chunk => w.print("#<ArrayChunk>", .{}) catch {},
         .wasm_module => w.print("#<WasmModule>", .{}) catch {},
-        .wasm_fn => |wf| w.print("#<WasmFn {s}>", .{wf.name}) catch {},
+        .wasm_fn => w.print("#<WasmFn {s}>", .{val.asWasmFn().name}) catch {},
     }
 }
 
@@ -1101,35 +1120,35 @@ test "nrepl - statusDone produces done list" {
 test "nrepl - writeValue integer" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), .{ .integer = 42 });
+    writeValue(stream.writer(), Value.initInteger(42));
     try std.testing.expectEqualSlices(u8, "42", stream.getWritten());
 }
 
 test "nrepl - writeValue string" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), .{ .string = "hello" });
+    writeValue(stream.writer(), Value.initString("hello"));
     try std.testing.expectEqualSlices(u8, "\"hello\"", stream.getWritten());
 }
 
 test "nrepl - writeValue nil" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), .nil);
+    writeValue(stream.writer(), Value.nil_val);
     try std.testing.expectEqualSlices(u8, "nil", stream.getWritten());
 }
 
 test "nrepl - writeValue boolean" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), .{ .boolean = true });
+    writeValue(stream.writer(), Value.true_val);
     try std.testing.expectEqualSlices(u8, "true", stream.getWritten());
 }
 
 test "nrepl - writeValue keyword" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), .{ .keyword = .{ .name = "foo", .ns = null } });
+    writeValue(stream.writer(), Value.initKeyword(.{ .name = "foo", .ns = null }));
     try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
 }
 

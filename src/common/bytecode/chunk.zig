@@ -221,21 +221,23 @@ fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writ
 
 /// Dump a value in a compact readable form.
 fn dumpValue(val: Value, w: *std.Io.Writer) !void {
-    switch (val) {
+    switch (val.tag()) {
         .nil => try w.writeAll("nil"),
-        .boolean => |b| try w.writeAll(if (b) "true" else "false"),
-        .integer => |n| try w.print("{d}", .{n}),
-        .float => |f| try w.print("{d}", .{f}),
-        .char => |c| try w.print("\\{u}", .{c}),
-        .string => |s| try w.print("\"{s}\"", .{s}),
-        .symbol => |s| {
+        .boolean => try w.writeAll(if (val.asBoolean()) "true" else "false"),
+        .integer => try w.print("{d}", .{val.asInteger()}),
+        .float => try w.print("{d}", .{val.asFloat()}),
+        .char => try w.print("\\{u}", .{val.asChar()}),
+        .string => try w.print("\"{s}\"", .{val.asString()}),
+        .symbol => {
+            const s = val.asSymbol();
             if (s.ns) |ns| {
                 try w.print("{s}/{s}", .{ ns, s.name });
             } else {
                 try w.writeAll(s.name);
             }
         },
-        .keyword => |k| {
+        .keyword => {
+            const k = val.asKeyword();
             try w.writeByte(':');
             if (k.ns) |ns| {
                 try w.print("{s}/", .{ns});
@@ -243,7 +245,7 @@ fn dumpValue(val: Value, w: *std.Io.Writer) !void {
             try w.writeAll(k.name);
         },
         .fn_val => try w.writeAll("#<fn>"),
-        else => try w.print("<{s}>", .{@tagName(val)}),
+        else => try w.print("<{s}>", .{@tagName(val.tag())}),
     }
 }
 
@@ -255,7 +257,7 @@ test "Chunk basic emit and addConstant" {
     defer chunk.deinit();
 
     // Add a constant
-    const idx = try chunk.addConstant(.{ .integer = 42 });
+    const idx = try chunk.addConstant(Value.initInteger(42));
     try std.testing.expectEqual(@as(u16, 0), idx);
     try std.testing.expectEqual(@as(usize, 1), chunk.constants.items.len);
 
@@ -315,7 +317,7 @@ test "Chunk.dump basic output" {
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 
-    const idx = try chunk.addConstant(.{ .integer = 42 });
+    const idx = try chunk.addConstant(Value.initInteger(42));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.pop);
     try chunk.emitOp(.ret);
@@ -345,7 +347,7 @@ test "Chunk.dump const_load shows constant value comment" {
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 
-    _ = try chunk.addConstant(.{ .symbol = .{ .name = "foo", .ns = null } });
+    _ = try chunk.addConstant(Value.initSymbol(.{ .name = "foo", .ns = null }));
     try chunk.emit(.const_load, 0);
     try chunk.emitOp(.ret);
 
@@ -381,7 +383,7 @@ test "FnProto.dump output" {
         .{ .op = .local_load, .operand = 0 },
         .{ .op = .ret },
     };
-    const constants = [_]Value{.{ .integer = 10 }};
+    const constants = [_]Value{Value.initInteger(10)};
 
     const proto = FnProto{
         .name = "my-fn",
