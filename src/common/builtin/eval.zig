@@ -203,7 +203,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
     switch (args.len) {
         1 => {
             // (edn/read-string s)
-            if (args[0] == .nil) return Value.nil_val;
+            if (args[0].tag() == .nil) return Value.nil_val;
             const s = switch (args[0].tag()) {
                 .string => args[0].asString(),
                 else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string, got {s}", .{@tagName(args[0].tag())}),
@@ -216,7 +216,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
         },
         2 => {
             // (edn/read-string opts s) — opts map currently ignored
-            if (args[1] == .nil) return Value.nil_val;
+            if (args[1].tag() == .nil) return Value.nil_val;
             const s = switch (args[1].tag()) {
                 .string => args[1].asString(),
                 else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string as second arg, got {s}", .{@tagName(args[1].tag())}),
@@ -314,7 +314,7 @@ test "read-string - symbol" {
     const alloc = arena.allocator();
 
     const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "foo")});
-    try testing.expect(result == .symbol);
+    try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("foo", result.asSymbol().name);
 }
 
@@ -324,7 +324,7 @@ test "read-string - keyword" {
     const alloc = arena.allocator();
 
     const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, ":bar")});
-    try testing.expect(result == .keyword);
+    try testing.expect(result.tag() == .keyword);
     try testing.expectEqualStrings("bar", result.asKeyword().name);
 }
 
@@ -334,7 +334,7 @@ test "read-string - vector" {
     const alloc = arena.allocator();
 
     const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "[1 2 3]")});
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
 }
 
@@ -353,7 +353,7 @@ test "read-string - map" {
     const alloc = arena.allocator();
 
     const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "{:a 1}")});
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
 }
 
 test "read-string - list" {
@@ -362,6 +362,6 @@ test "read-string - list" {
     const alloc = arena.allocator();
 
     const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "(+ 1 2)")});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }

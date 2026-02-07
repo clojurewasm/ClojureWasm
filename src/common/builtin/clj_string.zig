@@ -22,8 +22,8 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to join", .{args.len});
 
     const sep: []const u8 = if (args.len == 2) blk: {
-        if (args[0] == .string) break :blk args[0].asString();
-        if (args[0] == .char) {
+        if (args[0].tag() == .string) break :blk args[0].asString();
+        if (args[0].tag() == .char) {
             var buf: [4]u8 = undefined;
             const len = std.unicode.utf8Encode(args[0].asChar(), &buf) catch 0;
             const s = try allocator.dupe(u8, buf[0..len]);
@@ -51,12 +51,12 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
             var elems: std.ArrayListUnmanaged(Value) = .empty;
             var cur = coll;
             while (true) {
-                if (cur == .cons) {
+                if (cur.tag() == .cons) {
                     try elems.append(allocator, cur.asCons().first);
                     cur = cur.asCons().rest;
-                } else if (cur == .lazy_seq) {
+                } else if (cur.tag() == .lazy_seq) {
                     cur = try cur.asLazySeq().realize(allocator);
-                } else if (cur == .list) {
+                } else if (cur.tag() == .list) {
                     for (cur.asList().items) |item| try elems.append(allocator, item);
                     break;
                 } else break;
@@ -87,18 +87,18 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Splits string on a regular expression. Returns a vector of strings.
 pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split expects a string, got {s}", .{@tagName(args[0].tag())});
 
     const s = args[0].asString();
     const limit: i64 = if (args.len == 3) blk: {
-        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "split limit expects an integer, got {s}", .{@tagName(args[2].tag())});
+        if (args[2].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "split limit expects an integer, got {s}", .{@tagName(args[2].tag())});
         break :blk args[2].asInteger();
     } else 0;
 
     // Use regex matching for regex patterns, literal for strings
-    if (args[1] == .regex) {
+    if (args[1].tag() == .regex) {
         return splitWithRegex(allocator, s, args[1], limit);
-    } else if (args[1] == .string) {
+    } else if (args[1].tag() == .string) {
         return splitWithString(allocator, s, args[1].asString(), limit);
     }
     return err.setErrorFmt(.eval, .type_error, .{}, "split pattern expects a string or regex, got {s}", .{@tagName(args[1].tag())});
@@ -174,7 +174,7 @@ fn splitWithRegex(allocator: Allocator, s: []const u8, regex_val: Value, limit: 
 /// (clojure.string/upper-case s)
 pub fn upperCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to upper-case", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "upper-case expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "upper-case expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     const result = try allocator.alloc(u8, s.len);
     for (s, 0..) |c, i| {
@@ -186,7 +186,7 @@ pub fn upperCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/lower-case s)
 pub fn lowerCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to lower-case", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "lower-case expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "lower-case expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     const result = try allocator.alloc(u8, s.len);
     for (s, 0..) |c, i| {
@@ -198,7 +198,7 @@ pub fn lowerCaseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (clojure.string/trim s)
 pub fn trimFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     const left = trimLeftUnicode(s);
     const right = trimRightUnicode(left);
@@ -209,8 +209,8 @@ pub fn trimFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// True if s includes substr.
 pub fn includesFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to includes?", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? expects a string, got {s}", .{@tagName(args[0].tag())});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? substring expects a string, got {s}", .{@tagName(args[1].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[1].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "includes? substring expects a string, got {s}", .{@tagName(args[1].tag())});
     return Value.initBoolean(std.mem.indexOf(u8, args[0].asString(), args[1].asString()) != null);
 }
 
@@ -218,8 +218,8 @@ pub fn includesFn(_: Allocator, args: []const Value) anyerror!Value {
 /// True if s starts with substr.
 pub fn startsWithFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to starts-with?", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? expects a string, got {s}", .{@tagName(args[0].tag())});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? substring expects a string, got {s}", .{@tagName(args[1].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[1].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "starts-with? substring expects a string, got {s}", .{@tagName(args[1].tag())});
     return Value.initBoolean(std.mem.startsWith(u8, args[0].asString(), args[1].asString()));
 }
 
@@ -227,8 +227,8 @@ pub fn startsWithFn(_: Allocator, args: []const Value) anyerror!Value {
 /// True if s ends with substr.
 pub fn endsWithFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ends-with?", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? expects a string, got {s}", .{@tagName(args[0].tag())});
-    if (args[1] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? substring expects a string, got {s}", .{@tagName(args[1].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[1].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "ends-with? substring expects a string, got {s}", .{@tagName(args[1].tag())});
     return Value.initBoolean(std.mem.endsWith(u8, args[0].asString(), args[1].asString()));
 }
 
@@ -238,7 +238,7 @@ pub fn endsWithFn(_: Allocator, args: []const Value) anyerror!Value {
 /// replacement can be: string, char, or function (for regex match).
 pub fn replaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace expects a string, got {s}", .{@tagName(args[0].tag())});
 
     const s = args[0].asString();
 
@@ -329,7 +329,7 @@ fn replaceRegexFn(allocator: Allocator, s: []const u8, regex_val: Value, fn_val:
             const match_val = try matchResultToValue(allocator, result, s);
             const call_args = [_]Value{match_val};
             const replacement_val = try bootstrap.callFnVal(allocator, fn_val, &call_args);
-            if (replacement_val == .string) {
+            if (replacement_val.tag() == .string) {
                 try aw.writer.writeAll(replacement_val.asString());
             } else {
                 const str_val = try valueToStr(allocator, replacement_val);
@@ -371,7 +371,7 @@ fn matchResultToValue(allocator: Allocator, result: matcher_mod.MatchResult, inp
 /// replacement can be: string, char, or function (for regex match).
 pub fn replaceFirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replace-first", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "replace-first expects a string, got {s}", .{@tagName(args[0].tag())});
 
     const s = args[0].asString();
 
@@ -444,7 +444,7 @@ fn replaceFirstRegexStr(allocator: Allocator, s: []const u8, regex_val: Value, r
 /// Converts first character to upper-case, all other characters to lower-case.
 pub fn capitalizeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to capitalize", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "capitalize expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "capitalize expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     if (s.len == 0) return args[0];
     const result = try allocator.alloc(u8, s.len);
@@ -459,7 +459,7 @@ pub fn capitalizeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Splits s on \n or \r\n. Returns a vector of strings.
 pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split-lines", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split-lines expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "split-lines expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
 
     var parts = std.ArrayList(Value).empty;
@@ -496,15 +496,15 @@ pub fn splitLinesFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns the index of value (string or char) in s, optionally starting from from-index.
 pub fn indexOfFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to index-of", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
-    const sub: []const u8 = if (args[1] == .string) args[1].asString() else if (args[1] == .char) blk: {
+    const sub: []const u8 = if (args[1].tag() == .string) args[1].asString() else if (args[1].tag() == .char) blk: {
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(args[1].asChar(), &buf) catch return error.ValueError;
         break :blk try allocator.dupe(u8, buf[0..len]);
     } else return err.setErrorFmt(.eval, .type_error, .{}, "index-of expects a string or char, got {s}", .{@tagName(args[1].tag())});
     const from: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "index-of from-index expects an integer, got {s}", .{@tagName(args[2].tag())});
+        if (args[2].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "index-of from-index expects an integer, got {s}", .{@tagName(args[2].tag())});
         const idx = args[2].asInteger();
         break :blk if (idx < 0) 0 else @intCast(idx);
     } else 0;
@@ -520,15 +520,15 @@ pub fn indexOfFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns the last index of value (string or char) in s, optionally searching backward from from-index.
 pub fn lastIndexOfFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to last-index-of", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
-    const sub: []const u8 = if (args[1] == .string) args[1].asString() else if (args[1] == .char) blk: {
+    const sub: []const u8 = if (args[1].tag() == .string) args[1].asString() else if (args[1].tag() == .char) blk: {
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(args[1].asChar(), &buf) catch return error.ValueError;
         break :blk try allocator.dupe(u8, buf[0..len]);
     } else return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of expects a string or char, got {s}", .{@tagName(args[1].tag())});
     const search_end: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of from-index expects an integer, got {s}", .{@tagName(args[2].tag())});
+        if (args[2].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "last-index-of from-index expects an integer, got {s}", .{@tagName(args[2].tag())});
         const idx = args[2].asInteger();
         const end: usize = if (idx < 0) 0 else @intCast(idx);
         break :blk @min(end + sub.len, s.len);
@@ -554,7 +554,7 @@ pub fn blankFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Returns s with its characters reversed.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "reverse expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "reverse expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     if (s.len == 0) return args[0];
     const result = try allocator.alloc(u8, s.len);
@@ -573,7 +573,7 @@ pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Removes all trailing newline (\n) and carriage return (\r) characters from s.
 pub fn trimNewlineFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trim-newline", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim-newline expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trim-newline expects a string, got {s}", .{@tagName(args[0].tag())});
     const s = args[0].asString();
     const trimmed = std.mem.trimRight(u8, s, "\r\n");
     return Value.initString(allocator, trimmed);
@@ -583,7 +583,7 @@ pub fn trimNewlineFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Removes whitespace from the left side of s.
 pub fn trimlFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to triml", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "triml expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "triml expects a string, got {s}", .{@tagName(args[0].tag())});
     return Value.initString(allocator, trimLeftUnicode(args[0].asString()));
 }
 
@@ -591,7 +591,7 @@ pub fn trimlFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Removes whitespace from the right side of s.
 pub fn trimrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trimr", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trimr expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "trimr expects a string, got {s}", .{@tagName(args[0].tag())});
     return Value.initString(allocator, trimRightUnicode(args[0].asString()));
 }
 
@@ -616,8 +616,8 @@ fn valueToStr(allocator: Allocator, val: Value) anyerror![]const u8 {
 /// as follows: if (cmap ch) is non-nil, use it as replacement, otherwise use ch.
 pub fn escapeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to escape", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a string, got {s}", .{@tagName(args[0].tag())});
-    if (args[1] != .map) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a map, got {s}", .{@tagName(args[1].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[1].tag() != .map) return err.setErrorFmt(.eval, .type_error, .{}, "escape expects a map, got {s}", .{@tagName(args[1].tag())});
 
     const s = args[0].asString();
     const cmap = args[1].asMap();
@@ -636,9 +636,9 @@ pub fn escapeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         const char_key = Value.initChar(cp);
         // Look up in cmap
         if (cmap.get(char_key)) |replacement| {
-            if (replacement == .string) {
+            if (replacement.tag() == .string) {
                 try aw.writer.writeAll(replacement.asString());
-            } else if (replacement == .char) {
+            } else if (replacement.tag() == .char) {
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(replacement.asChar(), &buf) catch 0;
                 try aw.writer.writeAll(buf[0..len]);
@@ -660,7 +660,7 @@ pub fn escapeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// replacement when passed to replace/replace-first.
 pub fn reQuoteReplacementFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-quote-replacement", .{args.len});
-    if (args[0] != .string) return err.setErrorFmt(.eval, .type_error, .{}, "re-quote-replacement expects a string, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "re-quote-replacement expects a string, got {s}", .{@tagName(args[0].tag())});
     // In JVM Clojure, this escapes $ and \ for Matcher.appendReplacement.
     // Since our replacement is literal, just return the string as-is.
     return args[0];
@@ -807,7 +807,7 @@ test "split basic" {
     const alloc = arena.allocator();
 
     const result = try splitFn(alloc, &.{ Value.initString(alloc, "a,b,c"), Value.initString(alloc, ",") });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
     try testing.expectEqualStrings("a", result.asVector().items[0].asString());
     try testing.expectEqualStrings("b", result.asVector().items[1].asString());
@@ -931,7 +931,7 @@ test "split-lines" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try splitLinesFn(alloc, &.{Value.initString(alloc, "a\nb\r\nc")});
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
     try testing.expectEqualStrings("a", result.asVector().items[0].asString());
     try testing.expectEqualStrings("b", result.asVector().items[1].asString());
@@ -945,7 +945,7 @@ test "index-of" {
     const r1 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "ll") });
     try testing.expectEqual(@as(i64, 2), r1.asInteger());
     const r2 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
-    try testing.expect(r2 == .nil);
+    try testing.expect(r2.tag() == .nil);
     const r3 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l"), Value.initInteger(3) });
     try testing.expectEqual(@as(i64, 3), r3.asInteger());
 }
@@ -957,7 +957,7 @@ test "last-index-of" {
     const r1 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l") });
     try testing.expectEqual(@as(i64, 3), r1.asInteger());
     const r2 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
-    try testing.expect(r2 == .nil);
+    try testing.expect(r2.tag() == .nil);
     const r3 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l"), Value.initInteger(2) });
     try testing.expectEqual(@as(i64, 2), r3.asInteger());
 }

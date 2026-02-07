@@ -55,7 +55,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
     }
 
-    const meta_ptr: ?*const Value = if (new_meta == .nil) null else blk: {
+    const meta_ptr: ?*const Value = if (new_meta.tag() == .nil) null else blk: {
         const ptr = try allocator.create(Value);
         ptr.* = new_meta;
         break :blk ptr;
@@ -264,17 +264,17 @@ test "meta on vector with no metadata returns nil" {
     const vec = @import("../collections.zig").PersistentVector{ .items = &items };
     const val = Value.initVector(&vec);
     const result = try metaFn(testing.allocator, &.{val});
-    try testing.expect(result == .nil);
+    try testing.expect(result.tag() == .nil);
 }
 
 test "meta on integer returns nil" {
     const result = try metaFn(testing.allocator, &.{Value.initInteger(42)});
-    try testing.expect(result == .nil);
+    try testing.expect(result.tag() == .nil);
 }
 
 test "meta on nil returns nil" {
     const result = try metaFn(testing.allocator, &.{Value.nil_val});
-    try testing.expect(result == .nil);
+    try testing.expect(result.tag() == .nil);
 }
 
 test "with-meta on vector attaches metadata" {
@@ -301,12 +301,12 @@ test "with-meta on vector attaches metadata" {
     const result = try withMetaFn(alloc, &.{ val, meta_val });
 
     // Result is a vector
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 2), result.asVector().count());
 
     // Metadata is attached
     const retrieved_meta = try metaFn(alloc, &.{result});
-    try testing.expect(retrieved_meta == .map);
+    try testing.expect(retrieved_meta.tag() == .map);
     const tag_val = retrieved_meta.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "tag" }));
     try testing.expect(tag_val != null);
     try testing.expect(tag_val.?.eql(Value.initKeyword(alloc, .{ .ns = null, .name = "int" })));
@@ -330,10 +330,10 @@ test "with-meta on list attaches metadata" {
     meta_map.* = .{ .entries = &meta_entries };
 
     const result = try withMetaFn(alloc, &.{ val, Value.initMap(meta_map) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
 
     const m = try metaFn(alloc, &.{result});
-    try testing.expect(m == .map);
+    try testing.expect(m.tag() == .map);
 }
 
 test "with-meta on map attaches metadata" {
@@ -356,10 +356,10 @@ test "with-meta on map attaches metadata" {
     mm.* = .{ .entries = &meta_entries };
 
     const result = try withMetaFn(alloc, &.{ Value.initMap(m), Value.initMap(mm) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
 
     const meta_result = try metaFn(alloc, &.{result});
-    try testing.expect(meta_result == .map);
+    try testing.expect(meta_result.tag() == .map);
 }
 
 test "with-meta on fn_val attaches metadata" {
@@ -381,10 +381,10 @@ test "with-meta on fn_val attaches metadata" {
     meta_map.* = .{ .entries = &meta_entries };
 
     const result = try withMetaFn(alloc, &.{ val, Value.initMap(meta_map) });
-    try testing.expect(result == .fn_val);
+    try testing.expect(result.tag() == .fn_val);
 
     const m = try metaFn(alloc, &.{result});
-    try testing.expect(m == .map);
+    try testing.expect(m.tag() == .map);
 }
 
 test "with-meta with nil removes metadata" {
@@ -409,7 +409,7 @@ test "with-meta with nil removes metadata" {
     // Now remove with nil
     const without = try withMetaFn(alloc, &.{ with, Value.nil_val });
     const m = try metaFn(alloc, &.{without});
-    try testing.expect(m == .nil);
+    try testing.expect(m.tag() == .nil);
 }
 
 test "with-meta on integer is type error" {

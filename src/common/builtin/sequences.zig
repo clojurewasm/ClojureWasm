@@ -163,11 +163,11 @@ pub fn valFn(_: Allocator, args: []const Value) anyerror!Value {
 /// For non-map types, returns nil if empty (matches JVM behavior via RT.keys → seq).
 pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keys", .{args.len});
-    if (args[0] == .nil) return Value.nil;
-    if (args[0] == .hash_map) {
+    if (args[0] == Value.nil_val) return Value.nil_val;
+    if (args[0].tag() == .hash_map) {
         const hm = args[0].asHashMap();
         const n = hm.getCount();
-        if (n == 0) return Value.nil;
+        if (n == 0) return Value.nil_val;
         const flat = try hm.toEntries(allocator);
         const items = try allocator.alloc(Value, n);
         var i: usize = 0;
@@ -180,11 +180,11 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     const m = switch (args[0].tag()) {
         .map => args[0].asMap(),
-        .list, .vector, .set, .string => return Value.nil,
+        .list, .vector, .set, .string => return Value.nil_val,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "keys expects a map, got {s}", .{@tagName(args[0].tag())}),
     };
     const n = m.count();
-    if (n == 0) return Value.nil;
+    if (n == 0) return Value.nil_val;
     const items = try allocator.alloc(Value, n);
     var i: usize = 0;
     while (i < n) : (i += 1) {
@@ -199,11 +199,11 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// For non-map types, returns nil if empty (matches JVM behavior via RT.vals → seq).
 pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vals", .{args.len});
-    if (args[0] == .nil) return Value.nil;
-    if (args[0] == .hash_map) {
+    if (args[0] == Value.nil_val) return Value.nil_val;
+    if (args[0].tag() == .hash_map) {
         const hm = args[0].asHashMap();
         const n = hm.getCount();
-        if (n == 0) return Value.nil;
+        if (n == 0) return Value.nil_val;
         const flat = try hm.toEntries(allocator);
         const items = try allocator.alloc(Value, n);
         var i: usize = 0;
@@ -216,11 +216,11 @@ pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     const m = switch (args[0].tag()) {
         .map => args[0].asMap(),
-        .list, .vector, .set, .string => return Value.nil,
+        .list, .vector, .set, .string => return Value.nil_val,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "vals expects a map, got {s}", .{@tagName(args[0].tag())}),
     };
     const n = m.count();
-    if (n == 0) return Value.nil;
+    if (n == 0) return Value.nil_val;
     const items = try allocator.alloc(Value, n);
     var i: usize = 0;
     while (i < n) : (i += 1) {
@@ -328,7 +328,7 @@ pub fn zigLazyFilterFn(allocator: Allocator, args: []const Value) anyerror!Value
     const source = args[1];
 
     // Detect and collapse nested filter chains
-    if (source == .lazy_seq) {
+    if (source.tag() == .lazy_seq) {
         const src_ls = source.asLazySeq();
         if (src_ls.realized == null) {
             if (src_ls.meta) |m| {
@@ -378,7 +378,7 @@ pub fn zigLazyTakeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .float => if (n_val.asFloat() <= 0) 0 else @intFromFloat(n_val.asFloat()),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-take requires numeric n", .{}),
     };
-    if (n == 0) return Value.nil;
+    if (n == 0) return Value.nil_val;
     const meta = try allocator.create(LazySeq.Meta);
     meta.* = .{ .lazy_take = .{ .n = n, .source = args[1] } };
     const ls = try allocator.create(LazySeq);
@@ -403,7 +403,7 @@ pub fn zigLazyRangeFn(allocator: Allocator, args: []const Value) anyerror!Value 
     };
     // Empty range check
     if (step == 0 or (step > 0 and start >= end_val) or (step < 0 and start <= end_val))
-        return Value.nil;
+        return Value.nil_val;
     const meta = try allocator.create(LazySeq.Meta);
     meta.* = .{ .range = .{ .current = start, .end = end_val, .step = step } };
     const ls = try allocator.create(LazySeq);
@@ -431,7 +431,7 @@ pub fn zigReduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const coll = args[2];
 
     // Try fused path for meta-annotated lazy-seq chains
-    if (coll == .lazy_seq) {
+    if (coll.tag() == .lazy_seq) {
         if (coll.asLazySeq().meta != null) {
             return fusedReduce(allocator, f, init, coll);
         }
@@ -470,7 +470,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
     var take_n: ?usize = null;
     var current = coll;
 
-    while (current == .lazy_seq) {
+    while (current.tag() == .lazy_seq) {
         const ls = current.asLazySeq();
         const m = ls.meta orelse break;
         switch (m.*) {
@@ -516,7 +516,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
     var call_buf: [2]Value = undefined; // Reused buffer for reduce fn calls
 
     // Dispatch on base source type for zero-allocation iteration
-    if (current == .lazy_seq) {
+    if (current.tag() == .lazy_seq) {
         if (current.asLazySeq().meta) |m| {
             switch (m.*) {
                 .range => |r| {
@@ -551,7 +551,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
                         call_buf[0] = acc;
                         call_buf[1] = elem;
                         acc = try callFn(allocator,f, &call_buf);
-                        if (acc == .reduced) return acc.asReduced().value;
+                        if (acc.tag() == .reduced) return acc.asReduced().value;
                         remaining -= 1;
                     }
                     return acc;
@@ -586,7 +586,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
                         call_buf[0] = acc;
                         call_buf[1] = elem;
                         acc = try callFn(allocator,f, &call_buf);
-                        if (acc == .reduced) return acc.asReduced().value;
+                        if (acc.tag() == .reduced) return acc.asReduced().value;
                         remaining -= 1;
                     }
                     return acc;
@@ -600,7 +600,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
     var seq_cur = current;
     while (remaining > 0) {
         const seq_val = try collections_builtin.seqFn(allocator, &[1]Value{seq_cur});
-        if (seq_val == .nil) break;
+        if (seq_val == Value.nil_val) break;
         var elem = try collections_builtin.firstFn(allocator, &[1]Value{seq_val});
         seq_cur = try collections_builtin.restFn(allocator, &[1]Value{seq_val});
         var skip = false;
@@ -627,7 +627,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
         call_buf[0] = acc;
         call_buf[1] = elem;
         acc = try callFn(allocator,f, &call_buf);
-        if (acc == .reduced) return acc.asReduced().value;
+        if (acc.tag() == .reduced) return acc.asReduced().value;
         remaining -= 1;
     }
 
@@ -654,7 +654,7 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
                 call_buf[0] = acc;
                 call_buf[1] = item;
                 acc = try callFn(allocator,f, &call_buf);
-                if (acc == .reduced) return acc.asReduced().value;
+                if (acc.tag() == .reduced) return acc.asReduced().value;
             }
             return acc;
         },
@@ -663,7 +663,7 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
                 call_buf[0] = acc;
                 call_buf[1] = item;
                 acc = try callFn(allocator,f, &call_buf);
-                if (acc == .reduced) return acc.asReduced().value;
+                if (acc.tag() == .reduced) return acc.asReduced().value;
             }
             return acc;
         },
@@ -678,7 +678,7 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
                             call_buf[0] = acc;
                             call_buf[1] = Value.initInteger(cur);
                             acc = try callFn(allocator, f, &call_buf);
-                            if (acc == .reduced) return acc.asReduced().value;
+                            if (acc.tag() == .reduced) return acc.asReduced().value;
                             cur += r.step;
                         }
                         return acc;
@@ -690,7 +690,7 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
                             call_buf[0] = acc;
                             call_buf[1] = cur;
                             acc = try callFn(allocator, f, &call_buf);
-                            if (acc == .reduced) return acc.asReduced().value;
+                            if (acc.tag() == .reduced) return acc.asReduced().value;
                             cur = try callFn(allocator, it.f, &[1]Value{cur});
                         }
                     },
@@ -706,14 +706,14 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
     var seq_cur = coll;
     while (true) {
         const seq_val = try collections_builtin.seqFn(allocator, &[1]Value{seq_cur});
-        if (seq_val == .nil) break;
+        if (seq_val == Value.nil_val) break;
         const elem = try collections_builtin.firstFn(allocator, &[1]Value{seq_val});
         seq_cur = try collections_builtin.restFn(allocator, &[1]Value{seq_val});
 
         call_buf[0] = acc;
         call_buf[1] = elem;
         acc = try callFn(allocator,f, &call_buf);
-        if (acc == .reduced) return acc.asReduced().value;
+        if (acc.tag() == .reduced) return acc.asReduced().value;
     }
 
     return acc;
@@ -831,7 +831,7 @@ const testing = std.testing;
 const test_alloc = testing.allocator;
 
 test "empty? on nil returns true" {
-    const result = try emptyFn(test_alloc, &.{Value.nil});
+    const result = try emptyFn(test_alloc, &.{Value.nil_val});
     try testing.expectEqual(Value.true_val, result);
 }
 
@@ -879,7 +879,7 @@ test "empty? on non-empty string returns false" {
 
 test "empty? arity check" {
     try testing.expectError(error.ArityError, emptyFn(test_alloc, &.{}));
-    try testing.expectError(error.ArityError, emptyFn(test_alloc, &.{ Value.nil, Value.nil }));
+    try testing.expectError(error.ArityError, emptyFn(test_alloc, &.{ Value.nil_val, Value.nil_val }));
 }
 
 // --- range tests ---
@@ -888,7 +888,7 @@ test "range with single arg (range 5)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try rangeFn(arena.allocator(), &.{Value.initInteger(5)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 5), result.asList().count());
     // Should be 0, 1, 2, 3, 4
     try testing.expectEqual(Value.initInteger(0), result.asList().items[0]);
@@ -899,7 +899,7 @@ test "range with two args (range 2 6)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try rangeFn(arena.allocator(), &.{ Value.initInteger(2), Value.initInteger(6) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 4), result.asList().count());
     try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(5), result.asList().items[3]);
@@ -913,7 +913,7 @@ test "range with three args (range 0 10 3)" {
         Value.initInteger(10),
         Value.initInteger(3),
     });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 4), result.asList().count());
     // 0, 3, 6, 9
     try testing.expectEqual(Value.initInteger(0), result.asList().items[0]);
@@ -928,7 +928,7 @@ test "range with negative step" {
         Value.initInteger(0),
         Value.initInteger(-1),
     });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 5), result.asList().count());
     try testing.expectEqual(Value.initInteger(5), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(1), result.asList().items[4]);
@@ -942,7 +942,7 @@ test "range with float produces floats" {
         Value.initFloat(1.0),
         Value.initFloat(0.5),
     });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
     try testing.expectEqual(Value.initFloat(0.0), result.asList().items[0]);
     try testing.expectEqual(Value.initFloat(0.5), result.asList().items[1]);
@@ -955,7 +955,7 @@ test "range empty when start >= end" {
         Value.initInteger(5),
         Value.initInteger(3),
     });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().count());
 }
 
@@ -979,7 +979,7 @@ test "repeat 3 times" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try repeatFn(arena.allocator(), &.{ Value.initInteger(3), Value.initInteger(42) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().count());
     try testing.expectEqual(Value.initInteger(42), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(42), result.asList().items[2]);
@@ -990,7 +990,7 @@ test "repeat 0 times" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try repeatFn(alloc, &.{ Value.initInteger(0), Value.initString(alloc, "x") });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().count());
 }
 
@@ -1024,7 +1024,7 @@ test "contains? on vector checks index" {
 }
 
 test "contains? on nil returns false" {
-    const result = try containsFn(test_alloc, &.{ Value.nil, Value.initInteger(0) });
+    const result = try containsFn(test_alloc, &.{ Value.nil_val, Value.initInteger(0) });
     try testing.expectEqual(Value.false_val, result);
 }
 
@@ -1040,14 +1040,14 @@ test "keys on map" {
     };
     var m = PersistentArrayMap{ .entries = &entries };
     const result = try keysFn(alloc, &.{Value.initMap(&m)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
     try testing.expect(result.asList().items[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
 }
 
 test "keys on nil returns nil" {
-    const result = try keysFn(test_alloc, &.{Value.nil});
-    try testing.expect(result == .nil);
+    const result = try keysFn(test_alloc, &.{Value.nil_val});
+    try testing.expect(result == Value.nil_val);
 }
 
 test "vals on map" {
@@ -1060,15 +1060,15 @@ test "vals on map" {
     };
     var m = PersistentArrayMap{ .entries = &entries };
     const result = try valsFn(alloc, &.{Value.initMap(&m)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
     try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(2), result.asList().items[1]);
 }
 
 test "vals on nil returns nil" {
-    const result = try valsFn(test_alloc, &.{Value.nil});
-    try testing.expect(result == .nil);
+    const result = try valsFn(test_alloc, &.{Value.nil_val});
+    try testing.expect(result == Value.nil_val);
 }
 
 test "key on map entry vector" {
@@ -1079,7 +1079,7 @@ test "key on map entry vector" {
     const vec = try alloc.create(PersistentVector);
     vec.* = .{ .items = &items };
     const result = try keyFn(alloc, &.{Value.initVector(vec)});
-    try testing.expect(result == .keyword);
+    try testing.expect(result.tag() == .keyword);
     try testing.expectEqualStrings("a", result.asKeyword().name);
 }
 

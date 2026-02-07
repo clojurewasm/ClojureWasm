@@ -371,7 +371,7 @@ pub const VM = struct {
                 const const_idx: u16 = instr.operand;
 
                 const template = frame.constants[const_idx];
-                if (template != .fn_val) return error.TypeError;
+                if (template.tag() != .fn_val) return error.TypeError;
                 const fn_obj = template.asFn();
                 const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
 
@@ -432,7 +432,7 @@ pub const VM = struct {
             // [E] Var operations
             .var_load, .var_load_dynamic => {
                 const sym = frame.constants[instr.operand];
-                if (sym != .symbol) return error.InvalidInstruction;
+                if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
                 const sym_val = sym.asSymbol();
@@ -458,7 +458,7 @@ pub const VM = struct {
                 // (set! var-sym expr) — mutate thread-local binding
                 const new_val = self.peek(0);
                 const sym = frame.constants[instr.operand];
-                if (sym != .symbol) return error.InvalidInstruction;
+                if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
                 const v = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
@@ -469,7 +469,7 @@ pub const VM = struct {
             .def, .def_macro, .def_dynamic, .def_private => {
                 const val = self.pop();
                 const sym = frame.constants[instr.operand];
-                if (sym != .symbol) return error.InvalidInstruction;
+                if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
                 const v = ns.intern(sym.asSymbol().name) catch return error.OutOfMemory;
@@ -489,13 +489,13 @@ pub const VM = struct {
                 var hierarchy_var: ?*value_mod.Var = null;
                 if (has_hierarchy) {
                     const h_val = self.pop();
-                    if (h_val == .var_ref) {
+                    if (h_val.tag() == .var_ref) {
                         hierarchy_var = h_val.asVarRef();
                     }
                 }
 
                 const sym = frame.constants[name_idx];
-                if (sym != .symbol) return error.InvalidInstruction;
+                if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
@@ -519,14 +519,14 @@ pub const VM = struct {
                 const method_fn = self.pop();
                 const dispatch_val = self.pop();
                 const sym = frame.constants[instr.operand];
-                if (sym != .symbol) return error.InvalidInstruction;
+                if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
                 // Resolve multimethod
                 const mf_var = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
                 const mf_val = mf_var.deref();
-                if (mf_val != .multi_fn) return error.TypeError;
+                if (mf_val.tag() != .multi_fn) return error.TypeError;
                 const mf = mf_val.asMultiFn();
 
                 // Add method: assoc dispatch_val -> method_fn
@@ -553,9 +553,9 @@ pub const VM = struct {
             .defprotocol => {
                 // Constants[operand] = name symbol, Constants[operand+1] = sigs vector
                 const name_sym = frame.constants[instr.operand];
-                if (name_sym != .symbol) return error.InvalidInstruction;
+                if (name_sym.tag() != .symbol) return error.InvalidInstruction;
                 const sigs_val = frame.constants[instr.operand + 1];
-                if (sigs_val != .vector) return error.InvalidInstruction;
+                if (sigs_val.tag() != .vector) return error.InvalidInstruction;
 
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
@@ -567,7 +567,7 @@ pub const VM = struct {
                 for (0..sig_count) |i| {
                     const m_name = sigs_items[i * 2];
                     const m_arity = sigs_items[i * 2 + 1];
-                    if (m_name != .string or m_arity != .integer) return error.InvalidInstruction;
+                    if (m_name.tag() != .string or m_arity.tag() != .integer) return error.InvalidInstruction;
                     method_sigs[i] = .{
                         .name = m_name.asString(),
                         .arity = @intCast(m_arity.asInteger()),
@@ -609,13 +609,13 @@ pub const VM = struct {
 
                 // Read meta vector: [type_name, protocol_name, method_name]
                 const meta_val = frame.constants[instr.operand];
-                if (meta_val != .vector) return error.InvalidInstruction;
+                if (meta_val.tag() != .vector) return error.InvalidInstruction;
                 const meta = meta_val.asVector().items;
                 if (meta.len != 3) return error.InvalidInstruction;
                 const type_name_val = meta[0];
                 const proto_name_val = meta[1];
                 const method_name_val = meta[2];
-                if (type_name_val != .string or proto_name_val != .string or method_name_val != .string)
+                if (type_name_val.tag() != .string or proto_name_val.tag() != .string or method_name_val.tag() != .string)
                     return error.InvalidInstruction;
 
                 const type_key = mapTypeKey(type_name_val.asString());
@@ -627,14 +627,14 @@ pub const VM = struct {
                 const ns = env.current_ns orelse return error.UndefinedVar;
                 const proto_var = ns.resolve(proto_name) orelse return error.UndefinedVar;
                 const proto_val = proto_var.deref();
-                if (proto_val != .protocol) return error.TypeError;
+                if (proto_val.tag() != .protocol) return error.TypeError;
                 const protocol = proto_val.asProtocol();
 
                 // Get or create method map for this type in protocol.impls
                 const existing = protocol.impls.get(Value.initString(self.allocator, type_key));
                 if (existing) |ex_val| {
                     // Existing method map for this type — add method
-                    if (ex_val != .map) return error.TypeError;
+                    if (ex_val.tag() != .map) return error.TypeError;
                     const old_map = ex_val.asMap();
                     const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
@@ -938,16 +938,16 @@ pub const VM = struct {
                     return error.ArityError;
                 }
                 const map_arg = self.stack[fn_idx + 1];
-                const result = if (map_arg == .wasm_module and arg_count == 1) blk: {
+                const result = if (map_arg.tag() == .wasm_module and arg_count == 1) blk: {
                     // Keyword lookup on wasm_module: (:add mod) => cached WasmFn
                     const wm = map_arg.asWasmModule();
                     break :blk if (wm.getExportFn(kw.name)) |wf|
                         Value.initWasmFn(wf)
                     else
                         Value.nil_val;
-                } else if (map_arg == .map)
+                } else if (map_arg.tag() == .map)
                     map_arg.asMap().get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val)
-                else if (map_arg == .hash_map)
+                else if (map_arg.tag() == .hash_map)
                     map_arg.asHashMap().get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil_val)
                 else if (arg_count >= 2)
                     self.stack[fn_idx + 2]
@@ -967,7 +967,7 @@ pub const VM = struct {
                 const v = callee.asVector();
                 if (arg_count < 1) return error.ArityError;
                 const idx_val = self.stack[fn_idx + 1];
-                if (idx_val != .integer) return error.TypeError;
+                if (idx_val.tag() != .integer) return error.TypeError;
                 const idx = idx_val.asInteger();
                 if (idx < 0 or idx >= @as(i64, @intCast(v.items.len))) {
                     if (arg_count >= 2) {
@@ -1040,7 +1040,7 @@ pub const VM = struct {
                 // Cache miss: full protocol lookup (type_key -> method_map -> method_fn)
                 const method_map_val = pf.protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
                     return error.TypeError;
-                if (method_map_val != .map) return error.TypeError;
+                if (method_map_val.tag() != .map) return error.TypeError;
                 const method_fn = method_map_val.asMap().get(Value.initString(self.allocator, pf.method_name)) orelse
                     return error.TypeError;
                 // Update cache for next call
@@ -1086,10 +1086,10 @@ pub const VM = struct {
                 // Get dispatch value
                 const dispatch_val = blk: {
                     // Fast path: keyword dispatch fn — (defmulti foo :type)
-                    if (mf.dispatch_fn == .keyword) {
+                    if (mf.dispatch_fn.tag() == .keyword) {
                         if (arg_count >= 1) {
                             const first = self.stack[fn_idx + 1];
-                            if (first == .map) {
+                            if (first.tag() == .map) {
                                 break :blk first.asMap().get(mf.dispatch_fn) orelse Value.nil_val;
                             }
                         }
@@ -1277,7 +1277,7 @@ pub const VM = struct {
         const b = self.pop();
         const a = self.pop();
         // Fast path: both operands are integers — inline arithmetic with overflow check
-        if (a == .integer and b == .integer) {
+        if (a.tag() == .integer and b.tag() == .integer) {
             const ai = a.asInteger();
             const bi = b.asInteger();
             const result = switch (op) {
@@ -1318,7 +1318,7 @@ pub const VM = struct {
         const b = self.pop();
         const a = self.pop();
         // Inline int+int fast path
-        if (a == .integer and b == .integer) {
+        if (a.tag() == .integer and b.tag() == .integer) {
             const ai = a.asInteger();
             const bi = b.asInteger();
             try self.push(Value.initBoolean(switch (op) {
@@ -1445,7 +1445,7 @@ test "VM run nil constant" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "VM run true/false constants" {
@@ -1493,7 +1493,7 @@ test "VM pop discards value" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expectEqual(Value.nil, result);
+    try std.testing.expectEqual(Value.nil_val, result);
 }
 
 test "VM dup duplicates top" {
@@ -1705,7 +1705,7 @@ test "VM closure creates fn_val" {
 
     var vm = VM.init(std.testing.allocator);
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .fn_val);
+    try std.testing.expect(result.tag() == .fn_val);
 }
 
 test "VM call simple function" {
@@ -2009,7 +2009,7 @@ test "VM def creates and binds a Var" {
     const result = try vm.run(&chunk);
 
     // def returns a symbol with ns/name
-    try std.testing.expect(result == .symbol);
+    try std.testing.expect(result.tag() == .symbol);
     try std.testing.expectEqualStrings("x", result.asSymbol().name);
     try std.testing.expectEqualStrings("user", result.asSymbol().ns.?);
 
@@ -2197,7 +2197,7 @@ test "VM vec_new creates vector" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .vector);
+    try std.testing.expect(result.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 3), result.asVector().items.len);
     try std.testing.expect(result.asVector().items[0].eql(Value.initInteger(1)));
     try std.testing.expect(result.asVector().items[1].eql(Value.initInteger(2)));
@@ -2218,7 +2218,7 @@ test "VM list_new creates list" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .list);
+    try std.testing.expect(result.tag() == .list);
     try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
     try std.testing.expect(result.asList().items[0].eql(Value.initInteger(10)));
     try std.testing.expect(result.asList().items[1].eql(Value.initInteger(20)));
@@ -2247,7 +2247,7 @@ test "VM map_new creates map" {
     var vm = VM.init(alloc);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .map);
+    try std.testing.expect(result.tag() == .map);
     try std.testing.expectEqual(@as(usize, 2), result.asMap().count());
 }
 
@@ -2288,7 +2288,7 @@ test "VM try/catch handles throw" {
     var vm = VM.init(allocator);
     defer vm.deinit();
     const result = try vm.run(&compiler.chunk);
-    try std.testing.expect(result == .string);
+    try std.testing.expect(result.tag() == .string);
     try std.testing.expectEqualStrings("err", result.asString());
 }
 
@@ -2324,7 +2324,7 @@ test "VM set_new creates set" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .set);
+    try std.testing.expect(result.tag() == .set);
     try std.testing.expectEqual(@as(usize, 2), result.asSet().count());
 }
 
@@ -2337,6 +2337,6 @@ test "VM empty vec_new" {
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
     const result = try vm.run(&chunk);
-    try std.testing.expect(result == .vector);
+    try std.testing.expect(result.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 0), result.asVector().items.len);
 }

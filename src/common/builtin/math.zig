@@ -249,6 +249,11 @@ fn scalbFn(_: Allocator, args: []const Value) anyerror!Value {
 
 // --- Exact arithmetic ---
 
+/// Check if an i64 value fits in the NaN-boxed i48 integer range.
+fn fitsI48(v: i64) bool {
+    return v >= -(1 << 47) and v <= (1 << 47) - 1;
+}
+
 fn addExactFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) {
         err.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clojure.math/add-exact", .{args.len});
@@ -257,7 +262,7 @@ fn addExactFn(_: Allocator, args: []const Value) anyerror!Value {
     const a = try toLong(args[0]);
     const b = try toLong(args[1]);
     const result = @addWithOverflow(a, b);
-    if (result[1] != 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (result[1] != 0 or !fitsI48(result[0])) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(result[0]);
 }
 
@@ -269,7 +274,7 @@ fn subtractExactFn(_: Allocator, args: []const Value) anyerror!Value {
     const a = try toLong(args[0]);
     const b = try toLong(args[1]);
     const result = @subWithOverflow(a, b);
-    if (result[1] != 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (result[1] != 0 or !fitsI48(result[0])) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(result[0]);
 }
 
@@ -281,7 +286,7 @@ fn multiplyExactFn(_: Allocator, args: []const Value) anyerror!Value {
     const a = try toLong(args[0]);
     const b = try toLong(args[1]);
     const result = @mulWithOverflow(a, b);
-    if (result[1] != 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (result[1] != 0 or !fitsI48(result[0])) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(result[0]);
 }
 
@@ -292,7 +297,7 @@ fn incrementExactFn(_: Allocator, args: []const Value) anyerror!Value {
     }
     const a = try toLong(args[0]);
     const result = @addWithOverflow(a, @as(i64, 1));
-    if (result[1] != 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (result[1] != 0 or !fitsI48(result[0])) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(result[0]);
 }
 
@@ -303,7 +308,7 @@ fn decrementExactFn(_: Allocator, args: []const Value) anyerror!Value {
     }
     const a = try toLong(args[0]);
     const result = @subWithOverflow(a, @as(i64, 1));
-    if (result[1] != 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (result[1] != 0 or !fitsI48(result[0])) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(result[0]);
 }
 
@@ -313,7 +318,7 @@ fn negateExactFn(_: Allocator, args: []const Value) anyerror!Value {
         return error.ArityError;
     }
     const a = try toLong(args[0]);
-    if (a == std.math.minInt(i64)) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
+    if (!fitsI48(-a)) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "integer overflow", .{});
     return intVal(-a);
 }
 
@@ -452,7 +457,8 @@ test "round 3.5" {
 }
 
 test "add-exact overflow" {
-    try testing.expectError(error.ArithmeticError, addExactFn(test_alloc, &.{intVal(std.math.maxInt(i64)), intVal(1)}));
+    // NaN boxing: integer range is i48, so use i48 max for overflow test
+    try testing.expectError(error.ArithmeticError, addExactFn(test_alloc, &.{intVal((1 << 47) - 1), intVal(1)}));
 }
 
 test "floor-div" {

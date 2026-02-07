@@ -7,6 +7,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ns_mod = @import("namespace.zig");
 const Namespace = ns_mod.Namespace;
+const Value = @import("value.zig").Value;
 
 /// Hash context for string-keyed namespace map.
 const StrContext = struct {
@@ -122,12 +123,12 @@ test "Env namespace intern and resolve" {
 
     const ns = try env.findOrCreateNamespace("user");
     const v = try ns.intern("foo");
-    v.bindRoot(.{ .integer = 42 });
+    v.bindRoot(Value.initInteger(42));
 
     // Resolve through namespace
     const resolved = ns.resolve("foo");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 42 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(42)));
 }
 
 test "Env multiple namespaces with refer" {
@@ -141,13 +142,13 @@ test "Env multiple namespaces with refer" {
     const user = try env.findOrCreateNamespace("user");
 
     const plus_var = try core.intern("+");
-    plus_var.bindRoot(.{ .integer = 1 });
+    plus_var.bindRoot(Value.initInteger(1));
 
     try user.refer("+", plus_var);
 
     const resolved = user.resolve("+");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 1 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(1)));
 }
 
 test "Env current_ns" {

@@ -262,7 +262,7 @@ test "formToValue - list" {
         .{ .data = .{ .integer = 2 } },
     };
     const val = try formToValue(alloc, .{ .data = .{ .list = &items } });
-    try testing.expect(val == .list);
+    try testing.expect(val.tag() == .list);
     try testing.expectEqual(@as(usize, 2), val.asList().items.len);
     try testing.expectEqual(Value.initInteger(1), val.asList().items[0]);
     try testing.expectEqual(Value.initInteger(2), val.asList().items[1]);

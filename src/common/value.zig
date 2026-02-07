@@ -505,391 +505,410 @@ pub const Fn = struct {
     defining_ns: ?[]const u8 = null,
 };
 
-/// Runtime value — tagged union representation.
-/// Minimal variants for Phase 1a. More added incrementally.
-pub const Value = union(enum) {
-    // Primitives
-    nil,
-    boolean: bool,
-    integer: i64,
-    float: f64,
-    char: u21,
+// --- NaN boxing encoding constants ---
+const NB_INT_TAG: u64 = 0xFFF9_0000_0000_0000;
+const NB_HEAP_TAG: u64 = 0xFFFA_0000_0000_0000;
+const NB_CONST_TAG: u64 = 0xFFFB_0000_0000_0000;
+const NB_CHAR_TAG: u64 = 0xFFFC_0000_0000_0000;
+const NB_BUILTIN_FN_TAG: u64 = 0xFFFD_0000_0000_0000;
+const NB_TAG_SHIFT: u6 = 48;
+const NB_PAYLOAD_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
+const NB_ADDR_MASK: u64 = 0x0000_00FF_FFFF_FFFF;
+const NB_HEAP_TYPE_SHIFT: u6 = 40;
 
-    // String / identifiers (heap-allocated pointers for size reduction)
-    string: *const HeapString,
-    symbol: *const Symbol,
-    keyword: *const Keyword,
+/// NaN boxing heap type tag (8 bits, stored in bits 47-40 of heap pointers).
+const NanHeapTag = enum(u8) {
+    string = 0, symbol = 1, keyword = 2,
+    list = 3, vector = 4, map = 5, hash_map = 6, set = 7,
+    fn_val = 8, atom = 9, volatile_ref = 10, regex = 11,
+    protocol = 12, protocol_fn = 13, multi_fn = 14,
+    lazy_seq = 15, cons = 16, var_ref = 17,
+    delay = 18, reduced = 19,
+    transient_vector = 20, transient_map = 21, transient_set = 22,
+    chunked_cons = 23, chunk_buffer = 24, array_chunk = 25,
+    wasm_module = 26, wasm_fn = 27,
+};
 
-    // Collections
-    list: *const PersistentList,
-    vector: *const PersistentVector,
-    map: *const PersistentArrayMap,
-    hash_map: *const PersistentHashMap,
-    set: *const PersistentHashSet,
+/// Runtime value — NaN-boxed 8-byte representation.
+///
+/// IEEE 754 double NaN space encodes tagged values:
+///   top16 < 0xFFF9 → float (raw f64 bits pass-through)
+///   0xFFF9 → integer (i48 signed, overflow → float promotion)
+///   0xFFFA → heap pointer (NanHeapTag[47:40] + address[39:0])
+///   0xFFFB → constant (0=nil, 1=true, 2=false)
+///   0xFFFC → char (u21 codepoint)
+///   0xFFFD → builtin_fn (48-bit function pointer)
+pub const Value = enum(u64) {
+    nil_val = NB_CONST_TAG | 0,
+    true_val = NB_CONST_TAG | 1,
+    false_val = NB_CONST_TAG | 2,
+    _,
 
-    // Functions
-    fn_val: *const Fn,
-    builtin_fn: *const fn (std.mem.Allocator, []const Value) anyerror!Value,
+    /// Runtime type tag for dispatch.
+    pub const Tag = enum {
+        nil, boolean, integer, float, char,
+        string, symbol, keyword,
+        list, vector, map, hash_map, set,
+        fn_val, builtin_fn,
+        atom, volatile_ref, regex,
+        protocol, protocol_fn, multi_fn,
+        lazy_seq, cons, var_ref, delay, reduced,
+        transient_vector, transient_map, transient_set,
+        chunked_cons, chunk_buffer, array_chunk,
+        wasm_module, wasm_fn,
+    };
 
-    // Reference types
-    atom: *Atom,
-    volatile_ref: *Volatile,
+    // --- Encoding helpers ---
 
-    // Regex pattern
-    regex: *Pattern,
+    fn encodeHeapPtr(ht: NanHeapTag, ptr: anytype) Value {
+        const addr: u64 = @intFromPtr(ptr);
+        std.debug.assert(addr <= NB_ADDR_MASK);
+        return @enumFromInt(NB_HEAP_TAG | (@as(u64, @intFromEnum(ht)) << NB_HEAP_TYPE_SHIFT) | addr);
+    }
 
-    // Protocol types
-    protocol: *Protocol,
-    protocol_fn: *const ProtocolFn,
+    fn decodePtr(self: Value, comptime T: type) T {
+        return @ptrFromInt(@as(usize, @intCast(@intFromEnum(self) & NB_ADDR_MASK)));
+    }
 
-    // Multimethod
-    multi_fn: *MultiFn,
-
-    // Lazy sequence / cons cell
-    lazy_seq: *LazySeq,
-    cons: *Cons,
-
-    // Var reference — first-class Var value (#'foo)
-    var_ref: *Var,
-
-    // Delay — lazy thunk with cached result
-    delay: *Delay,
-
-    // Reduced — early termination wrapper for reduce
-    reduced: *const Reduced,
-
-    // Transient collections — mutable builders
-    transient_vector: *TransientVector,
-    transient_map: *TransientArrayMap,
-    transient_set: *TransientHashSet,
-
-    // Chunked sequences
-    chunked_cons: *const ChunkedCons,
-    chunk_buffer: *ChunkBuffer,
-    array_chunk: *const ArrayChunk,
-
-    // Wasm InterOp (Phase 25)
-    wasm_module: *@import("../wasm/types.zig").WasmModule,
-    wasm_fn: *const @import("../wasm/types.zig").WasmFn,
-
-    // === Value Accessor API (Phase 27 — NaN boxing preparation) ===
-    //
-    // All code outside value.zig should use these methods instead of
-    // direct union field access. This enables future representation
-    // changes (NaN boxing: union(enum) -> packed u64) without
-    // touching call sites.
-
-    pub const Tag = std.meta.Tag(@This());
-
-    // --- Constants ---
-
-    pub const nil_val: Value = .nil;
-    pub const true_val: Value = .{ .boolean = true };
-    pub const false_val: Value = .{ .boolean = false };
+    fn heapTagToTag(ht_raw: u8) Tag {
+        return switch (@as(NanHeapTag, @enumFromInt(ht_raw))) {
+            .string => .string, .symbol => .symbol, .keyword => .keyword,
+            .list => .list, .vector => .vector, .map => .map,
+            .hash_map => .hash_map, .set => .set,
+            .fn_val => .fn_val, .atom => .atom,
+            .volatile_ref => .volatile_ref, .regex => .regex,
+            .protocol => .protocol, .protocol_fn => .protocol_fn,
+            .multi_fn => .multi_fn, .lazy_seq => .lazy_seq,
+            .cons => .cons, .var_ref => .var_ref,
+            .delay => .delay, .reduced => .reduced,
+            .transient_vector => .transient_vector,
+            .transient_map => .transient_map,
+            .transient_set => .transient_set,
+            .chunked_cons => .chunked_cons,
+            .chunk_buffer => .chunk_buffer,
+            .array_chunk => .array_chunk,
+            .wasm_module => .wasm_module,
+            .wasm_fn => .wasm_fn,
+        };
+    }
 
     // --- Tag query ---
 
     pub fn tag(self: Value) Tag {
-        return std.meta.activeTag(self);
+        const bits = @intFromEnum(self);
+        const top16: u16 = @truncate(bits >> NB_TAG_SHIFT);
+        if (top16 < 0xFFF9) return .float;
+        return switch (top16) {
+            0xFFF9 => .integer,
+            0xFFFA => heapTagToTag(@truncate(bits >> NB_HEAP_TYPE_SHIFT)),
+            0xFFFB => switch (bits & NB_PAYLOAD_MASK) {
+                0 => .nil,
+                1, 2 => .boolean,
+                else => unreachable,
+            },
+            0xFFFC => .char,
+            0xFFFD => .builtin_fn,
+            else => unreachable,
+        };
     }
 
     // --- Constructors ---
 
     pub fn initBoolean(b: bool) Value {
-        return .{ .boolean = b };
+        return if (b) Value.true_val else Value.false_val;
     }
 
     pub fn initInteger(i: i64) Value {
-        return .{ .integer = i };
+        if (i < -(1 << 47) or i > (1 << 47) - 1) {
+            return initFloat(@floatFromInt(i));
+        }
+        const raw: u48 = @truncate(@as(u64, @bitCast(i)));
+        return @enumFromInt(NB_INT_TAG | @as(u64, raw));
     }
 
     pub fn initFloat(f: f64) Value {
-        return .{ .float = f };
+        const bits: u64 = @bitCast(f);
+        if ((bits >> NB_TAG_SHIFT) >= 0xFFF9) {
+            return @enumFromInt(@as(u64, 0x7FF8_0000_0000_0000));
+        }
+        return @enumFromInt(bits);
     }
 
     pub fn initChar(c: u21) Value {
-        return .{ .char = c };
+        return @enumFromInt(NB_CHAR_TAG | @as(u64, c));
     }
 
     pub fn initString(allocator: Allocator, s: []const u8) Value {
-        if (@inComptime()) {
-            return .{ .string = &HeapString{ .data = s } };
-        }
         const heap = allocator.create(HeapString) catch @panic("OOM");
         heap.* = .{ .data = s };
-        return .{ .string = heap };
+        return encodeHeapPtr(.string, heap);
     }
 
     pub fn initSymbol(allocator: Allocator, s: Symbol) Value {
-        if (@inComptime()) {
-            return .{ .symbol = &s };
-        }
         const heap = allocator.create(Symbol) catch @panic("OOM");
         heap.* = s;
-        return .{ .symbol = heap };
+        return encodeHeapPtr(.symbol, heap);
     }
 
     pub fn initKeyword(allocator: Allocator, k: Keyword) Value {
-        if (@inComptime()) {
-            return .{ .keyword = &k };
-        }
         const heap = allocator.create(Keyword) catch @panic("OOM");
         heap.* = k;
-        return .{ .keyword = heap };
+        return encodeHeapPtr(.keyword, heap);
     }
 
     pub fn initList(l: *const PersistentList) Value {
-        return .{ .list = l };
+        return encodeHeapPtr(.list, l);
     }
 
     pub fn initVector(v: *const PersistentVector) Value {
-        return .{ .vector = v };
+        return encodeHeapPtr(.vector, v);
     }
 
     pub fn initMap(m: *const PersistentArrayMap) Value {
-        return .{ .map = m };
+        return encodeHeapPtr(.map, m);
     }
 
     pub fn initHashMap(m: *const PersistentHashMap) Value {
-        return .{ .hash_map = m };
+        return encodeHeapPtr(.hash_map, m);
     }
 
     pub fn initSet(s: *const PersistentHashSet) Value {
-        return .{ .set = s };
+        return encodeHeapPtr(.set, s);
     }
 
     pub fn initFn(f: *const Fn) Value {
-        return .{ .fn_val = f };
+        return encodeHeapPtr(.fn_val, f);
     }
 
     pub fn initBuiltinFn(f: BuiltinFn) Value {
-        return .{ .builtin_fn = f };
+        const addr: u64 = @intFromPtr(f);
+        std.debug.assert(addr <= NB_PAYLOAD_MASK);
+        return @enumFromInt(NB_BUILTIN_FN_TAG | addr);
     }
 
     pub fn initAtom(a: *Atom) Value {
-        return .{ .atom = a };
+        return encodeHeapPtr(.atom, a);
     }
 
     pub fn initVolatile(v: *Volatile) Value {
-        return .{ .volatile_ref = v };
+        return encodeHeapPtr(.volatile_ref, v);
     }
 
     pub fn initRegex(r: *Pattern) Value {
-        return .{ .regex = r };
+        return encodeHeapPtr(.regex, r);
     }
 
     pub fn initProtocol(p: *Protocol) Value {
-        return .{ .protocol = p };
+        return encodeHeapPtr(.protocol, p);
     }
 
     pub fn initProtocolFn(pf: *const ProtocolFn) Value {
-        return .{ .protocol_fn = pf };
+        return encodeHeapPtr(.protocol_fn, pf);
     }
 
     pub fn initMultiFn(m: *MultiFn) Value {
-        return .{ .multi_fn = m };
+        return encodeHeapPtr(.multi_fn, m);
     }
 
     pub fn initLazySeq(ls: *LazySeq) Value {
-        return .{ .lazy_seq = ls };
+        return encodeHeapPtr(.lazy_seq, ls);
     }
 
     pub fn initCons(c: *Cons) Value {
-        return .{ .cons = c };
+        return encodeHeapPtr(.cons, c);
     }
 
     pub fn initVarRef(v: *Var) Value {
-        return .{ .var_ref = v };
+        return encodeHeapPtr(.var_ref, v);
     }
 
     pub fn initDelay(d: *Delay) Value {
-        return .{ .delay = d };
+        return encodeHeapPtr(.delay, d);
     }
 
     pub fn initReduced(r: *const Reduced) Value {
-        return .{ .reduced = r };
+        return encodeHeapPtr(.reduced, r);
     }
 
     pub fn initTransientVector(tv: *TransientVector) Value {
-        return .{ .transient_vector = tv };
+        return encodeHeapPtr(.transient_vector, tv);
     }
 
     pub fn initTransientMap(tm: *TransientArrayMap) Value {
-        return .{ .transient_map = tm };
+        return encodeHeapPtr(.transient_map, tm);
     }
 
     pub fn initTransientSet(ts: *TransientHashSet) Value {
-        return .{ .transient_set = ts };
+        return encodeHeapPtr(.transient_set, ts);
     }
 
     pub fn initChunkedCons(cc: *const ChunkedCons) Value {
-        return .{ .chunked_cons = cc };
+        return encodeHeapPtr(.chunked_cons, cc);
     }
 
     pub fn initChunkBuffer(cb: *ChunkBuffer) Value {
-        return .{ .chunk_buffer = cb };
+        return encodeHeapPtr(.chunk_buffer, cb);
     }
 
     pub fn initArrayChunk(ac: *const ArrayChunk) Value {
-        return .{ .array_chunk = ac };
+        return encodeHeapPtr(.array_chunk, ac);
     }
 
     pub fn initWasmModule(m: *@import("../wasm/types.zig").WasmModule) Value {
-        return .{ .wasm_module = m };
+        return encodeHeapPtr(.wasm_module, m);
     }
 
     pub fn initWasmFn(f: *const @import("../wasm/types.zig").WasmFn) Value {
-        return .{ .wasm_fn = f };
+        return encodeHeapPtr(.wasm_fn, f);
     }
 
     // --- Extractors ---
 
     pub fn asBoolean(self: Value) bool {
-        return self.boolean;
+        return self == Value.true_val;
     }
 
     pub fn asInteger(self: Value) i64 {
-        return self.integer;
+        const raw: u48 = @truncate(@intFromEnum(self));
+        return @as(i64, @as(i48, @bitCast(raw)));
     }
 
     pub fn asFloat(self: Value) f64 {
-        return self.float;
+        return @bitCast(@intFromEnum(self));
     }
 
     pub fn asChar(self: Value) u21 {
-        return self.char;
+        return @truncate(@intFromEnum(self));
     }
 
     pub fn asString(self: Value) []const u8 {
-        return self.string.data;
+        return decodePtr(self, *const HeapString).data;
     }
 
     pub fn asSymbol(self: Value) Symbol {
-        return self.symbol.*;
+        return decodePtr(self, *const Symbol).*;
     }
 
     pub fn asKeyword(self: Value) Keyword {
-        return self.keyword.*;
+        return decodePtr(self, *const Keyword).*;
     }
 
     /// Raw heap pointer accessors — for GC tracing only.
     pub fn asStringHeap(self: Value) *const HeapString {
-        return self.string;
+        return decodePtr(self, *const HeapString);
     }
 
     pub fn asSymbolHeap(self: Value) *const Symbol {
-        return self.symbol;
+        return decodePtr(self, *const Symbol);
     }
 
     pub fn asKeywordHeap(self: Value) *const Keyword {
-        return self.keyword;
+        return decodePtr(self, *const Keyword);
     }
 
     pub fn asList(self: Value) *const PersistentList {
-        return self.list;
+        return decodePtr(self, *const PersistentList);
     }
 
     pub fn asVector(self: Value) *const PersistentVector {
-        return self.vector;
+        return decodePtr(self, *const PersistentVector);
     }
 
     pub fn asMap(self: Value) *const PersistentArrayMap {
-        return self.map;
+        return decodePtr(self, *const PersistentArrayMap);
     }
 
     pub fn asHashMap(self: Value) *const PersistentHashMap {
-        return self.hash_map;
+        return decodePtr(self, *const PersistentHashMap);
     }
 
     pub fn asSet(self: Value) *const PersistentHashSet {
-        return self.set;
+        return decodePtr(self, *const PersistentHashSet);
     }
 
     pub fn asFn(self: Value) *const Fn {
-        return self.fn_val;
+        return decodePtr(self, *const Fn);
     }
 
     pub fn asBuiltinFn(self: Value) BuiltinFn {
-        return self.builtin_fn;
+        return @ptrFromInt(@as(usize, @intCast(@intFromEnum(self) & NB_PAYLOAD_MASK)));
     }
 
     pub fn asAtom(self: Value) *Atom {
-        return self.atom;
+        return decodePtr(self, *Atom);
     }
 
     pub fn asVolatile(self: Value) *Volatile {
-        return self.volatile_ref;
+        return decodePtr(self, *Volatile);
     }
 
     pub fn asRegex(self: Value) *Pattern {
-        return self.regex;
+        return decodePtr(self, *Pattern);
     }
 
     pub fn asProtocol(self: Value) *Protocol {
-        return self.protocol;
+        return decodePtr(self, *Protocol);
     }
 
     pub fn asProtocolFn(self: Value) *const ProtocolFn {
-        return self.protocol_fn;
+        return decodePtr(self, *const ProtocolFn);
     }
 
     pub fn asMultiFn(self: Value) *MultiFn {
-        return self.multi_fn;
+        return decodePtr(self, *MultiFn);
     }
 
     pub fn asLazySeq(self: Value) *LazySeq {
-        return self.lazy_seq;
+        return decodePtr(self, *LazySeq);
     }
 
     pub fn asCons(self: Value) *Cons {
-        return self.cons;
+        return decodePtr(self, *Cons);
     }
 
     pub fn asVarRef(self: Value) *Var {
-        return self.var_ref;
+        return decodePtr(self, *Var);
     }
 
     pub fn asDelay(self: Value) *Delay {
-        return self.delay;
+        return decodePtr(self, *Delay);
     }
 
     pub fn asReduced(self: Value) *const Reduced {
-        return self.reduced;
+        return decodePtr(self, *const Reduced);
     }
 
     pub fn asTransientVector(self: Value) *TransientVector {
-        return self.transient_vector;
+        return decodePtr(self, *TransientVector);
     }
 
     pub fn asTransientMap(self: Value) *TransientArrayMap {
-        return self.transient_map;
+        return decodePtr(self, *TransientArrayMap);
     }
 
     pub fn asTransientSet(self: Value) *TransientHashSet {
-        return self.transient_set;
+        return decodePtr(self, *TransientHashSet);
     }
 
     pub fn asChunkedCons(self: Value) *const ChunkedCons {
-        return self.chunked_cons;
+        return decodePtr(self, *const ChunkedCons);
     }
 
     pub fn asChunkBuffer(self: Value) *ChunkBuffer {
-        return self.chunk_buffer;
+        return decodePtr(self, *ChunkBuffer);
     }
 
     pub fn asArrayChunk(self: Value) *const ArrayChunk {
-        return self.array_chunk;
+        return decodePtr(self, *const ArrayChunk);
     }
 
     pub fn asWasmModule(self: Value) *@import("../wasm/types.zig").WasmModule {
-        return self.wasm_module;
+        return decodePtr(self, *@import("../wasm/types.zig").WasmModule);
     }
 
     pub fn asWasmFn(self: Value) *const @import("../wasm/types.zig").WasmFn {
-        return self.wasm_fn;
+        return decodePtr(self, *const @import("../wasm/types.zig").WasmFn);
     }
-
-    // === End Value Accessor API ===
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
@@ -1381,16 +1400,12 @@ pub const Value = union(enum) {
 
     /// Returns true if this value is nil.
     pub fn isNil(self: Value) bool {
-        return self.tag() == .nil;
+        return self == Value.nil_val;
     }
 
     /// Clojure truthiness: everything is truthy except nil and false.
     pub fn isTruthy(self: Value) bool {
-        return switch (self.tag()) {
-            .nil => false,
-            .boolean => self.asBoolean(),
-            else => true,
-        };
+        return self != Value.nil_val and self != Value.false_val;
     }
 };
 
@@ -2142,8 +2157,7 @@ test "Value tag switch pattern" {
     try testing.expect(result == 84);
 }
 
-test "Value size is 16 bytes after pointer-ization" {
-    // After pointer-izing string/symbol/keyword, the largest non-pointer
-    // variant is i64/f64 (8 bytes). With tag byte + alignment, total = 16.
-    try testing.expectEqual(@as(usize, 16), @sizeOf(Value));
+test "Value size is 8 bytes with NaN boxing" {
+    // NaN-boxed enum(u64): all values packed into 8 bytes.
+    try testing.expectEqual(@as(usize, 8), @sizeOf(Value));
 }

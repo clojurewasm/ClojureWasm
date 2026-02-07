@@ -737,7 +737,7 @@ pub const PersistentHashMap = struct {
     }
 
     pub fn get(self: *const PersistentHashMap, key: Value) ?Value {
-        if (key == .nil) {
+        if (key == Value.nil_val) {
             return if (self.has_null) self.null_val else null;
         }
         const root = self.root orelse return null;
@@ -749,7 +749,7 @@ pub const PersistentHashMap = struct {
     }
 
     pub fn assoc(self: *const PersistentHashMap, allocator: std.mem.Allocator, key: Value, val: Value) !*const PersistentHashMap {
-        if (key == .nil) {
+        if (key == Value.nil_val) {
             if (self.has_null and self.null_val.eql(val)) return self;
             const new_map = try allocator.create(PersistentHashMap);
             new_map.* = .{
@@ -780,7 +780,7 @@ pub const PersistentHashMap = struct {
     }
 
     pub fn dissoc(self: *const PersistentHashMap, allocator: std.mem.Allocator, key: Value) !*const PersistentHashMap {
-        if (key == .nil) {
+        if (key == Value.nil_val) {
             if (!self.has_null) return self;
             const new_map = try allocator.create(PersistentHashMap);
             new_map.* = .{

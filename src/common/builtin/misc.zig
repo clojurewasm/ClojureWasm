@@ -449,7 +449,7 @@ pub fn hashOrderedCollFn(allocator: Allocator, args: []const Value) anyerror!Val
     var hash: i32 = 1;
     // Walk the seq
     var s = try collections_mod.seqFn(allocator, &.{args[0]});
-    while (s != .nil) {
+    while (!s.isNil()) {
         const first = try collections_mod.firstFn(allocator, &.{s});
         const h = predicates_mod.computeHash(first);
         hash = hash *% 31 +% @as(i32, @truncate(h));
@@ -467,7 +467,7 @@ pub fn hashUnorderedCollFn(allocator: Allocator, args: []const Value) anyerror!V
     var n: i32 = 0;
     var hash: i32 = 0;
     var s = try collections_mod.seqFn(allocator, &.{args[0]});
-    while (s != .nil) {
+    while (!s.isNil()) {
         const first = try collections_mod.firstFn(allocator, &.{s});
         const h = predicates_mod.computeHash(first);
         hash +%= @as(i32, @truncate(h));
@@ -677,7 +677,7 @@ test "gensym - no prefix" {
     const alloc = arena.allocator();
 
     const r1 = try gensymFn(alloc, &[_]Value{});
-    try testing.expect(r1 == .symbol);
+    try testing.expect(r1.tag() == .symbol);
     // Should start with G__
     try testing.expect(std.mem.startsWith(u8, r1.asSymbol().name, "G__"));
 
@@ -692,7 +692,7 @@ test "gensym - with prefix" {
     const alloc = arena.allocator();
 
     const result = try gensymFn(alloc, &[_]Value{Value.initString(alloc, "foo")});
-    try testing.expect(result == .symbol);
+    try testing.expect(result.tag() == .symbol);
     try testing.expect(std.mem.startsWith(u8, result.asSymbol().name, "foo"));
 }
 
@@ -780,7 +780,7 @@ test "random-uuid - format" {
     const alloc = arena.allocator();
 
     const result = try randomUuidFn(alloc, &[_]Value{});
-    try testing.expect(result == .string);
+    try testing.expect(result.tag() == .string);
     const uuid = result.asString();
     // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (36 chars)
     try testing.expectEqual(@as(usize, 36), uuid.len);

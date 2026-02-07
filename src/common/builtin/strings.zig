@@ -583,7 +583,7 @@ test "namespace of keyword without ns" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try namespaceFn(alloc, &.{Value.initKeyword(alloc, .{ .name = "foo", .ns = null })});
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 // --- keyword/symbol coercion tests ---
@@ -593,7 +593,7 @@ test "keyword from string" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try keywordFn(alloc, &.{Value.initString(alloc, "foo")});
-    try testing.expect(result == .keyword);
+    try testing.expect(result.tag() == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
     try testing.expect(result.asKeyword().ns == null);
 }
@@ -606,7 +606,7 @@ test "keyword with ns and name" {
         Value.initString(alloc, "my.ns"),
         Value.initString(alloc, "foo"),
     });
-    try testing.expect(result == .keyword);
+    try testing.expect(result.tag() == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
     try testing.expectEqualStrings("my.ns", result.asKeyword().ns.?);
 }
@@ -616,7 +616,7 @@ test "symbol from string" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try symbolFn(alloc, &.{Value.initString(alloc, "bar")});
-    try testing.expect(result == .symbol);
+    try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
     try testing.expect(result.asSymbol().ns == null);
 }
@@ -629,7 +629,7 @@ test "symbol with ns and name" {
         Value.initString(alloc, "my.ns"),
         Value.initString(alloc, "bar"),
     });
-    try testing.expect(result == .symbol);
+    try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
     try testing.expectEqualStrings("my.ns", result.asSymbol().ns.?);
 }

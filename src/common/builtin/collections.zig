@@ -33,13 +33,13 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .cons => args[0].asCons().first,
         .map, .hash_map => {
             const s = try seqFn(allocator, args);
-            if (s == .nil) return Value.nil_val;
+            if (s == Value.nil_val) return Value.nil_val;
             const seq_args = [1]Value{s};
             return firstFn(allocator, &seq_args);
         },
         .set => {
             const s = try seqFn(allocator, args);
-            if (s == .nil) return Value.nil_val;
+            if (s == Value.nil_val) return Value.nil_val;
             const seq_args = [1]Value{s};
             return firstFn(allocator, &seq_args);
         },
@@ -84,7 +84,7 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .cons => args[0].asCons().rest,
         .map, .hash_map => {
             const s = try seqFn(allocator, args);
-            if (s == .nil) {
+            if (s == Value.nil_val) {
                 const empty = try allocator.create(PersistentList);
                 empty.* = .{ .items = &.{} };
                 return Value.initList(empty);
@@ -94,7 +94,7 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .set => {
             const s = try seqFn(allocator, args);
-            if (s == .nil) {
+            if (s == Value.nil_val) {
                 const empty = try allocator.create(PersistentList);
                 empty.* = .{ .items = &.{} };
                 return Value.initList(empty);
@@ -109,7 +109,7 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .chunked_cons => {
             const rest_val = try args[0].asChunkedCons().next(allocator);
-            if (rest_val == .nil) {
+            if (rest_val == Value.nil_val) {
                 const empty = try allocator.create(PersistentList);
                 empty.* = .{ .items = &.{} };
                 return Value.initList(empty);
@@ -218,7 +218,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             // Impact: vector_ops 180ms -> 14ms (13x), list_build 178ms -> 13ms (14x).
             if (vec._capacity > 0 and vec.items.len < vec._capacity) {
                 const gen_slot = vec.items.ptr[vec._capacity];
-                if (gen_slot == .integer and gen_slot.asInteger() == vec._gen) {
+                if (gen_slot.tag() == .integer and gen_slot.asInteger() == vec._gen) {
                     // Gen match: extend in-place — this vector owns the tail
                     const mutable_ptr: [*]Value = @constCast(vec.items.ptr);
                     mutable_ptr[vec.items.len] = x;
@@ -268,12 +268,12 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
         },
         .map, .hash_map => {
             // (conj map [k v]) => (assoc map k v)
-            if (x == .vector) {
+            if (x.tag() == .vector) {
                 const pair = x.asVector();
                 if (pair.items.len != 2) return err.setErrorFmt(.eval, .value_error, .{}, "conj on map expects vector of 2 elements, got {d}", .{pair.items.len});
                 const assoc_args = [_]Value{ coll, pair.items[0], pair.items[1] };
                 return assocFn(allocator, &assoc_args);
-            } else if (x == .map) {
+            } else if (x.tag() == .map) {
                 // (conj map1 map2) => merge map2 into map1
                 var result = coll;
                 const entries = x.asMap().entries;
@@ -283,7 +283,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                     result = try assocFn(allocator, &assoc_args);
                 }
                 return result;
-            } else if (x == .hash_map) {
+            } else if (x.tag() == .hash_map) {
                 // (conj map1 hash_map2) => merge hash_map2 into map1
                 var result = coll;
                 const entries = try x.asHashMap().toEntries(allocator);
@@ -322,12 +322,12 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const base = args[0];
 
     // Handle vector case
-    if (base == .vector) {
+    if (base.tag() == .vector) {
         return assocVector(allocator, base.asVector(), args[1..]);
     }
 
     // Handle hash_map case — use HAMT assoc directly
-    if (base == .hash_map) {
+    if (base.tag() == .hash_map) {
         var hm = base.asHashMap();
         var i: usize = 0;
         while (i < args.len - 1) : (i += 2) {
@@ -344,7 +344,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     // Fast path: single key-value pair on non-sorted ArrayMap (most common case)
-    if (args.len == 3 and (base != .map or base.asMap().comparator == null)) {
+    if (args.len == 3 and (base.tag() != .map or base.asMap().comparator == null)) {
         const key = args[1];
         const val = args[2];
         // Check if key exists — direct copy with replacement (no ArrayList)
@@ -355,7 +355,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 @memcpy(new_entries, base_entries);
                 new_entries[j + 1] = val;
                 const new_map = try allocator.create(PersistentArrayMap);
-                new_map.* = .{ .entries = new_entries, .meta = if (base == .map) base.asMap().meta else null, .comparator = null };
+                new_map.* = .{ .entries = new_entries, .meta = if (base.tag() == .map) base.asMap().meta else null, .comparator = null };
                 return Value.initMap(new_map);
             }
         }
@@ -369,7 +369,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return Value.initHashMap(hm);
         }
         const new_map = try allocator.create(PersistentArrayMap);
-        new_map.* = .{ .entries = new_entries, .meta = if (base == .map) base.asMap().meta else null, .comparator = null };
+        new_map.* = .{ .entries = new_entries, .meta = if (base.tag() == .map) base.asMap().meta else null, .comparator = null };
         return Value.initMap(new_map);
     }
 
@@ -396,7 +396,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    const base_comp: ?Value = if (base == .map) base.asMap().comparator else null;
+    const base_comp: ?Value = if (base.tag() == .map) base.asMap().comparator else null;
 
     if (base_comp) |comp| {
         try sortMapEntries(allocator, entries.items, comp);
@@ -408,7 +408,7 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = if (base == .map) base.asMap().meta else null, .comparator = base_comp };
+    new_map.* = .{ .entries = entries.items, .meta = if (base.tag() == .map) base.asMap().meta else null, .comparator = base_comp };
     return Value.initMap(new_map);
 }
 
@@ -449,19 +449,19 @@ fn assocVector(allocator: Allocator, vec: *const PersistentVector, kvs: []const 
 /// (get map key) or (get map key not-found) — lookup in map or set.
 pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get", .{args.len});
-    const not_found: Value = if (args.len == 3) args[2] else .nil;
+    const not_found: Value = if (args.len == 3) args[2] else Value.nil_val;
     return switch (args[0].tag()) {
         .map => args[0].asMap().get(args[1]) orelse not_found,
         .hash_map => args[0].asHashMap().get(args[1]) orelse not_found,
         .vector => blk: {
-            if (args[1] != .integer) break :blk not_found;
+            if (args[1].tag() != .integer) break :blk not_found;
             const idx = args[1].asInteger();
             if (idx < 0) break :blk not_found;
             break :blk args[0].asVector().nth(@intCast(idx)) orelse not_found;
         },
         .set => if (args[0].asSet().contains(args[1])) args[1] else not_found,
         .transient_vector => blk: {
-            if (args[1] != .integer) break :blk not_found;
+            if (args[1].tag() != .integer) break :blk not_found;
             const tv = args[0].asTransientVector();
             const idx = args[1].asInteger();
             if (idx < 0 or @as(usize, @intCast(idx)) >= tv.items.items.len) break :blk not_found;
@@ -491,7 +491,7 @@ pub fn getFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn nthFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nth", .{args.len});
     const idx_val = args[1];
-    if (idx_val != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nth expects integer index, got {s}", .{@tagName(idx_val.tag())});
+    if (idx_val.tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nth expects integer index, got {s}", .{@tagName(idx_val.tag())});
     const idx = idx_val.asInteger();
     if (idx < 0) {
         if (args.len == 3) return args[2];
@@ -519,13 +519,13 @@ fn nthSeq(allocator: Allocator, coll: Value, idx: usize, not_found: ?Value) anye
         const first_result = try firstFn(allocator, &.{current});
         if (i == idx) {
             // Check if we've exhausted the seq
-            if (current == .nil or (current == .lazy_seq and current.asLazySeq().realized != null and current.asLazySeq().realized.? == .nil)) {
+            if (current == Value.nil_val or (current.tag() == .lazy_seq and current.asLazySeq().realized != null and current.asLazySeq().realized.? == Value.nil_val)) {
                 return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
             }
             return first_result;
         }
         const rest_result = try restFn(allocator, &.{current});
-        if (rest_result == .nil) {
+        if (rest_result == Value.nil_val) {
             return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
         }
         current = rest_result;
@@ -545,16 +545,16 @@ fn nthString(s: []const u8, idx: usize, not_found: ?Value) anyerror!Value {
 /// (count coll) — number of elements.
 pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to count", .{args.len});
-    if (args[0] == .lazy_seq) {
+    if (args[0].tag() == .lazy_seq) {
         const realized = try args[0].asLazySeq().realize(allocator);
         const realized_args = [1]Value{realized};
         return countFn(allocator, &realized_args);
     }
-    if (args[0] == .cons) {
+    if (args[0].tag() == .cons) {
         // Count by walking the cons chain
         var n: i64 = 0;
         var current = args[0];
-        while (current == .cons) {
+        while (current.tag() == .cons) {
             n += 1;
             current = current.asCons().rest;
         }
@@ -563,11 +563,11 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         const rest_count = try countFn(allocator, &rest_args);
         return Value.initInteger(n + rest_count.asInteger());
     }
-    if (args[0] == .chunked_cons) {
+    if (args[0].tag() == .chunked_cons) {
         // Count by walking chunked_cons chain
         var n: i64 = 0;
         var current = args[0];
-        while (current == .chunked_cons) {
+        while (current.tag() == .chunked_cons) {
             n += @intCast(current.asChunkedCons().chunk.count());
             current = current.asChunkedCons().more;
         }
@@ -699,7 +699,7 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Collect all items from all sequences using collectSeqItems
     var all: std.ArrayListUnmanaged(Value) = .empty;
     for (args) |arg| {
-        if (arg == .nil) continue;
+        if (arg == Value.nil_val) continue;
         const seq_items = try collectSeqItems(allocator, arg);
         for (seq_items) |item| try all.append(allocator, item);
     }
@@ -713,7 +713,7 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// nil returns empty list. Works on any seqable collection.
 pub fn reverseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reverse", .{args.len});
-    if (args[0] == .nil) {
+    if (args[0] == Value.nil_val) {
         const empty_lst = try allocator.create(PersistentList);
         empty_lst.* = .{ .items = &.{} };
         return Value.initList(empty_lst);
@@ -786,7 +786,7 @@ pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (into to from) — returns a new coll with items from `from` conj'd onto `to`.
 pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to into", .{args.len});
-    if (args[1] == .nil) return args[0];
+    if (args[1] == Value.nil_val) return args[0];
     const from_items = try collectSeqItems(allocator, args[1]);
     if (from_items.len == 0) return args[0];
 
@@ -805,7 +805,7 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const last_arg = args[args.len - 1];
 
     // Collect spread args from last collection
-    const spread_items: []const Value = if (last_arg == .nil)
+    const spread_items: []const Value = if (last_arg == Value.nil_val)
         &.{}
     else
         try collectSeqItems(allocator, last_arg);
@@ -843,10 +843,10 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 }
             }
             const kw_val = Value.initKeyword(allocator, kw);
-            if (call_args[0] == .map) {
+            if (call_args[0].tag() == .map) {
                 break :blk call_args[0].asMap().get(kw_val) orelse
                     if (call_args.len == 2) call_args[1] else Value.nil_val;
-            } else if (call_args[0] == .hash_map) {
+            } else if (call_args[0].tag() == .hash_map) {
                 break :blk call_args[0].asHashMap().get(kw_val) orelse
                     if (call_args.len == 2) call_args[1] else Value.nil_val;
             } else {
@@ -944,10 +944,10 @@ fn seqToMapFromSlice(allocator: Allocator, items: []const Value) anyerror!Value 
         return items[0];
     }
     // Clojure 1.11: if odd elements and last is a map, merge trailing map
-    if (items.len % 2 == 1 and (items[items.len - 1] == .map or items[items.len - 1] == .hash_map)) {
+    if (items.len % 2 == 1 and (items[items.len - 1].tag() == .map or items[items.len - 1].tag() == .hash_map)) {
         // Create map from preceding key-value pairs
         const base_map = try hashMapFn(allocator, items[0 .. items.len - 1]);
-        if (items[items.len - 1] == .hash_map) {
+        if (items[items.len - 1].tag() == .hash_map) {
             // Convert hash_map to flat entries and merge via assoc
             const hm_entries = try items[items.len - 1].asHashMap().toEntries(allocator);
             var result = base_map;
@@ -968,7 +968,7 @@ fn seqToMapFromSlice(allocator: Allocator, items: []const Value) anyerror!Value 
 /// Merge entries from src map into dst map (like Clojure's merge).
 /// Maps store flat arrays: [k1,v1,k2,v2,...]
 fn mergeInto(allocator: Allocator, base: Value, src: *const PersistentArrayMap) anyerror!Value {
-    if (base == .hash_map) {
+    if (base.tag() == .hash_map) {
         // Merge src entries into hash_map using HAMT assoc
         var hm = base.asHashMap();
         var i: usize = 0;
@@ -977,7 +977,7 @@ fn mergeInto(allocator: Allocator, base: Value, src: *const PersistentArrayMap) 
         }
         return Value.initHashMap(hm);
     }
-    if (base != .map) return base;
+    if (base.tag() != .map) return base;
     var entries: std.ArrayList(Value) = .empty;
     // Add all entries from base
     for (base.asMap().entries) |v| {
@@ -1014,13 +1014,13 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Skip leading nils, find first map
     var start: usize = 0;
-    while (start < args.len and args[start] == .nil) : (start += 1) {}
+    while (start < args.len and args[start] == Value.nil_val) : (start += 1) {}
     if (start >= args.len) return Value.nil_val;
 
     // Start with entries from first map
-    const first_entries: []const Value = if (args[start] == .map)
+    const first_entries: []const Value = if (args[start].tag() == .map)
         args[start].asMap().entries
-    else if (args[start] == .hash_map)
+    else if (args[start].tag() == .hash_map)
         try args[start].asHashMap().toEntries(allocator)
     else
         return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(args[start].tag())});
@@ -1030,10 +1030,10 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Merge remaining maps left-to-right
     for (args[start + 1 ..]) |arg| {
-        if (arg == .nil) continue;
-        const src: []const Value = if (arg == .map)
+        if (arg == Value.nil_val) continue;
+        const src: []const Value = if (arg.tag() == .map)
             arg.asMap().entries
-        else if (arg == .hash_map)
+        else if (arg.tag() == .hash_map)
             try arg.asHashMap().toEntries(allocator)
         else
             return err.setErrorFmt(.eval, .type_error, .{}, "merge expects a map, got {s}", .{@tagName(arg.tag())});
@@ -1063,7 +1063,7 @@ pub fn mergeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
         return Value.initHashMap(hm);
     }
-    const first_meta: ?*const Value = if (args[start] == .map) args[start].asMap().meta else args[start].asHashMap().meta;
+    const first_meta: ?*const Value = if (args[start].tag() == .map) args[start].asMap().meta else args[start].asHashMap().meta;
     const new_map = try allocator.create(PersistentArrayMap);
     new_map.* = .{ .entries = entries.items, .meta = first_meta };
     return Value.initMap(new_map);
@@ -1080,12 +1080,12 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Skip leading nils
     var start: usize = 0;
-    while (start < maps.len and maps[start] == .nil) : (start += 1) {}
+    while (start < maps.len and maps[start] == Value.nil_val) : (start += 1) {}
     if (start >= maps.len) return Value.nil_val;
 
-    const first_entries: []const Value = if (maps[start] == .map)
+    const first_entries: []const Value = if (maps[start].tag() == .map)
         maps[start].asMap().entries
-    else if (maps[start] == .hash_map)
+    else if (maps[start].tag() == .hash_map)
         try maps[start].asHashMap().toEntries(allocator)
     else
         return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(maps[start].tag())});
@@ -1094,10 +1094,10 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
     try entries.appendSlice(allocator, first_entries);
 
     for (maps[start + 1 ..]) |arg| {
-        if (arg == .nil) continue;
-        const src: []const Value = if (arg == .map)
+        if (arg == Value.nil_val) continue;
+        const src: []const Value = if (arg.tag() == .map)
             arg.asMap().entries
-        else if (arg == .hash_map)
+        else if (arg.tag() == .hash_map)
             try arg.asHashMap().toEntries(allocator)
         else
             return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a map, got {s}", .{@tagName(arg.tag())});
@@ -1131,7 +1131,7 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
         const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
         return Value.initHashMap(hm);
     }
-    const first_meta: ?*const Value = if (maps[start] == .map) maps[start].asMap().meta else maps[start].asHashMap().meta;
+    const first_meta: ?*const Value = if (maps[start].tag() == .map) maps[start].asMap().meta else maps[start].asHashMap().meta;
     const new_map = try allocator.create(PersistentArrayMap);
     new_map.* = .{ .entries = entries.items, .meta = first_meta };
     return Value.initMap(new_map);
@@ -1142,35 +1142,35 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Cross-type numeric comparison supported. Non-comparable types return TypeError.
 pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
     // nil sorts before everything
-    if (a == .nil and b == .nil) return .eq;
-    if (a == .nil) return .lt;
-    if (b == .nil) return .gt;
+    if (a == Value.nil_val and b == Value.nil_val) return .eq;
+    if (a == Value.nil_val) return .lt;
+    if (b == Value.nil_val) return .gt;
 
     // booleans: false < true
-    if (a == .boolean and b == .boolean) {
+    if (a.tag() == .boolean and b.tag() == .boolean) {
         if (a.asBoolean() == b.asBoolean()) return .eq;
         return if (!a.asBoolean()) .lt else .gt;
     }
 
     // numeric: int/float cross-comparison
-    if ((a == .integer or a == .float) and (b == .integer or b == .float)) {
-        const fa: f64 = if (a == .integer) @floatFromInt(a.asInteger()) else a.asFloat();
-        const fb: f64 = if (b == .integer) @floatFromInt(b.asInteger()) else b.asFloat();
+    if ((a.tag() == .integer or a.tag() == .float) and (b.tag() == .integer or b.tag() == .float)) {
+        const fa: f64 = if (a.tag() == .integer) @floatFromInt(a.asInteger()) else a.asFloat();
+        const fb: f64 = if (b.tag() == .integer) @floatFromInt(b.asInteger()) else b.asFloat();
         return std.math.order(fa, fb);
     }
 
     // chars: compare by code point
-    if (a == .char and b == .char) {
+    if (a.tag() == .char and b.tag() == .char) {
         return std.math.order(a.asChar(), b.asChar());
     }
 
     // strings
-    if (a == .string and b == .string) {
+    if (a.tag() == .string and b.tag() == .string) {
         return std.mem.order(u8, a.asString(), b.asString());
     }
 
     // keywords: compare by namespace then name
-    if (a == .keyword and b == .keyword) {
+    if (a.tag() == .keyword and b.tag() == .keyword) {
         const ans = a.asKeyword().ns orelse "";
         const bns = b.asKeyword().ns orelse "";
         const ns_ord = std.mem.order(u8, ans, bns);
@@ -1179,7 +1179,7 @@ pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
     }
 
     // symbols: compare by namespace then name
-    if (a == .symbol and b == .symbol) {
+    if (a.tag() == .symbol and b.tag() == .symbol) {
         const ans = a.asSymbol().ns orelse "";
         const bns = b.asSymbol().ns orelse "";
         const ns_ord = std.mem.order(u8, ans, bns);
@@ -1188,7 +1188,7 @@ pub fn compareValues(a: Value, b: Value) anyerror!std.math.Order {
     }
 
     // vectors: element-by-element comparison
-    if (a == .vector and b == .vector) {
+    if (a.tag() == .vector and b.tag() == .vector) {
         const av = a.asVector().items;
         const bv = b.asVector().items;
         const min_len = @min(av.len, bv.len);
@@ -1329,7 +1329,7 @@ pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Non-sequential values are returned as-is.
 /// Used by eqFn and print builtins for transparent lazy seq support.
 pub fn realizeValue(allocator: Allocator, val: Value) anyerror!Value {
-    if (val != .lazy_seq and val != .cons) return val;
+    if (val.tag() != .lazy_seq and val.tag() != .cons) return val;
     const items = try collectSeqItems(allocator, val);
     const lst = try allocator.create(PersistentList);
     lst.* = .{ .items = items };
@@ -1410,7 +1410,7 @@ pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value 
 /// (vec coll) — coerce a collection to a vector.
 pub fn vecFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vec", .{args.len});
-    if (args[0] == .vector) return args[0];
+    if (args[0].tag() == .vector) return args[0];
     const items = try collectSeqItems(allocator, args[0]);
     const vec = try allocator.create(PersistentVector);
     vec.* = .{ .items = items };
@@ -1422,18 +1422,18 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set", .{args.len});
 
     // Handle lazy_seq: realize then recurse
-    if (args[0] == .lazy_seq) {
+    if (args[0].tag() == .lazy_seq) {
         const realized = try args[0].asLazySeq().realize(allocator);
         const realized_args = [1]Value{realized};
         return setCoerceFn(allocator, &realized_args);
     }
 
     // Handle cons: walk chain and collect items
-    if (args[0] == .cons) {
+    if (args[0].tag() == .cons) {
         var result = std.ArrayList(Value).empty;
         var current = args[0];
         while (true) {
-            if (current == .cons) {
+            if (current.tag() == .cons) {
                 const item = current.asCons().first;
                 var dup = false;
                 for (result.items) |existing| {
@@ -1444,11 +1444,11 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 }
                 if (!dup) try result.append(allocator, item);
                 current = current.asCons().rest;
-            } else if (current == .lazy_seq) {
+            } else if (current.tag() == .lazy_seq) {
                 current = try current.asLazySeq().realize(allocator);
-            } else if (current == .nil) {
+            } else if (current == Value.nil_val) {
                 break;
-            } else if (current == .list) {
+            } else if (current.tag() == .list) {
                 for (current.asList().items) |item| {
                     var dup = false;
                     for (result.items) |existing| {
@@ -1470,8 +1470,8 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Handle map: convert to set of [k v] vectors
-    if (args[0] == .map or args[0] == .hash_map) {
-        const flat: []const Value = if (args[0] == .map)
+    if (args[0].tag() == .map or args[0].tag() == .hash_map) {
+        const flat: []const Value = if (args[0].tag() == .map)
             args[0].asMap().entries
         else
             try args[0].asHashMap().toEntries(allocator);
@@ -1497,7 +1497,7 @@ pub fn setCoerceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Handle string: convert to set of characters
-    if (args[0] == .string) {
+    if (args[0].tag() == .string) {
         const s = args[0].asString();
         if (s.len == 0) {
             const new_set = try allocator.create(PersistentHashSet);
@@ -1597,7 +1597,7 @@ pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Handle hash_map case — use HAMT dissoc directly
-    if (args[0] == .hash_map) {
+    if (args[0].tag() == .hash_map) {
         var hm = args[0].asHashMap();
         var ki: usize = 1;
         while (ki < args.len) : (ki += 1) {
@@ -1632,7 +1632,7 @@ pub fn dissocFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_map = try allocator.create(PersistentArrayMap);
-    new_map.* = .{ .entries = entries.items, .meta = if (args[0] == .map) args[0].asMap().meta else null, .comparator = if (args[0] == .map) args[0].asMap().comparator else null };
+    new_map.* = .{ .entries = entries.items, .meta = if (args[0].tag() == .map) args[0].asMap().meta else null, .comparator = if (args[0].tag() == .map) args[0].asMap().comparator else null };
     return Value.initMap(new_map);
 }
 
@@ -1669,7 +1669,7 @@ pub fn disjFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const new_set = try allocator.create(PersistentHashSet);
-    new_set.* = .{ .items = items.items, .meta = if (args[0] == .set) args[0].asSet().meta else null, .comparator = if (args[0] == .set) args[0].asSet().comparator else null };
+    new_set.* = .{ .items = items.items, .meta = if (args[0].tag() == .set) args[0].asSet().meta else null, .comparator = if (args[0].tag() == .set) args[0].asSet().comparator else null };
     return Value.initSet(new_set);
 }
 
@@ -1696,7 +1696,7 @@ pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return Value.initVector(vec);
         },
         .vector => {
-            if (args[1] != .integer) return Value.nil_val;
+            if (args[1].tag() != .integer) return Value.nil_val;
             const idx = args[1].asInteger();
             if (idx < 0 or @as(usize, @intCast(idx)) >= args[0].asVector().items.len) return Value.nil_val;
             const pair = try allocator.alloc(Value, 2);
@@ -1708,7 +1708,7 @@ pub fn findFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         .transient_vector => {
             const tv = args[0].asTransientVector();
-            if (args[1] != .integer) return Value.nil_val;
+            if (args[1].tag() != .integer) return Value.nil_val;
             const idx = args[1].asInteger();
             if (idx < 0 or @as(usize, @intCast(idx)) >= tv.items.items.len) return Value.nil_val;
             const pair = try allocator.alloc(Value, 2);
@@ -1775,12 +1775,12 @@ pub fn popFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (subvec v start) or (subvec v start end) — returns a subvector of v from start (inclusive) to end (exclusive).
 pub fn subvecFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to subvec", .{args.len});
-    if (args[0] != .vector) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects a vector, got {s}", .{@tagName(args[0].tag())});
-    if (args[1] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer start, got {s}", .{@tagName(args[1].tag())});
+    if (args[0].tag() != .vector) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects a vector, got {s}", .{@tagName(args[0].tag())});
+    if (args[1].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer start, got {s}", .{@tagName(args[1].tag())});
     const v = args[0].asVector();
     const start: usize = if (args[1].asInteger() < 0) return err.setErrorFmt(.eval, .index_error, .{}, "subvec start index out of bounds: {d}", .{args[1].asInteger()}) else @intCast(args[1].asInteger());
     const end: usize = if (args.len == 3) blk: {
-        if (args[2] != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer end, got {s}", .{@tagName(args[2].tag())});
+        if (args[2].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "subvec expects integer end, got {s}", .{@tagName(args[2].tag())});
         break :blk if (args[2].asInteger() < 0) return err.setErrorFmt(.eval, .index_error, .{}, "subvec end index out of bounds: {d}", .{args[2].asInteger()}) else @intCast(args[2].asInteger());
     } else v.items.len;
 
@@ -1840,9 +1840,9 @@ pub fn sortedSetFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
     // Sort with natural ordering
-    if (items.items.len > 1) try sortSetItems(allocator, items.items, Value.nil);
+    if (items.items.len > 1) try sortSetItems(allocator, items.items, Value.nil_val);
     const set = try allocator.create(PersistentHashSet);
-    set.* = .{ .items = try allocator.dupe(Value, items.items), .comparator = Value.nil };
+    set.* = .{ .items = try allocator.dupe(Value, items.items), .comparator = Value.nil_val };
     items.deinit(allocator);
     return Value.initSet(set);
 }
@@ -1880,16 +1880,16 @@ pub fn sortedMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "sorted-map requires even number of args, got {d}", .{args.len});
     if (args.len == 0) {
         const map = try allocator.create(PersistentArrayMap);
-        map.* = .{ .entries = &.{}, .comparator = Value.nil };
+        map.* = .{ .entries = &.{}, .comparator = Value.nil_val };
         return Value.initMap(map);
     }
     const entries = try allocator.alloc(Value, args.len);
     @memcpy(entries, args);
 
-    try sortMapEntries(allocator, entries, Value.nil);
+    try sortMapEntries(allocator, entries, Value.nil_val);
 
     const map = try allocator.create(PersistentArrayMap);
-    map.* = .{ .entries = entries, .comparator = Value.nil };
+    map.* = .{ .entries = entries, .comparator = Value.nil_val };
     return Value.initMap(map);
 }
 
@@ -1960,7 +1960,7 @@ fn sortSetItems(allocator: Allocator, items: []Value, comparator: Value) anyerro
 ///   (comp a b) → true  ⇒ -1 (a before b)
 ///   (comp a b) → false ⇒ check (comp b a): true → 1 (b before a), false → 0 (equal)
 fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: Value) anyerror!std.math.Order {
-    if (comparator == .nil) {
+    if (comparator == Value.nil_val) {
         return compareValues(a, b);
     }
     // Custom comparator: call as Clojure function
@@ -1972,7 +1972,7 @@ fn compareWithComparator(allocator: Allocator, comparator: Value, a: Value, b: V
             if (result.asBoolean()) return .lt;
             // JVM AFunction.compare: false → call (comp b a) to distinguish gt from eq
             const rev = try bootstrap.callFnVal(allocator, comparator, &.{ b, a });
-            return if (rev == .boolean and rev.asBoolean()) .gt else .eq;
+            return if (rev.tag() == .boolean and rev.asBoolean()) .gt else .eq;
         },
         else => return err.setErrorFmt(.eval, .type_error, .{}, "comparator must return a number, got {s}", .{@tagName(result.tag())}),
     };
@@ -2010,7 +2010,7 @@ fn subseqImpl(allocator: Allocator, args: []const Value, reverse: bool) anyerror
 
     var result = std.ArrayList(Value).empty;
 
-    if (sc == .map) {
+    if (sc.tag() == .map) {
         const entries = sc.asMap().entries;
         var i: usize = 0;
         while (i < entries.len) : (i += 2) {
@@ -2034,7 +2034,7 @@ fn subseqImpl(allocator: Allocator, args: []const Value, reverse: bool) anyerror
             }
         }
     }
-    if (result.items.len == 0) return Value.nil;
+    if (result.items.len == 0) return Value.nil_val;
 
     if (reverse) {
         // Reverse in place
@@ -2170,7 +2170,7 @@ fn getPathItems(allocator: Allocator, ks: Value) anyerror![]const Value {
             // Realize seq into slice
             var items = std.ArrayList(Value).empty;
             var s = try seqFn(allocator, &[1]Value{ks});
-            while (s != .nil) {
+            while (s != Value.nil_val) {
                 try items.append(allocator, try firstFn(allocator, &[1]Value{s}));
                 s = try restFn(allocator, &[1]Value{s});
                 s = try seqFn(allocator, &[1]Value{s});
@@ -2183,12 +2183,12 @@ fn getPathItems(allocator: Allocator, ks: Value) anyerror![]const Value {
 /// (__zig-get-in m ks) or (__zig-get-in m ks not-found)
 fn zigGetInFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-in", .{args.len});
-    const not_found: Value = if (args.len == 3) args[2] else .nil;
+    const not_found: Value = if (args.len == 3) args[2] else Value.nil_val;
     const path = try getPathItems(allocator, args[1]);
     var current = args[0];
     for (path) |k| {
         current = getFn(allocator, &[2]Value{ current, k }) catch return not_found;
-        if (current == .nil and not_found != .nil) {
+        if (current == Value.nil_val and not_found != Value.nil_val) {
             // Check if key actually maps to nil vs key not found
             // For simplicity, treat nil as "not found" when not-found is provided
         }
@@ -2209,7 +2209,7 @@ fn assocInImpl(allocator: Allocator, m: Value, path: []const Value, v: Value) an
     if (path.len == 1) {
         return assocFn(allocator, &[3]Value{ m, k, v });
     }
-    const inner = getFn(allocator, &[2]Value{ m, k }) catch Value.nil;
+    const inner = getFn(allocator, &[2]Value{ m, k }) catch Value.nil_val;
     const new_inner = try assocInImpl(allocator, inner, path[1..], v);
     return assocFn(allocator, &[3]Value{ m, k, new_inner });
 }
@@ -2227,7 +2227,7 @@ fn zigUpdateInFn(allocator: Allocator, args: []const Value) anyerror!Value {
 fn updateInImpl(allocator: Allocator, m: Value, path: []const Value, f: Value, extra_args: []const Value) anyerror!Value {
     const k = path[0];
     if (path.len == 1) {
-        const old_val = getFn(allocator, &[2]Value{ m, k }) catch Value.nil;
+        const old_val = getFn(allocator, &[2]Value{ m, k }) catch Value.nil_val;
         // Call (f old_val extra_args...)
         const new_val = if (extra_args.len == 0)
             try bootstrap.callFnVal(allocator, f, &[1]Value{old_val})
@@ -2239,7 +2239,7 @@ fn updateInImpl(allocator: Allocator, m: Value, path: []const Value, f: Value, e
         };
         return assocFn(allocator, &[3]Value{ m, k, new_val });
     }
-    const inner = getFn(allocator, &[2]Value{ m, k }) catch Value.nil;
+    const inner = getFn(allocator, &[2]Value{ m, k }) catch Value.nil_val;
     const new_inner = try updateInImpl(allocator, inner, path[1..], f, extra_args);
     return assocFn(allocator, &[3]Value{ m, k, new_inner });
 }
@@ -2577,7 +2577,7 @@ const test_alloc = testing.allocator;
 /// Simple addition for testing merge-with.
 fn testAddFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return error.ArityError;
-    if (args[0] != .integer or args[1] != .integer) return error.TypeError;
+    if (args[0].tag() != .integer or args[1].tag() != .integer) return error.TypeError;
     return Value.initInteger(args[0].asInteger() + args[1].asInteger());
 }
 
@@ -2595,7 +2595,7 @@ test "first on empty list" {
 }
 
 test "first on nil" {
-    const result = try firstFn(test_alloc, &.{Value.nil});
+    const result = try firstFn(test_alloc, &.{Value.nil_val});
     try testing.expect(result.isNil());
 }
 
@@ -2612,15 +2612,15 @@ test "rest on list" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     var lst = PersistentList{ .items = &items };
     const result = try restFn(arena.allocator(), &.{Value.initList(&lst)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
 }
 
 test "rest on nil returns empty list" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const result = try restFn(arena.allocator(), &.{Value.nil});
-    try testing.expect(result == .list);
+    const result = try restFn(arena.allocator(), &.{Value.nil_val});
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().count());
 }
 
@@ -2631,19 +2631,19 @@ test "cons prepends to list" {
     var lst = PersistentList{ .items = &items };
     const result = try consFn(arena.allocator(), &.{ Value.initInteger(1), Value.initList(&lst) });
     // cons always returns Cons cell (JVM Clojure semantics)
-    try testing.expect(result == .cons);
+    try testing.expect(result.tag() == .cons);
     try testing.expect(result.asCons().first.eql(Value.initInteger(1)));
-    try testing.expect(result.asCons().rest == .list);
+    try testing.expect(result.asCons().rest.tag() == .list);
 }
 
 test "cons onto nil" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const result = try consFn(arena.allocator(), &.{ Value.initInteger(1), Value.nil });
+    const result = try consFn(arena.allocator(), &.{ Value.initInteger(1), Value.nil_val });
     // cons onto nil returns Cons cell with nil rest
-    try testing.expect(result == .cons);
+    try testing.expect(result.tag() == .cons);
     try testing.expect(result.asCons().first.eql(Value.initInteger(1)));
-    try testing.expect(result.asCons().rest == .nil);
+    try testing.expect(result.asCons().rest == Value.nil_val);
 }
 
 test "conj to list prepends" {
@@ -2652,7 +2652,7 @@ test "conj to list prepends" {
     const items = [_]Value{ Value.initInteger(2), Value.initInteger(3) };
     var lst = PersistentList{ .items = &items };
     const result = try conjFn(arena.allocator(), &.{ Value.initList(&lst), Value.initInteger(1) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().count());
     try testing.expect(result.asList().first().eql(Value.initInteger(1)));
 }
@@ -2663,7 +2663,7 @@ test "conj to vector appends" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     var vec = PersistentVector{ .items = &items };
     const result = try conjFn(arena.allocator(), &.{ Value.initVector(&vec), Value.initInteger(3) });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().count());
     try testing.expect(result.asVector().nth(2).?.eql(Value.initInteger(3)));
 }
@@ -2671,8 +2671,8 @@ test "conj to vector appends" {
 test "conj nil returns list" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const result = try conjFn(arena.allocator(), &.{ Value.nil, Value.initInteger(1) });
-    try testing.expect(result == .list);
+    const result = try conjFn(arena.allocator(), &.{ Value.nil_val, Value.initInteger(1) });
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 1), result.asList().count());
 }
 
@@ -2689,7 +2689,7 @@ test "assoc adds to map" {
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
 }
 
@@ -2706,7 +2706,7 @@ test "assoc replaces existing key" {
         Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(99),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
     const v = result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null }));
     try testing.expect(v.?.eql(Value.initInteger(99)));
@@ -2723,7 +2723,7 @@ test "assoc on vector replaces at index" {
         Value.initInteger(1),
         Value.initInteger(99),
     });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
     try testing.expect(result.asVector().items[0].eql(Value.initInteger(1)));
     try testing.expect(result.asVector().items[1].eql(Value.initInteger(99)));
@@ -2740,7 +2740,7 @@ test "assoc on empty vector at index 0" {
         Value.initInteger(0),
         Value.initInteger(4),
     });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 1), result.asVector().items.len);
     try testing.expect(result.asVector().items[0].eql(Value.initInteger(4)));
 }
@@ -2842,7 +2842,7 @@ test "count on various types" {
 
     try testing.expectEqual(Value.initInteger(2), try countFn(alloc, &.{Value.initList(&lst)}));
     try testing.expectEqual(Value.initInteger(2), try countFn(alloc, &.{Value.initVector(&vec)}));
-    try testing.expectEqual(Value.initInteger(0), try countFn(alloc, &.{Value.nil}));
+    try testing.expectEqual(Value.initInteger(0), try countFn(alloc, &.{Value.nil_val}));
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
@@ -2859,7 +2859,7 @@ test "reverse list" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     var lst = PersistentList{ .items = &items };
     const result = try reverseFn(alloc, &.{Value.initList(&lst)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(3), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(1), result.asList().items[2]);
@@ -2868,8 +2868,8 @@ test "reverse list" {
 test "reverse nil returns empty list" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try reverseFn(arena.allocator(), &.{Value.nil});
-    try testing.expect(result == .list);
+    const result = try reverseFn(arena.allocator(), &.{Value.nil_val});
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().items.len);
 }
 
@@ -2905,7 +2905,7 @@ test "merge two maps" {
     var m2 = PersistentArrayMap{ .entries = &e2 };
 
     const result = try mergeFn(alloc, &.{ Value.initMap(&m1), Value.initMap(&m2) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
@@ -2922,22 +2922,22 @@ test "merge with nil" {
     var m1 = PersistentArrayMap{ .entries = &e1 };
 
     // (merge nil {:a 1}) => {:a 1}
-    const r1 = try mergeFn(alloc, &.{ Value.nil, Value.initMap(&m1) });
-    try testing.expect(r1 == .map);
+    const r1 = try mergeFn(alloc, &.{ Value.nil_val, Value.initMap(&m1) });
+    try testing.expect(r1.tag() == .map);
     try testing.expectEqual(@as(usize, 1), r1.asMap().count());
 
     // (merge {:a 1} nil) => {:a 1}
-    const r2 = try mergeFn(alloc, &.{ Value.initMap(&m1), Value.nil });
-    try testing.expect(r2 == .map);
+    const r2 = try mergeFn(alloc, &.{ Value.initMap(&m1), Value.nil_val });
+    try testing.expect(r2.tag() == .map);
     try testing.expectEqual(@as(usize, 1), r2.asMap().count());
 
     // (merge nil nil) => nil
-    const r3 = try mergeFn(alloc, &.{ Value.nil, Value.nil });
-    try testing.expect(r3 == .nil);
+    const r3 = try mergeFn(alloc, &.{ Value.nil_val, Value.nil_val });
+    try testing.expect(r3 == Value.nil_val);
 
     // (merge) => nil
     const r4 = try mergeFn(alloc, &.{});
-    try testing.expect(r4 == .nil);
+    try testing.expect(r4 == Value.nil_val);
 }
 
 test "merge overlapping keys" {
@@ -2957,7 +2957,7 @@ test "merge overlapping keys" {
     var m2 = PersistentArrayMap{ .entries = &e2 };
 
     const result = try mergeFn(alloc, &.{ Value.initMap(&m1), Value.initMap(&m2) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // :b should be overwritten by m2's value
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(99)));
@@ -2984,7 +2984,7 @@ test "merge-with merges with function" {
         Value.initMap(&m1),
         Value.initMap(&m2),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(11)));
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
@@ -3006,7 +3006,7 @@ test "zipmap basic" {
     var val_vec = PersistentVector{ .items = &vals };
 
     const result = try zipmapFn(alloc, &.{ Value.initVector(&key_vec), Value.initVector(&val_vec) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "c", .ns = null })).?.eql(Value.initInteger(3)));
@@ -3027,7 +3027,7 @@ test "zipmap unequal lengths" {
     var val_vec = PersistentVector{ .items = &vals };
 
     const result = try zipmapFn(alloc, &.{ Value.initVector(&key_vec), Value.initVector(&val_vec) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
 }
 
@@ -3038,7 +3038,7 @@ test "zipmap empty" {
 
     var empty_vec = PersistentVector{ .items = &.{} };
     const result = try zipmapFn(alloc, &.{ Value.initVector(&empty_vec), Value.initVector(&empty_vec) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 0), result.asMap().count());
 }
 
@@ -3071,7 +3071,7 @@ test "sort integers" {
     const items = [_]Value{ Value.initInteger(3), Value.initInteger(1), Value.initInteger(2) };
     var vec = PersistentVector{ .items = &items };
     const result = try sortFn(alloc, &.{Value.initVector(&vec)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(2), result.asList().items[1]);
@@ -3085,7 +3085,7 @@ test "sort empty" {
 
     var empty_vec = PersistentVector{ .items = &.{} };
     const result = try sortFn(alloc, &.{Value.initVector(&empty_vec)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().items.len);
 }
 
@@ -3101,7 +3101,7 @@ test "sort-by with keyfn" {
         Value.initBuiltinFn(&countFn),
         Value.initVector(&vec),
     });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expect(result.asList().items[0].eql(Value.initString(alloc, "a")));
     try testing.expect(result.asList().items[1].eql(Value.initString(alloc, "bb")));
@@ -3116,7 +3116,7 @@ test "vec converts list to vector" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     var lst = PersistentList{ .items = &items };
     const result = try vecFn(alloc, &.{Value.initList(&lst)});
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
     try testing.expectEqual(Value.initInteger(1), result.asVector().items[0]);
 }
@@ -3124,8 +3124,8 @@ test "vec converts list to vector" {
 test "vec on nil returns empty vector" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try vecFn(arena.allocator(), &.{Value.nil});
-    try testing.expect(result == .vector);
+    const result = try vecFn(arena.allocator(), &.{Value.nil_val});
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 0), result.asVector().items.len);
 }
 
@@ -3138,7 +3138,7 @@ test "set converts vector to set" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(2), Value.initInteger(3) };
     var vec = PersistentVector{ .items = &items };
     const result = try setCoerceFn(alloc, &.{Value.initVector(&vec)});
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     try testing.expectEqual(@as(usize, 3), result.asSet().items.len);
 }
 
@@ -3151,7 +3151,7 @@ test "list* creates list" {
     const tail_items = [_]Value{ Value.initInteger(3), Value.initInteger(4) };
     var tail_vec = PersistentVector{ .items = &tail_items };
     const result = try listStarFn(alloc, &.{ Value.initInteger(1), Value.initInteger(2), Value.initVector(&tail_vec) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 4), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
     try testing.expectEqual(Value.initInteger(4), result.asList().items[3]);
@@ -3169,19 +3169,19 @@ test "seq on map returns list of entry vectors" {
     m.* = .{ .entries = &entries };
 
     const result = try seqFn(alloc, &.{Value.initMap(m)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().items.len);
 
     // First entry: [:a 1]
     const e1 = result.asList().items[0];
-    try testing.expect(e1 == .vector);
+    try testing.expect(e1.tag() == .vector);
     try testing.expectEqual(@as(usize, 2), e1.asVector().items.len);
     try testing.expect(e1.asVector().items[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
     try testing.expectEqual(Value.initInteger(1), e1.asVector().items[1]);
 
     // Second entry: [:b 2]
     const e2 = result.asList().items[1];
-    try testing.expect(e2 == .vector);
+    try testing.expect(e2.tag() == .vector);
     try testing.expectEqual(Value.initInteger(2), e2.asVector().items[1]);
 }
 
@@ -3192,7 +3192,7 @@ test "seq on empty map returns nil" {
     m.* = .{ .entries = &.{} };
 
     const result = try seqFn(alloc, &.{Value.initMap(m)});
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "seq on set returns list of elements" {
@@ -3203,7 +3203,7 @@ test "seq on set returns list of elements" {
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     var s = PersistentHashSet{ .items = &items };
     const result = try seqFn(alloc, &.{Value.initSet(&s)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }
 
@@ -3214,7 +3214,7 @@ test "seq on empty set returns nil" {
     s.* = .{ .items = &.{} };
 
     const result = try seqFn(alloc, &.{Value.initSet(s)});
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "builtins all have func" {
@@ -3238,7 +3238,7 @@ test "dissoc removes key from map" {
     m.* = .{ .entries = &entries };
 
     const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "b" })) != null);
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "a" })) == null);
@@ -3248,8 +3248,8 @@ test "dissoc on nil returns nil" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    const result = try dissocFn(alloc, &.{ Value.nil, Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
-    try testing.expectEqual(Value.nil, result);
+    const result = try dissocFn(alloc, &.{ Value.nil_val, Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "dissoc missing key is identity" {
@@ -3264,7 +3264,7 @@ test "dissoc missing key is identity" {
     m.* = .{ .entries = &entries };
 
     const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "z" }) });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
 }
 
@@ -3280,7 +3280,7 @@ test "disj removes value from set" {
     s.* = .{ .items = &items };
 
     const result = try disjFn(alloc, &.{ Value.initSet(s), Value.initInteger(2) });
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     try testing.expectEqual(@as(usize, 2), result.asSet().count());
     try testing.expect(!result.asSet().contains(Value.initInteger(2)));
     try testing.expect(result.asSet().contains(Value.initInteger(1)));
@@ -3288,8 +3288,8 @@ test "disj removes value from set" {
 }
 
 test "disj on nil returns nil" {
-    const result = try disjFn(test_alloc, &.{ Value.nil, Value.initInteger(1) });
-    try testing.expectEqual(Value.nil, result);
+    const result = try disjFn(test_alloc, &.{ Value.nil_val, Value.initInteger(1) });
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // --- find tests ---
@@ -3307,7 +3307,7 @@ test "find returns MapEntry vector" {
     m.* = .{ .entries = &entries };
 
     const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 2), result.asVector().items.len);
     try testing.expect(result.asVector().items[0].eql(Value.initKeyword(alloc, .{ .ns = null, .name = "a" })));
     try testing.expect(result.asVector().items[1].eql(Value.initInteger(1)));
@@ -3325,7 +3325,7 @@ test "find returns nil for missing key" {
     m.* = .{ .entries = &entries };
 
     const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "z" }) });
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // --- peek tests ---
@@ -3345,14 +3345,14 @@ test "peek on list returns first element" {
 }
 
 test "peek on nil returns nil" {
-    const result = try peekFn(test_alloc, &.{Value.nil});
-    try testing.expectEqual(Value.nil, result);
+    const result = try peekFn(test_alloc, &.{Value.nil_val});
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "peek on empty vector returns nil" {
     const vec = PersistentVector{ .items = &.{} };
     const result = try peekFn(test_alloc, &.{Value.initVector(&vec)});
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // --- pop tests ---
@@ -3367,7 +3367,7 @@ test "pop on vector removes last element" {
     vec.* = .{ .items = &items };
 
     const result = try popFn(alloc, &.{Value.initVector(vec)});
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 2), result.asVector().items.len);
     try testing.expect(result.asVector().items[0].eql(Value.initInteger(1)));
     try testing.expect(result.asVector().items[1].eql(Value.initInteger(2)));
@@ -3383,7 +3383,7 @@ test "pop on list removes first element" {
     lst.* = .{ .items = &items };
 
     const result = try popFn(alloc, &.{Value.initList(lst)});
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().items.len);
     try testing.expect(result.asList().items[0].eql(Value.initInteger(20)));
     try testing.expect(result.asList().items[1].eql(Value.initInteger(30)));
@@ -3396,8 +3396,8 @@ test "pop on empty vector is error" {
 }
 
 test "pop on nil returns nil" {
-    const result = try popFn(test_alloc, &.{Value.nil});
-    try testing.expectEqual(Value.nil, result);
+    const result = try popFn(test_alloc, &.{Value.nil_val});
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // --- empty tests ---
@@ -3412,13 +3412,13 @@ test "empty on vector returns empty vector" {
     vec.* = .{ .items = &items };
 
     const result = try emptyFn(alloc, &.{Value.initVector(vec)});
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 0), result.asVector().items.len);
 }
 
 test "empty on nil returns nil" {
-    const result = try emptyFn(test_alloc, &.{Value.nil});
-    try testing.expectEqual(Value.nil, result);
+    const result = try emptyFn(test_alloc, &.{Value.nil_val});
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "empty on string returns nil" {
@@ -3426,7 +3426,7 @@ test "empty on string returns nil" {
     defer arena.deinit();
     const alloc = arena.allocator();
     const result = try emptyFn(alloc, &.{Value.initString(alloc, "abc")});
-    try testing.expectEqual(Value.nil, result);
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 // --- subvec tests ---
@@ -3441,7 +3441,7 @@ test "subvec with start and end" {
     vec.* = .{ .items = &items };
 
     const result = try subvecFn(alloc, &.{ Value.initVector(vec), Value.initInteger(1), Value.initInteger(4) });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().count());
     try testing.expect(result.asVector().nth(0).?.eql(Value.initInteger(2)));
     try testing.expect(result.asVector().nth(1).?.eql(Value.initInteger(3)));
@@ -3458,7 +3458,7 @@ test "subvec with start only (end defaults to length)" {
     vec.* = .{ .items = &items };
 
     const result = try subvecFn(alloc, &.{ Value.initVector(vec), Value.initInteger(1) });
-    try testing.expect(result == .vector);
+    try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 2), result.asVector().count());
     try testing.expect(result.asVector().nth(0).?.eql(Value.initInteger(20)));
 }
@@ -3490,7 +3490,7 @@ test "array-map creates map from key-value pairs" {
         Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
     try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
@@ -3501,7 +3501,7 @@ test "array-map with no args returns empty map" {
     defer arena.deinit();
 
     const result = try arrayMapFn(arena.allocator(), &.{});
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 0), result.asMap().count());
 }
 
@@ -3520,7 +3520,7 @@ test "hash-set creates set from values" {
     const alloc = arena.allocator();
 
     const result = try hashSetFn(alloc, &.{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) });
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     try testing.expectEqual(@as(usize, 3), result.asSet().count());
     try testing.expect(result.asSet().contains(Value.initInteger(1)));
     try testing.expect(result.asSet().contains(Value.initInteger(2)));
@@ -3533,7 +3533,7 @@ test "hash-set deduplicates" {
     const alloc = arena.allocator();
 
     const result = try hashSetFn(alloc, &.{ Value.initInteger(1), Value.initInteger(1), Value.initInteger(2) });
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     try testing.expectEqual(@as(usize, 2), result.asSet().count());
 }
 
@@ -3542,7 +3542,7 @@ test "hash-set with no args returns empty set" {
     defer arena.deinit();
 
     const result = try hashSetFn(arena.allocator(), &.{});
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     try testing.expectEqual(@as(usize, 0), result.asSet().count());
 }
 
@@ -3558,7 +3558,7 @@ test "sorted-map creates map with sorted keys" {
         Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // Keys should be sorted: :a, :b, :c
     // Entries are [k1,v1,k2,v2,...] so sorted order means entries[0]=:a, entries[2]=:b, entries[4]=:c
@@ -3572,7 +3572,7 @@ test "sorted-map with no args returns empty map" {
     defer arena.deinit();
 
     const result = try sortedMapFn(arena.allocator(), &.{});
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 0), result.asMap().count());
 }
 
@@ -3589,10 +3589,10 @@ test "sorted-map stores natural ordering comparator" {
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
         Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     // sorted-map stores .nil as natural ordering sentinel
     try testing.expect(result.asMap().comparator != null);
-    try testing.expect(result.asMap().comparator.? == .nil);
+    try testing.expect(result.asMap().comparator.? == Value.nil_val);
 }
 
 test "sorted-map empty stores natural ordering comparator" {
@@ -3600,9 +3600,9 @@ test "sorted-map empty stores natural ordering comparator" {
     defer arena.deinit();
 
     const result = try sortedMapFn(arena.allocator(), &.{});
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expect(result.asMap().comparator != null);
-    try testing.expect(result.asMap().comparator.? == .nil);
+    try testing.expect(result.asMap().comparator.? == Value.nil_val);
 }
 
 test "assoc on sorted-map maintains sort order" {
@@ -3620,7 +3620,7 @@ test "assoc on sorted-map maintains sort order" {
         sm,
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // Keys should be sorted: :a, :b, :c
     try testing.expect(result.asMap().entries[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
@@ -3628,7 +3628,7 @@ test "assoc on sorted-map maintains sort order" {
     try testing.expect(result.asMap().entries[4].eql(Value.initKeyword(alloc, .{ .name = "c", .ns = null })));
     // Comparator propagated
     try testing.expect(result.asMap().comparator != null);
-    try testing.expect(result.asMap().comparator.? == .nil);
+    try testing.expect(result.asMap().comparator.? == Value.nil_val);
 }
 
 test "dissoc on sorted-map preserves comparator" {
@@ -3644,7 +3644,7 @@ test "dissoc on sorted-map preserves comparator" {
         sm,
         Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
     });
-    try testing.expect(result == .map);
+    try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
     try testing.expect(result.asMap().comparator != null);
 }
@@ -3657,7 +3657,7 @@ test "sorted-set stores natural ordering comparator" {
     const result = try sortedSetFn(alloc, &.{
         Value.initInteger(3), Value.initInteger(1), Value.initInteger(2),
     });
-    try testing.expect(result == .set);
+    try testing.expect(result.tag() == .set);
     // Items should be sorted: 1, 2, 3
     try testing.expectEqual(@as(usize, 3), result.asSet().count());
     try testing.expect(result.asSet().items[0].eql(Value.initInteger(1)));
@@ -3665,7 +3665,7 @@ test "sorted-set stores natural ordering comparator" {
     try testing.expect(result.asSet().items[2].eql(Value.initInteger(3)));
     // Comparator stored
     try testing.expect(result.asSet().comparator != null);
-    try testing.expect(result.asSet().comparator.? == .nil);
+    try testing.expect(result.asSet().comparator.? == Value.nil_val);
 }
 
 // --- subseq / rsubseq tests ---
@@ -3687,10 +3687,10 @@ test "subseq on sorted-map with >" {
     // (subseq sm > :a) => ([:b 2] [:c 3])
     const gt_fn = Value.initBuiltinFn(arith.builtins[9].func.?); // ">"
     const result = try subseqFn(alloc, &.{ sm, gt_fn, Value.initKeyword(alloc, .{ .name = "a", .ns = null }) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().items.len);
     // First entry should be [:b 2]
-    try testing.expect(result.asList().items[0] == .vector);
+    try testing.expect(result.asList().items[0].tag() == .vector);
     try testing.expect(result.asList().items[0].asVector().items[0].eql(Value.initKeyword(alloc, .{ .name = "b", .ns = null })));
 }
 
@@ -3708,7 +3708,7 @@ test "subseq on sorted-set with >=" {
     // (subseq ss >= 3) => (3 4 5)
     const ge_fn = Value.initBuiltinFn(arith.builtins[11].func.?); // ">="
     const result = try subseqFn(alloc, &.{ ss, ge_fn, Value.initInteger(3) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expect(result.asList().items[0].eql(Value.initInteger(3)));
     try testing.expect(result.asList().items[1].eql(Value.initInteger(4)));
@@ -3729,7 +3729,7 @@ test "rsubseq on sorted-set with <=" {
     // (rsubseq ss <= 3) => (3 2 1)
     const le_fn = Value.initBuiltinFn(arith.builtins[10].func.?); // "<="
     const result = try rsubseqFn(alloc, &.{ ss, le_fn, Value.initInteger(3) });
-    try testing.expect(result == .list);
+    try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expect(result.asList().items[0].eql(Value.initInteger(3)));
     try testing.expect(result.asList().items[1].eql(Value.initInteger(2)));

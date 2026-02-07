@@ -26,62 +26,62 @@ fn predicate(args: []const Value, comptime check: fn (Value) bool) anyerror!Valu
 }
 
 fn isNil(v: Value) bool {
-    return v == .nil;
+    return v.tag() == .nil;
 }
 fn isBoolean(v: Value) bool {
-    return v == .boolean;
+    return v.tag() == .boolean;
 }
 fn isNumber(v: Value) bool {
-    return v == .integer or v == .float;
+    return v.tag() == .integer or v.tag() == .float;
 }
 fn isInteger(v: Value) bool {
-    return v == .integer;
+    return v.tag() == .integer;
 }
 fn isFloat(v: Value) bool {
-    return v == .float;
+    return v.tag() == .float;
 }
 fn isString(v: Value) bool {
-    return v == .string;
+    return v.tag() == .string;
 }
 fn isKeyword(v: Value) bool {
-    return v == .keyword;
+    return v.tag() == .keyword;
 }
 fn isSymbol(v: Value) bool {
-    return v == .symbol;
+    return v.tag() == .symbol;
 }
 fn isMap(v: Value) bool {
-    return v == .map or v == .hash_map;
+    return v.tag() == .map or v.tag() == .hash_map;
 }
 fn isVector(v: Value) bool {
-    return v == .vector;
+    return v.tag() == .vector;
 }
 fn isSeq(v: Value) bool {
-    return v == .list;
+    return v.tag() == .list;
 }
 fn isFn(v: Value) bool {
-    return v == .fn_val or v == .builtin_fn;
+    return v.tag() == .fn_val or v.tag() == .builtin_fn;
 }
 fn isSet(v: Value) bool {
-    return v == .set;
+    return v.tag() == .set;
 }
 fn isColl(v: Value) bool {
-    return v == .list or v == .vector or v == .map or v == .hash_map or v == .set or
-        v == .cons or v == .lazy_seq or v == .chunked_cons;
+    return v.tag() == .list or v.tag() == .vector or v.tag() == .map or v.tag() == .hash_map or v.tag() == .set or
+        v.tag() == .cons or v.tag() == .lazy_seq or v.tag() == .chunked_cons;
 }
 fn isList(v: Value) bool {
-    return v == .list;
+    return v.tag() == .list;
 }
 fn isChar(v: Value) bool {
-    return v == .char;
+    return v.tag() == .char;
 }
 fn isSequential(v: Value) bool {
-    return v == .list or v == .vector or v == .cons or v == .lazy_seq or v == .chunked_cons;
+    return v.tag() == .list or v.tag() == .vector or v.tag() == .cons or v.tag() == .lazy_seq or v.tag() == .chunked_cons;
 }
 fn isAssociative(v: Value) bool {
-    return v == .map or v == .hash_map or v == .vector;
+    return v.tag() == .map or v.tag() == .hash_map or v.tag() == .vector;
 }
 fn isIFn(v: Value) bool {
-    return v == .fn_val or v == .builtin_fn or v == .keyword or v == .map or v == .hash_map or v == .set or v == .vector or v == .symbol;
+    return v.tag() == .fn_val or v.tag() == .builtin_fn or v.tag() == .keyword or v.tag() == .map or v.tag() == .hash_map or v.tag() == .set or v.tag() == .vector or v.tag() == .symbol;
 }
 
 // Builtin wrappers (matching BuiltinFn signature)
@@ -249,13 +249,13 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Takes var refs (#'x). Also accepts symbols for backward compat (defonce).
 pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
     for (args) |arg| {
-        if (arg == .var_ref) {
+        if (arg.tag() == .var_ref) {
             // JVM-compatible: check if var has a root binding.
             // In our implementation intern+bindRoot are always paired,
             // so existing var_ref generally means bound.
             const v = arg.asVarRef();
-            if (v.root == .nil and !v.dynamic) return Value.false_val;
-        } else if (arg == .symbol) {
+            if (v.root.tag() == .nil and !v.dynamic) return Value.false_val;
+        } else if (arg.tag() == .symbol) {
             // Backward compat: resolve symbol in current namespace.
             const sym_name = arg.asSymbol().name;
             const env = current_env orelse return Value.false_val;
@@ -271,40 +271,40 @@ pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (__delay? x) — true if x is a Delay value.
 pub fn delayPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay?", .{args.len});
-    return Value.initBoolean(args[0] == .delay);
+    return Value.initBoolean(args[0].tag() == .delay);
 }
 
 /// (__delay-realized? x) — true if delay has been realized.
 pub fn delayRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay-realized?", .{args.len});
-    if (args[0] != .delay) return Value.false_val;
+    if (args[0].tag() != .delay) return Value.false_val;
     return Value.initBoolean(args[0].asDelay().realized);
 }
 
 /// (__lazy-seq-realized? x) — true if lazy-seq has been realized.
 pub fn lazySeqRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __lazy-seq-realized?", .{args.len});
-    if (args[0] != .lazy_seq) return Value.false_val;
+    if (args[0].tag() != .lazy_seq) return Value.false_val;
     return Value.initBoolean(args[0].asLazySeq().realized != null);
 }
 
 /// (var? x) — true if x is a Var reference.
 pub fn varPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var?", .{args.len});
-    return Value.initBoolean(args[0] == .var_ref);
+    return Value.initBoolean(args[0].tag() == .var_ref);
 }
 
 /// (var-get v) — returns the value of the Var.
 pub fn varGetFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-get", .{args.len});
-    if (args[0] != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-get expects a Var, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-get expects a Var, got {s}", .{@tagName(args[0].tag())});
     return args[0].asVarRef().deref();
 }
 
 /// (var-set v val) — sets the root binding of the Var. Returns val.
 pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-set", .{args.len});
-    if (args[0] != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-set expects a Var, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-set expects a Var, got {s}", .{@tagName(args[0].tag())});
     args[0].asVarRef().bindRoot(args[1]);
     return args[1];
 }
@@ -312,7 +312,7 @@ pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
 pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to satisfies?", .{args.len});
-    if (args[0] != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "satisfies? expects a protocol, got {s}", .{@tagName(args[0].tag())});
+    if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "satisfies? expects a protocol, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
     const type_key = Value.initString(allocator, switch (args[1].tag()) {
         .nil => "nil",
@@ -443,12 +443,12 @@ pub fn numericEqFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) return Value.true_val;
 
     for (args) |a| {
-        if (a != .integer and a != .float) return err.setErrorFmt(.eval, .type_error, .{}, "== expects a number, got {s}", .{@tagName(a.tag())});
+        if (a.tag() != .integer and a.tag() != .float) return err.setErrorFmt(.eval, .type_error, .{}, "== expects a number, got {s}", .{@tagName(a.tag())});
     }
 
-    const first: f64 = if (args[0] == .integer) @floatFromInt(args[0].asInteger()) else args[0].asFloat();
+    const first: f64 = if (args[0].tag() == .integer) @floatFromInt(args[0].asInteger()) else args[0].asFloat();
     for (args[1..]) |b| {
-        const fb: f64 = if (b == .integer) @floatFromInt(b.asInteger()) else b.asFloat();
+        const fb: f64 = if (b.tag() == .integer) @floatFromInt(b.asInteger()) else b.asFloat();
         if (first != fb) return Value.false_val;
     }
     return Value.true_val;
@@ -471,7 +471,7 @@ pub fn reducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (reduced? x) — returns true if x is the result of a call to reduced.
 pub fn isReducedPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduced?", .{args.len});
-    return Value.initBoolean(args[0] == .reduced);
+    return Value.initBoolean(args[0].tag() == .reduced);
 }
 
 /// (unreduced x) — if x is reduced, returns the value that was wrapped, else returns x.
@@ -486,7 +486,7 @@ pub fn unreducedFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (ensure-reduced x) — if x is already reduced, returns it, else wraps in reduced.
 pub fn ensureReducedFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ensure-reduced", .{args.len});
-    if (args[0] == .reduced) return args[0];
+    if (args[0].tag() == .reduced) return args[0];
     const r = try allocator.create(Reduced);
     r.* = .{ .value = args[0] };
     return Value.initReduced(r);
@@ -526,7 +526,7 @@ fn indexedPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (reversible? x) — Returns true if coll supports rseq.
 fn reversiblePred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reversible?", .{args.len});
-    return Value.initBoolean(args[0] == .vector);
+    return Value.initBoolean(args[0].tag() == .vector);
 }
 
 /// (sorted? x) — Returns true if coll implements Sorted.
@@ -554,7 +554,7 @@ fn ratioPred(_: Allocator, args: []const Value) anyerror!Value {
 fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rational?", .{args.len});
     // integer is rational; no ratio type so only integer qualifies
-    return Value.initBoolean(args[0] == .integer);
+    return Value.initBoolean(args[0].tag() == .integer);
 }
 
 /// (decimal? x) — Returns true if x is a BigDecimal.
@@ -781,13 +781,13 @@ test "odd? predicate" {
 
 test "hash of integer returns itself" {
     const result = try hashFn(test_alloc, &.{Value.initInteger(42)});
-    try testing.expect(result == .integer);
+    try testing.expect(result.tag() == .integer);
     try testing.expectEqual(@as(i64, 42), result.asInteger());
 }
 
 test "hash of nil returns 0" {
     const result = try hashFn(test_alloc, &.{Value.nil_val});
-    try testing.expect(result == .integer);
+    try testing.expect(result.tag() == .integer);
     try testing.expectEqual(@as(i64, 0), result.asInteger());
 }
 
@@ -886,7 +886,7 @@ test "reduced wraps a value" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const result = try reducedFn(arena.allocator(), &.{Value.initInteger(42)});
-    try testing.expect(result == .reduced);
+    try testing.expect(result.tag() == .reduced);
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
@@ -920,7 +920,7 @@ test "ensure-reduced wraps non-reduced" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const result = try ensureReducedFn(arena.allocator(), &.{Value.initInteger(42)});
-    try testing.expect(result == .reduced);
+    try testing.expect(result.tag() == .reduced);
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
@@ -929,7 +929,7 @@ test "ensure-reduced passes through reduced" {
     defer arena.deinit();
     const r = try reducedFn(arena.allocator(), &.{Value.initInteger(42)});
     const result = try ensureReducedFn(arena.allocator(), &.{r});
-    try testing.expect(result == .reduced);
+    try testing.expect(result.tag() == .reduced);
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 

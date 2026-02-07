@@ -183,7 +183,7 @@ pub fn findBestMethod(allocator: Allocator, mf: *const MultiFn, dispatch_val: Va
     const hierarchy_val: ?Value = if (mf.hierarchy_var) |hv|
         blk: {
             const v = hv.deref();
-            break :blk if (v == .nil) null else v;
+            break :blk if (v.tag() == .nil) null else v;
         }
     else if (env) |e|
         getGlobalHierarchy(e)

@@ -113,7 +113,7 @@ pub fn toFloat(v: Value) !f64 {
 pub const ArithOp = enum { add, sub, mul };
 
 pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
-    if (a == .integer and b == .integer) {
+    if (a.tag() == .integer and b.tag() == .integer) {
         const result = switch (op) {
             .add => @addWithOverflow(a.asInteger(), b.asInteger()),
             .sub => @subWithOverflow(a.asInteger(), b.asInteger()),
@@ -181,79 +181,79 @@ fn remFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn eqFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 1) return .{ .boolean = true };
+    if (args.len == 1) return Value.true_val;
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to =", .{args.len});
     // Use eqlAlloc to realize nested lazy-seqs during comparison
     for (args[1..]) |arg| {
-        if (!args[0].eqlAlloc(arg, allocator)) return .{ .boolean = false };
+        if (!args[0].eqlAlloc(arg, allocator)) return Value.false_val;
     }
-    return .{ .boolean = true };
+    return Value.true_val;
 }
 
 fn neqFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 1) return .{ .boolean = false };
+    if (args.len == 1) return Value.false_val;
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not=", .{args.len});
-    return .{ .boolean = !args[0].eqlAlloc(args[1], allocator) };
+    return Value.initBoolean(!args[0].eqlAlloc(args[1], allocator));
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {
     const fa = toFloat(a) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
     const fb = toFloat(b) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
     };
-    if (std.math.isNan(fa) or std.math.isNan(fb)) return .{ .float = std.math.nan(f64) };
+    if (std.math.isNan(fa) or std.math.isNan(fb)) return Value.initFloat(std.math.nan(f64));
     if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
-    return .{ .float = fa / fb };
+    return Value.initFloat(fa / fb);
 }
 
 pub fn binaryMod(a: Value, b: Value) !Value {
-    if (a == .integer and b == .integer) {
-        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
-        return .{ .integer = @mod(a.integer, b.integer) };
+    if (a.tag() == .integer and b.tag() == .integer) {
+        if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        return Value.initInteger(@mod(a.asInteger(), b.asInteger()));
     }
     const fa = toFloat(a) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
     const fb = toFloat(b) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
     };
     if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
-    return .{ .float = @mod(fa, fb) };
+    return Value.initFloat(@mod(fa, fb));
 }
 
 pub fn binaryRem(a: Value, b: Value) !Value {
-    if (a == .integer and b == .integer) {
-        if (b.integer == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
-        return .{ .integer = @rem(a.integer, b.integer) };
+    if (a.tag() == .integer and b.tag() == .integer) {
+        if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        return Value.initInteger(@rem(a.asInteger(), b.asInteger()));
     }
     const fa = toFloat(a) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
     const fb = toFloat(b) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
     };
     if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
-    return .{ .float = @rem(fa, fb) };
+    return Value.initFloat(@rem(fa, fb));
 }
 
 pub const CompareOp = enum { lt, le, gt, ge };
 
 pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
-    if (a == .integer and b == .integer) {
+    if (a.tag() == .integer and b.tag() == .integer) {
         return switch (op) {
-            .lt => a.integer < b.integer,
-            .le => a.integer <= b.integer,
-            .gt => a.integer > b.integer,
-            .ge => a.integer >= b.integer,
+            .lt => a.asInteger() < b.asInteger(),
+            .le => a.asInteger() <= b.asInteger(),
+            .gt => a.asInteger() > b.asInteger(),
+            .ge => a.asInteger() >= b.asInteger(),
         };
     }
     const fa = toFloat(a) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
     const fb = toFloat(b) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
     };
     return switch (op) {
         .lt => fa < fb,
@@ -272,12 +272,12 @@ fn makeCompareFn(comptime op: CompareOp) fn (Allocator, []const Value) anyerror!
     };
     return struct {
         fn func(_: Allocator, args: []const Value) anyerror!Value {
-            if (args.len == 1) return .{ .boolean = true };
+            if (args.len == 1) return Value.true_val;
             if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to " ++ op_name, .{args.len});
             for (args[0 .. args.len - 1], args[1..]) |a, b| {
-                if (!try compareFn(a, b, op)) return .{ .boolean = false };
+                if (!try compareFn(a, b, op)) return Value.false_val;
             }
-            return .{ .boolean = true };
+            return Value.true_val;
         }
     }.func;
 }

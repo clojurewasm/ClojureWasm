@@ -106,11 +106,16 @@ pub const builtins = [_]BuiltinDef{
 
 const testing = std.testing;
 
-test "nano-time returns positive integer" {
+test "nano-time returns positive number" {
     const result = try nanoTimeFn(testing.allocator, &.{});
-    try testing.expect(result.tag() == .integer);
-    // Timestamp should be positive (though technically could wrap)
-    try testing.expect(result.asInteger() > 0);
+    // NaN boxing: nanoTimestamp exceeds i48 range, so it becomes float
+    const tag = result.tag();
+    try testing.expect(tag == .integer or tag == .float);
+    if (tag == .integer) {
+        try testing.expect(result.asInteger() > 0);
+    } else {
+        try testing.expect(result.asFloat() > 0);
+    }
 }
 
 test "nano-time arity error" {

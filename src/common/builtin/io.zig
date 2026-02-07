@@ -304,7 +304,7 @@ test "println - returns nil" {
     defer setOutputCapture(null, null);
     const args = [_]Value{Value.initInteger(1)};
     const result = try printlnFn(testing.allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 test "prn - no args prints newline" {
@@ -347,7 +347,7 @@ test "prn - returns nil" {
     defer setOutputCapture(null, null);
     const args = [_]Value{Value.initInteger(1)};
     const result = try prnFn(testing.allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 // === print tests ===
@@ -447,7 +447,7 @@ test "flush - returns nil" {
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
     const result = try flushFn(testing.allocator, &.{});
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 test "flush - rejects args" {

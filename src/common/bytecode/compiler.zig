@@ -1164,7 +1164,7 @@ test "compile fn_node emits closure" {
 
     // The constant should be a fn_val
     const fn_const = compiler.chunk.constants.items[code[0].operand];
-    try std.testing.expect(fn_const == .fn_val);
+    try std.testing.expect(fn_const.tag() == .fn_val);
 }
 
 test "compile var_ref" {

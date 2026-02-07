@@ -943,7 +943,23 @@ test "EvalEngine compare number? float" {
 }
 
 test "EvalEngine compare number? string" {
-    try makePredicateCompareTest("number?", Value.initString(std.testing.allocator, "hi"), false).runTest();
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "number?", .source = .{} } };
+    var arg = Node{ .constant = .{ .value = Value.initString(alloc, "hi") } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.initBoolean(false), result.tw_value.?);
+    try std.testing.expectEqual(Value.initBoolean(false), result.vm_value.?);
 }
 
 test "EvalEngine compare integer? true" {
@@ -963,7 +979,23 @@ test "EvalEngine compare float? int" {
 }
 
 test "EvalEngine compare string? true" {
-    try makePredicateCompareTest("string?", Value.initString(std.testing.allocator, "hello"), true).runTest();
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "string?", .source = .{} } };
+    var arg = Node{ .constant = .{ .value = Value.initString(alloc, "hello") } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.initBoolean(true), result.tw_value.?);
+    try std.testing.expectEqual(Value.initBoolean(true), result.vm_value.?);
 }
 
 test "EvalEngine compare string? non-string" {
@@ -971,15 +1003,63 @@ test "EvalEngine compare string? non-string" {
 }
 
 test "EvalEngine compare keyword? true" {
-    try makePredicateCompareTest("keyword?", Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "foo" }), true).runTest();
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "keyword?", .source = .{} } };
+    var arg = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "foo" }) } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.initBoolean(true), result.tw_value.?);
+    try std.testing.expectEqual(Value.initBoolean(true), result.vm_value.?);
 }
 
 test "EvalEngine compare keyword? non-keyword" {
-    try makePredicateCompareTest("keyword?", Value.initString(std.testing.allocator, "foo"), false).runTest();
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "keyword?", .source = .{} } };
+    var arg = Node{ .constant = .{ .value = Value.initString(alloc, "foo") } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.initBoolean(false), result.tw_value.?);
+    try std.testing.expectEqual(Value.initBoolean(false), result.vm_value.?);
 }
 
 test "EvalEngine compare symbol? true" {
-    try makePredicateCompareTest("symbol?", Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" }), true).runTest();
+    const registry = @import("builtin/registry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    var engine = EvalEngine.init(alloc, &env);
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "symbol?", .source = .{} } };
+    var arg = Node{ .constant = .{ .value = Value.initSymbol(alloc, .{ .ns = null, .name = "foo" }) } };
+    var args = [_]*Node{&arg};
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const n = Node{ .call_node = &call_data };
+    const result = engine.compare(&n);
+    try std.testing.expect(result.match);
+    try std.testing.expectEqual(Value.initBoolean(true), result.tw_value.?);
+    try std.testing.expectEqual(Value.initBoolean(true), result.vm_value.?);
 }
 
 test "EvalEngine compare symbol? non-symbol" {
@@ -1209,7 +1289,7 @@ test "EvalEngine compare rest on vector" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // rest returns a list
-    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expect(result.tw_value.?.tag() == .list);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.asList().items.len);
 }
 
@@ -1236,7 +1316,7 @@ test "EvalEngine compare cons" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // cons returns Cons cell (JVM Clojure semantics)
-    try std.testing.expect(result.tw_value.? == .cons);
+    try std.testing.expect(result.tw_value.?.tag() == .cons);
     try std.testing.expectEqual(Value.initInteger(0), result.tw_value.?.asCons().first);
 }
 
@@ -1262,7 +1342,7 @@ test "EvalEngine compare conj vector" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asVector().items.len);
 }
 
@@ -1345,7 +1425,7 @@ test "EvalEngine compare assoc on map" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .map);
+    try std.testing.expect(result.tw_value.?.tag() == .map);
     // Map should have 4 entries (2 key-value pairs)
     try std.testing.expectEqual(@as(usize, 4), result.tw_value.?.asMap().entries.len);
 }
@@ -1370,7 +1450,7 @@ test "EvalEngine compare list constructor" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expect(result.tw_value.?.tag() == .list);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asList().items.len);
 }
 
@@ -1394,7 +1474,7 @@ test "EvalEngine compare vector constructor" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asVector().items.len);
 }
 
@@ -1419,7 +1499,7 @@ test "EvalEngine compare hash-map constructor" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .map);
+    try std.testing.expect(result.tw_value.?.tag() == .map);
 }
 
 test "EvalEngine compare seq on vector" {
@@ -1444,7 +1524,7 @@ test "EvalEngine compare seq on vector" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // seq on non-empty vector returns a list
-    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expect(result.tw_value.?.tag() == .list);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.asList().items.len);
 }
 
@@ -1469,7 +1549,7 @@ test "EvalEngine compare seq on empty vector" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
 }
 
 test "EvalEngine compare reverse on vector" {
@@ -1493,7 +1573,7 @@ test "EvalEngine compare reverse on vector" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .list);
+    try std.testing.expect(result.tw_value.?.tag() == .list);
     try std.testing.expectEqual(Value.initInteger(3), result.tw_value.?.asList().items[0]);
 }
 
@@ -1550,8 +1630,8 @@ test "EvalEngine compare println returns nil" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
-    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.vm_value.?);
 }
 
 test "EvalEngine compare prn returns nil" {
@@ -1578,8 +1658,8 @@ test "EvalEngine compare prn returns nil" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
-    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.vm_value.?);
 }
 
 test "EvalEngine compare str multi-arg" {
@@ -1630,8 +1710,8 @@ test "EvalEngine compare meta on plain vector returns nil" {
     const n = Node{ .call_node = &meta_call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
-    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.vm_value.?);
 }
 
 test "EvalEngine compare with-meta attaches metadata" {
@@ -1667,8 +1747,8 @@ test "EvalEngine compare with-meta attaches metadata" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // Result should be a vector
-    try std.testing.expect(result.tw_value.? == .vector);
-    try std.testing.expect(result.vm_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
+    try std.testing.expect(result.vm_value.?.tag() == .vector);
 }
 
 test "EvalEngine compare meta retrieves attached metadata" {
@@ -1710,8 +1790,8 @@ test "EvalEngine compare meta retrieves attached metadata" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // Result should be a map containing :tag :int
-    try std.testing.expect(result.tw_value.? == .map);
-    try std.testing.expect(result.vm_value.? == .map);
+    try std.testing.expect(result.tw_value.?.tag() == .map);
+    try std.testing.expect(result.vm_value.?.tag() == .map);
 }
 
 // --- Regex compare tests (T11.6) ---
@@ -1770,8 +1850,8 @@ test "EvalEngine compare re-find no match returns nil" {
     const n = Node{ .call_node = &rf_call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
-    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.vm_value.?);
 }
 
 test "EvalEngine compare re-matches full match" {
@@ -1826,8 +1906,8 @@ test "EvalEngine compare re-matches partial returns nil" {
     const n = Node{ .call_node = &rm_call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.nil, result.tw_value.?);
-    try std.testing.expectEqual(Value.nil, result.vm_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.tw_value.?);
+    try std.testing.expectEqual(Value.nil_val, result.vm_value.?);
 }
 
 test "EvalEngine compare re-seq all matches" {
@@ -1855,8 +1935,8 @@ test "EvalEngine compare re-seq all matches" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // Result should be a list with 3 elements
-    try std.testing.expect(result.tw_value.? == .list);
-    try std.testing.expect(result.vm_value.? == .list);
+    try std.testing.expect(result.tw_value.?.tag() == .list);
+    try std.testing.expect(result.vm_value.?.tag() == .list);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asList().items.len);
     try std.testing.expectEqualStrings("1", result.tw_value.?.asList().items[0].asString());
     try std.testing.expectEqualStrings("22", result.tw_value.?.asList().items[1].asString());
@@ -1888,8 +1968,8 @@ test "EvalEngine compare re-find with capture groups" {
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
     // Result should be a vector ["12-34" "12" "34"]
-    try std.testing.expect(result.tw_value.? == .vector);
-    try std.testing.expect(result.vm_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
+    try std.testing.expect(result.vm_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asVector().items.len);
     try std.testing.expectEqualStrings("12-34", result.tw_value.?.asVector().items[0].asString());
     try std.testing.expectEqualStrings("12", result.tw_value.?.asVector().items[1].asString());
@@ -1925,7 +2005,7 @@ test "EvalEngine compare dissoc removes key" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .map);
+    try std.testing.expect(result.tw_value.?.tag() == .map);
     try std.testing.expectEqual(@as(usize, 1), result.tw_value.?.asMap().count());
 }
 
@@ -1956,7 +2036,7 @@ test "EvalEngine compare find returns MapEntry" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.asVector().items.len);
 }
 
@@ -2010,7 +2090,7 @@ test "EvalEngine compare empty on vector" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 0), result.tw_value.?.asVector().items.len);
 }
 
@@ -2039,7 +2119,7 @@ test "EvalEngine compare subvec" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .vector);
+    try std.testing.expect(result.tw_value.?.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.asVector().count());
 }
 
@@ -2064,7 +2144,7 @@ test "EvalEngine compare hash-set" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .set);
+    try std.testing.expect(result.tw_value.?.tag() == .set);
     try std.testing.expectEqual(@as(usize, 3), result.tw_value.?.asSet().count());
 }
 
@@ -2090,7 +2170,7 @@ test "EvalEngine compare sorted-map" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .map);
+    try std.testing.expect(result.tw_value.?.tag() == .map);
     try std.testing.expectEqual(@as(usize, 2), result.tw_value.?.asMap().count());
 }
 
@@ -2155,7 +2235,7 @@ test "EvalEngine compare reduced" {
     const n = Node{ .call_node = &call };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expect(result.tw_value.? == .reduced);
+    try std.testing.expect(result.tw_value.?.tag() == .reduced);
     try std.testing.expect(result.tw_value.?.asReduced().value.eql(Value.initInteger(42)));
 }
 
