@@ -27,9 +27,9 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31
 Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.md
 
 - ~~30.1a Call stack tracking~~
-- 30.1b Source context display
-- 30.1c Throwable->map + ex-data
-- 30.1d REPL error formatting
+- ~~30.1b Source context display~~
+- ~~30.1c Throwable->map + ex-data~~
+- ~~30.1d REPL error formatting~~
 - 30.2a nREPL stacktrace op
 - 30.2b nREPL info extension (:file, :line)
 - 30.2c CIDER end-to-end test
@@ -44,14 +44,14 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.1b — Source context display. Already implemented in main.zig (showSourceContext).
-Verify it works for all error phases and improve formatting if needed.
+30.2a — nREPL stacktrace op. Implement CIDER-compatible stacktrace response.
 
 ## Previous Task
 
-30.1a — Call stack tracking. Added StackFrame type and threadlocal call stack
-to error.zig. Push/pop in VM callFnVal/ret and TreeWalk callClosure.
-Stack cleared on catch (both backends). Error reporting shows Trace section.
+30.1 — Error Reporting (complete). Call stack tracking (30.1a), source context
+display (30.1b), Throwable->map with exception types (30.1c), ANSI colored
+error output (30.1d). Added saveCallStack/getSavedCallStack for catch handler
+trace preservation. Exception types: ArithmeticException, ClassCastException, etc.
 
 ## Known Issues from Phase 27
 
