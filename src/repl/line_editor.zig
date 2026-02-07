@@ -76,6 +76,9 @@ pub const LineEditor = struct {
     prompt: []const u8,
     cont_prompt: []const u8,
 
+    // Rendering state: number of terminal lines from previous refresh
+    prev_rendered_lines: usize,
+
     const max_buf = 65536;
     const max_history = 1000;
 
@@ -100,6 +103,7 @@ pub const LineEditor = struct {
             .allocator = allocator,
             .prompt = "user=> ",
             .cont_prompt = "     | ",
+            .prev_rendered_lines = 0,
         };
         self.resolveHistoryPath();
         self.loadHistory();
@@ -127,6 +131,7 @@ pub const LineEditor = struct {
         self.len = 0;
         self.pos = 0;
         self.depth = 0;
+        self.prev_rendered_lines = 0;
 
         while (true) {
             self.enableRawMode();
@@ -221,11 +226,13 @@ pub const LineEditor = struct {
                             self.len = 0;
                             self.pos = 0;
                             self.depth = 0;
+                            self.prev_rendered_lines = 0;
                             continue;
                         },
                         'l' => {
                             // Clear screen
                             self.writeStr("\x1b[2J\x1b[H");
+                            self.prev_rendered_lines = 0;
                         },
                         else => {},
                     }
@@ -584,7 +591,10 @@ pub const LineEditor = struct {
         var stream = std.io.fixedBufferStream(&out_buf);
         const w = stream.writer();
 
-        // Move to start of output and clear down
+        // Move cursor up to the first line of previous render, then clear
+        if (self.prev_rendered_lines > 1) {
+            w.print("\x1b[{d}A", .{self.prev_rendered_lines - 1}) catch return;
+        }
         w.writeAll("\r\x1b[J") catch return;
 
         // Split buffer into lines
@@ -601,8 +611,8 @@ pub const LineEditor = struct {
             }
             if (ch == '\n') {
                 // Write this line with prompt
-                const p = if (line_idx == 0) self.prompt else self.cont_prompt;
-                w.writeAll(p) catch return;
+                const pr = if (line_idx == 0) self.prompt else self.cont_prompt;
+                w.writeAll(pr) catch return;
                 w.writeAll(content[line_start..i]) catch return;
                 w.writeAll("\r\n") catch return;
                 line_start = i + 1;
@@ -612,15 +622,17 @@ pub const LineEditor = struct {
 
         // Last line (or only line)
         if (self.pos >= line_start and self.pos <= self.len) {
-            // Cursor is on this line (or at the end)
             if (self.pos == self.len) {
                 cursor_row = line_idx;
                 cursor_col = self.len - line_start;
             }
         }
-        const p = if (line_idx == 0) self.prompt else self.cont_prompt;
-        w.writeAll(p) catch return;
+        const pr = if (line_idx == 0) self.prompt else self.cont_prompt;
+        w.writeAll(pr) catch return;
         w.writeAll(content[line_start..]) catch return;
+
+        // Track rendered line count for next refresh
+        self.prev_rendered_lines = line_idx + 1;
 
         // Move cursor to correct position:
         // We're at end of last line. Move up (line_idx - cursor_row) rows,
@@ -828,6 +840,7 @@ pub const LineEditor = struct {
                     self.writeStr("  ");
                 }
                 self.writeStr("\r\n");
+                self.prev_rendered_lines = 0;
                 self.enableRawMode();
             }
         }
