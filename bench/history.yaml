@@ -355,3 +355,30 @@ entries:
       string_ops: {time_ms: 27, mem_mb: 42.2}
       multimethod_dispatch: {time_ms: 15, mem_mb: 34.9}
       real_workload: {time_ms: 22, mem_mb: 44.9}
+  - id: "27.3e"
+    date: "2026-02-07"
+    reason: "NaN boxing complete — Value 48B to 8B"
+    commit: "e6a7cef"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 20, mem_mb: 16.0}
+      fib_loop: {time_ms: 8, mem_mb: 16.0}
+      tak: {time_ms: 10, mem_mb: 16.0}
+      arith_loop: {time_ms: 47, mem_mb: 16.0}
+      map_filter_reduce: {time_ms: 10, mem_mb: 16.8}
+      vector_ops: {time_ms: 10, mem_mb: 17.8}
+      map_ops: {time_ms: 9, mem_mb: 17.0}
+      list_build: {time_ms: 9, mem_mb: 16.8}
+      sieve: {time_ms: 9, mem_mb: 16.3}
+      nqueens: {time_ms: 17, mem_mb: 16.2}
+      atom_swap: {time_ms: 9, mem_mb: 16.0}
+      gc_stress: {time_ms: 27, mem_mb: 18.9}
+      lazy_chain: {time_ms: 9, mem_mb: 16.0}
+      transduce: {time_ms: 9, mem_mb: 16.0}
+      keyword_lookup: {time_ms: 17, mem_mb: 16.0}
+      protocol_dispatch: {time_ms: 9, mem_mb: 16.0}
+      nested_update: {time_ms: 15, mem_mb: 19.5}
+      string_ops: {time_ms: 29, mem_mb: 23.5}
+      multimethod_dispatch: {time_ms: 10, mem_mb: 16.0}
+      real_workload: {time_ms: 20, mem_mb: 19.2}
