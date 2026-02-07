@@ -48,10 +48,11 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Previous Task
 
-30.1 — Error Reporting (complete). Call stack tracking (30.1a), source context
-display (30.1b), Throwable->map with exception types (30.1c), ANSI colored
-error output (30.1d). Added saveCallStack/getSavedCallStack for catch handler
-trace preservation. Exception types: ArithmeticException, ClassCastException, etc.
+30.1e + REPL Line Editor — Added error messages to all UndefinedVar return
+sites (30.1e). Implemented interactive REPL line editor (src/repl/line_editor.zig):
+emacs keybindings, history (persistent ~/.cljw_history), multi-line continuation,
+tab completion from namespace symbols, paren matching flash, C-c/C-d handling.
+Non-TTY stdin falls back to simple reader for piped input.
 
 ## Known Issues from Phase 27
 

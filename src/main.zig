@@ -14,6 +14,7 @@ const bootstrap = @import("common/bootstrap.zig");
 const Value = @import("common/value.zig").Value;
 const collections = @import("common/collections.zig");
 const nrepl = @import("repl/nrepl.zig");
+const line_editor = @import("repl/line_editor.zig");
 const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
@@ -160,9 +161,48 @@ pub fn main() !void {
 
 fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+
+    // Use line editor if stdin is a TTY, otherwise fall back to simple reader
+    if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
+        runReplSimple(allocator, env, gc);
+        return;
+    }
 
     _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+
+    var editor = line_editor.LineEditor.init(allocator, env);
+    defer editor.deinit();
+
+    while (true) {
+        const source = editor.readInput() orelse {
+            _ = stdout.write("\n") catch {};
+            break;
+        };
+
+        const trimmed = std.mem.trim(u8, source, " \t\r\n");
+        if (trimmed.len == 0) continue;
+
+        err.setSourceText(source);
+        const result = bootstrap.evalString(allocator, env, source);
+
+        if (result) |val| {
+            var buf: [65536]u8 = undefined;
+            const output = formatValue(&buf, val);
+            _ = stdout.write(output) catch {};
+            _ = stdout.write("\n") catch {};
+        } else |eval_err| {
+            reportError(eval_err);
+        }
+
+        // GC safe point
+        gc.collectIfNeeded(.{ .env = env });
+    }
+}
+
+/// Simple REPL for non-TTY stdin (piped input).
+fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
 
     var line_buf: [65536]u8 = undefined;
     var input_buf: [65536]u8 = undefined;
@@ -170,23 +210,27 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     var depth: i32 = 0;
 
     while (true) {
-        // Prompt
-        const prompt: []const u8 = if (depth > 0) "     " else "user=> ";
-        _ = stdout.write(prompt) catch {};
-
-        // Read a line into separate buffer to avoid memcpy alias
         const line_end = readLine(stdin, &line_buf) orelse {
-            // EOF (Ctrl-D)
-            _ = stdout.write("\n") catch {};
+            // EOF: evaluate remaining input if any
+            if (input_len > 0) {
+                const source = input_buf[0..input_len];
+                err.setSourceText(source);
+                const result = bootstrap.evalString(allocator, env, source);
+                if (result) |val| {
+                    var buf: [65536]u8 = undefined;
+                    const output = formatValue(&buf, val);
+                    _ = stdout.write(output) catch {};
+                    _ = stdout.write("\n") catch {};
+                } else |eval_err| {
+                    reportError(eval_err);
+                }
+            }
             break;
         };
 
         const trimmed = std.mem.trim(u8, line_buf[0..line_end], " \t\r");
-
-        // Skip empty lines at top level
         if (trimmed.len == 0 and depth == 0) continue;
 
-        // Append to input buffer
         if (input_len > 0) {
             input_buf[input_len] = '\n';
             input_len += 1;
@@ -200,13 +244,9 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         @memcpy(input_buf[input_len .. input_len + trimmed.len], trimmed);
         input_len += trimmed.len;
 
-        // Update delimiter depth
         depth = countDelimiterDepth(input_buf[0..input_len]);
-
-        // If unbalanced, continue reading
         if (depth > 0) continue;
 
-        // Evaluate
         const source = input_buf[0..input_len];
         err.setSourceText(source);
         const result = bootstrap.evalString(allocator, env, source);
@@ -220,11 +260,7 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
             reportError(eval_err);
         }
 
-        // GC safe point: between REPL forms, no AST nodes in use.
-        // Root set: env namespaces contain all live Values.
         gc.collectIfNeeded(.{ .env = env });
-
-        // Reset for next input
         input_len = 0;
         depth = 0;
     }
