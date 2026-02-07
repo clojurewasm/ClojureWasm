@@ -83,8 +83,8 @@ Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Phase 24 is complete** (24C done — all 20 benchmarks beat Babashka)
-- Phase 25 is complete (Wasm InterOp functional)
+- **Current phase's Task Queue is empty AND next phase requires user input** (e.g., Phase 25 research decisions)
+- Phase 27 is complete (all planned phases done)
 
 Do NOT stop for:
 
