@@ -160,6 +160,11 @@ fn getPrintLevel() ?u32 {
 /// this mechanism.
 pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
 
+/// Heap-allocated string wrapper for pointer-ized Value.
+pub const HeapString = struct {
+    data: []const u8,
+};
+
 /// Interned symbol reference.
 pub const Symbol = struct {
     ns: ?[]const u8,
@@ -510,10 +515,10 @@ pub const Value = union(enum) {
     float: f64,
     char: u21,
 
-    // String / identifiers
-    string: []const u8,
-    symbol: Symbol,
-    keyword: Keyword,
+    // String / identifiers (heap-allocated pointers for size reduction)
+    string: *const HeapString,
+    symbol: *const Symbol,
+    keyword: *const Keyword,
 
     // Collections
     list: *const PersistentList,
@@ -606,16 +611,31 @@ pub const Value = union(enum) {
         return .{ .char = c };
     }
 
-    pub fn initString(_: Allocator, s: []const u8) Value {
-        return .{ .string = s };
+    pub fn initString(allocator: Allocator, s: []const u8) Value {
+        if (@inComptime()) {
+            return .{ .string = &HeapString{ .data = s } };
+        }
+        const heap = allocator.create(HeapString) catch @panic("OOM");
+        heap.* = .{ .data = s };
+        return .{ .string = heap };
     }
 
-    pub fn initSymbol(_: Allocator, s: Symbol) Value {
-        return .{ .symbol = s };
+    pub fn initSymbol(allocator: Allocator, s: Symbol) Value {
+        if (@inComptime()) {
+            return .{ .symbol = &s };
+        }
+        const heap = allocator.create(Symbol) catch @panic("OOM");
+        heap.* = s;
+        return .{ .symbol = heap };
     }
 
-    pub fn initKeyword(_: Allocator, k: Keyword) Value {
-        return .{ .keyword = k };
+    pub fn initKeyword(allocator: Allocator, k: Keyword) Value {
+        if (@inComptime()) {
+            return .{ .keyword = &k };
+        }
+        const heap = allocator.create(Keyword) catch @panic("OOM");
+        heap.* = k;
+        return .{ .keyword = heap };
     }
 
     pub fn initList(l: *const PersistentList) Value {
@@ -741,14 +761,27 @@ pub const Value = union(enum) {
     }
 
     pub fn asString(self: Value) []const u8 {
-        return self.string;
+        return self.string.data;
     }
 
     pub fn asSymbol(self: Value) Symbol {
-        return self.symbol;
+        return self.symbol.*;
     }
 
     pub fn asKeyword(self: Value) Keyword {
+        return self.keyword.*;
+    }
+
+    /// Raw heap pointer accessors — for GC tracing only.
+    pub fn asStringHeap(self: Value) *const HeapString {
+        return self.string;
+    }
+
+    pub fn asSymbolHeap(self: Value) *const Symbol {
+        return self.symbol;
+    }
+
+    pub fn asKeywordHeap(self: Value) *const Keyword {
         return self.keyword;
     }
 
@@ -1579,17 +1612,26 @@ test "Value - float creation" {
 }
 
 test "Value - string creation" {
-    const v = Value.initString(testing.allocator,"hello");
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initString(alloc, "hello");
     try testing.expect(!v.isNil());
 }
 
 test "Value - symbol creation" {
-    const v = Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initSymbol(alloc, .{ .name = "foo", .ns = null });
     try testing.expect(!v.isNil());
 }
 
 test "Value - keyword creation" {
-    const v = Value.initKeyword(testing.allocator,.{ .name = "bar", .ns = null });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initKeyword(alloc, .{ .name = "bar", .ns = null });
     try testing.expect(!v.isNil());
 }
 
@@ -1600,12 +1642,18 @@ test "Value - char creation" {
 }
 
 test "Value - namespaced symbol" {
-    const v = Value.initSymbol(testing.allocator,.{ .name = "inc", .ns = "clojure.core" });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initSymbol(alloc, .{ .name = "inc", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
 test "Value - namespaced keyword" {
-    const v = Value.initKeyword(testing.allocator,.{ .name = "keys", .ns = "clojure.core" });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initKeyword(alloc, .{ .name = "keys", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
@@ -1646,18 +1694,27 @@ test "Value.formatPrStr - char" {
 }
 
 test "Value.formatPrStr - string" {
-    try expectFormat("\"hello\"", Value.initString(testing.allocator,"hello"));
-    try expectFormat("\"\"", Value.initString(testing.allocator,""));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try expectFormat("\"hello\"", Value.initString(alloc, "hello"));
+    try expectFormat("\"\"", Value.initString(alloc, ""));
 }
 
 test "Value.formatPrStr - symbol" {
-    try expectFormat("foo", Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null }));
-    try expectFormat("clojure.core/inc", Value.initSymbol(testing.allocator,.{ .name = "inc", .ns = "clojure.core" }));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try expectFormat("foo", Value.initSymbol(alloc, .{ .name = "foo", .ns = null }));
+    try expectFormat("clojure.core/inc", Value.initSymbol(alloc, .{ .name = "inc", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - keyword" {
-    try expectFormat(":bar", Value.initKeyword(testing.allocator,.{ .name = "bar", .ns = null }));
-    try expectFormat(":clojure.core/keys", Value.initKeyword(testing.allocator,.{ .name = "keys", .ns = "clojure.core" }));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try expectFormat(":bar", Value.initKeyword(alloc, .{ .name = "bar", .ns = null }));
+    try expectFormat(":clojure.core/keys", Value.initKeyword(alloc, .{ .name = "keys", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - list" {
@@ -1683,9 +1740,12 @@ test "Value.formatPrStr - empty vector" {
 }
 
 test "Value.formatPrStr - map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator,.{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = PersistentArrayMap{ .entries = &entries };
     try expectFormat("{:a 1, :b 2}", Value.initMap(&m));
@@ -1748,24 +1808,33 @@ test "Value.eql - char" {
 }
 
 test "Value.eql - string" {
-    const a = Value.initString(testing.allocator,"hello");
-    try testing.expect(a.eql(Value.initString(testing.allocator,"hello")));
-    try testing.expect(!a.eql(Value.initString(testing.allocator,"world")));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const a = Value.initString(alloc, "hello");
+    try testing.expect(a.eql(Value.initString(alloc, "hello")));
+    try testing.expect(!a.eql(Value.initString(alloc, "world")));
 }
 
 test "Value.eql - symbol" {
-    const a = Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null });
-    try testing.expect(a.eql(Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null })));
-    try testing.expect(!a.eql(Value.initSymbol(testing.allocator,.{ .name = "bar", .ns = null })));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const a = Value.initSymbol(alloc, .{ .name = "foo", .ns = null });
+    try testing.expect(a.eql(Value.initSymbol(alloc, .{ .name = "foo", .ns = null })));
+    try testing.expect(!a.eql(Value.initSymbol(alloc, .{ .name = "bar", .ns = null })));
     // Namespaced vs non-namespaced
-    try testing.expect(!a.eql(Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = "x" })));
+    try testing.expect(!a.eql(Value.initSymbol(alloc, .{ .name = "foo", .ns = "x" })));
 }
 
 test "Value.eql - keyword" {
-    const a = Value.initKeyword(testing.allocator,.{ .name = "k", .ns = "ns" });
-    try testing.expect(a.eql(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = "ns" })));
-    try testing.expect(!a.eql(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = null })));
-    try testing.expect(!a.eql(Value.initKeyword(testing.allocator,.{ .name = "other", .ns = "ns" })));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const a = Value.initKeyword(alloc, .{ .name = "k", .ns = "ns" });
+    try testing.expect(a.eql(Value.initKeyword(alloc, .{ .name = "k", .ns = "ns" })));
+    try testing.expect(!a.eql(Value.initKeyword(alloc, .{ .name = "k", .ns = null })));
+    try testing.expect(!a.eql(Value.initKeyword(alloc, .{ .name = "other", .ns = "ns" })));
 }
 
 test "Value.eql - list" {
@@ -1800,9 +1869,12 @@ test "Value.eql - vector" {
 }
 
 test "Value.eql - map" {
-    const entries_a = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1) };
-    const entries_b = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1) };
-    const entries_c = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(2) };
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const entries_a = [_]Value{ Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_b = [_]Value{ Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_c = [_]Value{ Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(2) };
     const ma = PersistentArrayMap{ .entries = &entries_a };
     const mb = PersistentArrayMap{ .entries = &entries_b };
     const mc = PersistentArrayMap{ .entries = &entries_c };
@@ -1822,11 +1894,14 @@ test "Value.eql - set" {
 }
 
 test "Value.eql - different types" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     // Different types are never equal (except int/float)
     const nil_v = Value.nil_val;
     const int_v = Value.initInteger(0);
     const bool_v = Value.false_val;
-    const str_v = Value.initString(testing.allocator,"nil");
+    const str_v = Value.initString(alloc, "nil");
     try testing.expect(!nil_v.eql(int_v));
     try testing.expect(!nil_v.eql(bool_v));
     try testing.expect(!nil_v.eql(str_v));
@@ -1856,11 +1931,14 @@ test "Value.eql - fn_val identity" {
 }
 
 test "Value - isTruthy" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const nil_v = Value.nil_val;
     const false_v = Value.false_val;
     const true_v = Value.true_val;
     const zero_v = Value.initInteger(0);
-    const empty_str = Value.initString(testing.allocator,"");
+    const empty_str = Value.initString(alloc, "");
     try testing.expect(!nil_v.isTruthy());
     try testing.expect(!false_v.isTruthy());
     try testing.expect(true_v.isTruthy());
@@ -1880,7 +1958,10 @@ test "Value.formatStr - nil is empty string" {
 }
 
 test "Value.formatStr - string without quotes" {
-    try expectFormatStr("hello", Value.initString(testing.allocator,"hello"));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try expectFormatStr("hello", Value.initString(alloc, "hello"));
 }
 
 test "Value.formatStr - char as literal" {
@@ -1889,10 +1970,13 @@ test "Value.formatStr - char as literal" {
 }
 
 test "Value.formatStr - other types same as formatPrStr" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     try expectFormatStr("42", Value.initInteger(42));
     try expectFormatStr("true", Value.true_val);
     try expectFormatStr("3.14", Value.initFloat(3.14));
-    try expectFormatStr(":foo", Value.initKeyword(testing.allocator,.{ .name = "foo", .ns = null }));
+    try expectFormatStr(":foo", Value.initKeyword(alloc, .{ .name = "foo", .ns = null }));
 }
 
 test "Value - atom creation and formatPrStr" {
@@ -1936,14 +2020,17 @@ test "Value.eql - var_ref identity" {
 // === Value Accessor API Tests (Phase 27) ===
 
 test "Value.Tag - tag() returns correct tag" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     try testing.expect((Value.nil_val).tag() == .nil);
     try testing.expect(Value.initInteger(42).tag() == .integer);
     try testing.expect(Value.initFloat(3.14).tag() == .float);
     try testing.expect(Value.initBoolean(true).tag() == .boolean);
     try testing.expect(Value.initChar('A').tag() == .char);
-    try testing.expect(Value.initString(testing.allocator,"hi").tag() == .string);
-    try testing.expect(Value.initSymbol(testing.allocator,.{ .name = "x", .ns = null }).tag() == .symbol);
-    try testing.expect(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = null }).tag() == .keyword);
+    try testing.expect(Value.initString(alloc, "hi").tag() == .string);
+    try testing.expect(Value.initSymbol(alloc, .{ .name = "x", .ns = null }).tag() == .symbol);
+    try testing.expect(Value.initKeyword(alloc, .{ .name = "k", .ns = null }).tag() == .keyword);
 }
 
 test "Value constants" {
@@ -1974,14 +2061,20 @@ test "Value.initChar / asChar round-trip" {
 }
 
 test "Value.initString / asString round-trip" {
-    const v = Value.initString(testing.allocator,"hello");
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const v = Value.initString(alloc, "hello");
     try testing.expect(v.tag() == .string);
     try testing.expectEqualStrings("hello", v.asString());
 }
 
 test "Value.initSymbol / asSymbol round-trip" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const sym = Symbol{ .name = "foo", .ns = "bar" };
-    const v = Value.initSymbol(testing.allocator,sym);
+    const v = Value.initSymbol(alloc, sym);
     try testing.expect(v.tag() == .symbol);
     const s = v.asSymbol();
     try testing.expectEqualStrings("foo", s.name);
@@ -1989,8 +2082,11 @@ test "Value.initSymbol / asSymbol round-trip" {
 }
 
 test "Value.initKeyword / asKeyword round-trip" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const kw = Keyword{ .name = "id", .ns = "user" };
-    const v = Value.initKeyword(testing.allocator,kw);
+    const v = Value.initKeyword(alloc, kw);
     try testing.expect(v.tag() == .keyword);
     const k = v.asKeyword();
     try testing.expectEqualStrings("id", k.name);
@@ -2044,4 +2140,10 @@ test "Value tag switch pattern" {
         else => 0,
     };
     try testing.expect(result == 84);
+}
+
+test "Value size is 16 bytes after pointer-ization" {
+    // After pointer-izing string/symbol/keyword, the largest non-pointer
+    // variant is i64/f64 (8 bytes). With tag byte + alignment, total = 16.
+    try testing.expectEqual(@as(usize, 16), @sizeOf(Value));
 }

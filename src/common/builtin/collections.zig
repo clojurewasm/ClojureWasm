@@ -2677,15 +2677,16 @@ test "conj nil returns list" {
 }
 
 test "assoc adds to map" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try assocFn(arena.allocator(), &.{
+    const result = try assocFn(alloc, &.{
         Value.initMap(&m),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     });
     try testing.expect(result == .map);
@@ -2693,20 +2694,21 @@ test "assoc adds to map" {
 }
 
 test "assoc replaces existing key" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try assocFn(arena.allocator(), &.{
+    const result = try assocFn(alloc, &.{
         Value.initMap(&m),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(99),
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
-    const v = result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }));
+    const v = result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null }));
     try testing.expect(v.?.eql(Value.initInteger(99)));
 }
 
@@ -2757,35 +2759,44 @@ test "assoc on vector out of bounds fails" {
 }
 
 test "get from map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try getFn(test_alloc, &.{
+    const result = try getFn(alloc, &.{
         Value.initMap(&m),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
     });
     try testing.expect(result.eql(Value.initInteger(1)));
 }
 
 test "get missing key returns nil" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try getFn(test_alloc, &.{
+    const result = try getFn(alloc, &.{
         Value.initMap(&m),
-        Value.initKeyword(testing.allocator, .{ .name = "z", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "z", .ns = null }),
     });
     try testing.expect(result.isNil());
 }
 
 test "get with not-found" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{};
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try getFn(test_alloc, &.{
+    const result = try getFn(alloc, &.{
         Value.initMap(&m),
-        Value.initKeyword(testing.allocator, .{ .name = "z", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "z", .ns = null }),
         Value.initInteger(-1),
     });
     try testing.expect(result.eql(Value.initInteger(-1)));
@@ -2822,14 +2833,17 @@ test "nth with not-found" {
 }
 
 test "count on various types" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     var lst = PersistentList{ .items = &items };
     var vec = PersistentVector{ .items = &items };
 
-    try testing.expectEqual(Value.initInteger(2), try countFn(test_alloc, &.{Value.initList(&lst)}));
-    try testing.expectEqual(Value.initInteger(2), try countFn(test_alloc, &.{Value.initVector(&vec)}));
-    try testing.expectEqual(Value.initInteger(0), try countFn(test_alloc, &.{Value.nil}));
-    try testing.expectEqual(Value.initInteger(5), try countFn(test_alloc, &.{Value.initString(testing.allocator, "hello")}));
+    try testing.expectEqual(Value.initInteger(2), try countFn(alloc, &.{Value.initList(&lst)}));
+    try testing.expectEqual(Value.initInteger(2), try countFn(alloc, &.{Value.initVector(&vec)}));
+    try testing.expectEqual(Value.initInteger(0), try countFn(alloc, &.{Value.nil}));
+    try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
 test "builtins table has 46 entries" {
@@ -2882,19 +2896,19 @@ test "merge two maps" {
     const alloc = arena.allocator();
 
     const e1 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m1 = PersistentArrayMap{ .entries = &e1 };
     const e2 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     var m2 = PersistentArrayMap{ .entries = &e2 };
 
     const result = try mergeFn(alloc, &.{ Value.initMap(&m1), Value.initMap(&m2) });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
 }
 
 test "merge with nil" {
@@ -2903,7 +2917,7 @@ test "merge with nil" {
     const alloc = arena.allocator();
 
     const e1 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m1 = PersistentArrayMap{ .entries = &e1 };
 
@@ -2932,13 +2946,13 @@ test "merge overlapping keys" {
     const alloc = arena.allocator();
 
     const e1 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     var m1 = PersistentArrayMap{ .entries = &e1 };
     const e2 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(99),
-        Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null }), Value.initInteger(3),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(99),
+        Value.initKeyword(alloc, .{ .name = "c", .ns = null }), Value.initInteger(3),
     };
     var m2 = PersistentArrayMap{ .entries = &e2 };
 
@@ -2946,7 +2960,7 @@ test "merge overlapping keys" {
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // :b should be overwritten by m2's value
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(99)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(99)));
 }
 
 test "merge-with merges with function" {
@@ -2955,12 +2969,12 @@ test "merge-with merges with function" {
     const alloc = arena.allocator();
 
     const e1 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m1 = PersistentArrayMap{ .entries = &e1 };
     const e2 = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(10),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(10),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     var m2 = PersistentArrayMap{ .entries = &e2 };
 
@@ -2972,8 +2986,8 @@ test "merge-with merges with function" {
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(11)));
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(11)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
 }
 
 test "zipmap basic" {
@@ -2983,9 +2997,9 @@ test "zipmap basic" {
 
     // (zipmap [:a :b :c] [1 2 3]) => {:a 1 :b 2 :c 3}
     const keys = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
-        Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "c", .ns = null }),
     };
     var key_vec = PersistentVector{ .items = &keys };
     const vals = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
@@ -2994,8 +3008,8 @@ test "zipmap basic" {
     const result = try zipmapFn(alloc, &.{ Value.initVector(&key_vec), Value.initVector(&val_vec) });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null })).?.eql(Value.initInteger(3)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "c", .ns = null })).?.eql(Value.initInteger(3)));
 }
 
 test "zipmap unequal lengths" {
@@ -3005,8 +3019,8 @@ test "zipmap unequal lengths" {
 
     // (zipmap [:a :b] [1]) => {:a 1} — stops at shorter
     const keys = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
     };
     var key_vec = PersistentVector{ .items = &keys };
     const vals = [_]Value{Value.initInteger(1)};
@@ -3038,11 +3052,14 @@ test "compare integers" {
 }
 
 test "compare strings" {
-    const r1 = try compareFn(test_alloc, &.{ Value.initString(testing.allocator, "apple"), Value.initString(testing.allocator, "banana") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const r1 = try compareFn(alloc, &.{ Value.initString(alloc, "apple"), Value.initString(alloc, "banana") });
     try testing.expect(r1.asInteger() < 0);
-    const r2 = try compareFn(test_alloc, &.{ Value.initString(testing.allocator, "banana"), Value.initString(testing.allocator, "apple") });
+    const r2 = try compareFn(alloc, &.{ Value.initString(alloc, "banana"), Value.initString(alloc, "apple") });
     try testing.expect(r2.asInteger() > 0);
-    const r3 = try compareFn(test_alloc, &.{ Value.initString(testing.allocator, "abc"), Value.initString(testing.allocator, "abc") });
+    const r3 = try compareFn(alloc, &.{ Value.initString(alloc, "abc"), Value.initString(alloc, "abc") });
     try testing.expectEqual(Value.initInteger(0), r3);
 }
 
@@ -3078,7 +3095,7 @@ test "sort-by with keyfn" {
     const alloc = arena.allocator();
 
     // sort-by count ["bb" "a" "ccc"] => ["a" "bb" "ccc"]
-    const items = [_]Value{ Value.initString(testing.allocator, "bb"), Value.initString(testing.allocator, "a"), Value.initString(testing.allocator, "ccc") };
+    const items = [_]Value{ Value.initString(alloc, "bb"), Value.initString(alloc, "a"), Value.initString(alloc, "ccc") };
     var vec = PersistentVector{ .items = &items };
     const result = try sortByFn(alloc, &.{
         Value.initBuiltinFn(&countFn),
@@ -3086,9 +3103,9 @@ test "sort-by with keyfn" {
     });
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
-    try testing.expect(result.asList().items[0].eql(Value.initString(testing.allocator, "a")));
-    try testing.expect(result.asList().items[1].eql(Value.initString(testing.allocator, "bb")));
-    try testing.expect(result.asList().items[2].eql(Value.initString(testing.allocator, "ccc")));
+    try testing.expect(result.asList().items[0].eql(Value.initString(alloc, "a")));
+    try testing.expect(result.asList().items[1].eql(Value.initString(alloc, "bb")));
+    try testing.expect(result.asList().items[2].eql(Value.initString(alloc, "ccc")));
 }
 
 test "vec converts list to vector" {
@@ -3141,13 +3158,14 @@ test "list* creates list" {
 }
 
 test "seq on map returns list of entry vectors" {
-    const alloc = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     var entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = try alloc.create(PersistentArrayMap);
-    defer alloc.destroy(m);
     m.* = .{ .entries = &entries };
 
     const result = try seqFn(alloc, &.{Value.initMap(m)});
@@ -3158,21 +3176,13 @@ test "seq on map returns list of entry vectors" {
     const e1 = result.asList().items[0];
     try testing.expect(e1 == .vector);
     try testing.expectEqual(@as(usize, 2), e1.asVector().items.len);
-    try testing.expect(e1.asVector().items[0].eql(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })));
+    try testing.expect(e1.asVector().items[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
     try testing.expectEqual(Value.initInteger(1), e1.asVector().items[1]);
 
     // Second entry: [:b 2]
     const e2 = result.asList().items[1];
     try testing.expect(e2 == .vector);
     try testing.expectEqual(Value.initInteger(2), e2.asVector().items[1]);
-
-    // Cleanup
-    alloc.free(e1.asVector().items);
-    alloc.destroy(e1.asVector());
-    alloc.free(e2.asVector().items);
-    alloc.destroy(e2.asVector());
-    alloc.free(result.asList().items);
-    alloc.destroy(result.asList());
 }
 
 test "seq on empty map returns nil" {
@@ -3221,21 +3231,24 @@ test "dissoc removes key from map" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "b" }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "b" }), Value.initInteger(2),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
-    const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }) });
+    const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .ns = null, .name = "b" })) != null);
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" })) == null);
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "b" })) != null);
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "a" })) == null);
 }
 
 test "dissoc on nil returns nil" {
-    const result = try dissocFn(test_alloc, &.{ Value.nil, Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }) });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try dissocFn(alloc, &.{ Value.nil, Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
     try testing.expectEqual(Value.nil, result);
 }
 
@@ -3245,12 +3258,12 @@ test "dissoc missing key is identity" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
-    const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(testing.allocator, .{ .ns = null, .name = "z" }) });
+    const result = try dissocFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "z" }) });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
 }
@@ -3287,16 +3300,16 @@ test "find returns MapEntry vector" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "b" }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "b" }), Value.initInteger(2),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
-    const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }) });
+    const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) });
     try testing.expect(result == .vector);
     try testing.expectEqual(@as(usize, 2), result.asVector().items.len);
-    try testing.expect(result.asVector().items[0].eql(Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" })));
+    try testing.expect(result.asVector().items[0].eql(Value.initKeyword(alloc, .{ .ns = null, .name = "a" })));
     try testing.expect(result.asVector().items[1].eql(Value.initInteger(1)));
 }
 
@@ -3306,12 +3319,12 @@ test "find returns nil for missing key" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
-    const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(testing.allocator, .{ .ns = null, .name = "z" }) });
+    const result = try findFn(alloc, &.{ Value.initMap(m), Value.initKeyword(alloc, .{ .ns = null, .name = "z" }) });
     try testing.expectEqual(Value.nil, result);
 }
 
@@ -3409,7 +3422,10 @@ test "empty on nil returns nil" {
 }
 
 test "empty on string returns nil" {
-    const result = try emptyFn(test_alloc, &.{Value.initString(testing.allocator, "abc")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try emptyFn(alloc, &.{Value.initString(alloc, "abc")});
     try testing.expectEqual(Value.nil, result);
 }
 
@@ -3471,13 +3487,13 @@ test "array-map creates map from key-value pairs" {
     const alloc = arena.allocator();
 
     const result = try arrayMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 2), result.asMap().count());
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
-    try testing.expect(result.asMap().get(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
+    try testing.expect(result.asMap().get(Value.initKeyword(alloc, .{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
 }
 
 test "array-map with no args returns empty map" {
@@ -3490,7 +3506,10 @@ test "array-map with no args returns empty map" {
 }
 
 test "array-map with odd args is error" {
-    try testing.expectError(error.ArityError, arrayMapFn(test_alloc, &.{Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectError(error.ArityError, arrayMapFn(alloc, &.{Value.initKeyword(alloc, .{ .name = "a", .ns = null })}));
 }
 
 // --- hash-set tests ---
@@ -3535,17 +3554,17 @@ test "sorted-map creates map with sorted keys" {
     const alloc = arena.allocator();
 
     const result = try sortedMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null }), Value.initInteger(3),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "c", .ns = null }), Value.initInteger(3),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // Keys should be sorted: :a, :b, :c
     // Entries are [k1,v1,k2,v2,...] so sorted order means entries[0]=:a, entries[2]=:b, entries[4]=:c
-    try testing.expect(result.asMap().entries[0].eql(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })));
-    try testing.expect(result.asMap().entries[2].eql(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })));
-    try testing.expect(result.asMap().entries[4].eql(Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null })));
+    try testing.expect(result.asMap().entries[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
+    try testing.expect(result.asMap().entries[2].eql(Value.initKeyword(alloc, .{ .name = "b", .ns = null })));
+    try testing.expect(result.asMap().entries[4].eql(Value.initKeyword(alloc, .{ .name = "c", .ns = null })));
 }
 
 test "sorted-map with no args returns empty map" {
@@ -3567,8 +3586,8 @@ test "sorted-map stores natural ordering comparator" {
     const alloc = arena.allocator();
 
     const result = try sortedMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     });
     try testing.expect(result == .map);
     // sorted-map stores .nil as natural ordering sentinel
@@ -3593,20 +3612,20 @@ test "assoc on sorted-map maintains sort order" {
 
     // Create sorted map with :a and :c
     const sm = try sortedMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null }), Value.initInteger(3),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "c", .ns = null }), Value.initInteger(3),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     });
     // assoc :b — should sort into the middle
     const result = try assocFn(alloc, &.{
         sm,
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());
     // Keys should be sorted: :a, :b, :c
-    try testing.expect(result.asMap().entries[0].eql(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })));
-    try testing.expect(result.asMap().entries[2].eql(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })));
-    try testing.expect(result.asMap().entries[4].eql(Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null })));
+    try testing.expect(result.asMap().entries[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
+    try testing.expect(result.asMap().entries[2].eql(Value.initKeyword(alloc, .{ .name = "b", .ns = null })));
+    try testing.expect(result.asMap().entries[4].eql(Value.initKeyword(alloc, .{ .name = "c", .ns = null })));
     // Comparator propagated
     try testing.expect(result.asMap().comparator != null);
     try testing.expect(result.asMap().comparator.? == .nil);
@@ -3618,12 +3637,12 @@ test "dissoc on sorted-map preserves comparator" {
     const alloc = arena.allocator();
 
     const sm = try sortedMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     });
     const result = try dissocFn(alloc, &.{
         sm,
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
     });
     try testing.expect(result == .map);
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
@@ -3660,19 +3679,19 @@ test "subseq on sorted-map with >" {
 
     // (sorted-map :a 1 :b 2 :c 3)
     const sm = try sortedMapFn(alloc, &.{
-        Value.initKeyword(testing.allocator, .{ .name = "c", .ns = null }), Value.initInteger(3),
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "c", .ns = null }), Value.initInteger(3),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     });
 
     // (subseq sm > :a) => ([:b 2] [:c 3])
     const gt_fn = Value.initBuiltinFn(arith.builtins[9].func.?); // ">"
-    const result = try subseqFn(alloc, &.{ sm, gt_fn, Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) });
+    const result = try subseqFn(alloc, &.{ sm, gt_fn, Value.initKeyword(alloc, .{ .name = "a", .ns = null }) });
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().items.len);
     // First entry should be [:b 2]
     try testing.expect(result.asList().items[0] == .vector);
-    try testing.expect(result.asList().items[0].asVector().items[0].eql(Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null })));
+    try testing.expect(result.asList().items[0].asVector().items[0].eql(Value.initKeyword(alloc, .{ .name = "b", .ns = null })));
 }
 
 test "subseq on sorted-set with >=" {

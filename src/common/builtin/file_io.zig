@@ -186,6 +186,9 @@ pub const builtins = [_]BuiltinDef{
 const testing = std.testing;
 
 test "slurp - read existing file" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     // Create a temp file
     const cwd = std.fs.cwd();
     const tmp_path = "/tmp/cljw_test_slurp.txt";
@@ -193,15 +196,17 @@ test "slurp - read existing file" {
     defer file.close();
     try file.writeAll("hello world");
 
-    const args = [_]Value{Value.initString(testing.allocator, tmp_path)};
-    const result = try slurpFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const args = [_]Value{Value.initString(alloc, tmp_path)};
+    const result = try slurpFn(alloc, &args);
     try testing.expectEqualStrings("hello world", result.asString());
 }
 
 test "slurp - file not found" {
-    const args = [_]Value{Value.initString(testing.allocator, "/tmp/cljw_nonexistent_file.txt")};
-    const result = slurpFn(testing.allocator, &args);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "/tmp/cljw_nonexistent_file.txt")};
+    const result = slurpFn(alloc, &args);
     try testing.expectError(error.FileNotFound, result);
 }
 
@@ -217,12 +222,15 @@ test "slurp - type error" {
 }
 
 test "spit - write new file" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const tmp_path = "/tmp/cljw_test_spit.txt";
     const args = [_]Value{
-        Value.initString(testing.allocator, tmp_path),
-        Value.initString(testing.allocator, "hello spit"),
+        Value.initString(alloc, tmp_path),
+        Value.initString(alloc, "hello spit"),
     };
-    const result = try spitFn(testing.allocator, &args);
+    const result = try spitFn(alloc, &args);
     try testing.expect(result.isNil());
 
     // Verify content
@@ -235,19 +243,22 @@ test "spit - write new file" {
 }
 
 test "spit - overwrite existing file" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const tmp_path = "/tmp/cljw_test_spit_overwrite.txt";
     // Write first
     const args1 = [_]Value{
-        Value.initString(testing.allocator, tmp_path),
-        Value.initString(testing.allocator, "first"),
+        Value.initString(alloc, tmp_path),
+        Value.initString(alloc, "first"),
     };
-    _ = try spitFn(testing.allocator, &args1);
+    _ = try spitFn(alloc, &args1);
     // Overwrite
     const args2 = [_]Value{
-        Value.initString(testing.allocator, tmp_path),
-        Value.initString(testing.allocator, "second"),
+        Value.initString(alloc, tmp_path),
+        Value.initString(alloc, "second"),
     };
-    _ = try spitFn(testing.allocator, &args2);
+    _ = try spitFn(alloc, &args2);
 
     const cwd = std.fs.cwd();
     const file = try cwd.openFile(tmp_path, .{});
@@ -258,21 +269,24 @@ test "spit - overwrite existing file" {
 }
 
 test "spit - append mode" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const tmp_path = "/tmp/cljw_test_spit_append.txt";
     // Write initial content
     const args1 = [_]Value{
-        Value.initString(testing.allocator, tmp_path),
-        Value.initString(testing.allocator, "hello"),
+        Value.initString(alloc, tmp_path),
+        Value.initString(alloc, "hello"),
     };
-    _ = try spitFn(testing.allocator, &args1);
+    _ = try spitFn(alloc, &args1);
     // Append
     const args2 = [_]Value{
-        Value.initString(testing.allocator, tmp_path),
-        Value.initString(testing.allocator, " world"),
-        Value.initKeyword(testing.allocator, .{ .name = "append", .ns = null }),
+        Value.initString(alloc, tmp_path),
+        Value.initString(alloc, " world"),
+        Value.initKeyword(alloc, .{ .name = "append", .ns = null }),
         Value.true_val,
     };
-    _ = try spitFn(testing.allocator, &args2);
+    _ = try spitFn(alloc, &args2);
 
     const cwd = std.fs.cwd();
     const file = try cwd.openFile(tmp_path, .{});
@@ -283,8 +297,11 @@ test "spit - append mode" {
 }
 
 test "spit - arity error" {
-    const args = [_]Value{Value.initString(testing.allocator, "/tmp/test.txt")};
-    const result = spitFn(testing.allocator, &args);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "/tmp/test.txt")};
+    const result = spitFn(alloc, &args);
     try testing.expectError(error.ArityError, result);
 }
 

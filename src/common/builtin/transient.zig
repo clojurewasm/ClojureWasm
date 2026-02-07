@@ -250,7 +250,9 @@ test "transient vector - basic conj! and persistent!" {
 }
 
 test "transient map - assoc! dissoc! persistent!" {
-    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     // Create persistent map {:a 1}
     const entries = try allocator.alloc(Value, 2);
@@ -258,15 +260,11 @@ test "transient map - assoc! dissoc! persistent!" {
     entries[1] = Value.initInteger(1);
     const pm = try allocator.create(PersistentArrayMap);
     pm.* = .{ .entries = entries };
-    defer allocator.destroy(pm);
-    defer allocator.free(entries);
 
     // (transient {:a 1})
     const tm_val = try transientFn(allocator, &.{Value.initMap(pm)});
     try testing.expect(tm_val.tag() == .transient_map);
     const tm = tm_val.asTransientMap();
-    defer allocator.destroy(tm);
-    defer tm.entries.deinit(allocator);
 
     // (assoc! tm :b 2)
     _ = try assocBangFn(allocator, &.{
@@ -286,8 +284,6 @@ test "transient map - assoc! dissoc! persistent!" {
     // (persistent! tm)
     const result = try persistentBangFn(allocator, &.{tm_val});
     try testing.expect(result.tag() == .map);
-    defer allocator.free(result.asMap().entries);
-    defer allocator.destroy(result.asMap());
 
     try testing.expectEqual(@as(usize, 1), result.asMap().count());
 }

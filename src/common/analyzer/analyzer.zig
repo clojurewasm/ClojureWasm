@@ -2490,10 +2490,14 @@ test "analyze named fn with self-reference" {
 }
 
 test "formToValue converts primitives" {
-    const val = formToValue(std.testing.allocator, .{ .data = .{ .integer = 42 } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const val = formToValue(alloc, .{ .data = .{ .integer = 42 } });
     try std.testing.expect(val.eql(Value.initInteger(42)));
 
-    const sym = formToValue(std.testing.allocator, .{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
+    const sym = formToValue(alloc, .{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
     try std.testing.expect(sym.tag() == .symbol);
     try std.testing.expectEqualStrings("foo", sym.asSymbol().name);
 }

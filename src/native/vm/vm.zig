@@ -1872,7 +1872,10 @@ test "VM compiler+vm integration: (fn [x] x) called" {
 test "VM compiler+vm integration: closure capture via let" {
     // (let [x 10] ((fn [y] (+ x y)) 5)) => 15
     // x is a local in let, fn captures it
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     const node_mod = @import("../../common/analyzer/node.zig");
     const Node = node_mod.Node;
     const compiler_mod = @import("../../common/bytecode/compiler.zig");
@@ -1969,13 +1972,13 @@ test "VM var_load resolves pre-defined Var" {
     v.bindRoot(Value.initInteger(42));
 
     // Bytecode: var_load (symbol "x"), ret
-    var chunk = Chunk.init(std.testing.allocator);
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    var vm = VM.initWithEnv(alloc, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value.initInteger(42), result);
@@ -1993,15 +1996,15 @@ test "VM def creates and binds a Var" {
     env.current_ns = ns;
 
     // Bytecode: const_load(42), def(symbol "x"), ret
-    var chunk = Chunk.init(std.testing.allocator);
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "x" }));
     const val_idx = try chunk.addConstant(Value.initInteger(42));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    var vm = VM.initWithEnv(alloc, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
 
@@ -2026,22 +2029,22 @@ test "VM def then var_load round-trip" {
     const ns = try env.findOrCreateNamespace("user");
     env.current_ns = ns;
 
-    var chunk = Chunk.init(std.testing.allocator);
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
 
     // (def x 10)
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "x" }));
     const val_idx = try chunk.addConstant(Value.initInteger(10));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
     try chunk.emitOp(.pop); // discard def result
 
     // x (var_load)
-    const var_sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
+    const var_sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, var_sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    var vm = VM.initWithEnv(alloc, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value.initInteger(10), result);
@@ -2057,25 +2060,29 @@ test "VM var_load undefined var returns error" {
     const ns = try env.findOrCreateNamespace("user");
     env.current_ns = ns;
 
-    var chunk = Chunk.init(std.testing.allocator);
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "nonexistent" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "nonexistent" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    var vm = VM.initWithEnv(alloc, &env);
     defer vm.deinit();
     try std.testing.expectError(error.UndefinedVar, vm.run(&chunk));
 }
 
 test "VM var_load without env returns error" {
-    var chunk = Chunk.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.init(std.testing.allocator);
+    var vm = VM.init(alloc);
     defer vm.deinit();
     try std.testing.expectError(error.UndefinedVar, vm.run(&chunk));
 }
@@ -2093,13 +2100,13 @@ test "VM var_load qualified symbol" {
     const v = try ns.intern("x");
     v.bindRoot(Value.initInteger(99));
 
-    var chunk = Chunk.init(std.testing.allocator);
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = "user", .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(alloc, .{ .ns = "user", .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
-    var vm = VM.initWithEnv(std.testing.allocator, &env);
+    var vm = VM.initWithEnv(alloc, &env);
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expectEqual(Value.initInteger(99), result);
@@ -2107,7 +2114,10 @@ test "VM var_load qualified symbol" {
 
 test "VM compiler+vm: loop/recur counts to 5" {
     // (loop [x 0] (if (< x 5) (recur (+ x 1)) x)) => 5
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     const node_mod = @import("../../common/analyzer/node.zig");
     const Node = node_mod.Node;
     const compiler_mod = @import("../../common/bytecode/compiler.zig");
@@ -2215,13 +2225,17 @@ test "VM list_new creates list" {
 }
 
 test "VM map_new creates map" {
-    var chunk = Chunk.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
 
     // {:a 1 :b 2} -> 4 values, map_new 2 (pairs)
-    const ka = try chunk.addConstant(Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "a" }));
+    const ka = try chunk.addConstant(Value.initKeyword(alloc, .{ .ns = null, .name = "a" }));
     const v1 = try chunk.addConstant(Value.initInteger(1));
-    const kb = try chunk.addConstant(Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "b" }));
+    const kb = try chunk.addConstant(Value.initKeyword(alloc, .{ .ns = null, .name = "b" }));
     const v2 = try chunk.addConstant(Value.initInteger(2));
     try chunk.emit(.const_load, ka);
     try chunk.emit(.const_load, v1);
@@ -2230,7 +2244,7 @@ test "VM map_new creates map" {
     try chunk.emit(.map_new, 2);
     try chunk.emitOp(.ret);
 
-    var vm = VM.init(std.testing.allocator);
+    var vm = VM.init(alloc);
     defer vm.deinit();
     const result = try vm.run(&chunk);
     try std.testing.expect(result == .map);
@@ -2239,21 +2253,10 @@ test "VM map_new creates map" {
 
 test "VM try/catch handles throw" {
     // (try (throw "err") (catch e e)) => "err"
-    // Bytecode:
-    //   try_begin -> catch
-    //   const_load "err"
-    //   throw_ex
-    //   jump -> end
-    //   catch_begin     ; catch handler starts here
-    //   ; exception value is on stack as local
-    //   local_load 0    ; load exception
-    //   pop             ; cleanup catch local
-    //   jump -> after_catch
-    //   try_end
-    //   ret
-    //
-    // Simpler approach using compiler:
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     const node_mod = @import("../../common/analyzer/node.zig");
     const Node = node_mod.Node;
     const compiler_mod = @import("../../common/bytecode/compiler.zig");
@@ -2291,14 +2294,18 @@ test "VM try/catch handles throw" {
 
 test "VM throw without handler returns UserException" {
     // (throw "err") without try/catch
-    var chunk = Chunk.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var chunk = Chunk.init(alloc);
     defer chunk.deinit();
-    const idx = try chunk.addConstant(Value.initString(std.testing.allocator, "oops"));
+    const idx = try chunk.addConstant(Value.initString(alloc, "oops"));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.throw_ex);
     try chunk.emitOp(.ret);
 
-    var vm = VM.init(std.testing.allocator);
+    var vm = VM.init(alloc);
     defer vm.deinit();
     try std.testing.expectError(error.UserException, vm.run(&chunk));
 }

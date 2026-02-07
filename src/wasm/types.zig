@@ -729,22 +729,23 @@ test "allocContext — allocate and reclaim slots" {
 }
 
 test "lookupImportFn — nested map lookup" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const collections = @import("../common/collections.zig");
 
     // Build {"env" {"print_i32" :found}}
-    const target_val = Value.initKeyword(testing.allocator, .{ .name = "found", .ns = null });
+    const target_val = Value.initKeyword(alloc, .{ .name = "found", .ns = null });
     var inner_entries = [_]Value{
-        Value.initString(testing.allocator, "print_i32"), target_val,
+        Value.initString(alloc, "print_i32"), target_val,
     };
-    const inner_map = try testing.allocator.create(collections.PersistentArrayMap);
-    defer testing.allocator.destroy(inner_map);
+    const inner_map = try alloc.create(collections.PersistentArrayMap);
     inner_map.* = .{ .entries = &inner_entries };
 
     var outer_entries = [_]Value{
-        Value.initString(testing.allocator, "env"), Value.initMap(inner_map),
+        Value.initString(alloc, "env"), Value.initMap(inner_map),
     };
-    const outer_map = try testing.allocator.create(collections.PersistentArrayMap);
-    defer testing.allocator.destroy(outer_map);
+    const outer_map = try alloc.create(collections.PersistentArrayMap);
     outer_map.* = .{ .entries = &outer_entries };
 
     const imports = Value.initMap(outer_map);

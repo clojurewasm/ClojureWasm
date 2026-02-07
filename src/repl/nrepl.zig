@@ -1125,9 +1125,12 @@ test "nrepl - writeValue integer" {
 }
 
 test "nrepl - writeValue string" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), Value.initString(std.testing.allocator, "hello"));
+    writeValue(stream.writer(), Value.initString(arena.allocator(), "hello"));
     try std.testing.expectEqualSlices(u8, "\"hello\"", stream.getWritten());
 }
 
@@ -1146,9 +1149,12 @@ test "nrepl - writeValue boolean" {
 }
 
 test "nrepl - writeValue keyword" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), Value.initKeyword(std.testing.allocator, .{ .name = "foo", .ns = null }));
+    writeValue(stream.writer(), Value.initKeyword(arena.allocator(), .{ .name = "foo", .ns = null }));
     try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
 }
 

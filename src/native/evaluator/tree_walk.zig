@@ -1365,21 +1365,29 @@ test "TreeWalk let restores locals" {
 }
 
 test "TreeWalk quote node" {
-    var tw = TreeWalk.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var tw = TreeWalk.init(alloc);
     var quote_data = node_mod.QuoteNode{
-        .value = Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" }),
+        .value = Value.initSymbol(alloc, .{ .ns = null, .name = "foo" }),
         .source = .{},
     };
     const n = Node{ .quote_node = &quote_data };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" })));
+    try std.testing.expect(result.eql(Value.initSymbol(alloc, .{ .ns = null, .name = "foo" })));
 }
 
 test "TreeWalk constant string" {
-    var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = Value.initString(std.testing.allocator, "hello") } };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var tw = TreeWalk.init(alloc);
+    const n = Node{ .constant = .{ .value = Value.initString(alloc, "hello") } };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(Value.initString(std.testing.allocator, "hello")));
+    try std.testing.expect(result.eql(Value.initString(alloc, "hello")));
 }
 
 test "TreeWalk fn and call" {
@@ -1544,11 +1552,11 @@ test "TreeWalk comparison" {
 }
 
 test "TreeWalk def and var_ref" {
-    const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+    const allocator = arena.allocator();
 
-    var env = Env.init(arena.allocator());
+    var env = Env.init(allocator);
     defer env.deinit();
     const ns = try env.findOrCreateNamespace("user");
     env.current_ns = ns;
@@ -1683,7 +1691,10 @@ test "TreeWalk closure captures locals" {
 }
 
 test "TreeWalk throw and try" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var tw = TreeWalk.init(allocator);
 
     // (try (throw "oops") (catch e e))
@@ -1708,7 +1719,10 @@ test "TreeWalk throw and try" {
 }
 
 test "TreeWalk throw without catch propagates" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var tw = TreeWalk.init(allocator);
 
     var throw_expr = Node{ .constant = .{ .value = Value.initString(allocator, "error") } };

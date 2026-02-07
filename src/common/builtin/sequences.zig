@@ -862,12 +862,18 @@ test "empty? on non-empty vector returns false" {
 }
 
 test "empty? on empty string returns true" {
-    const result = try emptyFn(test_alloc, &.{Value.initString(testing.allocator, "")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try emptyFn(alloc, &.{Value.initString(alloc, "")});
     try testing.expectEqual(Value.true_val, result);
 }
 
 test "empty? on non-empty string returns false" {
-    const result = try emptyFn(test_alloc, &.{Value.initString(testing.allocator, "hello")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try emptyFn(alloc, &.{Value.initString(alloc, "hello")});
     try testing.expectEqual(Value.false_val, result);
 }
 
@@ -980,9 +986,10 @@ test "repeat 3 times" {
 }
 
 test "repeat 0 times" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try repeatFn(arena.allocator(), &.{ Value.initInteger(0), Value.initString(testing.allocator, "x") });
+    const alloc = arena.allocator();
+    const result = try repeatFn(alloc, &.{ Value.initInteger(0), Value.initString(alloc, "x") });
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().count());
 }
@@ -994,13 +1001,16 @@ test "repeat arity check" {
 // --- contains? tests ---
 
 test "contains? on map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const yes = try containsFn(test_alloc, &.{ Value.initMap(&m), Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) });
+    const yes = try containsFn(alloc, &.{ Value.initMap(&m), Value.initKeyword(alloc, .{ .name = "a", .ns = null }) });
     try testing.expectEqual(Value.true_val, yes);
-    const no = try containsFn(test_alloc, &.{ Value.initMap(&m), Value.initKeyword(testing.allocator, .{ .name = "z", .ns = null }) });
+    const no = try containsFn(alloc, &.{ Value.initMap(&m), Value.initKeyword(alloc, .{ .name = "z", .ns = null }) });
     try testing.expectEqual(Value.false_val, no);
 }
 
@@ -1021,17 +1031,18 @@ test "contains? on nil returns false" {
 // --- keys/vals tests ---
 
 test "keys on map" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try keysFn(arena.allocator(), &.{Value.initMap(&m)});
+    const result = try keysFn(alloc, &.{Value.initMap(&m)});
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
-    try testing.expect(result.asList().items[0].eql(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null })));
+    try testing.expect(result.asList().items[0].eql(Value.initKeyword(alloc, .{ .name = "a", .ns = null })));
 }
 
 test "keys on nil returns nil" {
@@ -1040,14 +1051,15 @@ test "keys on nil returns nil" {
 }
 
 test "vals on map" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
+    const alloc = arena.allocator();
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     var m = PersistentArrayMap{ .entries = &entries };
-    const result = try valsFn(arena.allocator(), &.{Value.initMap(&m)});
+    const result = try valsFn(alloc, &.{Value.initMap(&m)});
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().count());
     try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
@@ -1063,7 +1075,7 @@ test "key on map entry vector" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    const items = [_]Value{ Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const items = [_]Value{ Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1) };
     const vec = try alloc.create(PersistentVector);
     vec.* = .{ .items = &items };
     const result = try keyFn(alloc, &.{Value.initVector(vec)});
@@ -1075,7 +1087,7 @@ test "val on map entry vector" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    const items = [_]Value{ Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(42) };
+    const items = [_]Value{ Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(42) };
     const vec = try alloc.create(PersistentVector);
     vec.* = .{ .items = &items };
     const result = try valFn(alloc, &.{Value.initVector(vec)});

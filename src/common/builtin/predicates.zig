@@ -696,19 +696,28 @@ test "nil? predicate" {
 }
 
 test "number? predicate" {
-    try testing.expectEqual(Value.true_val, try numberPred(test_alloc, &.{Value.initInteger(42)}));
-    try testing.expectEqual(Value.true_val, try numberPred(test_alloc, &.{Value.initFloat(3.14)}));
-    try testing.expectEqual(Value.false_val, try numberPred(test_alloc, &.{Value.initString(test_alloc, "hello")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.true_val, try numberPred(alloc, &.{Value.initInteger(42)}));
+    try testing.expectEqual(Value.true_val, try numberPred(alloc, &.{Value.initFloat(3.14)}));
+    try testing.expectEqual(Value.false_val, try numberPred(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
 test "string? predicate" {
-    try testing.expectEqual(Value.true_val, try stringPred(test_alloc, &.{Value.initString(test_alloc, "hi")}));
-    try testing.expectEqual(Value.false_val, try stringPred(test_alloc, &.{Value.initInteger(1)}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.true_val, try stringPred(alloc, &.{Value.initString(alloc, "hi")}));
+    try testing.expectEqual(Value.false_val, try stringPred(alloc, &.{Value.initInteger(1)}));
 }
 
 test "keyword? predicate" {
-    try testing.expectEqual(Value.true_val, try keywordPred(test_alloc, &.{Value.initKeyword(test_alloc, .{ .name = "a", .ns = null })}));
-    try testing.expectEqual(Value.false_val, try keywordPred(test_alloc, &.{Value.initString(test_alloc, "a")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.true_val, try keywordPred(alloc, &.{Value.initKeyword(alloc, .{ .name = "a", .ns = null })}));
+    try testing.expectEqual(Value.false_val, try keywordPred(alloc, &.{Value.initString(alloc, "a")}));
 }
 
 test "coll? predicate" {
@@ -789,14 +798,20 @@ test "hash of boolean" {
 }
 
 test "hash of string is deterministic" {
-    const h1 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
-    const h2 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const h1 = try hashFn(alloc, &.{Value.initString(alloc, "hello")});
+    const h2 = try hashFn(alloc, &.{Value.initString(alloc, "hello")});
     try testing.expectEqual(h1.asInteger(), h2.asInteger());
 }
 
 test "hash of different strings differ" {
-    const h1 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
-    const h2 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "world")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const h1 = try hashFn(alloc, &.{Value.initString(alloc, "hello")});
+    const h2 = try hashFn(alloc, &.{Value.initString(alloc, "world")});
     try testing.expect(h1.asInteger() != h2.asInteger());
 }
 
@@ -818,7 +833,10 @@ test "identical? different integers" {
 }
 
 test "identical? different types" {
-    const result = try identicalPred(test_alloc, &.{ Value.initInteger(1), Value.initString(test_alloc, "1") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try identicalPred(alloc, &.{ Value.initInteger(1), Value.initString(alloc, "1") });
     try testing.expectEqual(Value.false_val, result);
 }
 
@@ -828,9 +846,12 @@ test "identical? nil" {
 }
 
 test "identical? same keyword" {
-    const result = try identicalPred(test_alloc, &.{
-        Value.initKeyword(test_alloc, .{ .name = "a", .ns = null }),
-        Value.initKeyword(test_alloc, .{ .name = "a", .ns = null }),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try identicalPred(alloc, &.{
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
     });
     try testing.expectEqual(Value.true_val, result);
 }
@@ -853,7 +874,10 @@ test "== numeric inequality" {
 }
 
 test "== non-numeric is error" {
-    try testing.expectError(error.TypeError, numericEqFn(test_alloc, &.{ Value.initString(test_alloc, "a"), Value.initString(test_alloc, "a") }));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectError(error.TypeError, numericEqFn(alloc, &.{ Value.initString(alloc, "a"), Value.initString(alloc, "a") }));
 }
 
 // --- reduced tests ---

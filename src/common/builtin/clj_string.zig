@@ -772,24 +772,32 @@ test "join without separator" {
 test "upper-case" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try upperCaseFn(arena.allocator(), &.{Value.initString(testing.allocator, "hello")});
+    const alloc = arena.allocator();
+    const result = try upperCaseFn(alloc, &.{Value.initString(alloc, "hello")});
     try testing.expectEqualStrings("HELLO", result.asString());
 }
 
 test "lower-case" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try lowerCaseFn(arena.allocator(), &.{Value.initString(testing.allocator, "HELLO")});
+    const alloc = arena.allocator();
+    const result = try lowerCaseFn(alloc, &.{Value.initString(alloc, "HELLO")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "trim" {
-    const result = try trimFn(testing.allocator, &.{Value.initString(testing.allocator, "  hello  ")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try trimFn(alloc, &.{Value.initString(alloc, "  hello  ")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "trim newlines" {
-    const result = try trimFn(testing.allocator, &.{Value.initString(testing.allocator, "\n hello \t")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try trimFn(alloc, &.{Value.initString(alloc, "\n hello \t")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
@@ -807,83 +815,114 @@ test "split basic" {
 }
 
 test "includes? found" {
-    const result = try includesFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello world"), Value.initString(testing.allocator, "world") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try includesFn(alloc, &.{ Value.initString(alloc, "hello world"), Value.initString(alloc, "world") });
     try testing.expectEqual(true, result.asBoolean());
 }
 
 test "includes? not found" {
-    const result = try includesFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try includesFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
     try testing.expectEqual(false, result.asBoolean());
 }
 
 test "starts-with?" {
-    const t = try startsWithFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello world"), Value.initString(testing.allocator, "hello") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try startsWithFn(alloc, &.{ Value.initString(alloc, "hello world"), Value.initString(alloc, "hello") });
     try testing.expectEqual(true, t.asBoolean());
-    const f = try startsWithFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz") });
+    const f = try startsWithFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
     try testing.expectEqual(false, f.asBoolean());
 }
 
 test "ends-with?" {
-    const t = try endsWithFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello world"), Value.initString(testing.allocator, "world") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try endsWithFn(alloc, &.{ Value.initString(alloc, "hello world"), Value.initString(alloc, "world") });
     try testing.expectEqual(true, t.asBoolean());
-    const f = try endsWithFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz") });
+    const f = try endsWithFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
     try testing.expectEqual(false, f.asBoolean());
 }
 
 test "replace string" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try replaceFn(arena.allocator(), &.{ Value.initString(testing.allocator, "hello world"), Value.initString(testing.allocator, "world"), Value.initString(testing.allocator, "zig") });
+    const alloc = arena.allocator();
+    const result = try replaceFn(alloc, &.{ Value.initString(alloc, "hello world"), Value.initString(alloc, "world"), Value.initString(alloc, "zig") });
     try testing.expectEqualStrings("hello zig", result.asString());
 }
 
 test "replace all occurrences" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try replaceFn(arena.allocator(), &.{ Value.initString(testing.allocator, "aabaa"), Value.initString(testing.allocator, "a"), Value.initString(testing.allocator, "x") });
+    const alloc = arena.allocator();
+    const result = try replaceFn(alloc, &.{ Value.initString(alloc, "aabaa"), Value.initString(alloc, "a"), Value.initString(alloc, "x") });
     try testing.expectEqualStrings("xxbxx", result.asString());
 }
 
 test "blank? true cases" {
-    try testing.expectEqual(true, (try blankFn(testing.allocator, &.{Value.nil_val})).asBoolean());
-    try testing.expectEqual(true, (try blankFn(testing.allocator, &.{Value.initString(testing.allocator, "")})).asBoolean());
-    try testing.expectEqual(true, (try blankFn(testing.allocator, &.{Value.initString(testing.allocator, "  \t\n")})).asBoolean());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(true, (try blankFn(alloc, &.{Value.nil_val})).asBoolean());
+    try testing.expectEqual(true, (try blankFn(alloc, &.{Value.initString(alloc, "")})).asBoolean());
+    try testing.expectEqual(true, (try blankFn(alloc, &.{Value.initString(alloc, "  \t\n")})).asBoolean());
 }
 
 test "blank? false" {
-    try testing.expectEqual(false, (try blankFn(testing.allocator, &.{Value.initString(testing.allocator, "a")})).asBoolean());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(false, (try blankFn(alloc, &.{Value.initString(alloc, "a")})).asBoolean());
 }
 
 test "reverse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const result = try reverseFn(arena.allocator(), &.{Value.initString(testing.allocator, "hello")});
+    const alloc = arena.allocator();
+    const result = try reverseFn(alloc, &.{Value.initString(alloc, "hello")});
     try testing.expectEqualStrings("olleh", result.asString());
 }
 
 test "trim-newline" {
-    const result = try trimNewlineFn(testing.allocator, &.{Value.initString(testing.allocator, "hello\r\n")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try trimNewlineFn(alloc, &.{Value.initString(alloc, "hello\r\n")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "triml" {
-    const result = try trimlFn(testing.allocator, &.{Value.initString(testing.allocator, "  hello  ")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try trimlFn(alloc, &.{Value.initString(alloc, "  hello  ")});
     try testing.expectEqualStrings("hello  ", result.asString());
 }
 
 test "trimr" {
-    const result = try trimrFn(testing.allocator, &.{Value.initString(testing.allocator, "  hello  ")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try trimrFn(alloc, &.{Value.initString(alloc, "  hello  ")});
     try testing.expectEqualStrings("  hello", result.asString());
 }
 
 test "capitalize" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const r1 = try capitalizeFn(arena.allocator(), &.{Value.initString(testing.allocator, "hello WORLD")});
+    const alloc = arena.allocator();
+    const r1 = try capitalizeFn(alloc, &.{Value.initString(alloc, "hello WORLD")});
     try testing.expectEqualStrings("Hello world", r1.asString());
-    const r2 = try capitalizeFn(arena.allocator(), &.{Value.initString(testing.allocator, "")});
+    const r2 = try capitalizeFn(alloc, &.{Value.initString(alloc, "")});
     try testing.expectEqualStrings("", r2.asString());
-    const r3 = try capitalizeFn(arena.allocator(), &.{Value.initString(testing.allocator, "a")});
+    const r3 = try capitalizeFn(alloc, &.{Value.initString(alloc, "a")});
     try testing.expectEqualStrings("A", r3.asString());
 }
 
@@ -900,29 +939,36 @@ test "split-lines" {
 }
 
 test "index-of" {
-    const r1 = try indexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "ll") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const r1 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "ll") });
     try testing.expectEqual(@as(i64, 2), r1.asInteger());
-    const r2 = try indexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz") });
+    const r2 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
     try testing.expect(r2 == .nil);
-    const r3 = try indexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "l"), Value.initInteger(3) });
+    const r3 = try indexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l"), Value.initInteger(3) });
     try testing.expectEqual(@as(i64, 3), r3.asInteger());
 }
 
 test "last-index-of" {
-    const r1 = try lastIndexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "l") });
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const r1 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l") });
     try testing.expectEqual(@as(i64, 3), r1.asInteger());
-    const r2 = try lastIndexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz") });
+    const r2 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz") });
     try testing.expect(r2 == .nil);
-    const r3 = try lastIndexOfFn(testing.allocator, &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "l"), Value.initInteger(2) });
+    const r3 = try lastIndexOfFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "l"), Value.initInteger(2) });
     try testing.expectEqual(@as(i64, 2), r3.asInteger());
 }
 
 test "replace-first" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const r1 = try replaceFirstFn(arena.allocator(), &.{ Value.initString(testing.allocator, "aabaa"), Value.initString(testing.allocator, "a"), Value.initString(testing.allocator, "x") });
+    const alloc = arena.allocator();
+    const r1 = try replaceFirstFn(alloc, &.{ Value.initString(alloc, "aabaa"), Value.initString(alloc, "a"), Value.initString(alloc, "x") });
     try testing.expectEqualStrings("xabaa", r1.asString());
-    const r2 = try replaceFirstFn(arena.allocator(), &.{ Value.initString(testing.allocator, "hello"), Value.initString(testing.allocator, "xyz"), Value.initString(testing.allocator, "!") });
+    const r2 = try replaceFirstFn(alloc, &.{ Value.initString(alloc, "hello"), Value.initString(alloc, "xyz"), Value.initString(alloc, "!") });
     try testing.expectEqualStrings("hello", r2.asString());
 }
 

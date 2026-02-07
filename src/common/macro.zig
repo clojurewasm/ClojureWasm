@@ -230,7 +230,10 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
 const testing = std.testing;
 
 test "formToValue - primitives" {
-    const alloc = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     try testing.expectEqual(Value.nil_val, try formToValue(alloc, .{ .data = .nil }));
     try testing.expectEqual(Value.true_val, try formToValue(alloc, .{ .data = .{ .boolean = true } }));
     try testing.expectEqual(Value.initInteger(42), try formToValue(alloc, .{ .data = .{ .integer = 42 } }));
@@ -240,7 +243,10 @@ test "formToValue - primitives" {
 }
 
 test "formToValue - symbol" {
-    const alloc = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const val = try formToValue(alloc, .{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
     try testing.expectEqualStrings("foo", val.asSymbol().name);
     try testing.expect(val.asSymbol().ns == null);
@@ -263,7 +269,10 @@ test "formToValue - list" {
 }
 
 test "valueToForm - primitives" {
-    const alloc = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const f1 = try valueToForm(alloc, Value.nil_val);
     try testing.expect(f1.data == .nil);
     const f2 = try valueToForm(alloc, Value.initInteger(42));
@@ -273,7 +282,10 @@ test "valueToForm - primitives" {
 }
 
 test "valueToForm - symbol" {
-    const alloc = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const f = try valueToForm(alloc, Value.initSymbol(alloc, .{ .ns = "ns", .name = "bar" }));
     try testing.expectEqualStrings("ns", f.data.symbol.ns.?);
     try testing.expectEqualStrings("bar", f.data.symbol.name);

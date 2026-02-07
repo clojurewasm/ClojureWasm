@@ -528,11 +528,15 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         // Primitives — no heap allocations
         .nil, .boolean, .integer, .float, .char => {},
 
-        // String slice — mark backing array
-        .string => gc.markSlice(val.asString()),
+        // String — mark heap wrapper + backing array
+        .string => {
+            gc.markPtr(val.asStringHeap());
+            gc.markSlice(val.asString());
+        },
 
-        // Symbol — ns/name slices + optional meta
+        // Symbol — mark heap wrapper + ns/name slices + optional meta
         .symbol => {
+            gc.markPtr(val.asSymbolHeap());
             const sym = val.asSymbol();
             if (sym.ns) |ns| gc.markSlice(ns);
             gc.markSlice(sym.name);
@@ -541,8 +545,9 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
-        // Keyword — ns/name slices
+        // Keyword — mark heap wrapper + ns/name slices
         .keyword => {
+            gc.markPtr(val.asKeywordHeap());
             const kw = val.asKeyword();
             if (kw.ns) |ns| gc.markSlice(ns);
             gc.markSlice(kw.name);
@@ -1240,6 +1245,7 @@ test "traceValue keeps map entries alive" {
     const a = gc.allocator();
 
     // Map {:a 1} — entries = [keyword, integer]
+    // Allocations: entries slice, HeapKeyword, PersistentArrayMap, orphan = 4
     const entries = try a.alloc(Value, 2);
     entries[0] = Value.initKeyword(a, .{ .ns = null, .name = "a" });
     entries[1] = Value.initInteger(1);
@@ -1249,13 +1255,13 @@ test "traceValue keeps map entries alive" {
     // Orphan
     _ = try a.alloc(u8, 64);
 
-    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+    try std.testing.expectEqual(@as(usize, 4), gc.liveCount());
 
     traceValue(&gc, Value.initMap(m));
     gc.sweep();
 
-    // map + entries survive, orphan freed
-    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+    // map + entries + HeapKeyword survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
 }
 
 test "traceValue string marks backing array" {
@@ -1270,13 +1276,17 @@ test "traceValue string marks backing array" {
     // Orphan
     _ = try a.alloc(u8, 32);
 
-    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
+    // Allocations: str backing array, HeapString wrapper, orphan = 3
+    // (initString allocates a HeapString on the heap)
+    const string_val = Value.initString(a, str);
 
-    traceValue(&gc, Value.initString(a, str));
+    try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
+
+    traceValue(&gc, string_val);
     gc.sweep();
 
-    // String backing array survives, orphan freed
-    try std.testing.expectEqual(@as(usize, 1), gc.liveCount());
+    // HeapString + backing array survive, orphan freed
+    try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
 }
 
 test "traceValue cycle detection via mark bit" {

@@ -881,23 +881,31 @@ test "PersistentArrayMap - empty" {
 
 test "PersistentArrayMap - count/get" {
     // {k1 v1, k2 v2} stored as [k1, v1, k2, v2]
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = PersistentArrayMap{ .entries = &entries };
     try testing.expectEqual(@as(usize, 2), m.count());
-    const v = m.get(Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }));
+    const v = m.get(Value.initKeyword(alloc, .{ .name = "a", .ns = null }));
     try testing.expect(v != null);
     try testing.expect(v.?.eql(Value.initInteger(1)));
 }
 
 test "PersistentArrayMap - get missing key" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     const m = PersistentArrayMap{ .entries = &entries };
-    try testing.expect(m.get(Value.initKeyword(testing.allocator, .{ .name = "z", .ns = null })) == null);
+    try testing.expect(m.get(Value.initKeyword(alloc, .{ .name = "z", .ns = null })) == null);
 }
 
 test "PersistentHashSet - empty" {

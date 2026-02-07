@@ -400,119 +400,154 @@ pub const builtins = [_]BuiltinDef{
 const testing = std.testing;
 
 test "str - no args returns empty string" {
-    const result = try strFn(testing.allocator, &.{});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try strFn(alloc, &.{});
     try testing.expectEqualStrings("", result.asString());
 }
 
 test "str - nil returns empty string" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{Value.nil_val};
-    const result = try strFn(testing.allocator, &args);
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("", result.asString());
 }
 
 test "str - string returns same string" {
-    const args = [_]Value{Value.initString(testing.allocator, "hello")};
-    const result = try strFn(testing.allocator, &args);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "hello")};
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "str - integer" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{Value.initInteger(42)};
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("42", result.asString());
 }
 
 test "str - boolean" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{Value.initBoolean(true)};
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("true", result.asString());
 }
 
 test "str - keyword" {
-    const args = [_]Value{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = null })};
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initKeyword(alloc, .{ .name = "foo", .ns = null })};
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings(":foo", result.asString());
 }
 
 test "str - multi-arg concatenation" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString(testing.allocator, " + "),
+        Value.initString(alloc, " + "),
         Value.initInteger(2),
     };
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("1 + 2", result.asString());
 }
 
 test "str - nil in multi-arg is empty" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
-        Value.initString(testing.allocator, "a"),
+        Value.initString(alloc, "a"),
         Value.nil_val,
-        Value.initString(testing.allocator, "b"),
+        Value.initString(alloc, "b"),
     };
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try strFn(alloc, &args);
     try testing.expectEqualStrings("ab", result.asString());
 }
 
 test "pr-str - no args returns empty string" {
-    const result = try prStrFn(testing.allocator, &.{});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try prStrFn(alloc, &.{});
     try testing.expectEqualStrings("", result.asString());
 }
 
 test "pr-str - string is quoted" {
-    const args = [_]Value{Value.initString(testing.allocator, "hello")};
-    const result = try prStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "hello")};
+    const result = try prStrFn(alloc, &args);
     try testing.expectEqualStrings("\"hello\"", result.asString());
 }
 
 test "pr-str - nil" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{Value.nil_val};
-    const result = try prStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try prStrFn(alloc, &args);
     try testing.expectEqualStrings("nil", result.asString());
 }
 
 test "pr-str - multi-arg space separated" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString(testing.allocator, "hello"),
+        Value.initString(alloc, "hello"),
         Value.nil_val,
     };
-    const result = try prStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try prStrFn(alloc, &args);
     try testing.expectEqualStrings("1 \"hello\" nil", result.asString());
 }
 
 // --- subs tests ---
 
 test "subs with start" {
-    const result = try subsFn(testing.allocator, &.{
-        Value.initString(testing.allocator, "hello world"),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try subsFn(alloc, &.{
+        Value.initString(alloc, "hello world"),
         Value.initInteger(6),
     });
-    defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("world", result.asString());
 }
 
 test "subs with start and end" {
-    const result = try subsFn(testing.allocator, &.{
-        Value.initString(testing.allocator, "hello world"),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try subsFn(alloc, &.{
+        Value.initString(alloc, "hello world"),
         Value.initInteger(0),
         Value.initInteger(5),
     });
-    defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "subs out of bounds" {
-    try testing.expectError(error.IndexError, subsFn(testing.allocator, &.{
-        Value.initString(testing.allocator, "hi"),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectError(error.IndexError, subsFn(alloc, &.{
+        Value.initString(alloc, "hi"),
         Value.initInteger(10),
     }));
 }
@@ -520,38 +555,56 @@ test "subs out of bounds" {
 // --- name/namespace tests ---
 
 test "name of keyword" {
-    const result = try nameFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = "bar" })});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try nameFn(alloc, &.{Value.initKeyword(alloc, .{ .name = "foo", .ns = "bar" })});
     try testing.expectEqualStrings("foo", result.asString());
 }
 
 test "name of string" {
-    const result = try nameFn(testing.allocator, &.{Value.initString(testing.allocator, "hello")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try nameFn(alloc, &.{Value.initString(alloc, "hello")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "namespace of keyword with ns" {
-    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = "bar" })});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try namespaceFn(alloc, &.{Value.initKeyword(alloc, .{ .name = "foo", .ns = "bar" })});
     try testing.expectEqualStrings("bar", result.asString());
 }
 
 test "namespace of keyword without ns" {
-    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = null })});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try namespaceFn(alloc, &.{Value.initKeyword(alloc, .{ .name = "foo", .ns = null })});
     try testing.expect(result == .nil);
 }
 
 // --- keyword/symbol coercion tests ---
 
 test "keyword from string" {
-    const result = try keywordFn(testing.allocator, &.{Value.initString(testing.allocator, "foo")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try keywordFn(alloc, &.{Value.initString(alloc, "foo")});
     try testing.expect(result == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
     try testing.expect(result.asKeyword().ns == null);
 }
 
 test "keyword with ns and name" {
-    const result = try keywordFn(testing.allocator, &.{
-        Value.initString(testing.allocator, "my.ns"),
-        Value.initString(testing.allocator, "foo"),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try keywordFn(alloc, &.{
+        Value.initString(alloc, "my.ns"),
+        Value.initString(alloc, "foo"),
     });
     try testing.expect(result == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
@@ -559,16 +612,22 @@ test "keyword with ns and name" {
 }
 
 test "symbol from string" {
-    const result = try symbolFn(testing.allocator, &.{Value.initString(testing.allocator, "bar")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try symbolFn(alloc, &.{Value.initString(alloc, "bar")});
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
     try testing.expect(result.asSymbol().ns == null);
 }
 
 test "symbol with ns and name" {
-    const result = try symbolFn(testing.allocator, &.{
-        Value.initString(testing.allocator, "my.ns"),
-        Value.initString(testing.allocator, "bar"),
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try symbolFn(alloc, &.{
+        Value.initString(alloc, "my.ns"),
+        Value.initString(alloc, "bar"),
     });
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
@@ -578,85 +637,106 @@ test "symbol with ns and name" {
 // --- print-str tests ---
 
 test "print-str - no args returns empty string" {
-    const result = try printStrFn(testing.allocator, &.{});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try printStrFn(alloc, &.{});
     try testing.expectEqualStrings("", result.asString());
 }
 
 test "print-str - string is unquoted" {
-    const args = [_]Value{Value.initString(testing.allocator, "hello")};
-    const result = try printStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "hello")};
+    const result = try printStrFn(alloc, &args);
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "print-str - multi-arg space separated" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString(testing.allocator, "hello"),
+        Value.initString(alloc, "hello"),
     };
-    const result = try printStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try printStrFn(alloc, &args);
     try testing.expectEqualStrings("1 hello", result.asString());
 }
 
 // --- prn-str tests ---
 
 test "prn-str - no args returns newline" {
-    const result = try prnStrFn(testing.allocator, &.{});
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try prnStrFn(alloc, &.{});
     try testing.expectEqualStrings("\n", result.asString());
 }
 
 test "prn-str - string is quoted with newline" {
-    const args = [_]Value{Value.initString(testing.allocator, "hello")};
-    const result = try prnStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "hello")};
+    const result = try prnStrFn(alloc, &args);
     try testing.expectEqualStrings("\"hello\"\n", result.asString());
 }
 
 test "prn-str - multi-arg space separated with newline" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
         Value.initInteger(1),
         Value.nil_val,
     };
-    const result = try prnStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try prnStrFn(alloc, &args);
     try testing.expectEqualStrings("1 nil\n", result.asString());
 }
 
 // --- println-str tests ---
 
 test "println-str - no args returns newline" {
-    const result = try printlnStrFn(testing.allocator, &.{});
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try printlnStrFn(alloc, &.{});
     try testing.expectEqualStrings("\n", result.asString());
 }
 
 test "println-str - string is unquoted with newline" {
-    const args = [_]Value{Value.initString(testing.allocator, "hello")};
-    const result = try printlnStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "hello")};
+    const result = try printlnStrFn(alloc, &args);
     try testing.expectEqualStrings("hello\n", result.asString());
 }
 
 test "println-str - multi-arg space separated with newline" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString(testing.allocator, "hello"),
+        Value.initString(alloc, "hello"),
     };
-    const result = try printlnStrFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try printlnStrFn(alloc, &args);
     try testing.expectEqualStrings("1 hello\n", result.asString());
 }
 
 test "str - large string over 4KB" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     // Build a 5000-char string via str concatenation
     const chunk = "a" ** 100; // 100 bytes
     var args: [60]Value = undefined;
     for (&args) |*a| {
-        a.* = Value.initString(testing.allocator, chunk);
+        a.* = Value.initString(alloc, chunk);
     }
-    const result = try strFn(testing.allocator, &args);
-    defer testing.allocator.free(result.asString());
+    const result = try strFn(alloc, &args);
     try testing.expectEqual(@as(usize, 6000), result.asString().len);
 }

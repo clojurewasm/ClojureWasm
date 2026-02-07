@@ -343,7 +343,10 @@ test "Chunk.dump basic output" {
 }
 
 test "Chunk.dump const_load shows constant value comment" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 

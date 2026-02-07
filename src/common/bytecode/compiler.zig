@@ -1016,7 +1016,10 @@ test "compile empty do_node" {
 }
 
 test "compile call_node" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
@@ -1042,7 +1045,10 @@ test "compile call_node" {
 }
 
 test "compile def_node" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
@@ -1083,7 +1089,10 @@ test "compile quote_node" {
 }
 
 test "compile throw_node" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
@@ -1159,7 +1168,10 @@ test "compile fn_node emits closure" {
 }
 
 test "compile var_ref" {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 

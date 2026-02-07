@@ -127,17 +127,22 @@ test "current-time-millis returns positive integer" {
 }
 
 test "getenv - existing variable" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
     // PATH should always exist
-    const args = [_]Value{Value.initString(testing.allocator, "PATH")};
-    const result = try getenvFn(testing.allocator, &args);
+    const args = [_]Value{Value.initString(alloc, "PATH")};
+    const result = try getenvFn(alloc, &args);
     try testing.expect(result.tag() == .string);
     try testing.expect(result.asString().len > 0);
-    defer testing.allocator.free(result.asString());
 }
 
 test "getenv - non-existing variable" {
-    const args = [_]Value{Value.initString(testing.allocator, "CLJW_NONEXISTENT_VAR_12345")};
-    const result = try getenvFn(testing.allocator, &args);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "CLJW_NONEXISTENT_VAR_12345")};
+    const result = try getenvFn(alloc, &args);
     try testing.expect(result.isNil());
 }
 
@@ -159,7 +164,10 @@ test "exit - arity error" {
 }
 
 test "exit - type error" {
-    const args = [_]Value{Value.initString(testing.allocator, "not a number")};
-    const result = exitFn(testing.allocator, &args);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const args = [_]Value{Value.initString(alloc, "not a number")};
+    const result = exitFn(alloc, &args);
     try testing.expectError(error.TypeError, result);
 }

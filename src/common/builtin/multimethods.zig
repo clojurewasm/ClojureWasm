@@ -406,10 +406,14 @@ pub const builtins = [_]BuiltinDef{
 const testing = std.testing;
 
 test "methods - returns method map" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     var entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -420,14 +424,18 @@ test "methods - returns method map" {
     };
 
     const args = [_]Value{Value.initMultiFn(&mf)};
-    const result = try methodsFn(testing.allocator, &args);
+    const result = try methodsFn(alloc, &args);
     try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 4), result.asMap().entries.len);
 }
 
 test "get-method - returns method or nil" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     var entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(42),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -438,21 +446,25 @@ test "get-method - returns method or nil" {
     };
 
     // Found
-    const args1 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) };
-    const r1 = try getMethodFn(testing.allocator, &args1);
+    const args1 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(alloc, .{ .name = "a", .ns = null }) };
+    const r1 = try getMethodFn(alloc, &args1);
     try testing.expectEqual(Value.initInteger(42), r1);
 
     // Not found
-    const args2 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }) };
-    const r2 = try getMethodFn(testing.allocator, &args2);
+    const args2 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(alloc, .{ .name = "b", .ns = null }) };
+    const r2 = try getMethodFn(alloc, &args2);
     try testing.expectEqual(Value.nil_val, r2);
 }
 
 test "remove-method - removes dispatch entry" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     var entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
-        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -462,24 +474,24 @@ test "remove-method - removes dispatch entry" {
         .methods = &map,
     };
 
-    const args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) };
-    const result = try removeMethodFn(testing.allocator, &args);
+    const args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(alloc, .{ .name = "a", .ns = null }) };
+    const result = try removeMethodFn(alloc, &args);
     try testing.expect(result.tag() == .multi_fn);
     try testing.expectEqual(@as(usize, 2), mf.methods.entries.len);
 
     // Verify :b remains
-    const get_args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }) };
-    const b_val = try getMethodFn(testing.allocator, &get_args);
+    const get_args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(alloc, .{ .name = "b", .ns = null }) };
+    const b_val = try getMethodFn(alloc, &get_args);
     try testing.expectEqual(Value.initInteger(2), b_val);
-
-    // Clean up
-    testing.allocator.free(mf.methods.entries);
-    testing.allocator.destroy(mf.methods);
 }
 
 test "remove-all-methods - clears all methods" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     var entries = [_]Value{
-        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
+        Value.initKeyword(alloc, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -490,9 +502,7 @@ test "remove-all-methods - clears all methods" {
     };
 
     const args = [_]Value{Value.initMultiFn(&mf)};
-    const result = try removeAllMethodsFn(testing.allocator, &args);
+    const result = try removeAllMethodsFn(alloc, &args);
     try testing.expect(result.tag() == .multi_fn);
     try testing.expectEqual(@as(usize, 0), mf.methods.entries.len);
-
-    testing.allocator.destroy(mf.methods);
 }

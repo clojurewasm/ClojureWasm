@@ -784,29 +784,47 @@ test "rand-int with non-positive n is error" {
 }
 
 test "parse-long valid integer" {
-    try testing.expectEqual(Value.initInteger(42), try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "42")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.initInteger(42), try parseLongFn(alloc, &.{Value.initString(alloc, "42")}));
 }
 
 test "parse-long negative" {
-    try testing.expectEqual(Value.initInteger(-7), try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "-7")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.initInteger(-7), try parseLongFn(alloc, &.{Value.initString(alloc, "-7")}));
 }
 
 test "parse-long invalid returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "abc")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.nil_val, try parseLongFn(alloc, &.{Value.initString(alloc, "abc")}));
 }
 
 test "parse-long float string returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "3.14")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.nil_val, try parseLongFn(alloc, &.{Value.initString(alloc, "3.14")}));
 }
 
 test "parse-double valid" {
-    const result = try parseDoubleFn(test_alloc, &.{Value.initString(test_alloc, "3.14")});
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const result = try parseDoubleFn(alloc, &.{Value.initString(alloc, "3.14")});
     try testing.expect(result.tag() == .float);
     try testing.expect(result.asFloat() == 3.14);
 }
 
 test "parse-double invalid returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseDoubleFn(test_alloc, &.{Value.initString(test_alloc, "xyz")}));
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try testing.expectEqual(Value.nil_val, try parseDoubleFn(alloc, &.{Value.initString(alloc, "xyz")}));
 }
 
 test "parse-long non-string throws TypeError" {
