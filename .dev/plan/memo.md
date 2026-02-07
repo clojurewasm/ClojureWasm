@@ -33,7 +33,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.2a nREPL stacktrace op~~
 - ~~30.2b nREPL info extension (:file, :line)~~
 - ~~30.2c Modular dispatch + describe~~
-- 30.2d CIDER end-to-end verification (IN PROGRESS)
+- ~~30.2d CIDER end-to-end verification~~
 - 30.3a require file resolution
 - 30.3b src/ path auto-detect
 - 30.3c cljw.edn support
@@ -45,23 +45,22 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.2d — CIDER end-to-end verification. Test with actual CIDER/Emacs
-connection. Fix protocol compatibility issues found during testing.
-
-Critical bugfix included: nREPL Var memory corruption (D80). ArenaAllocator's
-free-rollback overwriting Var memory during fn* eval. Fixed by removing
-eval_arena and using GPA-only (matches main.zig REPL pattern). F113 added
-for future GC integration.
+30.3a — require file resolution. Enable `(require 'my.ns)` to find and
+load .clj files from the filesystem.
 
 ## Previous Task
 
-30.2a-c — Added stacktrace op, Var :file/:line metadata, modular dispatch
-table with comptime op routing.
+30.2d — CIDER end-to-end verification. Fixed nREPL Var memory corruption
+(D80: eval_arena removed, GPA-only). Added Var metadata propagation:
+doc/arglists extracted from fn form by analyzer, file=NO_SOURCE_FILE for
+REPL. Fixed defn macro to pass docstring via with-meta. 30/30 CIDER
+protocol tests pass (describe, clone, eval, info, completions, eldoc,
+stacktrace, ns-list, namespace switch, analyze-last-stacktrace).
 
 ## Known Issues
 
 - ~~F111 RESOLVED: Bootstrap Symbol leaks fixed via Env.owned_symbols tracking.~~
-- ~~F112 RESOLVED: nREPL Var corruption from shared ArenaAllocator (D80).~~
+- ~~F112 RESOLVED: nREPL Var corruption from shared ArenaAllocator (D80). eval_arena removed, GPA-only.~~
 - F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA. Bounded
   for typical REPL sessions (proportional to unique evaluated code). Not a
   correctness issue; same behavior as main.zig interactive REPL.
@@ -81,3 +80,8 @@ table with comptime op routing.
   Format: [cljw binary] + [.clj source] + [u64 size] + "CLJW" magic.
 - **macOS signing**: Ad-hoc resign with `codesign -s - -f` after build.
   Proper section injection deferred.
+- **nREPL/CIDER**: Phase 30.2 complete. 14 ops (eval, clone, close, describe,
+  load-file, ls-sessions, completions, info, eldoc, ns-list, stacktrace,
+  analyze-last-stacktrace, stdin, interrupt). Start: `cljw --nrepl-server --port=0`
+- **Var metadata**: doc/arglists propagated from defn→analyzer→DefNode→Var.
+  Arglists auto-extracted from fn form. File/line set for all def forms.
