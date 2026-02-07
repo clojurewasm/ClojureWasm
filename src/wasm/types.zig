@@ -47,6 +47,15 @@ pub const WasmModule = struct {
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable for zware).
     pub fn load(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        return loadCore(allocator, wasm_bytes, false);
+    }
+
+    /// Load a WASI module — registers wasi_snapshot_preview1 imports.
+    pub fn loadWasi(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        return loadCore(allocator, wasm_bytes, true);
+    }
+
+    fn loadCore(allocator: Allocator, wasm_bytes: []const u8, wasi: bool) !*WasmModule {
         const self = try allocator.create(WasmModule);
         errdefer allocator.destroy(self);
 
@@ -57,6 +66,8 @@ pub const WasmModule = struct {
         self.module = zware.Module.init(allocator, wasm_bytes);
         errdefer self.module.deinit();
         try self.module.decode();
+
+        if (wasi) try registerWasiFunctions(&self.store, &self.module);
 
         self.instance = zware.Instance.init(allocator, &self.store, self.module);
         errdefer self.instance.deinit();
@@ -163,6 +174,72 @@ fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
             else => return error.TypeError,
         },
     };
+}
+
+// ============================================================
+// WASI Preview 1 support
+// ============================================================
+
+/// Known wasi_snapshot_preview1 functions mapped to zware builtins.
+const WasiEntry = struct {
+    name: []const u8,
+    func: *const fn (*zware.VirtualMachine) zware.WasmError!void,
+};
+
+const wasi_functions = [_]WasiEntry{
+    .{ .name = "args_get", .func = &zware.wasi.args_get },
+    .{ .name = "args_sizes_get", .func = &zware.wasi.args_sizes_get },
+    .{ .name = "environ_get", .func = &zware.wasi.environ_get },
+    .{ .name = "environ_sizes_get", .func = &zware.wasi.environ_sizes_get },
+    .{ .name = "clock_time_get", .func = &zware.wasi.clock_time_get },
+    .{ .name = "fd_close", .func = &zware.wasi.fd_close },
+    .{ .name = "fd_fdstat_get", .func = &zware.wasi.fd_fdstat_get },
+    .{ .name = "fd_filestat_get", .func = &zware.wasi.fd_filestat_get },
+    .{ .name = "fd_prestat_get", .func = &zware.wasi.fd_prestat_get },
+    .{ .name = "fd_prestat_dir_name", .func = &zware.wasi.fd_prestat_dir_name },
+    .{ .name = "fd_read", .func = &zware.wasi.fd_read },
+    .{ .name = "fd_seek", .func = &zware.wasi.fd_seek },
+    .{ .name = "fd_write", .func = &zware.wasi.fd_write },
+    .{ .name = "fd_tell", .func = &zware.wasi.fd_tell },
+    .{ .name = "fd_readdir", .func = &zware.wasi.fd_readdir },
+    .{ .name = "path_filestat_get", .func = &zware.wasi.path_filestat_get },
+    .{ .name = "path_open", .func = &zware.wasi.path_open },
+    .{ .name = "proc_exit", .func = &zware.wasi.proc_exit },
+    .{ .name = "random_get", .func = &zware.wasi.random_get },
+};
+
+fn lookupWasiFunc(name: []const u8) ?*const fn (*zware.VirtualMachine) zware.WasmError!void {
+    for (wasi_functions) |entry| {
+        if (std.mem.eql(u8, entry.name, name)) return entry.func;
+    }
+    return null;
+}
+
+/// Scan module imports for wasi_snapshot_preview1 functions and register them.
+fn registerWasiFunctions(store: *zware.Store, module: *zware.Module) !void {
+    for (module.imports.list.items, 0..) |imp, import_idx| {
+        if (imp.desc_tag != .Func) continue;
+        if (!std.mem.eql(u8, imp.module, "wasi_snapshot_preview1")) continue;
+
+        const wasi_fn = lookupWasiFunc(imp.name) orelse
+            return error.WasmWasiUnsupported;
+
+        const func_entry = module.functions.lookup(import_idx) catch
+            return error.WasmDecodeError;
+        const functype = module.types.lookup(func_entry.typeidx) catch
+            return error.WasmDecodeError;
+
+        // zware WASI functions are fn(*VM) but exposeHostFunction wants fn(*VM, usize).
+        // The extra context arg is unused — @ptrCast is safe per zware convention.
+        store.exposeHostFunction(
+            imp.module,
+            imp.name,
+            @ptrCast(wasi_fn),
+            0,
+            functype.params,
+            functype.results,
+        ) catch return error.WasmInstantiateError;
+    }
 }
 
 /// Convert a Wasm u64 result to a Clojure Value based on the result type.

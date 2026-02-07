@@ -42,6 +42,32 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .wasm_module = wasm_mod };
 }
 
+/// (wasm/load-wasi path) => WasmModule
+/// Reads a WASI .wasm file, registers WASI imports, and instantiates it.
+/// Required for TinyGo, Rust wasm32-wasi, and other WASI-targeting compilers.
+pub fn wasmLoadWasiFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load-wasi", .{args.len});
+
+    const path = switch (args[0]) {
+        .string => |s| s,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load-wasi expects a string path, got {s}", .{@tagName(args[0])}),
+    };
+
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(path, .{}) catch
+        return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load-wasi: file not found: {s}", .{path});
+    defer file.close();
+
+    const wasm_bytes = file.readToEndAlloc(allocator, 64 * 1024 * 1024) catch
+        return error.IOError;
+
+    const wasm_mod = WasmModule.loadWasi(allocator, wasm_bytes) catch
+        return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load-wasi: failed to instantiate module: {s}", .{path});
+
+    return Value{ .wasm_module = wasm_mod };
+}
+
 /// (wasm/fn module name sig) => WasmFn
 /// sig is a map: {:params [:i32 :i32] :results [:i32]}
 pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -172,6 +198,12 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
         .name = "load",
         .func = wasmLoadFn,
         .doc = "Loads a WebAssembly module from file path. Returns a WasmModule value.",
+        .arglists = "([path])",
+    },
+    .{
+        .name = "load-wasi",
+        .func = wasmLoadWasiFn,
+        .doc = "Loads a WASI WebAssembly module with wasi_snapshot_preview1 imports. Required for TinyGo and Rust wasm32-wasi modules.",
         .arglists = "([path])",
     },
     .{
