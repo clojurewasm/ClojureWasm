@@ -47,15 +47,20 @@ pub const WasmModule = struct {
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable for zware).
     pub fn load(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        return loadCore(allocator, wasm_bytes, false);
+        return loadCore(allocator, wasm_bytes, false, null);
     }
 
     /// Load a WASI module — registers wasi_snapshot_preview1 imports.
     pub fn loadWasi(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        return loadCore(allocator, wasm_bytes, true);
+        return loadCore(allocator, wasm_bytes, true, null);
     }
 
-    fn loadCore(allocator: Allocator, wasm_bytes: []const u8, wasi: bool) !*WasmModule {
+    /// Load with host function imports (Clojure fns callable from Wasm).
+    pub fn loadWithImports(allocator: Allocator, wasm_bytes: []const u8, imports_map: Value) !*WasmModule {
+        return loadCore(allocator, wasm_bytes, false, imports_map);
+    }
+
+    fn loadCore(allocator: Allocator, wasm_bytes: []const u8, wasi: bool, imports_map: ?Value) !*WasmModule {
         const self = try allocator.create(WasmModule);
         errdefer allocator.destroy(self);
 
@@ -68,6 +73,7 @@ pub const WasmModule = struct {
         try self.module.decode();
 
         if (wasi) try registerWasiFunctions(&self.store, &self.module);
+        if (imports_map) |im| try registerHostFunctions(&self.store, &self.module, im, allocator);
 
         self.instance = zware.Instance.init(allocator, &self.store, self.module);
         errdefer self.instance.deinit();
@@ -242,6 +248,130 @@ fn registerWasiFunctions(store: *zware.Store, module: *zware.Module) !void {
     }
 }
 
+// ============================================================
+// Host function injection (Clojure -> Wasm callbacks)
+// ============================================================
+
+const bootstrap = @import("../common/bootstrap.zig");
+
+/// Host function callback context — stores Clojure fn + signature.
+const HostContext = struct {
+    clj_fn: Value,
+    param_count: u32,
+    result_count: u32,
+    allocator: Allocator,
+};
+
+/// Global context table (max 256 host functions across all modules).
+const MAX_CONTEXTS = 256;
+var host_contexts: [MAX_CONTEXTS]?HostContext = [_]?HostContext{null} ** MAX_CONTEXTS;
+var next_context_id: usize = 0;
+
+fn allocContext(ctx: HostContext) !usize {
+    var id = next_context_id;
+    var tried: usize = 0;
+    while (tried < MAX_CONTEXTS) : ({
+        id = (id + 1) % MAX_CONTEXTS;
+        tried += 1;
+    }) {
+        if (host_contexts[id] == null) {
+            host_contexts[id] = ctx;
+            next_context_id = (id + 1) % MAX_CONTEXTS;
+            return id;
+        }
+    }
+    return error.WasmHostContextFull;
+}
+
+/// Trampoline: called by zware VM, invokes the Clojure function.
+fn hostTrampoline(vm: *zware.VirtualMachine, context_id: usize) zware.WasmError!void {
+    const ctx = host_contexts[context_id] orelse return zware.WasmError.Trap;
+
+    // Pop args from zware stack (reverse order)
+    var args_buf: [16]Value = undefined;
+    const pc = ctx.param_count;
+    if (pc > 16) return zware.WasmError.Trap;
+
+    var i: u32 = pc;
+    while (i > 0) {
+        i -= 1;
+        const raw = vm.popAnyOperand();
+        // Default to i32 conversion for host function args
+        args_buf[i] = .{ .integer = @as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))) };
+    }
+
+    // Call the Clojure function
+    const result = bootstrap.callFnVal(ctx.allocator, ctx.clj_fn, args_buf[0..pc]) catch {
+        return zware.WasmError.Trap;
+    };
+
+    // Push result to zware stack
+    if (ctx.result_count > 0) {
+        const raw: u64 = switch (result) {
+            .integer => |n| @bitCast(@as(i64, @intCast(@as(i32, @intCast(n))))),
+            .float => |f| @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(f))))),
+            .nil => 0,
+            .boolean => |b| if (b) @as(u64, 1) else 0,
+            else => 0,
+        };
+        vm.pushOperand(u64, raw) catch return zware.WasmError.Trap;
+    }
+}
+
+/// Register Clojure functions as Wasm host functions.
+/// imports_map: {"module_name" {"func_name" clj-fn}}
+pub fn registerHostFunctions(
+    store: *zware.Store,
+    module: *zware.Module,
+    imports_map: Value,
+    allocator: Allocator,
+) !void {
+    for (module.imports.list.items, 0..) |imp, import_idx| {
+        if (imp.desc_tag != .Func) continue;
+
+        const func_entry = module.functions.lookup(import_idx) catch continue;
+        const functype = module.types.lookup(func_entry.typeidx) catch continue;
+
+        const clj_fn = lookupImportFn(imports_map, imp.module, imp.name) orelse continue;
+
+        const ctx_id = allocContext(.{
+            .clj_fn = clj_fn,
+            .param_count = @intCast(functype.params.len),
+            .result_count = @intCast(functype.results.len),
+            .allocator = allocator,
+        }) catch return error.WasmHostContextFull;
+
+        store.exposeHostFunction(
+            imp.module,
+            imp.name,
+            &hostTrampoline,
+            ctx_id,
+            functype.params,
+            functype.results,
+        ) catch {
+            host_contexts[ctx_id] = null;
+            return error.WasmInstantiateError;
+        };
+    }
+}
+
+/// Lookup a Clojure function from the nested imports map.
+fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
+    const mod_key = Value{ .string = module_name };
+    const sub_map_val = switch (imports_map) {
+        .map => |m| m.get(mod_key),
+        .hash_map => |hm| hm.get(mod_key),
+        else => null,
+    } orelse return null;
+
+    const fn_key = Value{ .string = func_name };
+    return switch (sub_map_val) {
+        .map => |m| m.get(fn_key),
+        .hash_map => |hm| hm.get(fn_key),
+        else => null,
+    };
+}
+
 /// Convert a Wasm u64 result to a Clojure Value based on the result type.
 fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
     return switch (wasm_type) {
@@ -326,4 +456,70 @@ test "WasmValType conversion" {
     try testing.expectEqual(zware.ValType.F64, WasmValType.f64.toZware());
     try testing.expectEqual(WasmValType.i64, WasmValType.fromZware(.I64).?);
     try testing.expect(WasmValType.fromZware(.FuncRef) == null);
+}
+
+test "allocContext — allocate and reclaim slots" {
+    // Save and restore global state
+    const saved_contexts = host_contexts;
+    const saved_next = next_context_id;
+    defer {
+        host_contexts = saved_contexts;
+        next_context_id = saved_next;
+    }
+
+    // Reset context table
+    host_contexts = [_]?HostContext{null} ** MAX_CONTEXTS;
+    next_context_id = 0;
+
+    const ctx = HostContext{
+        .clj_fn = Value.nil,
+        .param_count = 1,
+        .result_count = 0,
+        .allocator = testing.allocator,
+    };
+
+    const id0 = try allocContext(ctx);
+    try testing.expectEqual(@as(usize, 0), id0);
+
+    const id1 = try allocContext(ctx);
+    try testing.expectEqual(@as(usize, 1), id1);
+
+    // Free slot 0 and reallocate
+    host_contexts[0] = null;
+    next_context_id = 0;
+    const id_reused = try allocContext(ctx);
+    try testing.expectEqual(@as(usize, 0), id_reused);
+}
+
+test "lookupImportFn — nested map lookup" {
+    const collections = @import("../common/collections.zig");
+
+    // Build {"env" {"print_i32" :found}}
+    const target_val = Value{ .keyword = .{ .name = "found", .ns = null } };
+    var inner_entries = [_]Value{
+        .{ .string = "print_i32" }, target_val,
+    };
+    const inner_map = try testing.allocator.create(collections.PersistentArrayMap);
+    defer testing.allocator.destroy(inner_map);
+    inner_map.* = .{ .entries = &inner_entries };
+
+    var outer_entries = [_]Value{
+        .{ .string = "env" }, .{ .map = inner_map },
+    };
+    const outer_map = try testing.allocator.create(collections.PersistentArrayMap);
+    defer testing.allocator.destroy(outer_map);
+    outer_map.* = .{ .entries = &outer_entries };
+
+    const imports = Value{ .map = outer_map };
+
+    // Found
+    const result = lookupImportFn(imports, "env", "print_i32");
+    try testing.expect(result != null);
+    try testing.expect(result.?.eql(target_val));
+
+    // Not found — wrong function name
+    try testing.expect(lookupImportFn(imports, "env", "missing") == null);
+
+    // Not found — wrong module name
+    try testing.expect(lookupImportFn(imports, "other", "print_i32") == null);
 }

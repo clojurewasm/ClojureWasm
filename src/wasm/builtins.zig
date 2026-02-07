@@ -15,10 +15,11 @@ const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
 
-/// (wasm/load path) => WasmModule
+/// (wasm/load path) or (wasm/load path opts) => WasmModule
 /// Reads a .wasm file from disk and instantiates it.
+/// opts: {:imports {"module" {"func" clj-fn}}} — register Clojure fns as host imports.
 pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1)
+    if (args.len < 1 or args.len > 2)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load", .{args.len});
 
     const path = switch (args[0]) {
@@ -35,7 +36,22 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const wasm_bytes = file.readToEndAlloc(allocator, 64 * 1024 * 1024) catch
         return error.IOError;
 
-    // Load and instantiate
+    // Parse optional :imports from opts map
+    if (args.len == 2) {
+        const imports_key = Value{ .keyword = .{ .name = "imports", .ns = null } };
+        const imports_val = switch (args[1]) {
+            .map => |m| m.get(imports_key),
+            .hash_map => |hm| hm.get(imports_key),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load opts must be a map, got {s}", .{@tagName(args[1])}),
+        };
+        if (imports_val) |iv| {
+            const wasm_mod = WasmModule.loadWithImports(allocator, wasm_bytes, iv) catch
+                return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module with imports: {s}", .{path});
+            return Value{ .wasm_module = wasm_mod };
+        }
+    }
+
+    // Default: no imports
     const wasm_mod = WasmModule.load(allocator, wasm_bytes) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module: {s}", .{path});
 
@@ -197,8 +213,8 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
     .{
         .name = "load",
         .func = wasmLoadFn,
-        .doc = "Loads a WebAssembly module from file path. Returns a WasmModule value.",
-        .arglists = "([path])",
+        .doc = "Loads a WebAssembly module from file path. Optional opts map: {:imports {\"module\" {\"func\" clj-fn}}} for host function injection.",
+        .arglists = "([path] [path opts])",
     },
     .{
         .name = "load-wasi",

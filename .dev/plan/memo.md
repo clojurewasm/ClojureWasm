@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - All phases through 24C complete (A, BE, B, C, CX, R, D, 20-24, 22b, 22c)
 - Phase 24.5 complete (mini-refactor)
-- Phase 25.R, 25.0, 25.1, 25.2, 25.3 complete
+- Phase 25.R, 25.0, 25.1, 25.2, 25.3, 25.4 complete
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
 - **Phase 25 IN PROGRESS** — Wasm InterOp
 
@@ -18,18 +18,19 @@ Phase 25 — Wasm InterOp (FFI):
 3. ~~25.1: wasm/load + wasm/fn~~ DONE
 4. ~~25.2: Memory + string interop~~ DONE
 5. ~~25.3: WASI Preview 1 + TinyGo~~ DONE
-6. 25.4: Host function injection — Clojure fns callable from Wasm
+6. ~~25.4: Host function injection~~ DONE
 7. 25.5: WIT parser + module objects — auto-resolve exports from WIT
 
 ## Current Task
 
-25.4: Host function injection — wasm/load with :imports option,
-register Clojure functions as Wasm host functions via callFnVal.
+25.5: WIT parser + module objects — parse WIT files to auto-resolve
+exports, type mappings, and create module objects with direct method calls.
 
 ## Previous Task
 
-25.3: WASI Preview 1 + TinyGo — wasm/load-wasi with 19 WASI functions,
-TinyGo go_math.go compiled, FFI examples (01_basic.clj, 02_tinygo.clj).
+25.4: Host function injection — wasm/load with :imports option (D77),
+global trampoline + context table, callFnVal dispatch,
+example 03_host_functions.clj with print_i32/print_str callbacks.
 
 ## Handover Notes
 
@@ -42,4 +43,5 @@ TinyGo go_math.go compiled, FFI examples (01_basic.clj, 02_tinygo.clj).
 - **zware**: Pure Zig Wasm runtime. WASI P1 built-in (19 functions).
 - **TinyGo**: 0.40.1 installed. go_math.go compiled to 09_go_math.wasm (20KB).
 - **D76**: Wasm Value variants — wasm_module + wasm_fn in Value union
-- **FFI examples**: examples/wasm/01_basic.clj, 02_tinygo.clj
+- **D77**: Host function injection — trampoline + context table (256 slots)
+- **FFI examples**: examples/wasm/01_basic.clj, 02_tinygo.clj, 03_host_functions.clj

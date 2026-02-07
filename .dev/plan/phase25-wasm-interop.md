@@ -51,11 +51,11 @@ API:
 - TinyGo go_math.go: add, multiply, fibonacci, factorial, gcd, is_prime
 - FFI examples: examples/wasm/01_basic.clj, examples/wasm/02_tinygo.clj
 
-### 25.4: Host Function Injection
+### 25.4: Host Function Injection [DONE]
 API:
   (wasm/load "plugin.wasm" {:imports {"env" {"log" (fn [n] (println n))}}})
-Files: src/wasm/host_functions.zig
-Uses callFnVal (D36) for Clojure->Wasm callbacks
+D77: Global trampoline + context table (256 slots), callFnVal dispatch.
+Example: examples/wasm/03_host_functions.clj
 
 ### 25.5: WIT Parser + Module Objects
 API:

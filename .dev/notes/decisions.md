@@ -1768,3 +1768,24 @@ Only mini-cleanup in Phase 24.5.
 2. GC integration via traceValue
 3. Type-safe signature checking at wasm/fn creation time
 4. Proper pr-str formatting (#<WasmModule>, #<WasmFn name>)
+
+## D77: Host Function Injection — Clojure→Wasm Callbacks
+
+**Date**: 2026-02-07
+**Context**: Phase 25.4 — Clojure functions callable from Wasm guest code
+
+**Decision**: Global trampoline + context table for host function injection.
+- `(wasm/load "m.wasm" {:imports {"env" {"log" clj-fn}}})` registers Clojure fns as Wasm imports
+- Global `host_contexts[256]` table maps context IDs to HostContext structs
+- Single `hostTrampoline(vm, ctx_id)` function handles all callbacks
+- Trampoline pops args from zware VM stack, calls `bootstrap.callFnVal`, pushes result
+
+**Design**:
+1. `HostContext` stores: Clojure fn Value, param/result counts, allocator
+2. `allocContext` assigns slots with wrap-around reuse
+3. `registerHostFunctions` scans module imports, matches against nested Clojure map
+4. `lookupImportFn` does two-level map lookup: `{module {func clj-fn}}`
+
+**Rationale**: Context table (vs closures) because zware's `exposeHostFunction` takes
+a function pointer + usize context — Zig closures cannot be passed as fn pointers.
+256 slots is sufficient for practical use (host modules rarely export >50 imports).
