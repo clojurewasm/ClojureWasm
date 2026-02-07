@@ -44,8 +44,8 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.2c — Modular dispatch + describe improvements. Replace if-else chain
-with comptime dispatch table. Unify handler signatures. Add tests.
+30.2d — CIDER end-to-end verification. Test with actual CIDER/Emacs
+connection. Fix protocol compatibility issues found during testing.
 
 ## Previous Task
 

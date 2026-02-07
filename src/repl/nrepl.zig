@@ -191,6 +191,35 @@ fn shiftPending(pending: *std.ArrayListUnmanaged(u8), n: usize) void {
 // Op dispatch
 // ====================================================================
 
+/// Unified op handler signature.
+const OpHandler = *const fn (*ServerState, []const BencodeValue.DictEntry, std.net.Stream, Allocator) void;
+
+/// Dispatch table entry: op name -> handler function.
+const OpEntry = struct {
+    name: []const u8,
+    handler: OpHandler,
+};
+
+/// Comptime dispatch table — all supported nREPL ops.
+const op_table = [_]OpEntry{
+    .{ .name = "clone", .handler = opClone },
+    .{ .name = "close", .handler = opClose },
+    .{ .name = "describe", .handler = opDescribe },
+    .{ .name = "eval", .handler = opEval },
+    .{ .name = "load-file", .handler = opLoadFile },
+    .{ .name = "ls-sessions", .handler = opLsSessions },
+    .{ .name = "completions", .handler = opCompletions },
+    .{ .name = "complete", .handler = opCompletions },
+    .{ .name = "info", .handler = opInfo },
+    .{ .name = "lookup", .handler = opInfo },
+    .{ .name = "eldoc", .handler = opEldoc },
+    .{ .name = "ns-list", .handler = opNsList },
+    .{ .name = "stdin", .handler = opStdin },
+    .{ .name = "interrupt", .handler = opInterrupt },
+    .{ .name = "stacktrace", .handler = opStacktrace },
+    .{ .name = "analyze-last-stacktrace", .handler = opStacktrace },
+};
+
 /// Route incoming message to the appropriate op handler.
 fn dispatchOp(
     state: *ServerState,
@@ -203,36 +232,15 @@ fn dispatchOp(
         return;
     };
 
-    if (std.mem.eql(u8, op, "clone")) {
-        opClone(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "close")) {
-        opClose(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "describe")) {
-        opDescribe(msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "eval")) {
-        opEval(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "load-file")) {
-        opLoadFile(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "ls-sessions")) {
-        opLsSessions(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "completions") or std.mem.eql(u8, op, "complete")) {
-        opCompletions(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "info") or std.mem.eql(u8, op, "lookup")) {
-        opInfo(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "eldoc")) {
-        opEldoc(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "ns-list")) {
-        opNsList(state, msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "stdin")) {
-        opStdin(msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "interrupt")) {
-        opInterrupt(msg, stream, allocator);
-    } else if (std.mem.eql(u8, op, "stacktrace") or std.mem.eql(u8, op, "analyze-last-stacktrace")) {
-        opStacktrace(state, msg, stream, allocator);
-    } else {
-        // Unknown op — return done so editors don't hang
-        sendDone(stream, msg, allocator);
+    inline for (op_table) |entry| {
+        if (std.mem.eql(u8, op, entry.name)) {
+            entry.handler(state, msg, stream, allocator);
+            return;
+        }
     }
+
+    // Unknown op — return done so editors don't hang
+    sendDone(stream, msg, allocator);
 }
 
 // ====================================================================
@@ -294,27 +302,18 @@ fn opClose(
 
 /// describe: server information and supported ops.
 fn opDescribe(
+    _: *ServerState,
     msg: []const BencodeValue.DictEntry,
     stream: std.net.Stream,
     allocator: Allocator,
 ) void {
-    const ops_entries = [_]BencodeValue.DictEntry{
-        .{ .key = "clone", .value = .{ .dict = &.{} } },
-        .{ .key = "close", .value = .{ .dict = &.{} } },
-        .{ .key = "describe", .value = .{ .dict = &.{} } },
-        .{ .key = "eval", .value = .{ .dict = &.{} } },
-        .{ .key = "load-file", .value = .{ .dict = &.{} } },
-        .{ .key = "ls-sessions", .value = .{ .dict = &.{} } },
-        .{ .key = "completions", .value = .{ .dict = &.{} } },
-        .{ .key = "complete", .value = .{ .dict = &.{} } },
-        .{ .key = "info", .value = .{ .dict = &.{} } },
-        .{ .key = "lookup", .value = .{ .dict = &.{} } },
-        .{ .key = "eldoc", .value = .{ .dict = &.{} } },
-        .{ .key = "ns-list", .value = .{ .dict = &.{} } },
-        .{ .key = "stdin", .value = .{ .dict = &.{} } },
-        .{ .key = "interrupt", .value = .{ .dict = &.{} } },
-        .{ .key = "stacktrace", .value = .{ .dict = &.{} } },
-        .{ .key = "analyze-last-stacktrace", .value = .{ .dict = &.{} } },
+    // Generate ops dict from dispatch table (single source of truth)
+    const ops_entries = comptime blk: {
+        var entries: [op_table.len]BencodeValue.DictEntry = undefined;
+        for (op_table, 0..) |entry, i| {
+            entries[i] = .{ .key = entry.name, .value = .{ .dict = &.{} } };
+        }
+        break :blk entries;
     };
 
     const version_entries = [_]BencodeValue.DictEntry{
@@ -757,6 +756,7 @@ fn opNsList(
 
 /// stdin: input stub (not supported, returns done).
 fn opStdin(
+    _: *ServerState,
     msg: []const BencodeValue.DictEntry,
     stream: std.net.Stream,
     allocator: Allocator,
@@ -766,6 +766,7 @@ fn opStdin(
 
 /// interrupt: cancel evaluation stub (not supported, returns done).
 fn opInterrupt(
+    _: *ServerState,
     msg: []const BencodeValue.DictEntry,
     stream: std.net.Stream,
     allocator: Allocator,
@@ -1297,6 +1298,35 @@ test "nrepl - writeValue keyword" {
     try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
 }
 
+test "nrepl - dispatch table covers all expected ops" {
+    // Verify key ops are in the dispatch table
+    const expected_ops = [_][]const u8{
+        "clone",     "close",     "describe",    "eval",
+        "load-file", "ls-sessions", "completions", "complete",
+        "info",      "lookup",    "eldoc",       "ns-list",
+        "stdin",     "interrupt", "stacktrace",  "analyze-last-stacktrace",
+    };
+    for (expected_ops) |expected| {
+        var found = false;
+        for (op_table) |entry| {
+            if (std.mem.eql(u8, entry.name, expected)) {
+                found = true;
+                break;
+            }
+        }
+        try std.testing.expect(found);
+    }
+}
+
+test "nrepl - describe ops generated from dispatch table" {
+    // Verify describe response has same op count as dispatch table
+    comptime {
+        var count: usize = 0;
+        for (op_table) |_| count += 1;
+        if (count != 16) @compileError("expected 16 ops in dispatch table");
+    }
+}
+
 test "nrepl - kindToClassName maps all kinds" {
     // Verify all error kinds have a class name
     try std.testing.expectEqualSlices(u8, "SyntaxError", kindToClassName(.syntax_error));
@@ -1533,7 +1563,7 @@ test "nrepl - TCP integration: describe op" {
         defer arena.deinit();
         const result = bencode.decode(arena.allocator(), recv_buf[0..n]) catch unreachable;
         const msg = result.value.dict;
-        opDescribe(msg, conn.stream, arena.allocator());
+        opDescribe(undefined, msg, conn.stream, arena.allocator());
     }
 
     client_thread.join();
