@@ -1557,55 +1557,55 @@ fn eqlOptionalStr(a: ?[]const u8, b: ?[]const u8) bool {
 // === Tests ===
 
 test "Value - nil creation" {
-    const v: Value = .nil;
+    const v = Value.nil_val;
     try testing.expect(v.isNil());
 }
 
 test "Value - bool creation" {
-    const t: Value = .{ .boolean = true };
-    const f: Value = .{ .boolean = false };
+    const t = Value.true_val;
+    const f = Value.false_val;
     try testing.expect(!t.isNil());
     try testing.expect(!f.isNil());
 }
 
 test "Value - integer creation" {
-    const v: Value = .{ .integer = 42 };
+    const v = Value.initInteger(42);
     try testing.expect(!v.isNil());
 }
 
 test "Value - float creation" {
-    const v: Value = .{ .float = 3.14 };
+    const v = Value.initFloat(3.14);
     try testing.expect(!v.isNil());
 }
 
 test "Value - string creation" {
-    const v: Value = .{ .string = "hello" };
+    const v = Value.initString("hello");
     try testing.expect(!v.isNil());
 }
 
 test "Value - symbol creation" {
-    const v: Value = .{ .symbol = .{ .name = "foo", .ns = null } };
+    const v = Value.initSymbol(.{ .name = "foo", .ns = null });
     try testing.expect(!v.isNil());
 }
 
 test "Value - keyword creation" {
-    const v: Value = .{ .keyword = .{ .name = "bar", .ns = null } };
+    const v = Value.initKeyword(.{ .name = "bar", .ns = null });
     try testing.expect(!v.isNil());
 }
 
 test "Value - char creation" {
-    const v: Value = .{ .char = 'A' };
+    const v = Value.initChar('A');
     try testing.expect(!v.isNil());
     try testing.expect(v.isTruthy());
 }
 
 test "Value - namespaced symbol" {
-    const v: Value = .{ .symbol = .{ .name = "inc", .ns = "clojure.core" } };
+    const v = Value.initSymbol(.{ .name = "inc", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
 test "Value - namespaced keyword" {
-    const v: Value = .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } };
+    const v = Value.initKeyword(.{ .name = "keys", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
@@ -1617,216 +1617,216 @@ fn expectFormat(expected: []const u8, v: Value) !void {
 }
 
 test "Value.formatPrStr - nil" {
-    try expectFormat("nil", .nil);
+    try expectFormat("nil", Value.nil_val);
 }
 
 test "Value.formatPrStr - boolean" {
-    try expectFormat("true", .{ .boolean = true });
-    try expectFormat("false", .{ .boolean = false });
+    try expectFormat("true", Value.true_val);
+    try expectFormat("false", Value.false_val);
 }
 
 test "Value.formatPrStr - integer" {
-    try expectFormat("42", .{ .integer = 42 });
-    try expectFormat("-1", .{ .integer = -1 });
-    try expectFormat("0", .{ .integer = 0 });
+    try expectFormat("42", Value.initInteger(42));
+    try expectFormat("-1", Value.initInteger(-1));
+    try expectFormat("0", Value.initInteger(0));
 }
 
 test "Value.formatPrStr - float" {
-    try expectFormat("3.14", .{ .float = 3.14 });
-    try expectFormat("0.0", .{ .float = 0.0 });
-    try expectFormat("-1.5", .{ .float = -1.5 });
-    try expectFormat("1.0", .{ .float = 1.0 });
+    try expectFormat("3.14", Value.initFloat(3.14));
+    try expectFormat("0.0", Value.initFloat(0.0));
+    try expectFormat("-1.5", Value.initFloat(-1.5));
+    try expectFormat("1.0", Value.initFloat(1.0));
 }
 
 test "Value.formatPrStr - char" {
-    try expectFormat("\\A", .{ .char = 'A' });
-    try expectFormat("\\newline", .{ .char = '\n' });
-    try expectFormat("\\space", .{ .char = ' ' });
-    try expectFormat("\\tab", .{ .char = '\t' });
+    try expectFormat("\\A", Value.initChar('A'));
+    try expectFormat("\\newline", Value.initChar('\n'));
+    try expectFormat("\\space", Value.initChar(' '));
+    try expectFormat("\\tab", Value.initChar('\t'));
 }
 
 test "Value.formatPrStr - string" {
-    try expectFormat("\"hello\"", .{ .string = "hello" });
-    try expectFormat("\"\"", .{ .string = "" });
+    try expectFormat("\"hello\"", Value.initString("hello"));
+    try expectFormat("\"\"", Value.initString(""));
 }
 
 test "Value.formatPrStr - symbol" {
-    try expectFormat("foo", .{ .symbol = .{ .name = "foo", .ns = null } });
-    try expectFormat("clojure.core/inc", .{ .symbol = .{ .name = "inc", .ns = "clojure.core" } });
+    try expectFormat("foo", Value.initSymbol(.{ .name = "foo", .ns = null }));
+    try expectFormat("clojure.core/inc", Value.initSymbol(.{ .name = "inc", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - keyword" {
-    try expectFormat(":bar", .{ .keyword = .{ .name = "bar", .ns = null } });
-    try expectFormat(":clojure.core/keys", .{ .keyword = .{ .name = "keys", .ns = "clojure.core" } });
+    try expectFormat(":bar", Value.initKeyword(.{ .name = "bar", .ns = null }));
+    try expectFormat(":clojure.core/keys", Value.initKeyword(.{ .name = "keys", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - list" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     const list = PersistentList{ .items = &items };
-    try expectFormat("(1 2 3)", .{ .list = &list });
+    try expectFormat("(1 2 3)", Value.initList(&list));
 }
 
 test "Value.formatPrStr - empty list" {
     const list = PersistentList{ .items = &.{} };
-    try expectFormat("()", .{ .list = &list });
+    try expectFormat("()", Value.initList(&list));
 }
 
 test "Value.formatPrStr - vector" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const vec = PersistentVector{ .items = &items };
-    try expectFormat("[1 2]", .{ .vector = &vec });
+    try expectFormat("[1 2]", Value.initVector(&vec));
 }
 
 test "Value.formatPrStr - empty vector" {
     const vec = PersistentVector{ .items = &.{} };
-    try expectFormat("[]", .{ .vector = &vec });
+    try expectFormat("[]", Value.initVector(&vec));
 }
 
 test "Value.formatPrStr - map" {
     const entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
-        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+        Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(.{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = PersistentArrayMap{ .entries = &entries };
-    try expectFormat("{:a 1, :b 2}", .{ .map = &m });
+    try expectFormat("{:a 1, :b 2}", Value.initMap(&m));
 }
 
 test "Value.formatPrStr - empty map" {
     const m = PersistentArrayMap{ .entries = &.{} };
-    try expectFormat("{}", .{ .map = &m });
+    try expectFormat("{}", Value.initMap(&m));
 }
 
 test "Value.formatPrStr - set" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const s = PersistentHashSet{ .items = &items };
-    try expectFormat("#{1 2}", .{ .set = &s });
+    try expectFormat("#{1 2}", Value.initSet(&s));
 }
 
 test "Value.formatPrStr - empty set" {
     const s = PersistentHashSet{ .items = &.{} };
-    try expectFormat("#{}", .{ .set = &s });
+    try expectFormat("#{}", Value.initSet(&s));
 }
 
 test "Value.eql - nil" {
-    try testing.expect((Value{ .nil = {} }).eql(.nil));
+    try testing.expect(Value.nil_val.eql(Value.nil_val));
 }
 
 test "Value.eql - boolean" {
-    const t: Value = .{ .boolean = true };
-    const f: Value = .{ .boolean = false };
-    try testing.expect(t.eql(.{ .boolean = true }));
-    try testing.expect(f.eql(.{ .boolean = false }));
+    const t = Value.true_val;
+    const f = Value.false_val;
+    try testing.expect(t.eql(Value.true_val));
+    try testing.expect(f.eql(Value.false_val));
     try testing.expect(!t.eql(f));
 }
 
 test "Value.eql - integer" {
-    const a: Value = .{ .integer = 42 };
-    try testing.expect(a.eql(.{ .integer = 42 }));
-    try testing.expect(!a.eql(.{ .integer = 43 }));
+    const a = Value.initInteger(42);
+    try testing.expect(a.eql(Value.initInteger(42)));
+    try testing.expect(!a.eql(Value.initInteger(43)));
 }
 
 test "Value.eql - float" {
-    const a: Value = .{ .float = 3.14 };
-    try testing.expect(a.eql(.{ .float = 3.14 }));
-    try testing.expect(!a.eql(.{ .float = 2.71 }));
+    const a = Value.initFloat(3.14);
+    try testing.expect(a.eql(Value.initFloat(3.14)));
+    try testing.expect(!a.eql(Value.initFloat(2.71)));
 }
 
 test "Value.eql - cross-type numeric" {
     // Clojure: (= 1 1.0) => true
-    const i: Value = .{ .integer = 1 };
-    const f: Value = .{ .float = 1.0 };
+    const i = Value.initInteger(1);
+    const f = Value.initFloat(1.0);
     try testing.expect(i.eql(f));
     try testing.expect(f.eql(i));
     // (= 1 1.5) => false
-    try testing.expect(!i.eql(.{ .float = 1.5 }));
+    try testing.expect(!i.eql(Value.initFloat(1.5)));
 }
 
 test "Value.eql - char" {
-    const a: Value = .{ .char = 'A' };
-    try testing.expect(a.eql(.{ .char = 'A' }));
-    try testing.expect(!a.eql(.{ .char = 'B' }));
+    const a = Value.initChar('A');
+    try testing.expect(a.eql(Value.initChar('A')));
+    try testing.expect(!a.eql(Value.initChar('B')));
 }
 
 test "Value.eql - string" {
-    const a: Value = .{ .string = "hello" };
-    try testing.expect(a.eql(.{ .string = "hello" }));
-    try testing.expect(!a.eql(.{ .string = "world" }));
+    const a = Value.initString("hello");
+    try testing.expect(a.eql(Value.initString("hello")));
+    try testing.expect(!a.eql(Value.initString("world")));
 }
 
 test "Value.eql - symbol" {
-    const a: Value = .{ .symbol = .{ .name = "foo", .ns = null } };
-    try testing.expect(a.eql(.{ .symbol = .{ .name = "foo", .ns = null } }));
-    try testing.expect(!a.eql(.{ .symbol = .{ .name = "bar", .ns = null } }));
+    const a = Value.initSymbol(.{ .name = "foo", .ns = null });
+    try testing.expect(a.eql(Value.initSymbol(.{ .name = "foo", .ns = null })));
+    try testing.expect(!a.eql(Value.initSymbol(.{ .name = "bar", .ns = null })));
     // Namespaced vs non-namespaced
-    try testing.expect(!a.eql(.{ .symbol = .{ .name = "foo", .ns = "x" } }));
+    try testing.expect(!a.eql(Value.initSymbol(.{ .name = "foo", .ns = "x" })));
 }
 
 test "Value.eql - keyword" {
-    const a: Value = .{ .keyword = .{ .name = "k", .ns = "ns" } };
-    try testing.expect(a.eql(.{ .keyword = .{ .name = "k", .ns = "ns" } }));
-    try testing.expect(!a.eql(.{ .keyword = .{ .name = "k", .ns = null } }));
-    try testing.expect(!a.eql(.{ .keyword = .{ .name = "other", .ns = "ns" } }));
+    const a = Value.initKeyword(.{ .name = "k", .ns = "ns" });
+    try testing.expect(a.eql(Value.initKeyword(.{ .name = "k", .ns = "ns" })));
+    try testing.expect(!a.eql(Value.initKeyword(.{ .name = "k", .ns = null })));
+    try testing.expect(!a.eql(Value.initKeyword(.{ .name = "other", .ns = "ns" })));
 }
 
 test "Value.eql - list" {
-    const items_a = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
-    const items_b = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
-    const items_c = [_]Value{ .{ .integer = 1 }, .{ .integer = 3 } };
+    const items_a = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    const items_b = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    const items_c = [_]Value{ Value.initInteger(1), Value.initInteger(3) };
     const la = PersistentList{ .items = &items_a };
     const lb = PersistentList{ .items = &items_b };
     const lc = PersistentList{ .items = &items_c };
-    try testing.expect((Value{ .list = &la }).eql(.{ .list = &lb }));
-    try testing.expect(!(Value{ .list = &la }).eql(.{ .list = &lc }));
+    try testing.expect(Value.initList(&la).eql(Value.initList(&lb)));
+    try testing.expect(!Value.initList(&la).eql(Value.initList(&lc)));
 }
 
 test "Value.eql - list/vector sequential equality" {
     // Clojure: (= '(1 2) [1 2]) => true
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const lst = PersistentList{ .items = &items };
     const vec = PersistentVector{ .items = &items };
-    try testing.expect((Value{ .list = &lst }).eql(.{ .vector = &vec }));
-    try testing.expect((Value{ .vector = &vec }).eql(.{ .list = &lst }));
+    try testing.expect(Value.initList(&lst).eql(Value.initVector(&vec)));
+    try testing.expect(Value.initVector(&vec).eql(Value.initList(&lst)));
 }
 
 test "Value.eql - vector" {
-    const items_a = [_]Value{ .{ .integer = 1 } };
-    const items_b = [_]Value{ .{ .integer = 1 } };
+    const items_a = [_]Value{Value.initInteger(1)};
+    const items_b = [_]Value{Value.initInteger(1)};
     const empty = [_]Value{};
     const va = PersistentVector{ .items = &items_a };
     const vb = PersistentVector{ .items = &items_b };
     const ve = PersistentVector{ .items = &empty };
-    try testing.expect((Value{ .vector = &va }).eql(.{ .vector = &vb }));
-    try testing.expect(!(Value{ .vector = &va }).eql(.{ .vector = &ve }));
+    try testing.expect(Value.initVector(&va).eql(Value.initVector(&vb)));
+    try testing.expect(!Value.initVector(&va).eql(Value.initVector(&ve)));
 }
 
 test "Value.eql - map" {
-    const entries_a = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 } };
-    const entries_b = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 } };
-    const entries_c = [_]Value{ .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 2 } };
+    const entries_a = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_b = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_c = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(2) };
     const ma = PersistentArrayMap{ .entries = &entries_a };
     const mb = PersistentArrayMap{ .entries = &entries_b };
     const mc = PersistentArrayMap{ .entries = &entries_c };
-    try testing.expect((Value{ .map = &ma }).eql(.{ .map = &mb }));
-    try testing.expect(!(Value{ .map = &ma }).eql(.{ .map = &mc }));
+    try testing.expect(Value.initMap(&ma).eql(Value.initMap(&mb)));
+    try testing.expect(!Value.initMap(&ma).eql(Value.initMap(&mc)));
 }
 
 test "Value.eql - set" {
-    const items_a = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
-    const items_b = [_]Value{ .{ .integer = 2 }, .{ .integer = 1 } };
-    const items_c = [_]Value{ .{ .integer = 1 }, .{ .integer = 3 } };
+    const items_a = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    const items_b = [_]Value{ Value.initInteger(2), Value.initInteger(1) };
+    const items_c = [_]Value{ Value.initInteger(1), Value.initInteger(3) };
     const sa = PersistentHashSet{ .items = &items_a };
     const sb = PersistentHashSet{ .items = &items_b };
     const sc = PersistentHashSet{ .items = &items_c };
-    try testing.expect((Value{ .set = &sa }).eql(.{ .set = &sb }));
-    try testing.expect(!(Value{ .set = &sa }).eql(.{ .set = &sc }));
+    try testing.expect(Value.initSet(&sa).eql(Value.initSet(&sb)));
+    try testing.expect(!Value.initSet(&sa).eql(Value.initSet(&sc)));
 }
 
 test "Value.eql - different types" {
     // Different types are never equal (except int/float)
-    const nil_v: Value = .nil;
-    const int_v: Value = .{ .integer = 0 };
-    const bool_v: Value = .{ .boolean = false };
-    const str_v: Value = .{ .string = "nil" };
+    const nil_v = Value.nil_val;
+    const int_v = Value.initInteger(0);
+    const bool_v = Value.false_val;
+    const str_v = Value.initString("nil");
     try testing.expect(!nil_v.eql(int_v));
     try testing.expect(!nil_v.eql(bool_v));
     try testing.expect(!nil_v.eql(str_v));
@@ -1835,36 +1835,36 @@ test "Value.eql - different types" {
 
 test "Value - fn_val creation" {
     const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
-    const v: Value = .{ .fn_val = &fn_obj };
+    const v = Value.initFn(&fn_obj);
     try testing.expect(!v.isNil());
     try testing.expect(v.isTruthy());
 }
 
 test "Value.formatPrStr - fn_val" {
     const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
-    try expectFormat("#<fn>", .{ .fn_val = &fn_obj });
+    try expectFormat("#<fn>", Value.initFn(&fn_obj));
 }
 
 test "Value.eql - fn_val identity" {
     const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
-    const v: Value = .{ .fn_val = &fn_obj };
+    const v = Value.initFn(&fn_obj);
     // fn values use identity equality (same pointer)
     try testing.expect(v.eql(v));
     // Different fn_val is not equal (distinct allocation)
     var fn_obj2 = Fn{ .proto = undefined, .closure_bindings = null };
-    try testing.expect(!v.eql(.{ .fn_val = &fn_obj2 }));
+    try testing.expect(!v.eql(Value.initFn(&fn_obj2)));
 }
 
 test "Value - isTruthy" {
-    const nil_val: Value = .nil;
-    const false_val: Value = .{ .boolean = false };
-    const true_val: Value = .{ .boolean = true };
-    const zero_val: Value = .{ .integer = 0 };
-    const empty_str: Value = .{ .string = "" };
-    try testing.expect(!nil_val.isTruthy());
-    try testing.expect(!false_val.isTruthy());
-    try testing.expect(true_val.isTruthy());
-    try testing.expect(zero_val.isTruthy());
+    const nil_v = Value.nil_val;
+    const false_v = Value.false_val;
+    const true_v = Value.true_val;
+    const zero_v = Value.initInteger(0);
+    const empty_str = Value.initString("");
+    try testing.expect(!nil_v.isTruthy());
+    try testing.expect(!false_v.isTruthy());
+    try testing.expect(true_v.isTruthy());
+    try testing.expect(zero_v.isTruthy());
     try testing.expect(empty_str.isTruthy());
 }
 
@@ -1876,39 +1876,39 @@ fn expectFormatStr(expected: []const u8, v: Value) !void {
 }
 
 test "Value.formatStr - nil is empty string" {
-    try expectFormatStr("", .nil);
+    try expectFormatStr("", Value.nil_val);
 }
 
 test "Value.formatStr - string without quotes" {
-    try expectFormatStr("hello", .{ .string = "hello" });
+    try expectFormatStr("hello", Value.initString("hello"));
 }
 
 test "Value.formatStr - char as literal" {
-    try expectFormatStr("A", .{ .char = 'A' });
-    try expectFormatStr("\n", .{ .char = '\n' });
+    try expectFormatStr("A", Value.initChar('A'));
+    try expectFormatStr("\n", Value.initChar('\n'));
 }
 
 test "Value.formatStr - other types same as formatPrStr" {
-    try expectFormatStr("42", .{ .integer = 42 });
-    try expectFormatStr("true", .{ .boolean = true });
-    try expectFormatStr("3.14", .{ .float = 3.14 });
-    try expectFormatStr(":foo", .{ .keyword = .{ .name = "foo", .ns = null } });
+    try expectFormatStr("42", Value.initInteger(42));
+    try expectFormatStr("true", Value.true_val);
+    try expectFormatStr("3.14", Value.initFloat(3.14));
+    try expectFormatStr(":foo", Value.initKeyword(.{ .name = "foo", .ns = null }));
 }
 
 test "Value - atom creation and formatPrStr" {
-    var a = Atom{ .value = .{ .integer = 42 } };
-    const v: Value = .{ .atom = &a };
+    var a = Atom{ .value = Value.initInteger(42) };
+    const v = Value.initAtom(&a);
     try testing.expect(!v.isNil());
     try testing.expect(v.isTruthy());
     try expectFormat("#<atom 42>", v);
 }
 
 test "Value.eql - atom identity" {
-    var a = Atom{ .value = .{ .integer = 42 } };
-    const v: Value = .{ .atom = &a };
+    var a = Atom{ .value = Value.initInteger(42) };
+    const v = Value.initAtom(&a);
     try testing.expect(v.eql(v));
-    var b = Atom{ .value = .{ .integer = 42 } };
-    try testing.expect(!v.eql(.{ .atom = &b }));
+    var b = Atom{ .value = Value.initInteger(42) };
+    try testing.expect(!v.eql(Value.initAtom(&b)));
 }
 
 test "Value.formatPrStr - var_ref" {
@@ -1916,7 +1916,7 @@ test "Value.formatPrStr - var_ref" {
         .sym = .{ .ns = null, .name = "foo" },
         .ns_name = "user",
     };
-    try expectFormat("#'user/foo", .{ .var_ref = &the_var });
+    try expectFormat("#'user/foo", Value.initVarRef(&the_var));
 }
 
 test "Value.eql - var_ref identity" {
@@ -1924,13 +1924,13 @@ test "Value.eql - var_ref identity" {
         .sym = .{ .ns = null, .name = "foo" },
         .ns_name = "user",
     };
-    const v: Value = .{ .var_ref = &the_var };
+    const v = Value.initVarRef(&the_var);
     try testing.expect(v.eql(v));
     var other_var = Var{
         .sym = .{ .ns = null, .name = "foo" },
         .ns_name = "user",
     };
-    try testing.expect(!v.eql(.{ .var_ref = &other_var }));
+    try testing.expect(!v.eql(Value.initVarRef(&other_var)));
 }
 
 // === Value Accessor API Tests (Phase 27) ===
