@@ -115,7 +115,7 @@ pub const LineEditor = struct {
             .env = env,
             .allocator = allocator,
             .prompt = "user=> ",
-            .cont_prompt = "     | ",
+            .cont_prompt = "",
             .prev_rendered_lines = 0,
         };
         self.resolveHistoryPath();
@@ -925,7 +925,10 @@ pub const LineEditor = struct {
                         self.refresh();
                         // Brief pause (150ms)
                         std.posix.nanosleep(0, 150_000_000);
+                        // Restore cursor and re-render so prev_rendered_lines
+                        // matches the actual terminal cursor position.
                         self.pos = saved_pos;
+                        self.refresh();
                         return;
                     }
                 }
