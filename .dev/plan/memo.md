@@ -19,11 +19,12 @@ Phase 24.5 — Mini-Refactor (Pre-Wasm Cleanup):
 
 ## Current Task
 
-Phase 24.5 not yet started. Begin with 24.5.1.
+24.5.3: D3 violation audit — catalog all module-level mutable state.
 
 ## Previous Task
 
-24C.10: Collection constructor intrinsics — gc_stress 55->35ms (beats BB).
+24.5.2: Naming audit — conventions consistent. Import alias _mod suffix
+inconsistency noted (Phase 27 scope). No changes needed.
 
 ## Handover Notes
 
