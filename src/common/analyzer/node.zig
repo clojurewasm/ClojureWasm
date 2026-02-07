@@ -114,6 +114,7 @@ pub const DefNode = struct {
     is_private: bool = false,
     is_const: bool = false,
     doc: ?[]const u8 = null,
+    arglists: ?[]const u8 = null,
     source: SourceInfo,
 };
 

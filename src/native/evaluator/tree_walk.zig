@@ -732,9 +732,13 @@ pub const TreeWalk = struct {
         if (def_n.is_dynamic) v.dynamic = true;
         if (def_n.is_private) v.private = true;
 
+        // Propagate metadata from DefNode to Var
+        if (def_n.doc) |d| v.doc = d;
+        if (def_n.arglists) |a| v.arglists = a;
+
         // Set source location from DefNode
         if (def_n.source.line > 0) {
-            v.file = def_n.source.file orelse err_mod.getSourceFile();
+            v.file = def_n.source.file orelse err_mod.getSourceFile() orelse "NO_SOURCE_FILE";
             v.line = def_n.source.line;
             v.column = def_n.source.column;
         }

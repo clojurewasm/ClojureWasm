@@ -621,8 +621,9 @@ pub const Compiler = struct {
     }
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
-        // Push symbol name as constant, followed by source line and file
-        // Layout: constants[idx] = symbol, constants[idx+1] = line (int), constants[idx+2] = file (string)
+        // Push symbol name as constant, followed by metadata constants.
+        // Layout: constants[idx] = symbol, [idx+1] = line, [idx+2] = file,
+        //         [idx+3] = doc, [idx+4] = arglists
         const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.sym_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         _ = self.chunk.addConstant(Value.initInteger(@intCast(node.source.line))) catch return error.TooManyConstants;
@@ -631,6 +632,10 @@ pub const Compiler = struct {
         else
             Value.nil_val;
         _ = self.chunk.addConstant(file_val) catch return error.TooManyConstants;
+        const doc_val = if (node.doc) |d| Value.initString(self.allocator, d) else Value.nil_val;
+        _ = self.chunk.addConstant(doc_val) catch return error.TooManyConstants;
+        const arglists_val = if (node.arglists) |a| Value.initString(self.allocator, a) else Value.nil_val;
+        _ = self.chunk.addConstant(arglists_val) catch return error.TooManyConstants;
 
         // Compile init expression if present
         if (node.init) |init_node| {

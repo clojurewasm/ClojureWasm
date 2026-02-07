@@ -487,7 +487,8 @@ pub const VM = struct {
                 if (instr.op == .def_dynamic) v.dynamic = true;
                 if (instr.op == .def_private) v.private = true;
 
-                // Read source location from adjacent constants (set by compiler)
+                // Read metadata from adjacent constants (set by compiler)
+                // Layout: [base]=sym, [+1]=line, [+2]=file, [+3]=doc, [+4]=arglists
                 const base = instr.operand;
                 if (base + 2 < frame.constants.len) {
                     const line_val = frame.constants[base + 1];
@@ -496,9 +497,15 @@ pub const VM = struct {
                         const line_i = line_val.asInteger();
                         if (line_i > 0) {
                             v.line = @intCast(line_i);
-                            v.file = if (file_val.tag() == .string) file_val.asString() else null;
+                            v.file = if (file_val.tag() == .string) file_val.asString() else "NO_SOURCE_FILE";
                         }
                     }
+                }
+                if (base + 4 < frame.constants.len) {
+                    const doc_val = frame.constants[base + 3];
+                    const arglists_val = frame.constants[base + 4];
+                    if (doc_val.tag() == .string) v.doc = doc_val.asString();
+                    if (arglists_val.tag() == .string) v.arglists = arglists_val.asString();
                 }
 
                 try self.push(Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name }));

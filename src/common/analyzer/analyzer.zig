@@ -639,6 +639,7 @@ pub const Analyzer = struct {
         var is_dynamic = false;
         var is_private = false;
         var is_const = false;
+        var doc: ?[]const u8 = null;
 
         if (items[1].data == .symbol) {
             sym_name = items[1].data.symbol.name;
@@ -652,22 +653,27 @@ pub const Analyzer = struct {
                     return self.analysisError(.value_error, "def name must be a symbol", items[1]);
                 }
                 sym_name = wm_items[1].data.symbol.name;
-                // Parse metadata map for :dynamic, :private, :const
+                // Parse metadata map for :dynamic, :private, :const, :doc
                 if (wm_items[2].data == .map) {
                     const meta_entries = wm_items[2].data.map;
                     var mi: usize = 0;
                     while (mi + 1 < meta_entries.len) : (mi += 2) {
-                        if (meta_entries[mi].data == .keyword and
-                            meta_entries[mi + 1].data == .boolean and
-                            meta_entries[mi + 1].data.boolean)
-                        {
+                        if (meta_entries[mi].data == .keyword) {
                             const kw_name = meta_entries[mi].data.keyword.name;
-                            if (std.mem.eql(u8, kw_name, "dynamic")) {
-                                is_dynamic = true;
-                            } else if (std.mem.eql(u8, kw_name, "private")) {
-                                is_private = true;
-                            } else if (std.mem.eql(u8, kw_name, "const")) {
-                                is_const = true;
+                            if (meta_entries[mi + 1].data == .boolean and
+                                meta_entries[mi + 1].data.boolean)
+                            {
+                                if (std.mem.eql(u8, kw_name, "dynamic")) {
+                                    is_dynamic = true;
+                                } else if (std.mem.eql(u8, kw_name, "private")) {
+                                    is_private = true;
+                                } else if (std.mem.eql(u8, kw_name, "const")) {
+                                    is_const = true;
+                                }
+                            } else if (std.mem.eql(u8, kw_name, "doc") and
+                                meta_entries[mi + 1].data == .string)
+                            {
+                                doc = meta_entries[mi + 1].data.string;
                             }
                         }
                     }
@@ -684,6 +690,14 @@ pub const Analyzer = struct {
         else
             null;
 
+        // Extract arglists from fn init form for Var metadata.
+        var arglists: ?[]const u8 = null;
+        if (init_node) |in| {
+            if (in.* == .fn_node) {
+                arglists = buildArglistsStr(self.allocator, in.fn_node) catch null;
+            }
+        }
+
         const def_data = self.allocator.create(node_mod.DefNode) catch return error.OutOfMemory;
         def_data.* = .{
             .sym_name = sym_name,
@@ -691,6 +705,8 @@ pub const Analyzer = struct {
             .is_dynamic = is_dynamic,
             .is_private = is_private,
             .is_const = is_const,
+            .doc = doc,
+            .arglists = arglists,
             .source = self.sourceFromForm(form),
         };
 
@@ -2123,6 +2139,29 @@ pub const Analyzer = struct {
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .do_node = do_data };
         return n;
+    }
+
+    // === Helpers ===
+
+    /// Build Clojure-style arglists string from FnNode arities.
+    /// e.g. "([x] [x y])" for multi-arity, "([x y & more])" for variadic.
+    fn buildArglistsStr(allocator: Allocator, fn_node: *node_mod.FnNode) ![]const u8 {
+        var buf: std.ArrayList(u8) = .empty;
+        try buf.append(allocator, '(');
+        for (fn_node.arities, 0..) |arity, ai| {
+            if (ai > 0) try buf.append(allocator, ' ');
+            try buf.append(allocator, '[');
+            for (arity.params, 0..) |param, pi| {
+                if (pi > 0) try buf.append(allocator, ' ');
+                if (arity.variadic and pi == arity.params.len - 1) {
+                    try buf.appendSlice(allocator, "& ");
+                }
+                try buf.appendSlice(allocator, param);
+            }
+            try buf.append(allocator, ']');
+        }
+        try buf.append(allocator, ')');
+        return buf.items;
     }
 };
 

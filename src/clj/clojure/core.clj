@@ -38,12 +38,11 @@
         (if (seq acc) (reverse acc) nil))
       nil)))
 
-;; Full defn: strips docstring, attr-map, trailing attr-map
-;; UPSTREAM-DIFF: No arglists metadata, no inline support, no with-meta on name
+;; Full defn: propagates docstring via with-meta on name
+;; UPSTREAM-DIFF: No inline support, simplified attr-map handling
 (defmacro defn [name & fdecl]
-  (let [fdecl (if (string? (first fdecl))
-                (next fdecl)
-                fdecl)
+  (let [doc (when (string? (first fdecl)) (first fdecl))
+        fdecl (if doc (next fdecl) fdecl)
         fdecl (if (map? (first fdecl))
                 (next fdecl)
                 fdecl)
@@ -52,8 +51,11 @@
                 fdecl)
         fdecl (if (map? (last fdecl))
                 (butlast fdecl)
-                fdecl)]
-    `(def ~name (fn ~name ~@fdecl))))
+                fdecl)
+        def-name (if doc
+                   (list 'with-meta name {:doc doc})
+                   name)]
+    `(def ~def-name (fn ~name ~@fdecl))))
 
 (defn map
   ([f]
