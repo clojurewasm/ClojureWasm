@@ -1022,6 +1022,8 @@ fn writeValue(w: anytype, val: Value) void {
         },
         .chunk_buffer => w.print("#<ChunkBuffer>", .{}) catch {},
         .array_chunk => w.print("#<ArrayChunk>", .{}) catch {},
+        .wasm_module => w.print("#<WasmModule>", .{}) catch {},
+        .wasm_fn => |wf| w.print("#<WasmFn {s}>", .{wf.name}) catch {},
     }
 }
 

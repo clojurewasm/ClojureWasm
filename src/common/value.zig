@@ -559,6 +559,10 @@ pub const Value = union(enum) {
     chunk_buffer: *ChunkBuffer,
     array_chunk: *const ArrayChunk,
 
+    // Wasm InterOp (Phase 25)
+    wasm_module: *@import("../wasm/types.zig").WasmModule,
+    wasm_fn: *const @import("../wasm/types.zig").WasmFn,
+
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
@@ -868,6 +872,8 @@ pub const Value = union(enum) {
             },
             .chunk_buffer => try w.writeAll("#<ChunkBuffer>"),
             .array_chunk => try w.writeAll("#<ArrayChunk>"),
+            .wasm_module => try w.writeAll("#<WasmModule>"),
+            .wasm_fn => |wf| try w.print("#<WasmFn {s}>", .{wf.name}),
             .cons => |c| {
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
@@ -1005,6 +1011,8 @@ pub const Value = union(enum) {
             .chunked_cons => unreachable, // handled by eqlConsSeq above
             .chunk_buffer => |a| a == other.chunk_buffer, // identity equality
             .array_chunk => |a| a == other.array_chunk, // identity equality
+            .wasm_module => |a| a == other.wasm_module, // identity equality
+            .wasm_fn => |a| a == other.wasm_fn, // identity equality
         };
     }
 

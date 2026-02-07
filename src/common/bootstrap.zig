@@ -644,6 +644,7 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             if (args.len < 1) return error.TypeError;
             return if (s.contains(args[0])) args[0] else Value.nil;
         },
+        .wasm_fn => |wf| return wf.call(allocator, args),
         .var_ref => |v| return callFnVal(allocator, v.deref(), args),
         .protocol_fn => |pf| {
             if (args.len == 0) return error.ArityError;

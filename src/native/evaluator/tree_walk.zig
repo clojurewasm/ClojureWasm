@@ -305,6 +305,11 @@ pub const TreeWalk = struct {
                 // Var-as-IFn: (#'f x) => (f x)
                 return self.callValue(v.deref(), args);
             },
+            .wasm_fn => |wf| {
+                return wf.call(self.allocator, args) catch |e| {
+                    return @errorCast(e);
+                };
+            },
             else => return error.TypeError,
         };
     }
@@ -406,6 +411,24 @@ pub const TreeWalk = struct {
                 arg_vals[i] = try self.run(arg);
             }
             return self.callValue(derefed, arg_vals);
+        }
+
+        // Wasm function call
+        if (callee == .wasm_fn) {
+            const wf = callee.wasm_fn;
+            var wf_buf: [MAX_STACK_ARGS]Value = undefined;
+            const wf_heap: ?[]Value = if (call_n.args.len > MAX_STACK_ARGS)
+                (self.allocator.alloc(Value, call_n.args.len) catch return error.OutOfMemory)
+            else
+                null;
+            defer if (wf_heap) |ha| self.allocator.free(ha);
+            const wf_args = wf_heap orelse wf_buf[0..call_n.args.len];
+            for (call_n.args, 0..) |arg, i| {
+                wf_args[i] = try self.run(arg);
+            }
+            return wf.call(self.allocator, wf_args) catch |e| {
+                return @errorCast(e);
+            };
         }
 
         // Closure call
@@ -821,6 +844,8 @@ pub const TreeWalk = struct {
             .chunked_cons => "chunked_cons",
             .chunk_buffer => "chunk_buffer",
             .array_chunk => "array_chunk",
+            .wasm_module => "wasm_module",
+            .wasm_fn => "wasm_fn",
         };
     }
 

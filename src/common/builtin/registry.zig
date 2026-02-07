@@ -33,6 +33,7 @@ const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
 const math_mod = @import("math.zig");
+const wasm_builtins_mod = @import("../../wasm/builtins.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -181,6 +182,16 @@ pub fn registerBuiltins(env: *Env) !void {
     pi_var.bindRoot(.{ .float = math_mod.PI });
     const e_var = try math_ns.intern("E");
     e_var.bindRoot(.{ .float = math_mod.E });
+
+    // Register wasm namespace builtins (Phase 25)
+    const wasm_ns = try env.findOrCreateNamespace("wasm");
+    for (wasm_builtins_mod.builtins) |b| {
+        const v = try wasm_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(.{ .builtin_fn = f });
+        }
+    }
 
     env.current_ns = user_ns;
 }

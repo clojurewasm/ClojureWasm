@@ -1094,6 +1094,14 @@ pub const VM = struct {
                 self.stack[fn_idx] = method_fn;
                 return self.performCall(arg_count);
             },
+            .wasm_fn => |wf| {
+                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+                const result = wf.call(self.allocator, args) catch |e| {
+                    return @as(VMError, @errorCast(e));
+                };
+                self.sp = fn_idx;
+                try self.push(result);
+            },
             else => return error.TypeError,
         }
     }
@@ -1375,6 +1383,8 @@ fn valueTypeKey(val: Value) []const u8 {
         .chunked_cons => "chunked_cons",
         .chunk_buffer => "chunk_buffer",
         .array_chunk => "array_chunk",
+        .wasm_module => "wasm_module",
+        .wasm_fn => "wasm_fn",
     };
 }
 

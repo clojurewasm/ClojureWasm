@@ -1742,3 +1742,29 @@ Only mini-cleanup in Phase 24.5.
 
 **Phase 24.5 scope** (mini-refactor): dead code, naming, D3 audit, file size docs
 **Phase 27 scope** (full refactor): file splitting, D3 resolution, directory restructuring
+
+## D76: Wasm InterOp Value Variants — wasm_module + wasm_fn
+
+**Date**: 2026-02-07
+**Context**: Phase 25.1 — First-class Wasm values in ClojureWasm
+
+**Decision**: Add two new Value union variants: `wasm_module` and `wasm_fn`.
+- `wasm_module: *WasmModule` — heap-allocated, owns zware Store/Module/Instance
+- `wasm_fn: *const WasmFn` — bound export name + signature, callable via callFnVal
+
+**Wasm namespace**: `wasm` (not `clojure.wasm`), registered in registry.zig.
+- `(wasm/load "path.wasm")` => WasmModule
+- `(wasm/fn mod "name" {:params [:i32 :i32] :results [:i32]})` => WasmFn
+
+**Call dispatch**: WasmFn handled in 3 places:
+1. `bootstrap.callFnVal` — unified fallback
+2. `vm.performCall` — VM-specific fast path
+3. `tree_walk.runCall` + `tree_walk.callValue` — TreeWalk dispatch
+
+**Type conversion**: integer<->i32/i64, float<->f32/f64, boolean/nil->i32(0/1)
+
+**Rationale**: First-class Value variants (vs wrapping in maps) enable:
+1. Direct dispatch in switch statements (no map lookup overhead)
+2. GC integration via traceValue
+3. Type-safe signature checking at wasm/fn creation time
+4. Proper pr-str formatting (#<WasmModule>, #<WasmFn name>)

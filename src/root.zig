@@ -35,6 +35,7 @@ pub const bootstrap = @import("common/bootstrap.zig");
 pub const bencode = @import("repl/bencode.zig");
 pub const nrepl = @import("repl/nrepl.zig");
 pub const wasm_types = @import("wasm/types.zig");
+pub const wasm_builtins = @import("wasm/builtins.zig");
 
 test {
     _ = value;
@@ -71,4 +72,5 @@ test {
     _ = bencode;
     _ = nrepl;
     _ = wasm_types;
+    _ = wasm_builtins;
 }

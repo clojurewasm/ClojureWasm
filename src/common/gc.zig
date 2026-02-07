@@ -824,6 +824,10 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                 for (ac.array[ac.off..ac.end]) |item| traceValue(gc, item);
             }
         },
+
+        // Wasm InterOp — opaque native objects, not GC-traced
+        .wasm_module => |wm| gc.markPtr(wm),
+        .wasm_fn => |wf| gc.markPtr(wf),
     }
 }
 

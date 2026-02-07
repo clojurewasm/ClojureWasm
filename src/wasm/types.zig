@@ -80,6 +80,81 @@ pub const WasmModule = struct {
     }
 };
 
+/// A bound Wasm function — module ref + export name + signature.
+/// Returned by (wasm/fn mod "add" {:params [:i32 :i32] :results [:i32]}).
+/// Callable as a first-class Clojure function via callFnVal dispatch.
+pub const WasmFn = struct {
+    module: *WasmModule,
+    name: []const u8,
+    param_types: []const WasmValType,
+    result_types: []const WasmValType,
+
+    /// Call this Wasm function with Clojure Value arguments.
+    /// Converts Value args to u64[], invokes via zware, converts results back.
+    pub fn call(self: *const WasmFn, allocator: Allocator, args: []const Value) !Value {
+        if (args.len != self.param_types.len)
+            return error.ArityError;
+
+        // Convert Clojure Values to u64 args
+        var wasm_args: [16]u64 = undefined;
+        for (args, 0..) |arg, i| {
+            wasm_args[i] = try valueToWasm(arg, self.param_types[i]);
+        }
+
+        // Invoke
+        var wasm_results: [4]u64 = undefined;
+        try self.module.invoke(
+            self.name,
+            wasm_args[0..args.len],
+            wasm_results[0..self.result_types.len],
+        );
+
+        // Convert results back to Clojure Values
+        if (self.result_types.len == 0) return Value.nil;
+        return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
+    }
+};
+
+const Value = @import("../common/value.zig").Value;
+
+/// Convert a Clojure Value to a Wasm u64 based on the expected type.
+fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
+    return switch (wasm_type) {
+        .i32 => switch (val) {
+            .integer => |n| @bitCast(@as(i64, @intCast(@as(i32, @intCast(n))))),
+            .boolean => |b| if (b) @as(u64, 1) else 0,
+            .nil => 0,
+            else => return error.TypeError,
+        },
+        .i64 => switch (val) {
+            .integer => |n| @bitCast(n),
+            .boolean => |b| if (b) @as(u64, 1) else 0,
+            .nil => 0,
+            else => return error.TypeError,
+        },
+        .f32 => switch (val) {
+            .float => |f| @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(f))))),
+            .integer => |n| @as(u64, @as(u32, @bitCast(@as(f32, @floatFromInt(n))))),
+            else => return error.TypeError,
+        },
+        .f64 => switch (val) {
+            .float => |f| @bitCast(f),
+            .integer => |n| @bitCast(@as(f64, @floatFromInt(n))),
+            else => return error.TypeError,
+        },
+    };
+}
+
+/// Convert a Wasm u64 result to a Clojure Value based on the result type.
+fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
+    return switch (wasm_type) {
+        .i32 => .{ .integer = @as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))) },
+        .i64 => .{ .integer = @bitCast(raw) },
+        .f32 => .{ .float = @as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw))))) },
+        .f64 => .{ .float = @bitCast(raw) },
+    };
+}
+
 // === Tests ===
 
 const testing = std.testing;

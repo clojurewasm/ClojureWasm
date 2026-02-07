@@ -239,6 +239,8 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .chunked_cons => "chunked-cons",
         .chunk_buffer => "chunk-buffer",
         .array_chunk => "array-chunk",
+        .wasm_module => "wasm-module",
+        .wasm_fn => "wasm-fn",
     };
     return Value{ .keyword = .{ .ns = null, .name = name } };
 }
@@ -344,6 +346,8 @@ pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
         .chunked_cons => "chunked_cons",
         .chunk_buffer => "chunk_buffer",
         .array_chunk => "array_chunk",
+        .wasm_module => "wasm_module",
+        .wasm_fn => "wasm_fn",
     } };
     return Value{ .boolean = protocol.impls.get(type_key) != null };
 }
