@@ -28,6 +28,11 @@ Check at session start for items that become actionable.
 | F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | ~~F97~~ | ~~GC double-free in sieve benchmark~~    | Resolved: stack overflow from deep lazy-seq realization (512MB stack + meta tracing fix) |
 | F98 | fib_recursive ReleaseFast anomaly            | 487ms Release > 205ms Debug — investigate Zig optimizer interaction |
-| F99 | Iterative lazy-seq realization engine       | D74 filter chain collapsing fixes sieve (168 nested filters → flat array). General realize→realizeMeta→seqFn recursion still exists for non-filter cases. Phase 25 (Wasm) may need heap-based work stack for deep map/take chains. |
+| F99 | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. **Critical for Phase 26** (Wasm ~1MB stack). See optimization-backlog.md |
+| F101 | into() transient optimization              | into uses reduce+conj, could use transient. See optimization-backlog.md   |
+| F102 | map/filter chunked processing              | chunk.zig infra exists, map/filter don't use it. See optimization-backlog.md |
+| F103 | Escape analysis (local scope skip GC)      | Compiler detects local-only Values, skip GC tracking                       |
+| F104 | Profile-guided optimization (extend IC)    | Extend inline caching beyond monomorphic                                   |
+| F105 | JIT compilation                            | Future major phase — trace-based or method-based. See optimization-backlog.md |
 | ~~F100~~ | ~~nested_update regression from hot bootstrap~~ | Resolved: adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms (24C.5c) |
 | ~~F96~~ | ~~VM protocol compilation~~             | Done: defprotocol/extend-type in compiler.zig + vm.zig + bootstrap.zig |

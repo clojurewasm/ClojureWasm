@@ -207,3 +207,11 @@ The concern about JIT incompatibility applies to JVM's NaN boxing, not wasm.
 Wasm has ~1MB stack. Current realize→realizeMeta→seqFn mutual recursion
 uses ~381KB/frame (Debug). Must convert to heap-based work stack before wasm_rt.
 This is a portable optimization — benefits native too (removes 512MB stack hack).
+
+### Phase 24 Complete — Final Summary (2026-02-07)
+
+CW beats Babashka on 19/20 benchmarks (1 tied: nested_update +/-1ms).
+Full optimization catalog: .dev/notes/optimization-catalog.md
+Deferred items: .dev/notes/optimization-backlog.md
+Future optimization IDs: F101-F105 (see backlog for prioritized items).
+Key decisions: D72 (NaN boxing), D73 (two-phase bootstrap), D74 (filter chain collapsing).
