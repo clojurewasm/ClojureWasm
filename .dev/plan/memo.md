@@ -15,7 +15,7 @@ Session handover document. Read at session start.
 Phase 26.R — wasm_rt Research:
 1. ~~26.R.1: Compile Probe~~ DONE
 2. ~~26.R.2: Code Organization Strategy~~ DONE
-3. 26.R.3: Allocator and GC Strategy
+3. ~~26.R.3: Allocator and GC Strategy~~ DONE
 4. 26.R.4: Stack Depth and F99 Assessment
 5. 26.R.5: Backend Selection
 6. 26.R.6: Modern Wasm Spec Assessment
@@ -23,12 +23,12 @@ Phase 26.R — wasm_rt Research:
 
 ## Current Task
 
-26.R.3: Allocator and GC Strategy — MarkSweepGc on wasm32-wasi feasibility.
+26.R.4: Stack Depth and F99 Assessment — is iterative lazy-seq a prerequisite?
 
 ## Previous Task
 
-26.R.2: Code Organization Strategy — D78: separate main_wasm.zig entry +
-~12 comptime branches in 5 files. No wasm_rt/ directory needed.
+26.R.3: Allocator and GC Strategy — MarkSweepGc works on wasm32-wasi as-is.
+GPA→WasmPageAllocator validated. WasmGC deferred (Zig can't emit).
 
 ## Handover Notes
 

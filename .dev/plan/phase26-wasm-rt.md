@@ -136,7 +136,7 @@ Minimal wasm32-wasi binary compiled and ran on wasmtime 41.0.0:
 |----------|-------|-------|
 | (a) Conditional compile | 4 | system.zig, main.zig (FILENO), root.zig, file_io.zig (already works) |
 | (b) Needs abstraction | 2 | bootstrap.zig, eval_engine.zig |
-| (c) Needs removal | 3 | wasm/*, nrepl |
+| (c) Needs removal | 3 | wasm/\*, nrepl |
 
 **Total files needing changes**: 7 (out of ~40 source files)
 **Critical blockers**: E5 (bootstrap→native) and E6 (eval_engine→native)
@@ -219,3 +219,82 @@ const wasm_exe = b.addExecutable(.{
 });
 // No zware dep for wasm_exe (wasm/ namespace excluded)
 ```
+
+---
+
+## Section 3: Allocator and GC Strategy (26.R.3)
+
+### Question: Does MarkSweepGc work on wasm32-wasi?
+
+**Answer: Yes, as-is. No changes needed.**
+
+### Analysis
+
+#### GPA (GeneralPurposeAllocator) on WASI
+
+PoC validated in 26.R.1:
+```zig
+var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+```
+GPA on wasm32-wasi is backed by `WasmPageAllocator` (via `std.heap.page_allocator`).
+WasmPageAllocator calls `memory.grow` for new pages. Tested and working on wasmtime 41.
+
+#### MarkSweepGc Architecture
+
+MarkSweepGc (gc.zig, D69) wraps a backing allocator:
+- `init(backing: std.mem.Allocator)` — takes any allocator
+- Allocation tracking: `AutoArrayHashMapUnmanaged(usize, AllocInfo)`
+- Mark: `markPtr()`, `markAndCheck()`, `markSlice()` via address lookup
+- Sweep: iterate tracked allocations, free unmarked
+- Free-pool recycling (24C.5): dead allocations cached for O(1) reuse
+
+**All platform-independent** — uses only `std.mem.Allocator` interface.
+
+#### Wasm Memory Grows Only
+
+Wasm linear memory can only grow (via `memory.grow`), never shrink. Impact:
+
+| GC Operation | Wasm Behavior | Acceptable? |
+|-------------|--------------|-------------|
+| Allocate | memory.grow if needed | Yes |
+| Free (to GPA) | GPA marks page as available | Yes (reused internally) |
+| Free (pool) | Recycled in-process | Yes (no OS interaction) |
+| Shrink memory | **Not possible** | N/A — MarkSweepGc doesn't shrink |
+
+Mark-sweep + free-pool recycling is actually ideal for Wasm:
+freed blocks go back to free pools → reused on next allocation.
+Memory watermark grows but usable memory stays bounded.
+
+#### WasmGC Feasibility
+
+**Can Zig 0.15.2 emit WasmGC instructions?** No.
+- Zig emits linear-memory Wasm only (via LLVM wasm32 backend)
+- WasmGC requires `struct.new`, `array.new`, `i31ref` etc. — not in LLVM's wasm backend
+- Languages that use WasmGC (Kotlin/Wasm, Dart/Wasm, Go via go-wasm) all have custom compilers
+- Dynamic languages on Wasm (Python/Wasm = CPython, Ruby/Wasm = CRuby) compile to
+  linear memory with self-managed GC — same approach as ClojureWasm
+
+**Decision: MarkSweepGc as-is for MVP. WasmGC = future phase (requires custom Wasm codegen).**
+
+#### Memory Budget Estimate
+
+| Component | Native (typical) | WASI (estimated) |
+|-----------|-----------------|------------------|
+| GPA overhead | ~few KB | Same |
+| MarkSweepGc HashMap | ~200KB for 10K allocations | Same |
+| Free pools | up to 16 pools × 4096 entries | Same |
+| core.clj bootstrap | ~2-5MB live values | Same |
+| User program | Varies | Same |
+
+Total expected: **5-20MB** for typical programs. Well within Wasm defaults
+(wasmtime default max memory = 4GB).
+
+### Decision Summary
+
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| Backing allocator | GPA → WasmPageAllocator | Works as-is (PoC validated) |
+| GC strategy | MarkSweepGc unchanged | Platform-independent code |
+| Memory shrink | Not needed | Free-pool recycling handles reuse |
+| WasmGC | Deferred (no Zig support) | Requires custom Wasm codegen |
+| Threshold tuning | May need lower initial (256KB?) | Wasm programs typically smaller |

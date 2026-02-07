@@ -184,12 +184,14 @@ Fallback: wit-parser C FFI if implementation cost exceeds estimates
 
 ## SS5. GC, Bytecode, and Optimization
 
-### Current State
+### Current State (updated 2026-02-07)
 
-- **GC**: Arena stub (D2) — allocate only, bulk free at exit. GcStrategy
-  trait in place for future swap-in of real GC.
-- **Bytecode**: 30+ opcodes, 3-byte fixed instructions (u8 + u16 operand)
-- **Bootstrap**: Hybrid (D18) — core.clj via TreeWalk, user code via VM.
+- **GC**: MarkSweepGc (D69) — tracks allocations in HashMap, mark-sweep
+  with free-pool recycling (24C.5). GcStrategy vtable for future swap.
+  **Works on wasm32-wasi as-is** (GPA→WasmPageAllocator, PoC validated).
+- **Bytecode**: 50+ opcodes, 3-byte fixed instructions (u8 + u16 operand)
+- **Bootstrap**: Hybrid (D73) — core.clj via TreeWalk, hot functions
+  recompiled to VM bytecode for reduce loops (~200x speedup).
   AOT (@embedFile) deferred (F7: macro serialization blocker).
 
 ### Beta GC Lessons (preserved for future real GC implementation)
@@ -343,13 +345,13 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 | tail_call       | No (opt-in)       | **Required for TCO**       |
 | simd128         | No (opt-in)       | String/collection speedup  |
 
-**GC implications for wasm_rt**:
+**GC implications for wasm_rt** (updated 2026-02-07 per 26.R.3):
 
-- Zig's Allocator abstraction means most code is shared (page_allocator
-  auto-selects WasmAllocator on wasm targets)
-- Semi-space GC won't work (Wasm can't shrink memory) — use mark-sweep
-- NaN boxing not beneficial (Wasm JIT doesn't understand it) — use tagged union
-- GcStrategy trait absorbs these differences via comptime switching
+- MarkSweepGc works on wasm32-wasi as-is (GPA→WasmPageAllocator, PoC validated)
+- Free-pool recycling ideal for Wasm (memory grows only, never shrinks)
+- WasmGC not usable: Zig 0.15.2 can't emit WasmGC instructions (struct.new, i31ref)
+- Dynamic languages on Wasm (Python, Ruby) all use self-managed GC in linear memory
+- No comptime GC switching needed for MVP — same MarkSweepGc on both tracks
 
 ---
 
