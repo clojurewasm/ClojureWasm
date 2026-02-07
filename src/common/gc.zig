@@ -127,25 +127,53 @@ pub const ArenaGc = struct {
 
 /// Mark-sweep GC — tracks allocations, marks live objects, sweeps dead ones.
 ///
-/// Wraps a backing allocator: every allocation is tracked in a HashMap.
-/// Mark phase: callers mark live pointers via markPtr().
-/// Sweep phase: all unmarked allocations are freed through the backing allocator.
+/// Wraps a backing allocator: every allocation is tracked in a HashMap keyed
+/// by address. The mark-sweep cycle works in two phases:
+///   1. Mark: VM/TreeWalk provides a RootSet; traceRoots walks all reachable
+///      Values and calls markPtr() on each heap pointer.
+///   2. Sweep: all unmarked allocations are either recycled into free pools
+///      (24C.5) or freed through the backing allocator. Marked allocations
+///      have their mark bit reset for the next cycle.
+///
+/// Collection is triggered when bytes_allocated >= threshold. The threshold
+/// auto-grows (doubles) after collection if memory pressure remains high,
+/// avoiding excessive collection in allocation-heavy programs.
+///
+/// Three-allocator architecture (D69-D70):
+///   - GPA: infrastructure (never collected)
+///   - node_arena: AST nodes (freed per-eval)
+///   - GC allocator (this): runtime Values (mark-sweep collected)
 pub const MarkSweepGc = struct {
     backing: std.mem.Allocator,
     allocations: std.AutoArrayHashMapUnmanaged(usize, AllocInfo) = .empty,
     bytes_allocated: usize = 0,
     alloc_count: u64 = 0,
     collect_count: u64 = 0,
-    threshold: usize = 1024 * 1024, // 1MB default
+    threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
+
+    // --- Free-pool recycling (24C.5) ---
+    //
+    // Dead allocations from sweep are not immediately freed back to the OS.
+    // Instead, they are cached in per-(size, alignment) free pools. On the
+    // next allocation of the same size, the pool provides a recycled block
+    // in O(1) — a simple linked-list pop. This avoids the full GPA
+    // rawAlloc/rawFree overhead (which includes page-level bookkeeping).
+    //
+    // The FreeNode struct is overlaid directly on the freed memory (intrusive
+    // linked list), so no extra allocation is needed to track free blocks.
+    //
+    // Impact: gc_stress 324ms -> 46ms (7x), nested_update 124ms -> 41ms (3x).
     free_pools: [MAX_FREE_POOLS]FreePool = [_]FreePool{.{}} ** MAX_FREE_POOLS,
     free_pool_count: u8 = 0,
 
-    /// Free-list node — overlaid on freed allocation memory.
+    /// Free-list node — overlaid directly on freed allocation memory.
+    /// The freed block must be >= @sizeOf(FreeNode) to be recyclable.
     const FreeNode = struct {
         next: ?*FreeNode,
     };
 
-    /// Per-(size, alignment) free pool for recycling dead allocations.
+    /// Per-(size, alignment) free pool — an intrusive singly-linked list.
+    /// Up to MAX_FREE_PER_POOL blocks cached per pool to bound memory use.
     const FreePool = struct {
         size: usize = 0,
         alignment: Alignment = .@"1",
@@ -153,8 +181,8 @@ pub const MarkSweepGc = struct {
         count: u32 = 0,
     };
 
-    const MAX_FREE_POOLS = 16;
-    const MAX_FREE_PER_POOL = 4096;
+    const MAX_FREE_POOLS = 16; // Up to 16 distinct (size, alignment) pairs
+    const MAX_FREE_PER_POOL = 4096; // Max cached blocks per pool
 
     pub const AllocInfo = struct {
         len: usize,
@@ -241,6 +269,12 @@ pub const MarkSweepGc = struct {
 
     /// Sweep all unmarked allocations, recycling to free pools or freeing.
     /// Marked allocations have their mark bit reset for the next cycle.
+    ///
+    /// For each dead allocation, we first try addToFreePool (O(1) intrusive
+    /// list push). If the pool is full or the block is too small, we fall back
+    /// to rawFree through the backing allocator. This two-tier approach keeps
+    /// the common allocation sizes (Value, LazySeq, Cons, etc.) in fast pools
+    /// while still freeing unusual-sized blocks properly.
     pub fn sweep(self: *MarkSweepGc) void {
         var freed_bytes: usize = 0;
         var freed_count: u64 = 0;
@@ -307,9 +341,17 @@ pub const MarkSweepGc = struct {
 
     // --- std.mem.Allocator VTable implementations ---
 
+    /// Allocator vtable entry: allocate memory, trying free-pool recycling first.
+    ///
+    /// Allocation strategy (fast path first):
+    ///   1. Scan free pools for exact (size, alignment) match → O(1) list pop
+    ///   2. Fall through to backing allocator → rawAlloc (page-level allocation)
+    ///
+    /// Recycled blocks are re-registered in the allocation HashMap so they
+    /// participate in future mark-sweep cycles normally.
     fn msAlloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
-        // Try free pool first — exact (size, alignment) match, O(1) pop
+        // Fast path: try free pool first — exact (size, alignment) match, O(1) pop
         for (self.free_pools[0..self.free_pool_count]) |*pool| {
             if (pool.size == len and pool.alignment == alignment) {
                 if (pool.head) |node| {

@@ -439,6 +439,19 @@ pub const Compiler = struct {
         return proto;
     }
 
+    /// Emit a function call, with intrinsic detection for known builtins.
+    ///
+    /// When the callee is a var_ref to a recognized core function, the compiler
+    /// emits direct opcodes instead of the general var_load + call sequence.
+    /// This eliminates namespace lookup and call frame setup at runtime:
+    ///
+    ///   General call:  var_load → push args → call → frame setup → dispatch
+    ///   Intrinsic:     push args → binary_op  (saves ~5 opcode dispatches)
+    ///
+    /// Three categories of intrinsics are recognized:
+    ///   1. Variadic arithmetic (+, -, *, /) — left-folded binary ops (Phase 3)
+    ///   2. Binary-only intrinsics (mod, rem, <, <=, >, >=, =, not=) (Phase 3)
+    ///   3. Collection constructors (hash-map, vector, hash-set, list) (24C.10)
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
         if (node.callee.* == .var_ref) {
             const name = node.callee.var_ref.name;
@@ -494,6 +507,8 @@ pub const Compiler = struct {
     }
 
     /// Emit variadic arithmetic (+, -, *, /) as sequences of binary opcodes.
+    /// Handles Clojure's special cases: (+) => 0, (*) => 1, (- x) => (0-x),
+    /// (/ x) => (1.0/x), and 2+ args are left-folded: (+ a b c) => ((a+b)+c).
     fn emitVariadicArith(self: *Compiler, op: chunk_mod.OpCode, name: []const u8, args: []const *Node) CompileError!void {
         const is_add = std.mem.eql(u8, name, "+");
         const is_mul = std.mem.eql(u8, name, "*");
@@ -585,9 +600,13 @@ pub const Compiler = struct {
 
     const CollectionOpInfo = struct {
         op: chunk_mod.OpCode,
+        /// Maps take pairs (k1,v1,k2,v2...) so operand = n_args/2.
         is_map: bool,
     };
 
+    /// Detect calls to collection constructor functions and map to direct opcodes.
+    /// (24C.10) — gc_stress creates 100K maps via (hash-map :a i :b ...); emitting
+    /// map_new directly saves a var_load + call frame per construction.
     fn collectionConstructorOp(name: []const u8) ?CollectionOpInfo {
         const map = .{
             .{ "hash-map", chunk_mod.OpCode.map_new, true },

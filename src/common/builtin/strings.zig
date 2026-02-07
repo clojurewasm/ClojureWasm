@@ -38,26 +38,36 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value{ .string = owned };
 }
 
+/// Convert a single value to its string representation.
+///
+/// Type-specific fast paths (24C.3): The generic path uses Writer.Allocating
+/// which involves dynamic buffer management (multiple alloc/realloc/free cycles).
+/// For common types (nil, string, boolean, integer, keyword), we bypass the
+/// writer entirely and use stack buffers or direct construction with a single
+/// allocation. This reduced string_ops from 398ms to 28ms (14x speedup), with
+/// system time dropping from 312ms to 2ms (allocator overhead eliminated).
 fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
     // Realize lazy seqs/cons before string conversion
     const v = try collections.realizeValue(allocator, val);
     switch (v) {
         .nil => return Value{ .string = "" },
-        .string => return v,
+        .string => return v, // Already a string — zero-copy return
         .boolean => |b| {
+            // Static literal + single dupe (no formatting overhead)
             const s: []const u8 = if (b) "true" else "false";
             const owned = try allocator.dupe(u8, s);
             return Value{ .string = owned };
         },
         .integer => |n| {
-            // Fast path: format into stack buffer, single allocation
+            // Stack buffer + single dupe: avoids Writer's alloc/realloc cycles
             var buf: [24]u8 = undefined;
             const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch unreachable;
             const owned = try allocator.dupe(u8, s);
             return Value{ .string = owned };
         },
         .keyword => |kw| {
-            // Fast path: build :ns/name or :name directly
+            // Direct construction: compute exact length, single alloc, @memcpy.
+            // Avoids Writer overhead for ":ns/name" or ":name" formatting.
             if (kw.ns) |ns| {
                 const len = 1 + ns.len + 1 + kw.name.len;
                 const owned = try allocator.alloc(u8, len);

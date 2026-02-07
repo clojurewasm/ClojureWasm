@@ -187,12 +187,34 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             return Value{ .list = new_list };
         },
         .vector => |vec| {
-            // Geometric growth: try in-place extension if gen matches
+            // Vector conj with geometric COW (Copy-on-Write) optimization (24C.4).
+            //
+            // Problem: Naive persistent vector conj copies the entire backing
+            // array on every append — O(n) per conj, O(n^2) for n conj's.
+            //
+            // Solution: Vectors carry a generation tag in a hidden slot at
+            // backing[_capacity]. The global _vec_gen_counter is monotonically
+            // increasing. When conj is called:
+            //
+            //   1. If _capacity > 0 and there's room (len < capacity):
+            //      Check if backing[_capacity].integer == vec._gen.
+            //      - Match: This vector owns the tail of the backing array.
+            //        Extend in-place (O(1)), bump the generation.
+            //      - Mismatch: Another vector branched from this backing.
+            //        Fall through to copy path.
+            //
+            //   2. Copy path: Allocate new backing with 2x capacity (geometric
+            //      growth), copy existing items, append new element.
+            //
+            // This gives O(1) amortized conj for sequential appends (the common
+            // case in reduce, into, etc.) while preserving persistent semantics
+            // when vectors are shared (branching triggers a fresh copy).
+            //
+            // Impact: vector_ops 180ms -> 14ms (13x), list_build 178ms -> 13ms (14x).
             if (vec._capacity > 0 and vec.items.len < vec._capacity) {
-                // Check generation tag stored in backing[_capacity]
                 const gen_slot = vec.items.ptr[vec._capacity];
                 if (gen_slot == .integer and gen_slot.integer == vec._gen) {
-                    // Extend in place — gen matches, no conflict
+                    // Gen match: extend in-place — this vector owns the tail
                     const mutable_ptr: [*]Value = @constCast(vec.items.ptr);
                     mutable_ptr[vec.items.len] = x;
                     collections_mod._vec_gen_counter += 1;
@@ -207,7 +229,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                     return Value{ .vector = new_vec };
                 }
             }
-            // Fall through: allocate new backing with geometric growth
+            // Gen mismatch or no capacity: allocate new backing with geometric growth
             const old_len = vec.items.len;
             const new_capacity = if (old_len < 4) 8 else old_len * 2;
             const backing = try allocator.alloc(Value, new_capacity + 1); // +1 for gen tag
@@ -2100,7 +2122,24 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // BuiltinDef table
 // ============================================================
 
-/// Helper: get path items from a value (vector fast path, list fallback).
+// ============================================================
+// Zig builtins for nested map operations (24C.9)
+// ============================================================
+//
+// get-in, assoc-in, update-in are implemented as Zig builtins that traverse
+// the path and rebuild the map structure in a single function, eliminating
+// per-level VM frame overhead. The Clojure versions require a recursive
+// function call per path segment, each pushing a new VM frame (~1KB).
+//
+// For a path of depth 3, the Clojure version pushes 3 VM frames with
+// associated stack manipulation; the Zig version does the same work in
+// a single native call with direct Zig recursion.
+//
+// Impact: nested_update 39ms -> 23ms (1.7x).
+
+/// Helper: extract path items from a value as a slice.
+/// Vectors and lists provide zero-copy access to their backing arrays;
+/// other seq types are materialized into a temporary slice.
 fn getPathItems(allocator: Allocator, ks: Value) anyerror![]const Value {
     return switch (ks) {
         .vector => |v| v.items,

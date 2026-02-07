@@ -50,16 +50,25 @@ const set_clj_source = @embedFile("../clj/clojure/set.clj");
 /// Embedded clojure/data.clj source (compiled into binary).
 const data_clj_source = @embedFile("../clj/clojure/data.clj");
 
-/// Hot core function definitions re-evaluated via VM compiler after bootstrap.
-/// Only the 1-arity (transducer) forms are overridden — other arities delegate
-/// to the original TreeWalk versions to minimize bytecode footprint.
-/// TreeWalk closures returned by transducer factories are ~200x slower when
-/// called from VM hot loops, so re-defining only the transducer path via VM
-/// ensures step functions are bytecode-compiled while keeping startup fast.
+/// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
+///
+/// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
+/// (~10ms). But this means transducer factories (map, filter, comp) return
+/// TreeWalk closures. When these closures are called from a VM reduce loop,
+/// each call goes through treewalkCallBridge — creating a new TreeWalk evaluator
+/// per invocation (~200x slower than native VM dispatch).
+///
+/// Solution: After TreeWalk bootstrap, re-define only the hot-path functions
+/// via the VM compiler. The transducer 1-arity forms (which return step functions
+/// used inside reduce) are bytecoded; other arities delegate to the original
+/// TreeWalk versions to minimize bytecode footprint and startup time.
+///
+/// Also includes get-in/assoc-in/update-in which delegate to Zig builtins
+/// (__zig-get-in, __zig-assoc-in, __zig-update-in) for single-call path traversal.
+///
+/// Impact: transduce 2134ms -> 15ms (142x).
 const hot_core_defs =
-    // Full redefine of map, filter, comp via VM compiler.
-    // TreeWalk closures returned by these transducer functions are ~200x slower
-    // when called from VM hot loops. Re-evaluating via VM produces bytecode closures.
+    // map, filter, comp: transducer arity returns bytecode closures.
     \\(defn filter
     \\  ([pred]
     \\   (fn [rf]
@@ -125,10 +134,19 @@ const hot_core_defs =
     \\  ([m ks f a b c & args] (apply __zig-update-in m ks f a b c args)))
 ;
 
-/// Load and evaluate core.clj in the given Env.
-/// Called after registerBuiltins to define core macros (defn, when, etc.).
-/// Temporarily switches to clojure.core namespace so macros are defined there,
-/// then re-refers them into user namespace.
+/// Load and evaluate core.clj in the given Env using two-phase bootstrap (D73).
+///
+/// Phase 1: Evaluate core.clj via TreeWalk for fast startup (~10ms).
+///   All macros, vars, and functions are defined as TreeWalk closures.
+///
+/// Phase 2: Re-compile hot-path transducer functions (map, filter, comp,
+///   get-in, assoc-in, update-in) via VM compiler. This produces bytecode
+///   closures that run ~200x faster in VM reduce loops than TreeWalk closures.
+///   Only the transducer arities are re-compiled; other arities keep their
+///   TreeWalk versions for minimal startup overhead.
+///
+/// Called after registerBuiltins. Temporarily switches to clojure.core namespace,
+/// then re-refers all bindings into user namespace.
 pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
 
@@ -566,19 +584,28 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
     return last_value;
 }
 
-/// Unified fn_val dispatch — single entry point for calling any fn_val.
+/// Unified fn_val dispatch — single entry point for calling any callable Value.
+///
 /// Routes by Fn.kind: treewalk closures go to TreeWalk, bytecode closures
-/// go to a new VM instance, builtin_fn is called directly.
+/// go to a VM instance, builtin_fn is called directly. Also handles
+/// multimethods, keywords-as-functions, maps/sets-as-functions, var derefs,
+/// and protocol dispatch.
 ///
 /// This replaces 5 separate dispatch mechanisms (D36/T10.4):
 ///   vm.zig, tree_walk.zig, atom.zig, value.zig, analyzer.zig
-/// all import bootstrap.callFnVal directly (no more callback wiring).
+/// all import bootstrap.callFnVal directly (no more callback wiring, ~180 lines saved).
+///
+/// Active VM bridge (24C.7): When a bytecode closure is called and an active
+/// VM exists (set via vm.zig's execute()), we reuse that VM's stack via
+/// callFunction() instead of creating a new VM instance (~500KB heap alloc).
+/// This is the critical path for fused reduce callbacks and makes deep
+/// predicate chains (sieve's 168 filters) feasible.
 pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     switch (fn_val) {
         .builtin_fn => |f| return f(allocator, args),
         .fn_val => |fn_obj| {
             if (fn_obj.kind == .bytecode) {
-                // Use active VM if available (avoids ~500KB heap allocation per call)
+                // Active VM bridge: reuse existing VM stack (avoids ~500KB heap alloc)
                 if (vm_mod.active_vm) |vm| {
                     return vm.callFunction(fn_val, args) catch |e| {
                         return @as(anyerror, @errorCast(e));

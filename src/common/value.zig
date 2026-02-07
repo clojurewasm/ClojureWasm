@@ -148,6 +148,12 @@ fn getPrintLevel() ?u32 {
 }
 
 /// Builtin function signature: allocator + args -> Value.
+///
+/// Core functions (first, rest, cons, conj, nth, count, etc.) are registered
+/// as BuiltinFn — a direct Zig function pointer. The VM calls these without
+/// var resolution or call frame setup, making them significantly faster than
+/// Clojure-defined functions for hot-path operations. ~60 core builtins use
+/// this mechanism.
 pub const BuiltinFn = *const fn (allocator: std.mem.Allocator, args: []const Value) anyerror!Value;
 
 /// Interned symbol reference.
@@ -224,16 +230,37 @@ pub const Protocol = struct {
     impls: *PersistentArrayMap,
 };
 
-/// Protocol method reference — dispatches on first arg type.
+/// Protocol method reference — dispatches on first arg's type key.
+///
+/// Monomorphic inline cache (24A.5): stores the last dispatched (type_key ->
+/// method) pair. When the same type is dispatched again (common in loops
+/// processing homogeneous collections), the full protocol resolution
+/// (impls map lookup + method_name lookup) is bypassed entirely.
+/// Cache check: pointer equality first (O(1)), string equality fallback.
 pub const ProtocolFn = struct {
     protocol: *Protocol,
     method_name: []const u8,
-    // Monomorphic inline cache (24A.5): caches last (type -> method) dispatch
     cached_type_key: ?[]const u8 = null,
     cached_method: Value = .nil,
 };
 
-/// MultiFn — multimethod with dispatch function.
+/// MultiFn — multimethod with dispatch function and 2-level cache.
+///
+/// Clojure multimethods dispatch by calling a dispatch function on the args,
+/// then looking up the result in the method table (with isa? hierarchy search).
+///
+/// Two-level monomorphic cache (24C.2):
+///   L1 (arg identity): If the first argument is the same object (pointer
+///       equality for heap types, value equality for primitives), the dispatch
+///       value hasn't changed — skip both dispatch fn call AND method lookup.
+///   L2 (dispatch value): If L1 misses but the computed dispatch value
+///       equals the cached one, skip findBestMethod + isa? search.
+///
+/// Also includes a keyword dispatch fast path: when dispatch_fn is a keyword
+/// (e.g. (defmulti foo :type)), map lookup is inlined instead of calling it
+/// as a function through the VM.
+///
+/// Impact: multimethod_dispatch 2053ms -> 14ms (147x).
 pub const MultiFn = struct {
     name: []const u8,
     dispatch_fn: Value,
@@ -244,11 +271,10 @@ pub const MultiFn = struct {
     /// Optional custom hierarchy Var (from :hierarchy option).
     /// When set, deref'd to get the hierarchy map instead of global-hierarchy.
     hierarchy_var: ?*Var = null,
-    // Monomorphic dispatch cache (24C.2): caches last dispatch lookup.
-    // Level 1: arg identity cache — skip dispatch fn call entirely
+    // Level 1 cache: arg identity (pointer/value hash)
     cached_arg_key: usize = 0,
     cached_arg_valid: bool = false,
-    // Level 2: dispatch-val cache — skip findBestMethod
+    // Level 2 cache: dispatch value -> method
     cached_dispatch_val: ?Value = null,
     cached_method: Value = .nil,
 
@@ -279,25 +305,46 @@ pub const MultiFn = struct {
     }
 };
 
-/// Cons cell — a pair of (first, rest) forming a linked sequence.
-/// rest can be list, vector, lazy_seq, cons, or nil.
+/// Cons cell — a pair of (first, rest) forming a linked sequence (24C.4).
+///
+/// Before this optimization, (cons x seq) copied the entire source sequence
+/// into a new PersistentList (ArrayList-backed, O(n) copy). With true cons
+/// cells, (cons x seq) allocates just this 2-field struct — O(1) regardless
+/// of the sequence length. rest can be list, vector, lazy_seq, cons, or nil.
+///
+/// Impact: list_build 178ms -> 13ms (14x), along with vector COW.
 pub const Cons = struct {
     first: Value,
     rest: Value,
 };
 
 /// Lazy sequence — thunk-based deferred evaluation with caching.
-/// The thunk is a zero-arg function that returns a seq (list/nil/cons).
-/// Once realized, the result is cached and the thunk is discarded.
-/// Optional `meta` field carries structural metadata for fused reduce (24A.3).
+///
+/// A lazy-seq wraps either a thunk (zero-arg function) or structural metadata.
+/// On first realization, the thunk is called (or metadata is computed), and
+/// the result is cached. Subsequent accesses return the cached value.
+///
+/// The optional `meta` field is the key to the fused reduce optimization
+/// (24A.3, 24C.1, 24C.7). When core.clj's map/filter/take/range create
+/// lazy-seqs, they attach Meta describing the operation and its source.
+/// This forms a chain: take(N, filter(pred, map(f, range(M)))). The fused
+/// reduce walks this chain at reduce-time and iterates the base source
+/// directly, applying all transforms inline — zero intermediate allocations.
 pub const LazySeq = struct {
     thunk: ?Value, // fn of 0 args, null after realization
     realized: ?Value, // cached result, null before realization
     meta: ?*const Meta = null, // structural metadata for fused reduce
 
     /// Structural metadata for lazy-seq chain fusion.
-    /// When present, realize() uses this instead of thunk evaluation,
-    /// and fused reduce can walk the chain without intermediate allocations.
+    ///
+    /// Each variant describes a lazy operation and its source collection.
+    /// fusedReduce (sequences.zig) walks the chain from outermost to innermost,
+    /// extracts transforms, and iterates the base source (range/iterate) directly.
+    ///
+    /// lazy_filter_chain (24C.7): Flattened representation of nested filters.
+    /// Instead of filter(p3, filter(p2, filter(p1, src))) creating 3 nested
+    /// lazy_filter nodes, the chain is collapsed into a single node with
+    /// preds=[p1,p2,p3]. Critical for sieve (168 nested filters → flat array).
     pub const Meta = union(enum) {
         lazy_map: struct { f: Value, source: Value },
         lazy_filter: struct { pred: Value, source: Value },

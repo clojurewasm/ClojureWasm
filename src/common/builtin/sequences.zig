@@ -248,8 +248,32 @@ fn allIntegers(args: []const Value) bool {
 }
 
 // ============================================================
-// Fused reduce — lazy-seq chain optimization (24A.3)
+// Fused reduce — lazy-seq chain optimization (24A.3, 24C.1, 24C.7)
 // ============================================================
+//
+// The core optimization for lazy-seq performance. Instead of materializing
+// each lazy-seq layer into cons cells (O(n) allocations per layer), fused
+// reduce walks the chain of meta-annotated lazy-seqs at reduce time and
+// executes all transforms in a single pass over the base source.
+//
+// Example: (reduce + 0 (take 1000 (filter even? (map #(* 3 %) (range 10000)))))
+//
+// Without fusion: range produces 10K lazy-seqs, map wraps each in another
+//   lazy-seq, filter wraps again, take wraps again → 40K+ allocations.
+//
+// With fusion: fusedReduce walks the meta chain to extract:
+//   transforms = [map(#(* 3 %)), filter(even?)]
+//   take_n = 1000
+//   base = range(0, 10000, 1)
+// Then iterates range directly, applying transforms inline → 0 allocations.
+//
+// The meta annotations are set by __zig-lazy-map, __zig-lazy-filter, etc.
+// (called from core.clj's map/filter/take). fusedReduce reads them back.
+//
+// Performance impact (cumulative):
+//   lazy_chain: 21,375ms -> 16ms (1336x)
+//   sieve:       2,152ms -> 16ms (134x)
+//   transduce:   8,409ms -> 16ms (526x)
 
 const LazySeq = value_mod.LazySeq;
 const Cons = value_mod.Cons;
@@ -258,8 +282,13 @@ const bootstrap = @import("../bootstrap.zig");
 const collections_builtin = @import("collections.zig");
 const vm_mod = @import("../../native/vm/vm.zig");
 
-/// Call a function efficiently: use active VM if available (avoids ~500KB VM allocation),
-/// otherwise fall back to bootstrap.callFnVal.
+/// Call a function value efficiently, reusing the active VM if one exists.
+///
+/// When called from within a VM execution (e.g. reduce step function calling
+/// a predicate), active_vm is set and we reuse the existing VM's stack via
+/// callFunction(). This avoids allocating a new VM instance (~500KB) per
+/// callback — critical for fused reduce which may call predicates millions
+/// of times in a single reduce operation.
 fn callFn(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     if (vm_mod.active_vm) |vm| {
         return vm.callFunction(fn_val, args) catch |e| {
@@ -280,8 +309,17 @@ pub fn zigLazyMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (__zig-lazy-filter pred coll) — creates a meta-annotated lazy-seq for filter.
-/// Detects nested filter chains and collapses them into a single lazy_filter_chain,
-/// eliminating deep recursion during realization (fixes sieve 168-level nesting).
+///
+/// Filter chain collapsing (24C.7): When the source is already a filter or
+/// filter_chain lazy-seq, this function flattens the nesting into a single
+/// lazy_filter_chain with an array of predicates. This is critical for the
+/// sieve of Eratosthenes, which creates 168 nested filter layers — without
+/// collapsing, realization would recurse 168 levels deep (each level creating
+/// a new lazy-seq), consuming ~64MB of stack in Debug builds.
+///
+/// With collapsing: filter(p3, filter(p2, filter(p1, src)))
+///   becomes: filter_chain([p1, p2, p3], src)
+/// Fused reduce then applies all predicates in a flat loop.
 pub fn zigLazyFilterFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __zig-lazy-filter", .{args.len});
     const pred = args[0];
@@ -401,15 +439,30 @@ pub fn zigReduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return reduceGeneric(allocator, f, init, coll);
 }
 
+/// A single transform extracted from the lazy-seq meta chain.
+/// Transforms are stored outermost-first and applied in reverse order
+/// (innermost first) during iteration, matching lazy-seq evaluation semantics.
 const Transform = struct {
     kind: enum { map, filter },
     fn_val: Value,
 };
 
-/// Fused reduce: walk the lazy-seq meta chain, extract transforms + take + base source,
-/// then iterate the base source applying transforms inline.
+/// Fused reduce: walk the lazy-seq meta chain, extract transforms + take + base
+/// source, then iterate the base source applying all transforms inline.
+///
+/// Algorithm:
+///   1. Walk the meta chain from outermost to innermost, collecting transforms
+///      into a fixed-size buffer (max 16 — sufficient for all practical cases).
+///      Also extract take_n limit if present.
+///   2. Identify the base source (range, iterate, or generic seq).
+///   3. Iterate the base source directly, applying transforms in reverse order
+///      (innermost first) to each element before accumulating with the reduce fn.
+///
+/// The fixed-size transform buffer avoids heap allocation. If the chain exceeds
+/// 16 transforms or has unsupported structure, we fall back to reduceGeneric.
 fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerror!Value {
-    // Walk the chain to extract: transforms[], take_n, base_source
+    // Phase 1: Walk the chain to extract transforms[], take_n, base_source.
+    // Transforms are pushed outermost-first; applied innermost-first in Phase 2.
     var transforms: [16]Transform = undefined;
     var transform_count: usize = 0;
     var take_n: ?usize = null;
@@ -453,12 +506,14 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
         return reduceGeneric(allocator, f, init, current);
     }
 
-    // Fused iteration
+    // Phase 2: Fused iteration over the base source with inline transforms.
+    // For each element from the base source, apply transforms in reverse order
+    // (innermost first), then accumulate with the reduce function.
     var acc = init;
     var remaining: usize = take_n orelse std.math.maxInt(usize);
-    var call_buf: [2]Value = undefined;
+    var call_buf: [2]Value = undefined; // Reused buffer for reduce fn calls
 
-    // Detect base source type
+    // Dispatch on base source type for zero-allocation iteration
     if (current == .lazy_seq) {
         if (current.lazy_seq.meta) |m| {
             switch (m.*) {
@@ -577,12 +632,20 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
     return acc;
 }
 
-/// Generic reduce: iterate any collection via seq/first/rest.
+/// Generic reduce: iterate any collection type.
+///
+/// Provides fast paths for concrete collection types (vector, list, range,
+/// iterate) that avoid the overhead of seq/first/rest protocol dispatch.
+/// Vector and list iterate their backing slices directly; range and iterate
+/// compute elements inline without any lazy-seq allocation.
+///
+/// Falls back to seq/first/rest iteration for other types (maps, sets,
+/// lazy-seqs without meta, cons cells, etc.).
 fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyerror!Value {
     var acc = init;
     var call_buf: [2]Value = undefined;
 
-    // Fast path for vectors and lists: direct slice iteration
+    // Fast path: direct iteration for slice-backed and meta-annotated types
     switch (coll) {
         .vector => |v| {
             for (v.items) |item| {

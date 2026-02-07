@@ -8,8 +8,15 @@ const Value = @import("value.zig").Value;
 
 const testing = std.testing;
 
-/// Global generation counter for vector COW optimization.
-/// Monotonically increasing; used to detect concurrent modifications to shared backing arrays.
+/// Global generation counter for vector COW (Copy-on-Write) optimization (24C.4).
+///
+/// Each vector conj increments this counter and stores it in the backing array's
+/// hidden gen slot. When a subsequent conj checks the slot, matching generation
+/// means this vector exclusively owns the tail — safe to extend in-place (O(1)).
+/// Mismatching generation means another vector branched from the same backing —
+/// a copy with geometric growth is needed to preserve persistent semantics.
+///
+/// Monotonically increasing; never decremented or reset.
 pub var _vec_gen_counter: i64 = 0;
 
 /// Persistent list — array-backed for initial simplicity.
@@ -401,16 +408,31 @@ pub const ChunkedCons = struct {
 };
 
 // ============================================================
-// PersistentHashMap — Hash Array Mapped Trie (HAMT)
+// PersistentHashMap — Hash Array Mapped Trie (HAMT) (24B.2)
 // ============================================================
+//
+// Maps with <= 8 entries use PersistentArrayMap (flat key-value array, O(n)
+// linear scan). Above this threshold, maps auto-promote to PersistentHashMap
+// backed by a HAMT — a 32-way branching trie indexed by hash bits.
+//
+// HAMT properties:
+//   - O(log32 n) get/assoc/dissoc (effectively O(1) for practical sizes)
+//   - Structural sharing: assoc only copies the path from root to modified
+//     leaf; siblings are shared. This makes persistent updates efficient.
+//   - Two bitmaps per node: data_map (inline KVs) and node_map (child nodes).
+//     @popCount gives the array index from a bitmap position.
+//
+// Impact: map_ops 26ms -> 14ms (1.9x), keyword_lookup 24ms -> 20ms (1.2x).
 
-/// Threshold: ArrayMap promotes to HashMap above this count.
+/// Threshold: ArrayMap promotes to HashMap above this entry count.
 pub const HASH_MAP_THRESHOLD = 8;
 
 /// Compute a 32-bit hash for HAMT dispatch.
+/// Uses Murmur3 finalizer mix on the raw hash to improve bit distribution,
+/// ensuring keys spread evenly across the 32-way branches.
 fn hashValue(v: Value) u32 {
     const h = @import("builtin/predicates.zig").computeHash(v);
-    // Murmur3 finalizer mix for better bit distribution
+    // Murmur3 finalizer mix
     var x: u32 = @truncate(@as(u64, @bitCast(h)));
     x ^= x >> 16;
     x *%= 0x85ebca6b;
@@ -421,9 +443,19 @@ fn hashValue(v: Value) u32 {
 }
 
 /// HAMT node — sparse 32-way branching with bitmap indexing.
+///
+/// Each node has two bitmaps and two arrays:
+///   data_map: bit i set = position i has an inline KV pair in kvs[]
+///   node_map: bit i set = position i has a child node in nodes[]
+///
+/// To find the array index for position i: @popCount(bitmap & (bit(i) - 1)).
+/// This gives O(1) index computation from the bitmap, avoiding a 32-slot array.
+///
+/// On hash collision at a given level, the two KVs are pushed into a child
+/// node at the next 5-bit level (up to 7 levels for 32-bit hashes).
 pub const HAMTNode = struct {
-    data_map: u32 = 0, // Bits set for positions with inline key-value pairs
-    node_map: u32 = 0, // Bits set for positions with sub-node pointers
+    data_map: u32 = 0,
+    node_map: u32 = 0,
     kvs: []const KV = &.{},
     nodes: []const *const HAMTNode = &.{},
 
