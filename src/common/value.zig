@@ -563,6 +563,297 @@ pub const Value = union(enum) {
     wasm_module: *@import("../wasm/types.zig").WasmModule,
     wasm_fn: *const @import("../wasm/types.zig").WasmFn,
 
+    // === Value Accessor API (Phase 27 — NaN boxing preparation) ===
+    //
+    // All code outside value.zig should use these methods instead of
+    // direct union field access. This enables future representation
+    // changes (NaN boxing: union(enum) -> packed u64) without
+    // touching call sites.
+
+    pub const Tag = std.meta.Tag(@This());
+
+    // --- Constants ---
+
+    pub const nil_val: Value = .nil;
+    pub const true_val: Value = .{ .boolean = true };
+    pub const false_val: Value = .{ .boolean = false };
+
+    // --- Tag query ---
+
+    pub fn tag(self: Value) Tag {
+        return std.meta.activeTag(self);
+    }
+
+    // --- Constructors ---
+
+    pub fn initBoolean(b: bool) Value {
+        return .{ .boolean = b };
+    }
+
+    pub fn initInteger(i: i64) Value {
+        return .{ .integer = i };
+    }
+
+    pub fn initFloat(f: f64) Value {
+        return .{ .float = f };
+    }
+
+    pub fn initChar(c: u21) Value {
+        return .{ .char = c };
+    }
+
+    pub fn initString(s: []const u8) Value {
+        return .{ .string = s };
+    }
+
+    pub fn initSymbol(s: Symbol) Value {
+        return .{ .symbol = s };
+    }
+
+    pub fn initKeyword(k: Keyword) Value {
+        return .{ .keyword = k };
+    }
+
+    pub fn initList(l: *const PersistentList) Value {
+        return .{ .list = l };
+    }
+
+    pub fn initVector(v: *const PersistentVector) Value {
+        return .{ .vector = v };
+    }
+
+    pub fn initMap(m: *const PersistentArrayMap) Value {
+        return .{ .map = m };
+    }
+
+    pub fn initHashMap(m: *const PersistentHashMap) Value {
+        return .{ .hash_map = m };
+    }
+
+    pub fn initSet(s: *const PersistentHashSet) Value {
+        return .{ .set = s };
+    }
+
+    pub fn initFn(f: *const Fn) Value {
+        return .{ .fn_val = f };
+    }
+
+    pub fn initBuiltinFn(f: BuiltinFn) Value {
+        return .{ .builtin_fn = f };
+    }
+
+    pub fn initAtom(a: *Atom) Value {
+        return .{ .atom = a };
+    }
+
+    pub fn initVolatile(v: *Volatile) Value {
+        return .{ .volatile_ref = v };
+    }
+
+    pub fn initRegex(r: *Pattern) Value {
+        return .{ .regex = r };
+    }
+
+    pub fn initProtocol(p: *Protocol) Value {
+        return .{ .protocol = p };
+    }
+
+    pub fn initProtocolFn(pf: *const ProtocolFn) Value {
+        return .{ .protocol_fn = pf };
+    }
+
+    pub fn initMultiFn(m: *MultiFn) Value {
+        return .{ .multi_fn = m };
+    }
+
+    pub fn initLazySeq(ls: *LazySeq) Value {
+        return .{ .lazy_seq = ls };
+    }
+
+    pub fn initCons(c: *Cons) Value {
+        return .{ .cons = c };
+    }
+
+    pub fn initVarRef(v: *Var) Value {
+        return .{ .var_ref = v };
+    }
+
+    pub fn initDelay(d: *Delay) Value {
+        return .{ .delay = d };
+    }
+
+    pub fn initReduced(r: *const Reduced) Value {
+        return .{ .reduced = r };
+    }
+
+    pub fn initTransientVector(tv: *TransientVector) Value {
+        return .{ .transient_vector = tv };
+    }
+
+    pub fn initTransientMap(tm: *TransientArrayMap) Value {
+        return .{ .transient_map = tm };
+    }
+
+    pub fn initTransientSet(ts: *TransientHashSet) Value {
+        return .{ .transient_set = ts };
+    }
+
+    pub fn initChunkedCons(cc: *const ChunkedCons) Value {
+        return .{ .chunked_cons = cc };
+    }
+
+    pub fn initChunkBuffer(cb: *ChunkBuffer) Value {
+        return .{ .chunk_buffer = cb };
+    }
+
+    pub fn initArrayChunk(ac: *const ArrayChunk) Value {
+        return .{ .array_chunk = ac };
+    }
+
+    pub fn initWasmModule(m: *@import("../wasm/types.zig").WasmModule) Value {
+        return .{ .wasm_module = m };
+    }
+
+    pub fn initWasmFn(f: *const @import("../wasm/types.zig").WasmFn) Value {
+        return .{ .wasm_fn = f };
+    }
+
+    // --- Extractors ---
+
+    pub fn asBoolean(self: Value) bool {
+        return self.boolean;
+    }
+
+    pub fn asInteger(self: Value) i64 {
+        return self.integer;
+    }
+
+    pub fn asFloat(self: Value) f64 {
+        return self.float;
+    }
+
+    pub fn asChar(self: Value) u21 {
+        return self.char;
+    }
+
+    pub fn asString(self: Value) []const u8 {
+        return self.string;
+    }
+
+    pub fn asSymbol(self: Value) Symbol {
+        return self.symbol;
+    }
+
+    pub fn asKeyword(self: Value) Keyword {
+        return self.keyword;
+    }
+
+    pub fn asList(self: Value) *const PersistentList {
+        return self.list;
+    }
+
+    pub fn asVector(self: Value) *const PersistentVector {
+        return self.vector;
+    }
+
+    pub fn asMap(self: Value) *const PersistentArrayMap {
+        return self.map;
+    }
+
+    pub fn asHashMap(self: Value) *const PersistentHashMap {
+        return self.hash_map;
+    }
+
+    pub fn asSet(self: Value) *const PersistentHashSet {
+        return self.set;
+    }
+
+    pub fn asFn(self: Value) *const Fn {
+        return self.fn_val;
+    }
+
+    pub fn asBuiltinFn(self: Value) BuiltinFn {
+        return self.builtin_fn;
+    }
+
+    pub fn asAtom(self: Value) *Atom {
+        return self.atom;
+    }
+
+    pub fn asVolatile(self: Value) *Volatile {
+        return self.volatile_ref;
+    }
+
+    pub fn asRegex(self: Value) *Pattern {
+        return self.regex;
+    }
+
+    pub fn asProtocol(self: Value) *Protocol {
+        return self.protocol;
+    }
+
+    pub fn asProtocolFn(self: Value) *const ProtocolFn {
+        return self.protocol_fn;
+    }
+
+    pub fn asMultiFn(self: Value) *MultiFn {
+        return self.multi_fn;
+    }
+
+    pub fn asLazySeq(self: Value) *LazySeq {
+        return self.lazy_seq;
+    }
+
+    pub fn asCons(self: Value) *Cons {
+        return self.cons;
+    }
+
+    pub fn asVarRef(self: Value) *Var {
+        return self.var_ref;
+    }
+
+    pub fn asDelay(self: Value) *Delay {
+        return self.delay;
+    }
+
+    pub fn asReduced(self: Value) *const Reduced {
+        return self.reduced;
+    }
+
+    pub fn asTransientVector(self: Value) *TransientVector {
+        return self.transient_vector;
+    }
+
+    pub fn asTransientMap(self: Value) *TransientArrayMap {
+        return self.transient_map;
+    }
+
+    pub fn asTransientSet(self: Value) *TransientHashSet {
+        return self.transient_set;
+    }
+
+    pub fn asChunkedCons(self: Value) *const ChunkedCons {
+        return self.chunked_cons;
+    }
+
+    pub fn asChunkBuffer(self: Value) *ChunkBuffer {
+        return self.chunk_buffer;
+    }
+
+    pub fn asArrayChunk(self: Value) *const ArrayChunk {
+        return self.array_chunk;
+    }
+
+    pub fn asWasmModule(self: Value) *@import("../wasm/types.zig").WasmModule {
+        return self.wasm_module;
+    }
+
+    pub fn asWasmFn(self: Value) *const @import("../wasm/types.zig").WasmFn {
+        return self.wasm_fn;
+    }
+
+    // === End Value Accessor API ===
+
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
         switch (self) {
@@ -1034,10 +1325,8 @@ pub const Value = union(enum) {
     }
 };
 
-const Tag = std.meta.Tag(Value);
-
-fn isSequential(tag: Tag) bool {
-    return tag == .list or tag == .vector;
+fn isSequential(t: Value.Tag) bool {
+    return t == .list or t == .vector;
 }
 
 fn sequentialItems(v: Value) []const Value {
@@ -1052,7 +1341,7 @@ fn sequentialItems(v: Value) []const Value {
 /// - Realize the lazy-seq
 /// - If nil: it's an empty sequence — equal to other empty sequentials, NOT to nil
 /// - If non-nil: delegate to the realized value's equality
-fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Tag, allocator: ?Allocator) bool {
+fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Value.Tag, allocator: ?Allocator) bool {
     const realized = blk: {
         if (allocator) |alloc| {
             break :blk lazy.realize(alloc) catch return false;
@@ -1181,7 +1470,7 @@ fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool 
 }
 
 /// Cross-type map equality: handles ArrayMap vs HashMap comparisons.
-fn eqlMaps(self: Value, self_tag: Tag, other: Value, other_tag: Tag, allocator: ?Allocator) bool {
+fn eqlMaps(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag, allocator: ?Allocator) bool {
     // Get count from both sides
     const self_count: usize = if (self_tag == .map) self.map.count() else self.hash_map.getCount();
     const other_count: usize = if (other_tag == .map) other.map.count() else other.hash_map.getCount();
@@ -1606,4 +1895,117 @@ test "Value.eql - var_ref identity" {
         .ns_name = "user",
     };
     try testing.expect(!v.eql(.{ .var_ref = &other_var }));
+}
+
+// === Value Accessor API Tests (Phase 27) ===
+
+test "Value.Tag - tag() returns correct tag" {
+    try testing.expect((Value.nil_val).tag() == .nil);
+    try testing.expect(Value.initInteger(42).tag() == .integer);
+    try testing.expect(Value.initFloat(3.14).tag() == .float);
+    try testing.expect(Value.initBoolean(true).tag() == .boolean);
+    try testing.expect(Value.initChar('A').tag() == .char);
+    try testing.expect(Value.initString("hi").tag() == .string);
+    try testing.expect(Value.initSymbol(.{ .name = "x", .ns = null }).tag() == .symbol);
+    try testing.expect(Value.initKeyword(.{ .name = "k", .ns = null }).tag() == .keyword);
+}
+
+test "Value constants" {
+    try testing.expect(Value.nil_val.isNil());
+    try testing.expect(!Value.nil_val.isTruthy());
+    try testing.expect(Value.true_val.isTruthy());
+    try testing.expect(!Value.false_val.isTruthy());
+    try testing.expect(Value.true_val.asBoolean() == true);
+    try testing.expect(Value.false_val.asBoolean() == false);
+}
+
+test "Value.initInteger / asInteger round-trip" {
+    const v = Value.initInteger(-99);
+    try testing.expect(v.tag() == .integer);
+    try testing.expect(v.asInteger() == -99);
+}
+
+test "Value.initFloat / asFloat round-trip" {
+    const v = Value.initFloat(2.718);
+    try testing.expect(v.tag() == .float);
+    try testing.expect(v.asFloat() == 2.718);
+}
+
+test "Value.initChar / asChar round-trip" {
+    const v = Value.initChar(0x1F600); // emoji codepoint
+    try testing.expect(v.tag() == .char);
+    try testing.expect(v.asChar() == 0x1F600);
+}
+
+test "Value.initString / asString round-trip" {
+    const v = Value.initString("hello");
+    try testing.expect(v.tag() == .string);
+    try testing.expectEqualStrings("hello", v.asString());
+}
+
+test "Value.initSymbol / asSymbol round-trip" {
+    const sym = Symbol{ .name = "foo", .ns = "bar" };
+    const v = Value.initSymbol(sym);
+    try testing.expect(v.tag() == .symbol);
+    const s = v.asSymbol();
+    try testing.expectEqualStrings("foo", s.name);
+    try testing.expectEqualStrings("bar", s.ns.?);
+}
+
+test "Value.initKeyword / asKeyword round-trip" {
+    const kw = Keyword{ .name = "id", .ns = "user" };
+    const v = Value.initKeyword(kw);
+    try testing.expect(v.tag() == .keyword);
+    const k = v.asKeyword();
+    try testing.expectEqualStrings("id", k.name);
+    try testing.expectEqualStrings("user", k.ns.?);
+}
+
+test "Value.initList / asList round-trip" {
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
+    const list = PersistentList{ .items = &items };
+    const v = Value.initList(&list);
+    try testing.expect(v.tag() == .list);
+    try testing.expect(v.asList().items.len == 2);
+}
+
+test "Value.initVector / asVector round-trip" {
+    const items = [_]Value{Value.initInteger(10)};
+    const vec = PersistentVector{ .items = &items };
+    const v = Value.initVector(&vec);
+    try testing.expect(v.tag() == .vector);
+    try testing.expect(v.asVector().items.len == 1);
+}
+
+test "Value.initFn / asFn round-trip" {
+    const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
+    const v = Value.initFn(&fn_obj);
+    try testing.expect(v.tag() == .fn_val);
+    try testing.expect(v.asFn() == &fn_obj);
+}
+
+test "Value.initAtom / asAtom round-trip" {
+    var a = Atom{ .value = Value.initInteger(42) };
+    const v = Value.initAtom(&a);
+    try testing.expect(v.tag() == .atom);
+    try testing.expect(v.asAtom() == &a);
+}
+
+test "Value.initVarRef / asVarRef round-trip" {
+    var the_var = Var{
+        .sym = .{ .ns = null, .name = "x" },
+        .ns_name = "user",
+    };
+    const v = Value.initVarRef(&the_var);
+    try testing.expect(v.tag() == .var_ref);
+    try testing.expect(v.asVarRef() == &the_var);
+}
+
+test "Value tag switch pattern" {
+    const v = Value.initInteger(42);
+    const result: i64 = switch (v.tag()) {
+        .integer => v.asInteger() * 2,
+        else => 0,
+    };
+    try testing.expect(result == 84);
 }

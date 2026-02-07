@@ -25,21 +25,26 @@ Phase order: 27 (NaN boxing) -> 28 (single binary) -> 29 (restructure)
 
 ## Task Queue
 
-Phase 27 — NaN Boxing:
-1. 27.1: Design Value accessor API (tag(), asInteger(), initInteger(), etc.)
-2. 27.2: Implement API layer on current Value representation
-3. 27.3: Migrate call sites to new API (file-by-file, test-verified)
-4. 27.4: Switch internal representation to NaN-boxed u64
-5. 27.5: Benchmark and verify performance gains
+Phase 27 — NaN Boxing (detailed plan: phase27-nan-boxing.md):
+1. 27.1: API layer — add tag()/init*/as* methods to Value ← CURRENT
+2. 27.2: Migrate call sites file-by-file to new API (~44 files, 15-20 commits)
+3. 27.3: Switch internal representation to NaN-boxed u64
+4. 27.4: Benchmark and verify performance gains
 
 ## Current Task
 
-(Next session: plan Phase 27 NaN boxing in detail)
+27.2: Migrate call sites file-by-file to Value accessor API. Start with Group 1
+(leaf builtins): atom, regex_builtins, system, file_io, transient, chunk,
+keyword_intern, bencode, wasm/types, wasm/builtins.
+Pattern: `.{ .integer = N }` → `Value.initInteger(N)`,
+`switch (v) { .tag => |payload| }` → `switch (v.tag()) { .tag => { payload = v.asTag(); } }`.
 
 ## Previous Task
 
-Strategic direction pivot — wasm_rt deferred, native production focus.
-Archived research in phase26-wasm-rt.md, README.md in src/wasm_rt/.
+27.1 DONE: Added Value accessor API layer to value.zig. Explicit Tag enum,
+34 constructors (init*), 34 extractors (as*), tag() query, constants
+(nil_val, true_val, false_val). All methods are trivial one-liners on
+current union(enum). 13 new tests. Plan doc: phase27-nan-boxing.md.
 
 ## Handover Notes
 
