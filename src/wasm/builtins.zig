@@ -119,6 +119,54 @@ fn parseWasmType(name: []const u8) ?WasmValType {
     return null;
 }
 
+/// (wasm/memory-read module offset length) => string
+/// Read bytes from the module's linear memory.
+pub fn wasmMemoryReadFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/memory-read", .{args.len});
+
+    const wasm_mod = switch (args[0]) {
+        .wasm_module => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-read expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    };
+    const offset: u32 = switch (args[1]) {
+        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+        else => return error.TypeError,
+    };
+    const length: u32 = switch (args[2]) {
+        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+        else => return error.TypeError,
+    };
+
+    const bytes = wasm_mod.memoryRead(allocator, offset, length) catch
+        return err.setErrorFmt(.eval, .index_error, .{}, "wasm/memory-read: out of bounds (offset={d}, length={d})", .{ offset, length });
+    return Value{ .string = bytes };
+}
+
+/// (wasm/memory-write module offset data) => nil
+/// Write bytes from a string to the module's linear memory.
+pub fn wasmMemoryWriteFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/memory-write", .{args.len});
+
+    const wasm_mod = switch (args[0]) {
+        .wasm_module => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    };
+    const offset: u32 = switch (args[1]) {
+        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+        else => return error.TypeError,
+    };
+    const data = switch (args[2]) {
+        .string => |s| s,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a string, got {s}", .{@tagName(args[2])}),
+    };
+
+    wasm_mod.memoryWrite(offset, data) catch
+        return err.setErrorFmt(.eval, .index_error, .{}, "wasm/memory-write: out of bounds (offset={d}, length={d})", .{ offset, data.len });
+    return Value.nil;
+}
+
 pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
     .{
         .name = "load",
@@ -131,6 +179,18 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
         .func = wasmFnFn,
         .doc = "Creates a callable Wasm function from a module, export name, and type signature map {:params [...] :results [...]}.",
         .arglists = "([module name sig])",
+    },
+    .{
+        .name = "memory-read",
+        .func = wasmMemoryReadFn,
+        .doc = "Reads bytes from a WasmModule's linear memory. Returns a string of the raw bytes.",
+        .arglists = "([module offset length])",
+    },
+    .{
+        .name = "memory-write",
+        .func = wasmMemoryWriteFn,
+        .doc = "Writes bytes from a string to a WasmModule's linear memory.",
+        .arglists = "([module offset data])",
     },
 };
 

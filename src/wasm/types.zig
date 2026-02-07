@@ -78,6 +78,26 @@ pub const WasmModule = struct {
     pub fn invoke(self: *WasmModule, name: []const u8, args: []u64, results: []u64) !void {
         try self.instance.invoke(name, args, results, .{});
     }
+
+    /// Read bytes from linear memory at the given offset.
+    pub fn memoryRead(self: *WasmModule, allocator: Allocator, offset: u32, length: u32) ![]const u8 {
+        const mem = try self.instance.getMemory(0);
+        const mem_bytes = mem.memory();
+        const end = @as(u64, offset) + @as(u64, length);
+        if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
+        const result = try allocator.alloc(u8, length);
+        @memcpy(result, mem_bytes[offset..][0..length]);
+        return result;
+    }
+
+    /// Write bytes to linear memory at the given offset.
+    pub fn memoryWrite(self: *WasmModule, offset: u32, data: []const u8) !void {
+        const mem = try self.instance.getMemory(0);
+        const mem_bytes = mem.memory();
+        const end = @as(u64, offset) + @as(u64, data.len);
+        if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
+        @memcpy(mem_bytes[offset..][0..data.len], data);
+    }
 };
 
 /// A bound Wasm function — module ref + export name + signature.
@@ -181,6 +201,47 @@ test "zware smoke test — fibonacci(10) = 55" {
     try wasm_mod.invoke("fib", &args, &results);
 
     try testing.expectEqual(@as(u64, 55), results[0]);
+}
+
+test "memory read/write round-trip" {
+    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    // Write "Hello" at offset 0
+    try wasm_mod.memoryWrite(0, "Hello");
+    const read_back = try wasm_mod.memoryRead(testing.allocator, 0, 5);
+    defer testing.allocator.free(read_back);
+    try testing.expectEqualStrings("Hello", read_back);
+
+    // Write at higher offset
+    try wasm_mod.memoryWrite(1024, "Wasm");
+    const read2 = try wasm_mod.memoryRead(testing.allocator, 1024, 4);
+    defer testing.allocator.free(read2);
+    try testing.expectEqualStrings("Wasm", read2);
+}
+
+test "memory write then call store/load" {
+    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    // Use Wasm store function to write value 42 at offset 0
+    var store_args = [_]u64{ 0, 42 };
+    var store_results = [_]u64{};
+    try wasm_mod.invoke("store", &store_args, &store_results);
+
+    // Read it back with Wasm load function
+    var load_args = [_]u64{0};
+    var load_results = [_]u64{0};
+    try wasm_mod.invoke("load", &load_args, &load_results);
+    try testing.expectEqual(@as(u64, 42), load_results[0]);
+
+    // Also read via memoryRead (4 bytes = i32, little-endian)
+    const raw = try wasm_mod.memoryRead(testing.allocator, 0, 4);
+    defer testing.allocator.free(raw);
+    const value = std.mem.readInt(u32, raw[0..4], .little);
+    try testing.expectEqual(@as(u32, 42), value);
 }
 
 test "WasmValType conversion" {
