@@ -486,6 +486,21 @@ pub const VM = struct {
                 if (instr.op == .def_macro) v.setMacro(true);
                 if (instr.op == .def_dynamic) v.dynamic = true;
                 if (instr.op == .def_private) v.private = true;
+
+                // Read source location from adjacent constants (set by compiler)
+                const base = instr.operand;
+                if (base + 2 < frame.constants.len) {
+                    const line_val = frame.constants[base + 1];
+                    const file_val = frame.constants[base + 2];
+                    if (line_val.tag() == .integer) {
+                        const line_i = line_val.asInteger();
+                        if (line_i > 0) {
+                            v.line = @intCast(line_i);
+                            v.file = if (file_val.tag() == .string) file_val.asString() else null;
+                        }
+                    }
+                }
+
                 try self.push(Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name }));
             },
 

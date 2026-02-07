@@ -66,6 +66,15 @@ pub const Var = struct {
     /// ClojureWasm version when added.
     since_cw: ?[]const u8 = null,
 
+    /// Source file where this var was defined.
+    file: ?[]const u8 = null,
+
+    /// Source line number where this var was defined.
+    line: u32 = 0,
+
+    /// Source column number where this var was defined.
+    column: u32 = 0,
+
     /// User-defined metadata map (mutable via alter-meta! / reset-meta!).
     meta: ?*value.PersistentArrayMap = null,
 
@@ -398,6 +407,27 @@ test "BuiltinDef comptime table" {
     };
     try std.testing.expectEqualStrings("map", found.name);
     try std.testing.expectEqualStrings("Returns a lazy sequence.", found.doc.?);
+}
+
+test "Var source location fields" {
+    var v = Var{
+        .sym = .{ .name = "my-fn", .ns = null },
+        .ns_name = "user",
+    };
+
+    // Default: no source location
+    try std.testing.expect(v.file == null);
+    try std.testing.expectEqual(@as(u32, 0), v.line);
+    try std.testing.expectEqual(@as(u32, 0), v.column);
+
+    // Set source location
+    v.file = "src/my_file.clj";
+    v.line = 42;
+    v.column = 3;
+
+    try std.testing.expectEqualStrings("src/my_file.clj", v.file.?);
+    try std.testing.expectEqual(@as(u32, 42), v.line);
+    try std.testing.expectEqual(@as(u32, 3), v.column);
 }
 
 test "Var qualifiedName" {

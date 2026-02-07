@@ -674,6 +674,15 @@ fn opInfo(
     if (var_ptr.arglists) |arglists| {
         info_entries.append(allocator, .{ .key = "arglists-str", .value = .{ .string = arglists } }) catch {};
     }
+    if (var_ptr.file) |file| {
+        info_entries.append(allocator, .{ .key = "file", .value = .{ .string = file } }) catch {};
+    }
+    if (var_ptr.line > 0) {
+        info_entries.append(allocator, .{ .key = "line", .value = .{ .integer = @intCast(var_ptr.line) } }) catch {};
+    }
+    if (var_ptr.added) |added| {
+        info_entries.append(allocator, .{ .key = "added", .value = .{ .string = added } }) catch {};
+    }
     info_entries.append(allocator, statusDone()) catch {};
 
     sendBencode(stream, info_entries.items, allocator);

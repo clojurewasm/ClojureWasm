@@ -621,9 +621,16 @@ pub const Compiler = struct {
     }
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
-        // Push symbol name as constant
+        // Push symbol name as constant, followed by source line and file
+        // Layout: constants[idx] = symbol, constants[idx+1] = line (int), constants[idx+2] = file (string)
         const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.sym_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
+        _ = self.chunk.addConstant(Value.initInteger(@intCast(node.source.line))) catch return error.TooManyConstants;
+        const file_val = if (node.source.file) |f|
+            Value.initString(self.allocator, f)
+        else
+            Value.nil_val;
+        _ = self.chunk.addConstant(file_val) catch return error.TooManyConstants;
 
         // Compile init expression if present
         if (node.init) |init_node| {

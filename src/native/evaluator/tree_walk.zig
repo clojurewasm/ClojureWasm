@@ -732,6 +732,13 @@ pub const TreeWalk = struct {
         if (def_n.is_dynamic) v.dynamic = true;
         if (def_n.is_private) v.private = true;
 
+        // Set source location from DefNode
+        if (def_n.source.line > 0) {
+            v.file = def_n.source.file orelse err_mod.getSourceFile();
+            v.line = def_n.source.line;
+            v.column = def_n.source.column;
+        }
+
         return Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name });
     }
 
