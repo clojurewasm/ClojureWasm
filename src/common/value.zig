@@ -66,8 +66,9 @@ fn checkPrintLevel(w: *Writer) Writer.Error!bool {
 fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Error!void {
     var rest = start;
     while (true) {
-        switch (rest) {
-            .cons => |rc| {
+        switch (rest.tag()) {
+            .cons => {
+                const rc = rest.asCons();
                 if (length) |len| {
                     if (count.* >= @as(usize, @intCast(len))) {
                         try w.writeAll(" ...");
@@ -80,7 +81,8 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
                 rest = rc.rest;
             },
             .nil => return,
-            .list => |lst| {
+            .list => {
+                const lst = rest.asList();
                 for (lst.items) |item| {
                     if (length) |len| {
                         if (count.* >= @as(usize, @intCast(len))) {
@@ -94,7 +96,8 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
                 }
                 return;
             },
-            .lazy_seq => |ls| {
+            .lazy_seq => {
+                const ls = rest.asLazySeq();
                 if (ls.realized) |r| {
                     rest = r;
                     continue;
@@ -110,7 +113,8 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
                     return;
                 }
             },
-            .chunked_cons => |cc| {
+            .chunked_cons => {
+                const cc = rest.asChunkedCons();
                 var i: usize = 0;
                 while (i < cc.chunk.count()) : (i += 1) {
                     if (length) |len| {
@@ -120,11 +124,11 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
                         }
                     }
                     try w.writeAll(" ");
-                    const elem = cc.chunk.nth(i) orelse Value.nil;
+                    const elem = cc.chunk.nth(i) orelse Value.nil_val;
                     try elem.formatPrStr(w);
                     count.* += 1;
                 }
-                if (cc.more == .nil) return;
+                if (cc.more.tag() == .nil) return;
                 rest = cc.more;
             },
             else => {
@@ -138,12 +142,12 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
 
 fn getPrintLength() ?i64 {
     const v = (print_length_var orelse return null).deref();
-    return if (v == .integer) v.integer else null;
+    return if (v.tag() == .integer) v.asInteger() else null;
 }
 
 fn getPrintLevel() ?u32 {
     const v = (print_level_var orelse return null).deref();
-    if (v == .integer and v.integer >= 0) return @intCast(v.integer);
+    if (v.tag() == .integer and v.asInteger() >= 0) return @intCast(v.asInteger());
     return null;
 }
 
@@ -241,7 +245,7 @@ pub const ProtocolFn = struct {
     protocol: *Protocol,
     method_name: []const u8,
     cached_type_key: ?[]const u8 = null,
-    cached_method: Value = .nil,
+    cached_method: Value = Value.nil_val,
 };
 
 /// MultiFn — multimethod with dispatch function and 2-level cache.
@@ -276,30 +280,30 @@ pub const MultiFn = struct {
     cached_arg_valid: bool = false,
     // Level 2 cache: dispatch value -> method
     cached_dispatch_val: ?Value = null,
-    cached_method: Value = .nil,
+    cached_method: Value = Value.nil_val,
 
     /// Invalidate the dispatch cache (call after method table changes).
     pub fn invalidateCache(self: *MultiFn) void {
         self.cached_arg_valid = false;
         self.cached_arg_key = 0;
         self.cached_dispatch_val = null;
-        self.cached_method = .nil;
+        self.cached_method = Value.nil_val;
     }
 
     /// Get identity key for a Value (pointer for heap types, hash for value types).
     /// Returns null for types that shouldn't be identity-cached.
     pub fn argIdentityKey(val: Value) ?usize {
-        return switch (val) {
-            .map => |p| @intFromPtr(p),
-            .hash_map => |p| @intFromPtr(p),
-            .vector => |p| @intFromPtr(p),
-            .set => |p| @intFromPtr(p),
-            .keyword => |k| @intFromPtr(k.name.ptr),
-            .integer => |i| @as(usize, @bitCast(@as(i64, i))),
-            .boolean => |b| @intFromBool(b),
+        return switch (val.tag()) {
+            .map => @intFromPtr(val.asMap()),
+            .hash_map => @intFromPtr(val.asHashMap()),
+            .vector => @intFromPtr(val.asVector()),
+            .set => @intFromPtr(val.asSet()),
+            .keyword => @intFromPtr(val.asKeyword().name.ptr),
+            .integer => @as(usize, @bitCast(@as(i64, val.asInteger()))),
+            .boolean => @intFromBool(val.asBoolean()),
             .nil => 0xDEAD, // sentinel for nil
-            .string => |s| @intFromPtr(s.ptr) ^ s.len,
-            .symbol => |s| @intFromPtr(s.name.ptr),
+            .string => @intFromPtr(val.asString().ptr) ^ val.asString().len,
+            .symbol => @intFromPtr(val.asSymbol().name.ptr),
             else => null,
         };
     }
@@ -365,7 +369,7 @@ pub const LazySeq = struct {
             return result;
         }
 
-        const thunk = self.thunk orelse return .nil;
+        const thunk = self.thunk orelse return Value.nil_val;
         const result = try bootstrap.callFnVal(allocator, thunk, &.{});
         self.realized = result;
         self.thunk = null;
@@ -379,7 +383,7 @@ pub const LazySeq = struct {
         switch (m.*) {
             .lazy_map => |lm| {
                 const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lm.source});
-                if (seq_val == .nil) return .nil;
+                if (seq_val.tag() == .nil) return Value.nil_val;
                 const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
                 const mapped = try bootstrap.callFnVal(allocator, lm.f, &[1]Value{first_elem});
                 const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
@@ -388,14 +392,14 @@ pub const LazySeq = struct {
                 const rest_ls = try allocator.create(LazySeq);
                 rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                 const cons_cell = try allocator.create(Cons);
-                cons_cell.* = .{ .first = mapped, .rest = .{ .lazy_seq = rest_ls } };
-                return Value{ .cons = cons_cell };
+                cons_cell.* = .{ .first = mapped, .rest = Value.initLazySeq(rest_ls) };
+                return Value.initCons(cons_cell);
             },
             .lazy_filter => |lf| {
                 var current = lf.source;
                 while (true) {
                     const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
-                    if (seq_val == .nil) return .nil;
+                    if (seq_val.tag() == .nil) return Value.nil_val;
                     const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
                     const pred_result = try bootstrap.callFnVal(allocator, lf.pred, &[1]Value{elem});
                     if (pred_result.isTruthy()) {
@@ -405,8 +409,8 @@ pub const LazySeq = struct {
                         const rest_ls = try allocator.create(LazySeq);
                         rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                         const cons_cell = try allocator.create(Cons);
-                        cons_cell.* = .{ .first = elem, .rest = .{ .lazy_seq = rest_ls } };
-                        return Value{ .cons = cons_cell };
+                        cons_cell.* = .{ .first = elem, .rest = Value.initLazySeq(rest_ls) };
+                        return Value.initCons(cons_cell);
                     }
                     current = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
                 }
@@ -417,7 +421,7 @@ pub const LazySeq = struct {
                 var current = lfc.source;
                 outer: while (true) {
                     const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{current});
-                    if (seq_val == .nil) return .nil;
+                    if (seq_val.tag() == .nil) return Value.nil_val;
                     const elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
                     // Check all predicates (innermost first)
                     for (lfc.preds) |pred| {
@@ -434,14 +438,14 @@ pub const LazySeq = struct {
                     const rest_ls = try allocator.create(LazySeq);
                     rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                     const cons_cell = try allocator.create(Cons);
-                    cons_cell.* = .{ .first = elem, .rest = .{ .lazy_seq = rest_ls } };
-                    return Value{ .cons = cons_cell };
+                    cons_cell.* = .{ .first = elem, .rest = Value.initLazySeq(rest_ls) };
+                    return Value.initCons(cons_cell);
                 }
             },
             .lazy_take => |lt| {
-                if (lt.n == 0) return .nil;
+                if (lt.n == 0) return Value.nil_val;
                 const seq_val = try coll_builtins.seqFn(allocator, &[1]Value{lt.source});
-                if (seq_val == .nil) return .nil;
+                if (seq_val.tag() == .nil) return Value.nil_val;
                 const first_elem = try coll_builtins.firstFn(allocator, &[1]Value{seq_val});
                 const rest_source = try coll_builtins.restFn(allocator, &[1]Value{seq_val});
                 const rest_meta = try allocator.create(Meta);
@@ -449,20 +453,20 @@ pub const LazySeq = struct {
                 const rest_ls = try allocator.create(LazySeq);
                 rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                 const cons_cell = try allocator.create(Cons);
-                cons_cell.* = .{ .first = first_elem, .rest = .{ .lazy_seq = rest_ls } };
-                return Value{ .cons = cons_cell };
+                cons_cell.* = .{ .first = first_elem, .rest = Value.initLazySeq(rest_ls) };
+                return Value.initCons(cons_cell);
             },
             .range => |r| {
                 if ((r.step > 0 and r.current >= r.end) or
                     (r.step < 0 and r.current <= r.end) or
-                    (r.step == 0)) return .nil;
+                    (r.step == 0)) return Value.nil_val;
                 const rest_meta = try allocator.create(Meta);
                 rest_meta.* = .{ .range = .{ .current = r.current + r.step, .end = r.end, .step = r.step } };
                 const rest_ls = try allocator.create(LazySeq);
                 rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                 const cons_cell = try allocator.create(Cons);
-                cons_cell.* = .{ .first = .{ .integer = r.current }, .rest = .{ .lazy_seq = rest_ls } };
-                return Value{ .cons = cons_cell };
+                cons_cell.* = .{ .first = Value.initInteger(r.current), .rest = Value.initLazySeq(rest_ls) };
+                return Value.initCons(cons_cell);
             },
             .iterate => |it| {
                 const next_val = try bootstrap.callFnVal(allocator, it.f, &[1]Value{it.current});
@@ -471,8 +475,8 @@ pub const LazySeq = struct {
                 const rest_ls = try allocator.create(LazySeq);
                 rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                 const cons_cell = try allocator.create(Cons);
-                cons_cell.* = .{ .first = it.current, .rest = .{ .lazy_seq = rest_ls } };
-                return Value{ .cons = cons_cell };
+                cons_cell.* = .{ .first = it.current, .rest = Value.initLazySeq(rest_ls) };
+                return Value.initCons(cons_cell);
             },
         }
     }
@@ -856,14 +860,21 @@ pub const Value = union(enum) {
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
-        switch (self) {
+        switch (self.tag()) {
             .nil => {
                 if (print_readably) try w.writeAll("nil");
                 // Non-readable: nil => "" (empty), matching Clojure str/print semantics
             },
-            .boolean => |b| try w.writeAll(if (b) "true" else "false"),
-            .integer => |n| try w.print("{d}", .{n}),
-            .float => |n| {
+            .boolean => {
+                const b = self.asBoolean();
+                try w.writeAll(if (b) "true" else "false");
+            },
+            .integer => {
+                const n = self.asInteger();
+                try w.print("{d}", .{n});
+            },
+            .float => {
+                const n = self.asFloat();
                 // Handle special float values
                 if (std.math.isNan(n)) {
                     try w.writeAll("##NaN");
@@ -907,7 +918,8 @@ pub const Value = union(enum) {
                     }
                 }
             },
-            .char => |c| {
+            .char => {
+                const c = self.asChar();
                 if (!print_readably) {
                     // Non-readable: literal character
                     var buf: [4]u8 = undefined;
@@ -926,7 +938,8 @@ pub const Value = union(enum) {
                     },
                 }
             },
-            .string => |s| {
+            .string => {
+                const s = self.asString();
                 if (print_readably) {
                     try w.writeByte('"');
                     for (s) |c| {
@@ -944,21 +957,24 @@ pub const Value = union(enum) {
                     try w.writeAll(s);
                 }
             },
-            .symbol => |sym| {
+            .symbol => {
+                const sym = self.asSymbol();
                 if (sym.ns) |ns| {
                     try w.print("{s}/{s}", .{ ns, sym.name });
                 } else {
                     try w.writeAll(sym.name);
                 }
             },
-            .keyword => |k| {
+            .keyword => {
+                const k = self.asKeyword();
                 if (k.ns) |ns| {
                     try w.print(":{s}/{s}", .{ ns, k.name });
                 } else {
                     try w.print(":{s}", .{k.name});
                 }
             },
-            .list => |lst| {
+            .list => {
+                const lst = self.asList();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("(");
@@ -976,7 +992,8 @@ pub const Value = union(enum) {
                 print_depth -= 1;
                 try w.writeAll(")");
             },
-            .vector => |vec| {
+            .vector => {
+                const vec = self.asVector();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("[");
@@ -994,7 +1011,8 @@ pub const Value = union(enum) {
                 print_depth -= 1;
                 try w.writeAll("]");
             },
-            .map => |m| {
+            .map => {
+                const m = self.asMap();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("{");
@@ -1020,7 +1038,8 @@ pub const Value = union(enum) {
                 print_depth -= 1;
                 try w.writeAll("}");
             },
-            .hash_map => |hm| {
+            .hash_map => {
+                const hm = self.asHashMap();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("{");
@@ -1049,7 +1068,8 @@ pub const Value = union(enum) {
                 print_depth -= 1;
                 try w.writeAll("}");
             },
-            .set => |s| {
+            .set => {
+                const s = self.asSet();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("#{");
@@ -1069,39 +1089,46 @@ pub const Value = union(enum) {
             },
             .fn_val => try w.writeAll("#<fn>"),
             .builtin_fn => try w.writeAll("#<builtin-fn>"),
-            .atom => |a| {
+            .atom => {
+                const a = self.asAtom();
                 try w.writeAll("#<atom ");
                 try a.value.formatPrStr(w);
                 try w.writeAll(">");
             },
-            .volatile_ref => |v| {
+            .volatile_ref => {
+                const v = self.asVolatile();
                 try w.writeAll("#<volatile ");
                 try v.value.formatPrStr(w);
                 try w.writeAll(">");
             },
-            .regex => |p| {
+            .regex => {
+                const p = self.asRegex();
                 try w.writeAll("#\"");
                 try w.writeAll(p.source);
                 try w.writeAll("\"");
             },
-            .protocol => |p| {
+            .protocol => {
+                const p = self.asProtocol();
                 try w.writeAll("#<protocol ");
                 try w.writeAll(p.name);
                 try w.writeAll(">");
             },
-            .protocol_fn => |pf| {
+            .protocol_fn => {
+                const pf = self.asProtocolFn();
                 try w.writeAll("#<protocol-fn ");
                 try w.writeAll(pf.protocol.name);
                 try w.writeAll("/");
                 try w.writeAll(pf.method_name);
                 try w.writeAll(">");
             },
-            .multi_fn => |mf| {
+            .multi_fn => {
+                const mf = self.asMultiFn();
                 try w.writeAll("#<multifn ");
                 try w.writeAll(mf.name);
                 try w.writeAll(">");
             },
-            .lazy_seq => |ls| {
+            .lazy_seq => {
+                const ls = self.asLazySeq();
                 if (ls.realized) |r| {
                     try r.formatPrStr(w);
                 } else if (print_allocator) |alloc| {
@@ -1115,13 +1142,15 @@ pub const Value = union(enum) {
                     try w.writeAll("#<lazy-seq>");
                 }
             },
-            .var_ref => |v| {
+            .var_ref => {
+                const v = self.asVarRef();
                 try w.writeAll("#'");
                 try w.writeAll(v.ns_name);
                 try w.writeAll("/");
                 try w.writeAll(v.sym.name);
             },
-            .delay => |d| {
+            .delay => {
+                const d = self.asDelay();
                 if (d.realized) {
                     try w.writeAll("#delay[");
                     if (d.cached) |v| try v.formatPrStr(w) else try w.writeAll("nil");
@@ -1130,11 +1159,15 @@ pub const Value = union(enum) {
                     try w.writeAll("#delay[pending]");
                 }
             },
-            .reduced => |r| try r.value.formatPrStr(w),
+            .reduced => {
+                const r = self.asReduced();
+                try r.value.formatPrStr(w);
+            },
             .transient_vector => try w.writeAll("#<TransientVector>"),
             .transient_map => try w.writeAll("#<TransientMap>"),
             .transient_set => try w.writeAll("#<TransientSet>"),
-            .chunked_cons => |cc| {
+            .chunked_cons => {
+                const cc = self.asChunkedCons();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("(");
@@ -1150,11 +1183,11 @@ pub const Value = union(enum) {
                         }
                     }
                     if (count > 0) try w.writeAll(" ");
-                    const elem = cc.chunk.nth(i) orelse Value.nil;
+                    const elem = cc.chunk.nth(i) orelse Value.nil_val;
                     try elem.formatPrStr(w);
                     count += 1;
                 }
-                if (!truncated and cc.more != .nil) {
+                if (!truncated and cc.more.tag() != .nil) {
                     // Print elements from rest chunks
                     try printSeqRest(w, cc.more, length, &count);
                 }
@@ -1164,8 +1197,12 @@ pub const Value = union(enum) {
             .chunk_buffer => try w.writeAll("#<ChunkBuffer>"),
             .array_chunk => try w.writeAll("#<ArrayChunk>"),
             .wasm_module => try w.writeAll("#<WasmModule>"),
-            .wasm_fn => |wf| try w.print("#<WasmFn {s}>", .{wf.name}),
-            .cons => |c| {
+            .wasm_fn => {
+                const wf = self.asWasmFn();
+                try w.print("#<WasmFn {s}>", .{wf.name});
+            },
+            .cons => {
+                const c = self.asCons();
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("(");
@@ -1193,14 +1230,15 @@ pub const Value = union(enum) {
     /// Clojure str semantics: non-readable string conversion.
     /// Differs from formatPrStr: nil => "", strings unquoted, chars as literal.
     pub fn formatStr(self: Value, w: *Writer) Writer.Error!void {
-        switch (self) {
+        switch (self.tag()) {
             .nil => {}, // nil => "" (empty)
-            .char => |c| {
+            .char => {
+                const c = self.asChar();
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(c, &buf) catch 0;
                 try w.writeAll(buf[0..len]);
             },
-            .string => |s| try w.writeAll(s),
+            .string => try w.writeAll(self.asString()),
             else => try self.formatPrStr(w),
         }
     }
@@ -1218,25 +1256,25 @@ pub const Value = union(enum) {
     }
 
     fn eqlImpl(self: Value, other: Value, allocator: ?Allocator) bool {
-        const self_tag = std.meta.activeTag(self);
-        const other_tag = std.meta.activeTag(other);
+        const self_tag = self.tag();
+        const other_tag = other.tag();
 
         // Cross-type numeric equality: (= 1 1.0) => true
         if ((self_tag == .integer and other_tag == .float) or
             (self_tag == .float and other_tag == .integer))
         {
-            const a: f64 = if (self_tag == .integer) @floatFromInt(self.integer) else self.float;
-            const b: f64 = if (other_tag == .integer) @floatFromInt(other.integer) else other.float;
+            const a: f64 = if (self_tag == .integer) @floatFromInt(self.asInteger()) else self.asFloat();
+            const b: f64 = if (other_tag == .integer) @floatFromInt(other.asInteger()) else other.asFloat();
             return a == b;
         }
 
         // Lazy seqs: realize and compare using JVM LazySeq.equiv() semantics.
         // A realized-nil lazy-seq is an empty sequence (equals () or [], but NOT nil).
         if (self_tag == .lazy_seq) {
-            return eqlLazySide(self.lazy_seq, other, other_tag, allocator);
+            return eqlLazySide(self.asLazySeq(), other, other_tag, allocator);
         }
         if (other_tag == .lazy_seq) {
-            return eqlLazySide(other.lazy_seq, self, self_tag, allocator);
+            return eqlLazySide(other.asLazySeq(), self, self_tag, allocator);
         }
 
         // Cons cells and chunked cons: compare as sequences
@@ -1264,62 +1302,60 @@ pub const Value = union(enum) {
 
         if (self_tag != other_tag) return false;
 
-        return switch (self) {
+        return switch (self.tag()) {
             .nil => true,
-            .boolean => |a| a == other.boolean,
-            .integer => |a| a == other.integer,
-            .float => |a| a == other.float,
-            .char => |a| a == other.char,
-            .string => |a| std.mem.eql(u8, a, other.string),
-            .symbol => |a| eqlOptionalStr(a.ns, other.symbol.ns) and std.mem.eql(u8, a.name, other.symbol.name),
-            .keyword => |a| eqlOptionalStr(a.ns, other.keyword.ns) and std.mem.eql(u8, a.name, other.keyword.name),
+            .boolean => self.asBoolean() == other.asBoolean(),
+            .integer => self.asInteger() == other.asInteger(),
+            .float => self.asFloat() == other.asFloat(),
+            .char => self.asChar() == other.asChar(),
+            .string => std.mem.eql(u8, self.asString(), other.asString()),
+            .symbol => eqlOptionalStr(self.asSymbol().ns, other.asSymbol().ns) and std.mem.eql(u8, self.asSymbol().name, other.asSymbol().name),
+            .keyword => eqlOptionalStr(self.asKeyword().ns, other.asKeyword().ns) and std.mem.eql(u8, self.asKeyword().name, other.asKeyword().name),
             .list, .vector => unreachable, // handled by sequential equality above
-            .fn_val => |a| a == other.fn_val,
-            .builtin_fn => |a| a == other.builtin_fn,
-            .atom => |a| a == other.atom, // identity equality
-            .volatile_ref => |a| a == other.volatile_ref, // identity equality
-            .regex => |a| std.mem.eql(u8, a.source, other.regex.source), // pattern string equality
-            .protocol => |a| a == other.protocol, // identity equality
-            .protocol_fn => |a| a == other.protocol_fn, // identity equality
-            .multi_fn => |a| a == other.multi_fn, // identity equality
+            .fn_val => self.asFn() == other.asFn(),
+            .builtin_fn => self.asBuiltinFn() == other.asBuiltinFn(),
+            .atom => self.asAtom() == other.asAtom(), // identity equality
+            .volatile_ref => self.asVolatile() == other.asVolatile(), // identity equality
+            .regex => std.mem.eql(u8, self.asRegex().source, other.asRegex().source), // pattern string equality
+            .protocol => self.asProtocol() == other.asProtocol(), // identity equality
+            .protocol_fn => self.asProtocolFn() == other.asProtocolFn(), // identity equality
+            .multi_fn => self.asMultiFn() == other.asMultiFn(), // identity equality
             .lazy_seq => unreachable, // handled by early return above
-            .var_ref => |a| a == other.var_ref, // identity equality
+            .var_ref => self.asVarRef() == other.asVarRef(), // identity equality
             .cons => unreachable, // handled by eqlConsSeq above
-            .delay => |a| a == other.delay, // identity equality
-            .reduced => |a| a.value.eqlImpl(other.reduced.value, allocator),
+            .delay => self.asDelay() == other.asDelay(), // identity equality
+            .reduced => self.asReduced().value.eqlImpl(other.asReduced().value, allocator),
             .map, .hash_map => unreachable, // handled by eqlMaps above
-            .set => |a| {
-                const b = other.set;
+            .set => {
+                const a = self.asSet();
+                const b = other.asSet();
                 if (a.count() != b.count()) return false;
                 for (a.items) |item| {
                     if (!b.contains(item)) return false;
                 }
                 return true;
             },
-            .transient_vector => |a| a == other.transient_vector, // identity equality
-            .transient_map => |a| a == other.transient_map, // identity equality
-            .transient_set => |a| a == other.transient_set, // identity equality
+            .transient_vector => self.asTransientVector() == other.asTransientVector(), // identity equality
+            .transient_map => self.asTransientMap() == other.asTransientMap(), // identity equality
+            .transient_set => self.asTransientSet() == other.asTransientSet(), // identity equality
             .chunked_cons => unreachable, // handled by eqlConsSeq above
-            .chunk_buffer => |a| a == other.chunk_buffer, // identity equality
-            .array_chunk => |a| a == other.array_chunk, // identity equality
-            .wasm_module => |a| a == other.wasm_module, // identity equality
-            .wasm_fn => |a| a == other.wasm_fn, // identity equality
+            .chunk_buffer => self.asChunkBuffer() == other.asChunkBuffer(), // identity equality
+            .array_chunk => self.asArrayChunk() == other.asArrayChunk(), // identity equality
+            .wasm_module => self.asWasmModule() == other.asWasmModule(), // identity equality
+            .wasm_fn => self.asWasmFn() == other.asWasmFn(), // identity equality
         };
     }
 
     /// Returns true if this value is nil.
     pub fn isNil(self: Value) bool {
-        return switch (self) {
-            .nil => true,
-            else => false,
-        };
+        return self.tag() == .nil;
     }
 
     /// Clojure truthiness: everything is truthy except nil and false.
     pub fn isTruthy(self: Value) bool {
-        return switch (self) {
+        return switch (self.tag()) {
             .nil => false,
-            .boolean => |b| b,
+            .boolean => self.asBoolean(),
             else => true,
         };
     }
@@ -1330,9 +1366,9 @@ fn isSequential(t: Value.Tag) bool {
 }
 
 fn sequentialItems(v: Value) []const Value {
-    return switch (v) {
-        .list => |lst| lst.items,
-        .vector => |vec| vec.items,
+    return switch (v.tag()) {
+        .list => v.asList().items,
+        .vector => v.asVector().items,
         else => unreachable,
     };
 }
@@ -1348,7 +1384,7 @@ fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Value.Tag, allocator: ?A
         }
         break :blk lazy.realized orelse return false;
     };
-    if (realized == .nil) {
+    if (realized.tag() == .nil) {
         // Empty lazy-seq: equal only to empty sequential types
         if (other_tag == .nil) return false; // (= nil (lazy-seq nil)) => false
         if (isSequential(other_tag)) {
@@ -1358,10 +1394,10 @@ fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Value.Tag, allocator: ?A
         if (other_tag == .lazy_seq) {
             // Compare two lazy-seqs: both must realize to empty
             if (allocator) |alloc| {
-                const other_realized = other.lazy_seq.realize(alloc) catch return false;
-                return other_realized == .nil;
+                const other_realized = other.asLazySeq().realize(alloc) catch return false;
+                return other_realized.tag() == .nil;
             }
-            if (other.lazy_seq.realized) |r| return r == .nil;
+            if (other.asLazySeq().realized) |r| return r.tag() == .nil;
             return false;
         }
         return false;
@@ -1372,13 +1408,13 @@ fn eqlLazySide(lazy: *LazySeq, other: Value, other_tag: Value.Tag, allocator: ?A
 /// Compare a cons/chunked_cons with another sequential value element-by-element.
 /// Handles cons vs cons, cons vs list/vector, chunked_cons vs list/vector, etc.
 fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
-    const a_tag = std.meta.activeTag(a);
-    const b_tag = std.meta.activeTag(b);
+    const a_tag = a.tag();
+    const b_tag = b.tag();
 
     // Fast path: both cons
     if (a_tag == .cons and b_tag == .cons) {
-        if (!a.cons.first.eqlImpl(b.cons.first, allocator)) return false;
-        return a.cons.rest.eqlImpl(b.cons.rest, allocator);
+        if (!a.asCons().first.eqlImpl(b.asCons().first, allocator)) return false;
+        return a.asCons().rest.eqlImpl(b.asCons().rest, allocator);
     }
 
     const is_a_walker = (a_tag == .cons or a_tag == .chunked_cons);
@@ -1399,16 +1435,16 @@ fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
     var b_items: std.ArrayListUnmanaged(Value) = .empty;
     var cur = b;
     while (true) {
-        const cur_tag = std.meta.activeTag(cur);
+        const cur_tag = cur.tag();
         if (cur_tag == .nil) break;
         if (cur_tag == .cons) {
-            b_items.append(alloc, cur.cons.first) catch return false;
-            cur = cur.cons.rest;
+            b_items.append(alloc, cur.asCons().first) catch return false;
+            cur = cur.asCons().rest;
         } else if (cur_tag == .chunked_cons) {
-            const cc = cur.chunked_cons;
+            const cc = cur.asChunkedCons();
             var j: usize = 0;
             while (j < cc.chunk.count()) : (j += 1) {
-                b_items.append(alloc, cc.chunk.nth(j) orelse Value.nil) catch return false;
+                b_items.append(alloc, cc.chunk.nth(j) orelse Value.nil_val) catch return false;
             }
             cur = cc.more;
         } else if (isSequential(cur_tag)) {
@@ -1417,7 +1453,7 @@ fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
             }
             break;
         } else if (cur_tag == .lazy_seq) {
-            cur = cur.lazy_seq.realize(alloc) catch return false;
+            cur = cur.asLazySeq().realize(alloc) catch return false;
         } else {
             return false;
         }
@@ -1430,18 +1466,18 @@ fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool 
     var i: usize = 0;
     var cur = seq;
     while (true) {
-        const cur_tag = std.meta.activeTag(cur);
+        const cur_tag = cur.tag();
         if (cur_tag == .cons) {
             if (i >= items.len) return false;
-            if (!cur.cons.first.eqlImpl(items[i], allocator)) return false;
-            cur = cur.cons.rest;
+            if (!cur.asCons().first.eqlImpl(items[i], allocator)) return false;
+            cur = cur.asCons().rest;
             i += 1;
         } else if (cur_tag == .chunked_cons) {
-            const cc = cur.chunked_cons;
+            const cc = cur.asChunkedCons();
             var j: usize = 0;
             while (j < cc.chunk.count()) : (j += 1) {
                 if (i >= items.len) return false;
-                const elem = cc.chunk.nth(j) orelse Value.nil;
+                const elem = cc.chunk.nth(j) orelse Value.nil_val;
                 if (!elem.eqlImpl(items[i], allocator)) return false;
                 i += 1;
             }
@@ -1457,8 +1493,8 @@ fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool 
             return true;
         } else if (cur_tag == .lazy_seq) {
             if (allocator) |alloc| {
-                cur = cur.lazy_seq.realize(alloc) catch return false;
-            } else if (cur.lazy_seq.realized) |r| {
+                cur = cur.asLazySeq().realize(alloc) catch return false;
+            } else if (cur.asLazySeq().realized) |r| {
                 cur = r;
             } else {
                 return false;
@@ -1472,18 +1508,18 @@ fn eqlWalkVsItems(seq: Value, items: []const Value, allocator: ?Allocator) bool 
 /// Cross-type map equality: handles ArrayMap vs HashMap comparisons.
 fn eqlMaps(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag, allocator: ?Allocator) bool {
     // Get count from both sides
-    const self_count: usize = if (self_tag == .map) self.map.count() else self.hash_map.getCount();
-    const other_count: usize = if (other_tag == .map) other.map.count() else other.hash_map.getCount();
+    const self_count: usize = if (self_tag == .map) self.asMap().count() else self.asHashMap().getCount();
+    const other_count: usize = if (other_tag == .map) other.asMap().count() else other.asHashMap().getCount();
     if (self_count != other_count) return false;
 
     // Iterate self's entries and look up in other
     if (self_tag == .map) {
-        const a = self.map;
+        const a = self.asMap();
         var i: usize = 0;
         while (i < a.entries.len) : (i += 2) {
             const key = a.entries[i];
             const val = a.entries[i + 1];
-            const bval = if (other_tag == .map) other.map.get(key) else other.hash_map.get(key);
+            const bval = if (other_tag == .map) other.asMap().get(key) else other.asHashMap().get(key);
             if (bval) |bv| {
                 if (!val.eqlImpl(bv, allocator)) return false;
             } else {
@@ -1494,12 +1530,12 @@ fn eqlMaps(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag,
     } else {
         // self is hash_map — collect entries and iterate
         const alloc = allocator orelse return false;
-        const entries = self.hash_map.toEntries(alloc) catch return false;
+        const entries = self.asHashMap().toEntries(alloc) catch return false;
         var i: usize = 0;
         while (i < entries.len) : (i += 2) {
             const key = entries[i];
             const val = entries[i + 1];
-            const bval = if (other_tag == .map) other.map.get(key) else other.hash_map.get(key);
+            const bval = if (other_tag == .map) other.asMap().get(key) else other.asHashMap().get(key);
             if (bval) |bv| {
                 if (!val.eqlImpl(bv, allocator)) return false;
             } else {
