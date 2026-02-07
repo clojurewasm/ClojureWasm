@@ -112,7 +112,7 @@ pub const Analyzer = struct {
             .compiled = @ptrCast(compiled),
             .group_count = compiled.group_count,
         };
-        return self.makeConstant(.{ .regex = pat });
+        return self.makeConstant(Value.initRegex(pat));
     }
 
     fn makeLocalRef(self: *Analyzer, name: []const u8, idx: u32, form: Form) AnalyzeError!*Node {
@@ -182,19 +182,19 @@ pub const Analyzer = struct {
     /// Analyze a Form, producing a Node.
     pub fn analyze(self: *Analyzer, form: Form) AnalyzeError!*Node {
         return switch (form.data) {
-            .nil => self.makeConstantFrom(.nil, form),
-            .boolean => |b| self.makeConstantFrom(.{ .boolean = b }, form),
-            .integer => |n| self.makeConstantFrom(.{ .integer = n }, form),
-            .float => |n| self.makeConstantFrom(.{ .float = n }, form),
-            .char => |c| self.makeConstantFrom(.{ .char = c }, form),
-            .string => |s| self.makeConstantFrom(.{ .string = s }, form),
+            .nil => self.makeConstantFrom(Value.nil_val, form),
+            .boolean => |b| self.makeConstantFrom(Value.initBoolean(b), form),
+            .integer => |n| self.makeConstantFrom(Value.initInteger(n), form),
+            .float => |n| self.makeConstantFrom(Value.initFloat(n), form),
+            .char => |c| self.makeConstantFrom(Value.initChar(c), form),
+            .string => |s| self.makeConstantFrom(Value.initString(s), form),
             .keyword => |sym| blk: {
                 var resolved_ns = sym.ns;
                 if (sym.auto_resolve) {
                     resolved_ns = self.resolveAutoNs(sym.ns) orelse sym.ns;
                 }
                 keyword_intern.intern(resolved_ns, sym.name);
-                break :blk self.makeConstantFrom(.{ .keyword = .{ .ns = resolved_ns, .name = sym.name } }, form);
+                break :blk self.makeConstantFrom(Value.initKeyword(.{ .ns = resolved_ns, .name = sym.name }), form);
             },
             .symbol => |sym| self.analyzeSymbol(sym, form),
             .list => |items| self.analyzeList(items, form),
@@ -202,7 +202,7 @@ pub const Analyzer = struct {
             .map => |items| self.analyzeMap(items, form),
             .set => |items| self.analyzeSet(items, form),
             .regex => |pattern| self.analyzeRegex(pattern, form),
-            .tag => self.makeConstant(.nil), // tagged literals deferred
+            .tag => self.makeConstant(Value.nil_val), // tagged literals deferred
         };
     }
 
@@ -226,7 +226,7 @@ pub const Analyzer = struct {
             // Empty list () -> empty list (self-evaluating in Clojure)
             const empty_list = self.allocator.create(value_mod.PersistentList) catch return error.OutOfMemory;
             empty_list.* = .{ .items = &.{} };
-            return self.makeConstantFrom(.{ .list = empty_list }, form);
+            return self.makeConstantFrom(Value.initList(empty_list), form);
         }
 
         // Check for special form (but locals shadow special forms)
@@ -372,7 +372,7 @@ pub const Analyzer = struct {
     fn analyzeDo(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (do expr1 expr2 ...)
         if (items.len == 1) {
-            return self.makeConstant(.nil);
+            return self.makeConstant(Value.nil_val);
         }
 
         var statements = self.allocator.alloc(*Node, items.len - 1) catch return error.OutOfMemory;
@@ -966,7 +966,7 @@ pub const Analyzer = struct {
             const guard_count = when_count_at_while.items[while_idx];
             if (guard_count > 0) {
                 // Build: (if when_1 (if when_2 ... while_test ... true) true)
-                const true_val = try self.makeConstant(.{ .boolean = true });
+                const true_val = try self.makeConstant(Value.true_val);
                 var g: usize = guard_count;
                 while (g > 0) {
                     g -= 1;
@@ -1480,14 +1480,14 @@ pub const Analyzer = struct {
             }
         };
         if (the_var) |v| {
-            return self.makeConstant(.{ .var_ref = v });
+            return self.makeConstant(Value.initVarRef(v));
         }
         // For unqualified vars, intern in current namespace (JVM Clojure
         // behavior: def interns at compile time, so #'x works even before
         // the def form executes at runtime).
         if (sym.ns == null) {
             const interned = ns.intern(sym.name) catch return error.OutOfMemory;
-            return self.makeConstant(.{ .var_ref = interned });
+            return self.makeConstant(Value.initVarRef(interned));
         }
         return self.analysisError(.syntax_error, "Unable to resolve var", form);
     }
@@ -1667,7 +1667,7 @@ pub const Analyzer = struct {
             }
             const vec = self.allocator.create(@import("../value.zig").PersistentVector) catch return error.OutOfMemory;
             vec.* = .{ .items = values };
-            return self.makeConstantFrom(.{ .vector = vec }, form);
+            return self.makeConstantFrom(Value.initVector(vec), form);
         }
 
         // Non-constant: produce call to "vector"
@@ -1691,7 +1691,7 @@ pub const Analyzer = struct {
             }
             const m = self.allocator.create(@import("../value.zig").PersistentArrayMap) catch return error.OutOfMemory;
             m.* = .{ .entries = values };
-            return self.makeConstantFrom(.{ .map = m }, form);
+            return self.makeConstantFrom(Value.initMap(m), form);
         }
 
         return self.makeBuiltinCall("hash-map", nodes);
@@ -1714,7 +1714,7 @@ pub const Analyzer = struct {
             }
             const s = self.allocator.create(@import("../value.zig").PersistentHashSet) catch return error.OutOfMemory;
             s.* = .{ .items = values };
-            return self.makeConstantFrom(.{ .set = s }, form);
+            return self.makeConstantFrom(Value.initSet(s), form);
         }
 
         return self.makeBuiltinCall("hash-set", nodes);
@@ -2011,7 +2011,7 @@ pub const Analyzer = struct {
 
     /// Generate (nth coll idx) call node.
     fn makeNthCall(self: *Analyzer, coll_node: *Node, idx: usize) AnalyzeError!*Node {
-        const idx_node = try self.makeConstant(.{ .integer = @intCast(idx) });
+        const idx_node = try self.makeConstant(Value.initInteger(@intCast(idx)));
         const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
         args[0] = coll_node;
         args[1] = idx_node;
@@ -2033,21 +2033,21 @@ pub const Analyzer = struct {
 
     /// Generate (get coll :ns/keyword) or (get coll :keyword default) call node.
     fn makeGetKeywordCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(.{ .keyword = .{ .ns = ns, .name = key_name } });
+        const key_node = try self.makeConstant(Value.initKeyword(.{ .ns = ns, .name = key_name }));
         const default_node = try self.findDefault(key_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 
     /// Generate (get coll "string") or (get coll "string" default) call node.
     fn makeGetStringCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(.{ .string = key_name });
+        const key_node = try self.makeConstant(Value.initString(key_name));
         const default_node = try self.findDefault(key_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 
     /// Generate (get coll 'ns/symbol) or (get coll 'symbol default) call node.
     fn makeGetSymbolCall(self: *Analyzer, coll_node: *Node, sym_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(.{ .symbol = .{ .ns = ns, .name = sym_name } });
+        const key_node = try self.makeConstant(Value.initSymbol(.{ .ns = ns, .name = sym_name }));
         const default_node = try self.findDefault(sym_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
@@ -2105,7 +2105,7 @@ pub const Analyzer = struct {
     /// Analyze a sequence of body forms. Returns nil for empty, single form, or do-wrapped.
     fn analyzeBody(self: *Analyzer, body_forms: []const Form, form: Form) AnalyzeError!*Node {
         if (body_forms.len == 0) {
-            return self.makeConstant(.nil);
+            return self.makeConstant(Value.nil_val);
         }
         if (body_forms.len == 1) {
             return self.analyze(body_forms[0]);
@@ -2132,19 +2132,19 @@ pub const Analyzer = struct {
 /// Collections are converted recursively.
 pub fn formToValue(form: Form) Value {
     return switch (form.data) {
-        .nil => .nil,
-        .boolean => |b| .{ .boolean = b },
-        .integer => |n| .{ .integer = n },
-        .float => |n| .{ .float = n },
-        .char => |c| .{ .char = c },
-        .string => |s| .{ .string = s },
-        .symbol => |sym| .{ .symbol = .{ .ns = sym.ns, .name = sym.name } },
-        .keyword => |sym| .{ .keyword = .{ .ns = sym.ns, .name = sym.name } },
+        .nil => Value.nil_val,
+        .boolean => |b| Value.initBoolean(b),
+        .integer => |n| Value.initInteger(n),
+        .float => |n| Value.initFloat(n),
+        .char => |c| Value.initChar(c),
+        .string => |s| Value.initString(s),
+        .symbol => |sym| Value.initSymbol(.{ .ns = sym.ns, .name = sym.name }),
+        .keyword => |sym| Value.initKeyword(.{ .ns = sym.ns, .name = sym.name }),
         // Collections require allocation; for Phase 1c, return nil placeholder.
         // Full collection quote support requires allocator (deferred).
-        .list, .vector, .map, .set => .nil,
-        .regex => |_| .nil, // no allocator available; use macro.formToValue for regex support
-        .tag => .nil,
+        .list, .vector, .map, .set => Value.nil_val,
+        .regex => |_| Value.nil_val, // no allocator available; use macro.formToValue for regex support
+        .tag => Value.nil_val,
     };
 }
 
@@ -2168,10 +2168,10 @@ test "analyze boolean literals" {
     defer a.deinit();
 
     const t = try a.analyze(.{ .data = .{ .boolean = true } });
-    try std.testing.expect(t.constant.value.eql(.{ .boolean = true }));
+    try std.testing.expect(t.constant.value.eql(Value.true_val));
 
     const f = try a.analyze(.{ .data = .{ .boolean = false } });
-    try std.testing.expect(f.constant.value.eql(.{ .boolean = false }));
+    try std.testing.expect(f.constant.value.eql(Value.false_val));
 }
 
 test "analyze integer literal" {
@@ -2181,7 +2181,7 @@ test "analyze integer literal" {
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .integer = 42 } });
-    try std.testing.expect(result.constant.value.eql(.{ .integer = 42 }));
+    try std.testing.expect(result.constant.value.eql(Value.initInteger(42)));
 }
 
 test "analyze string literal" {
@@ -2191,7 +2191,7 @@ test "analyze string literal" {
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .string = "hello" } });
-    try std.testing.expect(result.constant.value.eql(.{ .string = "hello" }));
+    try std.testing.expect(result.constant.value.eql(Value.initString("hello")));
 }
 
 test "analyze keyword" {
@@ -2361,8 +2361,8 @@ test "analyze (quote foo)" {
     };
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     try std.testing.expectEqualStrings("quote", result.kindName());
-    switch (result.quote_node.value) {
-        .symbol => |sym| try std.testing.expectEqualStrings("foo", sym.name),
+    switch (result.quote_node.value.tag()) {
+        .symbol => try std.testing.expectEqualStrings("foo", result.quote_node.value.asSymbol().name),
         else => unreachable,
     }
 }
@@ -2420,7 +2420,7 @@ test "analyze vector literal [1 2 3]" {
     const result = try a.analyze(.{ .data = .{ .vector = &items } });
     // All constants -> should be a constant vector
     try std.testing.expectEqualStrings("constant", result.kindName());
-    try std.testing.expect(result.constant.value == .vector);
+    try std.testing.expect(result.constant.value.tag() == .vector);
 }
 
 test "analyze error: if with wrong arity" {
@@ -2491,11 +2491,11 @@ test "analyze named fn with self-reference" {
 
 test "formToValue converts primitives" {
     const val = formToValue(.{ .data = .{ .integer = 42 } });
-    try std.testing.expect(val.eql(.{ .integer = 42 }));
+    try std.testing.expect(val.eql(Value.initInteger(42)));
 
     const sym = formToValue(.{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
-    try std.testing.expect(sym == .symbol);
-    try std.testing.expectEqualStrings("foo", sym.symbol.name);
+    try std.testing.expect(sym.tag() == .symbol);
+    try std.testing.expectEqualStrings("foo", sym.asSymbol().name);
 }
 
 test "analyze (loop [x 0] x)" {
@@ -2548,7 +2548,7 @@ test "analyze (throw \"error\")" {
     };
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     try std.testing.expectEqualStrings("throw", result.kindName());
-    try std.testing.expect(result.throw_node.expr.constant.value.eql(.{ .string = "error" }));
+    try std.testing.expect(result.throw_node.expr.constant.value.eql(Value.initString("error")));
 }
 
 test "analyze (try 1 (catch Exception e 2))" {
@@ -2575,7 +2575,7 @@ test "analyze (try 1 (catch Exception e 2))" {
     try std.testing.expectEqualStrings("e", result.try_node.catch_clause.?.binding_name);
     try std.testing.expect(result.try_node.finally_body == null);
     // body should be constant 1
-    try std.testing.expect(result.try_node.body.constant.value.eql(.{ .integer = 1 }));
+    try std.testing.expect(result.try_node.body.constant.value.eql(Value.initInteger(1)));
 }
 
 test "analyze (try 1 (finally 3))" {
@@ -2750,13 +2750,13 @@ test "macro expansion - builtin_fn macro" {
         fn expandFn(allocator: Allocator, args: []const Value) anyerror!Value {
             // Build (do arg0): list with symbol "do" + first arg
             const items = try allocator.alloc(Value, 1 + args.len);
-            items[0] = Value{ .symbol = .{ .ns = null, .name = "do" } };
+            items[0] = Value.initSymbol(.{ .ns = null, .name = "do" });
             for (args, 0..) |arg, i| {
                 items[1 + i] = arg;
             }
             const lst = try allocator.create(collections.PersistentList);
             lst.* = .{ .items = items };
-            return Value{ .list = lst };
+            return Value.initList(lst);
         }
     };
 
@@ -2771,7 +2771,7 @@ test "macro expansion - builtin_fn macro" {
     env.current_ns = ns;
     const v = try ns.intern("my-macro");
     v.setMacro(true);
-    v.bindRoot(.{ .builtin_fn = &TestMacro.expandFn });
+    v.bindRoot(Value.initBuiltinFn(&TestMacro.expandFn));
 
     var a = Analyzer.initWithEnv(alloc, &env);
     defer a.deinit();
@@ -2795,6 +2795,6 @@ test "analyze empty list -> empty list" {
     const items = [_]Form{};
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     // Empty list () is self-evaluating in Clojure
-    try std.testing.expect(result.constant.value == .list);
-    try std.testing.expectEqual(@as(usize, 0), result.constant.value.list.items.len);
+    try std.testing.expect(result.constant.value.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 0), result.constant.value.asList().items.len);
 }
