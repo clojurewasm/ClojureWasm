@@ -525,6 +525,17 @@ pub const TreeWalk = struct {
         self.call_depth += 1;
         defer self.call_depth -= 1;
 
+        // Track call stack for error reporting (30.1a)
+        // Frames are popped on success only; on error, frames stay for the trace.
+        const fn_n = closure.fn_node;
+        err_mod.pushFrame(.{
+            .fn_name = fn_n.name,
+            .ns = if (callee_fn_val.tag() == .fn_val) callee_fn_val.asFn().defining_ns else null,
+            .file = fn_n.source.file,
+            .line = fn_n.source.line,
+            .column = fn_n.source.column,
+        });
+
         // Restore defining namespace for var resolution (D68).
         // This ensures unqualified symbols resolve in the namespace where the
         // function was defined, not the caller's namespace.
@@ -542,9 +553,7 @@ pub const TreeWalk = struct {
             env.current_ns = saved_ns;
         };
 
-        const fn_n = closure.fn_node;
-
-        // Find matching arity
+        // Find matching arity (fn_n already extracted above for stack frame)
         const arity = findArity(fn_n.arities, args.len) orelse return error.ArityError;
 
         // Save caller's local frame on heap (avoids stack overflow in deep recursion)
@@ -653,6 +662,7 @@ pub const TreeWalk = struct {
                 @memcpy(self.recur_args[0..recur_save_count], saved_recur_args);
             }
 
+            err_mod.popFrame();
             return result;
         }
     }
@@ -1102,6 +1112,7 @@ pub const TreeWalk = struct {
                     else
                         self.createRuntimeException(e);
                     self.exception = null;
+                    err_mod.clearCallStack();
 
                     const saved = self.local_count;
                     if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;

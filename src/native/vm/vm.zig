@@ -361,6 +361,7 @@ pub const VM = struct {
                     }
                 }
                 self.frame_count -= 1;
+                err_mod.popFrame();
                 if (self.frame_count == target_frame) return result;
                 // Restore caller's stack: base-1 removes the fn_val slot
                 self.sp = base - 1;
@@ -719,6 +720,7 @@ pub const VM = struct {
                     try self.push(thrown);
                     // Jump to catch handler
                     self.frames[handler.frame_idx].ip = handler.catch_ip;
+                    err_mod.clearCallStack();
                 } else {
                     // No handler — save value for cross-backend propagation
                     bootstrap.last_thrown_exception = thrown;
@@ -1233,6 +1235,13 @@ pub const VM = struct {
             .saved_ns = saved_ns_ptr,
         };
         self.frame_count += 1;
+
+        // Track call stack for error reporting (30.1a)
+        err_mod.pushFrame(.{
+            .fn_name = proto.name,
+            .ns = fn_obj.defining_ns,
+            .file = err_mod.getSourceFile(),
+        });
     }
 
     // --- Arity dispatch ---

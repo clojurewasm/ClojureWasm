@@ -26,7 +26,7 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31
 
 Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.md
 
-- 30.1a Call stack tracking
+- ~~30.1a Call stack tracking~~
 - 30.1b Source context display
 - 30.1c Throwable->map + ex-data
 - 30.1d REPL error formatting
@@ -44,14 +44,14 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.1a — Call stack tracking. Add threadlocal call stack to error.zig,
-push/pop frames in VM performCall() and TreeWalk evalFnCall().
+30.1b — Source context display. Already implemented in main.zig (showSourceContext).
+Verify it works for all error phases and improve formatting if needed.
 
 ## Previous Task
 
-Phase 30 planning: Created .dev/plan/phase30-robustness.md with 15 tasks
-across 4 sub-phases. Research: 72 true JVM-only vars, 106 recoverable.
-nREPL has 14 ops, needs stacktrace + info extension for CIDER.
+30.1a — Call stack tracking. Added StackFrame type and threadlocal call stack
+to error.zig. Push/pop in VM callFnVal/ret and TreeWalk callClosure.
+Stack cleared on catch (both backends). Error reporting shows Trace section.
 
 ## Known Issues from Phase 27
 

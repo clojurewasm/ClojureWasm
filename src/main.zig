@@ -373,6 +373,29 @@ fn reportError(eval_err: anyerror) void {
             const file = info.location.file orelse "<expr>";
             w.print("Location: {s}:{d}:{d}\n", .{ file, info.location.line, info.location.column }) catch {};
         }
+        // Call stack trace
+        const stack = err.getCallStack();
+        if (stack.len > 0) {
+            w.writeAll("Trace:\n") catch {};
+            // Show most recent frames first (innermost to outermost)
+            var i: usize = stack.len;
+            while (i > 0) {
+                i -= 1;
+                const f = stack[i];
+                const ns_name = f.ns orelse "?";
+                const fn_name = f.fn_name orelse "anonymous";
+                if (f.file) |file| {
+                    if (f.line > 0) {
+                        w.print("  at {s}/{s} ({s}:{d})\n", .{ ns_name, fn_name, file, f.line }) catch {};
+                    } else {
+                        w.print("  at {s}/{s} ({s})\n", .{ ns_name, fn_name, file }) catch {};
+                    }
+                } else {
+                    w.print("  at {s}/{s}\n", .{ ns_name, fn_name }) catch {};
+                }
+            }
+        }
+        err.clearCallStack();
         // Source context
         if (info.location.line > 0) {
             showSourceContext(w, info.location, info.message);

@@ -230,6 +230,88 @@ test "arg source save and retrieve" {
     try std.testing.expectEqual(@as(u32, 0), s9.line);
 }
 
+// --- Call stack tracking ---
+
+pub const StackFrame = struct {
+    fn_name: ?[]const u8 = null,
+    ns: ?[]const u8 = null,
+    file: ?[]const u8 = null,
+    line: u32 = 0,
+    column: u32 = 0,
+};
+
+const MAX_CALL_STACK: u8 = 64;
+
+threadlocal var call_stack: [MAX_CALL_STACK]StackFrame = @splat(StackFrame{});
+threadlocal var stack_depth: u8 = 0;
+
+/// Push a call frame onto the error call stack.
+pub fn pushFrame(frame: StackFrame) void {
+    if (stack_depth < MAX_CALL_STACK) {
+        call_stack[stack_depth] = frame;
+        stack_depth += 1;
+    }
+}
+
+/// Pop the topmost call frame.
+pub fn popFrame() void {
+    if (stack_depth > 0) {
+        stack_depth -= 1;
+    }
+}
+
+/// Get the current call stack (slice of active frames).
+pub fn getCallStack() []const StackFrame {
+    return call_stack[0..stack_depth];
+}
+
+/// Clear the call stack (e.g., after error handling).
+pub fn clearCallStack() void {
+    stack_depth = 0;
+}
+
+test "call stack push/pop" {
+    clearCallStack();
+    try std.testing.expectEqual(@as(usize, 0), getCallStack().len);
+
+    pushFrame(.{ .fn_name = "foo", .ns = "user", .line = 10 });
+    try std.testing.expectEqual(@as(usize, 1), getCallStack().len);
+    try std.testing.expectEqualStrings("foo", getCallStack()[0].fn_name.?);
+
+    pushFrame(.{ .fn_name = "bar", .ns = "user", .line = 20 });
+    try std.testing.expectEqual(@as(usize, 2), getCallStack().len);
+    try std.testing.expectEqualStrings("bar", getCallStack()[1].fn_name.?);
+
+    popFrame();
+    try std.testing.expectEqual(@as(usize, 1), getCallStack().len);
+    try std.testing.expectEqualStrings("foo", getCallStack()[0].fn_name.?);
+
+    popFrame();
+    try std.testing.expectEqual(@as(usize, 0), getCallStack().len);
+}
+
+test "call stack overflow protection" {
+    clearCallStack();
+    // Push MAX_CALL_STACK frames
+    for (0..MAX_CALL_STACK) |_| {
+        pushFrame(.{ .fn_name = "overflow" });
+    }
+    try std.testing.expectEqual(@as(usize, MAX_CALL_STACK), getCallStack().len);
+
+    // Extra push is silently dropped (no crash)
+    pushFrame(.{ .fn_name = "extra" });
+    try std.testing.expectEqual(@as(usize, MAX_CALL_STACK), getCallStack().len);
+
+    clearCallStack();
+    try std.testing.expectEqual(@as(usize, 0), getCallStack().len);
+}
+
+test "popFrame on empty stack is safe" {
+    clearCallStack();
+    popFrame(); // should not crash
+    try std.testing.expectEqual(@as(usize, 0), getCallStack().len);
+}
+
 test "kindToError 1:1 mapping" {
     // Verify all 12 kinds map to distinct error tags
     try std.testing.expectEqual(error.SyntaxError, kindToError(.syntax_error));
