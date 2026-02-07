@@ -10,8 +10,15 @@ resolve D3 violations, normalize naming. Prerequisite for Phase 30
 
 ### In scope (high impact, manageable risk)
 
-1. **File splitting** — 6 files over 2000L
-2. **D3 violation resolution** — move module-level state into structs
+1. **D3 violation resolution** — move module-level state into structs
+
+### Dropped (analysis showed impractical)
+
+2. **File splitting** — DROPPED. All 6 candidate files (collections.zig,
+   bootstrap.zig, analyzer.zig, eval_engine.zig, vm.zig, value.zig) use
+   Zig struct methods (must be in same file as struct definition). Tests
+   account for 50-78% of file sizes (Zig convention: bottom of same file).
+   Forcing extraction changes call convention with no real benefit.
 
 ### Deferred (low ROI vs risk)
 
@@ -20,9 +27,21 @@ resolve D3 violations, normalize naming. Prerequisite for Phase 30
    Do this when there's a stronger reason (e.g., extracting a library).
 4. **Import path cleanup** — follows directory restructure, deferred together.
 
-## Task Queue
+## Status: SKIPPED
 
-### Phase 29.1: File Splitting
+Both sub-phases found impractical after analysis:
+- 29.1 (file splitting): Zig struct methods must be in same file as struct.
+  Tests account for 50-78% of large file sizes (Zig convention). No clean
+  extraction boundaries exist.
+- 29.2 (D3 violations): Requires changing BuiltinFn signature from
+  `fn(Allocator, []const Value)` to `fn(Allocator, *Env, []const Value)`,
+  affecting 500+ function signatures. Massive effort, low immediate value.
+
+Both items deferred until there's a stronger trigger (embedding mode, multi-thread).
+
+## Original Task Queue (dropped)
+
+### Phase 29.1: File Splitting (DROPPED)
 
 Split 6 files over 2000 lines. Strategy: extract logical units, keep
 the existing file as the "main" module that re-exports from sub-modules.

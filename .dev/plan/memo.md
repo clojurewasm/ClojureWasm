@@ -8,7 +8,9 @@ Session handover document. Read at session start.
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 28.1 COMPLETE** — Single Binary Builder MVP (1.7MB binary)
-- **Phase 29 IN PROGRESS** — Codebase Restructuring (file splitting + D3)
+- **Phase 29 SKIPPED** — File splitting impractical (Zig struct constraint),
+  D3 violations require BuiltinFn signature change (500+ functions)
+- **Phase 30 IN PROGRESS** — Production Robustness
 
 ## Strategic Direction
 
@@ -18,36 +20,26 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> **29 (restructure)** -> 30 (robustness) -> 31 (FFI)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31 (FFI)
 
 ## Task Queue
 
-Phase 29.1 — File Splitting:
-
-1. **29.1a**: collections.zig → extract transient ops → transient.zig
-2. **29.1b**: bootstrap.zig → extract hot_core_defs + callFnVal → bootstrap_hot.zig
-3. **29.1c**: analyzer.zig → extract special forms → special_forms.zig
-4. **29.1e**: vm.zig → extract performCall → vm_dispatch.zig
-5. **29.1f**: value.zig → extract formatPrStr → value_format.zig
-
-Phase 29.2 — D3 Violations:
-
-6. **29.2a**: io.zig capture_* → RuntimeContext
-7. **29.2b**: ns_ops.zig load_paths → Env
-8. **29.2c-d**: numeric.zig prng, misc.zig gensym → Env
+Phase 30 — Production Robustness. Planning needed. Read roadmap Phase 30:
+- Error reporting improvements (Babashka-quality stack traces)
+- Skip var recovery (re-evaluate 178 skipped vars for Zig equivalents)
+- nREPL/cider-nrepl compatibility
+- Zero-config project model
 
 ## Current Task
 
-29.1a: Split builtin/collections.zig (3737L). Extract transient collection
-builtins (TransientVector/Map/Set operations) into builtin/transient.zig.
+Planning Phase 30. Need to create phase30 plan file with task queue.
 
 ## Previous Task
 
-28.1 DONE: Single binary builder MVP. Binary trailer approach:
-[cljw binary] + [.clj source] + [u64 size] + "CLJW" magic.
-readEmbeddedSource() detects trailer at startup. handleBuildCommand()
-creates embedded binary. *command-line-args* populated from argv.
-ReleaseSafe: 1.7MB single binary. Verified with hello.clj + fib.clj.
+Phase 29 analysis: File splitting impractical (Zig struct methods must be
+in same file, tests 50-78% of large files). D3 violations require
+BuiltinFn signature change (fn(Alloc,[]Value) → fn(Alloc,*Env,[]Value),
+500+ function signatures). Both dropped. Proceeding to Phase 30.
 
 ## Known Issues from Phase 27
 
