@@ -77,14 +77,14 @@ Key points: implement don't skip, no assertion reduction, both backends, CLJW ma
 See `.dev/plan/memo.md` for task queue and current state.
 Do NOT stop between tasks within a phase.
 
-**Phase order**: ... → 22c(test gaps) → **24(optimize)** → 25(wasm)
+**Phase order**: ... → 22c(test gaps) → **24(optimize)** → 24.5(cleanup) → 25(wasm) → 26(wasm_rt) → 27(refactor)
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
 - **Phase 24 is complete** (24C done — all 20 benchmarks beat Babashka)
-- Phase 25 is complete (all planned phases done)
+- Phase 25 is complete (Wasm InterOp functional)
 
 Do NOT stop for:
 

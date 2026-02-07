@@ -32,8 +32,10 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 13    | clojure.string + core expansion  | 14 string fns, protocols, defrecord, lazy-cat          |
 | 14    | Clojure upstream test foundation | clojure.test, walk, 8 test files ported (72 tests)     |
 | 14.5  | Bug fix round                    | assoc vector, seq set, empty list eval, pop nil        |
+| 15-23 | Test -> GC (see above)           | TDD, upstream porting, GC, test gaps                   |
+| 24    | Optimization (Babashka parity)   | 20 benchmarks, CW wins 19/20, 1 tied                   |
 
-**Stats**: 405/712 vars done (as of Phase 19)
+**Stats**: 526/704 vars done (as of Phase 24)
 
 ## Phases
 
@@ -339,21 +341,59 @@ Goal: Beat Babashka on ALL 20 benchmarks (speed AND memory).
 **Knowledge base**: `.claude/references/optimization-knowledge.md`
 **Benchmark recording**: Record after every task with `bench/record.sh`.
 
+### Phase 24.5: Mini-Refactor (Pre-Wasm Cleanup)
+
+Quick code hygiene before Phase 25. NOT a large refactoring (that's Phase 27).
+
+**Scope**:
+1. Dead code removal — unused pub fns, stale imports, commented-out blocks
+2. Naming consistency audit — public API naming conventions check
+3. D3 violation audit — catalog all module-level mutable state (7+ sites)
+4. File size documentation — measure, annotate future split candidates
+
+**Non-scope**: No file splitting, no architecture changes.
+**Prerequisite**: Phase 24 complete
+
 ### Phase 25: Wasm InterOp (FFI)
 
-Call Wasm modules from native track.
+Call Wasm modules from native track. Use zware (pure Zig) as primary engine.
 
-**Scope**: wasm/load, wasm/fn, WIT parser, Component Model
-**Prerequisite**: Phase 24 (Optimization) complete
-**Reference**: See "Wasm InterOp" in Phase Notes below; .dev/future.md SS1, SS4
+**Detailed plan**: `.dev/plan/phase25-wasm-interop.md`
+**Prerequisite**: Phase 24.5 complete
+
+**Sub-phases**:
+| Sub   | Content                     | Deliverables                       |
+|-------|-----------------------------|------------------------------------|
+| 25.0  | Infrastructure setup        | zware dep, WAT test files          |
+| 25.1  | wasm/load + wasm/fn         | Load .wasm, call with type hints   |
+| 25.2  | Memory + String interop     | Linear memory read/write, UTF-8    |
+| 25.3  | Host function injection     | Clojure fns callable from Wasm     |
+| 25.4  | WASI Preview 1 basics       | fd_write, proc_exit, args/environ  |
+| 25.5  | WIT parser + module objects | Auto-resolve exports from WIT      |
+
+**Reference**: .dev/future.md SS1, SS4, SS6; WasmResearch repo
 
 ### Phase 26: wasm_rt Track
 
-Compile entire runtime to Wasm.
+Compile entire runtime to Wasm. F99 (iterative lazy-seq) becomes critical.
 
-**Scope**: WasmGC delegate, wasm32-wasi target
-**Prerequisite**: Phase 25 (Wasm InterOp) complete
-**Reference**: See "wasm_rt Track" in Phase Notes below; .dev/future.md SS7
+**Scope**: WasmGC delegate, wasm32-wasi target, comptime switching
+**Prerequisite**: Phase 25 complete
+**Key constraint**: Wasm ~1MB stack vs native 512MB — F99 required
+**Reference**: .dev/future.md SS7
+
+### Phase 27: Post-wasm_rt Refactoring
+
+Large-scale codebase refactoring after wasm_rt reveals true common/native/wasm_rt boundaries.
+
+**Scope**:
+- File splitting (collections.zig 3696L, bootstrap.zig 3353L, vm.zig 2290L)
+- D3 violation resolution (move module-level state into structs)
+- Directory restructuring based on actual sharing patterns
+- Naming normalization, documentation pass
+
+**Prerequisite**: Phase 26 complete
+**Rationale**: D75 — wasm_rt reveals which code is truly common vs platform-specific
 
 ---
 
@@ -429,9 +469,15 @@ Full targets in `.dev/plan/phase24-optimization.md` Section 8.
 
 ### Wasm InterOp (FFI)
 
-**Prerequisite**: Phase 24 (Optimization) complete
+**Prerequisite**: Phase 24.5 (Mini-Refactor) complete
 
 FFI for calling Wasm modules from native track. Distinct from wasm_rt.
+**Research**: WasmResearch repo — docs/, examples/wat/, examples/wit/
+**Engine**: zware (pure Zig, MIT, Wasm 2.0 minus SIMD). Verify Zig 0.15.2 compat.
+**Latest Wasm status** (research at Phase 25 start):
+- WASI Preview 2 stabilization
+- WasmGC (part of Wasm 3.0 draft)
+- zware 0.15.2 compatibility
 Beta has working implementation to reference.
 
 **SS1 Phases** (from .dev/future.md):

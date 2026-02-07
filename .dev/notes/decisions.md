@@ -1725,3 +1725,20 @@ bytecodeCallBridge, even when a running VM was already available.
 
 **Result**: sieve 1645→21ms (78x improvement, matches Babashka's 22ms).
 Memory: 2997MB → 23.8MB (125x improvement).
+
+## D75: Phase Ordering — Refactoring After wasm_rt
+
+**Date**: 2026-02-07
+**Context**: Transition planning from Phase 24 to Phase 25-27
+
+**Decision**: Large-scale refactoring deferred to Phase 27 (after wasm_rt).
+Only mini-cleanup in Phase 24.5.
+
+**Rationale**:
+1. wasm_rt (Phase 26) reveals true common/native/wasm_rt boundaries
+2. Premature refactoring creates false abstractions that wasm_rt would undo
+3. Current 39K+ lines of Zig work correctly with full test coverage
+4. File splitting before understanding sharing patterns wastes effort
+
+**Phase 24.5 scope** (mini-refactor): dead code, naming, D3 audit, file size docs
+**Phase 27 scope** (full refactor): file splitting, D3 resolution, directory restructuring
