@@ -35,7 +35,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.2c Modular dispatch + describe~~
 - ~~30.2d CIDER end-to-end verification~~
 - ~~30.3a require file resolution~~
-- 30.3b src/ path auto-detect
+- ~~30.3b src/ path auto-detect~~
 - 30.3c cljw.edn support
 - 30.4a letfn implementation
 - 30.4b with-open macro
@@ -49,15 +49,14 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.3b — src/ path auto-detect. Walk up from entry file to find src/
-directory and add it to load paths.
+30.3c — cljw.edn support. Read {:paths ["src"] :main my-app.core} config
+file for project configuration.
 
 ## Previous Task
 
-30.3a — require file resolution. Added ns_ops init/deinit/addLoadPath
-infrastructure. main.zig initializes load paths and adds entry file
-directory. Bootstrap namespaces marked as loaded. Tested: flat require,
-nested ns (dot→dir), :as alias, :refer, ns macro :require, both backends.
+30.3b — src/ path auto-detect. detectAndAddSrcPath walks up from entry
+file directory to find src/ subdirectory. Tested: direct src/ detection,
+parent walk-up, end-to-end with standard Clojure project layout.
 
 ## Known Issues
 

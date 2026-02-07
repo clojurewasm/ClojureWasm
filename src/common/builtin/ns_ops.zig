@@ -73,6 +73,28 @@ pub fn addLoadPath(path: []const u8) !void {
     load_paths = dynamic_load_paths.items;
 }
 
+/// Walk up from a starting directory to find a src/ subdirectory.
+/// If found, add it to load paths. Searches up to 10 parent levels.
+pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
+    _ = loaded_libs_allocator orelse return;
+    var buf: [4096]u8 = undefined;
+    var current = start_dir;
+
+    for (0..10) |_| {
+        const src_path = std.fmt.bufPrint(&buf, "{s}/src", .{current}) catch break;
+        if (std.fs.cwd().openDir(src_path, .{})) |dir| {
+            var d = dir;
+            d.close();
+            try addLoadPath(src_path);
+            return;
+        } else |_| {}
+
+        const parent = std.fs.path.dirname(current) orelse break;
+        if (std.mem.eql(u8, parent, current)) break;
+        current = parent;
+    }
+}
+
 pub fn isLibLoaded(name: []const u8) bool {
     return loaded_libs.contains(name);
 }
@@ -1217,6 +1239,45 @@ test "addLoadPath - adds to load paths" {
     var found = false;
     for (load_paths) |p| {
         if (std.mem.eql(u8, p, "/tmp/myproject/src")) found = true;
+    }
+    try testing.expect(found);
+}
+
+test "detectAndAddSrcPath - finds src/ directory" {
+    const alloc = std.heap.page_allocator;
+    init(alloc);
+    defer deinit();
+
+    // Create temp project structure: zig-cache/test-src-detect/src/
+    std.fs.cwd().makeDir("zig-cache/test-src-detect") catch {};
+    std.fs.cwd().makeDir("zig-cache/test-src-detect/src") catch {};
+    defer std.fs.cwd().deleteTree("zig-cache/test-src-detect") catch {};
+
+    try detectAndAddSrcPath("zig-cache/test-src-detect");
+
+    var found = false;
+    for (load_paths) |p| {
+        if (std.mem.eql(u8, p, "zig-cache/test-src-detect/src")) found = true;
+    }
+    try testing.expect(found);
+}
+
+test "detectAndAddSrcPath - walks up to find src/" {
+    const alloc = std.heap.page_allocator;
+    init(alloc);
+    defer deinit();
+
+    // Create: zig-cache/test-src-walk/src/ and zig-cache/test-src-walk/deep/nested/
+    std.fs.cwd().makePath("zig-cache/test-src-walk/src") catch {};
+    std.fs.cwd().makePath("zig-cache/test-src-walk/deep/nested") catch {};
+    defer std.fs.cwd().deleteTree("zig-cache/test-src-walk") catch {};
+
+    // Starting from deep/nested, should walk up and find src/
+    try detectAndAddSrcPath("zig-cache/test-src-walk/deep/nested");
+
+    var found = false;
+    for (load_paths) |p| {
+        if (std.mem.eql(u8, p, "zig-cache/test-src-walk/src")) found = true;
     }
     try testing.expect(found);
 }
