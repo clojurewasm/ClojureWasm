@@ -103,10 +103,10 @@ pub const builtins = [_]BuiltinDef{
 // --- Runtime fallback functions for first-class usage ---
 
 pub fn toFloat(v: Value) !f64 {
-    return switch (v) {
-        .integer => |i| @floatFromInt(i),
-        .float => |f| f,
-        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v)}),
+    return switch (v.tag()) {
+        .integer => @floatFromInt(v.asInteger()),
+        .float => v.asFloat(),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v.tag())}),
     };
 }
 
@@ -115,33 +115,33 @@ pub const ArithOp = enum { add, sub, mul };
 pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
     if (a == .integer and b == .integer) {
         const result = switch (op) {
-            .add => @addWithOverflow(a.integer, b.integer),
-            .sub => @subWithOverflow(a.integer, b.integer),
-            .mul => @mulWithOverflow(a.integer, b.integer),
+            .add => @addWithOverflow(a.asInteger(), b.asInteger()),
+            .sub => @subWithOverflow(a.asInteger(), b.asInteger()),
+            .mul => @mulWithOverflow(a.asInteger(), b.asInteger()),
         };
-        if (result[1] == 0) return .{ .integer = result[0] };
+        if (result[1] == 0) return Value.initInteger(result[0]);
         // Overflow: promote to float (matches Clojure auto-promotion)
-        return .{ .float = switch (op) {
-            .add => @as(f64, @floatFromInt(a.integer)) + @as(f64, @floatFromInt(b.integer)),
-            .sub => @as(f64, @floatFromInt(a.integer)) - @as(f64, @floatFromInt(b.integer)),
-            .mul => @as(f64, @floatFromInt(a.integer)) * @as(f64, @floatFromInt(b.integer)),
-        } };
+        return Value.initFloat(switch (op) {
+            .add => @as(f64, @floatFromInt(a.asInteger())) + @as(f64, @floatFromInt(b.asInteger())),
+            .sub => @as(f64, @floatFromInt(a.asInteger())) - @as(f64, @floatFromInt(b.asInteger())),
+            .mul => @as(f64, @floatFromInt(a.asInteger())) * @as(f64, @floatFromInt(b.asInteger())),
+        });
     }
     const fa = toFloat(a) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
     const fb = toFloat(b) catch {
-        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b)});
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
     };
-    return .{ .float = switch (op) {
+    return Value.initFloat(switch (op) {
         .add => fa + fb,
         .sub => fa - fb,
         .mul => fa * fb,
-    } };
+    });
 }
 
 fn addFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return .{ .integer = 0 };
+    if (args.len == 0) return Value.initInteger(0);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryArith(result, arg, .add);
     return result;
@@ -149,14 +149,14 @@ fn addFn(_: Allocator, args: []const Value) anyerror!Value {
 
 fn subFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to -", .{args.len});
-    if (args.len == 1) return binaryArith(.{ .integer = 0 }, args[0], .sub);
+    if (args.len == 1) return binaryArith(Value.initInteger(0), args[0], .sub);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryArith(result, arg, .sub);
     return result;
 }
 
 fn mulFn(_: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return .{ .integer = 1 };
+    if (args.len == 0) return Value.initInteger(1);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryArith(result, arg, .mul);
     return result;
@@ -164,7 +164,7 @@ fn mulFn(_: Allocator, args: []const Value) anyerror!Value {
 
 fn divFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to /", .{args.len});
-    if (args.len == 1) return binaryDiv(.{ .integer = 1 }, args[0]);
+    if (args.len == 1) return binaryDiv(Value.initInteger(1), args[0]);
     var result = args[0];
     for (args[1..]) |arg| result = try binaryDiv(result, arg);
     return result;

@@ -22,9 +22,9 @@ var gensym_counter: u64 = 0;
 pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len > 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to gensym", .{args.len});
 
-    const prefix: []const u8 = if (args.len == 1) switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "gensym expects a string prefix, got {s}", .{@tagName(args[0])}),
+    const prefix: []const u8 = if (args.len == 1) switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "gensym expects a string prefix, got {s}", .{@tagName(args[0].tag())}),
     } else "G__";
 
     gensym_counter += 1;
@@ -34,7 +34,7 @@ pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
     try w.writeAll(prefix);
     try w.print("{d}", .{gensym_counter});
     const name = try allocator.dupe(u8, w.buffered());
-    return .{ .symbol = .{ .ns = null, .name = name } };
+    return Value.initSymbol(.{ .ns = null, .name = name });
 }
 
 // ============================================================
@@ -47,9 +47,9 @@ pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// if set happened, else false.
 pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to compare-and-set!", .{args.len});
-    const atom_ptr = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "compare-and-set! expects an atom, got {s}", .{@tagName(args[0])}),
+    const atom_ptr = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "compare-and-set! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
     const oldval = args[1];
     const newval = args[2];
@@ -57,9 +57,9 @@ pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
     // Single-threaded: simple compare and swap
     if (atom_ptr.value.eql(oldval)) {
         atom_ptr.value = newval;
-        return .{ .boolean = true };
+        return Value.true_val;
     }
-    return .{ .boolean = false };
+    return Value.false_val;
 }
 
 // ============================================================
@@ -71,9 +71,9 @@ pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Supported: %s (string), %d (integer), %f (float), %% (literal %).
 pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to format", .{args.len});
-    const fmt_str = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "format expects a string as first argument, got {s}", .{@tagName(args[0])}),
+    const fmt_str = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "format expects a string as first argument, got {s}", .{@tagName(args[0].tag())}),
     };
     const fmt_args = args[1..];
 
@@ -99,18 +99,18 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 },
                 'd' => {
                     if (arg_idx >= fmt_args.len) return error.FormatError;
-                    switch (fmt_args[arg_idx]) {
-                        .integer => |n| try w.print("{d}", .{n}),
-                        .float => |f| try w.print("{d}", .{@as(i64, @intFromFloat(f))}),
+                    switch (fmt_args[arg_idx].tag()) {
+                        .integer => try w.print("{d}", .{fmt_args[arg_idx].asInteger()}),
+                        .float => try w.print("{d}", .{@as(i64, @intFromFloat(fmt_args[arg_idx].asFloat()))}),
                         else => return error.FormatError,
                     }
                     arg_idx += 1;
                 },
                 'f' => {
                     if (arg_idx >= fmt_args.len) return error.FormatError;
-                    switch (fmt_args[arg_idx]) {
-                        .float => |f| try w.print("{d:.6}", .{f}),
-                        .integer => |n| try w.print("{d:.6}", .{@as(f64, @floatFromInt(n))},),
+                    switch (fmt_args[arg_idx].tag()) {
+                        .float => try w.print("{d:.6}", .{fmt_args[arg_idx].asFloat()}),
+                        .integer => try w.print("{d:.6}", .{@as(f64, @floatFromInt(fmt_args[arg_idx].asInteger()))},),
                         else => return error.FormatError,
                     }
                     arg_idx += 1;
@@ -128,7 +128,7 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const result = try allocator.dupe(u8, aw.writer.buffered());
-    return .{ .string = result };
+    return Value.initString(result);
 }
 
 // ============================================================
@@ -143,12 +143,12 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Takes a map of Var refs to values, pushes a new binding frame.
 pub fn pushThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "push-thread-bindings requires 1 argument, got {d}", .{args.len});
-    const m = switch (args[0]) {
-        .map => |mp| mp,
+    const m = switch (args[0].tag()) {
+        .map => args[0].asMap(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "push-thread-bindings requires a map", .{}),
     };
     const n_pairs = m.entries.len / 2;
-    if (n_pairs == 0) return .nil;
+    if (n_pairs == 0) return Value.nil_val;
 
     const entries = allocator.alloc(var_mod.BindingEntry, n_pairs) catch return error.OutOfMemory;
     var idx: usize = 0;
@@ -156,8 +156,8 @@ pub fn pushThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!
     while (i < m.entries.len) : (i += 2) {
         const key = m.entries[i];
         const val = m.entries[i + 1];
-        const v: *var_mod.Var = switch (key) {
-            .var_ref => |ptr| ptr,
+        const v: *var_mod.Var = switch (key.tag()) {
+            .var_ref => key.asVarRef(),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "push-thread-bindings keys must be Vars", .{}),
         };
         if (!v.dynamic) return err.setErrorFmt(.eval, .value_error, .{}, "Can't dynamically bind non-dynamic var: {s}", .{v.sym.name});
@@ -168,14 +168,14 @@ pub fn pushThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!
     const frame = allocator.create(var_mod.BindingFrame) catch return error.OutOfMemory;
     frame.* = .{ .entries = entries, .prev = null };
     var_mod.pushBindings(frame);
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (pop-thread-bindings) — pops the current binding frame.
 pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "pop-thread-bindings takes no arguments, got {d}", .{args.len});
     var_mod.popBindings();
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -186,21 +186,21 @@ pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn threadBoundPredFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to thread-bound?", .{});
     for (args) |arg| {
-        const v = switch (arg) {
-            .var_ref => |vr| vr,
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "thread-bound? expects Var args, got {s}", .{@tagName(arg)}),
+        const v = switch (arg.tag()) {
+            .var_ref => arg.asVarRef(),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "thread-bound? expects Var args, got {s}", .{@tagName(arg.tag())}),
         };
-        if (!v.dynamic or !var_mod.hasThreadBinding(v)) return .{ .boolean = false };
+        if (!v.dynamic or !var_mod.hasThreadBinding(v)) return Value.false_val;
     }
-    return .{ .boolean = true };
+    return Value.true_val;
 }
 
 /// (var-raw-root v) — returns the root value of a Var, bypassing thread-local bindings.
 fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-raw-root", .{args.len});
-    const v = switch (args[0]) {
-        .var_ref => |vr| vr,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "var-raw-root expects a Var, got {s}", .{@tagName(args[0])}),
+    const v = switch (args[0].tag()) {
+        .var_ref => args[0].asVarRef(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "var-raw-root expects a Var, got {s}", .{@tagName(args[0].tag())}),
     };
     return v.getRawRoot();
 }
@@ -213,9 +213,9 @@ fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
 /// by applying f to its current value plus any args.
 pub fn alterVarRootFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alter-var-root", .{args.len});
-    const v = switch (args[0]) {
-        .var_ref => |vr| vr,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-var-root expects a var, got {s}", .{@tagName(args[0])}),
+    const v = switch (args[0].tag()) {
+        .var_ref => args[0].asVarRef(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-var-root expects a var, got {s}", .{@tagName(args[0].tag())}),
     };
     const f = args[1];
     const old_val = v.deref();
@@ -241,7 +241,7 @@ pub fn alterVarRootFn(allocator: Allocator, args: []const Value) anyerror!Value 
 pub fn exCauseFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-cause", .{args.len});
     // Our exceptions don't have a cause chain — return nil
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -252,24 +252,24 @@ pub fn exCauseFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Returns the Var mapped to the qualified symbol, or nil if not found.
 pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-var", .{args.len});
-    const sym = switch (args[0]) {
-        .symbol => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-var expects a symbol, got {s}", .{@tagName(args[0])}),
+    const sym = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-var expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns_name = sym.ns orelse {
         // Unqualified — look in current ns
-        const current = env.current_ns orelse return .nil;
+        const current = env.current_ns orelse return Value.nil_val;
         if (current.resolve(sym.name)) |_| {
             return args[0]; // return the symbol (we don't expose Var as Value)
         }
-        return .nil;
+        return Value.nil_val;
     };
-    const ns = env.findNamespace(ns_name) orelse return .nil;
+    const ns = env.findNamespace(ns_name) orelse return Value.nil_val;
     if (ns.resolve(sym.name)) |_| {
         return args[0];
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -280,12 +280,12 @@ pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Returns the var or Class to which sym will be resolved in the current namespace, else nil.
 pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to resolve", .{args.len});
-    const sym = switch (args[args.len - 1]) {
-        .symbol => |s| s,
-        else => return .nil,
+    const sym = switch (args[args.len - 1].tag()) {
+        .symbol => args[args.len - 1].asSymbol(),
+        else => return Value.nil_val,
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    const current = env.current_ns orelse return .nil;
+    const current = env.current_ns orelse return Value.nil_val;
 
     // Qualified symbol
     if (sym.ns) |ns_name| {
@@ -301,14 +301,14 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
                 return args[args.len - 1];
             }
         }
-        return .nil;
+        return Value.nil_val;
     }
 
     // Unqualified — search current ns
     if (current.resolve(sym.name)) |_| {
         return args[args.len - 1];
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -319,13 +319,13 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Finds or creates a var named by the symbol name in the namespace ns, setting root to val if supplied.
 pub fn internFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to intern", .{args.len});
-    const ns_name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for namespace, got {s}", .{@tagName(args[0])}),
+    const ns_name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for namespace, got {s}", .{@tagName(args[0].tag())}),
     };
-    const var_name = switch (args[1]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for name, got {s}", .{@tagName(args[1])}),
+    const var_name = switch (args[1].tag()) {
+        .symbol => args[1].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for name, got {s}", .{@tagName(args[1].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = env.findNamespace(ns_name) orelse {
@@ -336,7 +336,7 @@ pub fn internFn(_: Allocator, args: []const Value) anyerror!Value {
         v.bindRoot(args[2]);
     }
     // Return the qualified symbol representing the var
-    return .{ .symbol = .{ .ns = ns_name, .name = var_name } };
+    return Value.initSymbol(.{ .ns = ns_name, .name = var_name });
 }
 
 // ============================================================
@@ -356,16 +356,16 @@ pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var iter = env.namespaces.iterator();
     while (iter.next()) |_| count += 1;
 
-    const items = allocator.alloc(Value, count) catch return .nil;
+    const items = allocator.alloc(Value, count) catch return Value.nil_val;
     var i: usize = 0;
     iter = env.namespaces.iterator();
     while (iter.next()) |entry| {
-        items[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        items[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
         i += 1;
     }
     const set = try allocator.create(value_mod.PersistentHashSet);
     set.* = .{ .items = items };
-    return .{ .set = set };
+    return Value.initSet(set);
 }
 
 // ============================================================
@@ -377,9 +377,9 @@ pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn mapEntryFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to map-entry?", .{args.len});
     // In our implementation, map entries are 2-element vectors
-    return switch (args[0]) {
-        .vector => |v| .{ .boolean = v.items.len == 2 },
-        else => .{ .boolean = false },
+    return switch (args[0].tag()) {
+        .vector => if (args[0].asVector().items.len == 2) Value.true_val else Value.false_val,
+        else => Value.false_val,
     };
 }
 
@@ -431,15 +431,15 @@ fn mixCollHash(hash_val: i32, count: i32) i32 {
 /// (mix-collection-hash hash-basis count)
 pub fn mixCollectionHashFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to mix-collection-hash", .{args.len});
-    const hash_basis: i32 = switch (args[0]) {
-        .integer => |n| @truncate(n),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer, got {s}", .{@tagName(args[0])}),
+    const hash_basis: i32 = switch (args[0].tag()) {
+        .integer => @truncate(args[0].asInteger()),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer, got {s}", .{@tagName(args[0].tag())}),
     };
-    const count: i32 = switch (args[1]) {
-        .integer => |n| @truncate(n),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer count, got {s}", .{@tagName(args[1])}),
+    const count: i32 = switch (args[1].tag()) {
+        .integer => @truncate(args[1].asInteger()),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "mix-collection-hash expects integer count, got {s}", .{@tagName(args[1].tag())}),
     };
-    return Value{ .integer = @as(i64, mixCollHash(hash_basis, count)) };
+    return Value.initInteger(@as(i64, mixCollHash(hash_basis, count)));
 }
 
 /// (hash-ordered-coll coll)
@@ -458,7 +458,7 @@ pub fn hashOrderedCollFn(allocator: Allocator, args: []const Value) anyerror!Val
         // restFn returns empty list, not nil, so check for empty
         s = try collections_mod.seqFn(allocator, &.{s});
     }
-    return Value{ .integer = @as(i64, mixCollHash(hash, n)) };
+    return Value.initInteger(@as(i64, mixCollHash(hash, n)));
 }
 
 /// (hash-unordered-coll coll)
@@ -475,21 +475,21 @@ pub fn hashUnorderedCollFn(allocator: Allocator, args: []const Value) anyerror!V
         s = try collections_mod.restFn(allocator, &.{s});
         s = try collections_mod.seqFn(allocator, &.{s});
     }
-    return Value{ .integer = @as(i64, mixCollHash(hash, n)) };
+    return Value.initInteger(@as(i64, mixCollHash(hash, n)));
 }
 
 /// (hash-combine x y) — à la boost::hash_combine
 pub fn hashCombineFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash-combine", .{args.len});
-    const x: i32 = switch (args[0]) {
-        .integer => |n| @truncate(n),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "hash-combine expects integer, got {s}", .{@tagName(args[0])}),
+    const x: i32 = switch (args[0].tag()) {
+        .integer => @truncate(args[0].asInteger()),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "hash-combine expects integer, got {s}", .{@tagName(args[0].tag())}),
     };
     const y_hash: i32 = @truncate(predicates_mod.computeHash(args[1]));
     // a la boost: seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2)
     var seed: i32 = x;
     seed ^= y_hash +% @as(i32, @bitCast(@as(u32, 0x9e3779b9))) +% (seed << 6) +% @as(i32, @intCast(@as(u32, @bitCast(seed)) >> 2));
-    return Value{ .integer = @as(i64, seed) };
+    return Value.initInteger(@as(i64, seed));
 }
 
 // ============================================================
@@ -526,7 +526,7 @@ pub fn randomUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const result = try allocator.dupe(u8, &buf);
-    return .{ .string = result };
+    return Value.initString(result);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -679,11 +679,11 @@ test "gensym - no prefix" {
     const r1 = try gensymFn(alloc, &[_]Value{});
     try testing.expect(r1 == .symbol);
     // Should start with G__
-    try testing.expect(std.mem.startsWith(u8, r1.symbol.name, "G__"));
+    try testing.expect(std.mem.startsWith(u8, r1.asSymbol().name, "G__"));
 
     const r2 = try gensymFn(alloc, &[_]Value{});
     // Should be different from r1
-    try testing.expect(!std.mem.eql(u8, r1.symbol.name, r2.symbol.name));
+    try testing.expect(!std.mem.eql(u8, r1.asSymbol().name, r2.asSymbol().name));
 }
 
 test "gensym - with prefix" {
@@ -691,9 +691,9 @@ test "gensym - with prefix" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try gensymFn(alloc, &[_]Value{.{ .string = "foo" }});
+    const result = try gensymFn(alloc, &[_]Value{Value.initString("foo")});
     try testing.expect(result == .symbol);
-    try testing.expect(std.mem.startsWith(u8, result.symbol.name, "foo"));
+    try testing.expect(std.mem.startsWith(u8, result.asSymbol().name, "foo"));
 }
 
 test "compare-and-set! - successful swap" {
@@ -701,14 +701,14 @@ test "compare-and-set! - successful swap" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var atom = value_mod.Atom{ .value = .{ .integer = 1 } };
+    var atom = value_mod.Atom{ .value = Value.initInteger(1) };
     const result = try compareAndSetFn(alloc, &[_]Value{
-        .{ .atom = &atom },
-        .{ .integer = 1 },
-        .{ .integer = 2 },
+        Value.initAtom(&atom),
+        Value.initInteger(1),
+        Value.initInteger(2),
     });
-    try testing.expectEqual(Value{ .boolean = true }, result);
-    try testing.expectEqual(Value{ .integer = 2 }, atom.value);
+    try testing.expectEqual(Value.true_val, result);
+    try testing.expectEqual(Value.initInteger(2), atom.value);
 }
 
 test "compare-and-set! - failed swap" {
@@ -716,14 +716,14 @@ test "compare-and-set! - failed swap" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var atom = value_mod.Atom{ .value = .{ .integer = 1 } };
+    var atom = value_mod.Atom{ .value = Value.initInteger(1) };
     const result = try compareAndSetFn(alloc, &[_]Value{
-        .{ .atom = &atom },
-        .{ .integer = 99 }, // doesn't match current value
-        .{ .integer = 2 },
+        Value.initAtom(&atom),
+        Value.initInteger(99), // doesn't match current value
+        Value.initInteger(2),
     });
-    try testing.expectEqual(Value{ .boolean = false }, result);
-    try testing.expectEqual(Value{ .integer = 1 }, atom.value); // unchanged
+    try testing.expectEqual(Value.false_val, result);
+    try testing.expectEqual(Value.initInteger(1), atom.value); // unchanged
 }
 
 test "format - %s" {
@@ -732,10 +732,10 @@ test "format - %s" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        .{ .string = "hello %s" },
-        .{ .string = "world" },
+        Value.initString("hello %s"),
+        Value.initString("world"),
     });
-    try testing.expectEqualStrings("hello world", result.string);
+    try testing.expectEqualStrings("hello world", result.asString());
 }
 
 test "format - %d" {
@@ -744,10 +744,10 @@ test "format - %d" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        .{ .string = "count: %d" },
-        .{ .integer = 42 },
+        Value.initString("count: %d"),
+        Value.initInteger(42),
     });
-    try testing.expectEqualStrings("count: 42", result.string);
+    try testing.expectEqualStrings("count: 42", result.asString());
 }
 
 test "format - %%" {
@@ -756,9 +756,9 @@ test "format - %%" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        .{ .string = "100%%" },
+        Value.initString("100%%"),
     });
-    try testing.expectEqualStrings("100%", result.string);
+    try testing.expectEqualStrings("100%", result.asString());
 }
 
 test "format - mixed" {
@@ -767,11 +767,11 @@ test "format - mixed" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        .{ .string = "%s is %d" },
-        .{ .string = "x" },
-        .{ .integer = 10 },
+        Value.initString("%s is %d"),
+        Value.initString("x"),
+        Value.initInteger(10),
     });
-    try testing.expectEqualStrings("x is 10", result.string);
+    try testing.expectEqualStrings("x is 10", result.asString());
 }
 
 test "random-uuid - format" {
@@ -781,7 +781,7 @@ test "random-uuid - format" {
 
     const result = try randomUuidFn(alloc, &[_]Value{});
     try testing.expect(result == .string);
-    const uuid = result.string;
+    const uuid = result.asString();
     // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (36 chars)
     try testing.expectEqual(@as(usize, 36), uuid.len);
     try testing.expectEqual(@as(u8, '-'), uuid[8]);
@@ -801,5 +801,5 @@ test "random-uuid - uniqueness" {
 
     const r1 = try randomUuidFn(alloc, &[_]Value{});
     const r2 = try randomUuidFn(alloc, &[_]Value{});
-    try testing.expect(!std.mem.eql(u8, r1.string, r2.string));
+    try testing.expect(!std.mem.eql(u8, r1.asString(), r2.asString()));
 }
