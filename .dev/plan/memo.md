@@ -19,12 +19,12 @@ Phase 24.5 — Mini-Refactor (Pre-Wasm Cleanup):
 
 ## Current Task
 
-24.5.4: File size documentation — measure and annotate future split candidates.
+Phase 24.5 complete. Prepare Phase 25 (Wasm InterOp) task queue.
 
 ## Previous Task
 
-24.5.3: D3 violation audit — 28 mutable state sites in 11 files cataloged.
-See .dev/notes/mutable-state-audit.md.
+24.5.4: File size audit — 5 files >2000L identified as Phase 27 split candidates.
+See .dev/notes/file-size-audit.md.
 
 ## Handover Notes
 
