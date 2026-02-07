@@ -10,7 +10,8 @@ Session handover document. Read at session start.
 - **Phase 28.1 COMPLETE** — Single Binary Builder MVP (1.7MB binary)
 - **Phase 29 SKIPPED** — File splitting impractical (Zig struct constraint),
   D3 violations require BuiltinFn signature change (500+ functions)
-- **Phase 30 IN PROGRESS** — Production Robustness
+- **Phase 30 COMPLETE** — Production Robustness
+- **Phase 31 IN PROGRESS** — AOT Compilation
 
 ## Strategic Direction
 
@@ -20,7 +21,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31 (AOT) -> 32 (GC/JIT research) -> 33 (FFI deep)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30 (robustness)~~ -> **31 (AOT)** -> 32 (GC/JIT research) -> 33 (FFI deep)
 
 ## Task Queue
 
@@ -49,7 +50,22 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-Phase 30 complete. Planning next phase.
+31.1 — Bytecode binary format + Value serialization.
+
+## Task Queue
+
+Phase 31 — AOT Compilation. Bytecode serialization and bootstrap caching.
+Startup already 10ms (ReleaseSafe), but AOT enables:
+  - Source code protection in distributed binaries
+  - Bootstrap cache for constrained environments
+  - Foundation for future JIT / ahead-of-time optimizations
+  - Phase 28.3 bytecode embedding in single binary
+
+- 31.1 Bytecode binary format + Value serialization
+- 31.2 FnProto + Chunk serialization
+- 31.3 Env state snapshot / restore
+- 31.4 Bootstrap cache integration (startup from cached state)
+- 31.5 `cljw compile` command + Phase 28.3 bytecode embedding
 
 ## Previous Task
 

@@ -37,11 +37,11 @@ Check at session start for items that become actionable.
 | ~~F100~~ | ~~nested_update regression from hot bootstrap~~ | Resolved: adding update-in/assoc-in/get-in to hot_core_defs recovered 72→40ms (24C.5c) |
 | ~~F96~~ | ~~VM protocol compilation~~             | Done: defprotocol/extend-type in compiler.zig + vm.zig + bootstrap.zig |
 | ~~F106~~ | ~~Single binary builder (`cljw build`)~~ | Done: Phase 28.1, binary trailer approach (source embedding)           |
-| F107 | cider-nrepl op compatibility               | Phase 30 — eval, complete, info, stacktrace, ns-list middleware        |
-| F108 | Skip var recovery pass                     | Phase 30 — re-evaluate 178 skipped vars for Zig equivalents            |
-| F109 | Zero-config project model                  | Phase 30 — auto-detect src/, require resolution, optional cljw.edn     |
+| ~~F107~~ | ~~cider-nrepl op compatibility~~       | Done: Phase 30.2, 14 ops including stacktrace, info, eldoc            |
+| ~~F108~~ | ~~Skip var recovery pass~~             | Done: Phase 30.4, letfn/with-open/tagged-literal/with-local-vars      |
+| ~~F109~~ | ~~Zero-config project model~~          | Done: Phase 30.3, auto-detect src/, require resolution, cljw.edn      |
 | F110 | Directory restructure (core/eval/cli)      | Phase 29 — common/native/ -> core/eval/cli/                            |
 | ~~F111~~ | ~~GC trace NaN-boxed heap pointers~~   | RESOLVED — bootstrap Symbols tracked in Env.owned_symbols, freed at deinit    |
 | ~~F112~~ | ~~nREPL Var corruption (ArenaAllocator)~~ | RESOLVED — Env.init(gpa) + eval_arena removed. See D80 for root cause analysis |
 | F113 | nREPL GC integration                      | Without GC, transient Values accumulate in GPA (same as main.zig REPL). Add MarkSweepGc to nREPL for true long-session memory management. |
-| F114 | clojure.repl namespace                    | Phase 30.5 — doc, apropos, source, dir, find-doc, pst                  |
+| ~~F114~~ | ~~clojure.repl namespace~~            | Done: Phase 30.5, doc/dir/apropos/find-doc/source/pst + Var meta synthesis |
