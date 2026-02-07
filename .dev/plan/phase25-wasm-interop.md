@@ -9,12 +9,18 @@
 - Both backends: wasm/load and wasm/fn in VM and TreeWalk (D6)
 - TDD: Each sub-phase starts with failing tests
 
-## 2. Prerequisites (Research at Session Start)
+## 2. Prerequisites (Researched 2026-02-07)
 
-- [ ] zware Zig 0.15.2 compatibility
-- [ ] WASI Preview 2 stabilization status
-- [ ] Component Model specification progress
-- [ ] Zig wasm32-wasi target name changes (wasip1/wasip2?)
+- [x] zware Zig 0.15.2 compatibility — **confirmed**. minimum_zig_version = "0.15.2".
+      Repo: github.com/malcolmstill/zware, commit 7c505ed (2025-12-30).
+      Has build.zig.zon, MIT license, alpha quality. SIMD/WasmGC unsupported.
+- [x] WASI Preview 2 stabilization — WASI 0.2 released 2024-01, Wasmtime supports fully.
+      However, Zig 0.15.2 stdlib only implements Preview 1 (wasi_snapshot_preview1).
+      Preview 2 would require manual imports. **Use Preview 1 for Phase 25.**
+- [x] Component Model — NOT in Wasm 3.0 (completed 2025-09). Still Phase 1 at W3C.
+      WASI 1.0 expected 2026 H2-2027 H1. **Defer Component Model to future phase.**
+- [x] Zig wasm32-wasi target — `wasm32-wasi` is correct. `wasip1`/`wasip2` rejected.
+      Version suffixes (`.0.1.0`, `.0.2.0`) parse but generate identical P1 code.
 
 ## 3. Sub-Phases
 

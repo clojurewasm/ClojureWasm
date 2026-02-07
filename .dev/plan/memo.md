@@ -22,11 +22,12 @@ Phase 25 — Wasm InterOp (FFI):
 
 ## Current Task
 
-25.R: Research prerequisites — zware 0.15.2 compat, WASI status, Zig wasm targets.
+25.0: Infrastructure setup — add zware dep, copy WAT files, create src/wasm/,
+smoke test (load .wasm, call add(3,4) from Zig).
 
 ## Previous Task
 
-Phase 24.5 complete (4 tasks: dead code, naming, D3 audit, file sizes).
+25.R: Research — zware 0.15.2 confirmed, WASI P1 target, Component Model deferred.
 
 ## Handover Notes
 
