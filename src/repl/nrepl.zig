@@ -38,6 +38,13 @@ pub const ServerState = struct {
     /// Arena allocator for evaluation scratch space.
     eval_arena: std.heap.ArenaAllocator,
     port_file_written: bool,
+    /// Last error info saved from eval (for stacktrace op).
+    last_error_info: ?err_mod.Info = null,
+    /// Saved call stack frames from last eval error.
+    last_error_stack: [64]err_mod.StackFrame = @splat(err_mod.StackFrame{}),
+    last_error_stack_depth: u8 = 0,
+    /// Persistent copy of error message (msg_buf is threadlocal and gets overwritten).
+    last_error_msg_buf: [512]u8 = undefined,
 };
 
 // ====================================================================
@@ -220,6 +227,8 @@ fn dispatchOp(
         opStdin(msg, stream, allocator);
     } else if (std.mem.eql(u8, op, "interrupt")) {
         opInterrupt(msg, stream, allocator);
+    } else if (std.mem.eql(u8, op, "stacktrace") or std.mem.eql(u8, op, "analyze-last-stacktrace")) {
+        opStacktrace(state, msg, stream, allocator);
     } else {
         // Unknown op — return done so editors don't hang
         sendDone(stream, msg, allocator);
@@ -304,6 +313,8 @@ fn opDescribe(
         .{ .key = "ns-list", .value = .{ .dict = &.{} } },
         .{ .key = "stdin", .value = .{ .dict = &.{} } },
         .{ .key = "interrupt", .value = .{ .dict = &.{} } },
+        .{ .key = "stacktrace", .value = .{ .dict = &.{} } },
+        .{ .key = "analyze-last-stacktrace", .value = .{ .dict = &.{} } },
     };
 
     const version_entries = [_]BencodeValue.DictEntry{
@@ -423,17 +434,35 @@ fn opEval(
         sendBencode(stream, &val_entries, allocator);
         sendDone(stream, msg, allocator);
     } else |_| {
-        // Error — bind *e
+        // Error — bind *e and save error state for stacktrace op
         const err_import = @import("../common/error.zig");
-        const err_msg = if (err_import.getLastError()) |info|
-            info.message
-        else
-            "evaluation failed";
+        const err_info = err_import.getLastError();
+        const err_msg = if (err_info) |info| info.message else "evaluation failed";
 
         setReplVar(state, "*e", Value.initString(allocator, err_msg));
 
-        sendEvalError(stream, msg, err_msg, allocator);
+        // Save error info into ServerState for stacktrace op
         err_import.saveCallStack();
+        const saved_stack = err_import.getSavedCallStack();
+        state.last_error_stack_depth = @intCast(saved_stack.len);
+        if (saved_stack.len > 0) {
+            @memcpy(state.last_error_stack[0..saved_stack.len], saved_stack);
+        }
+        if (err_info) |info| {
+            // Copy message to persistent buffer (threadlocal msg_buf gets overwritten)
+            const msg_len = @min(info.message.len, state.last_error_msg_buf.len);
+            @memcpy(state.last_error_msg_buf[0..msg_len], info.message[0..msg_len]);
+            state.last_error_info = .{
+                .kind = info.kind,
+                .phase = info.phase,
+                .message = state.last_error_msg_buf[0..msg_len],
+                .location = info.location,
+            };
+        } else {
+            state.last_error_info = null;
+        }
+
+        sendEvalError(stream, msg, err_msg, allocator);
         err_import.clearCallStack();
     }
 
@@ -742,6 +771,105 @@ fn opInterrupt(
         .{ .key = "status", .value = .{ .list = &status_items } },
     };
     sendBencode(stream, &entries, allocator);
+}
+
+/// stacktrace / analyze-last-stacktrace: return error + call stack from last eval error.
+/// CIDER sends this after receiving an eval-error status.
+fn opStacktrace(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    const err_info = state.last_error_info orelse {
+        // No saved error
+        const status_items = [_]BencodeValue{
+            .{ .string = "done" },
+            .{ .string = "no-error" },
+        };
+        const entries = [_]BencodeValue.DictEntry{
+            idEntry(msg),
+            sessionEntry(msg),
+            .{ .key = "status", .value = .{ .list = &status_items } },
+        };
+        sendBencode(stream, &entries, allocator);
+        return;
+    };
+
+    // Build stacktrace frame list
+    const stack = state.last_error_stack[0..state.last_error_stack_depth];
+    var frame_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+
+    for (stack) |frame| {
+        const fn_name = frame.fn_name orelse "unknown";
+        const ns_str = frame.ns orelse "";
+        const file_str = frame.file orelse "REPL";
+        const var_name = if (frame.ns) |ns|
+            std.fmt.allocPrint(allocator, "{s}/{s}", .{ ns, fn_name }) catch fn_name
+        else
+            fn_name;
+
+        const clj_flag = [_]BencodeValue{.{ .string = "clj" }};
+        const frame_entries = allocator.dupe(BencodeValue.DictEntry, &.{
+            .{ .key = "name", .value = .{ .string = var_name } },
+            .{ .key = "file", .value = .{ .string = file_str } },
+            .{ .key = "line", .value = .{ .integer = @intCast(frame.line) } },
+            .{ .key = "type", .value = .{ .string = "clj" } },
+            .{ .key = "flags", .value = .{ .list = allocator.dupe(BencodeValue, &clj_flag) catch &.{} } },
+            .{ .key = "ns", .value = .{ .string = ns_str } },
+            .{ .key = "fn", .value = .{ .string = fn_name } },
+            .{ .key = "var", .value = .{ .string = var_name } },
+        }) catch continue;
+        frame_list.append(allocator, .{ .dict = frame_entries }) catch {};
+    }
+
+    // If no frames, add a synthetic frame from error location
+    if (frame_list.items.len == 0) {
+        const file_str = if (err_info.location.file) |f| f else "REPL";
+        const clj_flag = [_]BencodeValue{.{ .string = "clj" }};
+        const frame_entries = allocator.dupe(BencodeValue.DictEntry, &.{
+            .{ .key = "name", .value = .{ .string = "eval" } },
+            .{ .key = "file", .value = .{ .string = file_str } },
+            .{ .key = "line", .value = .{ .integer = @intCast(err_info.location.line) } },
+            .{ .key = "type", .value = .{ .string = "clj" } },
+            .{ .key = "flags", .value = .{ .list = allocator.dupe(BencodeValue, &clj_flag) catch &.{} } },
+            .{ .key = "ns", .value = .{ .string = "" } },
+            .{ .key = "fn", .value = .{ .string = "eval" } },
+            .{ .key = "var", .value = .{ .string = "eval" } },
+        }) catch &.{};
+        frame_list.append(allocator, .{ .dict = frame_entries }) catch {};
+    }
+
+    const entries = [_]BencodeValue.DictEntry{
+        idEntry(msg),
+        sessionEntry(msg),
+        .{ .key = "class", .value = .{ .string = kindToClassName(err_info.kind) } },
+        .{ .key = "message", .value = .{ .string = err_info.message } },
+        .{ .key = "stacktrace", .value = .{ .list = frame_list.items } },
+        statusDone(),
+    };
+    sendBencode(stream, &entries, allocator);
+}
+
+/// Map error.Kind to a human-readable exception class name.
+fn kindToClassName(kind: err_mod.Kind) []const u8 {
+    return switch (kind) {
+        .syntax_error => "SyntaxError",
+        .number_error => "NumberFormatError",
+        .string_error => "StringError",
+        .name_error => "NameError",
+        .arity_error => "ArityError",
+        .value_error => "ValueError",
+        .type_error => "TypeError",
+        .arithmetic_error => "ArithmeticError",
+        .index_error => "IndexOutOfBoundsError",
+        .io_error => "IOException",
+        .internal_error => "InternalError",
+        .out_of_memory => "OutOfMemoryError",
+    };
 }
 
 // ====================================================================
@@ -1158,6 +1286,184 @@ test "nrepl - writeValue keyword" {
     var stream = std.io.fixedBufferStream(&buf);
     writeValue(stream.writer(), Value.initKeyword(arena.allocator(), .{ .name = "foo", .ns = null }));
     try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
+}
+
+test "nrepl - kindToClassName maps all kinds" {
+    // Verify all error kinds have a class name
+    try std.testing.expectEqualSlices(u8, "SyntaxError", kindToClassName(.syntax_error));
+    try std.testing.expectEqualSlices(u8, "NumberFormatError", kindToClassName(.number_error));
+    try std.testing.expectEqualSlices(u8, "StringError", kindToClassName(.string_error));
+    try std.testing.expectEqualSlices(u8, "NameError", kindToClassName(.name_error));
+    try std.testing.expectEqualSlices(u8, "ArityError", kindToClassName(.arity_error));
+    try std.testing.expectEqualSlices(u8, "ValueError", kindToClassName(.value_error));
+    try std.testing.expectEqualSlices(u8, "TypeError", kindToClassName(.type_error));
+    try std.testing.expectEqualSlices(u8, "ArithmeticError", kindToClassName(.arithmetic_error));
+    try std.testing.expectEqualSlices(u8, "IndexOutOfBoundsError", kindToClassName(.index_error));
+    try std.testing.expectEqualSlices(u8, "IOException", kindToClassName(.io_error));
+    try std.testing.expectEqualSlices(u8, "InternalError", kindToClassName(.internal_error));
+    try std.testing.expectEqualSlices(u8, "OutOfMemoryError", kindToClassName(.out_of_memory));
+}
+
+test "nrepl - stacktrace op returns no-error when no previous error" {
+    // Test stacktrace with no saved error state
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Create minimal ServerState (no env needed for stacktrace)
+    var eval_arena = std.heap.ArenaAllocator.init(allocator);
+    defer eval_arena.deinit();
+    var state = ServerState{
+        .env = undefined,
+        .sessions = .empty,
+        .mutex = .{},
+        .running = true,
+        .gpa = allocator,
+        .eval_arena = eval_arena,
+        .port_file_written = false,
+    };
+
+    // Call opStacktrace with a mock stream via TCP
+    const address = std.net.Address.parseIp("127.0.0.1", 0) catch unreachable;
+    var server = try address.listen(.{ .reuse_address = true });
+    defer server.deinit();
+    const port = server.listen_address.getPort();
+
+    const ClientThread = struct {
+        fn run(p: u16, s: *ServerState) !void {
+            const alloc = std.testing.allocator;
+            const addr = std.net.Address.parseIp("127.0.0.1", p) catch unreachable;
+            var stream = try std.net.tcpConnectToAddress(addr);
+            defer stream.close();
+
+            var a = std.heap.ArenaAllocator.init(alloc);
+            defer a.deinit();
+
+            const m = [_]BencodeValue.DictEntry{
+                .{ .key = "op", .value = .{ .string = "stacktrace" } },
+                .{ .key = "id", .value = .{ .string = "42" } },
+                .{ .key = "session", .value = .{ .string = "test-session" } },
+            };
+            opStacktrace(s, &m, stream, a.allocator());
+        }
+    };
+
+    const client_thread = try std.Thread.spawn(.{}, ClientThread.run, .{ port, &state });
+
+    const conn = try server.accept();
+    defer conn.stream.close();
+
+    var recv_buf: [4096]u8 = undefined;
+    const n = try conn.stream.read(&recv_buf);
+    try std.testing.expect(n > 0);
+
+    var decode_arena = std.heap.ArenaAllocator.init(allocator);
+    defer decode_arena.deinit();
+    const result = try bencode.decode(decode_arena.allocator(), recv_buf[0..n]);
+    const dict = result.value.dict;
+
+    // Verify no-error status
+    const status_val = bencode.dictGet(dict, "status").?;
+    const status_list = status_val.list;
+    try std.testing.expect(status_list.len == 2);
+    try std.testing.expectEqualSlices(u8, "done", status_list[0].string);
+    try std.testing.expectEqualSlices(u8, "no-error", status_list[1].string);
+
+    client_thread.join();
+}
+
+test "nrepl - stacktrace op returns frames when error saved" {
+    const allocator = std.testing.allocator;
+
+    var eval_arena = std.heap.ArenaAllocator.init(allocator);
+    defer eval_arena.deinit();
+    var state = ServerState{
+        .env = undefined,
+        .sessions = .empty,
+        .mutex = .{},
+        .running = true,
+        .gpa = allocator,
+        .eval_arena = eval_arena,
+        .port_file_written = false,
+    };
+
+    // Simulate saved error state
+    const err_msg = "Divide by zero";
+    @memcpy(state.last_error_msg_buf[0..err_msg.len], err_msg);
+    state.last_error_info = .{
+        .kind = .arithmetic_error,
+        .phase = .eval,
+        .message = state.last_error_msg_buf[0..err_msg.len],
+        .location = .{ .file = "REPL", .line = 1 },
+    };
+    state.last_error_stack[0] = .{
+        .fn_name = "my-fn",
+        .ns = "user",
+        .file = "REPL",
+        .line = 1,
+    };
+    state.last_error_stack_depth = 1;
+
+    // Use TCP for mock stream
+    const address = std.net.Address.parseIp("127.0.0.1", 0) catch unreachable;
+    var server = try address.listen(.{ .reuse_address = true });
+    defer server.deinit();
+    const port = server.listen_address.getPort();
+
+    const ClientThread = struct {
+        fn run(p: u16, s: *ServerState) !void {
+            const alloc = std.testing.allocator;
+            const addr = std.net.Address.parseIp("127.0.0.1", p) catch unreachable;
+            var stream = try std.net.tcpConnectToAddress(addr);
+            defer stream.close();
+
+            var a = std.heap.ArenaAllocator.init(alloc);
+            defer a.deinit();
+
+            const m = [_]BencodeValue.DictEntry{
+                .{ .key = "op", .value = .{ .string = "stacktrace" } },
+                .{ .key = "id", .value = .{ .string = "7" } },
+                .{ .key = "session", .value = .{ .string = "sess-1" } },
+            };
+            opStacktrace(s, &m, stream, a.allocator());
+        }
+    };
+
+    const client_thread = try std.Thread.spawn(.{}, ClientThread.run, .{ port, &state });
+
+    const conn = try server.accept();
+    defer conn.stream.close();
+
+    var recv_buf: [8192]u8 = undefined;
+    const n = try conn.stream.read(&recv_buf);
+    try std.testing.expect(n > 0);
+
+    var decode_arena = std.heap.ArenaAllocator.init(allocator);
+    defer decode_arena.deinit();
+    const result = try bencode.decode(decode_arena.allocator(), recv_buf[0..n]);
+    const dict = result.value.dict;
+
+    // Verify class and message
+    try std.testing.expectEqualSlices(u8, "ArithmeticError", bencode.dictGetString(dict, "class").?);
+    try std.testing.expectEqualSlices(u8, "Divide by zero", bencode.dictGetString(dict, "message").?);
+
+    // Verify stacktrace is a list with at least one frame
+    const st_val = bencode.dictGet(dict, "stacktrace").?;
+    const st_list = st_val.list;
+    try std.testing.expect(st_list.len >= 1);
+
+    // Verify first frame has expected fields
+    const frame_dict = st_list[0].dict;
+    try std.testing.expectEqualSlices(u8, "user/my-fn", bencode.dictGetString(frame_dict, "name").?);
+    try std.testing.expectEqualSlices(u8, "REPL", bencode.dictGetString(frame_dict, "file").?);
+    try std.testing.expectEqualSlices(u8, "clj", bencode.dictGetString(frame_dict, "type").?);
+    try std.testing.expectEqualSlices(u8, "my-fn", bencode.dictGetString(frame_dict, "fn").?);
+    try std.testing.expectEqualSlices(u8, "user", bencode.dictGetString(frame_dict, "ns").?);
+    const line_val = bencode.dictGetInt(frame_dict, "line");
+    try std.testing.expect(line_val != null);
+    try std.testing.expectEqual(@as(i64, 1), line_val.?);
+
+    client_thread.join();
 }
 
 test "nrepl - TCP integration: describe op" {

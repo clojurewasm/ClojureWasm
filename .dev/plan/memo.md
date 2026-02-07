@@ -44,7 +44,10 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.2a — nREPL stacktrace op. Implement CIDER-compatible stacktrace response.
+30.2a — nREPL stacktrace op. Save error info + call stack in ServerState
+during opEval error path. Implement CIDER-compatible stacktrace response with
+per-cause message (:class, :message, :stacktrace frames). Register both
+"stacktrace" and "analyze-last-stacktrace" in dispatch.
 
 ## Previous Task
 
