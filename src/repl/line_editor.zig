@@ -222,6 +222,7 @@ pub const LineEditor = struct {
                         'u' => self.killToStart(),
                         'w' => self.killWordBack(),
                         'y' => self.yank(),
+                        'h' => self.deleteBack(), // C-h = backspace
                         'o' => self.insertChar('\n'), // force newline
                         'd' => {
                             if (self.len == 0) {
@@ -263,9 +264,11 @@ pub const LineEditor = struct {
                 },
                 .char => |c| {
                     self.insertChar(c);
-                    // Paren matching flash
+                    // Matching flash for delimiters and quotes
                     if (c == ')' or c == ']' or c == '}') {
                         self.flashMatchingParen();
+                    } else if (c == '"') {
+                        self.flashMatchingQuote();
                     }
                     continue;
                 },
@@ -653,7 +656,12 @@ pub const LineEditor = struct {
             w.print("\x1b[{d}A", .{lines_below}) catch return;
         }
         const prompt_for_cursor = if (cursor_row == 0) self.prompt else self.cont_prompt;
-        w.print("\r\x1b[{d}C", .{prompt_for_cursor.len + cursor_col}) catch return;
+        const col_offset = prompt_for_cursor.len + cursor_col;
+        if (col_offset > 0) {
+            w.print("\r\x1b[{d}C", .{col_offset}) catch return;
+        } else {
+            w.writeAll("\r") catch return;
+        }
 
         // Track where terminal cursor ends up for next refresh
         self.prev_cursor_row = cursor_row;
@@ -931,6 +939,32 @@ pub const LineEditor = struct {
                         self.refresh();
                         return;
                     }
+                }
+            }
+            if (i == 0) break;
+            i -= 1;
+        }
+    }
+
+    fn flashMatchingQuote(self: *LineEditor) void {
+        if (self.pos < 2) return;
+        // The just-inserted " is at pos-1. Scan backwards for the opening ".
+        // Count unescaped quotes: if this is the closing quote (even count),
+        // flash the opener.
+        var quote_count: usize = 0;
+        var i: usize = self.pos - 2; // start before the just-inserted "
+        while (true) {
+            if (self.buf[i] == '"' and (i == 0 or self.buf[i - 1] != '\\')) {
+                quote_count += 1;
+                if (quote_count == 1) {
+                    // Found the matching opening quote
+                    const saved_pos = self.pos;
+                    self.pos = i;
+                    self.refresh();
+                    std.posix.nanosleep(0, 150_000_000);
+                    self.pos = saved_pos;
+                    self.refresh();
+                    return;
                 }
             }
             if (i == 0) break;
