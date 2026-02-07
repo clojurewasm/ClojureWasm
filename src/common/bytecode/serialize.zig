@@ -38,12 +38,18 @@ const std = @import("std");
 const chunk_mod = @import("chunk.zig");
 const opcodes = @import("opcodes.zig");
 const value_mod = @import("../value.zig");
+const env_mod = @import("../env.zig");
+const ns_mod = @import("../namespace.zig");
+const var_mod = @import("../var.zig");
 
 pub const Chunk = chunk_mod.Chunk;
 pub const FnProto = chunk_mod.FnProto;
 pub const Instruction = opcodes.Instruction;
 pub const OpCode = opcodes.OpCode;
 pub const Value = value_mod.Value;
+pub const Env = env_mod.Env;
+pub const Namespace = ns_mod.Namespace;
+pub const Var = var_mod.Var;
 
 /// Format magic bytes.
 pub const MAGIC = [4]u8{ 'C', 'L', 'J', 'C' };
@@ -414,6 +420,159 @@ pub const Serializer = struct {
         body_buf.deinit(allocator);
     }
 
+    // --- Env snapshot serialization ---
+
+    /// Helper: serialize optional string as i32 (-1 if null, string_idx otherwise).
+    fn serializeOptString(self: *Serializer, allocator: std.mem.Allocator, s: ?[]const u8) !void {
+        if (s) |str| {
+            const idx = try self.internString(allocator, str);
+            try self.writeBytes(allocator, &encodeI32(@intCast(idx)));
+        } else {
+            try self.writeBytes(allocator, &encodeI32(-1));
+        }
+    }
+
+    /// Collect all FnProtos from all Var root values in the environment.
+    pub fn collectEnvFnProtos(self: *Serializer, allocator: std.mem.Allocator, env: *const Env) !void {
+        var ns_iter = env.namespaces.iterator();
+        while (ns_iter.next()) |ns_entry| {
+            const ns = ns_entry.value_ptr.*;
+            var var_iter = ns.mappings.iterator();
+            while (var_iter.next()) |var_entry| {
+                const v = var_entry.value_ptr.*;
+                try self.collectFnProtos(allocator, v.root);
+            }
+        }
+    }
+
+    /// Serialize a single Var.
+    pub fn serializeVar(self: *Serializer, allocator: std.mem.Allocator, v: *const Var) !void {
+        // Name
+        const name_idx = try self.internString(allocator, v.sym.name);
+        try self.writeBytes(allocator, &encodeU32(name_idx));
+
+        // Flags (packed into u8)
+        var flags: u8 = 0;
+        if (v.dynamic) flags |= 0x01;
+        if (v.macro) flags |= 0x02;
+        if (v.private) flags |= 0x04;
+        if (v.is_const) flags |= 0x08;
+        try self.buf.append(allocator, flags);
+
+        // Optional string fields: doc, arglists, added, file
+        try self.serializeOptString(allocator, v.doc);
+        try self.serializeOptString(allocator, v.arglists);
+        try self.serializeOptString(allocator, v.added);
+        try self.serializeOptString(allocator, v.file);
+
+        // Source location
+        try self.writeBytes(allocator, &encodeU32(v.line));
+        try self.writeBytes(allocator, &encodeU32(v.column));
+
+        // Root value
+        if (v.root.tag() == .builtin_fn) {
+            try self.buf.append(allocator, 1); // root_kind = builtin (keep existing)
+        } else {
+            try self.buf.append(allocator, 0); // root_kind = value
+            try self.serializeValue(allocator, v.root);
+        }
+
+        // Meta (optional PersistentArrayMap)
+        if (v.meta) |meta_map| {
+            try self.buf.append(allocator, 1); // has_meta
+            const meta_val = Value.initMap(meta_map);
+            try self.serializeValue(allocator, meta_val);
+        } else {
+            try self.buf.append(allocator, 0); // no meta
+        }
+    }
+
+    /// Serialize env state: all namespaces with vars, refers, and aliases.
+    pub fn serializeEnvState(self: *Serializer, allocator: std.mem.Allocator, env: *const Env) !void {
+        // Count namespaces
+        var ns_count: u32 = 0;
+        {
+            var it = env.namespaces.iterator();
+            while (it.next()) |_| ns_count += 1;
+        }
+        try self.writeBytes(allocator, &encodeU32(ns_count));
+
+        // Serialize each namespace
+        var ns_iter = env.namespaces.iterator();
+        while (ns_iter.next()) |ns_entry| {
+            const ns = ns_entry.value_ptr.*;
+
+            // Namespace name
+            const ns_name_idx = try self.internString(allocator, ns.name);
+            try self.writeBytes(allocator, &encodeU32(ns_name_idx));
+
+            // Mappings (own vars)
+            var var_count: u32 = 0;
+            {
+                var it = ns.mappings.iterator();
+                while (it.next()) |_| var_count += 1;
+            }
+            try self.writeBytes(allocator, &encodeU32(var_count));
+            var var_iter = ns.mappings.iterator();
+            while (var_iter.next()) |var_entry| {
+                try self.serializeVar(allocator, var_entry.value_ptr.*);
+            }
+
+            // Refers (name -> source_ns)
+            var refer_count: u32 = 0;
+            {
+                var it = ns.refers.iterator();
+                while (it.next()) |_| refer_count += 1;
+            }
+            try self.writeBytes(allocator, &encodeU32(refer_count));
+            var refer_iter = ns.refers.iterator();
+            while (refer_iter.next()) |refer_entry| {
+                const ref_name_idx = try self.internString(allocator, refer_entry.key_ptr.*);
+                try self.writeBytes(allocator, &encodeU32(ref_name_idx));
+                const source_ns_idx = try self.internString(allocator, refer_entry.value_ptr.*.ns_name);
+                try self.writeBytes(allocator, &encodeU32(source_ns_idx));
+            }
+
+            // Aliases (alias_name -> target_ns_name)
+            var alias_count: u32 = 0;
+            {
+                var it = ns.aliases.iterator();
+                while (it.next()) |_| alias_count += 1;
+            }
+            try self.writeBytes(allocator, &encodeU32(alias_count));
+            var alias_iter = ns.aliases.iterator();
+            while (alias_iter.next()) |alias_entry| {
+                const alias_name_idx = try self.internString(allocator, alias_entry.key_ptr.*);
+                try self.writeBytes(allocator, &encodeU32(alias_name_idx));
+                const target_ns_idx = try self.internString(allocator, alias_entry.value_ptr.*.name);
+                try self.writeBytes(allocator, &encodeU32(target_ns_idx));
+            }
+        }
+    }
+
+    /// Serialize a complete env snapshot: header + string table + FnProto table + env state.
+    pub fn serializeEnvSnapshot(self: *Serializer, allocator: std.mem.Allocator, env: *const Env) !void {
+        // Phase 1: collect all FnProtos from var roots
+        try self.collectEnvFnProtos(allocator, env);
+
+        // Phase 2: serialize body to temp buffer (populates string table)
+        const saved_buf = self.buf;
+        self.buf = .empty;
+
+        try self.writeFnProtoTable(allocator);
+        try self.serializeEnvState(allocator, env);
+
+        var body_buf = self.buf;
+        self.buf = saved_buf;
+
+        // Phase 3: write header + string table + body to output
+        try self.writeHeader(allocator);
+        try self.writeStringTable(allocator);
+        try self.writeBytes(allocator, body_buf.items);
+
+        body_buf.deinit(allocator);
+    }
+
     /// Get the serialized bytes.
     pub fn getBytes(self: *const Serializer) []const u8 {
         return self.buf.items;
@@ -731,6 +890,155 @@ pub const Deserializer = struct {
         try self.readStringTable(allocator);
         try self.readFnProtoTable(allocator);
         return self.deserializeChunk(allocator);
+    }
+
+    // --- Env snapshot restoration ---
+
+    /// Helper: read optional string (i32 index, -1 = null).
+    fn readOptString(self: *Deserializer) !?[]const u8 {
+        const idx = try self.readI32();
+        if (idx < 0) return null;
+        const i: u32 = @intCast(idx);
+        if (i >= self.strings.len) return error.InvalidStringIndex;
+        return self.strings[i];
+    }
+
+    /// Restore a single Var into the given namespace.
+    /// If root_kind is builtin (1), the existing root is preserved.
+    pub fn restoreVar(self: *Deserializer, allocator: std.mem.Allocator, ns: *Namespace) !void {
+        // Name
+        const name_idx = try self.readU32();
+        if (name_idx >= self.strings.len) return error.InvalidStringIndex;
+        const var_name = self.strings[name_idx];
+
+        // Flags
+        const flags = try self.readU8();
+
+        // Optional string fields
+        const doc = try self.readOptString();
+        const arglists = try self.readOptString();
+        const added = try self.readOptString();
+        const file = try self.readOptString();
+
+        // Source location
+        const line = try self.readU32();
+        const column = try self.readU32();
+
+        // Root value
+        const root_kind = try self.readU8();
+        var root_value: ?Value = null;
+        if (root_kind == 0) {
+            root_value = try self.deserializeValue(allocator);
+        }
+
+        // Meta
+        const has_meta = try self.readU8();
+        var meta_map: ?*value_mod.PersistentArrayMap = null;
+        if (has_meta != 0) {
+            const meta_val = try self.deserializeValue(allocator);
+            if (meta_val.tag() == .map) {
+                meta_map = @constCast(meta_val.asMap());
+            }
+        }
+
+        // Intern var and apply fields
+        const v = try ns.intern(var_name);
+        v.dynamic = (flags & 0x01) != 0;
+        v.macro = (flags & 0x02) != 0;
+        v.private = (flags & 0x04) != 0;
+        v.is_const = (flags & 0x08) != 0;
+        v.doc = doc;
+        v.arglists = arglists;
+        v.added = added;
+        v.file = file;
+        v.line = line;
+        v.column = column;
+        if (root_value) |rv| {
+            v.bindRoot(rv);
+        }
+        // Only set meta if snapshot has it (don't clear existing meta from registerBuiltins)
+        if (meta_map) |m| {
+            v.meta = m;
+        }
+    }
+
+    /// Restore env state from snapshot. Expects registerBuiltins already called.
+    /// Creates/updates namespaces and vars, then connects refers and aliases.
+    pub fn restoreEnvState(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        const ns_count = try self.readU32();
+
+        // Temporary storage for deferred refer/alias setup
+        const ReferEntry = struct { ns_name: []const u8, refer_name: []const u8, source_ns: []const u8 };
+        const AliasEntry = struct { ns_name: []const u8, alias_name: []const u8, target_ns: []const u8 };
+        var refers = std.ArrayListUnmanaged(ReferEntry).empty;
+        var aliases = std.ArrayListUnmanaged(AliasEntry).empty;
+
+        // Pass 1: create namespaces and vars
+        for (0..ns_count) |_| {
+            const ns_name_idx = try self.readU32();
+            if (ns_name_idx >= self.strings.len) return error.InvalidStringIndex;
+            const ns_name = self.strings[ns_name_idx];
+            const ns = try env.findOrCreateNamespace(ns_name);
+
+            // Vars
+            const var_count = try self.readU32();
+            for (0..var_count) |_| {
+                try self.restoreVar(allocator, ns);
+            }
+
+            // Refers (defer to pass 2)
+            const refer_count = try self.readU32();
+            for (0..refer_count) |_| {
+                const ref_name_idx = try self.readU32();
+                const src_ns_idx = try self.readU32();
+                if (ref_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                if (src_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                try refers.append(allocator, .{
+                    .ns_name = ns_name,
+                    .refer_name = self.strings[ref_name_idx],
+                    .source_ns = self.strings[src_ns_idx],
+                });
+            }
+
+            // Aliases (defer to pass 2)
+            const alias_count = try self.readU32();
+            for (0..alias_count) |_| {
+                const alias_name_idx = try self.readU32();
+                const target_ns_idx = try self.readU32();
+                if (alias_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                if (target_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                try aliases.append(allocator, .{
+                    .ns_name = ns_name,
+                    .alias_name = self.strings[alias_name_idx],
+                    .target_ns = self.strings[target_ns_idx],
+                });
+            }
+        }
+
+        // Pass 2: connect refers
+        for (refers.items) |ref| {
+            const ns = env.findNamespace(ref.ns_name) orelse continue;
+            const source_ns = env.findNamespace(ref.source_ns) orelse continue;
+            if (source_ns.mappings.get(ref.refer_name)) |source_var| {
+                try ns.refer(ref.refer_name, source_var);
+            }
+        }
+
+        // Pass 3: connect aliases
+        for (aliases.items) |al| {
+            const ns = env.findNamespace(al.ns_name) orelse continue;
+            const target = env.findNamespace(al.target_ns) orelse continue;
+            try ns.setAlias(al.alias_name, target);
+        }
+    }
+
+    /// Restore a complete env snapshot: header + string table + FnProto table + env state.
+    /// Expects registerBuiltins(env) already called.
+    pub fn restoreEnvSnapshot(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        try self.readHeader();
+        try self.readStringTable(allocator);
+        try self.readFnProtoTable(allocator);
+        try self.restoreEnvState(allocator, env);
     }
 };
 
@@ -1295,4 +1603,185 @@ test "serializeModule with no fn_vals" {
     try std.testing.expectEqual(@as(usize, 2), result.constants.items.len);
     try std.testing.expectEqual(Value.initInteger(1), result.constants.items[0]);
     try std.testing.expectEqual(Value.initInteger(2), result.constants.items[1]);
+}
+
+test "env snapshot round-trip with scalar vars" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create source env
+    var env1 = Env.init(alloc);
+
+    const ns1 = try env1.findOrCreateNamespace("test.core");
+    const v1 = try ns1.intern("x");
+    v1.bindRoot(Value.initInteger(42));
+    v1.doc = "The answer";
+
+    const v2 = try ns1.intern("greeting");
+    v2.bindRoot(Value.initString(alloc, "hello"));
+    v2.private = true;
+
+    const v3 = try ns1.intern("flag");
+    v3.bindRoot(Value.true_val);
+    v3.dynamic = true;
+
+    const ns2 = try env1.findOrCreateNamespace("test.user");
+    const v4 = try ns2.intern("y");
+    v4.bindRoot(Value.initFloat(3.14));
+
+    // Set up a refer: test.user refers "x" from test.core
+    try ns2.refer("x", v1);
+
+    // Set up an alias: test.user aliases "tc" -> test.core
+    try ns2.setAlias("tc", ns1);
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeEnvSnapshot(alloc, &env1);
+
+    // Create target env and restore
+    var env2 = Env.init(alloc);
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    try de.restoreEnvSnapshot(alloc, &env2);
+
+    // Verify namespaces exist
+    const r_ns1 = env2.findNamespace("test.core");
+    try std.testing.expect(r_ns1 != null);
+    const r_ns2 = env2.findNamespace("test.user");
+    try std.testing.expect(r_ns2 != null);
+
+    // Verify vars in test.core
+    const r_v1 = r_ns1.?.mappings.get("x");
+    try std.testing.expect(r_v1 != null);
+    try std.testing.expectEqual(Value.initInteger(42), r_v1.?.root);
+    try std.testing.expectEqualStrings("The answer", r_v1.?.doc.?);
+
+    const r_v2 = r_ns1.?.mappings.get("greeting");
+    try std.testing.expect(r_v2 != null);
+    try std.testing.expectEqualStrings("hello", r_v2.?.root.asString());
+    try std.testing.expect(r_v2.?.private);
+
+    const r_v3 = r_ns1.?.mappings.get("flag");
+    try std.testing.expect(r_v3 != null);
+    try std.testing.expectEqual(Value.true_val, r_v3.?.root);
+    try std.testing.expect(r_v3.?.dynamic);
+
+    // Verify var in test.user
+    const r_v4 = r_ns2.?.mappings.get("y");
+    try std.testing.expect(r_v4 != null);
+    try std.testing.expectEqual(@as(f64, 3.14), r_v4.?.root.asFloat());
+
+    // Verify refer: test.user -> x from test.core
+    const referred_x = r_ns2.?.refers.get("x");
+    try std.testing.expect(referred_x != null);
+    try std.testing.expectEqual(Value.initInteger(42), referred_x.?.root);
+
+    // Verify alias: test.user -> "tc" -> test.core
+    const aliased_ns = r_ns2.?.getAlias("tc");
+    try std.testing.expect(aliased_ns != null);
+    try std.testing.expectEqualStrings("test.core", aliased_ns.?.name);
+}
+
+fn testBuiltinA(_: std.mem.Allocator, _: []const Value) anyerror!Value {
+    return Value.nil_val;
+}
+
+fn testBuiltinB(_: std.mem.Allocator, _: []const Value) anyerror!Value {
+    return Value.true_val;
+}
+
+test "env snapshot preserves builtin roots" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create env with a builtin var
+    var env1 = Env.init(alloc);
+    const ns = try env1.findOrCreateNamespace("test.ns");
+    const v = try ns.intern("my-builtin");
+    v.bindRoot(Value.initBuiltinFn(&testBuiltinA));
+    v.doc = "A builtin function";
+    v.arglists = "([x])";
+
+    // Also add a non-builtin var
+    const v2 = try ns.intern("my-val");
+    v2.bindRoot(Value.initInteger(100));
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeEnvSnapshot(alloc, &env1);
+
+    // Restore into env that has "my-builtin" registered with DIFFERENT fn ptr
+    var env2 = Env.init(alloc);
+    const ns2 = try env2.findOrCreateNamespace("test.ns");
+    const existing = try ns2.intern("my-builtin");
+    existing.bindRoot(Value.initBuiltinFn(&testBuiltinB));
+
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    try de.restoreEnvSnapshot(alloc, &env2);
+
+    // Builtin root should be PRESERVED (not overwritten with snapshot's)
+    const r_ns = env2.findNamespace("test.ns").?;
+    const r_v = r_ns.mappings.get("my-builtin").?;
+    try std.testing.expectEqual(Value.initBuiltinFn(&testBuiltinB), r_v.root);
+    // But metadata should be updated from snapshot
+    try std.testing.expectEqualStrings("A builtin function", r_v.doc.?);
+    try std.testing.expectEqualStrings("([x])", r_v.arglists.?);
+
+    // Non-builtin var should have its value restored
+    const r_v2 = r_ns.mappings.get("my-val").?;
+    try std.testing.expectEqual(Value.initInteger(100), r_v2.root);
+}
+
+test "env snapshot with fn_val root" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a FnProto + Fn
+    const fn_code = [_]Instruction{
+        .{ .op = .const_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{Value.initInteger(7)};
+    const proto = try alloc.create(FnProto);
+    proto.* = .{
+        .name = "my-fn",
+        .arity = 0,
+        .variadic = false,
+        .local_count = 0,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{ .proto = proto, .defining_ns = "test.core" };
+
+    // Create env with fn_val var
+    var env1 = Env.init(alloc);
+    const ns = try env1.findOrCreateNamespace("test.core");
+    const v = try ns.intern("my-fn");
+    v.bindRoot(Value.initFn(fn_obj));
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeEnvSnapshot(alloc, &env1);
+    try std.testing.expectEqual(@as(usize, 1), ser.fn_protos.items.len);
+
+    // Restore
+    var env2 = Env.init(alloc);
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    try de.restoreEnvSnapshot(alloc, &env2);
+
+    // Verify fn_val was restored
+    const r_ns = env2.findNamespace("test.core").?;
+    const r_v = r_ns.mappings.get("my-fn").?;
+    try std.testing.expect(r_v.root.tag() == .fn_val);
+
+    const r_fn = r_v.root.asFn();
+    const r_proto: *const FnProto = @ptrCast(@alignCast(r_fn.proto));
+    try std.testing.expectEqualStrings("my-fn", r_proto.name.?);
+    try std.testing.expectEqual(@as(u8, 0), r_proto.arity);
+    try std.testing.expectEqual(Value.initInteger(7), r_proto.constants[0]);
+    try std.testing.expectEqualStrings("test.core", r_fn.defining_ns.?);
 }

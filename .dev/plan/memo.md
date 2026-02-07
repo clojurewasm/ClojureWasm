@@ -50,7 +50,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-31.3 — Env state snapshot / restore. Serialize Var bindings and namespace state.
+31.4 — Bootstrap cache integration (startup from cached state).
 
 ## Task Queue
 
@@ -63,16 +63,16 @@ Startup already 10ms (ReleaseSafe), but AOT enables:
 
 - ~~31.1 Bytecode binary format + Value serialization~~
 - ~~31.2 FnProto + Chunk serialization~~
-- 31.3 Env state snapshot / restore
+- ~~31.3 Env state snapshot / restore~~
 - 31.4 Bootstrap cache integration (startup from cached state)
 - 31.5 `cljw compile` command + Phase 28.3 bytecode embedding
 
 ## Previous Task
 
-31.2 — FnProto + Chunk serialization. Added fn_val resolution via FnProto
-index mapping (inner-first depth-first ordering). serializeModule/deserializeModule
-for complete module round-trip. Multi-arity fn_val support with extra_arities +
-defining_ns. Two-phase serialization (body first to populate string table).
+31.3 — Env state snapshot / restore. Added serializeEnvSnapshot/restoreEnvSnapshot
+for full env round-trip. Var serialization with root_kind flag (0=value, 1=builtin_keep)
+to preserve BuiltinFn pointers during restore. Two-pass restore: 1) create NSes+Vars,
+2) connect refers+aliases. Tests cover scalar vars, builtin preservation, fn_val roots.
 
 ## Known Issues
 
