@@ -23,21 +23,21 @@ const err = @import("../error.zig");
 /// (chunk-buffer n) — create a new ChunkBuffer with capacity n.
 fn chunkBufferFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-buffer", .{args.len});
-    const n = switch (args[0]) {
-        .integer => |i| i,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-buffer expects integer capacity, got {s}", .{@tagName(args[0])}),
+    const n = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-buffer expects integer capacity, got {s}", .{@tagName(args[0].tag())}),
     };
     if (n < 0) return err.setErrorFmt(.eval, .value_error, .{}, "chunk-buffer capacity must be non-negative", .{});
     const cb = try ChunkBuffer.initWithCapacity(allocator, @intCast(n));
-    return Value{ .chunk_buffer = cb };
+    return Value.initChunkBuffer(cb);
 }
 
 /// (chunk-append buf val) — append val to ChunkBuffer. Returns nil.
 fn chunkAppendFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-append", .{args.len});
-    const cb = switch (args[0]) {
-        .chunk_buffer => |b| b,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-append expects ChunkBuffer, got {s}", .{@tagName(args[0])}),
+    const cb = switch (args[0].tag()) {
+        .chunk_buffer => args[0].asChunkBuffer(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-append expects ChunkBuffer, got {s}", .{@tagName(args[0].tag())}),
     };
     cb.add(allocator, args[1]) catch |e| {
         return switch (e) {
@@ -45,15 +45,15 @@ fn chunkAppendFn(allocator: Allocator, args: []const Value) anyerror!Value {
             else => e,
         };
     };
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (chunk buf) — finalize ChunkBuffer into an ArrayChunk.
 fn chunkFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk", .{args.len});
-    const cb = switch (args[0]) {
-        .chunk_buffer => |b| b,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk expects ChunkBuffer, got {s}", .{@tagName(args[0])}),
+    const cb = switch (args[0].tag()) {
+        .chunk_buffer => args[0].asChunkBuffer(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk expects ChunkBuffer, got {s}", .{@tagName(args[0].tag())}),
     };
     const ac = cb.toChunk(allocator) catch |e| {
         return switch (e) {
@@ -61,24 +61,24 @@ fn chunkFn(allocator: Allocator, args: []const Value) anyerror!Value {
             else => e,
         };
     };
-    return Value{ .array_chunk = ac };
+    return Value.initArrayChunk(ac);
 }
 
 /// (chunk-first s) — return the first ArrayChunk from a chunked seq.
 fn chunkFirstFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-first", .{args.len});
-    return switch (args[0]) {
-        .chunked_cons => |cc| Value{ .array_chunk = cc.chunk },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "chunk-first expects chunked seq, got {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .chunked_cons => Value.initArrayChunk(args[0].asChunkedCons().chunk),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "chunk-first expects chunked seq, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (chunk-next s) — return the seq after the first chunk, or nil.
 fn chunkNextFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-next", .{args.len});
-    const cc = switch (args[0]) {
-        .chunked_cons => |c| c,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-next expects chunked seq, got {s}", .{@tagName(args[0])}),
+    const cc = switch (args[0].tag()) {
+        .chunked_cons => args[0].asChunkedCons(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-next expects chunked seq, got {s}", .{@tagName(args[0].tag())}),
     };
     // Call seq on the rest to return nil for empty
     const collections_mod = @import("collections.zig");
@@ -89,14 +89,14 @@ fn chunkNextFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (chunk-rest s) — return the rest after the first chunk, or empty list.
 fn chunkRestFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-rest", .{args.len});
-    const cc = switch (args[0]) {
-        .chunked_cons => |c| c,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-rest expects chunked seq, got {s}", .{@tagName(args[0])}),
+    const cc = switch (args[0].tag()) {
+        .chunked_cons => args[0].asChunkedCons(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-rest expects chunked seq, got {s}", .{@tagName(args[0].tag())}),
     };
-    if (cc.more == .nil) {
+    if (cc.more.isNil()) {
         const empty = try allocator.create(PersistentList);
         empty.* = .{ .items = &.{} };
-        return Value{ .list = empty };
+        return Value.initList(empty);
     }
     return cc.more;
 }
@@ -104,22 +104,22 @@ fn chunkRestFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (chunked-seq? s) — true if s is a ChunkedCons.
 fn chunkedSeqPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunked-seq?", .{args.len});
-    return Value{ .boolean = args[0] == .chunked_cons };
+    return Value.initBoolean(args[0].tag() == .chunked_cons);
 }
 
 /// (chunk-cons chunk rest) — create a ChunkedCons from ArrayChunk + rest seq.
 /// If chunk is empty, returns rest directly.
 fn chunkConsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to chunk-cons", .{args.len});
-    const ac = switch (args[0]) {
-        .array_chunk => |c| c,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-cons expects ArrayChunk as first arg, got {s}", .{@tagName(args[0])}),
+    const ac = switch (args[0].tag()) {
+        .array_chunk => args[0].asArrayChunk(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "chunk-cons expects ArrayChunk as first arg, got {s}", .{@tagName(args[0].tag())}),
     };
     // If chunk is empty, return rest directly
     if (ac.count() == 0) return args[1];
     const cc = try allocator.create(ChunkedCons);
     cc.* = .{ .chunk = ac, .more = args[1] };
-    return Value{ .chunked_cons = cc };
+    return Value.initChunkedCons(cc);
 }
 
 // ============================================================
@@ -145,32 +145,32 @@ test "chunk-buffer -> chunk-append -> chunk lifecycle" {
     const allocator = std.testing.allocator;
 
     // Create chunk-buffer of capacity 3
-    const buf_val = try chunkBufferFn(allocator, &.{Value{ .integer = 3 }});
-    try std.testing.expect(buf_val == .chunk_buffer);
+    const buf_val = try chunkBufferFn(allocator, &.{Value.initInteger(3)});
+    try std.testing.expect(buf_val.tag() == .chunk_buffer);
 
     // Append 3 values
-    _ = try chunkAppendFn(allocator, &.{ buf_val, Value{ .integer = 10 } });
-    _ = try chunkAppendFn(allocator, &.{ buf_val, Value{ .integer = 20 } });
-    _ = try chunkAppendFn(allocator, &.{ buf_val, Value{ .integer = 30 } });
+    _ = try chunkAppendFn(allocator, &.{ buf_val, Value.initInteger(10) });
+    _ = try chunkAppendFn(allocator, &.{ buf_val, Value.initInteger(20) });
+    _ = try chunkAppendFn(allocator, &.{ buf_val, Value.initInteger(30) });
 
     // Finalize
     const chunk_val = try chunkFn(allocator, &.{buf_val});
-    try std.testing.expect(chunk_val == .array_chunk);
-    try std.testing.expectEqual(@as(usize, 3), chunk_val.array_chunk.count());
+    try std.testing.expect(chunk_val.tag() == .array_chunk);
+    try std.testing.expectEqual(@as(usize, 3), chunk_val.asArrayChunk().count());
 
     // Verify elements
-    try std.testing.expectEqual(@as(i64, 10), chunk_val.array_chunk.nth(0).?.integer);
-    try std.testing.expectEqual(@as(i64, 20), chunk_val.array_chunk.nth(1).?.integer);
-    try std.testing.expectEqual(@as(i64, 30), chunk_val.array_chunk.nth(2).?.integer);
+    try std.testing.expectEqual(@as(i64, 10), chunk_val.asArrayChunk().nth(0).?.asInteger());
+    try std.testing.expectEqual(@as(i64, 20), chunk_val.asArrayChunk().nth(1).?.asInteger());
+    try std.testing.expectEqual(@as(i64, 30), chunk_val.asArrayChunk().nth(2).?.asInteger());
 
     // Second finalize should fail
     try std.testing.expectError(error.ValueError, chunkFn(allocator, &.{buf_val}));
 
     // Cleanup
-    allocator.free(chunk_val.array_chunk.array);
-    allocator.destroy(@constCast(chunk_val.array_chunk));
-    buf_val.chunk_buffer.items.deinit(allocator);
-    allocator.destroy(buf_val.chunk_buffer);
+    allocator.free(chunk_val.asArrayChunk().array);
+    allocator.destroy(@constCast(chunk_val.asArrayChunk()));
+    buf_val.asChunkBuffer().items.deinit(allocator);
+    allocator.destroy(buf_val.asChunkBuffer());
 }
 
 test "chunk-first/chunk-next/chunk-rest on ChunkedCons" {
@@ -178,41 +178,41 @@ test "chunk-first/chunk-next/chunk-rest on ChunkedCons" {
 
     // Create ArrayChunk with [1 2 3]
     const items = try allocator.alloc(Value, 3);
-    items[0] = Value{ .integer = 1 };
-    items[1] = Value{ .integer = 2 };
-    items[2] = Value{ .integer = 3 };
+    items[0] = Value.initInteger(1);
+    items[1] = Value.initInteger(2);
+    items[2] = Value.initInteger(3);
     const ac = try allocator.create(ArrayChunk);
     ac.* = ArrayChunk.initFull(items);
 
     // Create ChunkedCons with chunk=[1 2 3], rest=nil
     const cc = try allocator.create(ChunkedCons);
-    cc.* = .{ .chunk = ac, .more = .nil };
-    const cc_val = Value{ .chunked_cons = cc };
+    cc.* = .{ .chunk = ac, .more = Value.nil_val };
+    const cc_val = Value.initChunkedCons(cc);
 
     // chunk-first returns the ArrayChunk
     const cf = try chunkFirstFn(allocator, &.{cc_val});
-    try std.testing.expect(cf == .array_chunk);
-    try std.testing.expectEqual(@as(usize, 3), cf.array_chunk.count());
+    try std.testing.expect(cf.tag() == .array_chunk);
+    try std.testing.expectEqual(@as(usize, 3), cf.asArrayChunk().count());
 
     // chunk-next returns nil (no more)
     const cn = try chunkNextFn(allocator, &.{cc_val});
-    try std.testing.expect(cn == .nil);
+    try std.testing.expect(cn.isNil());
 
     // chunk-rest returns empty list
     const cr = try chunkRestFn(allocator, &.{cc_val});
-    try std.testing.expect(cr == .list);
-    try std.testing.expectEqual(@as(usize, 0), cr.list.count());
+    try std.testing.expect(cr.tag() == .list);
+    try std.testing.expectEqual(@as(usize, 0), cr.asList().count());
 
     // chunked-seq? returns true
     const csp = try chunkedSeqPred(allocator, &.{cc_val});
-    try std.testing.expectEqual(true, csp.boolean);
+    try std.testing.expectEqual(true, csp.asBoolean());
 
     // chunked-seq? returns false for non-chunked
-    const nsp = try chunkedSeqPred(allocator, &.{Value{ .integer = 42 }});
-    try std.testing.expectEqual(false, nsp.boolean);
+    const nsp = try chunkedSeqPred(allocator, &.{Value.initInteger(42)});
+    try std.testing.expectEqual(false, nsp.asBoolean());
 
     // Cleanup
-    allocator.destroy(@constCast(cr.list));
+    allocator.destroy(@constCast(cr.asList()));
     allocator.destroy(cc);
     allocator.free(items);
     allocator.destroy(@constCast(ac));

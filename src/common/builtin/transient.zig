@@ -25,29 +25,33 @@ const err = @import("../error.zig");
 /// (transient coll) — creates a transient version of a persistent collection.
 pub fn transientFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to transient", .{args.len});
-    return switch (args[0]) {
-        .vector => |vec| Value{ .transient_vector = try TransientVector.initFrom(allocator, vec) },
-        .map => |m| Value{ .transient_map = try TransientArrayMap.initFrom(allocator, m) },
-        .hash_map => |hm| blk: {
+    return switch (args[0].tag()) {
+        .vector => Value.initTransientVector(try TransientVector.initFrom(allocator, args[0].asVector())),
+        .map => blk: {
+            const m = args[0].asMap();
+            break :blk Value.initTransientMap(try TransientArrayMap.initFrom(allocator, m));
+        },
+        .hash_map => blk: {
+            const hm = args[0].asHashMap();
             const entries = try hm.toEntries(allocator);
             const tm = try allocator.create(TransientArrayMap);
             tm.* = .{};
             try tm.entries.appendSlice(allocator, entries);
-            break :blk Value{ .transient_map = tm };
+            break :blk Value.initTransientMap(tm);
         },
-        .set => |s| Value{ .transient_set = try TransientHashSet.initFrom(allocator, s) },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "transient not supported on {s}", .{@tagName(args[0])}),
+        .set => Value.initTransientSet(try TransientHashSet.initFrom(allocator, args[0].asSet())),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "transient not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (persistent! tcoll) — creates a persistent version from a transient.
 pub fn persistentBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to persistent!", .{args.len});
-    return switch (args[0]) {
-        .transient_vector => |tv| Value{ .vector = tv.persistent(allocator) catch return transientConsumedError("persistent!") },
-        .transient_map => |tm| Value{ .map = tm.persistent(allocator) catch return transientConsumedError("persistent!") },
-        .transient_set => |ts| Value{ .set = ts.persistent(allocator) catch return transientConsumedError("persistent!") },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "persistent! not supported on {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .transient_vector => Value.initVector(args[0].asTransientVector().persistent(allocator) catch return transientConsumedError("persistent!")),
+        .transient_map => Value.initMap(args[0].asTransientMap().persistent(allocator) catch return transientConsumedError("persistent!")),
+        .transient_set => Value.initSet(args[0].asTransientSet().persistent(allocator) catch return transientConsumedError("persistent!")),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "persistent! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -55,74 +59,76 @@ pub fn persistentBangFn(allocator: Allocator, args: []const Value) anyerror!Valu
 pub fn conjBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to conj!", .{args.len});
     if (args.len == 1) return args[0]; // (conj! tcoll) => tcoll
-    return switch (args[0]) {
-        .transient_vector => |tv| Value{ .transient_vector = tv.conj(allocator, args[1]) catch return transientConsumedError("conj!") },
-        .transient_map => |tm| Value{ .transient_map = tm.conjEntry(allocator, args[1]) catch |e| return transientError(e, "conj!") },
-        .transient_set => |ts| Value{ .transient_set = ts.conj(allocator, args[1]) catch return transientConsumedError("conj!") },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "conj! not supported on {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .transient_vector => Value.initTransientVector(args[0].asTransientVector().conj(allocator, args[1]) catch return transientConsumedError("conj!")),
+        .transient_map => Value.initTransientMap(args[0].asTransientMap().conjEntry(allocator, args[1]) catch |e| return transientError(e, "conj!")),
+        .transient_set => Value.initTransientSet(args[0].asTransientSet().conj(allocator, args[1]) catch return transientConsumedError("conj!")),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "conj! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (assoc! tcoll key val) — associates key with val in transient map/vector.
 pub fn assocBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to assoc!", .{args.len});
-    return switch (args[0]) {
-        .transient_vector => |tv| {
-            const idx = switch (args[1]) {
-                .integer => |n| blk: {
+    return switch (args[0].tag()) {
+        .transient_vector => {
+            const tv = args[0].asTransientVector();
+            const idx = switch (args[1].tag()) {
+                .integer => blk: {
+                    const n = args[1].asInteger();
                     if (n < 0) return err.setErrorFmt(.eval, .value_error, .{}, "assoc! index out of bounds: {d}", .{n});
                     break :blk @as(usize, @intCast(n));
                 },
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "assoc! on vector requires integer key, got {s}", .{@tagName(args[1])}),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "assoc! on vector requires integer key, got {s}", .{@tagName(args[1].tag())}),
             };
-            return Value{ .transient_vector = tv.assocAt(allocator, idx, args[2]) catch |e| {
+            return Value.initTransientVector(tv.assocAt(allocator, idx, args[2]) catch |e| {
                 return switch (e) {
                     error.TransientUsedAfterPersistent => transientConsumedError("assoc!"),
                     error.IndexOutOfBounds => err.setErrorFmt(.eval, .value_error, .{}, "assoc! index out of bounds", .{}),
                     else => err.setErrorFmt(.eval, .type_error, .{}, "assoc! failed", .{}),
                 };
-            } };
+            });
         },
-        .transient_map => |tm| Value{ .transient_map = tm.assocKV(allocator, args[1], args[2]) catch return transientConsumedError("assoc!") },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "assoc! not supported on {s}", .{@tagName(args[0])}),
+        .transient_map => Value.initTransientMap(args[0].asTransientMap().assocKV(allocator, args[1], args[2]) catch return transientConsumedError("assoc!")),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "assoc! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (dissoc! tmap key) — removes key from transient map.
 pub fn dissocBangFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dissoc!", .{args.len});
-    return switch (args[0]) {
-        .transient_map => |tm| Value{ .transient_map = tm.dissocKey(args[1]) catch return transientConsumedError("dissoc!") },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "dissoc! not supported on {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .transient_map => Value.initTransientMap(args[0].asTransientMap().dissocKey(args[1]) catch return transientConsumedError("dissoc!")),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "dissoc! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (disj! tset val) — removes val from transient set.
 pub fn disjBangFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to disj!", .{args.len});
-    return switch (args[0]) {
-        .transient_set => |ts| {
-            var current = ts;
+    return switch (args[0].tag()) {
+        .transient_set => {
+            var current = args[0].asTransientSet();
             for (args[1..]) |key| {
                 current = current.disj(key) catch return transientConsumedError("disj!");
             }
-            return Value{ .transient_set = current };
+            return Value.initTransientSet(current);
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "disj! not supported on {s}", .{@tagName(args[0])}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "disj! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (pop! tvec) — removes last element from transient vector.
 pub fn popBangFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to pop!", .{args.len});
-    return switch (args[0]) {
-        .transient_vector => |tv| Value{ .transient_vector = tv.pop() catch |e| {
+    return switch (args[0].tag()) {
+        .transient_vector => Value.initTransientVector(args[0].asTransientVector().pop() catch |e| {
             return switch (e) {
                 error.TransientUsedAfterPersistent => transientConsumedError("pop!"),
                 error.CantPopEmpty => err.setErrorFmt(.eval, .value_error, .{}, "Can't pop empty vector", .{}),
             };
-        } },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "pop! not supported on {s}", .{@tagName(args[0])}),
+        }),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "pop! not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -210,34 +216,34 @@ test "transient vector - basic conj! and persistent!" {
 
     // Create persistent vector [1 2 3]
     const items = try allocator.alloc(Value, 3);
-    items[0] = .{ .integer = 1 };
-    items[1] = .{ .integer = 2 };
-    items[2] = .{ .integer = 3 };
+    items[0] = Value.initInteger(1);
+    items[1] = Value.initInteger(2);
+    items[2] = Value.initInteger(3);
     const pv = try allocator.create(PersistentVector);
     pv.* = .{ .items = items };
     defer allocator.destroy(pv);
     defer allocator.free(items);
 
     // (transient [1 2 3])
-    const tv_val = try transientFn(allocator, &.{Value{ .vector = pv }});
-    try testing.expect(tv_val == .transient_vector);
-    const tv = tv_val.transient_vector;
+    const tv_val = try transientFn(allocator, &.{Value.initVector(pv)});
+    try testing.expect(tv_val.tag() == .transient_vector);
+    const tv = tv_val.asTransientVector();
     defer allocator.destroy(tv);
     defer tv.items.deinit(allocator);
 
     // (conj! tv 4)
-    _ = try conjBangFn(allocator, &.{ tv_val, Value{ .integer = 4 } });
+    _ = try conjBangFn(allocator, &.{ tv_val, Value.initInteger(4) });
     try testing.expectEqual(@as(usize, 4), tv.count());
 
     // (persistent! tv)
     const result = try persistentBangFn(allocator, &.{tv_val});
-    try testing.expect(result == .vector);
-    defer allocator.free(result.vector.items);
-    defer allocator.destroy(result.vector);
+    try testing.expect(result.tag() == .vector);
+    defer allocator.free(result.asVector().items);
+    defer allocator.destroy(result.asVector());
 
-    try testing.expectEqual(@as(usize, 4), result.vector.count());
-    try testing.expect(result.vector.nth(0).?.eql(.{ .integer = 1 }));
-    try testing.expect(result.vector.nth(3).?.eql(.{ .integer = 4 }));
+    try testing.expectEqual(@as(usize, 4), result.asVector().count());
+    try testing.expect(result.asVector().nth(0).?.eql(Value.initInteger(1)));
+    try testing.expect(result.asVector().nth(3).?.eql(Value.initInteger(4)));
 
     // Transient is consumed — further ops should fail
     try testing.expectError(error.ValueError, persistentBangFn(allocator, &.{tv_val}));
@@ -248,42 +254,42 @@ test "transient map - assoc! dissoc! persistent!" {
 
     // Create persistent map {:a 1}
     const entries = try allocator.alloc(Value, 2);
-    entries[0] = .{ .keyword = .{ .name = "a", .ns = null } };
-    entries[1] = .{ .integer = 1 };
+    entries[0] = Value.initKeyword(.{ .name = "a", .ns = null });
+    entries[1] = Value.initInteger(1);
     const pm = try allocator.create(PersistentArrayMap);
     pm.* = .{ .entries = entries };
     defer allocator.destroy(pm);
     defer allocator.free(entries);
 
     // (transient {:a 1})
-    const tm_val = try transientFn(allocator, &.{Value{ .map = pm }});
-    try testing.expect(tm_val == .transient_map);
-    const tm = tm_val.transient_map;
+    const tm_val = try transientFn(allocator, &.{Value.initMap(pm)});
+    try testing.expect(tm_val.tag() == .transient_map);
+    const tm = tm_val.asTransientMap();
     defer allocator.destroy(tm);
     defer tm.entries.deinit(allocator);
 
     // (assoc! tm :b 2)
     _ = try assocBangFn(allocator, &.{
         tm_val,
-        Value{ .keyword = .{ .name = "b", .ns = null } },
-        Value{ .integer = 2 },
+        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initInteger(2),
     });
     try testing.expectEqual(@as(usize, 2), tm.count());
 
     // (dissoc! tm :a)
     _ = try dissocBangFn(allocator, &.{
         tm_val,
-        Value{ .keyword = .{ .name = "a", .ns = null } },
+        Value.initKeyword(.{ .name = "a", .ns = null }),
     });
     try testing.expectEqual(@as(usize, 1), tm.count());
 
     // (persistent! tm)
     const result = try persistentBangFn(allocator, &.{tm_val});
-    try testing.expect(result == .map);
-    defer allocator.free(result.map.entries);
-    defer allocator.destroy(result.map);
+    try testing.expect(result.tag() == .map);
+    defer allocator.free(result.asMap().entries);
+    defer allocator.destroy(result.asMap());
 
-    try testing.expectEqual(@as(usize, 1), result.map.count());
+    try testing.expectEqual(@as(usize, 1), result.asMap().count());
 }
 
 test "transient set - conj! disj! persistent!" {
@@ -291,37 +297,37 @@ test "transient set - conj! disj! persistent!" {
 
     // Create persistent set #{1 2}
     const set_items = try allocator.alloc(Value, 2);
-    set_items[0] = .{ .integer = 1 };
-    set_items[1] = .{ .integer = 2 };
+    set_items[0] = Value.initInteger(1);
+    set_items[1] = Value.initInteger(2);
     const ps = try allocator.create(PersistentHashSet);
     ps.* = .{ .items = set_items };
     defer allocator.destroy(ps);
     defer allocator.free(set_items);
 
     // (transient #{1 2})
-    const ts_val = try transientFn(allocator, &.{Value{ .set = ps }});
-    try testing.expect(ts_val == .transient_set);
-    const ts = ts_val.transient_set;
+    const ts_val = try transientFn(allocator, &.{Value.initSet(ps)});
+    try testing.expect(ts_val.tag() == .transient_set);
+    const ts = ts_val.asTransientSet();
     defer allocator.destroy(ts);
     defer ts.items.deinit(allocator);
 
     // (conj! ts 3)
-    _ = try conjBangFn(allocator, &.{ ts_val, Value{ .integer = 3 } });
+    _ = try conjBangFn(allocator, &.{ ts_val, Value.initInteger(3) });
     try testing.expectEqual(@as(usize, 3), ts.count());
 
     // (conj! ts 2) — duplicate, no-op
-    _ = try conjBangFn(allocator, &.{ ts_val, Value{ .integer = 2 } });
+    _ = try conjBangFn(allocator, &.{ ts_val, Value.initInteger(2) });
     try testing.expectEqual(@as(usize, 3), ts.count());
 
     // (disj! ts 1)
-    _ = try disjBangFn(allocator, &.{ ts_val, Value{ .integer = 1 } });
+    _ = try disjBangFn(allocator, &.{ ts_val, Value.initInteger(1) });
     try testing.expectEqual(@as(usize, 2), ts.count());
 
     // (persistent! ts)
     const result = try persistentBangFn(allocator, &.{ts_val});
-    try testing.expect(result == .set);
-    defer allocator.free(result.set.items);
-    defer allocator.destroy(result.set);
+    try testing.expect(result.tag() == .set);
+    defer allocator.free(result.asSet().items);
+    defer allocator.destroy(result.asSet());
 
-    try testing.expectEqual(@as(usize, 2), result.set.count());
+    try testing.expectEqual(@as(usize, 2), result.asSet().count());
 }
