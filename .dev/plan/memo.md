@@ -34,7 +34,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.2b nREPL info extension (:file, :line)~~
 - ~~30.2c Modular dispatch + describe~~
 - ~~30.2d CIDER end-to-end verification~~
-- 30.3a require file resolution
+- ~~30.3a require file resolution~~
 - 30.3b src/ path auto-detect
 - 30.3c cljw.edn support
 - 30.4a letfn implementation
@@ -49,17 +49,15 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.3a — require file resolution. Enable `(require 'my.ns)` to find and
-load .clj files from the filesystem.
+30.3b — src/ path auto-detect. Walk up from entry file to find src/
+directory and add it to load paths.
 
 ## Previous Task
 
-30.2d — CIDER end-to-end verification. Fixed nREPL Var memory corruption
-(D80: eval_arena removed, GPA-only). Added Var metadata propagation:
-doc/arglists extracted from fn form by analyzer, file=NO_SOURCE_FILE for
-REPL. Fixed defn macro to pass docstring via with-meta. 30/30 CIDER
-protocol tests pass (describe, clone, eval, info, completions, eldoc,
-stacktrace, ns-list, namespace switch, analyze-last-stacktrace).
+30.3a — require file resolution. Added ns_ops init/deinit/addLoadPath
+infrastructure. main.zig initializes load paths and adds entry file
+directory. Bootstrap namespaces marked as loaded. Tested: flat require,
+nested ns (dot→dir), :as alias, :refer, ns macro :require, both backends.
 
 ## Known Issues
 

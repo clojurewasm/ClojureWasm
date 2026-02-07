@@ -21,9 +21,57 @@ const err = @import("../error.zig");
 var load_paths: []const []const u8 = &default_load_paths;
 const default_load_paths = [_][]const u8{"."};
 
+/// Dynamic load path list (allocated when addLoadPath is used).
+var dynamic_load_paths: std.ArrayList([]const u8) = .empty;
+
 /// Loaded libs tracking (simple set, replaces *loaded-libs* Ref).
 var loaded_libs: std.StringHashMapUnmanaged(void) = .empty;
 var loaded_libs_allocator: ?Allocator = null;
+
+/// Initialize the load infrastructure. Call once at startup.
+pub fn init(allocator: Allocator) void {
+    loaded_libs_allocator = allocator;
+    loaded_libs = .empty;
+    dynamic_load_paths = .empty;
+    // Start with default "." path
+    dynamic_load_paths.append(allocator, ".") catch {};
+    load_paths = dynamic_load_paths.items;
+}
+
+/// Release load infrastructure resources.
+pub fn deinit() void {
+    const alloc = loaded_libs_allocator orelse return;
+    // Free loaded_libs keys
+    var iter = loaded_libs.iterator();
+    while (iter.next()) |entry| {
+        alloc.free(entry.key_ptr.*);
+    }
+    loaded_libs.deinit(alloc);
+    loaded_libs = .empty;
+
+    // Free dynamic path strings (skip "." which is static)
+    for (dynamic_load_paths.items) |p| {
+        if (!std.mem.eql(u8, p, ".")) {
+            alloc.free(p);
+        }
+    }
+    dynamic_load_paths.deinit(alloc);
+    dynamic_load_paths = .empty;
+    load_paths = &default_load_paths;
+    loaded_libs_allocator = null;
+}
+
+/// Add a path to the load path list.
+pub fn addLoadPath(path: []const u8) !void {
+    const alloc = loaded_libs_allocator orelse return;
+    // Avoid duplicates
+    for (dynamic_load_paths.items) |existing| {
+        if (std.mem.eql(u8, existing, path)) return;
+    }
+    const owned = try alloc.dupe(u8, path);
+    try dynamic_load_paths.append(alloc, owned);
+    load_paths = dynamic_load_paths.items;
+}
 
 pub fn isLibLoaded(name: []const u8) bool {
     return loaded_libs.contains(name);
@@ -1127,4 +1175,88 @@ test "ns-interns - user namespace is initially empty" {
     const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "user" })});
     try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 0), result.asMap().entries.len);
+}
+
+test "rootResource - converts ns name to resource path" {
+    var buf: [256]u8 = undefined;
+    const path = rootResource(&buf, "my-app.util").?;
+    try testing.expectEqualStrings("/my_app/util", path);
+}
+
+test "rootResource - single segment" {
+    var buf: [256]u8 = undefined;
+    const path = rootResource(&buf, "utils").?;
+    try testing.expectEqualStrings("/utils", path);
+}
+
+test "rootResource - deeply nested" {
+    var buf: [256]u8 = undefined;
+    const path = rootResource(&buf, "com.example.my-lib.core").?;
+    try testing.expectEqualStrings("/com/example/my_lib/core", path);
+}
+
+test "init and deinit - loaded_libs tracking" {
+    const alloc = std.heap.page_allocator;
+    init(alloc);
+    defer deinit();
+
+    try testing.expect(!isLibLoaded("test.ns"));
+    try markLibLoaded("test.ns");
+    try testing.expect(isLibLoaded("test.ns"));
+}
+
+test "addLoadPath - adds to load paths" {
+    const alloc = std.heap.page_allocator;
+    init(alloc);
+    defer deinit();
+
+    try addLoadPath("/tmp/myproject/src");
+    // load_paths should now include "." and the new path
+    try testing.expect(load_paths.len >= 2);
+
+    var found = false;
+    for (load_paths) |p| {
+        if (std.mem.eql(u8, p, "/tmp/myproject/src")) found = true;
+    }
+    try testing.expect(found);
+}
+
+test "require - loads file from load path" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    init(alloc);
+    defer deinit();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+    try bootstrap.loadCore(alloc, env);
+
+    // Create a temp directory with a .clj file
+    const tmp_dir = std.fs.cwd().makeOpenPath("zig-cache/test-require", .{}) catch return;
+    defer std.fs.cwd().deleteTree("zig-cache/test-require") catch {};
+
+    // Write test_util.clj: (ns test-util) (def greeting "hello from test-util")
+    tmp_dir.writeFile(.{
+        .sub_path = "test_util.clj",
+        .data = "(ns test-util)\n(def greeting \"hello from test-util\")\n",
+    }) catch return;
+
+    // Add temp dir to load paths
+    try addLoadPath("zig-cache/test-require");
+
+    // require should find and load the file
+    _ = try requireFn(alloc, &[_]Value{
+        Value.initSymbol(alloc, .{ .ns = null, .name = "test-util" }),
+    });
+
+    // Namespace should now exist with the var
+    const ns = env.findNamespace("test-util");
+    try testing.expect(ns != null);
+    const v = ns.?.resolve("greeting");
+    try testing.expect(v != null);
 }

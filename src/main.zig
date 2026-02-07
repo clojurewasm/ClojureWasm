@@ -18,6 +18,7 @@ const line_editor = @import("repl/line_editor.zig");
 const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
+const ns_ops = @import("common/builtin/ns_ops.zig");
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
@@ -42,6 +43,10 @@ pub fn main() !void {
     // Initialize keyword intern table (uses GPA for permanent keyword strings)
     keyword_intern.init(allocator);
     defer keyword_intern.deinit();
+
+    // Initialize load path infrastructure for require/load
+    ns_ops.init(allocator);
+    defer ns_ops.deinit();
 
     // Check for embedded source (built binary via `cljw build`).
     // If this binary has a CLJW trailer, run the embedded source and exit.
@@ -92,6 +97,9 @@ pub fn main() !void {
             std.debug.print("Error: failed to load clojure.data\n", .{});
             std.process.exit(1);
         };
+        // Mark bootstrap namespaces as loaded for require tracking
+        markBootstrapLibs();
+
         // Enable GC for REPL evaluation (bootstrap runs without GC).
         // Reset threshold to avoid immediate sweep on first safe point.
         gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
@@ -146,6 +154,11 @@ pub fn main() !void {
         err.setSourceText(e);
         evalAndPrint(alloc, allocator, &gc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
+        // Add entry file's directory to load paths for require resolution
+        if (std.fs.path.dirname(f)) |dir| {
+            ns_ops.addLoadPath(dir) catch {};
+        }
+
         const max_file_size = 10 * 1024 * 1024; // 10MB
         const source = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
             const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
@@ -352,6 +365,9 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
         std.debug.print("Error: failed to load clojure.data\n", .{});
         std.process.exit(1);
     };
+    // Mark bootstrap namespaces as loaded for require tracking
+    markBootstrapLibs();
+
     // Enable GC for user evaluation (bootstrap runs without GC).
     // Reset threshold to avoid immediate sweep on first safe point.
     gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
@@ -388,6 +404,24 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     _ = stdout.write(output) catch {};
     _ = stdout.write("\n") catch {};
+}
+
+/// Mark built-in namespaces as loaded so require skips them.
+fn markBootstrapLibs() void {
+    const libs = [_][]const u8{
+        "clojure.core",
+        "clojure.walk",
+        "clojure.template",
+        "clojure.test",
+        "clojure.set",
+        "clojure.data",
+        "clojure.string",
+        "clojure.edn",
+        "clojure.stacktrace",
+    };
+    for (libs) |name| {
+        ns_ops.markLibLoaded(name) catch {};
+    }
 }
 
 // === Error reporting (babashka-style) ===
