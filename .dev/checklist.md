@@ -14,7 +14,7 @@ Check at session start for items that become actionable.
 
 | ID  | Item                                        | Trigger                                                            |
 | --- | ------------------------------------------- | ------------------------------------------------------------------ |
-| F1  | NaN boxing (Value optimization)             | **Phase 27** — staged API migration (D72)                         |
+| ~~F1~~  | ~~NaN boxing (Value optimization)~~     | Done: Phase 27, Value 48B→8B (D72). 33% faster, 53% less memory   |
 | ~~F2~~  | ~~Real GC (replace arena)~~             | Done: Phase 23, MarkSweepGc (D69, D70)                            |
 | F3  | Ratio type (`1/3`)                          | SCI tests fail on float precision loss                             |
 | F4  | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                              |
@@ -41,3 +41,4 @@ Check at session start for items that become actionable.
 | F108 | Skip var recovery pass                     | Phase 30 — re-evaluate 178 skipped vars for Zig equivalents            |
 | F109 | Zero-config project model                  | Phase 30 — auto-detect src/, require resolution, optional cljw.edn     |
 | F110 | Directory restructure (core/eval/cli)      | Phase 29 — common/native/ -> core/eval/cli/                            |
+| F111 | GC trace NaN-boxed heap pointers           | 9 HeapString/Symbol/Keyword leaks at exit — gc.zig needs NanHeapTag awareness |
