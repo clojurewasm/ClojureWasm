@@ -14,7 +14,7 @@ Session handover document. Read at session start.
 
 Phase 26.R — wasm_rt Research:
 1. ~~26.R.1: Compile Probe~~ DONE
-2. 26.R.2: Code Organization Strategy
+2. ~~26.R.2: Code Organization Strategy~~ DONE
 3. 26.R.3: Allocator and GC Strategy
 4. 26.R.4: Stack Depth and F99 Assessment
 5. 26.R.5: Backend Selection
@@ -23,14 +23,12 @@ Phase 26.R — wasm_rt Research:
 
 ## Current Task
 
-26.R.2: Code Organization Strategy — comptime branching vs separate files.
-Based on 26.R.1 findings: 7 files need changes, 2 need abstraction (E5/E6).
+26.R.3: Allocator and GC Strategy — MarkSweepGc on wasm32-wasi feasibility.
 
 ## Previous Task
 
-26.R.1: Compile Probe — cataloged 10 errors across 7 files.
-Key findings: GPA/cwd/time all work on WASI. Critical blockers are
-bootstrap.zig and eval_engine.zig importing native/ directly.
+26.R.2: Code Organization Strategy — D78: separate main_wasm.zig entry +
+~12 comptime branches in 5 files. No wasm_rt/ directory needed.
 
 ## Handover Notes
 

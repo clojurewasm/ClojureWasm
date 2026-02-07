@@ -355,45 +355,57 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 
 ## SS8. Architecture
 
-### Single Repository, comptime Switching
+### Single Repository, comptime Switching (D78)
+
+**Updated 2026-02-07** based on compile probe (26.R.1).
 
 ```
 src/
++-- main.zig          # Native entry — REPL, nREPL, wasm-interop, full CLI
++-- main_wasm.zig     # wasm_rt entry — eval-only, stdin/embedded mode
++-- root.zig          # Library root (comptime skip nrepl/wasm on wasi)
+|
 +-- common/           # Shared between both tracks
 |   +-- reader/       # Tokenizer, Reader, Form
 |   +-- analyzer/     # Analyzer, Node, macro expansion
-|   +-- bytecode/     # OpCode definitions, constant tables
+|   +-- bytecode/     # OpCode definitions, Compiler
 |   +-- builtin/      # Builtin functions (shared semantics)
-|   +-- value.zig     # Value type (representation route-dependent)
-|   +-- eval_engine.zig # Dual backend runner
+|   +-- value.zig     # Value type (tagged union, shared)
+|   +-- bootstrap.zig # Core loader (comptime backend guards for wasi)
+|   +-- eval_engine.zig # Dual backend runner (native-only, void on wasi)
+|   +-- gc.zig        # MarkSweepGc (works on both tracks via GPA)
 |
 +-- native/           # Ultra-fast single binary track
 |   +-- vm/           # VM execution engine
 |   +-- evaluator/    # TreeWalk evaluator
-|   +-- gc/           # Self GC (arena stub currently)
-|   +-- optimizer/    # (stub)
 |
-+-- wasm_rt/          # Wasm runtime freeride track
-|   +-- gc/           # GC bridge + backend
-|   +-- vm/           # (stub)
-|
-+-- repl/             # REPL + nREPL subsystem
++-- repl/             # REPL + nREPL (native-only, skipped on wasi)
 +-- api/              # Public embedding API
-+-- wasm/             # Wasm InterOp (both tracks)
++-- wasm/             # Wasm InterOp FFI (native-only, skipped on wasi)
 +-- clj/              # Clojure source (core.clj, @embedFile)
 ```
 
-### Sharing Feasibility
+**Key change from original design**: No `wasm_rt/` directory with separate code
+copies. Instead, common/ files use ~12 comptime branches total to handle wasi
+target differences. The same native/vm/ and native/evaluator/ code is shared —
+the wasm_rt backend selection (26.R.5) determines which is imported.
 
-| Layer       | Shareability | Reason                                 |
+### Sharing Feasibility (updated)
+
+| Layer       | Shareability | Status (26.R.1)                        |
 | ----------- | ------------ | -------------------------------------- |
-| Reader      | High         | Pure parser, backend-independent       |
-| Analyzer    | Med-High     | Macros shared, optimization paths vary |
-| OpCode defs | Medium       | Semantics shared, native-specific fast |
-| VM          | Low          | Core engine differs fundamentally      |
-| GC          | Low          | Responsibilities completely different  |
-| Value type  | Medium       | Variants shared, repr route-dependent  |
-| Builtin fns | Med-High     | Semantics shared, GC/alloc code varies |
+| Reader      | **Shared**   | Pure parser, no platform deps          |
+| Analyzer    | **Shared**   | No platform deps                       |
+| Bytecode    | **Shared**   | Compiler + opcodes are platform-free   |
+| Value type  | **Shared**   | Same tagged union (wasm_module/fn = void on wasi) |
+| GC          | **Shared**   | MarkSweepGc uses GPA → WasmPageAllocator on wasi |
+| Builtins    | **Shared**   | file_io works (WASI preopened dirs)    |
+| Bootstrap   | Shared+guard | 2-3 comptime branches for backend import |
+| EvalEngine  | Native-only  | --compare mode not needed on wasm_rt   |
+| VM          | **Shared**   | VM struct works on wasm (heap-alloc)   |
+| TreeWalk    | **Shared**   | No platform deps                       |
+| nREPL       | Native-only  | std.net/Thread unavailable on WASI     |
+| Wasm InterOp| Native-only  | Can't run zware inside Wasm            |
 
 ---
 

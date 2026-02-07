@@ -1789,3 +1789,61 @@ Only mini-cleanup in Phase 24.5.
 **Rationale**: Context table (vs closures) because zware's `exposeHostFunction` takes
 a function pointer + usize context — Zig closures cannot be passed as fn pointers.
 256 slots is sufficient for practical use (host modules rarely export >50 imports).
+
+---
+
+## D78: wasm_rt Code Organization — Separate Entry + Comptime Guards
+
+**Decision**: Use separate `main_wasm.zig` entry point + minimal comptime branches
+in shared files. No separate `wasm_rt/` file copies for common/ code.
+
+**Context** (26.R.1 compile probe):
+- 10 compile errors across 7 files for wasm32-wasi target
+- 5 files need only 1-3 comptime branches each (trivial)
+- 2 critical files (bootstrap.zig, eval_engine.zig) import from native/
+- User preference: minimize comptime in common/; separate files over heavy branching
+
+**Architecture**:
+```
+src/
+  main.zig          — native entry (full: REPL, nREPL, wasm-interop, VM+TW)
+  main_wasm.zig     — wasm_rt entry (eval-only, no nREPL, no wasm/, VM or TW)
+  root.zig          — library root (comptime skip nrepl/wasm on wasi)
+  common/
+    bootstrap.zig   — comptime import guard: TreeWalk/VM → void on wasi
+    eval_engine.zig — comptime import guard: TreeWalk/VM → void on wasi
+    builtin/
+      registry.zig  — comptime skip wasm_builtins on wasi
+      system.zig    — comptime getenv → std.process on wasi
+```
+
+**Entry Point Strategy** (Option C from 26.R.2):
+- `main.zig` unchanged (native-only features: nREPL, --dump-bytecode, --tree-walk)
+- `main_wasm.zig` is minimal: init GC/Env → bootstrap core.clj → eval stdin or embedded
+- `build.zig` wasm step uses `main_wasm.zig` as root_source_file
+
+**Why not Option A (single main.zig + comptime)**:
+- main.zig has nREPL mode, --dump-bytecode, file reading logic irrelevant to wasm
+- Branching every feature with `if (is_wasm)` clutters the native code path
+- Clean separation = easier to reason about both entry points
+
+**Why not Option B (generic bootstrap)**:
+- bootstrap.zig is 3374 lines; converting to generic struct = huge refactor
+- D75 already defers this to Phase 27 (after wasm_rt reveals real boundaries)
+
+**Comptime branch count per file**:
+
+| File | Branches | Nature |
+|------|----------|--------|
+| main.zig | 0 | Not used by wasm_rt |
+| main_wasm.zig | N/A | New file |
+| root.zig | 3 | Skip nrepl, wasm_types, wasm_builtins |
+| bootstrap.zig | 2-3 | Import void for TW/VM on wasi; guard VM-specific fns |
+| eval_engine.zig | 2-3 | Import void for TW/VM on wasi; guard compare mode |
+| registry.zig | 1 | Skip wasm_builtins import |
+| system.zig | 1 | getenv API swap |
+
+Total: ~12 comptime branches across 5 files. Well under the ">=3 per file → separate copy" threshold for any individual file.
+
+**Consequence**: Phase 26 implementation adds main_wasm.zig and ~12 comptime guards.
+Phase 27 may restructure further based on actual wasm_rt experience.

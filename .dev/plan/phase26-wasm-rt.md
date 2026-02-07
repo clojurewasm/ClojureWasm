@@ -141,3 +141,81 @@ Minimal wasm32-wasi binary compiled and ran on wasmtime 41.0.0:
 **Total files needing changes**: 7 (out of ~40 source files)
 **Critical blockers**: E5 (bootstrap→native) and E6 (eval_engine→native)
 **Easy wins**: E1 (zware), E2 (nrepl), E3 (getenv), E4 (FILENO)
+
+---
+
+## Section 2: Code Organization Strategy (26.R.2)
+
+### Decision: D78 — Separate Entry + Comptime Guards
+
+See `.dev/notes/decisions.md` D78 for full rationale.
+
+**Summary**: No wasm_rt/ directory with code copies. Instead:
+1. New `src/main_wasm.zig` entry point (eval-only, no nREPL/wasm-interop)
+2. ~12 comptime branches across 5 shared files
+3. `build.zig` wasm step points to `main_wasm.zig`
+
+### Options Evaluated
+
+| Option | Approach | Pros | Cons | Verdict |
+|--------|----------|------|------|---------|
+| A | Single main.zig + comptime | Minimal files | Clutters native path | Rejected |
+| B | Generic bootstrap<TW,VM> | Clean abstraction | 3374-line refactor | Deferred to P27 |
+| **C** | **Separate main + comptime guards** | **Clean separation, minimal changes** | **Two entry points** | **Selected** |
+| D | Full wasm_rt/ directory | Maximum isolation | Code duplication | Rejected |
+
+### Per-File Change Plan
+
+| File | Change Type | Comptime Branches | Description |
+|------|------------|-------------------|-------------|
+| `build.zig` | Modify | 0 | wasm_exe uses main_wasm.zig; no zware dep for wasm |
+| `main_wasm.zig` | **New** | 0 | Minimal wasm_rt entry: GC init → bootstrap → eval |
+| `root.zig` | Modify | 3 | Skip nrepl, wasm_types, wasm_builtins on wasi |
+| `bootstrap.zig` | Modify | 2-3 | TreeWalk/VM import guards; skip evalStringVM on wasi |
+| `eval_engine.zig` | Modify | 2-3 | Skip entirely on wasi (not needed for MVP) |
+| `registry.zig` | Modify | 1 | Skip wasm_builtins_mod import on wasi |
+| `system.zig` | Modify | 1 | getenv: use std.process API on wasi |
+
+**Total new files**: 1 (`main_wasm.zig`)
+**Total modified files**: 6
+**Total comptime branches**: ~12
+
+### E5/E6 Resolution Detail
+
+**bootstrap.zig** (E5):
+```zig
+const builtin = @import("builtin");
+const is_wasm = builtin.os.tag == .wasi;
+const TreeWalk = if (!is_wasm) @import("../native/evaluator/tree_walk.zig").TreeWalk else void;
+const VM = if (!is_wasm) @import("../native/vm/vm.zig").VM else void;
+```
+
+Functions guarded by `if (!is_wasm)`:
+- `evalStringVM()` — VM-only evaluation (wasm_rt uses evalString/TreeWalk or single backend)
+- `dumpBytecodeVM()` — debugging tool, native-only
+- `callFnVal()` VM dispatch branch — if wasm_rt uses TreeWalk-only
+
+`loadCore()`, `evalString()` — shared, no guards needed (uses TreeWalk).
+
+**eval_engine.zig** (E6):
+- `--compare` mode is a native dev tool, not needed on wasm_rt
+- Entire file can be guarded: `if (is_wasm) { ... empty stubs ... }`
+- Or simply not imported by main_wasm.zig (it's only used by root.zig tests)
+
+### Impact on Build Configuration
+
+```zig
+// build.zig wasm step (updated):
+const wasm_exe = b.addExecutable(.{
+    .name = "cljw",
+    .root_module = b.createModule(.{
+        .root_source_file = b.path("src/main_wasm.zig"),  // ← changed
+        .target = b.resolveTargetQuery(.{
+            .cpu_arch = .wasm32,
+            .os_tag = .wasi,
+        }),
+        .optimize = optimize,
+    }),
+});
+// No zware dep for wasm_exe (wasm/ namespace excluded)
+```
