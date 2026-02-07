@@ -11,20 +11,22 @@ Session handover document. Read at session start.
 
 ## Task Queue
 
-Phase 24.5 — Mini-Refactor (Pre-Wasm Cleanup):
-1. 24.5.1: Dead code removal
-2. 24.5.2: Naming consistency audit
-3. 24.5.3: D3 violation audit and documentation
-4. 24.5.4: File size documentation
+Phase 25 — Wasm InterOp (FFI):
+1. 25.R: Research prerequisites — zware 0.15.2 compat, WASI status, Zig target names
+2. 25.0: Infrastructure setup — zware dep, WAT test files, src/wasm/types.zig, smoke test
+3. 25.1: wasm/load + wasm/fn — load .wasm, call with type hints, both backends
+4. 25.2: Memory + string interop — linear memory read/write, UTF-8
+5. 25.3: Host function injection — Clojure fns callable from Wasm
+6. 25.4: WASI Preview 1 basics — fd_write, proc_exit, args/environ
+7. 25.5: WIT parser + module objects — auto-resolve exports from WIT
 
 ## Current Task
 
-Phase 24.5 complete. Prepare Phase 25 (Wasm InterOp) task queue.
+25.R: Research prerequisites — zware 0.15.2 compat, WASI status, Zig wasm targets.
 
 ## Previous Task
 
-24.5.4: File size audit — 5 files >2000L identified as Phase 27 split candidates.
-See .dev/notes/file-size-audit.md.
+Phase 24.5 complete (4 tasks: dead code, naming, D3 audit, file sizes).
 
 ## Handover Notes
 
