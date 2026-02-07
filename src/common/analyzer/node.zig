@@ -320,27 +320,27 @@ pub fn constantNode(val: Value) Node {
 
 /// nil constant node.
 pub fn nilNode() Node {
-    return .{ .constant = .{ .value = .nil } };
+    return .{ .constant = .{ .value = Value.nil_val } };
 }
 
 /// true constant node.
 pub fn trueNode() Node {
-    return .{ .constant = .{ .value = .{ .boolean = true } } };
+    return .{ .constant = .{ .value = Value.true_val } };
 }
 
 /// false constant node.
 pub fn falseNode() Node {
-    return .{ .constant = .{ .value = .{ .boolean = false } } };
+    return .{ .constant = .{ .value = Value.false_val } };
 }
 
 // === Tests ===
 
 test "constantNode creates a constant node" {
-    const node = constantNode(.{ .integer = 42 });
+    const node = constantNode(Value.initInteger(42));
     try std.testing.expectEqualStrings("constant", node.kindName());
     switch (node) {
         .constant => |c| {
-            try std.testing.expect(c.value.eql(.{ .integer = 42 }));
+            try std.testing.expect(c.value.eql(Value.initInteger(42)));
         },
         else => unreachable,
     }
@@ -375,8 +375,8 @@ test "IfNode with source info" {
     const allocator = arena.allocator();
 
     var test_cond = trueNode();
-    var then_branch = constantNode(.{ .integer = 1 });
-    var else_branch = constantNode(.{ .integer = 2 });
+    var then_branch = constantNode(Value.initInteger(1));
+    var else_branch = constantNode(Value.initInteger(2));
 
     const if_data = try allocator.create(IfNode);
     if_data.* = .{
@@ -397,8 +397,8 @@ test "DoNode with statements" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var stmt1 = constantNode(.{ .integer = 1 });
-    var stmt2 = constantNode(.{ .integer = 2 });
+    var stmt1 = constantNode(Value.initInteger(1));
+    var stmt2 = constantNode(Value.initInteger(2));
     const stmts = try allocator.alloc(*Node, 2);
     stmts[0] = &stmt1;
     stmts[1] = &stmt2;
@@ -420,8 +420,8 @@ test "CallNode with callee and args" {
     const allocator = arena.allocator();
 
     var callee = nilNode();
-    var arg1 = constantNode(.{ .integer = 1 });
-    var arg2 = constantNode(.{ .integer = 2 });
+    var arg1 = constantNode(Value.initInteger(1));
+    var arg2 = constantNode(Value.initInteger(2));
 
     const args = try allocator.alloc(*Node, 2);
     args[0] = &arg1;
@@ -444,9 +444,9 @@ test "LetNode with bindings and body" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var init1 = constantNode(.{ .integer = 10 });
-    var init2 = constantNode(.{ .integer = 20 });
-    var body = constantNode(.{ .integer = 30 });
+    var init1 = constantNode(Value.initInteger(10));
+    var init2 = constantNode(Value.initInteger(20));
+    var body = constantNode(Value.initInteger(30));
 
     const bindings = try allocator.alloc(LetBinding, 2);
     bindings[0] = .{ .name = "x", .init = &init1 };
@@ -471,8 +471,8 @@ test "FnNode with multiple arities" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var body1 = constantNode(.{ .integer = 1 });
-    var body2 = constantNode(.{ .integer = 2 });
+    var body1 = constantNode(Value.initInteger(1));
+    var body2 = constantNode(Value.initInteger(2));
 
     const params1 = try allocator.alloc([]const u8, 1);
     params1[0] = "x";
@@ -502,7 +502,7 @@ test "DefNode with metadata flags" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var init = constantNode(.{ .integer = 42 });
+    var init = constantNode(Value.initInteger(42));
 
     const def_data = try allocator.create(DefNode);
     def_data.* = .{
@@ -546,14 +546,14 @@ test "QuoteNode holds a Value" {
 
     const quote_data = try allocator.create(QuoteNode);
     quote_data.* = .{
-        .value = .{ .symbol = .{ .ns = null, .name = "foo" } },
+        .value = Value.initSymbol(.{ .ns = null, .name = "foo" }),
         .source = .{},
     };
 
     const node = Node{ .quote_node = quote_data };
     try std.testing.expectEqualStrings("quote", node.kindName());
-    switch (quote_data.value) {
-        .symbol => |sym| try std.testing.expectEqualStrings("foo", sym.name),
+    switch (quote_data.value.tag()) {
+        .symbol => try std.testing.expectEqualStrings("foo", quote_data.value.asSymbol().name),
         else => unreachable,
     }
 }
@@ -563,9 +563,9 @@ test "TryNode with catch and finally" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var body = constantNode(.{ .integer = 1 });
-    var catch_body = constantNode(.{ .integer = 2 });
-    var finally_body = constantNode(.nil);
+    var body = constantNode(Value.initInteger(1));
+    var catch_body = constantNode(Value.initInteger(2));
+    var finally_body = constantNode(Value.nil_val);
 
     const try_data = try allocator.create(TryNode);
     try_data.* = .{
@@ -590,8 +590,8 @@ test "LoopNode and RecurNode" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var init = constantNode(.{ .integer = 0 });
-    var body = constantNode(.{ .integer = 1 });
+    var init = constantNode(Value.initInteger(0));
+    var body = constantNode(Value.initInteger(1));
 
     const bindings = try allocator.alloc(LetBinding, 1);
     bindings[0] = .{ .name = "i", .init = &init };
@@ -608,7 +608,7 @@ test "LoopNode and RecurNode" {
     try std.testing.expectEqual(@as(u32, 4), loop_node.source().line);
 
     // recur
-    var recur_arg = constantNode(.{ .integer = 1 });
+    var recur_arg = constantNode(Value.initInteger(1));
     const recur_args = try allocator.alloc(*Node, 1);
     recur_args[0] = &recur_arg;
 
@@ -628,7 +628,7 @@ test "ThrowNode" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var expr = constantNode(.{ .string = "error!" });
+    var expr = constantNode(Value.initString("error!"));
 
     const throw_data = try allocator.create(ThrowNode);
     throw_data.* = .{

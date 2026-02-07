@@ -27,30 +27,30 @@ pub fn formToValue(allocator: Allocator, form: Form) Allocator.Error!Value {
 /// using the given namespace (for both current-ns and alias resolution).
 pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace) Allocator.Error!Value {
     return switch (form.data) {
-        .nil => .nil,
-        .boolean => |b| .{ .boolean = b },
-        .integer => |n| .{ .integer = n },
-        .float => |n| .{ .float = n },
-        .char => |c| .{ .char = c },
-        .string => |s| .{ .string = s },
-        .symbol => |sym| .{ .symbol = .{ .ns = sym.ns, .name = sym.name } },
+        .nil => Value.nil_val,
+        .boolean => |b| Value.initBoolean(b),
+        .integer => |n| Value.initInteger(n),
+        .float => |n| Value.initFloat(n),
+        .char => |c| Value.initChar(c),
+        .string => |s| Value.initString(s),
+        .symbol => |sym| Value.initSymbol(.{ .ns = sym.ns, .name = sym.name }),
         .keyword => |sym| blk: {
             if (sym.auto_resolve) {
                 if (ns) |current_ns| {
                     if (sym.ns) |alias| {
                         // ::alias/name — resolve alias to full namespace
                         const resolved = current_ns.getAlias(alias);
-                        break :blk .{ .keyword = .{ .ns = if (resolved) |r| r.name else alias, .name = sym.name } };
+                        break :blk Value.initKeyword(.{ .ns = if (resolved) |r| r.name else alias, .name = sym.name });
                     } else {
                         // ::name — use current namespace
-                        break :blk .{ .keyword = .{ .ns = current_ns.name, .name = sym.name } };
+                        break :blk Value.initKeyword(.{ .ns = current_ns.name, .name = sym.name });
                     }
                 } else {
                     // No namespace available — fallback to sym.ns
-                    break :blk .{ .keyword = .{ .ns = sym.ns, .name = sym.name } };
+                    break :blk Value.initKeyword(.{ .ns = sym.ns, .name = sym.name });
                 }
             } else {
-                break :blk .{ .keyword = .{ .ns = sym.ns, .name = sym.name } };
+                break :blk Value.initKeyword(.{ .ns = sym.ns, .name = sym.name });
             }
         },
         .list => |items| {
@@ -70,7 +70,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 .child_lines = c_lines,
                 .child_columns = c_cols,
             };
-            return .{ .list = lst };
+            return Value.initList(lst);
         },
         .vector => |items| {
             const vals = try allocator.alloc(Value, items.len);
@@ -89,7 +89,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 .child_lines = c_lines,
                 .child_columns = c_cols,
             };
-            return .{ .vector = vec };
+            return Value.initVector(vec);
         },
         .map => |items| {
             const vals = try allocator.alloc(Value, items.len);
@@ -98,7 +98,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             }
             const m = try allocator.create(collections.PersistentArrayMap);
             m.* = .{ .entries = vals };
-            return .{ .map = m };
+            return Value.initMap(m);
         },
         .set => |items| {
             const vals = try allocator.alloc(Value, items.len);
@@ -107,7 +107,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             }
             const s = try allocator.create(collections.PersistentHashSet);
             s.* = .{ .items = vals };
-            return .{ .set = s };
+            return Value.initSet(s);
         },
         .regex => |pattern| {
             // Compile regex so it survives the formToValue/valueToForm roundtrip
@@ -116,7 +116,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             const compiled = allocator.create(regex_mod.CompiledRegex) catch return error.OutOfMemory;
             compiled.* = matcher_mod.compile(allocator, pattern) catch {
                 // Fallback to string if compilation fails (shouldn't happen — reader validated)
-                return .{ .string = pattern };
+                return Value.initString(pattern);
             };
             const pat = try allocator.create(value_mod.Pattern);
             pat.* = .{
@@ -124,25 +124,32 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 .compiled = @ptrCast(compiled),
                 .group_count = compiled.group_count,
             };
-            return .{ .regex = pat };
+            return Value.initRegex(pat);
         },
-        .tag => .nil, // tagged literals not supported in macro args
+        .tag => Value.nil_val, // tagged literals not supported in macro args
     };
 }
 
 /// Convert a runtime Value back to a Form (for re-analysis after macro expansion).
 /// Collections are recursively converted. Source info restored from list/vector fields.
 pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
-    return switch (val) {
+    return switch (val.tag()) {
         .nil => Form{ .data = .nil },
-        .boolean => |b| Form{ .data = .{ .boolean = b } },
-        .integer => |n| Form{ .data = .{ .integer = n } },
-        .float => |n| Form{ .data = .{ .float = n } },
-        .char => |c| Form{ .data = .{ .char = c } },
-        .string => |s| Form{ .data = .{ .string = s } },
-        .symbol => |sym| Form{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } } },
-        .keyword => |k| Form{ .data = .{ .keyword = .{ .ns = k.ns, .name = k.name } } },
-        .list => |lst| {
+        .boolean => Form{ .data = .{ .boolean = val.asBoolean() } },
+        .integer => Form{ .data = .{ .integer = val.asInteger() } },
+        .float => Form{ .data = .{ .float = val.asFloat() } },
+        .char => Form{ .data = .{ .char = val.asChar() } },
+        .string => Form{ .data = .{ .string = val.asString() } },
+        .symbol => blk: {
+            const sym = val.asSymbol();
+            break :blk Form{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } } };
+        },
+        .keyword => blk: {
+            const k = val.asKeyword();
+            break :blk Form{ .data = .{ .keyword = .{ .ns = k.ns, .name = k.name } } };
+        },
+        .list => {
+            const lst = val.asList();
             const forms = try allocator.alloc(Form, lst.items.len);
             for (lst.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
@@ -158,7 +165,8 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             }
             return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column };
         },
-        .vector => |vec| {
+        .vector => {
+            const vec = val.asVector();
             const forms = try allocator.alloc(Form, vec.items.len);
             for (vec.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
@@ -173,14 +181,16 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             }
             return Form{ .data = .{ .vector = forms }, .line = vec.source_line, .column = vec.source_column };
         },
-        .map => |m| {
+        .map => {
+            const m = val.asMap();
             const forms = try allocator.alloc(Form, m.entries.len);
             for (m.entries, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
             }
             return Form{ .data = .{ .map = forms } };
         },
-        .hash_map => |hm| {
+        .hash_map => {
+            const hm = val.asHashMap();
             const entries = try hm.toEntries(allocator);
             const forms = try allocator.alloc(Form, entries.len);
             for (entries, 0..) |item, i| {
@@ -188,14 +198,16 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             }
             return Form{ .data = .{ .map = forms } };
         },
-        .set => |s| {
+        .set => {
+            const s = val.asSet();
             const forms = try allocator.alloc(Form, s.items.len);
             for (s.items, 0..) |item, i| {
                 forms[i] = try valueToForm(allocator, item);
             }
             return Form{ .data = .{ .set = forms } };
         },
-        .var_ref => |v| {
+        .var_ref => {
+            const v = val.asVarRef();
             // (var ns/name)
             const items = try allocator.alloc(Form, 2);
             items[0] = Form{ .data = .{ .symbol = .{ .ns = null, .name = "var" } } };
@@ -207,7 +219,7 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const realized = builtin_collections.realizeValue(allocator, val) catch return Form{ .data = .nil };
             return valueToForm(allocator, realized);
         },
-        .regex => |pat| Form{ .data = .{ .regex = pat.source } },
+        .regex => Form{ .data = .{ .regex = val.asRegex().source } },
         // Non-data values become nil (shouldn't appear in macro output)
         .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .chunked_cons, .chunk_buffer, .array_chunk, .wasm_module, .wasm_fn => Form{ .data = .nil },
     };
@@ -219,19 +231,19 @@ const testing = std.testing;
 
 test "formToValue - primitives" {
     const alloc = testing.allocator;
-    try testing.expectEqual(Value.nil, try formToValue(alloc, .{ .data = .nil }));
-    try testing.expectEqual(Value{ .boolean = true }, try formToValue(alloc, .{ .data = .{ .boolean = true } }));
-    try testing.expectEqual(Value{ .integer = 42 }, try formToValue(alloc, .{ .data = .{ .integer = 42 } }));
-    try testing.expectEqual(Value{ .float = 3.14 }, try formToValue(alloc, .{ .data = .{ .float = 3.14 } }));
-    try testing.expectEqual(Value{ .char = 'A' }, try formToValue(alloc, .{ .data = .{ .char = 'A' } }));
-    try testing.expectEqualStrings("hello", (try formToValue(alloc, .{ .data = .{ .string = "hello" } })).string);
+    try testing.expectEqual(Value.nil_val, try formToValue(alloc, .{ .data = .nil }));
+    try testing.expectEqual(Value.true_val, try formToValue(alloc, .{ .data = .{ .boolean = true } }));
+    try testing.expectEqual(Value.initInteger(42), try formToValue(alloc, .{ .data = .{ .integer = 42 } }));
+    try testing.expectEqual(Value.initFloat(3.14), try formToValue(alloc, .{ .data = .{ .float = 3.14 } }));
+    try testing.expectEqual(Value.initChar('A'), try formToValue(alloc, .{ .data = .{ .char = 'A' } }));
+    try testing.expectEqualStrings("hello", (try formToValue(alloc, .{ .data = .{ .string = "hello" } })).asString());
 }
 
 test "formToValue - symbol" {
     const alloc = testing.allocator;
     const val = try formToValue(alloc, .{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
-    try testing.expectEqualStrings("foo", val.symbol.name);
-    try testing.expect(val.symbol.ns == null);
+    try testing.expectEqualStrings("foo", val.asSymbol().name);
+    try testing.expect(val.asSymbol().ns == null);
 }
 
 test "formToValue - list" {
@@ -245,24 +257,24 @@ test "formToValue - list" {
     };
     const val = try formToValue(alloc, .{ .data = .{ .list = &items } });
     try testing.expect(val == .list);
-    try testing.expectEqual(@as(usize, 2), val.list.items.len);
-    try testing.expectEqual(Value{ .integer = 1 }, val.list.items[0]);
-    try testing.expectEqual(Value{ .integer = 2 }, val.list.items[1]);
+    try testing.expectEqual(@as(usize, 2), val.asList().items.len);
+    try testing.expectEqual(Value.initInteger(1), val.asList().items[0]);
+    try testing.expectEqual(Value.initInteger(2), val.asList().items[1]);
 }
 
 test "valueToForm - primitives" {
     const alloc = testing.allocator;
-    const f1 = try valueToForm(alloc, .nil);
+    const f1 = try valueToForm(alloc, Value.nil_val);
     try testing.expect(f1.data == .nil);
-    const f2 = try valueToForm(alloc, .{ .integer = 42 });
+    const f2 = try valueToForm(alloc, Value.initInteger(42));
     try testing.expectEqual(@as(i64, 42), f2.data.integer);
-    const f3 = try valueToForm(alloc, .{ .string = "hello" });
+    const f3 = try valueToForm(alloc, Value.initString("hello"));
     try testing.expectEqualStrings("hello", f3.data.string);
 }
 
 test "valueToForm - symbol" {
     const alloc = testing.allocator;
-    const f = try valueToForm(alloc, .{ .symbol = .{ .ns = "ns", .name = "bar" } });
+    const f = try valueToForm(alloc, Value.initSymbol(.{ .ns = "ns", .name = "bar" }));
     try testing.expectEqualStrings("ns", f.data.symbol.ns.?);
     try testing.expectEqualStrings("bar", f.data.symbol.name);
 }
@@ -300,8 +312,8 @@ test "formToValue/valueToForm - list source location roundtrip" {
     const val = try formToValue(alloc, form);
 
     // Value should carry source info
-    try testing.expectEqual(@as(u32, 5), val.list.source_line);
-    try testing.expectEqual(@as(u16, 10), val.list.source_column);
+    try testing.expectEqual(@as(u32, 5), val.asList().source_line);
+    try testing.expectEqual(@as(u16, 10), val.asList().source_column);
 
     // Roundtrip back to Form should restore source
     const restored = try valueToForm(alloc, val);
@@ -321,8 +333,8 @@ test "formToValue/valueToForm - vector source location roundtrip" {
     const form = Form{ .data = .{ .vector = &items }, .line = 3, .column = 7 };
     const val = try formToValue(alloc, form);
 
-    try testing.expectEqual(@as(u32, 3), val.vector.source_line);
-    try testing.expectEqual(@as(u16, 7), val.vector.source_column);
+    try testing.expectEqual(@as(u32, 3), val.asVector().source_line);
+    try testing.expectEqual(@as(u16, 7), val.asVector().source_column);
 
     const restored = try valueToForm(alloc, val);
     try testing.expectEqual(@as(u32, 3), restored.line);

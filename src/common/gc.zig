@@ -524,15 +524,16 @@ fn traceFnProto(gc: *MarkSweepGc, proto: *const anyopaque, kind: value_mod.FnKin
 /// Uses mark bits for cycle detection (already-marked pointers are skipped).
 /// Exhaustive switch ensures compile error if a new Value variant is added.
 pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
-    switch (val) {
+    switch (val.tag()) {
         // Primitives — no heap allocations
         .nil, .boolean, .integer, .float, .char => {},
 
         // String slice — mark backing array
-        .string => |s| gc.markSlice(s),
+        .string => gc.markSlice(val.asString()),
 
         // Symbol — ns/name slices + optional meta
-        .symbol => |sym| {
+        .symbol => {
+            const sym = val.asSymbol();
             if (sym.ns) |ns| gc.markSlice(ns);
             gc.markSlice(sym.name);
             if (sym.meta) |m| {
@@ -541,13 +542,15 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Keyword — ns/name slices
-        .keyword => |kw| {
+        .keyword => {
+            const kw = val.asKeyword();
             if (kw.ns) |ns| gc.markSlice(ns);
             gc.markSlice(kw.name);
         },
 
         // Persistent list
-        .list => |l| {
+        .list => {
+            const l = val.asList();
             if (gc.markAndCheck(l)) {
                 gc.markSlice(l.items);
                 for (l.items) |item| traceValue(gc, item);
@@ -560,7 +563,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Persistent vector
-        .vector => |v| {
+        .vector => {
+            const v = val.asVector();
             if (gc.markAndCheck(v)) {
                 gc.markSlice(v.items);
                 for (v.items) |item| traceValue(gc, item);
@@ -573,7 +577,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Persistent array map
-        .map => |m| {
+        .map => {
+            const m = val.asMap();
             if (gc.markAndCheck(m)) {
                 gc.markSlice(m.entries);
                 for (m.entries) |entry| traceValue(gc, entry);
@@ -585,7 +590,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Persistent hash map (HAMT)
-        .hash_map => |hm| {
+        .hash_map => {
+            const hm = val.asHashMap();
             if (gc.markAndCheck(hm)) {
                 // Trace null-key entry if present
                 if (hm.has_null) traceValue(gc, hm.null_val);
@@ -598,7 +604,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Persistent hash set
-        .set => |s| {
+        .set => {
+            const s = val.asSet();
             if (gc.markAndCheck(s)) {
                 gc.markSlice(s.items);
                 for (s.items) |item| traceValue(gc, item);
@@ -610,7 +617,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Function — proto internals, closure bindings, extra arities, meta
-        .fn_val => |f| {
+        .fn_val => {
+            const f = val.asFn();
             if (gc.markAndCheck(f)) {
                 // Trace proto internals (bytecode arrays, constant pools, etc.)
                 traceFnProto(gc, f.proto, f.kind);
@@ -633,7 +641,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         .builtin_fn => {},
 
         // Atom — value, meta, validator, watchers
-        .atom => |a| {
+        .atom => {
+            const a = val.asAtom();
             if (gc.markAndCheck(a)) {
                 traceValue(gc, a.value);
                 if (a.meta) |m| {
@@ -652,14 +661,16 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Volatile ref
-        .volatile_ref => |v| {
+        .volatile_ref => {
+            const v = val.asVolatile();
             if (gc.markAndCheck(v)) {
                 traceValue(gc, v.value);
             }
         },
 
         // Regex pattern — source string + opaque compiled
-        .regex => |r| {
+        .regex => {
+            const r = val.asRegex();
             if (gc.markAndCheck(r)) {
                 gc.markSlice(r.source);
                 gc.markPtr(r.compiled);
@@ -667,40 +678,44 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Protocol
-        .protocol => |p| {
+        .protocol => {
+            const p = val.asProtocol();
             if (gc.markAndCheck(p)) {
                 gc.markSlice(p.name);
                 gc.markSlice(p.method_sigs);
                 for (p.method_sigs) |sig| gc.markSlice(sig.name);
-                traceValue(gc, Value{ .map = p.impls });
+                traceValue(gc, Value.initMap(p.impls));
             }
         },
 
         // Protocol function
-        .protocol_fn => |pf| {
+        .protocol_fn => {
+            const pf = val.asProtocolFn();
             if (gc.markAndCheck(pf)) {
-                traceValue(gc, Value{ .protocol = pf.protocol });
+                traceValue(gc, Value.initProtocol(pf.protocol));
                 gc.markSlice(pf.method_name);
             }
         },
 
         // MultiFn — dispatch_fn, methods, prefer_table, hierarchy_var
-        .multi_fn => |mf| {
+        .multi_fn => {
+            const mf = val.asMultiFn();
             if (gc.markAndCheck(mf)) {
                 gc.markSlice(mf.name);
                 traceValue(gc, mf.dispatch_fn);
-                traceValue(gc, Value{ .map = mf.methods });
+                traceValue(gc, Value.initMap(mf.methods));
                 if (mf.prefer_table) |pt| {
-                    traceValue(gc, Value{ .map = pt });
+                    traceValue(gc, Value.initMap(pt));
                 }
                 if (mf.hierarchy_var) |hv| {
-                    traceValue(gc, Value{ .var_ref = hv });
+                    traceValue(gc, Value.initVarRef(hv));
                 }
             }
         },
 
         // Lazy sequence — thunk + realized value + structural metadata
-        .lazy_seq => |ls| {
+        .lazy_seq => {
+            const ls = val.asLazySeq();
             if (gc.markAndCheck(ls)) {
                 if (ls.thunk) |t| traceValue(gc, t);
                 if (ls.realized) |r| traceValue(gc, r);
@@ -734,7 +749,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Cons cell — first + rest
-        .cons => |c| {
+        .cons => {
+            const c = val.asCons();
             if (gc.markAndCheck(c)) {
                 traceValue(gc, c.first);
                 traceValue(gc, c.rest);
@@ -742,7 +758,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Var reference — symbol, root value, metadata
-        .var_ref => |v| {
+        .var_ref => {
+            const v = val.asVarRef();
             if (gc.markAndCheck(v)) {
                 if (v.sym.ns) |ns| gc.markSlice(ns);
                 gc.markSlice(v.sym.name);
@@ -756,13 +773,14 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                 if (v.added) |a| gc.markSlice(a);
                 if (v.since_cw) |s| gc.markSlice(s);
                 if (v.meta) |m| {
-                    traceValue(gc, Value{ .map = m });
+                    traceValue(gc, Value.initMap(m));
                 }
             }
         },
 
         // Delay — fn_val, cached, error_cached
-        .delay => |d| {
+        .delay => {
+            const d = val.asDelay();
             if (gc.markAndCheck(d)) {
                 if (d.fn_val) |f| traceValue(gc, f);
                 if (d.cached) |c| traceValue(gc, c);
@@ -771,14 +789,16 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Reduced — wrapped value
-        .reduced => |r| {
+        .reduced => {
+            const r = val.asReduced();
             if (gc.markAndCheck(r)) {
                 traceValue(gc, r.value);
             }
         },
 
         // Transient vector — mutable items buffer
-        .transient_vector => |tv| {
+        .transient_vector => {
+            const tv = val.asTransientVector();
             if (gc.markAndCheck(tv)) {
                 gc.markSlice(tv.items.items);
                 for (tv.items.items) |item| traceValue(gc, item);
@@ -786,7 +806,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Transient map — mutable entries buffer
-        .transient_map => |tm| {
+        .transient_map => {
+            const tm = val.asTransientMap();
             if (gc.markAndCheck(tm)) {
                 gc.markSlice(tm.entries.items);
                 for (tm.entries.items) |entry| traceValue(gc, entry);
@@ -794,7 +815,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Transient set — mutable items buffer
-        .transient_set => |ts| {
+        .transient_set => {
+            const ts = val.asTransientSet();
             if (gc.markAndCheck(ts)) {
                 gc.markSlice(ts.items.items);
                 for (ts.items.items) |item| traceValue(gc, item);
@@ -802,15 +824,17 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Chunked cons — chunk + rest
-        .chunked_cons => |cc| {
+        .chunked_cons => {
+            const cc = val.asChunkedCons();
             if (gc.markAndCheck(cc)) {
-                traceValue(gc, Value{ .array_chunk = cc.chunk });
+                traceValue(gc, Value.initArrayChunk(cc.chunk));
                 traceValue(gc, cc.more);
             }
         },
 
         // Chunk buffer — mutable items
-        .chunk_buffer => |cb| {
+        .chunk_buffer => {
+            const cb = val.asChunkBuffer();
             if (gc.markAndCheck(cb)) {
                 gc.markSlice(cb.items.items);
                 for (cb.items.items) |item| traceValue(gc, item);
@@ -818,7 +842,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Array chunk — immutable slice view
-        .array_chunk => |ac| {
+        .array_chunk => {
+            const ac = val.asArrayChunk();
             if (gc.markAndCheck(ac)) {
                 gc.markSlice(ac.array);
                 for (ac.array[ac.off..ac.end]) |item| traceValue(gc, item);
@@ -826,8 +851,8 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         },
 
         // Wasm InterOp — opaque native objects, not GC-traced
-        .wasm_module => |wm| gc.markPtr(wm),
-        .wasm_fn => |wf| gc.markPtr(wf),
+        .wasm_module => gc.markPtr(val.asWasmModule()),
+        .wasm_fn => gc.markPtr(val.asWasmFn()),
     }
 }
 
@@ -874,7 +899,7 @@ fn traceNamespace(gc: *MarkSweepGc, ns: *const ns_mod.Namespace) void {
 fn traceVarRoots(gc: *MarkSweepGc, v: *const var_mod.Var) void {
     traceValue(gc, v.root);
     if (v.meta) |m| {
-        traceValue(gc, Value{ .map = m });
+        traceValue(gc, Value.initMap(m));
     }
 }
 
@@ -1118,11 +1143,11 @@ test "traceValue primitives are no-op" {
     defer gc.deinit();
 
     // Primitives don't allocate — tracing should be safe
-    traceValue(&gc, .nil);
-    traceValue(&gc, Value{ .boolean = true });
-    traceValue(&gc, Value{ .integer = 42 });
-    traceValue(&gc, Value{ .float = 3.14 });
-    traceValue(&gc, Value{ .char = 'A' });
+    traceValue(&gc, Value.nil_val);
+    traceValue(&gc, Value.true_val);
+    traceValue(&gc, Value.initInteger(42));
+    traceValue(&gc, Value.initFloat(3.14));
+    traceValue(&gc, Value.initChar('A'));
     try std.testing.expectEqual(@as(usize, 0), gc.liveCount());
 }
 
@@ -1134,8 +1159,8 @@ test "traceValue keeps vector and items alive" {
 
     // Create a vector [42 99]
     const items = try a.alloc(Value, 2);
-    items[0] = Value{ .integer = 42 };
-    items[1] = Value{ .integer = 99 };
+    items[0] = Value.initInteger(42);
+    items[1] = Value.initInteger(99);
 
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
@@ -1146,7 +1171,7 @@ test "traceValue keeps vector and items alive" {
     try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
 
     // Trace the vector — keeps vec + items alive
-    traceValue(&gc, Value{ .vector = vec });
+    traceValue(&gc, Value.initVector(vec));
     gc.sweep();
 
     // vec struct + items array survive, orphan freed
@@ -1161,14 +1186,14 @@ test "traceValue keeps nested vector alive" {
 
     // Inner vector [1 2]
     const inner_items = try a.alloc(Value, 2);
-    inner_items[0] = Value{ .integer = 1 };
-    inner_items[1] = Value{ .integer = 2 };
+    inner_items[0] = Value.initInteger(1);
+    inner_items[1] = Value.initInteger(2);
     const inner = try a.create(value_mod.PersistentVector);
     inner.* = .{ .items = inner_items };
 
     // Outer vector [inner_vec]
     const outer_items = try a.alloc(Value, 1);
-    outer_items[0] = Value{ .vector = inner };
+    outer_items[0] = Value.initVector(inner);
     const outer = try a.create(value_mod.PersistentVector);
     outer.* = .{ .items = outer_items };
 
@@ -1177,7 +1202,7 @@ test "traceValue keeps nested vector alive" {
 
     try std.testing.expectEqual(@as(usize, 5), gc.liveCount());
 
-    traceValue(&gc, Value{ .vector = outer });
+    traceValue(&gc, Value.initVector(outer));
     gc.sweep();
 
     // outer + outer_items + inner + inner_items = 4, orphan freed
@@ -1192,16 +1217,16 @@ test "traceValue keeps cons chain alive" {
 
     // (cons 1 (cons 2 nil)) → two Cons cells
     const c2 = try a.create(value_mod.Cons);
-    c2.* = .{ .first = Value{ .integer = 2 }, .rest = .nil };
+    c2.* = .{ .first = Value.initInteger(2), .rest = Value.nil_val };
     const c1 = try a.create(value_mod.Cons);
-    c1.* = .{ .first = Value{ .integer = 1 }, .rest = Value{ .cons = c2 } };
+    c1.* = .{ .first = Value.initInteger(1), .rest = Value.initCons(c2) };
 
     // Orphan
     _ = try a.create(value_mod.Cons);
 
     try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
 
-    traceValue(&gc, Value{ .cons = c1 });
+    traceValue(&gc, Value.initCons(c1));
     gc.sweep();
 
     // c1 + c2 survive, orphan freed
@@ -1216,8 +1241,8 @@ test "traceValue keeps map entries alive" {
 
     // Map {:a 1} — entries = [keyword, integer]
     const entries = try a.alloc(Value, 2);
-    entries[0] = Value{ .keyword = .{ .ns = null, .name = "a" } };
-    entries[1] = Value{ .integer = 1 };
+    entries[0] = Value.initKeyword(.{ .ns = null, .name = "a" });
+    entries[1] = Value.initInteger(1);
     const m = try a.create(value_mod.PersistentArrayMap);
     m.* = .{ .entries = entries };
 
@@ -1226,7 +1251,7 @@ test "traceValue keeps map entries alive" {
 
     try std.testing.expectEqual(@as(usize, 3), gc.liveCount());
 
-    traceValue(&gc, Value{ .map = m });
+    traceValue(&gc, Value.initMap(m));
     gc.sweep();
 
     // map + entries survive, orphan freed
@@ -1247,7 +1272,7 @@ test "traceValue string marks backing array" {
 
     try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
 
-    traceValue(&gc, Value{ .string = str });
+    traceValue(&gc, Value.initString(str));
     gc.sweep();
 
     // String backing array survives, orphan freed
@@ -1262,13 +1287,13 @@ test "traceValue cycle detection via mark bit" {
 
     // Create a vector and trace it twice — second trace should be a no-op
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 42 };
+    items[0] = Value.initInteger(42);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
 
-    traceValue(&gc, Value{ .vector = vec });
+    traceValue(&gc, Value.initVector(vec));
     // Trace again — markAndCheck should return false, preventing re-traversal
-    traceValue(&gc, Value{ .vector = vec });
+    traceValue(&gc, Value.initVector(vec));
 
     gc.sweep();
     try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
@@ -1282,20 +1307,20 @@ test "traceValue handles lazy_seq" {
 
     // Create a realized lazy-seq pointing to a list
     const list_items = try a.alloc(Value, 2);
-    list_items[0] = Value{ .integer = 1 };
-    list_items[1] = Value{ .integer = 2 };
+    list_items[0] = Value.initInteger(1);
+    list_items[1] = Value.initInteger(2);
     const list = try a.create(value_mod.PersistentList);
     list.* = .{ .items = list_items };
 
     const ls = try a.create(value_mod.LazySeq);
-    ls.* = .{ .thunk = null, .realized = Value{ .list = list } };
+    ls.* = .{ .thunk = null, .realized = Value.initList(list) };
 
     // Orphan
     _ = try a.create(value_mod.LazySeq);
 
     try std.testing.expectEqual(@as(usize, 4), gc.liveCount());
 
-    traceValue(&gc, Value{ .lazy_seq = ls });
+    traceValue(&gc, Value.initLazySeq(ls));
     gc.sweep();
 
     // ls + list + list_items survive, orphan freed
@@ -1310,15 +1335,15 @@ test "traceValue handles lazy_seq with meta (lazy_filter)" {
 
     // Create a source list that lazy_filter references
     const list_items = try a.alloc(Value, 3);
-    list_items[0] = Value{ .integer = 2 };
-    list_items[1] = Value{ .integer = 3 };
-    list_items[2] = Value{ .integer = 4 };
+    list_items[0] = Value.initInteger(2);
+    list_items[1] = Value.initInteger(3);
+    list_items[2] = Value.initInteger(4);
     const source_list = try a.create(value_mod.PersistentList);
     source_list.* = .{ .items = list_items };
 
     // Create a lazy_seq with lazy_filter meta (pred is nil placeholder, source is list)
     const meta = try a.create(value_mod.LazySeq.Meta);
-    meta.* = .{ .lazy_filter = .{ .pred = .nil, .source = Value{ .list = source_list } } };
+    meta.* = .{ .lazy_filter = .{ .pred = Value.nil_val, .source = Value.initList(source_list) } };
     const ls = try a.create(value_mod.LazySeq);
     ls.* = .{ .thunk = null, .realized = null, .meta = meta };
 
@@ -1328,7 +1353,7 @@ test "traceValue handles lazy_seq with meta (lazy_filter)" {
     // ls + meta + source_list + list_items + orphan = 5
     try std.testing.expectEqual(@as(usize, 5), gc.liveCount());
 
-    traceValue(&gc, Value{ .lazy_seq = ls });
+    traceValue(&gc, Value.initLazySeq(ls));
     gc.sweep();
 
     // ls + meta + source_list + list_items survive, orphan freed
@@ -1345,7 +1370,7 @@ test "traceRoots traces stack value slices" {
 
     // Create a vector on the "stack"
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 42 };
+    items[0] = Value.initInteger(42);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
 
@@ -1355,7 +1380,7 @@ test "traceRoots traces stack value slices" {
     try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
 
     // Simulate VM stack
-    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const stack_vals = [_]Value{Value.initVector(vec)};
     const slices = [_][]const Value{&stack_vals};
     traceRoots(&gc_inst, .{ .value_slices = &slices });
     gc_inst.sweep();
@@ -1371,7 +1396,7 @@ test "traceRoots traces individual values" {
     const a = gc_inst.allocator();
 
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 1 };
+    items[0] = Value.initInteger(1);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
 
@@ -1379,7 +1404,7 @@ test "traceRoots traces individual values" {
 
     try std.testing.expectEqual(@as(usize, 3), gc_inst.liveCount());
 
-    const extra = [_]Value{Value{ .vector = vec }};
+    const extra = [_]Value{Value.initVector(vec)};
     traceRoots(&gc_inst, .{ .values = &extra });
     gc_inst.sweep();
 
@@ -1403,12 +1428,12 @@ test "traceRoots traces env namespaces and vars" {
 
     // Create a GC-allocated vector as var root
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 99 };
+    items[0] = Value.initInteger(99);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
 
     const v = try ns.intern("my-var");
-    v.root = Value{ .vector = vec };
+    v.root = Value.initVector(vec);
 
     // Orphan
     _ = try a.create(value_mod.PersistentVector);
@@ -1443,12 +1468,12 @@ test "traceRoots traces dynamic binding stack" {
 
     // Create a GC-allocated value bound to the Var
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 7 };
+    items[0] = Value.initInteger(7);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
 
     // Push a binding frame
-    var entries = [_]var_mod.BindingEntry{.{ .var_ptr = v, .val = Value{ .vector = vec } }};
+    var entries = [_]var_mod.BindingEntry{.{ .var_ptr = v, .val = Value.initVector(vec) }};
     var frame = var_mod.BindingFrame{ .entries = &entries, .prev = null };
     var_mod.pushBindings(&frame);
     defer var_mod.popBindings();
@@ -1477,7 +1502,7 @@ test "traceRoots combined: stack + env + bindings" {
 
     // 1. Stack value (vector)
     const stack_items = try a.alloc(Value, 1);
-    stack_items[0] = Value{ .integer = 1 };
+    stack_items[0] = Value.initInteger(1);
     const stack_vec = try a.create(value_mod.PersistentVector);
     stack_vec.* = .{ .items = stack_items };
 
@@ -1485,18 +1510,18 @@ test "traceRoots combined: stack + env + bindings" {
     var env = env_mod.Env.init(infra);
     const ns = try env.findOrCreateNamespace("test");
     const env_items = try a.alloc(Value, 1);
-    env_items[0] = Value{ .integer = 2 };
+    env_items[0] = Value.initInteger(2);
     const env_list = try a.create(value_mod.PersistentList);
     env_list.* = .{ .items = env_items };
     const v = try ns.intern("x");
-    v.root = Value{ .list = env_list };
+    v.root = Value.initList(env_list);
 
     // 3. Binding stack value (cons)
     const bound_cons = try a.create(value_mod.Cons);
-    bound_cons.* = .{ .first = Value{ .integer = 3 }, .rest = .nil };
+    bound_cons.* = .{ .first = Value.initInteger(3), .rest = Value.nil_val };
     const dyn_var = try infra.create(var_mod.Var);
     dyn_var.* = .{ .sym = .{ .ns = null, .name = "d" }, .ns_name = "test", .dynamic = true };
-    var binding_entries = [_]var_mod.BindingEntry{.{ .var_ptr = dyn_var, .val = Value{ .cons = bound_cons } }};
+    var binding_entries = [_]var_mod.BindingEntry{.{ .var_ptr = dyn_var, .val = Value.initCons(bound_cons) }};
     var binding_frame = var_mod.BindingFrame{ .entries = &binding_entries, .prev = null };
     var_mod.pushBindings(&binding_frame);
     defer var_mod.popBindings();
@@ -1508,7 +1533,7 @@ test "traceRoots combined: stack + env + bindings" {
     // Total: stack_items + stack_vec + env_items + env_list + bound_cons + 2 orphans = 7
     try std.testing.expectEqual(@as(usize, 7), gc_inst.liveCount());
 
-    const stack_vals = [_]Value{Value{ .vector = stack_vec }};
+    const stack_vals = [_]Value{Value.initVector(stack_vec)};
     const slices = [_][]const Value{&stack_vals};
     traceRoots(&gc_inst, .{
         .value_slices = &slices,
@@ -1532,7 +1557,7 @@ test "collectIfNeeded runs when threshold exceeded" {
 
     // Allocate a vector (root) and an orphan
     const items = try a.alloc(Value, 1);
-    items[0] = Value{ .integer = 42 };
+    items[0] = Value.initInteger(42);
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
     _ = try a.alloc(u8, 64); // orphan, pushes over threshold
@@ -1542,7 +1567,7 @@ test "collectIfNeeded runs when threshold exceeded" {
     try std.testing.expectEqual(@as(u64, 0), gc_inst.collect_count);
 
     // Build root set with the vector as a stack value
-    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const stack_vals = [_]Value{Value.initVector(vec)};
     const slices = [_][]const Value{&stack_vals};
     gc_inst.collectIfNeeded(.{ .value_slices = &slices });
 
@@ -1577,7 +1602,7 @@ test "collectIfNeeded grows threshold when live set exceeds it" {
     // Allocate live data exceeding threshold
     const items = try a.alloc(Value, 10);
     for (items, 0..) |*item, i| {
-        item.* = Value{ .integer = @intCast(i) };
+        item.* = Value.initInteger(@intCast(i));
     }
     const vec = try a.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
@@ -1585,7 +1610,7 @@ test "collectIfNeeded grows threshold when live set exceeds it" {
     const old_threshold = gc_inst.threshold;
 
     // All data is rooted — nothing to collect
-    const stack_vals = [_]Value{Value{ .vector = vec }};
+    const stack_vals = [_]Value{Value.initVector(vec)};
     const slices = [_][]const Value{&stack_vals};
     gc_inst.collectIfNeeded(.{ .value_slices = &slices });
 

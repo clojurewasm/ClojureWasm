@@ -35,7 +35,7 @@ pub const PersistentList = struct {
     }
 
     pub fn first(self: PersistentList) Value {
-        if (self.items.len == 0) return .nil;
+        if (self.items.len == 0) return Value.nil_val;
         return self.items[0];
     }
 
@@ -240,12 +240,14 @@ pub const TransientArrayMap = struct {
     pub fn conjEntry(self: *TransientArrayMap, allocator: std.mem.Allocator, entry: Value) !*TransientArrayMap {
         try self.ensureEditable();
         // entry must be a vector of [key val]
-        switch (entry) {
-            .vector => |vec| {
+        switch (entry.tag()) {
+            .vector => {
+                const vec = entry.asVector();
                 if (vec.items.len != 2) return error.MapEntryMustBePair;
                 return self.assocKV(allocator, vec.items[0], vec.items[1]);
             },
-            .map => |m| {
+            .map => {
+                const m = entry.asMap();
                 // Merge map entries
                 var i: usize = 0;
                 while (i < m.entries.len) : (i += 2) {
@@ -388,7 +390,7 @@ pub const ChunkedCons = struct {
     more: Value, // rest sequence (lazy-seq, list, nil, etc.)
 
     pub fn first(self: ChunkedCons) Value {
-        return self.chunk.nth(0) orelse Value.nil;
+        return self.chunk.nth(0) orelse Value.nil_val;
     }
 
     pub fn next(self: *const ChunkedCons, allocator: std.mem.Allocator) !Value {
@@ -397,11 +399,11 @@ pub const ChunkedCons = struct {
             new_chunk.* = self.chunk.dropFirst() orelse return self.more;
             const new_cc = try allocator.create(ChunkedCons);
             new_cc.* = .{ .chunk = new_chunk, .more = self.more };
-            return Value{ .chunked_cons = new_cc };
+            return Value.initChunkedCons(new_cc);
         }
         // Advance to rest
-        return switch (self.more) {
-            .nil => .nil,
+        return switch (self.more.tag()) {
+            .nil => Value.nil_val,
             else => self.more,
         };
     }
@@ -725,7 +727,7 @@ pub const PersistentHashMap = struct {
     count: usize = 0,
     root: ?*const HAMTNode = null,
     has_null: bool = false,
-    null_val: Value = .nil,
+    null_val: Value = Value.nil_val,
     meta: ?*const Value = null,
 
     pub const EMPTY: PersistentHashMap = .{};
@@ -785,7 +787,7 @@ pub const PersistentHashMap = struct {
                 .count = self.count - 1,
                 .root = self.root,
                 .has_null = false,
-                .null_val = .nil,
+                .null_val = Value.nil_val,
                 .meta = self.meta,
             };
             return new_map;
@@ -811,7 +813,7 @@ pub const PersistentHashMap = struct {
     pub fn toEntries(self: *const PersistentHashMap, allocator: std.mem.Allocator) ![]const Value {
         var out = std.ArrayList(Value).empty;
         if (self.has_null) {
-            try out.append(allocator, .nil);
+            try out.append(allocator, Value.nil_val);
             try out.append(allocator, self.null_val);
         }
         if (self.root) |root| {
@@ -840,10 +842,10 @@ test "PersistentList - empty" {
 }
 
 test "PersistentList - count/first/rest" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     const list = PersistentList{ .items = &items };
     try testing.expectEqual(@as(usize, 3), list.count());
-    try testing.expect(list.first().eql(.{ .integer = 1 }));
+    try testing.expect(list.first().eql(Value.initInteger(1)));
     try testing.expectEqual(@as(usize, 2), list.rest().count());
 }
 
@@ -863,12 +865,12 @@ test "PersistentVector - empty" {
 }
 
 test "PersistentVector - count/nth" {
-    const items = [_]Value{ .{ .integer = 10 }, .{ .integer = 20 }, .{ .integer = 30 } };
+    const items = [_]Value{ Value.initInteger(10), Value.initInteger(20), Value.initInteger(30) };
     const vec = PersistentVector{ .items = &items };
     try testing.expectEqual(@as(usize, 3), vec.count());
-    try testing.expect(vec.nth(0).?.eql(.{ .integer = 10 }));
-    try testing.expect(vec.nth(1).?.eql(.{ .integer = 20 }));
-    try testing.expect(vec.nth(2).?.eql(.{ .integer = 30 }));
+    try testing.expect(vec.nth(0).?.eql(Value.initInteger(10)));
+    try testing.expect(vec.nth(1).?.eql(Value.initInteger(20)));
+    try testing.expect(vec.nth(2).?.eql(Value.initInteger(30)));
     try testing.expect(vec.nth(3) == null);
 }
 
@@ -880,22 +882,22 @@ test "PersistentArrayMap - empty" {
 test "PersistentArrayMap - count/get" {
     // {k1 v1, k2 v2} stored as [k1, v1, k2, v2]
     const entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
-        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+        Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(.{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = PersistentArrayMap{ .entries = &entries };
     try testing.expectEqual(@as(usize, 2), m.count());
-    const v = m.get(.{ .keyword = .{ .name = "a", .ns = null } });
+    const v = m.get(Value.initKeyword(.{ .name = "a", .ns = null }));
     try testing.expect(v != null);
-    try testing.expect(v.?.eql(.{ .integer = 1 }));
+    try testing.expect(v.?.eql(Value.initInteger(1)));
 }
 
 test "PersistentArrayMap - get missing key" {
     const entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
+        Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1),
     };
     const m = PersistentArrayMap{ .entries = &entries };
-    try testing.expect(m.get(.{ .keyword = .{ .name = "z", .ns = null } }) == null);
+    try testing.expect(m.get(Value.initKeyword(.{ .name = "z", .ns = null })) == null);
 }
 
 test "PersistentHashSet - empty" {
@@ -904,11 +906,11 @@ test "PersistentHashSet - empty" {
 }
 
 test "PersistentHashSet - contains" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 }, .{ .integer = 3 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2), Value.initInteger(3) };
     const s = PersistentHashSet{ .items = &items };
     try testing.expectEqual(@as(usize, 3), s.count());
-    try testing.expect(s.contains(.{ .integer = 2 }));
-    try testing.expect(!s.contains(.{ .integer = 99 }));
+    try testing.expect(s.contains(Value.initInteger(2)));
+    try testing.expect(!s.contains(Value.initInteger(99)));
 }
 
 // --- PersistentHashMap (HAMT) Tests ---
@@ -916,7 +918,7 @@ test "PersistentHashSet - contains" {
 test "PersistentHashMap - empty" {
     const m = PersistentHashMap.EMPTY;
     try testing.expectEqual(@as(usize, 0), m.getCount());
-    try testing.expect(m.get(.{ .integer = 1 }) == null);
+    try testing.expect(m.get(Value.initInteger(1)) == null);
 }
 
 test "PersistentHashMap - single assoc and get" {
@@ -925,11 +927,11 @@ test "PersistentHashMap - single assoc and get" {
     const alloc = arena.allocator();
 
     const m0 = &PersistentHashMap.EMPTY;
-    const m1 = try m0.assoc(alloc, .{ .integer = 42 }, .{ .integer = 100 });
+    const m1 = try m0.assoc(alloc, Value.initInteger(42), Value.initInteger(100));
     try testing.expectEqual(@as(usize, 1), m1.getCount());
-    const v = m1.get(.{ .integer = 42 });
+    const v = m1.get(Value.initInteger(42));
     try testing.expect(v != null);
-    try testing.expect(v.?.eql(.{ .integer = 100 }));
+    try testing.expect(v.?.eql(Value.initInteger(100)));
     // Original unchanged
     try testing.expectEqual(@as(usize, 0), m0.getCount());
 }
@@ -942,17 +944,17 @@ test "PersistentHashMap - multiple assocs" {
     var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
     // Insert 20 entries
     for (0..20) |i| {
-        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) * 10 });
+        m = try m.assoc(alloc, Value.initInteger(@intCast(i)), Value.initInteger(@as(i64, @intCast(i)) * 10));
     }
     try testing.expectEqual(@as(usize, 20), m.getCount());
     // Verify all entries
     for (0..20) |i| {
-        const v = m.get(.{ .integer = @intCast(i) });
+        const v = m.get(Value.initInteger(@intCast(i)));
         try testing.expect(v != null);
-        try testing.expect(v.?.eql(.{ .integer = @as(i64, @intCast(i)) * 10 }));
+        try testing.expect(v.?.eql(Value.initInteger(@as(i64, @intCast(i)) * 10)));
     }
     // Missing key
-    try testing.expect(m.get(.{ .integer = 99 }) == null);
+    try testing.expect(m.get(Value.initInteger(99)) == null);
 }
 
 test "PersistentHashMap - key replacement" {
@@ -961,12 +963,12 @@ test "PersistentHashMap - key replacement" {
     const alloc = arena.allocator();
 
     const m0 = &PersistentHashMap.EMPTY;
-    const m1 = try m0.assoc(alloc, .{ .integer = 1 }, .{ .integer = 10 });
-    const m2 = try m1.assoc(alloc, .{ .integer = 1 }, .{ .integer = 20 });
+    const m1 = try m0.assoc(alloc, Value.initInteger(1), Value.initInteger(10));
+    const m2 = try m1.assoc(alloc, Value.initInteger(1), Value.initInteger(20));
     try testing.expectEqual(@as(usize, 1), m2.getCount());
-    try testing.expect(m2.get(.{ .integer = 1 }).?.eql(.{ .integer = 20 }));
+    try testing.expect(m2.get(Value.initInteger(1)).?.eql(Value.initInteger(20)));
     // Old version preserved
-    try testing.expect(m1.get(.{ .integer = 1 }).?.eql(.{ .integer = 10 }));
+    try testing.expect(m1.get(Value.initInteger(1)).?.eql(Value.initInteger(10)));
 }
 
 test "PersistentHashMap - nil key" {
@@ -975,13 +977,13 @@ test "PersistentHashMap - nil key" {
     const alloc = arena.allocator();
 
     const m0 = &PersistentHashMap.EMPTY;
-    const m1 = try m0.assoc(alloc, .nil, .{ .integer = 42 });
+    const m1 = try m0.assoc(alloc, Value.nil_val, Value.initInteger(42));
     try testing.expectEqual(@as(usize, 1), m1.getCount());
-    try testing.expect(m1.get(.nil).?.eql(.{ .integer = 42 }));
+    try testing.expect(m1.get(Value.nil_val).?.eql(Value.initInteger(42)));
     // Dissoc nil key
-    const m2 = try m1.dissoc(alloc, .nil);
+    const m2 = try m1.dissoc(alloc, Value.nil_val);
     try testing.expectEqual(@as(usize, 0), m2.getCount());
-    try testing.expect(m2.get(.nil) == null);
+    try testing.expect(m2.get(Value.nil_val) == null);
 }
 
 test "PersistentHashMap - dissoc" {
@@ -991,15 +993,15 @@ test "PersistentHashMap - dissoc" {
 
     var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
     for (0..5) |i| {
-        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) * 10 });
+        m = try m.assoc(alloc, Value.initInteger(@intCast(i)), Value.initInteger(@as(i64, @intCast(i)) * 10));
     }
     try testing.expectEqual(@as(usize, 5), m.getCount());
 
-    const m2 = try m.dissoc(alloc, .{ .integer = 2 });
+    const m2 = try m.dissoc(alloc, Value.initInteger(2));
     try testing.expectEqual(@as(usize, 4), m2.getCount());
-    try testing.expect(m2.get(.{ .integer = 2 }) == null);
-    try testing.expect(m2.get(.{ .integer = 0 }) != null);
-    try testing.expect(m2.get(.{ .integer = 4 }) != null);
+    try testing.expect(m2.get(Value.initInteger(2)) == null);
+    try testing.expect(m2.get(Value.initInteger(0)) != null);
+    try testing.expect(m2.get(Value.initInteger(4)) != null);
     // Original unchanged
     try testing.expectEqual(@as(usize, 5), m.getCount());
 }
@@ -1011,13 +1013,13 @@ test "PersistentHashMap - large map (100 entries)" {
 
     var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
     for (0..100) |i| {
-        m = try m.assoc(alloc, .{ .integer = @intCast(i) }, .{ .integer = @as(i64, @intCast(i)) + 1000 });
+        m = try m.assoc(alloc, Value.initInteger(@intCast(i)), Value.initInteger(@as(i64, @intCast(i)) + 1000));
     }
     try testing.expectEqual(@as(usize, 100), m.getCount());
     for (0..100) |i| {
-        const v = m.get(.{ .integer = @intCast(i) });
+        const v = m.get(Value.initInteger(@intCast(i)));
         try testing.expect(v != null);
-        try testing.expect(v.?.eql(.{ .integer = @as(i64, @intCast(i)) + 1000 }));
+        try testing.expect(v.?.eql(Value.initInteger(@as(i64, @intCast(i)) + 1000)));
     }
 }
 
@@ -1027,8 +1029,8 @@ test "PersistentHashMap - toEntries" {
     const alloc = arena.allocator();
 
     var m: *const PersistentHashMap = &PersistentHashMap.EMPTY;
-    m = try m.assoc(alloc, .{ .integer = 1 }, .{ .integer = 10 });
-    m = try m.assoc(alloc, .{ .integer = 2 }, .{ .integer = 20 });
+    m = try m.assoc(alloc, Value.initInteger(1), Value.initInteger(10));
+    m = try m.assoc(alloc, Value.initInteger(2), Value.initInteger(20));
 
     const entries = try m.toEntries(alloc);
     try testing.expectEqual(@as(usize, 4), entries.len); // 2 pairs = 4 values
@@ -1040,11 +1042,11 @@ test "PersistentHashMap - fromEntries" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } }, .{ .integer = 1 },
-        .{ .keyword = .{ .name = "b", .ns = null } }, .{ .integer = 2 },
+        Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(.{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = try PersistentHashMap.fromEntries(alloc, &entries);
     try testing.expectEqual(@as(usize, 2), m.getCount());
-    try testing.expect(m.get(.{ .keyword = .{ .name = "a", .ns = null } }).?.eql(.{ .integer = 1 }));
-    try testing.expect(m.get(.{ .keyword = .{ .name = "b", .ns = null } }).?.eql(.{ .integer = 2 }));
+    try testing.expect(m.get(Value.initKeyword(.{ .name = "a", .ns = null })).?.eql(Value.initInteger(1)));
+    try testing.expect(m.get(Value.initKeyword(.{ .name = "b", .ns = null })).?.eql(Value.initInteger(2)));
 }

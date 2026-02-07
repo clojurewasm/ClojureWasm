@@ -161,11 +161,11 @@ test "Namespace resolve" {
     defer ns.deinit();
 
     const v = try ns.intern("bar");
-    v.bindRoot(.{ .integer = 42 });
+    v.bindRoot(Value.initInteger(42));
 
     const resolved = ns.resolve("bar");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 42 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(42)));
 
     // Unknown symbol
     try std.testing.expect(ns.resolve("unknown") == null);
@@ -184,7 +184,7 @@ test "Namespace refer" {
 
     // Define 'map' in core
     const map_var = try core.intern("map");
-    map_var.bindRoot(.{ .integer = 999 });
+    map_var.bindRoot(Value.initInteger(999));
 
     // Refer into user
     try user.refer("map", map_var);
@@ -192,7 +192,7 @@ test "Namespace refer" {
     // Resolve finds the referred Var
     const resolved = user.resolve("map");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 999 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(999)));
 }
 
 test "Namespace refer - local takes priority" {
@@ -207,17 +207,17 @@ test "Namespace refer - local takes priority" {
     defer user.deinit();
 
     const core_map = try core.intern("map");
-    core_map.bindRoot(.{ .integer = 1 });
+    core_map.bindRoot(Value.initInteger(1));
 
     try user.refer("map", core_map);
 
     // Local definition shadows refer
     const user_map = try user.intern("map");
-    user_map.bindRoot(.{ .integer = 2 });
+    user_map.bindRoot(Value.initInteger(2));
 
     const resolved = user.resolve("map");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 2 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(2)));
 }
 
 test "Namespace alias and resolveQualified" {
@@ -232,21 +232,21 @@ test "Namespace alias and resolveQualified" {
     defer user.deinit();
 
     const map_var = try core.intern("map");
-    map_var.bindRoot(.{ .integer = 999 });
+    map_var.bindRoot(Value.initInteger(999));
 
     try user.setAlias("core", &core);
 
     // Resolve via alias: core/map
     const resolved = user.resolveQualified("core", "map");
     try std.testing.expect(resolved != null);
-    try std.testing.expect(resolved.?.deref().eql(.{ .integer = 999 }));
+    try std.testing.expect(resolved.?.deref().eql(Value.initInteger(999)));
 
     // Resolve via own name
     const own_var = try user.intern("x");
-    own_var.bindRoot(.{ .integer = 1 });
+    own_var.bindRoot(Value.initInteger(1));
     const own_resolved = user.resolveQualified("user", "x");
     try std.testing.expect(own_resolved != null);
-    try std.testing.expect(own_resolved.?.deref().eql(.{ .integer = 1 }));
+    try std.testing.expect(own_resolved.?.deref().eql(Value.initInteger(1)));
 
     // Unknown namespace
     try std.testing.expect(user.resolveQualified("unknown", "x") == null);

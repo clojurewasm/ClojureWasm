@@ -40,7 +40,7 @@ pub const Var = struct {
     ns_name: []const u8,
 
     /// Root binding (global value).
-    root: Value = .nil,
+    root: Value = Value.nil_val,
 
     /// ^:dynamic flag.
     dynamic: bool = false,
@@ -197,8 +197,8 @@ test "Var basic root binding" {
     try std.testing.expect(v.deref().isNil());
 
     // Bind root
-    v.bindRoot(.{ .integer = 42 });
-    try std.testing.expect(v.deref().eql(.{ .integer = 42 }));
+    v.bindRoot(Value.initInteger(42));
+    try std.testing.expect(v.deref().eql(Value.initInteger(42)));
 }
 
 test "Var flags" {
@@ -223,73 +223,73 @@ test "Var dynamic binding push/pop" {
         .ns_name = "user",
         .dynamic = true,
     };
-    v.bindRoot(.{ .integer = 1 });
+    v.bindRoot(Value.initInteger(1));
 
     // No binding -> root
-    try std.testing.expect(v.deref().eql(.{ .integer = 1 }));
+    try std.testing.expect(v.deref().eql(Value.initInteger(1)));
     try std.testing.expect(!hasThreadBinding(&v));
 
     // Push binding
-    var entries = [_]BindingEntry{.{ .var_ptr = &v, .val = .{ .integer = 10 } }};
+    var entries = [_]BindingEntry{.{ .var_ptr = &v, .val = Value.initInteger(10) }};
     var frame = BindingFrame{ .entries = &entries, .prev = null };
     pushBindings(&frame);
 
-    try std.testing.expect(v.deref().eql(.{ .integer = 10 }));
+    try std.testing.expect(v.deref().eql(Value.initInteger(10)));
     try std.testing.expect(hasThreadBinding(&v));
 
     // Pop -> back to root
     popBindings();
-    try std.testing.expect(v.deref().eql(.{ .integer = 1 }));
+    try std.testing.expect(v.deref().eql(Value.initInteger(1)));
     try std.testing.expect(!hasThreadBinding(&v));
 }
 
 test "Var dynamic binding nested" {
     var x = Var{ .sym = .{ .name = "*x*", .ns = null }, .ns_name = "user", .dynamic = true };
     var y = Var{ .sym = .{ .name = "*y*", .ns = null }, .ns_name = "user", .dynamic = true };
-    x.bindRoot(.{ .integer = 1 });
-    y.bindRoot(.{ .integer = 2 });
+    x.bindRoot(Value.initInteger(1));
+    y.bindRoot(Value.initInteger(2));
 
-    var entries1 = [_]BindingEntry{.{ .var_ptr = &x, .val = .{ .integer = 10 } }};
+    var entries1 = [_]BindingEntry{.{ .var_ptr = &x, .val = Value.initInteger(10) }};
     var frame1 = BindingFrame{ .entries = &entries1, .prev = null };
     pushBindings(&frame1);
 
-    var entries2 = [_]BindingEntry{.{ .var_ptr = &y, .val = .{ .integer = 20 } }};
+    var entries2 = [_]BindingEntry{.{ .var_ptr = &y, .val = Value.initInteger(20) }};
     var frame2 = BindingFrame{ .entries = &entries2, .prev = null };
     pushBindings(&frame2);
 
-    try std.testing.expect(x.deref().eql(.{ .integer = 10 }));
-    try std.testing.expect(y.deref().eql(.{ .integer = 20 }));
+    try std.testing.expect(x.deref().eql(Value.initInteger(10)));
+    try std.testing.expect(y.deref().eql(Value.initInteger(20)));
 
     popBindings();
-    try std.testing.expect(x.deref().eql(.{ .integer = 10 }));
-    try std.testing.expect(y.deref().eql(.{ .integer = 2 }));
+    try std.testing.expect(x.deref().eql(Value.initInteger(10)));
+    try std.testing.expect(y.deref().eql(Value.initInteger(2)));
 
     popBindings();
-    try std.testing.expect(x.deref().eql(.{ .integer = 1 }));
-    try std.testing.expect(y.deref().eql(.{ .integer = 2 }));
+    try std.testing.expect(x.deref().eql(Value.initInteger(1)));
+    try std.testing.expect(y.deref().eql(Value.initInteger(2)));
 }
 
 test "Var set! within binding" {
     var v = Var{ .sym = .{ .name = "*x*", .ns = null }, .ns_name = "user", .dynamic = true };
-    v.bindRoot(.{ .integer = 1 });
+    v.bindRoot(Value.initInteger(1));
 
-    var entries = [_]BindingEntry{.{ .var_ptr = &v, .val = .{ .integer = 10 } }};
+    var entries = [_]BindingEntry{.{ .var_ptr = &v, .val = Value.initInteger(10) }};
     var frame = BindingFrame{ .entries = &entries, .prev = null };
     pushBindings(&frame);
 
-    try setThreadBinding(&v, .{ .integer = 99 });
-    try std.testing.expect(v.deref().eql(.{ .integer = 99 }));
+    try setThreadBinding(&v, Value.initInteger(99));
+    try std.testing.expect(v.deref().eql(Value.initInteger(99)));
 
     popBindings();
     // Root unchanged
-    try std.testing.expect(v.deref().eql(.{ .integer = 1 }));
+    try std.testing.expect(v.deref().eql(Value.initInteger(1)));
 }
 
 test "Var set! outside binding is error" {
     var v = Var{ .sym = .{ .name = "*x*", .ns = null }, .ns_name = "user", .dynamic = true };
-    v.bindRoot(.{ .integer = 1 });
+    v.bindRoot(Value.initInteger(1));
 
-    try std.testing.expectError(error.ValueError, setThreadBinding(&v, .{ .integer = 99 }));
+    try std.testing.expectError(error.ValueError, setThreadBinding(&v, Value.initInteger(99)));
 }
 
 test "BuiltinDef creation" {
