@@ -424,8 +424,26 @@ fn reportError(eval_err: anyerror) void {
             showSourceContext(w, info.location, info.message, c);
         }
     } else {
-        // No detailed error info — fallback to Zig error name
-        w.print("{s}Error: {s}{s}\n", .{ c.red, @errorName(eval_err), c.reset }) catch {};
+        // No detailed error info — make fallback as helpful as possible
+        w.print("{s}----- Error -----------------------------------------------{s}\n", .{ c.red, c.reset }) catch {};
+        w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, @errorName(eval_err), c.reset }) catch {};
+        if (err.getSourceFile()) |file| {
+            w.print("{s}{s}{s}\n", .{ c.dim, file, c.reset }) catch {};
+        }
+        // Show call stack if available
+        const stack = err.getCallStack();
+        if (stack.len > 0) {
+            w.print("{s}Trace:{s}\n", .{ c.dim, c.reset }) catch {};
+            var i: usize = stack.len;
+            while (i > 0) {
+                i -= 1;
+                const f = stack[i];
+                const ns_name = f.ns orelse "?";
+                const fn_name = f.fn_name orelse "anonymous";
+                w.print("{s}  {s}/{s}{s}\n", .{ c.dim, ns_name, fn_name, c.reset }) catch {};
+            }
+        }
+        err.clearCallStack();
     }
 
     _ = stderr.write(stream.getWritten()) catch {};

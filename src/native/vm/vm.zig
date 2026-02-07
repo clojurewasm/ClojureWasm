@@ -452,6 +452,11 @@ pub const VM = struct {
                 if (v) |resolved| {
                     try self.push(resolved.deref());
                 } else {
+                    if (sym_val.ns) |ns_name| {
+                        err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve symbol: {s}/{s} in this context", .{ ns_name, sym_val.name });
+                    } else {
+                        err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve symbol: {s} in this context", .{sym_val.name});
+                    }
                     return error.UndefinedVar;
                 }
             },
@@ -462,7 +467,10 @@ pub const VM = struct {
                 if (sym.tag() != .symbol) return error.InvalidInstruction;
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                const v = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
+                const v = ns.resolve(sym.asSymbol().name) orelse {
+                    err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve var: {s}", .{sym.asSymbol().name});
+                    return error.UndefinedVar;
+                };
                 const var_mod = @import("../../common/var.zig");
                 var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
                 // Value remains on stack (net 0)
@@ -525,7 +533,10 @@ pub const VM = struct {
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
                 // Resolve multimethod
-                const mf_var = ns.resolve(sym.asSymbol().name) orelse return error.UndefinedVar;
+                const mf_var = ns.resolve(sym.asSymbol().name) orelse {
+                    err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve multimethod: {s}", .{sym.asSymbol().name});
+                    return error.UndefinedVar;
+                };
                 const mf_val = mf_var.deref();
                 if (mf_val.tag() != .multi_fn) return error.TypeError;
                 const mf = mf_val.asMultiFn();
@@ -626,7 +637,10 @@ pub const VM = struct {
                 // Resolve protocol
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                const proto_var = ns.resolve(proto_name) orelse return error.UndefinedVar;
+                const proto_var = ns.resolve(proto_name) orelse {
+                    err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{proto_name});
+                    return error.UndefinedVar;
+                };
                 const proto_val = proto_var.deref();
                 if (proto_val.tag() != .protocol) return error.TypeError;
                 const protocol = proto_val.asProtocol();

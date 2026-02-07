@@ -226,6 +226,11 @@ pub const TreeWalk = struct {
             }
         }
 
+        if (ns) |ns_name| {
+            err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve symbol: {s}/{s} in this context", .{ ns_name, name });
+        } else {
+            err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve symbol: {s} in this context", .{name});
+        }
         return error.UndefinedVar;
     }
 
@@ -733,7 +738,10 @@ pub const TreeWalk = struct {
     fn runSetBang(self: *TreeWalk, set_n: *const node_mod.SetNode) TreeWalkError!Value {
         const env = self.env orelse return error.UndefinedVar;
         const ns = env.current_ns orelse return error.UndefinedVar;
-        const v = ns.resolve(set_n.var_name) orelse return error.UndefinedVar;
+        const v = ns.resolve(set_n.var_name) orelse {
+            err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve var: {s}", .{set_n.var_name});
+            return error.UndefinedVar;
+        };
         const new_val = try self.run(set_n.expr);
         var_mod.setThreadBinding(v, new_val) catch return error.ValueError;
         return new_val;
@@ -823,7 +831,10 @@ pub const TreeWalk = struct {
         const ns = env.current_ns orelse return error.UndefinedVar;
 
         // Resolve protocol
-        const proto_var = ns.resolve(et_n.protocol_name) orelse return error.UndefinedVar;
+        const proto_var = ns.resolve(et_n.protocol_name) orelse {
+            err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{et_n.protocol_name});
+            return error.UndefinedVar;
+        };
         const proto_val = proto_var.deref();
         if (proto_val.tag() != .protocol) return error.TypeError;
         const protocol = proto_val.asProtocol();
@@ -953,7 +964,10 @@ pub const TreeWalk = struct {
         const ns = env.current_ns orelse return error.UndefinedVar;
 
         // Resolve the multimethod
-        const mf_var = ns.resolve(dm_n.multi_name) orelse return error.UndefinedVar;
+        const mf_var = ns.resolve(dm_n.multi_name) orelse {
+            err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve multimethod: {s}", .{dm_n.multi_name});
+            return error.UndefinedVar;
+        };
         const mf_val = mf_var.deref();
         if (mf_val.tag() != .multi_fn) return error.TypeError;
         const mf = mf_val.asMultiFn();
