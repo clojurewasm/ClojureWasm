@@ -222,6 +222,7 @@ pub const LineEditor = struct {
                         'u' => self.killToStart(),
                         'w' => self.killWordBack(),
                         'y' => self.yank(),
+                        'o' => self.insertChar('\n'), // force newline
                         'd' => {
                             if (self.len == 0) {
                                 // Empty line: EOF
