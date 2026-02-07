@@ -67,6 +67,15 @@ pub const LetNode = struct {
     source: SourceInfo,
 };
 
+/// letfn special form: (letfn* [name1 fn1 name2 fn2 ...] body)
+/// Like let but all names are pre-registered before any init is analyzed,
+/// enabling mutual recursion between the bound functions.
+pub const LetfnNode = struct {
+    bindings: []const LetBinding,
+    body: *Node,
+    source: SourceInfo,
+};
+
 /// loop special form: (loop [bindings...] body)
 pub const LoopNode = struct {
     bindings: []const LetBinding,
@@ -228,6 +237,7 @@ pub const Node = union(enum) {
     if_node: *IfNode,
     do_node: *DoNode,
     let_node: *LetNode,
+    letfn_node: *LetfnNode,
     loop_node: *LoopNode,
     recur_node: *RecurNode,
 
@@ -268,6 +278,7 @@ pub const Node = union(enum) {
             .if_node => |n| n.source,
             .do_node => |n| n.source,
             .let_node => |n| n.source,
+            .letfn_node => |n| n.source,
             .loop_node => |n| n.source,
             .recur_node => |n| n.source,
             .fn_node => |n| n.source,
@@ -294,6 +305,7 @@ pub const Node = union(enum) {
             .if_node => "if",
             .do_node => "do",
             .let_node => "let",
+            .letfn_node => "letfn",
             .loop_node => "loop",
             .recur_node => "recur",
             .fn_node => "fn",

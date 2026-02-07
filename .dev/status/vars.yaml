@@ -22,7 +22,7 @@ vars:
     if: {type: special-form, status: done, note: special form}
     "import*": {type: special-form, status: skip, note: "JVM interop"}
     "let*": {type: special-form, status: done, note: special form}
-    "letfn*": {type: special-form, status: skip, note: internal special form}
+    "letfn*": {type: special-form, status: done, note: special form}
     "loop*": {type: special-form, status: done, note: special form}
     "monitor-enter": {type: special-form, status: skip, note: "JVM concurrency"}
     "monitor-exit": {type: special-form, status: skip, note: "JVM concurrency"}
@@ -378,7 +378,7 @@ vars:
     "lazy-cat": {type: macro, status: done, note: "macro in core.clj"}
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done, note: special form (analyzes as let*)}
-    letfn: {type: special-form, status: skip, note: internal special form}
+    letfn: {type: macro, status: done, note: "macro -> letfn* special form"}
     "line-seq": {type: function, status: skip, note: needs BufferedReader type}
     list: {type: function, status: done, note: "Zig builtin"}
     "list*": {type: function, status: done, note: "Zig builtin"}

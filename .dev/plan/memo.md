@@ -37,7 +37,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.3a require file resolution~~
 - ~~30.3b src/ path auto-detect~~
 - ~~30.3c cljw.edn support~~
-- 30.4a letfn implementation
+- ~~30.4a letfn implementation~~
 - 30.4b with-open macro
 - 30.4c tagged-literal + reader-conditional
 - 30.4d with-local-vars + with-in-str
@@ -49,15 +49,15 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.4a — letfn implementation. Mutual recursion support via simultaneous
-binding of functions.
+30.4b — with-open macro. Resource management: (with-open [r (expr)] body)
+auto-closes resource on exit.
 
 ## Previous Task
 
-30.3c — cljw.edn support. Reader-based EDN parser for {:paths :main}.
-Restructured main.zig control flow: flags → config → exec/REPL.
-Arena allocator for config parsing (no leaks). Tested: :main runs
-namespace, :paths adds to load paths, all existing modes preserved.
+30.4a — letfn implementation. Added letfn* special form (analyzer, compiler,
+VM, TreeWalk) + letfn macro in core.clj. New letfn_patch opcode (0x69) for
+patching closure bindings after creation. Mutual recursion and multi-arity
+tested on both backends.
 
 ## Known Issues
 

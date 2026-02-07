@@ -399,6 +399,32 @@ pub const VM = struct {
                 }
             },
 
+            .letfn_patch => {
+                // Patch closure bindings for letfn mutual recursion.
+                // operand: (count << 8) | base_slot
+                const base: u16 = instr.operand & 0xFF;
+                const count: u16 = instr.operand >> 8;
+
+                for (0..count) |i| {
+                    const val = self.stack[frame.base + base + i];
+                    if (val.tag() == .fn_val) {
+                        const fn_obj = val.asFn();
+                        const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+                        if (fn_obj.closure_bindings) |bindings| {
+                            const mutable = @constCast(bindings);
+                            for (0..proto.capture_count) |ci| {
+                                const slot = proto.capture_slots[ci];
+                                if (slot >= base and slot < base + count) {
+                                    mutable[ci] = self.stack[frame.base + slot];
+                                }
+                            }
+                        }
+                        // Note: extra_arities are FnProto pointers (not Fn objects).
+                        // All arities share the primary Fn's closure_bindings at call time.
+                    }
+                }
+            },
+
             // [H] Loop/recur
             .recur => {
                 // Operand: (base_offset << 8) | arg_count

@@ -1114,6 +1114,18 @@
 (defmacro declare [& names]
   (cons 'do (map (fn [n] (list 'def n)) names)))
 
+(defmacro letfn
+  "fnspec ==> (fname [params*] exprs) or (fname ([params*] exprs)+)
+
+  Takes a vector of function specs and a body, and generates a set of
+  bindings of functions to their names. All of the names are available
+  in all of the definitions of the functions, as well as the body."
+  {:added "1.0"}
+  [fnspecs & body]
+  `(letfn* ~(vec (interleave (map first fnspecs)
+                             (map #(cons 'fn %) fnspecs)))
+           ~@body))
+
 ;; Imperative iteration
 
 (defmacro while [test & body]

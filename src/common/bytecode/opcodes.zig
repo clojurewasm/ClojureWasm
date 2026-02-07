@@ -112,6 +112,9 @@ pub const OpCode = enum(u8) {
     ret = 0x67,
     /// Create closure (operand: constant index u16 -> FnProto)
     closure = 0x68,
+    /// Patch letfn closure bindings (operand: (count << 8) | base_slot)
+    /// After all letfn closures are stored, re-capture sibling slots.
+    letfn_patch = 0x69,
 
     // === [H] Loop/recur (0x70-0x7F) ===
 
@@ -263,6 +266,7 @@ test "OpCode category ranges" {
     try std.testing.expectEqual(@as(u8, 0x65), @intFromEnum(OpCode.tail_call));
     try std.testing.expectEqual(@as(u8, 0x67), @intFromEnum(OpCode.ret));
     try std.testing.expectEqual(@as(u8, 0x68), @intFromEnum(OpCode.closure));
+    try std.testing.expectEqual(@as(u8, 0x69), @intFromEnum(OpCode.letfn_patch));
 
     // Loop/recur (0x70-0x7F)
     try std.testing.expectEqual(@as(u8, 0x71), @intFromEnum(OpCode.recur));
@@ -328,6 +332,7 @@ test "OpCode.hasOperand classification" {
     try std.testing.expect(OpCode.jump.hasOperand());
     try std.testing.expect(OpCode.jump_if_false.hasOperand());
     try std.testing.expect(OpCode.closure.hasOperand());
+    try std.testing.expect(OpCode.letfn_patch.hasOperand());
     try std.testing.expect(OpCode.list_new.hasOperand());
     try std.testing.expect(OpCode.def.hasOperand());
     try std.testing.expect(OpCode.recur.hasOperand());

@@ -184,6 +184,50 @@ pub const TreeWalk = struct {
                 self.local_count = saved;
                 return result;
             },
+            .letfn_node => |letfn_n| {
+                const saved = self.local_count;
+                const base = saved;
+                errdefer self.local_count = saved;
+
+                // Step 1: Reserve slots with nil
+                for (letfn_n.bindings) |_| {
+                    if (self.local_count >= MAX_LOCALS) return error.OutOfMemory;
+                    self.locals[self.local_count] = Value.nil_val;
+                    self.local_count += 1;
+                }
+
+                // Step 2: Create closures (they capture nil in letfn slots)
+                var closure_vals: [32]Value = undefined;
+                for (letfn_n.bindings, 0..) |binding, i| {
+                    closure_vals[i] = try self.run(binding.init);
+                }
+
+                // Step 3: Set actual values in locals
+                for (letfn_n.bindings, 0..) |_, i| {
+                    self.locals[base + i] = closure_vals[i];
+                }
+
+                // Step 4: Patch all closures' captured locals for mutual reference
+                for (letfn_n.bindings, 0..) |_, i| {
+                    const fn_val = closure_vals[i];
+                    if (fn_val.tag() == .fn_val) {
+                        const fn_obj = fn_val.asFn();
+                        if (fn_obj.closure_bindings) |bindings| {
+                            // Patch the letfn slots in this closure's captures
+                            const mutable_bindings = @constCast(bindings);
+                            for (letfn_n.bindings, 0..) |_, j| {
+                                if (base + j < mutable_bindings.len) {
+                                    mutable_bindings[base + j] = closure_vals[j];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                const result = try self.run(letfn_n.body);
+                self.local_count = saved;
+                return result;
+            },
             .fn_node => |fn_n| self.makeClosure(fn_n),
             .call_node => |call_n| self.runCall(call_n),
             .def_node => |def_n| self.runDef(def_n),

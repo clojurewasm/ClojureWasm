@@ -215,6 +215,11 @@ fn dumpInstruction(instr: Instruction, constants: []const Value, w: *std.Io.Writ
                 try dumpValue(constants[const_idx], w);
             }
         },
+        .letfn_patch => {
+            const base = instr.operand & 0xFF;
+            const count = instr.operand >> 8;
+            try w.print(" base={d} count={d}", .{ base, count });
+        },
         else => {},
     }
 }

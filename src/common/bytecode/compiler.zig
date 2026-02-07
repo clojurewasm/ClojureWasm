@@ -118,6 +118,7 @@ pub const Compiler = struct {
             .if_node => |node| try self.emitIf(node),
             .do_node => |node| try self.emitDo(node),
             .let_node => |node| try self.emitLet(node),
+            .letfn_node => |node| try self.emitLetfn(node),
             .loop_node => |node| try self.emitLoop(node),
             .recur_node => |node| try self.emitRecur(node),
             .fn_node => |node| try self.emitFn(node),
@@ -235,6 +236,43 @@ pub const Compiler = struct {
         try self.compile(node.body);
 
         // Clean up: keep body result, remove binding slots below it
+        const locals_to_pop = self.locals.items.len - base_locals;
+        if (locals_to_pop > 0) {
+            try self.chunk.emit(.pop_under, @intCast(locals_to_pop));
+            self.stack_depth -= @intCast(locals_to_pop);
+        }
+
+        self.locals.shrinkRetainingCapacity(base_locals);
+        self.scope_depth -= 1;
+    }
+
+    fn emitLetfn(self: *Compiler, node: *const node_mod.LetfnNode) CompileError!void {
+        self.scope_depth += 1;
+        const base_locals = self.locals.items.len;
+        const base_stack = self.stack_depth;
+
+        // Phase 1: Push nil for each binding slot and register locals
+        for (node.bindings) |binding| {
+            try self.chunk.emit(.nil, 0);
+            self.stack_depth += 1;
+            try self.addLocal(binding.name);
+        }
+
+        // Phase 2: Compile each fn expression, store back to its slot
+        for (node.bindings, 0..) |binding, i| {
+            try self.compile(binding.init); // +1 (closure)
+            try self.chunk.emit(.local_store, base_stack + @as(u16, @intCast(i))); // -1
+            self.stack_depth -= 1;
+        }
+
+        // Phase 3: Patch closure bindings for mutual references
+        const count: u16 = @intCast(node.bindings.len);
+        try self.chunk.emit(.letfn_patch, (count << 8) | base_stack);
+
+        // Phase 4: Compile body
+        try self.compile(node.body); // +1
+
+        // Cleanup: keep body result, remove binding slots below it
         const locals_to_pop = self.locals.items.len - base_locals;
         if (locals_to_pop > 0) {
             try self.chunk.emit(.pop_under, @intCast(locals_to_pop));

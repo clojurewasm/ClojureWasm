@@ -157,6 +157,7 @@ pub const Analyzer = struct {
         .{ "do", analyzeDo },
         .{ "let", analyzeLet },
         .{ "let*", analyzeLet },
+        .{ "letfn*", analyzeLetfn },
         .{ "fn", analyzeFn },
         .{ "fn*", analyzeFn },
         .{ "def", analyzeDef },
@@ -431,6 +432,65 @@ pub const Analyzer = struct {
 
         const n = self.allocator.create(Node) catch return error.OutOfMemory;
         n.* = .{ .let_node = let_data };
+        return n;
+    }
+
+    fn analyzeLetfn(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (letfn* [name1 fn-expr1 name2 fn-expr2 ...] body...)
+        // All names are pre-registered before any init is analyzed,
+        // enabling mutual recursion between the bound functions.
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "letfn requires binding vector", form);
+        }
+
+        if (items[1].data != .vector) {
+            return self.analysisError(.value_error, "letfn bindings must be a vector", items[1]);
+        }
+
+        const binding_pairs = items[1].data.vector;
+        if (binding_pairs.len % 2 != 0) {
+            return self.analysisError(.value_error, "letfn bindings must have even number of forms", items[1]);
+        }
+
+        const start_locals = self.locals.items.len;
+
+        // Step 1: Pre-register ALL names as locals (before analyzing any init)
+        var i: usize = 0;
+        while (i < binding_pairs.len) : (i += 2) {
+            if (binding_pairs[i].data != .symbol) {
+                return self.analysisError(.value_error, "letfn binding name must be a symbol", binding_pairs[i]);
+            }
+            const name = binding_pairs[i].data.symbol.name;
+            const idx: u32 = @intCast(self.locals.items.len);
+            self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch
+                return error.OutOfMemory;
+        }
+
+        // Step 2: Analyze all init expressions (all names are now visible)
+        var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
+        i = 0;
+        while (i < binding_pairs.len) : (i += 2) {
+            const name = binding_pairs[i].data.symbol.name;
+            const init_node = try self.analyze(binding_pairs[i + 1]);
+            bindings_list.append(self.allocator, .{ .name = name, .init = init_node }) catch
+                return error.OutOfMemory;
+        }
+
+        // Step 3: Analyze body
+        const body = try self.analyzeBody(items[2..], form);
+
+        // Pop locals
+        self.locals.shrinkRetainingCapacity(start_locals);
+
+        const letfn_data = self.allocator.create(node_mod.LetfnNode) catch return error.OutOfMemory;
+        letfn_data.* = .{
+            .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .body = body,
+            .source = self.sourceFromForm(form),
+        };
+
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .letfn_node = letfn_data };
         return n;
     }
 

@@ -2413,3 +2413,77 @@ test "E2E error location: let body points to bad arg (special form)" {
     try std.testing.expectEqual(@as(u32, 1), vm.location.line);
     try std.testing.expectEqual(@as(u32, 16), vm.location.column);
 }
+
+// === letfn tests ===
+
+test "E2E letfn: basic binding" {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+
+    // TreeWalk
+    const tw = bootstrap.evalString(alloc, &env, "(letfn [(f [x] (+ x 10))] (f 5))") catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(15), tw);
+
+    // VM
+    const vm = bootstrap.evalStringVM(alloc, &env, "(letfn [(f [x] (+ x 10))] (f 5))") catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(15), vm);
+}
+
+test "E2E letfn: mutual recursion" {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+
+    const src =
+        \\(letfn [(my-even? [n] (if (= n 0) true (my-odd? (dec n))))
+        \\        (my-odd?  [n] (if (= n 0) false (my-even? (dec n))))]
+        \\  (list (my-even? 10) (my-odd? 10) (my-even? 7) (my-odd? 7)))
+    ;
+
+    // TreeWalk
+    const tw = bootstrap.evalString(alloc, &env, src) catch unreachable;
+    try std.testing.expect(tw.tag() == .list);
+
+    // VM
+    const vm = bootstrap.evalStringVM(alloc, &env, src) catch unreachable;
+    try std.testing.expect(vm.tag() == .list);
+}
+
+test "E2E letfn: multi-arity" {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+
+    const src =
+        \\(letfn [(f ([x] (f x 1))
+        \\          ([x y] (+ x y)))]
+        \\  (f 5))
+    ;
+
+    // TreeWalk
+    const tw = bootstrap.evalString(alloc, &env, src) catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(6), tw);
+
+    // VM
+    const vm = bootstrap.evalStringVM(alloc, &env, src) catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(6), vm);
+}
