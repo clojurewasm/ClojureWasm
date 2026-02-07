@@ -53,7 +53,7 @@ pub const WasmModule = struct {
     instance: zware.Instance,
     export_fns: []const ExportInfo = &[_]ExportInfo{},
     /// Pre-generated WasmFn instances for keyword lookup dispatch.
-    cached_fns: []const WasmFn = &[_]WasmFn{},
+    cached_fns: []WasmFn = &[_]WasmFn{},
     /// WIT function signatures (set via wasm/load :wit option).
     wit_funcs: []const wit_parser.WitFunc = &[_]wit_parser.WitFunc{},
 
@@ -142,8 +142,19 @@ pub const WasmModule = struct {
     }
 
     /// Attach WIT info parsed from a .wit file.
+    /// Also updates cached_fns with WIT param/result info for keyword dispatch.
     pub fn setWitInfo(self: *WasmModule, funcs: []const wit_parser.WitFunc) void {
         self.wit_funcs = funcs;
+        // Update cached WasmFns with WIT type info
+        for (self.cached_fns) |*cf| {
+            for (funcs) |wf| {
+                if (std.mem.eql(u8, cf.name, wf.name)) {
+                    cf.wit_params = wf.params;
+                    cf.wit_result = wf.result;
+                    break;
+                }
+            }
+        }
     }
 
     /// Get WIT function info by name.
@@ -179,20 +190,29 @@ pub const WasmFn = struct {
     name: []const u8,
     param_types: []const WasmValType,
     result_types: []const WasmValType,
+    /// WIT-level parameter types (null = no WIT info, use raw core types).
+    wit_params: ?[]const wit_parser.WitParam = null,
+    /// WIT-level result type (null = no WIT info).
+    wit_result: ?wit_parser.WitType = null,
 
     /// Call this Wasm function with Clojure Value arguments.
-    /// Converts Value args to u64[], invokes via zware, converts results back.
+    /// If WIT info is present, uses high-level marshalling (string → ptr/len etc).
+    /// Otherwise, direct core-type conversion.
     pub fn call(self: *const WasmFn, allocator: Allocator, args: []const Value) !Value {
+        // WIT marshalling path
+        if (self.wit_params) |wps| {
+            return self.callWithWitMarshalling(allocator, args, wps);
+        }
+
+        // Core-type path (no WIT)
         if (args.len != self.param_types.len)
             return error.ArityError;
 
-        // Convert Clojure Values to u64 args
         var wasm_args: [16]u64 = undefined;
         for (args, 0..) |arg, i| {
             wasm_args[i] = try valueToWasm(arg, self.param_types[i]);
         }
 
-        // Invoke
         var wasm_results: [4]u64 = undefined;
         try self.module.invoke(
             self.name,
@@ -200,9 +220,80 @@ pub const WasmFn = struct {
             wasm_results[0..self.result_types.len],
         );
 
-        // Convert results back to Clojure Values
         if (self.result_types.len == 0) return Value.nil;
         return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
+    }
+
+    /// WIT-aware call: handles string marshalling via cabi_realloc + memory.
+    fn callWithWitMarshalling(self: *const WasmFn, allocator: Allocator, args: []const Value, wit_params: []const wit_parser.WitParam) !Value {
+        if (args.len != wit_params.len) return error.ArityError;
+
+        // Build core-level args, expanding string → (ptr, len)
+        var wasm_args: [32]u64 = undefined;
+        var wasm_arg_count: usize = 0;
+
+        for (args, 0..) |arg, i| {
+            switch (wit_params[i].type_) {
+                .string => {
+                    // Marshal string: allocate in Wasm memory, write UTF-8, pass (ptr, len)
+                    const str = switch (arg) {
+                        .string => |s| s,
+                        else => return error.TypeError,
+                    };
+                    const ptr = try self.cabiRealloc(@intCast(str.len));
+                    try self.module.memoryWrite(ptr, str);
+                    wasm_args[wasm_arg_count] = ptr;
+                    wasm_arg_count += 1;
+                    wasm_args[wasm_arg_count] = str.len;
+                    wasm_arg_count += 1;
+                },
+                else => {
+                    // Primitive: use existing conversion
+                    wasm_args[wasm_arg_count] = try valueToWasm(arg, self.param_types[wasm_arg_count]);
+                    wasm_arg_count += 1;
+                },
+            }
+        }
+
+        // Invoke with correct core-level arg/result counts
+        var wasm_results: [8]u64 = undefined;
+        try self.module.invoke(
+            self.name,
+            wasm_args[0..wasm_arg_count],
+            wasm_results[0..self.result_types.len],
+        );
+
+        // Unmarshal result
+        const wit_result = self.wit_result orelse {
+            if (self.result_types.len == 0) return Value.nil;
+            return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
+        };
+
+        switch (wit_result) {
+            .string => {
+                // String result: multi-value return (ptr, len).
+                // zware pops results in reverse push order, so:
+                //   results[0] = len (last pushed), results[1] = ptr (first pushed)
+                if (self.result_types.len < 2) return error.TypeError;
+                const len: u32 = @truncate(wasm_results[0]);
+                const ptr: u32 = @truncate(wasm_results[1]);
+                const bytes = try self.module.memoryRead(allocator, ptr, len);
+                return Value{ .string = bytes };
+            },
+            else => {
+                if (self.result_types.len == 0) return Value.nil;
+                return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
+            },
+        }
+    }
+
+    /// Call cabi_realloc to allocate memory in the Wasm module.
+    fn cabiRealloc(self: *const WasmFn, size: u32) !u32 {
+        var realloc_args = [_]u64{ 0, 0, 1, size };
+        var realloc_results = [_]u64{0};
+        self.module.invoke("cabi_realloc", &realloc_args, &realloc_results) catch
+            return error.WasmAllocError;
+        return @truncate(realloc_results[0]);
     }
 };
 
@@ -483,7 +574,7 @@ fn buildExportInfo(allocator: Allocator, module: *zware.Module) ![]const ExportI
 }
 
 /// Pre-generate WasmFn instances for all exports (used by keyword dispatch).
-fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]const WasmFn {
+fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
     const exports = wasm_mod.export_fns;
     if (exports.len == 0) return &[_]WasmFn{};
 

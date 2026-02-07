@@ -156,6 +156,11 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
             .param_types = ei.param_types,
             .result_types = ei.result_types,
         };
+        // Attach WIT info if available
+        if (wasm_mod.getWitFunc(name)) |wf| {
+            wfn.wit_params = wf.params;
+            wfn.wit_result = wf.result;
+        }
         return Value{ .wasm_fn = wfn };
     }
 
