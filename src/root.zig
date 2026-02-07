@@ -34,6 +34,7 @@ pub const macro_utils = @import("common/macro.zig");
 pub const bootstrap = @import("common/bootstrap.zig");
 pub const bencode = @import("repl/bencode.zig");
 pub const nrepl = @import("repl/nrepl.zig");
+pub const wasm_types = @import("wasm/types.zig");
 
 test {
     _ = value;
@@ -69,4 +70,5 @@ test {
     _ = bootstrap;
     _ = bencode;
     _ = nrepl;
+    _ = wasm_types;
 }

@@ -22,12 +22,13 @@ Phase 25 — Wasm InterOp (FFI):
 
 ## Current Task
 
-25.0: Infrastructure setup — add zware dep, copy WAT files, create src/wasm/,
-smoke test (load .wasm, call add(3,4) from Zig).
+25.1: wasm/load + wasm/fn — Clojure builtins for loading Wasm modules and
+calling exported functions with type hints. Both backends (D6).
 
 ## Previous Task
 
-25.R: Research — zware 0.15.2 confirmed, WASI P1 target, Component Model deferred.
+25.0: Infrastructure — zware dep, 8 WAT test modules, WasmModule.load/invoke,
+smoke tests pass (add(3,4)=7, fib(10)=55).
 
 ## Handover Notes
 

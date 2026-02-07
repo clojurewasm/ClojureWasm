@@ -4,11 +4,15 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // zware dependency (pure-Zig Wasm runtime, Phase 25)
+    const zware_dep = b.dependency("zware", .{});
+
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+    mod.addImport("zware", zware_dep.module("zware"));
 
     // Executable (same source tree, no module boundary — avoids self-referential type loop)
     const exe = b.addExecutable(.{
@@ -19,6 +23,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    exe.root_module.addImport("zware", zware_dep.module("zware"));
     // 512MB stack for Debug builds — deeply nested lazy-seq realization
     // (e.g. sieve of Eratosthenes with 168 nested filters) creates ~381KB
     // frames per recursion level in Debug mode. ReleaseSafe needs ~64MB.
