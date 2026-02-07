@@ -298,3 +298,84 @@ Total expected: **5-20MB** for typical programs. Well within Wasm defaults
 | Memory shrink | Not needed | Free-pool recycling handles reuse |
 | WasmGC | Deferred (no Zig support) | Requires custom Wasm codegen |
 | Threshold tuning | May need lower initial (256KB?) | Wasm programs typically smaller |
+
+---
+
+## Section 4: Stack Depth and F99 Assessment (26.R.4)
+
+### Wasmtime Stack Configuration
+
+```bash
+wasmtime -W max-wasm-stack=N  # bytes, configurable per-invocation
+```
+
+**Default**: ~1MB (wasmtime 41). Measured: ~16,364 calls with 64-byte locals.
+
+**Configurable**: `-W max-wasm-stack=8388608` (8MB) allows 100,000+ calls.
+
+### Stack Frame Size Measurements
+
+PoC: Simple recursive function with 64-byte local buffer, wasm32-wasi ReleaseSafe.
+
+| Stack Size | Max Recursion Depth | Frame Size Est. |
+|-----------|-------------------|----------------|
+| 1MB (default) | ~16,364 | ~64 bytes |
+| 8MB | 100,000+ | ~64 bytes |
+
+Wasm stack frames are compact (~64 bytes for a simple function) because Wasm is a
+stack machine — no register spilling, no large frame prologues.
+
+### ClojureWasm Recursion Patterns
+
+| Pattern | Recursion Depth | Stack Risk |
+|---------|----------------|------------|
+| `(map f coll)` | 1 per element (iterative via seq) | **Low** |
+| `(filter p coll)` | 1 per element (iterative while loop) | **Low** |
+| `(reduce f init coll)` | 0 (loop, not recursive) | **None** |
+| `(take n (iterate f x))` | 1 per element | **Low** |
+| `(nth lazy-seq n)` | n calls to first/rest (iterative loop) | **Low** |
+| `(filter p (filter q xs))` | 1 level (D74 flat chain) | **None** |
+| Sieve of Eratosthenes | 1 level (D74 filter_chain) | **None** |
+| `(eval '(deeply-nested))` | Proportional to AST depth | **Medium** |
+| `(fib 30)` via recur | 0 (loop/recur is iterative) | **None** |
+
+### D74 Status: Filter Chain Collapsing
+
+D74 resolved the pathological case (168-deep filter chain → flat loop, 78x speedup).
+The `lazy_filter_chain` Meta variant stores all predicates in a flat array.
+**No remaining known pathological recursion for lazy-seq realization.**
+
+### F99 Analysis: Is Iterative Lazy-Seq a Hard Prerequisite?
+
+**Answer: No. F99 is NOT required for Phase 26 MVP.**
+
+Reasoning:
+1. D74 already handles the worst case (nested filter chains → flat)
+2. Normal lazy-seq realization is 1-level deep per element (cons cell construction)
+3. Wasmtime stack is configurable (`max-wasm-stack=8M` allows deep programs)
+4. Typical Clojure programs don't create deep recursion chains beyond ~100 levels
+5. The main risk is deeply nested `eval` (AST depth), not lazy-seq chains
+
+### F99 Sequencing Decision
+
+| Option | When | Rationale |
+|--------|------|-----------|
+| Before Phase 26 | ~~Required~~ | Not needed — D74 handles pathological cases |
+| During Phase 26 | Optional | Add if stack issues emerge during testing |
+| **After Phase 26** | **Selected** | Phase 27 optimization, or when specific use case demands it |
+
+**Decision**: F99 deferred. MVP launches with configurable Wasm stack depth.
+Recommended default: `wasmtime -W max-wasm-stack=8388608` (8MB) in documentation.
+
+### Stack Budget Summary
+
+| Component | Est. Depth | Est. Frame Size | Stack Use |
+|-----------|-----------|----------------|-----------|
+| main() → bootstrap → eval | ~5 | ~200B | ~1KB |
+| Typical fn call | ~1 | ~100B | ~100B |
+| Deep fn nesting (10 levels) | 10 | ~100B | ~1KB |
+| map/filter chain realization | 1-3 | ~200B | ~600B |
+| **Worst case: eval depth 100** | 100 | ~500B | ~50KB |
+
+**Conclusion**: 1MB default sufficient for most programs. 8MB handles edge cases.
+512MB native stack budget is not needed on Wasm.
