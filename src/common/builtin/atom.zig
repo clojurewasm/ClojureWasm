@@ -20,30 +20,30 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to atom", .{args.len});
     const a = try allocator.create(Atom);
     a.* = .{ .value = args[0] };
-    return Value{ .atom = a };
+    return Value.initAtom(a);
 }
 
 /// (deref ref) => val  — works on atoms, volatiles, delays, vars, promises
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
-    return switch (args[0]) {
-        .atom => |a| derefAtom(a),
-        .volatile_ref => |v| v.value,
-        .var_ref => |v| v.deref(),
-        .reduced => |r| r.value,
-        .delay => |d| forceDelay(allocator, d),
-        else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .atom => derefAtom(args[0].asAtom()),
+        .volatile_ref => args[0].asVolatile().value,
+        .var_ref => args[0].asVarRef().deref(),
+        .reduced => args[0].asReduced().value,
+        .delay => forceDelay(allocator, args[0].asDelay()),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// Deref an atom, with special handling for promise atoms.
 /// Promise atoms contain a map with :__promise key; deref returns :val from the map.
 fn derefAtom(a: *Atom) Value {
-    if (a.value == .map) {
-        const promise_key = Value{ .keyword = .{ .ns = null, .name = "__promise" } };
-        if (a.value.map.get(promise_key) != null) {
-            const val_key = Value{ .keyword = .{ .ns = null, .name = "val" } };
-            return a.value.map.get(val_key) orelse .nil;
+    if (a.value.tag() == .map) {
+        const promise_key = Value.initKeyword(.{ .ns = null, .name = "__promise" });
+        if (a.value.asMap().get(promise_key) != null) {
+            const val_key = Value.initKeyword(.{ .ns = null, .name = "val" });
+            return a.value.asMap().get(val_key) orelse Value.nil_val;
         }
     }
     return a.value;
@@ -59,9 +59,9 @@ pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
             bootstrap.last_thrown_exception = cached_ex;
             return error.UserException;
         }
-        return d.cached orelse Value.nil;
+        return d.cached orelse Value.nil_val;
     }
-    const thunk = d.fn_val orelse return Value.nil;
+    const thunk = d.fn_val orelse return Value.nil_val;
     const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| {
         // Cache the exception value for re-throwing on subsequent calls
         d.realized = true;
@@ -82,21 +82,22 @@ pub fn delayCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay-create", .{args.len});
     const d = try allocator.create(value_mod.Delay);
     d.* = .{ .fn_val = args[0], .cached = null, .error_cached = null, .realized = false };
-    return Value{ .delay = d };
+    return Value.initDelay(d);
 }
 
 /// (reset! atom new-val) => new-val
 pub fn resetBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset!", .{args.len});
-    return switch (args[0]) {
-        .atom => |a| {
+    return switch (args[0].tag()) {
+        .atom => {
+            const a = args[0].asAtom();
             try validate(allocator, a, args[1]);
             const old = a.value;
             a.value = args[1];
             try notifyWatchers(allocator, a, args[0], old, args[1]);
             return args[1];
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "reset! expects an atom, got {s}", .{@tagName(args[0])}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "reset! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -105,9 +106,9 @@ pub fn resetBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Supports builtin_fn directly and fn_val via call_fn dispatcher.
 pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap!", .{args.len});
-    const atom_ptr = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap! expects an atom, got {s}", .{@tagName(args[0])}),
+    const atom_ptr = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const fn_val = args[1];
@@ -134,8 +135,9 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (reset-vals! atom new-val) => [old-val new-val]
 pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset-vals!", .{args.len});
-    return switch (args[0]) {
-        .atom => |a| {
+    return switch (args[0].tag()) {
+        .atom => {
+            const a = args[0].asAtom();
             const old = a.value;
             a.value = args[1];
             const items = try allocator.alloc(Value, 2);
@@ -143,9 +145,9 @@ pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
             items[1] = args[1];
             const vec = try allocator.create(value_mod.PersistentVector);
             vec.* = .{ .items = items };
-            return Value{ .vector = vec };
+            return Value.initVector(vec);
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "reset-vals! expects an atom, got {s}", .{@tagName(args[0])}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "reset-vals! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -153,9 +155,9 @@ pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (swap-vals! atom f x y ...) => [old-val (f @atom x y ...)]
 pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap-vals!", .{args.len});
-    const atom_ptr = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap-vals! expects an atom, got {s}", .{@tagName(args[0])}),
+    const atom_ptr = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "swap-vals! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const fn_val = args[1];
@@ -180,7 +182,7 @@ pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     items[1] = new_val;
     const vec = try allocator.create(value_mod.PersistentVector);
     vec.* = .{ .items = items };
-    return Value{ .vector = vec };
+    return Value.initVector(vec);
 }
 
 /// (volatile! val) => #<volatile val>
@@ -188,25 +190,26 @@ pub fn volatileFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to volatile!", .{args.len});
     const v = try allocator.create(Volatile);
     v.* = .{ .value = args[0] };
-    return Value{ .volatile_ref = v };
+    return Value.initVolatile(v);
 }
 
 /// (vreset! vol new-val) => new-val
 pub fn vresetBangFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vreset!", .{args.len});
-    return switch (args[0]) {
-        .volatile_ref => |v| {
+    return switch (args[0].tag()) {
+        .volatile_ref => {
+            const v = args[0].asVolatile();
             v.value = args[1];
             return args[1];
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "vreset! expects a volatile, got {s}", .{@tagName(args[0])}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "vreset! expects a volatile, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (volatile? x) => true if x is a volatile
 pub fn volatilePred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to volatile?", .{args.len});
-    return Value{ .boolean = args[0] == .volatile_ref };
+    return Value.initBoolean(args[0].tag() == .volatile_ref);
 }
 
 // ============================================================
@@ -219,9 +222,9 @@ fn validate(allocator: Allocator, a: *Atom, new_val: Value) !void {
         const result = bootstrap.callFnVal(allocator, vfn, &.{new_val}) catch {
             return throwInvalidState(allocator);
         };
-        switch (result) {
-            .boolean => |b| {
-                if (!b) return throwInvalidState(allocator);
+        switch (result.tag()) {
+            .boolean => {
+                if (!result.asBoolean()) return throwInvalidState(allocator);
             },
             .nil => return throwInvalidState(allocator),
             else => {},
@@ -235,17 +238,17 @@ fn throwInvalidState(allocator: Allocator) !void {
     const entries = allocator.alloc(Value, 8) catch return error.OutOfMemory;
     const empty_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     empty_map.* = .{ .entries = &.{} };
-    entries[0] = .{ .keyword = .{ .ns = null, .name = "__ex_info" } };
-    entries[1] = .{ .boolean = true };
-    entries[2] = .{ .keyword = .{ .ns = null, .name = "message" } };
-    entries[3] = .{ .string = "Invalid reference state" };
-    entries[4] = .{ .keyword = .{ .ns = null, .name = "data" } };
-    entries[5] = .{ .map = empty_map };
-    entries[6] = .{ .keyword = .{ .ns = null, .name = "cause" } };
-    entries[7] = .nil;
+    entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+    entries[1] = Value.true_val;
+    entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
+    entries[3] = Value.initString("Invalid reference state");
+    entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+    entries[5] = Value.initMap(empty_map);
+    entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+    entries[7] = Value.nil_val;
     const map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     map.* = .{ .entries = entries };
-    bootstrap.last_thrown_exception = Value{ .map = map };
+    bootstrap.last_thrown_exception = Value.initMap(map);
     return error.UserException;
 }
 
@@ -262,9 +265,9 @@ fn notifyWatchers(allocator: Allocator, a: *Atom, atom_val: Value, old: Value, n
 /// (add-watch atom key fn)
 pub fn addWatchFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to add-watch", .{args.len});
-    const a = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "add-watch expects an atom, got {s}", .{@tagName(args[0])}),
+    const a = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "add-watch expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
     const max_watches = 16;
     if (a.watch_keys == null) {
@@ -289,9 +292,9 @@ pub fn addWatchFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (remove-watch atom key)
 pub fn removeWatchFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-watch", .{args.len});
-    const a = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-watch expects an atom, got {s}", .{@tagName(args[0])}),
+    const a = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-watch expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
     if (a.watch_keys == null or a.watch_count == 0) return args[0];
     for (0..a.watch_count) |i| {
@@ -312,26 +315,26 @@ pub fn removeWatchFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (set-validator! atom fn)
 pub fn setValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-validator!", .{args.len});
-    const a = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-validator! expects an atom, got {s}", .{@tagName(args[0])}),
+    const a = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-validator! expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
-    if (args[1] == .nil) {
+    if (args[1].tag() == .nil) {
         a.validator = null;
     } else {
         a.validator = args[1];
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (get-validator atom)
 pub fn getValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-validator", .{args.len});
-    const a = switch (args[0]) {
-        .atom => |a| a,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-validator expects an atom, got {s}", .{@tagName(args[0])}),
+    const a = switch (args[0].tag()) {
+        .atom => args[0].asAtom(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-validator expects an atom, got {s}", .{@tagName(args[0].tag())}),
     };
-    return a.validator orelse .nil;
+    return a.validator orelse Value.nil_val;
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -440,14 +443,14 @@ pub const builtins = [_]BuiltinDef{
 const testing = std.testing;
 
 test "atom - create and deref" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = try atomFn(testing.allocator, &args);
-    defer testing.allocator.destroy(result.atom);
-    try testing.expect(result == .atom);
+    defer testing.allocator.destroy(result.asAtom());
+    try testing.expect(result.tag() == .atom);
 
     const deref_args = [_]Value{result};
     const val = try derefFn(testing.allocator, &deref_args);
-    try testing.expectEqual(Value{ .integer = 42 }, val);
+    try testing.expectEqual(Value.initInteger(42), val);
 }
 
 test "atom - arity error" {
@@ -456,22 +459,22 @@ test "atom - arity error" {
 }
 
 test "deref - type error on non-atom" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = derefFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }
 
 test "reset! - sets new value" {
-    var a = Atom{ .value = .{ .integer = 1 } };
-    const args = [_]Value{ .{ .atom = &a }, .{ .integer = 99 } };
+    var a = Atom{ .value = Value.initInteger(1) };
+    const args = [_]Value{ Value.initAtom(&a), Value.initInteger(99) };
     const result = try resetBangFn(testing.allocator, &args);
-    try testing.expectEqual(Value{ .integer = 99 }, result);
-    try testing.expectEqual(Value{ .integer = 99 }, a.value);
+    try testing.expectEqual(Value.initInteger(99), result);
+    try testing.expectEqual(Value.initInteger(99), a.value);
 }
 
 test "reset! - arity error" {
-    var a = Atom{ .value = .nil };
-    const args = [_]Value{.{ .atom = &a }};
+    var a = Atom{ .value = Value.nil_val };
+    const args = [_]Value{Value.initAtom(&a)};
     const result = resetBangFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
@@ -485,41 +488,41 @@ test "swap! - with builtin_fn" {
     const Helpers = struct {
         fn incFn(_: Allocator, fn_args: []const Value) anyerror!Value {
             if (fn_args.len != 1) return error.ArityError;
-            return switch (fn_args[0]) {
-                .integer => |n| Value{ .integer = n + 1 },
+            return switch (fn_args[0].tag()) {
+                .integer => Value.initInteger(fn_args[0].asInteger() + 1),
                 else => error.TypeError,
             };
         }
     };
 
-    var a = Atom{ .value = .{ .integer = 10 } };
-    const args = [_]Value{ .{ .atom = &a }, .{ .builtin_fn = &Helpers.incFn } };
+    var a = Atom{ .value = Value.initInteger(10) };
+    const args = [_]Value{ Value.initAtom(&a), Value.initBuiltinFn(&Helpers.incFn) };
     const result = try swapBangFn(testing.allocator, &args);
-    try testing.expectEqual(Value{ .integer = 11 }, result);
-    try testing.expectEqual(Value{ .integer = 11 }, a.value);
+    try testing.expectEqual(Value.initInteger(11), result);
+    try testing.expectEqual(Value.initInteger(11), a.value);
 }
 
 test "swap! - with extra args" {
     const Helpers = struct {
         fn addFn(_: Allocator, fn_args: []const Value) anyerror!Value {
             if (fn_args.len != 2) return error.ArityError;
-            return Value{ .integer = fn_args[0].integer + fn_args[1].integer };
+            return Value.initInteger(fn_args[0].asInteger() + fn_args[1].asInteger());
         }
     };
 
-    var a = Atom{ .value = .{ .integer = 10 } };
-    const args = [_]Value{ .{ .atom = &a }, .{ .builtin_fn = &Helpers.addFn }, .{ .integer = 5 } };
+    var a = Atom{ .value = Value.initInteger(10) };
+    const args = [_]Value{ Value.initAtom(&a), Value.initBuiltinFn(&Helpers.addFn), Value.initInteger(5) };
     const result = try swapBangFn(testing.allocator, &args);
-    try testing.expectEqual(Value{ .integer = 15 }, result);
-    try testing.expectEqual(Value{ .integer = 15 }, a.value);
+    try testing.expectEqual(Value.initInteger(15), result);
+    try testing.expectEqual(Value.initInteger(15), a.value);
 }
 
 test "swap! - error on fn_val without env" {
     // When macro_eval_env is not set (test env), callFnVal returns EvalError
     const Fn = value_mod.Fn;
-    var a = Atom{ .value = .{ .integer = 1 } };
+    var a = Atom{ .value = Value.initInteger(1) };
     const fn_obj = Fn{ .proto = undefined, .closure_bindings = null };
-    const args = [_]Value{ .{ .atom = &a }, .{ .fn_val = &fn_obj } };
+    const args = [_]Value{ Value.initAtom(&a), Value.initFn(&fn_obj) };
     const result = swapBangFn(testing.allocator, &args);
     try testing.expectError(error.EvalError, result);
 }
@@ -527,21 +530,21 @@ test "swap! - error on fn_val without env" {
 // === reset-vals! / swap-vals! tests ===
 
 test "reset-vals! - returns [old new]" {
-    var a = Atom{ .value = .{ .integer = 1 } };
-    const args = [_]Value{ .{ .atom = &a }, .{ .integer = 99 } };
+    var a = Atom{ .value = Value.initInteger(1) };
+    const args = [_]Value{ Value.initAtom(&a), Value.initInteger(99) };
     const result = try resetValsFn(testing.allocator, &args);
-    try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
-    try testing.expectEqual(Value{ .integer = 1 }, result.vector.items[0]);
-    try testing.expectEqual(Value{ .integer = 99 }, result.vector.items[1]);
-    try testing.expectEqual(Value{ .integer = 99 }, a.value);
-    testing.allocator.free(result.vector.items);
-    testing.allocator.destroy(result.vector);
+    try testing.expect(result.tag() == .vector);
+    try testing.expectEqual(@as(usize, 2), result.asVector().items.len);
+    try testing.expectEqual(Value.initInteger(1), result.asVector().items[0]);
+    try testing.expectEqual(Value.initInteger(99), result.asVector().items[1]);
+    try testing.expectEqual(Value.initInteger(99), a.value);
+    testing.allocator.free(result.asVector().items);
+    testing.allocator.destroy(result.asVector());
 }
 
 test "reset-vals! - arity error" {
-    var a = Atom{ .value = .nil };
-    const args = [_]Value{.{ .atom = &a }};
+    var a = Atom{ .value = Value.nil_val };
+    const args = [_]Value{Value.initAtom(&a)};
     const result = resetValsFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
@@ -550,28 +553,28 @@ test "swap-vals! - with builtin_fn returns [old new]" {
     const Helpers = struct {
         fn incFn(_: Allocator, fn_args: []const Value) anyerror!Value {
             if (fn_args.len != 1) return error.ArityError;
-            return switch (fn_args[0]) {
-                .integer => |n| Value{ .integer = n + 1 },
+            return switch (fn_args[0].tag()) {
+                .integer => Value.initInteger(fn_args[0].asInteger() + 1),
                 else => error.TypeError,
             };
         }
     };
 
-    var a = Atom{ .value = .{ .integer = 10 } };
-    const args = [_]Value{ .{ .atom = &a }, .{ .builtin_fn = &Helpers.incFn } };
+    var a = Atom{ .value = Value.initInteger(10) };
+    const args = [_]Value{ Value.initAtom(&a), Value.initBuiltinFn(&Helpers.incFn) };
     const result = try swapValsFn(testing.allocator, &args);
-    try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 2), result.vector.items.len);
-    try testing.expectEqual(Value{ .integer = 10 }, result.vector.items[0]);
-    try testing.expectEqual(Value{ .integer = 11 }, result.vector.items[1]);
-    try testing.expectEqual(Value{ .integer = 11 }, a.value);
-    testing.allocator.free(result.vector.items);
-    testing.allocator.destroy(result.vector);
+    try testing.expect(result.tag() == .vector);
+    try testing.expectEqual(@as(usize, 2), result.asVector().items.len);
+    try testing.expectEqual(Value.initInteger(10), result.asVector().items[0]);
+    try testing.expectEqual(Value.initInteger(11), result.asVector().items[1]);
+    try testing.expectEqual(Value.initInteger(11), a.value);
+    testing.allocator.free(result.asVector().items);
+    testing.allocator.destroy(result.asVector());
 }
 
 test "swap-vals! - arity error" {
-    var a = Atom{ .value = .nil };
-    const args = [_]Value{.{ .atom = &a }};
+    var a = Atom{ .value = Value.nil_val };
+    const args = [_]Value{Value.initAtom(&a)};
     const result = swapValsFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
@@ -579,14 +582,14 @@ test "swap-vals! - arity error" {
 // === Volatile tests ===
 
 test "volatile! - create and deref" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = try volatileFn(testing.allocator, &args);
-    defer testing.allocator.destroy(result.volatile_ref);
-    try testing.expect(result == .volatile_ref);
+    defer testing.allocator.destroy(result.asVolatile());
+    try testing.expect(result.tag() == .volatile_ref);
 
     const deref_args = [_]Value{result};
     const val = try derefFn(testing.allocator, &deref_args);
-    try testing.expectEqual(Value{ .integer = 42 }, val);
+    try testing.expectEqual(Value.initInteger(42), val);
 }
 
 test "volatile! - arity error" {
@@ -595,35 +598,35 @@ test "volatile! - arity error" {
 }
 
 test "vreset! - sets new value" {
-    var v = Volatile{ .value = .{ .integer = 1 } };
-    const args = [_]Value{ .{ .volatile_ref = &v }, .{ .integer = 99 } };
+    var v = Volatile{ .value = Value.initInteger(1) };
+    const args = [_]Value{ Value.initVolatile(&v), Value.initInteger(99) };
     const result = try vresetBangFn(testing.allocator, &args);
-    try testing.expectEqual(Value{ .integer = 99 }, result);
-    try testing.expectEqual(Value{ .integer = 99 }, v.value);
+    try testing.expectEqual(Value.initInteger(99), result);
+    try testing.expectEqual(Value.initInteger(99), v.value);
 }
 
 test "vreset! - arity error" {
-    var v = Volatile{ .value = .nil };
-    const args = [_]Value{.{ .volatile_ref = &v }};
+    var v = Volatile{ .value = Value.nil_val };
+    const args = [_]Value{Value.initVolatile(&v)};
     const result = vresetBangFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
 
 test "vreset! - type error on non-volatile" {
-    const args = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const args = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const result = vresetBangFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }
 
 test "volatile? - returns true for volatile" {
-    var v = Volatile{ .value = .nil };
-    const args = [_]Value{.{ .volatile_ref = &v }};
+    var v = Volatile{ .value = Value.nil_val };
+    const args = [_]Value{Value.initVolatile(&v)};
     const result = try volatilePred(testing.allocator, &args);
-    try testing.expectEqual(Value{ .boolean = true }, result);
+    try testing.expectEqual(Value.true_val, result);
 }
 
 test "volatile? - returns false for non-volatile" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = try volatilePred(testing.allocator, &args);
-    try testing.expectEqual(Value{ .boolean = false }, result);
+    try testing.expectEqual(Value.false_val, result);
 }
