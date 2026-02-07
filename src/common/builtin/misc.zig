@@ -139,6 +139,18 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // Dynamic binding support
 // ============================================================
 
+/// (create-local-var) — Creates a fresh dynamic Var (for with-local-vars).
+pub fn createLocalVarFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "create-local-var takes no arguments, got {d}", .{args.len});
+    const v = allocator.create(var_mod.Var) catch return error.OutOfMemory;
+    v.* = .{
+        .sym = .{ .ns = null, .name = "__local" },
+        .ns_name = "__local",
+        .dynamic = true,
+    };
+    return Value.initVarRef(v);
+}
+
 /// (push-thread-bindings {var1 val1, var2 val2, ...})
 /// Takes a map of Var refs to values, pushes a new binding frame.
 pub fn pushThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -203,6 +215,18 @@ fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "var-raw-root expects a Var, got {s}", .{@tagName(args[0].tag())}),
     };
     return v.getRawRoot();
+}
+
+/// (__var-bind-root v val) — sets the root binding of a Var directly.
+/// Used by with-redefs-fn (JVM equivalent of .bindRoot).
+fn varBindRootFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __var-bind-root", .{args.len});
+    const v = switch (args[0].tag()) {
+        .var_ref => args[0].asVarRef(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "__var-bind-root expects a Var, got {s}", .{@tagName(args[0].tag())}),
+    };
+    v.bindRoot(args[1]);
+    return args[1];
 }
 
 // ============================================================
@@ -666,6 +690,13 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.0",
     },
     .{
+        .name = "create-local-var",
+        .func = createLocalVarFn,
+        .doc = "Creates a fresh dynamic Var. Used by with-local-vars.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
         .name = "push-thread-bindings",
         .func = pushThreadBindingsFn,
         .doc = "Pushes a new frame of bindings for dynamic vars. bindings-map is a map of Var/value pairs.",
@@ -691,6 +722,13 @@ pub const builtins = [_]BuiltinDef{
         .func = varRawRootFn,
         .doc = "Returns the root value of a Var, bypassing thread-local bindings.",
         .arglists = "([v])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__var-bind-root",
+        .func = varBindRootFn,
+        .doc = "Sets the root binding of a Var directly. Internal use by with-redefs.",
+        .arglists = "([v val])",
         .added = "1.0",
     },
     .{

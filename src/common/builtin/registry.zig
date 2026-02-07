@@ -205,8 +205,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 281 + 3 (__zig-get-in, __zig-assoc-in, __zig-update-in) + 1 (Throwable->map)
-    try std.testing.expectEqual(285, builtin_count);
+    // 281 + 3 (__zig-get-in, __zig-assoc-in, __zig-update-in) + 1 (Throwable->map) + 1 (create-local-var) + 1 (__var-bind-root)
+    try std.testing.expectEqual(287, builtin_count);
 }
 
 test "comptime lookup finds +" {

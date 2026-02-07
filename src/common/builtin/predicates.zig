@@ -301,11 +301,12 @@ pub fn varGetFn(_: Allocator, args: []const Value) anyerror!Value {
     return args[0].asVarRef().deref();
 }
 
-/// (var-set v val) — sets the root binding of the Var. Returns val.
+/// (var-set v val) — sets the thread-local binding of the Var. Returns val.
+/// Requires an active thread binding (via push-thread-bindings / binding).
 pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-set", .{args.len});
     if (args[0].tag() != .var_ref) return err.setErrorFmt(.eval, .type_error, .{}, "var-set expects a Var, got {s}", .{@tagName(args[0].tag())});
-    args[0].asVarRef().bindRoot(args[1]);
+    try var_mod.setThreadBinding(args[0].asVarRef(), args[1]);
     return args[1];
 }
 

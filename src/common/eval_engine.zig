@@ -2487,3 +2487,29 @@ test "E2E letfn: multi-arity" {
     const vm = bootstrap.evalStringVM(alloc, &env, src) catch unreachable;
     try std.testing.expectEqual(Value.initInteger(6), vm);
 }
+
+test "E2E with-local-vars: var-get and var-set" {
+    const registry = @import("builtin/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+
+    const src =
+        \\(with-local-vars [x 10 y 20]
+        \\  (var-set x 100)
+        \\  (+ (var-get x) (var-get y)))
+    ;
+
+    // TreeWalk
+    const tw = bootstrap.evalString(alloc, &env, src) catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(120), tw);
+
+    // VM
+    const vm = bootstrap.evalStringVM(alloc, &env, src) catch unreachable;
+    try std.testing.expectEqual(Value.initInteger(120), vm);
+}

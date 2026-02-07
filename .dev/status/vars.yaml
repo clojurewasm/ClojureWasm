@@ -704,7 +704,7 @@ vars:
     "with-bindings*": {type: function, status: done}
     "with-in-str": {type: macro, status: skip, note: needs string reader + *in* input}
     "with-loading-context": {type: macro, status: skip, note: JVM classloader}
-    "with-local-vars": {type: macro, status: skip, note: needs Var.create()}
+    "with-local-vars": {type: macro, status: done, note: needs Var.create(), notes: 'UPSTREAM-DIFF: create-local-var builtin instead of Var.create'}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: done, note: "UPSTREAM-DIFF: (close x) instead of (.close x)"}
     "with-out-str": {type: macro, status: done}

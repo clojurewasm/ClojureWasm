@@ -2010,12 +2010,33 @@
   [binding-map & body]
   `(with-bindings* ~binding-map (fn [] ~@body)))
 
+;; CLJW: Var.create/setDynamic -> create-local-var builtin
+(defmacro with-local-vars
+  "varbinding=> symbol init-expr
+
+  Executes the exprs in a context in which the symbols are bound to
+  vars with per-thread bindings to the init-exprs. The symbols refer
+  to the var objects themselves, and must be accessed with var-get and
+  var-set."
+  {:added "1.0"}
+  [name-vals-vec & body]
+  (assert-args
+   (vector? name-vals-vec) "a vector for its binding"
+   (even? (count name-vals-vec)) "an even number of forms in binding vector")
+  `(let [~@(interleave (take-nth 2 name-vals-vec)
+                       (repeat '(create-local-var)))]
+     (push-thread-bindings (hash-map ~@name-vals-vec))
+     (try
+       ~@body
+       (finally (pop-thread-bindings)))))
+
+;; CLJW: .bindRoot -> __var-bind-root builtin (no Java interop)
 (defn with-redefs-fn
   "Temporarily redefines vars during the execution of func."
   [binding-map func]
   (let [root-bind (fn [m]
                     (doseq [[a-var a-val] m]
-                      (var-set a-var a-val)))
+                      (__var-bind-root a-var a-val)))
         old-vals (zipmap (keys binding-map)
                          (map var-raw-root (keys binding-map)))]
     (try
