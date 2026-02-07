@@ -318,11 +318,6 @@ pub fn constantNode(val: Value) Node {
     return .{ .constant = .{ .value = val } };
 }
 
-/// Create a constant node with source location.
-pub fn constantNodeWithSource(val: Value, src: SourceInfo) Node {
-    return .{ .constant = .{ .value = val, .source = src } };
-}
-
 /// nil constant node.
 pub fn nilNode() Node {
     return .{ .constant = .{ .value = .nil } };

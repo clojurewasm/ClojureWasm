@@ -10,7 +10,6 @@ const Allocator = std.mem.Allocator;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
-const collections = @import("collections.zig");
 const err = @import("../error.zig");
 
 /// Arithmetic and comparison intrinsics registered in clojure.core.

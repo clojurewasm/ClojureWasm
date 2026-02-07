@@ -21,18 +21,9 @@ const err = @import("../error.zig");
 var load_paths: []const []const u8 = &default_load_paths;
 const default_load_paths = [_][]const u8{"."};
 
-/// Configure load paths (called from CLI --classpath).
-pub fn setLoadPaths(paths: []const []const u8) void {
-    load_paths = paths;
-}
-
 /// Loaded libs tracking (simple set, replaces *loaded-libs* Ref).
 var loaded_libs: std.StringHashMapUnmanaged(void) = .empty;
 var loaded_libs_allocator: ?Allocator = null;
-
-pub fn initLoadTracking(allocator: Allocator) void {
-    loaded_libs_allocator = allocator;
-}
 
 pub fn isLibLoaded(name: []const u8) bool {
     return loaded_libs.contains(name);
