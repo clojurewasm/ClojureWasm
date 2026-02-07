@@ -245,6 +245,120 @@ pub fn exCauseFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Throwable->map
+// ============================================================
+
+/// (Throwable->map ex)
+/// Constructs a data representation for an exception with keys:
+///   :cause - root cause message
+///   :via - cause chain (single entry for ClojureWasm)
+///   :trace - call stack elements as [ns/fn file line] vectors
+///   :data - ex-data if present
+pub fn throwableToMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Throwable->map", .{args.len});
+
+    const collections = @import("../collections.zig");
+    const ex = args[0];
+
+    // Extract message, data from exception
+    var cause_msg: ?[]const u8 = null;
+    var ex_data_val: Value = Value.nil_val;
+    var ex_type: []const u8 = "Exception";
+
+    if (ex.tag() == .map) {
+        const m = ex.asMap();
+        // Check for ex-info map
+        const msg_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+        if (m.get(msg_kw)) |msg_val| {
+            if (msg_val.tag() == .string) cause_msg = msg_val.asString();
+        }
+        const data_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+        if (m.get(data_kw)) |dv| ex_data_val = dv;
+        // __ex_type (set by runtime exceptions) takes priority
+        const et_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_type" });
+        if (m.get(et_kw)) |et_val| {
+            if (et_val.tag() == .string) ex_type = et_val.asString();
+        } else {
+            // No __ex_type: check for __ex_info (user-thrown ex-info)
+            const ei_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
+            if (m.get(ei_kw) != null) ex_type = "ExceptionInfo";
+        }
+    } else if (ex.tag() == .string) {
+        cause_msg = ex.asString();
+    }
+
+    // If no message from exception, try last error
+    if (cause_msg == null) {
+        if (err.getLastError()) |info| {
+            cause_msg = info.message;
+        }
+    }
+
+    // Build :trace vector from saved call stack (snapshot taken at catch time)
+    const saved = err.getSavedCallStack();
+    const live = err.getCallStack();
+    const stack = if (saved.len > 0) saved else live;
+    const trace_items = allocator.alloc(Value, stack.len) catch return error.OutOfMemory;
+    // Reverse: innermost frame first
+    for (0..stack.len) |i| {
+        const f = stack[stack.len - 1 - i];
+        const ns_name = f.ns orelse "?";
+        const fn_name = f.fn_name orelse "anonymous";
+        // Build qualified name: ns/fn
+        const qual_name = std.fmt.allocPrint(allocator, "{s}/{s}", .{ ns_name, fn_name }) catch return error.OutOfMemory;
+        const file_str = f.file orelse "<unknown>";
+
+        // [ns/fn file line]
+        const vec_items = allocator.alloc(Value, 3) catch return error.OutOfMemory;
+        vec_items[0] = Value.initSymbol(allocator, .{ .ns = null, .name = qual_name });
+        vec_items[1] = Value.initString(allocator, file_str);
+        vec_items[2] = Value.initInteger(@intCast(f.line));
+
+        const vec = allocator.create(collections.PersistentVector) catch return error.OutOfMemory;
+        vec.* = .{ .items = vec_items };
+        trace_items[i] = Value.initVector(vec);
+    }
+    const trace_vec = allocator.create(collections.PersistentVector) catch return error.OutOfMemory;
+    trace_vec.* = .{ .items = trace_items };
+
+    // Build :via entry
+    const via_entries = allocator.alloc(Value, if (ex_data_val.isNil()) 4 else 6) catch return error.OutOfMemory;
+    via_entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "type" });
+    via_entries[1] = Value.initSymbol(allocator, .{ .ns = null, .name = ex_type });
+    via_entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    via_entries[3] = if (cause_msg) |m| Value.initString(allocator, m) else Value.nil_val;
+    if (!ex_data_val.isNil()) {
+        via_entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+        via_entries[5] = ex_data_val;
+    }
+    const via_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+    via_map.* = .{ .entries = via_entries };
+    const via_vec_items = allocator.alloc(Value, 1) catch return error.OutOfMemory;
+    via_vec_items[0] = Value.initMap(via_map);
+    const via_vec = allocator.create(collections.PersistentVector) catch return error.OutOfMemory;
+    via_vec.* = .{ .items = via_vec_items };
+
+    // Build result map: {:cause msg :via [...] :trace [...] :data data}
+    var entry_count: usize = 6; // :cause, :via, :trace (3 pairs = 6)
+    if (!ex_data_val.isNil()) entry_count += 2; // :data
+    const result_entries = allocator.alloc(Value, entry_count) catch return error.OutOfMemory;
+    result_entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
+    result_entries[1] = if (cause_msg) |m| Value.initString(allocator, m) else Value.nil_val;
+    result_entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "via" });
+    result_entries[3] = Value.initVector(via_vec);
+    result_entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "trace" });
+    result_entries[5] = Value.initVector(trace_vec);
+    if (!ex_data_val.isNil()) {
+        result_entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+        result_entries[7] = ex_data_val;
+    }
+    const result_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+    result_map.* = .{ .entries = result_entries };
+
+    return Value.initMap(result_map);
+}
+
+// ============================================================
 // find-var
 // ============================================================
 
@@ -592,6 +706,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Returns the cause of an exception.",
         .arglists = "([ex])",
         .added = "1.0",
+    },
+    .{
+        .name = "Throwable->map",
+        .func = throwableToMapFn,
+        .doc = "Constructs a data representation for an exception with keys: :cause, :via, :trace, :data.",
+        .arglists = "([ex])",
+        .added = "1.7",
     },
     .{
         .name = "find-var",

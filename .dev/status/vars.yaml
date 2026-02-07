@@ -99,7 +99,7 @@ vars:
     "NaN?": {type: function, status: done, note: "core.clj (upstream uses Double/isNaN)"}
     "PrintWriter-on": {type: function, status: skip, note: JVM interop}
     "StackTraceElement->vec": {type: function, status: skip, note: "JVM interop"}
-    "Throwable->map": {type: function, status: skip, note: "JVM interop"}
+    "Throwable->map": {type: function, status: done, note: "builtin (Zig equivalent)"}
     abs: {type: function, status: done, note: "Zig builtin"}
     accessor: {type: function, status: skip, note: deprecated struct system}
     aclone: {type: function, status: skip, note: JVM interop}

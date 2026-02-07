@@ -265,6 +265,23 @@ pub fn getCallStack() []const StackFrame {
     return call_stack[0..stack_depth];
 }
 
+/// Save the current call stack snapshot (for catch handlers).
+/// The saved trace persists across clearCallStack() so Throwable->map can read it.
+threadlocal var saved_stack: [MAX_CALL_STACK]StackFrame = @splat(StackFrame{});
+threadlocal var saved_depth: u8 = 0;
+
+pub fn saveCallStack() void {
+    saved_depth = stack_depth;
+    if (stack_depth > 0) {
+        @memcpy(saved_stack[0..stack_depth], call_stack[0..stack_depth]);
+    }
+}
+
+/// Get the saved call stack snapshot.
+pub fn getSavedCallStack() []const StackFrame {
+    return saved_stack[0..saved_depth];
+}
+
 /// Clear the call stack (e.g., after error handling).
 pub fn clearCallStack() void {
     stack_depth = 0;

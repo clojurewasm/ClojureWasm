@@ -234,8 +234,8 @@ fn validate(allocator: Allocator, a: *Atom, new_val: Value) !void {
 
 /// Throw "Invalid reference state" as a catchable UserException (ex-info format).
 fn throwInvalidState(allocator: Allocator) !void {
-    // Build {:__ex_info true :message "Invalid reference state" :data {} :cause nil}
-    const entries = allocator.alloc(Value, 8) catch return error.OutOfMemory;
+    // Build {:__ex_info true :message "Invalid reference state" :data {} :cause nil :__ex_type ...}
+    const entries = allocator.alloc(Value, 10) catch return error.OutOfMemory;
     const empty_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     empty_map.* = .{ .entries = &.{} };
     entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
@@ -246,6 +246,8 @@ fn throwInvalidState(allocator: Allocator) !void {
     entries[5] = Value.initMap(empty_map);
     entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
     entries[7] = Value.nil_val;
+    entries[8] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_type" });
+    entries[9] = Value.initString(allocator, "IllegalStateException");
     const map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     map.* = .{ .entries = entries };
     bootstrap.last_thrown_exception = Value.initMap(map);

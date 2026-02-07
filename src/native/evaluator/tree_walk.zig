@@ -1112,6 +1112,7 @@ pub const TreeWalk = struct {
                     else
                         self.createRuntimeException(e);
                     self.exception = null;
+                    err_mod.saveCallStack();
                     err_mod.clearCallStack();
 
                     const saved = self.local_count;
@@ -1160,7 +1161,27 @@ pub const TreeWalk = struct {
     /// Create an ex-info style exception Value from a Zig error.
     fn createRuntimeException(self: *TreeWalk, e: TreeWalkError) Value {
         // Prefer threadlocal error message (set by builtins via err.setErrorFmt)
-        const msg: []const u8 = if (err_mod.getLastError()) |info| info.message else switch (e) {
+        var ex_type: []const u8 = switch (e) {
+            error.TypeError => "ClassCastException",
+            error.ArityError => "ArityException",
+            error.ArithmeticError => "ArithmeticException",
+            error.IndexError => "IndexOutOfBoundsException",
+            error.ValueError => "IllegalArgumentException",
+            error.UndefinedVar => "RuntimeException",
+            else => "RuntimeException",
+        };
+        const msg: []const u8 = if (err_mod.getLastError()) |info| blk: {
+            ex_type = switch (info.kind) {
+                .type_error => "ClassCastException",
+                .arity_error => "ArityException",
+                .arithmetic_error => "ArithmeticException",
+                .index_error => "IndexOutOfBoundsException",
+                .value_error => "IllegalArgumentException",
+                .io_error => "IOException",
+                else => ex_type,
+            };
+            break :blk info.message;
+        } else switch (e) {
             error.TypeError => "Type error",
             error.ArityError => "Wrong number of arguments",
             error.ArithmeticError => "Arithmetic error",
@@ -1170,8 +1191,8 @@ pub const TreeWalk = struct {
             else => "Runtime error",
         };
 
-        // Build {:__ex_info true :message msg :data {} :cause nil}
-        const entries = self.allocator.alloc(Value, 8) catch return Value.nil_val;
+        // Build {:__ex_info true :message msg :data {} :cause nil :__ex_type type}
+        const entries = self.allocator.alloc(Value, 10) catch return Value.nil_val;
         const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
         empty_map.* = .{ .entries = &.{} };
         entries[0] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__ex_info" });
@@ -1182,6 +1203,8 @@ pub const TreeWalk = struct {
         entries[5] = Value.initMap(empty_map);
         entries[6] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "cause" });
         entries[7] = Value.nil_val;
+        entries[8] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__ex_type" });
+        entries[9] = Value.initString(self.allocator, ex_type);
 
         const map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
         map.* = .{ .entries = entries };

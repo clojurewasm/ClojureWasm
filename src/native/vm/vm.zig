@@ -720,6 +720,7 @@ pub const VM = struct {
                     try self.push(thrown);
                     // Jump to catch handler
                     self.frames[handler.frame_idx].ip = handler.catch_ip;
+                    err_mod.saveCallStack();
                     err_mod.clearCallStack();
                 } else {
                     // No handler — save value for cross-backend propagation
@@ -776,7 +777,27 @@ pub const VM = struct {
     /// Create an ex-info style exception Value from a Zig error.
     fn createRuntimeException(self: *VM, e: VMError) VMError!Value {
         // Prefer threadlocal error message (set by builtins via err.setErrorFmt)
-        const msg: []const u8 = if (err_mod.getLastError()) |info| info.message else switch (e) {
+        var ex_type: []const u8 = switch (e) {
+            error.TypeError => "ClassCastException",
+            error.ArityError => "ArityException",
+            error.Overflow, error.ArithmeticError => "ArithmeticException",
+            error.IndexError => "IndexOutOfBoundsException",
+            error.ValueError => "IllegalArgumentException",
+            error.UserException => "Exception",
+            else => "RuntimeException",
+        };
+        const msg: []const u8 = if (err_mod.getLastError()) |info| blk: {
+            ex_type = switch (info.kind) {
+                .type_error => "ClassCastException",
+                .arity_error => "ArityException",
+                .arithmetic_error => "ArithmeticException",
+                .index_error => "IndexOutOfBoundsException",
+                .value_error => "IllegalArgumentException",
+                .io_error => "IOException",
+                else => ex_type,
+            };
+            break :blk info.message;
+        } else switch (e) {
             error.TypeError => "Type error",
             error.ArityError => "Wrong number of arguments",
             error.Overflow => "Arithmetic overflow",
@@ -788,8 +809,8 @@ pub const VM = struct {
             else => "Runtime error",
         };
 
-        // Build {:__ex_info true :message msg :data {} :cause nil}
-        const entries = self.allocator.alloc(Value, 8) catch return error.OutOfMemory;
+        // Build {:__ex_info true :message msg :data {} :cause nil :__ex_type type}
+        const entries = self.allocator.alloc(Value, 10) catch return error.OutOfMemory;
         if (self.gc == null) self.allocated_slices.append(self.allocator, entries) catch return error.OutOfMemory;
 
         const empty_map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
@@ -804,6 +825,8 @@ pub const VM = struct {
         entries[5] = Value.initMap(empty_map);
         entries[6] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "cause" });
         entries[7] = Value.nil_val;
+        entries[8] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__ex_type" });
+        entries[9] = Value.initString(self.allocator, ex_type);
 
         const map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
         map.* = .{ .entries = entries };
@@ -828,6 +851,8 @@ pub const VM = struct {
             break :blk try self.createRuntimeException(err);
         } else try self.createRuntimeException(err);
 
+        err_mod.saveCallStack();
+        err_mod.clearCallStack();
         try self.push(ex);
         self.frames[handler.frame_idx].ip = handler.catch_ip;
     }
