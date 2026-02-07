@@ -26,25 +26,31 @@ Phase order: 27 (NaN boxing) -> 28 (single binary) -> 29 (restructure)
 ## Task Queue
 
 Phase 27 — NaN Boxing (detailed plan: phase27-nan-boxing.md):
-1. 27.1: API layer — add tag()/init*/as* methods to Value ← CURRENT
-2. 27.2: Migrate call sites file-by-file to new API (~44 files, 15-20 commits)
-3. 27.3: Switch internal representation to NaN-boxed u64
+1. ~~27.1: API layer~~ DONE
+2. ~~27.2: Migrate call sites~~ DONE (27.2a-27.2i, 9 commits, all ~44 files)
+3. 27.3: Switch internal representation to NaN-boxed u64 ← CURRENT
 4. 27.4: Benchmark and verify performance gains
 
 ## Current Task
 
-27.2: Migrate call sites file-by-file to Value accessor API. Start with Group 1
-(leaf builtins): atom, regex_builtins, system, file_io, transient, chunk,
-keyword_intern, bencode, wasm/types, wasm/builtins.
-Pattern: `.{ .integer = N }` → `Value.initInteger(N)`,
-`switch (v) { .tag => |payload| }` → `switch (v.tag()) { .tag => { payload = v.asTag(); } }`.
+27.3: Switch Value internal representation from union(enum) to NaN-boxed u64.
+Only value.zig internals change — all external code already uses accessor API.
+Sub-steps per plan:
+1. Create HeapString wrapper for []const u8 slices
+2. Heap-allocate Symbol and Keyword (init* signatures need allocator)
+3. Rewrite Value as opaque u64 wrapper with NaN boxing bit manipulation
+4. Implement all tag()/init*/as* with bit ops
+5. Handle i64→i48 narrowing (overflow → float promotion)
+6. Update GC to trace NaN-boxed heap pointers
+7. Update value.zig internal methods (formatPrStr, eql, hash, etc.)
 
 ## Previous Task
 
-27.1 DONE: Added Value accessor API layer to value.zig. Explicit Tag enum,
-34 constructors (init*), 34 extractors (as*), tag() query, constants
-(nil_val, true_val, false_val). All methods are trivial one-liners on
-current union(enum). 13 new tests. Plan doc: phase27-nan-boxing.md.
+27.2 DONE (27.2a-27.2i): Migrated all ~44 source files to Value accessor API.
+Groups: leaf builtins → core builtins → infrastructure → execution core.
+Patterns: Value{.tag=x}→init*, switch(v){.tag=>|p|}→switch(v.tag()){.tag=>v.as*()},
+direct field access→as*(), @tagName(v)→@tagName(v.tag()).
+Only value.zig retains old-style union access (internal implementation).
 
 ## Handover Notes
 
