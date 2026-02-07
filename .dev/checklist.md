@@ -41,4 +41,4 @@ Check at session start for items that become actionable.
 | F108 | Skip var recovery pass                     | Phase 30 — re-evaluate 178 skipped vars for Zig equivalents            |
 | F109 | Zero-config project model                  | Phase 30 — auto-detect src/, require resolution, optional cljw.edn     |
 | F110 | Directory restructure (core/eval/cli)      | Phase 29 — common/native/ -> core/eval/cli/                            |
-| F111 | GC trace NaN-boxed heap pointers           | 9 HeapString/Symbol/Keyword leaks at exit — gc.zig needs NanHeapTag awareness |
+| ~~F111~~ | ~~GC trace NaN-boxed heap pointers~~   | RESOLVED — bootstrap Symbols tracked in Env.owned_symbols, freed at deinit    |

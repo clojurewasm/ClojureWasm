@@ -352,7 +352,10 @@ pub fn syncNsVar(env: *Env) void {
     const ns_name = if (env.current_ns) |ns| ns.name else "user";
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
-            ns_var.bindRoot(Value.initSymbol(env.allocator, .{ .ns = null, .name = ns_name }));
+            const old_val = ns_var.getRawRoot();
+            const new_val = Value.initSymbol(env.allocator, .{ .ns = null, .name = ns_name });
+            ns_var.bindRoot(new_val);
+            env.replaceOwnedSymbol(old_val, new_val);
         }
     }
 }

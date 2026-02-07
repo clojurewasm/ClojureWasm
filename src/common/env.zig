@@ -7,7 +7,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ns_mod = @import("namespace.zig");
 const Namespace = ns_mod.Namespace;
-const Value = @import("value.zig").Value;
+const value_mod = @import("value.zig");
+const Value = value_mod.Value;
+const Symbol = value_mod.Symbol;
 
 /// Hash context for string-keyed namespace map.
 const StrContext = struct {
@@ -41,6 +43,11 @@ pub const Env = struct {
     /// closures reference during evaluation (D70).
     node_arena: std.heap.ArenaAllocator,
 
+    /// GPA-allocated heap Symbols from bootstrap (registry + syncNsVar).
+    /// Freed in deinit to avoid GPA leak reports.
+    owned_symbols: [16]*const Symbol = undefined,
+    owned_symbol_count: usize = 0,
+
     pub fn init(allocator: Allocator) Env {
         return .{ .allocator = allocator, .node_arena = std.heap.ArenaAllocator.init(allocator) };
     }
@@ -54,6 +61,36 @@ pub const Env = struct {
         }
         self.namespaces.deinit(self.allocator);
         self.node_arena.deinit();
+        // Free bootstrap Symbols allocated via GPA
+        for (self.owned_symbols[0..self.owned_symbol_count]) |sym| {
+            self.allocator.destroy(sym);
+        }
+    }
+
+    /// Track a GPA-allocated Symbol for cleanup at deinit.
+    pub fn trackOwnedSymbol(self: *Env, val: Value) void {
+        if (val.tag() != .symbol) return;
+        if (self.owned_symbol_count >= 16) return;
+        self.owned_symbols[self.owned_symbol_count] = val.asSymbolHeap();
+        self.owned_symbol_count += 1;
+    }
+
+    /// Replace a tracked Symbol (for syncNsVar which rebinds *ns*).
+    /// Frees the old Symbol and tracks the new one.
+    pub fn replaceOwnedSymbol(self: *Env, old_val: Value, new_val: Value) void {
+        if (old_val.tag() == .symbol) {
+            const old_ptr = old_val.asSymbolHeap();
+            // Remove old from tracking
+            for (self.owned_symbols[0..self.owned_symbol_count], 0..) |sym, i| {
+                if (sym == old_ptr) {
+                    self.allocator.destroy(old_ptr);
+                    self.owned_symbols[i] = self.owned_symbols[self.owned_symbol_count - 1];
+                    self.owned_symbol_count -= 1;
+                    break;
+                }
+            }
+        }
+        self.trackOwnedSymbol(new_val);
     }
 
     /// Allocator for reader/analyzer output (AST Nodes, Forms).

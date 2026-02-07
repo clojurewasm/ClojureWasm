@@ -56,10 +56,7 @@ Non-TTY stdin falls back to simple reader for piped input.
 
 ## Known Issues from Phase 27
 
-- 9 HeapString/Symbol/Keyword leaks at program exit (bootstrap allocations not freed)
-  Root cause: GC does not yet trace NaN-boxed heap pointers.
-  Impact: cosmetic (GPA leak warnings at exit). Correctness unaffected.
-  Fix: Update gc.zig to trace Value's NanHeapTag pointers. Add as F-item.
+- ~~F111 RESOLVED: Bootstrap Symbol leaks fixed via Env.owned_symbols tracking.~~
 
 ## Handover Notes
 
