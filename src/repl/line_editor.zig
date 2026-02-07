@@ -5,11 +5,24 @@
 // paren matching flash.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Env = @import("../common/env.zig").Env;
 const Namespace = @import("../common/namespace.zig").Namespace;
 const VarMap = @import("../common/namespace.zig").VarMap;
 const posix = std.posix;
+
+// termios cc[] indices — platform-dependent
+const VMIN: usize = switch (builtin.os.tag) {
+    .linux => 6,
+    .macos, .ios, .tvos, .watchos, .visionos => 16,
+    else => 16,
+};
+const VTIME: usize = switch (builtin.os.tag) {
+    .linux => 5,
+    .macos, .ios, .tvos, .watchos, .visionos => 17,
+    else => 17,
+};
 
 // =====================================================================
 // Key types
@@ -294,8 +307,8 @@ pub const LineEditor = struct {
         raw.lflag.IEXTEN = false;
         raw.lflag.ISIG = false;
         // Control chars: read returns after 1 byte, no timeout
-        raw.cc[16] = 1; // VMIN = 16 on macOS
-        raw.cc[17] = 0; // VTIME = 17 on macOS
+        raw.cc[VMIN] = 1; // read returns after 1 byte
+        raw.cc[VTIME] = 0; // no timeout
         posix.tcsetattr(self.tty.handle, .FLUSH, raw) catch return;
         self.raw_mode = true;
     }
@@ -322,14 +335,14 @@ pub const LineEditor = struct {
     fn readByteTimeout(self: *LineEditor) ?u8 {
         // Save current cc values and set timeout mode
         var raw = posix.tcgetattr(self.tty.handle) catch return null;
-        const saved_vmin = raw.cc[16];
-        const saved_vtime = raw.cc[17];
-        raw.cc[16] = 0; // VMIN: return immediately if no data
-        raw.cc[17] = 1; // VTIME: 100ms timeout
+        const saved_vmin = raw.cc[VMIN];
+        const saved_vtime = raw.cc[VTIME];
+        raw.cc[VMIN] = 0; // VMIN: return immediately if no data
+        raw.cc[VTIME] = 1; // VTIME: 100ms timeout
         posix.tcsetattr(self.tty.handle, .NOW, raw) catch return null;
         defer {
-            raw.cc[16] = saved_vmin;
-            raw.cc[17] = saved_vtime;
+            raw.cc[VMIN] = saved_vmin;
+            raw.cc[VTIME] = saved_vtime;
             posix.tcsetattr(self.tty.handle, .NOW, raw) catch {};
         }
         var byte: [1]u8 = undefined;
