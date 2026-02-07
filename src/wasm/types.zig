@@ -220,7 +220,7 @@ pub const WasmFn = struct {
             wasm_results[0..self.result_types.len],
         );
 
-        if (self.result_types.len == 0) return Value.nil;
+        if (self.result_types.len == 0) return Value.nil_val;
         return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
     }
 
@@ -236,8 +236,8 @@ pub const WasmFn = struct {
             switch (wit_params[i].type_) {
                 .string => {
                     // Marshal string: allocate in Wasm memory, write UTF-8, pass (ptr, len)
-                    const str = switch (arg) {
-                        .string => |s| s,
+                    const str = switch (arg.tag()) {
+                        .string => arg.asString(),
                         else => return error.TypeError,
                     };
                     const ptr = try self.cabiRealloc(@intCast(str.len));
@@ -265,7 +265,7 @@ pub const WasmFn = struct {
 
         // Unmarshal result
         const wit_result = self.wit_result orelse {
-            if (self.result_types.len == 0) return Value.nil;
+            if (self.result_types.len == 0) return Value.nil_val;
             return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
         };
 
@@ -278,10 +278,10 @@ pub const WasmFn = struct {
                 const len: u32 = @truncate(wasm_results[0]);
                 const ptr: u32 = @truncate(wasm_results[1]);
                 const bytes = try self.module.memoryRead(allocator, ptr, len);
-                return Value{ .string = bytes };
+                return Value.initString(bytes);
             },
             else => {
-                if (self.result_types.len == 0) return Value.nil;
+                if (self.result_types.len == 0) return Value.nil_val;
                 return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
             },
         }
@@ -302,26 +302,26 @@ const Value = @import("../common/value.zig").Value;
 /// Convert a Clojure Value to a Wasm u64 based on the expected type.
 fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
     return switch (wasm_type) {
-        .i32 => switch (val) {
-            .integer => |n| @bitCast(@as(i64, @intCast(@as(i32, @intCast(n))))),
-            .boolean => |b| if (b) @as(u64, 1) else 0,
+        .i32 => switch (val.tag()) {
+            .integer => @bitCast(@as(i64, @intCast(@as(i32, @intCast(val.asInteger()))))),
+            .boolean => if (val.asBoolean()) @as(u64, 1) else 0,
             .nil => 0,
             else => return error.TypeError,
         },
-        .i64 => switch (val) {
-            .integer => |n| @bitCast(n),
-            .boolean => |b| if (b) @as(u64, 1) else 0,
+        .i64 => switch (val.tag()) {
+            .integer => @bitCast(val.asInteger()),
+            .boolean => if (val.asBoolean()) @as(u64, 1) else 0,
             .nil => 0,
             else => return error.TypeError,
         },
-        .f32 => switch (val) {
-            .float => |f| @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(f))))),
-            .integer => |n| @as(u64, @as(u32, @bitCast(@as(f32, @floatFromInt(n))))),
+        .f32 => switch (val.tag()) {
+            .float => @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(val.asFloat()))))),
+            .integer => @as(u64, @as(u32, @bitCast(@as(f32, @floatFromInt(val.asInteger()))))),
             else => return error.TypeError,
         },
-        .f64 => switch (val) {
-            .float => |f| @bitCast(f),
-            .integer => |n| @bitCast(@as(f64, @floatFromInt(n))),
+        .f64 => switch (val.tag()) {
+            .float => @bitCast(val.asFloat()),
+            .integer => @bitCast(@as(f64, @floatFromInt(val.asInteger()))),
             else => return error.TypeError,
         },
     };
@@ -442,7 +442,7 @@ fn hostTrampoline(vm: *zware.VirtualMachine, context_id: usize) zware.WasmError!
         i -= 1;
         const raw = vm.popAnyOperand();
         // Default to i32 conversion for host function args
-        args_buf[i] = .{ .integer = @as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))) };
+        args_buf[i] = Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))));
     }
 
     // Call the Clojure function
@@ -452,11 +452,11 @@ fn hostTrampoline(vm: *zware.VirtualMachine, context_id: usize) zware.WasmError!
 
     // Push result to zware stack
     if (ctx.result_count > 0) {
-        const raw: u64 = switch (result) {
-            .integer => |n| @bitCast(@as(i64, @intCast(@as(i32, @intCast(n))))),
-            .float => |f| @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(f))))),
+        const raw: u64 = switch (result.tag()) {
+            .integer => @bitCast(@as(i64, @intCast(@as(i32, @intCast(result.asInteger()))))),
+            .float => @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(result.asFloat()))))),
             .nil => 0,
-            .boolean => |b| if (b) @as(u64, 1) else 0,
+            .boolean => if (result.asBoolean()) @as(u64, 1) else 0,
             else => 0,
         };
         vm.pushOperand(u64, raw) catch return zware.WasmError.Trap;
@@ -592,17 +592,17 @@ fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
 
 /// Lookup a Clojure function from the nested imports map.
 fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
-    const mod_key = Value{ .string = module_name };
-    const sub_map_val = switch (imports_map) {
-        .map => |m| m.get(mod_key),
-        .hash_map => |hm| hm.get(mod_key),
+    const mod_key = Value.initString(module_name);
+    const sub_map_val = switch (imports_map.tag()) {
+        .map => imports_map.asMap().get(mod_key),
+        .hash_map => imports_map.asHashMap().get(mod_key),
         else => null,
     } orelse return null;
 
-    const fn_key = Value{ .string = func_name };
-    return switch (sub_map_val) {
-        .map => |m| m.get(fn_key),
-        .hash_map => |hm| hm.get(fn_key),
+    const fn_key = Value.initString(func_name);
+    return switch (sub_map_val.tag()) {
+        .map => sub_map_val.asMap().get(fn_key),
+        .hash_map => sub_map_val.asHashMap().get(fn_key),
         else => null,
     };
 }
@@ -610,10 +610,10 @@ fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []cons
 /// Convert a Wasm u64 result to a Clojure Value based on the result type.
 fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
     return switch (wasm_type) {
-        .i32 => .{ .integer = @as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))) },
-        .i64 => .{ .integer = @bitCast(raw) },
-        .f32 => .{ .float = @as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw))))) },
-        .f64 => .{ .float = @bitCast(raw) },
+        .i32 => Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw)))))),
+        .i64 => Value.initInteger(@bitCast(raw)),
+        .f32 => Value.initFloat(@as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw)))))),
+        .f64 => Value.initFloat(@bitCast(raw)),
     };
 }
 
@@ -707,7 +707,7 @@ test "allocContext — allocate and reclaim slots" {
     next_context_id = 0;
 
     const ctx = HostContext{
-        .clj_fn = Value.nil,
+        .clj_fn = Value.nil_val,
         .param_count = 1,
         .result_count = 0,
         .allocator = testing.allocator,
@@ -730,22 +730,22 @@ test "lookupImportFn — nested map lookup" {
     const collections = @import("../common/collections.zig");
 
     // Build {"env" {"print_i32" :found}}
-    const target_val = Value{ .keyword = .{ .name = "found", .ns = null } };
+    const target_val = Value.initKeyword(.{ .name = "found", .ns = null });
     var inner_entries = [_]Value{
-        .{ .string = "print_i32" }, target_val,
+        Value.initString("print_i32"), target_val,
     };
     const inner_map = try testing.allocator.create(collections.PersistentArrayMap);
     defer testing.allocator.destroy(inner_map);
     inner_map.* = .{ .entries = &inner_entries };
 
     var outer_entries = [_]Value{
-        .{ .string = "env" }, .{ .map = inner_map },
+        Value.initString("env"), Value.initMap(inner_map),
     };
     const outer_map = try testing.allocator.create(collections.PersistentArrayMap);
     defer testing.allocator.destroy(outer_map);
     outer_map.* = .{ .entries = &outer_entries };
 
-    const imports = Value{ .map = outer_map };
+    const imports = Value.initMap(outer_map);
 
     // Found
     const result = lookupImportFn(imports, "env", "print_i32");

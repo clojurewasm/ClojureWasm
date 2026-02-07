@@ -23,9 +23,9 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load", .{args.len});
 
-    const path = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load expects a string path, got {s}", .{@tagName(args[0])}),
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load expects a string path, got {s}", .{@tagName(args[0].tag())}),
     };
 
     // Read .wasm binary from disk
@@ -42,22 +42,22 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var wit_path_opt: ?[]const u8 = null;
     if (args.len == 2) {
         const opts = args[1];
-        const imports_key = Value{ .keyword = .{ .name = "imports", .ns = null } };
-        const wit_key = Value{ .keyword = .{ .name = "wit", .ns = null } };
-        imports_val_opt = switch (opts) {
-            .map => |m| m.get(imports_key),
-            .hash_map => |hm| hm.get(imports_key),
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load opts must be a map, got {s}", .{@tagName(args[1])}),
+        const imports_key = Value.initKeyword(.{ .name = "imports", .ns = null });
+        const wit_key = Value.initKeyword(.{ .name = "wit", .ns = null });
+        imports_val_opt = switch (opts.tag()) {
+            .map => opts.asMap().get(imports_key),
+            .hash_map => opts.asHashMap().get(imports_key),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load opts must be a map, got {s}", .{@tagName(args[1].tag())}),
         };
-        const wit_val = switch (opts) {
-            .map => |m| m.get(wit_key),
-            .hash_map => |hm| hm.get(wit_key),
+        const wit_val = switch (opts.tag()) {
+            .map => opts.asMap().get(wit_key),
+            .hash_map => opts.asHashMap().get(wit_key),
             else => unreachable,
         };
         if (wit_val) |wv| {
-            wit_path_opt = switch (wv) {
-                .string => |s| s,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load :wit must be a string path, got {s}", .{@tagName(wv)}),
+            wit_path_opt = switch (wv.tag()) {
+                .string => wv.asString(),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load :wit must be a string path, got {s}", .{@tagName(wv.tag())}),
             };
         }
     }
@@ -100,7 +100,7 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    return Value{ .wasm_module = wasm_mod };
+    return Value.initWasmModule(wasm_mod);
 }
 
 /// (wasm/load-wasi path) => WasmModule
@@ -110,9 +110,9 @@ pub fn wasmLoadWasiFn(allocator: Allocator, args: []const Value) anyerror!Value 
     if (args.len != 1)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load-wasi", .{args.len});
 
-    const path = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load-wasi expects a string path, got {s}", .{@tagName(args[0])}),
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load-wasi expects a string path, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const cwd = std.fs.cwd();
@@ -126,7 +126,7 @@ pub fn wasmLoadWasiFn(allocator: Allocator, args: []const Value) anyerror!Value 
     const wasm_mod = WasmModule.loadWasi(allocator, wasm_bytes) catch
         return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load-wasi: failed to instantiate module: {s}", .{path});
 
-    return Value{ .wasm_module = wasm_mod };
+    return Value.initWasmModule(wasm_mod);
 }
 
 /// (wasm/fn module name) => WasmFn        ;; auto-resolve from binary
@@ -135,14 +135,14 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/fn", .{args.len});
 
-    const wasm_mod = switch (args[0]) {
-        .wasm_module => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a WasmModule as first arg, got {s}", .{@tagName(args[0])}),
+    const wasm_mod = switch (args[0].tag()) {
+        .wasm_module => args[0].asWasmModule(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a WasmModule as first arg, got {s}", .{@tagName(args[0].tag())}),
     };
 
-    const name = switch (args[1]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a string function name, got {s}", .{@tagName(args[1])}),
+    const name = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a string function name, got {s}", .{@tagName(args[1].tag())}),
     };
 
     if (args.len == 2) {
@@ -161,22 +161,22 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
             wfn.wit_params = wf.params;
             wfn.wit_result = wf.result;
         }
-        return Value{ .wasm_fn = wfn };
+        return Value.initWasmFn(wfn);
     }
 
     // 3-arg: parse explicit signature
-    const params_key = Value{ .keyword = .{ .name = "params", .ns = null } };
-    const results_key = Value{ .keyword = .{ .name = "results", .ns = null } };
+    const params_key = Value.initKeyword(.{ .name = "params", .ns = null });
+    const results_key = Value.initKeyword(.{ .name = "results", .ns = null });
 
     const sig_map = args[2];
-    const params_val = switch (sig_map) {
-        .map => |m| m.get(params_key),
-        .hash_map => |hm| hm.get(params_key),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a map as third arg, got {s}", .{@tagName(args[2])}),
+    const params_val = switch (sig_map.tag()) {
+        .map => sig_map.asMap().get(params_key),
+        .hash_map => sig_map.asHashMap().get(params_key),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a map as third arg, got {s}", .{@tagName(args[2].tag())}),
     };
-    const results_val = switch (sig_map) {
-        .map => |m| m.get(results_key),
-        .hash_map => |hm| hm.get(results_key),
+    const results_val = switch (sig_map.tag()) {
+        .map => sig_map.asMap().get(results_key),
+        .hash_map => sig_map.asHashMap().get(results_key),
         else => unreachable,
     };
 
@@ -199,7 +199,7 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .result_types = result_types,
     };
 
-    return Value{ .wasm_fn = wfn };
+    return Value.initWasmFn(wfn);
 }
 
 /// Compare two WasmValType slices for equality.
@@ -215,16 +215,16 @@ fn typesMatch(a: []const WasmValType, b: []const WasmValType) bool {
 /// into a slice of WasmValType.
 fn parseTypeVec(allocator: Allocator, val: ?Value, field_name: []const u8) ![]const WasmValType {
     const v = val orelse return &[_]WasmValType{};
-    const items = switch (v) {
-        .vector => |vec| vec.items,
+    const items = switch (v.tag()) {
+        .vector => v.asVector().items,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn :{s} must be a vector", .{field_name}),
     };
 
     const types = try allocator.alloc(WasmValType, items.len);
     for (items, 0..) |item, i| {
-        const kw_name = switch (item) {
-            .keyword => |kw| kw.name,
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn :{s} elements must be keywords, got {s}", .{ field_name, @tagName(item) }),
+        const kw_name = switch (item.tag()) {
+            .keyword => item.asKeyword().name,
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn :{s} elements must be keywords, got {s}", .{ field_name, @tagName(item.tag()) }),
         };
         types[i] = parseWasmType(kw_name) orelse
             return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn: unknown Wasm type :{s}", .{kw_name});
@@ -246,22 +246,28 @@ pub fn wasmMemoryReadFn(allocator: Allocator, args: []const Value) anyerror!Valu
     if (args.len != 3)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/memory-read", .{args.len});
 
-    const wasm_mod = switch (args[0]) {
-        .wasm_module => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-read expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    const wasm_mod = switch (args[0].tag()) {
+        .wasm_module => args[0].asWasmModule(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-read expects a WasmModule, got {s}", .{@tagName(args[0].tag())}),
     };
-    const offset: u32 = switch (args[1]) {
-        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+    const offset: u32 = switch (args[1].tag()) {
+        .integer => blk: {
+            const n = args[1].asInteger();
+            break :blk if (n >= 0) @intCast(n) else return error.IndexError;
+        },
         else => return error.TypeError,
     };
-    const length: u32 = switch (args[2]) {
-        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+    const length: u32 = switch (args[2].tag()) {
+        .integer => blk: {
+            const n = args[2].asInteger();
+            break :blk if (n >= 0) @intCast(n) else return error.IndexError;
+        },
         else => return error.TypeError,
     };
 
     const bytes = wasm_mod.memoryRead(allocator, offset, length) catch
         return err.setErrorFmt(.eval, .index_error, .{}, "wasm/memory-read: out of bounds (offset={d}, length={d})", .{ offset, length });
-    return Value{ .string = bytes };
+    return Value.initString(bytes);
 }
 
 /// (wasm/memory-write module offset data) => nil
@@ -270,22 +276,25 @@ pub fn wasmMemoryWriteFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/memory-write", .{args.len});
 
-    const wasm_mod = switch (args[0]) {
-        .wasm_module => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    const wasm_mod = switch (args[0].tag()) {
+        .wasm_module => args[0].asWasmModule(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a WasmModule, got {s}", .{@tagName(args[0].tag())}),
     };
-    const offset: u32 = switch (args[1]) {
-        .integer => |n| if (n >= 0) @intCast(n) else return error.IndexError,
+    const offset: u32 = switch (args[1].tag()) {
+        .integer => blk: {
+            const n = args[1].asInteger();
+            break :blk if (n >= 0) @intCast(n) else return error.IndexError;
+        },
         else => return error.TypeError,
     };
-    const data = switch (args[2]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a string, got {s}", .{@tagName(args[2])}),
+    const data = switch (args[2].tag()) {
+        .string => args[2].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/memory-write expects a string, got {s}", .{@tagName(args[2].tag())}),
     };
 
     wasm_mod.memoryWrite(offset, data) catch
         return err.setErrorFmt(.eval, .index_error, .{}, "wasm/memory-write: out of bounds (offset={d}, length={d})", .{ offset, data.len });
-    return Value.nil;
+    return Value.nil_val;
 }
 
 const collections = @import("../common/collections.zig");
@@ -297,22 +306,22 @@ pub fn wasmExportsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/exports", .{args.len});
 
-    const wasm_mod = switch (args[0]) {
-        .wasm_module => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/exports expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    const wasm_mod = switch (args[0].tag()) {
+        .wasm_module => args[0].asWasmModule(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/exports expects a WasmModule, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const export_fns = wasm_mod.export_fns;
     // Build outer map entries: [name1, sig1, name2, sig2, ...]
     const outer_entries = try allocator.alloc(Value, export_fns.len * 2);
     for (export_fns, 0..) |ei, i| {
-        outer_entries[i * 2] = .{ .string = ei.name };
+        outer_entries[i * 2] = Value.initString(ei.name);
         outer_entries[i * 2 + 1] = try exportInfoToSigMap(allocator, ei);
     }
 
     const outer_map = try allocator.create(collections.PersistentArrayMap);
     outer_map.* = .{ .entries = outer_entries };
-    return Value{ .map = outer_map };
+    return Value.initMap(outer_map);
 }
 
 /// Convert an ExportInfo into a Clojure map {:params [:i32 ...] :results [:i32 ...]}.
@@ -320,7 +329,7 @@ fn exportInfoToSigMap(allocator: Allocator, ei: ExportInfo) !Value {
     // Build :params vector
     const param_items = try allocator.alloc(Value, ei.param_types.len);
     for (ei.param_types, 0..) |pt, i| {
-        param_items[i] = .{ .keyword = .{ .name = wasmTypeToKeyword(pt), .ns = null } };
+        param_items[i] = Value.initKeyword(.{ .name = wasmTypeToKeyword(pt), .ns = null });
     }
     const param_vec = try allocator.create(collections.PersistentVector);
     param_vec.* = .{ .items = param_items };
@@ -328,21 +337,21 @@ fn exportInfoToSigMap(allocator: Allocator, ei: ExportInfo) !Value {
     // Build :results vector
     const result_items = try allocator.alloc(Value, ei.result_types.len);
     for (ei.result_types, 0..) |rt, i| {
-        result_items[i] = .{ .keyword = .{ .name = wasmTypeToKeyword(rt), .ns = null } };
+        result_items[i] = Value.initKeyword(.{ .name = wasmTypeToKeyword(rt), .ns = null });
     }
     const result_vec = try allocator.create(collections.PersistentVector);
     result_vec.* = .{ .items = result_items };
 
     // Build {:params [...] :results [...]}
     const sig_entries = try allocator.alloc(Value, 4);
-    sig_entries[0] = .{ .keyword = .{ .name = "params", .ns = null } };
-    sig_entries[1] = .{ .vector = param_vec };
-    sig_entries[2] = .{ .keyword = .{ .name = "results", .ns = null } };
-    sig_entries[3] = .{ .vector = result_vec };
+    sig_entries[0] = Value.initKeyword(.{ .name = "params", .ns = null });
+    sig_entries[1] = Value.initVector(param_vec);
+    sig_entries[2] = Value.initKeyword(.{ .name = "results", .ns = null });
+    sig_entries[3] = Value.initVector(result_vec);
 
     const sig_map = try allocator.create(collections.PersistentArrayMap);
     sig_map.* = .{ .entries = sig_entries };
-    return Value{ .map = sig_map };
+    return Value.initMap(sig_map);
 }
 
 fn wasmTypeToKeyword(wt: WasmValType) []const u8 {
@@ -360,9 +369,9 @@ pub fn wasmDescribeFn(allocator: Allocator, args: []const Value) anyerror!Value 
     if (args.len != 1)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/describe", .{args.len});
 
-    const wasm_mod = switch (args[0]) {
-        .wasm_module => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/describe expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    const wasm_mod = switch (args[0].tag()) {
+        .wasm_module => args[0].asWasmModule(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/describe expects a WasmModule, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const wit_funcs = wasm_mod.wit_funcs;
@@ -371,18 +380,18 @@ pub fn wasmDescribeFn(allocator: Allocator, args: []const Value) anyerror!Value 
         const empty_entries = try allocator.alloc(Value, 0);
         const empty_map = try allocator.create(collections.PersistentArrayMap);
         empty_map.* = .{ .entries = empty_entries };
-        return Value{ .map = empty_map };
+        return Value.initMap(empty_map);
     }
 
     const outer_entries = try allocator.alloc(Value, wit_funcs.len * 2);
     for (wit_funcs, 0..) |wf, i| {
-        outer_entries[i * 2] = .{ .string = wf.name };
+        outer_entries[i * 2] = Value.initString(wf.name);
         outer_entries[i * 2 + 1] = try witFuncToDescMap(allocator, wf);
     }
 
     const outer_map = try allocator.create(collections.PersistentArrayMap);
     outer_map.* = .{ .entries = outer_entries };
-    return Value{ .map = outer_map };
+    return Value.initMap(outer_map);
 }
 
 /// Convert a WitFunc to a Clojure describe map.
@@ -391,33 +400,33 @@ fn witFuncToDescMap(allocator: Allocator, wf: wit_parser.WitFunc) !Value {
     const param_items = try allocator.alloc(Value, wf.params.len);
     for (wf.params, 0..) |p, i| {
         const pmap_entries = try allocator.alloc(Value, 4);
-        pmap_entries[0] = .{ .keyword = .{ .name = "name", .ns = null } };
-        pmap_entries[1] = .{ .string = p.name };
-        pmap_entries[2] = .{ .keyword = .{ .name = "type", .ns = null } };
-        pmap_entries[3] = .{ .keyword = .{ .name = witTypeToKeyword(p.type_), .ns = null } };
+        pmap_entries[0] = Value.initKeyword(.{ .name = "name", .ns = null });
+        pmap_entries[1] = Value.initString(p.name);
+        pmap_entries[2] = Value.initKeyword(.{ .name = "type", .ns = null });
+        pmap_entries[3] = Value.initKeyword(.{ .name = witTypeToKeyword(p.type_), .ns = null });
         const pmap = try allocator.create(collections.PersistentArrayMap);
         pmap.* = .{ .entries = pmap_entries };
-        param_items[i] = Value{ .map = pmap };
+        param_items[i] = Value.initMap(pmap);
     }
     const param_vec = try allocator.create(collections.PersistentVector);
     param_vec.* = .{ .items = param_items };
 
     // Build result keyword (or nil for void functions)
     const result_val: Value = if (wf.result) |r|
-        .{ .keyword = .{ .name = witTypeToKeyword(r), .ns = null } }
+        Value.initKeyword(.{ .name = witTypeToKeyword(r), .ns = null })
     else
-        Value.nil;
+        Value.nil_val;
 
     // Build {:params [...] :results :type}
     const desc_entries = try allocator.alloc(Value, 4);
-    desc_entries[0] = .{ .keyword = .{ .name = "params", .ns = null } };
-    desc_entries[1] = .{ .vector = param_vec };
-    desc_entries[2] = .{ .keyword = .{ .name = "results", .ns = null } };
+    desc_entries[0] = Value.initKeyword(.{ .name = "params", .ns = null });
+    desc_entries[1] = Value.initVector(param_vec);
+    desc_entries[2] = Value.initKeyword(.{ .name = "results", .ns = null });
     desc_entries[3] = result_val;
 
     const desc_map = try allocator.create(collections.PersistentArrayMap);
     desc_map.* = .{ .entries = desc_entries };
-    return Value{ .map = desc_map };
+    return Value.initMap(desc_map);
 }
 
 fn witTypeToKeyword(wt: wit_parser.WitType) []const u8 {
