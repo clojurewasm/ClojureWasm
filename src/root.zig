@@ -36,6 +36,7 @@ pub const bencode = @import("repl/bencode.zig");
 pub const nrepl = @import("repl/nrepl.zig");
 pub const wasm_types = @import("wasm/types.zig");
 pub const wasm_builtins = @import("wasm/builtins.zig");
+pub const wit_parser = @import("wasm/wit_parser.zig");
 
 test {
     _ = value;
@@ -73,4 +74,5 @@ test {
     _ = nrepl;
     _ = wasm_types;
     _ = wasm_builtins;
+    _ = wit_parser;
 }

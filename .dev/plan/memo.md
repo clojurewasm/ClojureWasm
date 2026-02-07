@@ -23,9 +23,9 @@ Phase 25 — Wasm InterOp (FFI):
 
 ## Current Task
 
-25.5b: Module keyword lookup + module-as-function.
-((:add mod) 3 4) => keyword dispatch on wasm_module.
-(mod :add) => module-as-function. Cached WasmFn pre-generation.
+25.5c: WIT parser (primitives + string).
+Tokenizer + recursive descent parser for WIT interface definitions.
+wasm/load :wit option, wasm/describe builtin, WIT vs binary cross-validation.
 
 ## Previous Task
 

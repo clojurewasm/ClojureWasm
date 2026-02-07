@@ -7,6 +7,7 @@
 const std = @import("std");
 const zware = @import("zware");
 const Allocator = std.mem.Allocator;
+const wit_parser = @import("wit_parser.zig");
 
 /// Wasm value types exposed to Clojure code.
 pub const WasmValType = enum {
@@ -53,6 +54,8 @@ pub const WasmModule = struct {
     export_fns: []const ExportInfo = &[_]ExportInfo{},
     /// Pre-generated WasmFn instances for keyword lookup dispatch.
     cached_fns: []const WasmFn = &[_]WasmFn{},
+    /// WIT function signatures (set via wasm/load :wit option).
+    wit_funcs: []const wit_parser.WitFunc = &[_]wit_parser.WitFunc{},
 
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable for zware).
@@ -91,6 +94,7 @@ pub const WasmModule = struct {
 
         self.export_fns = buildExportInfo(allocator, &self.module) catch &[_]ExportInfo{};
         self.cached_fns = buildCachedFns(allocator, self) catch &[_]WasmFn{};
+        self.wit_funcs = &[_]wit_parser.WitFunc{};
 
         return self;
     }
@@ -135,6 +139,19 @@ pub const WasmModule = struct {
         const end = @as(u64, offset) + @as(u64, data.len);
         if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
         @memcpy(mem_bytes[offset..][0..data.len], data);
+    }
+
+    /// Attach WIT info parsed from a .wit file.
+    pub fn setWitInfo(self: *WasmModule, funcs: []const wit_parser.WitFunc) void {
+        self.wit_funcs = funcs;
+    }
+
+    /// Get WIT function info by name.
+    pub fn getWitFunc(self: *const WasmModule, name: []const u8) ?wit_parser.WitFunc {
+        for (self.wit_funcs) |wf| {
+            if (std.mem.eql(u8, wf.name, name)) return wf;
+        }
+        return null;
     }
 
     /// Lookup export function info by name.

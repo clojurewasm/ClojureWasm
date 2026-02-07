@@ -1,0 +1,10 @@
+// Math interface with multiple functions and types.
+package example:math;
+
+interface math {
+  add: func(a: s32, b: s32) -> s32;
+  multiply: func(x: f64, y: f64) -> f64;
+  is-even: func(n: u32) -> bool;
+  negate: func(value: s64) -> s64;
+  no-return: func(msg: string);
+}

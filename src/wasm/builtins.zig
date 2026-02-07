@@ -14,10 +14,11 @@ const wasm_types = @import("types.zig");
 const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
+const wit_parser = @import("wit_parser.zig");
 
 /// (wasm/load path) or (wasm/load path opts) => WasmModule
 /// Reads a .wasm file from disk and instantiates it.
-/// opts: {:imports {"module" {"func" clj-fn}}} — register Clojure fns as host imports.
+/// opts: {:imports {"module" {"func" clj-fn}}, :wit "path.wit"} — host imports and WIT info.
 pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load", .{args.len});
@@ -36,24 +37,68 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const wasm_bytes = file.readToEndAlloc(allocator, 64 * 1024 * 1024) catch
         return error.IOError;
 
-    // Parse optional :imports from opts map
+    // Parse opts map if present
+    var imports_val_opt: ?Value = null;
+    var wit_path_opt: ?[]const u8 = null;
     if (args.len == 2) {
+        const opts = args[1];
         const imports_key = Value{ .keyword = .{ .name = "imports", .ns = null } };
-        const imports_val = switch (args[1]) {
+        const wit_key = Value{ .keyword = .{ .name = "wit", .ns = null } };
+        imports_val_opt = switch (opts) {
             .map => |m| m.get(imports_key),
             .hash_map => |hm| hm.get(imports_key),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load opts must be a map, got {s}", .{@tagName(args[1])}),
         };
-        if (imports_val) |iv| {
-            const wasm_mod = WasmModule.loadWithImports(allocator, wasm_bytes, iv) catch
-                return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module with imports: {s}", .{path});
-            return Value{ .wasm_module = wasm_mod };
+        const wit_val = switch (opts) {
+            .map => |m| m.get(wit_key),
+            .hash_map => |hm| hm.get(wit_key),
+            else => unreachable,
+        };
+        if (wit_val) |wv| {
+            wit_path_opt = switch (wv) {
+                .string => |s| s,
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load :wit must be a string path, got {s}", .{@tagName(wv)}),
+            };
         }
     }
 
-    // Default: no imports
-    const wasm_mod = WasmModule.load(allocator, wasm_bytes) catch
-        return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module: {s}", .{path});
+    // Instantiate module
+    const wasm_mod = if (imports_val_opt) |iv|
+        WasmModule.loadWithImports(allocator, wasm_bytes, iv) catch
+            return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module with imports: {s}", .{path})
+    else
+        WasmModule.load(allocator, wasm_bytes) catch
+            return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to instantiate module: {s}", .{path});
+
+    // Parse and attach WIT info if :wit provided
+    if (wit_path_opt) |wit_path| {
+        const wit_file = cwd.openFile(wit_path, .{}) catch
+            return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: WIT file not found: {s}", .{wit_path});
+        defer wit_file.close();
+
+        const wit_src = wit_file.readToEndAlloc(allocator, 1 * 1024 * 1024) catch
+            return error.IOError;
+
+        const ifaces = wit_parser.parse(allocator, wit_src) catch
+            return err.setErrorFmt(.eval, .io_error, .{}, "wasm/load: failed to parse WIT file: {s}", .{wit_path});
+
+        // Collect all funcs from all interfaces
+        var total_funcs: usize = 0;
+        for (ifaces) |iface| total_funcs += iface.funcs.len;
+
+        if (total_funcs > 0) {
+            const all_funcs = allocator.alloc(wit_parser.WitFunc, total_funcs) catch
+                return error.OutOfMemory;
+            var idx: usize = 0;
+            for (ifaces) |iface| {
+                for (iface.funcs) |f| {
+                    all_funcs[idx] = f;
+                    idx += 1;
+                }
+            }
+            wasm_mod.setWitInfo(all_funcs);
+        }
+    }
 
     return Value{ .wasm_module = wasm_mod };
 }
@@ -304,11 +349,96 @@ fn wasmTypeToKeyword(wt: WasmValType) []const u8 {
     };
 }
 
+/// (wasm/describe module) => {"name" {:params [{:name "x" :type :string}] :results :i32}}
+/// Returns WIT-level type info. Requires :wit option on wasm/load.
+pub fn wasmDescribeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/describe", .{args.len});
+
+    const wasm_mod = switch (args[0]) {
+        .wasm_module => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/describe expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    };
+
+    const wit_funcs = wasm_mod.wit_funcs;
+    if (wit_funcs.len == 0) {
+        // No WIT info — return empty map
+        const empty_entries = try allocator.alloc(Value, 0);
+        const empty_map = try allocator.create(collections.PersistentArrayMap);
+        empty_map.* = .{ .entries = empty_entries };
+        return Value{ .map = empty_map };
+    }
+
+    const outer_entries = try allocator.alloc(Value, wit_funcs.len * 2);
+    for (wit_funcs, 0..) |wf, i| {
+        outer_entries[i * 2] = .{ .string = wf.name };
+        outer_entries[i * 2 + 1] = try witFuncToDescMap(allocator, wf);
+    }
+
+    const outer_map = try allocator.create(collections.PersistentArrayMap);
+    outer_map.* = .{ .entries = outer_entries };
+    return Value{ .map = outer_map };
+}
+
+/// Convert a WitFunc to a Clojure describe map.
+fn witFuncToDescMap(allocator: Allocator, wf: wit_parser.WitFunc) !Value {
+    // Build :params vector of {:name "x" :type :string} maps
+    const param_items = try allocator.alloc(Value, wf.params.len);
+    for (wf.params, 0..) |p, i| {
+        const pmap_entries = try allocator.alloc(Value, 4);
+        pmap_entries[0] = .{ .keyword = .{ .name = "name", .ns = null } };
+        pmap_entries[1] = .{ .string = p.name };
+        pmap_entries[2] = .{ .keyword = .{ .name = "type", .ns = null } };
+        pmap_entries[3] = .{ .keyword = .{ .name = witTypeToKeyword(p.type_), .ns = null } };
+        const pmap = try allocator.create(collections.PersistentArrayMap);
+        pmap.* = .{ .entries = pmap_entries };
+        param_items[i] = Value{ .map = pmap };
+    }
+    const param_vec = try allocator.create(collections.PersistentVector);
+    param_vec.* = .{ .items = param_items };
+
+    // Build result keyword (or nil for void functions)
+    const result_val: Value = if (wf.result) |r|
+        .{ .keyword = .{ .name = witTypeToKeyword(r), .ns = null } }
+    else
+        Value.nil;
+
+    // Build {:params [...] :results :type}
+    const desc_entries = try allocator.alloc(Value, 4);
+    desc_entries[0] = .{ .keyword = .{ .name = "params", .ns = null } };
+    desc_entries[1] = .{ .vector = param_vec };
+    desc_entries[2] = .{ .keyword = .{ .name = "results", .ns = null } };
+    desc_entries[3] = result_val;
+
+    const desc_map = try allocator.create(collections.PersistentArrayMap);
+    desc_map.* = .{ .entries = desc_entries };
+    return Value{ .map = desc_map };
+}
+
+fn witTypeToKeyword(wt: wit_parser.WitType) []const u8 {
+    return switch (wt) {
+        .u8 => "u8",
+        .u16 => "u16",
+        .u32 => "u32",
+        .u64 => "u64",
+        .s8 => "s8",
+        .s16 => "s16",
+        .s32 => "s32",
+        .s64 => "s64",
+        .f32 => "f32",
+        .f64 => "f64",
+        .bool => "bool",
+        .char => "char",
+        .string => "string",
+        .other => "other",
+    };
+}
+
 pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
     .{
         .name = "load",
         .func = wasmLoadFn,
-        .doc = "Loads a WebAssembly module from file path. Optional opts map: {:imports {\"module\" {\"func\" clj-fn}}} for host function injection.",
+        .doc = "Loads a WebAssembly module from file path. Opts: {:imports {\"mod\" {\"fn\" clj-fn}}, :wit \"path.wit\"}.",
         .arglists = "([path] [path opts])",
     },
     .{
@@ -340,6 +470,12 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
         .func = wasmMemoryWriteFn,
         .doc = "Writes bytes from a string to a WasmModule's linear memory.",
         .arglists = "([module offset data])",
+    },
+    .{
+        .name = "describe",
+        .func = wasmDescribeFn,
+        .doc = "Returns WIT-level type info for a module's exports. Requires :wit option on wasm/load.",
+        .arglists = "([module])",
     },
 };
 

@@ -1,0 +1,7 @@
+// A simple greeting interface for testing WIT parsing.
+package example:greet;
+
+interface greet {
+  // Greet a person by name.
+  greet: func(name: string) -> string;
+}
