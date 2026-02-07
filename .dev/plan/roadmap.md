@@ -422,17 +422,48 @@ Directory reorganization: common/native/ → core/eval/cli/.
 
 ### Phase 30: Production Robustness
 
-Error messages, stack traces, skip var recovery, nREPL/cider-nrepl.
+Error messages, stack traces, skip var recovery, nREPL/cider-nrepl, clojure.repl.
 
 **Scope**:
 - Error reporting: Babashka-quality stack traces, source context
-- Skip var recovery: re-evaluate 178 skipped vars for Zig equivalents
 - nREPL: cider-nrepl op compatibility (eval, complete, info, stacktrace)
 - Zero-config project model: auto-detect src/, require resolution
+- Skip var recovery: re-evaluate 178 skipped vars for Zig equivalents
+- clojure.repl namespace: doc, apropos, source, dir, find-doc
 
-**Prerequisite**: Phase 29 (clean modular codebase for nREPL integration)
+**Status**: 30.1 (error reporting) + 30.2 (nREPL/CIDER) complete.
+30.3 (project model) + 30.4 (skip vars) + 30.5 (clojure.repl) remaining.
 
-### Phase 31: Wasm FFI Deep (Phase 25 Extension)
+### Phase 31: AOT Compilation
+
+Resolve F7 (macro serialization) and enable bytecode pre-compilation.
+
+**Scope**:
+- F7 resolution: serialize macro bodies to bytecode-reconstructable form
+- Bootstrap AOT: pre-compile core.clj to bytecode at build time
+- User code AOT: compile user .clj to bytecode for Phase 28.3 embedding
+- Startup time optimization: skip runtime parse+analyze for pre-compiled code
+
+**Prerequisite**: Phase 30 (stable runtime with robust error handling)
+**Reference**: optimization-backlog.md F7, phase28-single-binary.md 28.3
+
+### Phase 32: Advanced GC + JIT Research
+
+Research phase for generational GC and JIT compilation feasibility.
+
+**Scope**:
+- Generational GC design: write barrier strategy, nursery sizing
+- JIT compilation survey: trace JIT vs method JIT vs Cranelift backend
+- Escape analysis (F103): local-only Values skip GC tracking
+- Profile-guided optimization (F104): extend inline caching beyond monomorphic
+- Design documents + PoC prototypes, not full implementation
+- Full implementation in subsequent phases based on research findings
+
+**Prerequisite**: Phase 31 (AOT infrastructure informs JIT design)
+**Note**: Both items require deep architectural changes. Design documents
+and PoC first, full implementation in subsequent phases.
+
+### Phase 33: Wasm FFI Deep (Phase 25 Extension)
 
 Deepen Wasm InterOp with multi-module support and practical examples.
 

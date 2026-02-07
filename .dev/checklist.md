@@ -44,3 +44,4 @@ Check at session start for items that become actionable.
 | ~~F111~~ | ~~GC trace NaN-boxed heap pointers~~   | RESOLVED — bootstrap Symbols tracked in Env.owned_symbols, freed at deinit    |
 | ~~F112~~ | ~~nREPL Var corruption (ArenaAllocator)~~ | RESOLVED — Env.init(gpa) + eval_arena removed. See D80 for root cause analysis |
 | F113 | nREPL GC integration                      | Without GC, transient Values accumulate in GPA (same as main.zig REPL). Add MarkSweepGc to nREPL for true long-session memory management. |
+| F114 | clojure.repl namespace                    | Phase 30.5 — doc, apropos, source, dir, find-doc, pst                  |

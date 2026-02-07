@@ -20,7 +20,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31 (FFI)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31 (AOT) -> 32 (GC/JIT research) -> 33 (FFI deep)
 
 ## Task Queue
 
@@ -42,6 +42,10 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - 30.4c tagged-literal + reader-conditional
 - 30.4d with-local-vars + with-in-str
 - 30.4e Remaining type predicates
+- 30.5a doc macro
+- 30.5b dir
+- 30.5c apropos + find-doc
+- 30.5d source + pst
 
 ## Current Task
 

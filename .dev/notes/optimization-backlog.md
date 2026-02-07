@@ -4,18 +4,18 @@ All deferred and future optimization items, organized by effort/impact.
 
 ## Quick Reference
 
-| ID     | Item                          | Effort | Impact | Target | Status     |
-|--------|-------------------------------|--------|--------|--------|------------|
-| F101   | into() transient optimization | LOW    | MEDIUM | any    | New        |
-| F102   | map/filter chunked processing | MEDIUM | MEDIUM | any    | New        |
-| F1/D72 | NaN boxing (Value 48->8B)     | HIGH   | HIGH   | any    | Deferred   |
-| F99    | Iterative lazy-seq realize    | MEDIUM | HIGH   | Ph.26  | Partial    |
-| F103   | Escape analysis               | HIGH   | MEDIUM | future | New        |
-| F104   | Profile-guided opt (IC ext)   | MEDIUM | MEDIUM | future | New        |
-| F7     | Bootstrap AOT                 | HIGH   | MEDIUM | future | Blocked    |
-| 24C.8  | Constant folding              | LOW    | LOW    | future | Skipped    |
-| F98    | ReleaseFast anomaly           | LOW    | LOW    | future | Investigate|
-| F105   | JIT compilation               | HUGE   | HIGH   | Ph.28+ | Planned    |
+| ID     | Item                          | Effort | Impact | Target | Status      |
+|--------|-------------------------------|--------|--------|--------|-------------|
+| F101   | into() transient optimization | LOW    | MEDIUM | any    | New         |
+| F102   | map/filter chunked processing | MEDIUM | MEDIUM | any    | New         |
+| ~~F1~~ | ~~NaN boxing (Value 48->8B)~~ | ~~HIGH~~ | ~~HIGH~~ | — | **DONE (Ph.27)** |
+| F99    | Iterative lazy-seq realize    | MEDIUM | HIGH   | Ph.26  | Partial     |
+| F103   | Escape analysis               | HIGH   | MEDIUM | Ph.32  | New         |
+| F104   | Profile-guided opt (IC ext)   | MEDIUM | MEDIUM | Ph.32  | New         |
+| F7     | Bootstrap AOT                 | HIGH   | MEDIUM | Ph.31  | Blocked     |
+| 24C.8  | Constant folding              | LOW    | LOW    | future | Skipped     |
+| F98    | ReleaseFast anomaly           | LOW    | LOW    | future | Investigate |
+| F105   | JIT compilation               | HUGE   | HIGH   | Ph.32  | Planned     |
 
 ## Tier 1: Small Effort / High Impact
 

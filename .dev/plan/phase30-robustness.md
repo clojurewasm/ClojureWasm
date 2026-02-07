@@ -147,23 +147,50 @@ Research summary (from vars.yaml analysis):
 tagged-literal/reader-conditional enable portable .cljc files.
 Agent/future/pmap are Phase 31+ (need multi-threading, deferred to F6).
 
+### Phase 30.5: clojure.repl Namespace
+
+Implement clojure.repl for interactive development support.
+These are NOT core vars (not in vars.yaml) but essential for REPL UX.
+
+| Task  | Description                                               |
+|-------|-----------------------------------------------------------|
+| 30.5a | doc macro — print var docstring + arglists                |
+| 30.5b | dir — list public vars in namespace                       |
+| 30.5c | apropos — search for vars matching pattern                |
+| 30.5d | find-doc — search docstrings for pattern match            |
+| 30.5e | source — print source code of a function (best-effort)    |
+| 30.5f | pst — print last stack trace                              |
+
+**Implementation approach**: New bootstrap file `src/clj/clojure/repl.clj`,
+loaded via `bootstrap.loadRepl()`. Pure Clojure implementations using
+existing Var metadata (doc, arglists, ns) and namespace introspection
+(ns-publics, ns-map). `source` requires source text tracking per Var
+(currently only file/line available; may need source string storage).
+
 ## Task Queue (execution order)
 
-1. 30.1a — Call stack tracking
-2. 30.1b — Source context display
-3. 30.1c — Throwable->map + ex-data
-4. 30.1d — REPL error formatting
-5. 30.2a — nREPL stacktrace op
-6. 30.2b — nREPL info extension (:file, :line)
-7. 30.2c — CIDER end-to-end test
-8. 30.3a — require file resolution
-9. 30.3b — src/ path auto-detect
-10. 30.3c — cljw.edn support
-11. 30.4a — letfn implementation
-12. 30.4b — with-open macro
-13. 30.4c — tagged-literal + reader-conditional
-14. 30.4d — with-local-vars + with-in-str
-15. 30.4e — Remaining type predicates
+1. ~~30.1a — Call stack tracking~~
+2. ~~30.1b — Source context display~~
+3. ~~30.1c — Throwable->map + ex-data~~
+4. ~~30.1d — REPL error formatting~~
+5. ~~30.2a — nREPL stacktrace op~~
+6. ~~30.2b — nREPL info extension (:file, :line)~~
+7. ~~30.2c — Modular dispatch + describe~~
+8. ~~30.2d — CIDER end-to-end verification + Var metadata propagation~~
+9. 30.3a — require file resolution
+10. 30.3b — src/ path auto-detect
+11. 30.3c — cljw.edn support
+12. 30.4a — letfn implementation
+13. 30.4b — with-open macro
+14. 30.4c — tagged-literal + reader-conditional
+15. 30.4d — with-local-vars + with-in-str
+16. 30.4e — Remaining type predicates
+17. 30.5a — doc macro
+18. 30.5b — dir
+19. 30.5c — apropos
+20. 30.5d — find-doc
+21. 30.5e — source (best-effort)
+22. 30.5f — pst
 
 ## Dependencies
 
@@ -173,12 +200,14 @@ Agent/future/pmap are Phase 31+ (need multi-threading, deferred to F6).
 
 ## Success Criteria
 
-- [ ] Errors show file:line and 3-line source context
-- [ ] Throwable->map returns structured error data
-- [ ] CIDER connects, evaluates, and shows stack traces
+- [x] Errors show file:line and 3-line source context
+- [x] Throwable->map returns structured error data
+- [x] CIDER connects, evaluates, and shows stack traces
 - [ ] `require` resolves namespaces from src/ directory
 - [ ] cljw.edn configures project paths
 - [ ] letfn, with-open, tagged-literal work in both backends
+- [ ] `(doc map)` prints docstring and arglists at REPL
+- [ ] `(apropos "map")` finds matching vars
 - [ ] All tests pass after every commit
 
 ## Skipped Var Categories (for reference)
