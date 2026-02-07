@@ -18,18 +18,18 @@ Phase 26.R — wasm_rt Research:
 3. ~~26.R.3: Allocator and GC Strategy~~ DONE
 4. ~~26.R.4: Stack Depth and F99 Assessment~~ DONE
 5. ~~26.R.5: Backend Selection~~ DONE
-6. 26.R.6: Modern Wasm Spec Assessment
+6. ~~26.R.6: Modern Wasm Spec Assessment~~ DONE
 7. 26.R.7: MVP Definition and Full Plan
 
 ## Current Task
 
-26.R.6: Modern Wasm Spec Assessment — WasmGC, tail-call, SIMD evaluation
+26.R.7: MVP Definition and Full Plan — synthesize all findings
 
 ## Previous Task
 
-26.R.5: Backend Selection — Both backends (Option C).
-VM+TreeWalk match native architecture. D73 two-phase bootstrap preserved.
-eval_engine and dumpBytecodeVM excluded (dev tools only).
+26.R.6: Modern Wasm Spec Assessment — WasmGC not usable (LLVM).
+Tail-call PoC works but unstable. SIMD/threads/EH deferred.
+WASI P1 sufficient. All dynamic lang Wasm ports use linear memory GC.
 
 ## Handover Notes
 

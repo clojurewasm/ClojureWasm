@@ -526,3 +526,145 @@ distribution, and 1.2MB compresses to ~300-400KB.
 | eval_engine     | Excluded (comptime guard, dev tool only)           |
 | dumpBytecodeVM  | Excluded (comptime guard, debug only)              |
 | Architecture    | Matches native — minimal porting effort            |
+
+---
+
+## Section 6: Modern Wasm Spec Assessment (26.R.6)
+
+### Wasm 3.0 (Released September 2025)
+
+Wasm 3.0 incorporates several previously separate proposals into the standard:
+WasmGC, tail-call, relaxed SIMD, exception handling. All major runtimes
+(V8, Firefox, Safari, Wasmtime) support most of these features.
+
+### Feature Assessment
+
+#### WasmGC — Not Usable
+
+| Aspect         | Status                                                 |
+|---------------|--------------------------------------------------------|
+| Spec          | Phase 5 (Wasm 3.0), fully standardized                |
+| Runtime       | V8, Firefox, Safari 18.2+, Wasmtime 27+ (Tier 1)      |
+| LLVM          | **NOT SUPPORTED** — cannot emit WasmGC types           |
+| Zig           | No externref/funcref support (Issue #10491)            |
+
+**Why it can't work**: WasmGC requires emitting structured GC types (struct, array,
+i31ref) that don't map to LLVM IR. Languages using WasmGC (Kotlin, Dart, Go) bypass
+LLVM entirely with custom compiler backends. Since Zig compiles through LLVM, WasmGC
+is fundamentally inaccessible.
+
+**ClojureWasm impact**: Self-managed GC (MarkSweepGc on linear memory) is the correct
+approach for dynamic languages compiled through LLVM. CPython/Wasm and CRuby/Wasm
+both use the same pattern — linear memory + self-managed GC.
+
+**Decision**: WasmGC remains permanently deferred for Zig-based compilation.
+
+#### Tail-Call — Partially Usable
+
+| Aspect         | Status                                                 |
+|---------------|--------------------------------------------------------|
+| Spec          | Phase 5 (Wasm 3.0), fully standardized                |
+| Runtime       | V8, Firefox, Safari, Wasmtime (Tier 1, default ON)     |
+| LLVM          | Supports musttail → return_call mapping                |
+| Zig           | `@call(.always_tail, ...)` compiles with +tail_call    |
+
+**PoC result**: Simple tail-recursive function compiles successfully with
+`-mcpu generic+tail_call`. LLVM optimizes simple tail recursion to a loop
+at ReleaseSafe, so `return_call` may not appear in output (loop is better anyway).
+
+**Known issues**: Multiple Zig/LLVM bugs with musttail on complex functions
+(struct returns, certain call patterns). The VM dispatch loop uses a large
+switch statement, not explicit tail calls, so direct benefit is limited.
+
+**ClojureWasm impact**: Tail-call could benefit:
+- Clojure's `loop/recur` is already iterative (no benefit)
+- VM dispatch loop doesn't use tail-call style
+- Potential future: continuation-passing VM architecture
+
+**Decision**: Not needed for MVP. Enable +tail_call feature flag when stable.
+Monitor Zig/LLVM bug fixes for wasm32 target.
+
+#### SIMD (128-bit) — Available but Low Priority
+
+| Aspect         | Status                                                 |
+|---------------|--------------------------------------------------------|
+| Spec          | Phase 5 (Wasm 2.0+), relaxed SIMD in Wasm 3.0        |
+| Runtime       | All major runtimes (Tier 1)                            |
+| Zig           | `@Vector` type maps to SIMD, enable with +simd128     |
+
+**ClojureWasm impact**: No direct Clojure-level SIMD operations. Potential use
+in internal string comparison, collection copy, or hash computation. Not a priority
+for MVP — standard scalar operations are sufficient.
+
+**Decision**: Defer. Enable +simd128 as optimization in post-MVP phase.
+
+#### Exception Handling — Not Needed
+
+| Aspect         | Status                                                 |
+|---------------|--------------------------------------------------------|
+| Spec          | Phase 5 (Wasm 3.0), exnref-based design               |
+| Runtime       | V8, Firefox, Safari 18.2+, Wasmtime (Tier 2)          |
+| Zig           | No direct support (uses error unions, not exceptions)  |
+
+**ClojureWasm impact**: Clojure's try/catch/throw is implemented via Zig error
+unions and the exception field in TreeWalk/VM. This works correctly on all targets.
+Wasm EH could theoretically improve unwinding performance but would require
+major architectural changes with no clear benefit.
+
+**Decision**: Not needed. Current error union approach works on wasm32-wasi.
+
+#### Threads — Deferred
+
+| Aspect         | Status                                                 |
+|---------------|--------------------------------------------------------|
+| Spec          | Phase 4 (not in Wasm 3.0), shared-everything Phase 1  |
+| Runtime       | V8/Firefox (via Web Workers), Wasmtime (Tier 2)        |
+| WASI          | wasi-threads withdrawn, shared-everything in progress  |
+
+**ClojureWasm impact**: Clojure's concurrency (STM, agents, futures, pmap) requires
+threading. WASI threading support is immature — wasi-threads was withdrawn in 2023,
+replaced by shared-everything-threads (still Phase 1, expected 2026 late).
+
+**Decision**: Single-threaded MVP. Concurrency deferred until WASI threading stabilizes.
+
+#### WASI Preview 2 / Component Model — Not Needed for MVP
+
+| Aspect         | Status                                                     |
+|---------------|-------------------------------------------------------------|
+| WASI 0.2      | Stable (Jan 2024), stream/future I/O, wasi-sockets         |
+| WASI 0.3      | Expected Feb 2026, native async                            |
+| WASI 1.0      | Expected late 2026 / early 2027                            |
+| Zig           | wasm32-wasi = WASI P1 only. P2 via external libs           |
+
+**ClojureWasm impact**: WASI P1 provides everything needed for MVP:
+- File I/O (preopened dirs)
+- stdout/stderr (fd 1/2)
+- Process args
+- Clock (time)
+- Environment variables (via std.process)
+
+Phase 25's WIT parser already handles module introspection independently.
+
+**Decision**: WASI P1 for MVP. Evaluate P2 migration after WASI 1.0 stabilizes.
+
+### Summary Table
+
+| Feature            | Zig Usable? | MVP Priority | Decision                        |
+|-------------------|-------------|--------------|----------------------------------|
+| WasmGC            | No (LLVM)   | --           | Permanently deferred             |
+| Tail-call         | Partial     | Low          | Defer, enable when stable        |
+| SIMD 128          | Yes         | Low          | Defer, optimization phase        |
+| Exception Handling| No          | None         | Not needed (error unions work)   |
+| Threads           | Partial     | None         | Single-threaded MVP              |
+| WASI P2/CM        | External    | None         | WASI P1 sufficient for MVP       |
+
+### Key Insight: Dynamic Languages and Linear Memory
+
+All successful dynamic language Wasm ports (CPython, CRuby, Lua) compile the
+existing runtime to linear memory Wasm. They do NOT use WasmGC or other
+managed features. This validates ClojureWasm's approach:
+
+1. Compile Zig runtime to wasm32-wasi (linear memory)
+2. Self-managed GC (MarkSweepGc) on linear memory
+3. No dependency on WasmGC, threads, or other unstable proposals
+4. WASI P1 for system interface (mature, well-supported)

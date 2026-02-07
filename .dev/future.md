@@ -322,12 +322,12 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 
 ### wasm_rt track (Wasm runtime freeride)
 
-- Build: Compile entire runtime to .wasm via `zig build -target wasm32-wasi`
-- GC: WasmGC annotations, cooperate with runtime GC
-- Optimization: Runtime JIT/TCO. Wasm tail-call proposal
-- Distribution: .wasm file, run on WasmEdge/Wasmtime
-- Use cases: Portable services, Wasm-first platforms
-- **Status**: Stub. T4.13 produced 207KB wasm32-wasi binary (basic only).
+- Build: Compile entire runtime to .wasm via `zig build wasm`
+- GC: MarkSweepGc on linear memory (same as native, GPA→WasmPageAllocator)
+- Optimization: LLVM optimizations at compile time. No runtime JIT.
+- Distribution: .wasm file, run on Wasmtime/WasmEdge/browsers (via WASI)
+- Use cases: Portable services, Wasm-first platforms, sandboxed execution
+- **Status**: Phase 26.R research complete. Implementation planned.
 
 ### Key Decisions
 
@@ -335,15 +335,26 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 - No runtime branching — comptime switching only
 - **native is the priority** — wasm_rt development begins after native stabilizes
 
-### Zig Wasm Support (investigated)
+### Zig Wasm Support (investigated, updated 26.R.6)
 
-| Feature         | Default (generic) | ClojureWasm Use            |
-| --------------- | ----------------- | -------------------------- |
-| bulk_memory     | Yes               | Fast memcpy/memset         |
-| multivalue      | Yes               | Multi-return functions     |
-| reference_types | Yes               | externref for host objects |
-| tail_call       | No (opt-in)       | **Required for TCO**       |
-| simd128         | No (opt-in)       | String/collection speedup  |
+| Feature         | Default (generic) | ClojureWasm Use            | Status          |
+| --------------- | ----------------- | -------------------------- | --------------- |
+| bulk_memory     | Yes               | Fast memcpy/memset         | Available       |
+| multivalue      | Yes               | Multi-return functions     | Available       |
+| reference_types | Yes               | externref for host objects | Zig Issue #10491|
+| tail_call       | No (opt-in)       | Potential optimization     | PoC works, LLVM bugs |
+| simd128         | No (opt-in)       | String/collection speedup  | Deferred        |
+
+**Modern Wasm spec assessment** (26.R.6, Wasm 3.0):
+
+| Feature            | Zig Usable? | Decision                                |
+| ------------------ | ----------- | --------------------------------------- |
+| WasmGC             | No (LLVM)   | Permanently deferred — LLVM can't emit  |
+| Tail-call          | Partial     | Defer, enable when Zig/LLVM stable      |
+| SIMD 128           | Yes         | Defer, optimization phase               |
+| Exception Handling | No          | Not needed (Zig error unions work)      |
+| Threads            | Partial     | Single-threaded MVP (WASI unstable)     |
+| WASI P2/CM         | External    | WASI P1 sufficient for MVP              |
 
 **GC implications for wasm_rt** (updated 2026-02-07 per 26.R.3):
 
