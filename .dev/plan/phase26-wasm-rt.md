@@ -668,3 +668,171 @@ managed features. This validates ClojureWasm's approach:
 2. Self-managed GC (MarkSweepGc) on linear memory
 3. No dependency on WasmGC, threads, or other unstable proposals
 4. WASI P1 for system interface (mature, well-supported)
+
+---
+
+## Section 7: MVP Definition and Implementation Plan (26.R.7)
+
+### MVP Scope
+
+**Goal**: `cljw.wasm` binary that evaluates Clojure code on Wasmtime.
+
+**In scope**:
+- eval + print for Clojure expressions
+- All 526 core vars (core.clj bootstrap)
+- D73 two-phase bootstrap (TreeWalk + VM hot recompile)
+- MarkSweepGc (same as native)
+- WASI P1 I/O (stdout, stderr, file read via preopened dirs)
+- Process args, environment variables, clock
+
+**Out of scope** (deferred):
+- nREPL (requires networking — WASI P1 has no sockets)
+- Wasm InterOp / zware (can't run Wasm engine inside Wasm)
+- Threading / concurrency (WASI threads unstable)
+- REPL (stdin line editing is limited on WASI, possible but not MVP)
+- WasmGC, tail-call optimization, SIMD
+
+### Usage Model
+
+```bash
+# File execution
+wasmtime --dir=. cljw.wasm -- file.clj
+
+# Expression evaluation
+wasmtime cljw.wasm -- -e '(+ 1 2)'
+
+# With increased stack for edge cases
+wasmtime -W max-wasm-stack=8388608 --dir=. cljw.wasm -- file.clj
+```
+
+### Implementation Sub-Phases
+
+#### 26.1: Build Infrastructure
+
+Create `main_wasm.zig` and update `build.zig` to compile successfully.
+
+| Task    | Description                                              |
+|---------|----------------------------------------------------------|
+| 26.1.1  | Create `src/main_wasm.zig` — minimal entry point        |
+| 26.1.2  | Update `build.zig` wasm_exe to use main_wasm.zig        |
+| 26.1.3  | Comptime guard: registry.zig skip wasm/builtins on wasi |
+| 26.1.4  | Comptime guard: system.zig getenv on wasi               |
+| 26.1.5  | Comptime guard: root.zig skip nrepl/wasm exports        |
+| 26.1.6  | `zig build wasm` compiles without errors                 |
+
+**Deliverable**: `zig build wasm` produces a .wasm binary (may not run yet).
+
+#### 26.2: WASI I/O Layer
+
+Fix platform-specific I/O to work on WASI.
+
+| Task    | Description                                              |
+|---------|----------------------------------------------------------|
+| 26.2.1  | stdout/stderr: use fd constants (1/2) instead of POSIX   |
+| 26.2.2  | file_io.zig: verify cwd() works on WASI preopened dirs   |
+| 26.2.3  | system.zig: getEnvMap or return nil for getenv on WASI   |
+| 26.2.4  | main_wasm.zig: arg parsing from process.args             |
+
+**Deliverable**: Basic I/O works on wasmtime.
+
+#### 26.3: Bootstrap and Eval
+
+Get core.clj bootstrap and user evaluation working.
+
+| Task    | Description                                              |
+|---------|----------------------------------------------------------|
+| 26.3.1  | bootstrap.zig: comptime guard for eval_engine exclusion  |
+| 26.3.2  | bootstrap.zig: comptime guard for dumpBytecodeVM         |
+| 26.3.3  | Verify loadCore works (TreeWalk bootstrap of core.clj)   |
+| 26.3.4  | Verify evalStringVMBootstrap works (D73 hot recompile)   |
+| 26.3.5  | Verify evalStringVM works (user code evaluation via VM)  |
+| 26.3.6  | End-to-end: `wasmtime cljw.wasm -- -e '(+ 1 2)'` → `3` |
+
+**Deliverable**: Clojure expressions evaluate correctly on wasmtime.
+
+#### 26.4: Full Feature Verification
+
+Verify the 526 core vars and key features work on Wasm target.
+
+| Task    | Description                                              |
+|---------|----------------------------------------------------------|
+| 26.4.1  | Run core bootstrap test suite on wasmtime                |
+| 26.4.2  | Verify slurp/spit work with preopened dirs               |
+| 26.4.3  | Verify GC triggers and collection works                  |
+| 26.4.4  | Run benchmark subset on wasmtime (verify correctness)    |
+| 26.4.5  | Measure binary size and startup time                     |
+
+**Deliverable**: All 526 core vars work. Binary size and perf baseline recorded.
+
+### Error Fix Mapping (from 26.R.1 Catalog)
+
+| Error | Fix Task | Fix Description                                |
+|-------|----------|------------------------------------------------|
+| E1    | 26.1.3   | Comptime skip wasm/builtins import in registry |
+| E2    | 26.1.5   | Comptime skip nrepl import in root.zig         |
+| E3    | 26.2.3   | getEnvMap fallback on WASI                     |
+| E4    | 26.2.1   | Comptime fd constants for stdout/stderr        |
+| E5    | 26.3.1   | Comptime guard in bootstrap.zig                |
+| E6    | 26.3.1   | Comptime guard eval_engine exclusion           |
+| E7    | 26.1.3   | Comptime skip wasm/builtins on wasi            |
+| E8    | 26.2.1   | Fix STDERR_FILENO in dumpBytecodeVM (excluded) |
+| E9    | 26.1.5   | Comptime skip nrepl thread-related code        |
+| E10   | 26.1.5   | Comptime skip wasm/nrepl exports in root.zig   |
+
+### Architecture (D78 Implementation)
+
+```
+build.zig
+  wasm_exe:
+    root_source_file = "src/main_wasm.zig"
+    target = wasm32-wasi
+    (no zware import)
+
+src/main_wasm.zig          # Minimal: parse args, bootstrap, eval, print
+  imports:
+    common/bootstrap.zig   # With comptime guards for wasi
+    common/gc.zig           # MarkSweepGc (same as native)
+    common/env.zig          # Namespace/Var runtime
+
+common/bootstrap.zig (comptime is_wasi branches):
+  - evalString: available (TreeWalk)
+  - evalStringVM: available (VM)
+  - evalStringVMBootstrap: available (hot recompile)
+  - callFnVal: available (cross-dispatch)
+  - eval_engine: excluded (comptime void on wasi)
+  - dumpBytecodeVM: excluded (comptime void on wasi)
+
+native/vm/vm.zig           # Shared as-is (platform-independent)
+native/evaluator/tree_walk.zig  # Shared as-is (platform-independent)
+```
+
+### Estimated Effort
+
+| Sub-Phase | Tasks | Est. Complexity | Notes                          |
+|-----------|-------|-----------------|--------------------------------|
+| 26.1      | 6     | Low             | Mostly comptime guards         |
+| 26.2      | 4     | Low             | WASI I/O is POSIX-like         |
+| 26.3      | 6     | Medium          | Bootstrap correctness critical |
+| 26.4      | 5     | Low-Medium      | Testing and verification       |
+| **Total** | **21**| **~2 sessions** | Incremental, TDD approach      |
+
+### Success Criteria
+
+1. `zig build wasm` produces `zig-out/bin/cljw.wasm`
+2. `wasmtime cljw.wasm -- -e '(+ 1 2)'` prints `3`
+3. `wasmtime --dir=. cljw.wasm -- test.clj` evaluates a file
+4. All 526 core vars bootstrap successfully
+5. GC collection works (no OOM on larger programs)
+6. Binary size < 5MB (expected ~1.2MB)
+7. Startup time < 500ms on wasmtime (expected ~50-100ms)
+
+### Risk Mitigation
+
+| Risk                        | Mitigation                                     |
+|-----------------------------|-------------------------------------------------|
+| VM struct too large for Wasm| Already heap-allocated (D71), works              |
+| Stack overflow on deep eval | Configurable: -W max-wasm-stack=8M               |
+| GC perf on Wasm             | MarkSweepGc validated in 26.R.3 PoC             |
+| WASI file I/O limitations   | preopened dirs work, validated in 26.R.1 PoC     |
+| Binary size bloat           | ReleaseSafe Wasm is compact (~1.2MB estimated)   |
+| Bootstrap timeout           | TreeWalk is fast (~10ms native, ~50ms on Wasm?)  |

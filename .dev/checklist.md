@@ -28,7 +28,7 @@ Check at session start for items that become actionable.
 | F95 | VM intrinsic ns awareness                   | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | ~~F97~~ | ~~GC double-free in sieve benchmark~~    | Resolved: stack overflow from deep lazy-seq realization (512MB stack + meta tracing fix) |
 | F98 | fib_recursive ReleaseFast anomaly            | 487ms Release > 205ms Debug — investigate Zig optimizer interaction |
-| F99 | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. **Critical for Phase 26** (Wasm ~1MB stack). See optimization-backlog.md |
+| F99 | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. Not critical for Phase 26 MVP (26.R.4: 8MB stack sufficient). See optimization-backlog.md |
 | F101 | into() transient optimization              | into uses reduce+conj, could use transient. See optimization-backlog.md   |
 | F102 | map/filter chunked processing              | chunk.zig infra exists, map/filter don't use it. See optimization-backlog.md |
 | F103 | Escape analysis (local scope skip GC)      | Compiler detects local-only Values, skip GC tracking                       |

@@ -375,12 +375,20 @@ Call Wasm modules from native track. Use zware (pure Zig) as primary engine.
 
 ### Phase 26: wasm_rt Track
 
-Compile entire runtime to Wasm. F99 (iterative lazy-seq) becomes critical.
+Compile entire runtime to wasm32-wasi. eval + print on Wasmtime.
 
-**Scope**: WasmGC delegate, wasm32-wasi target, comptime switching
-**Prerequisite**: Phase 25 complete
-**Key constraint**: Wasm ~1MB stack vs native 512MB — F99 required
-**Reference**: .dev/future.md SS7
+**Scope**: wasm32-wasi target, comptime switching (D78), both backends
+**Prerequisite**: Phase 25 complete, Phase 26.R research complete
+**Key findings**: F99 NOT required (D74 handles pathological cases),
+WasmGC not usable (LLVM), MarkSweepGc works as-is, WASI P1 sufficient.
+**Reference**: .dev/plan/phase26-wasm-rt.md, .dev/future.md SS7/SS8
+
+| Task    | Description                                                |
+|---------|------------------------------------------------------------|
+| 26.1    | Build infrastructure — main_wasm.zig, comptime guards      |
+| 26.2    | WASI I/O layer — stdout/stderr, file I/O, getenv           |
+| 26.3    | Bootstrap and eval — core.clj + VM hot recompile on Wasm   |
+| 26.4    | Full feature verification — 526 vars, GC, benchmarks       |
 
 ### Phase 27: Post-wasm_rt Refactoring
 

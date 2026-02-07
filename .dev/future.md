@@ -11,21 +11,20 @@
 - **Zig-based full-scratch Clojure reimplementation**, no Java Interop
 - Single-binary distribution for native track
 - Dual backend: TreeWalk (correct) + BytecodeVM (fast), with `--compare` mode
-- **Current**: 216/702 vars implemented, Phase 11 (Metadata System)
+- **Current**: 526/704 vars implemented, Phase 26 (wasm_rt)
 - English-only codebase (D10): identifiers, comments, commits, docs
-- **Babashka-competitive startup** (~2.6ms Debug, sub-ms release target)
+- **Babashka-competitive performance** — beats Babashka 19/20 benchmarks (Phase 24)
 - OSS-ready from day one (EPL-1.0)
 
 ### Key metrics
 
-| Metric             | Value                |
-| ------------------ | -------------------- |
-| Vars implemented   | 216 / 702 (30.8%)    |
-| Zig builtins       | 110                  |
-| core.clj functions | ~40+ macros/fns      |
-| Phases completed   | 1-10 (94 tasks)      |
-| Benchmark suite    | 11 benchmarks, 5 cat |
-| Wasm binary size   | 207KB (ReleaseSmall) |
+| Metric             | Value                     |
+| ------------------ | ------------------------- |
+| Vars implemented   | 526 / 704 (74.7%)         |
+| Phases completed   | A-D, 20-25, 22b, 22c, 24.5 |
+| GC                 | MarkSweepGc (D69, D70)    |
+| Benchmark suite    | 20 benchmarks, beats bb   |
+| Backends           | VM (bytecode) + TreeWalk  |
 
 ---
 
