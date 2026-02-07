@@ -16,6 +16,7 @@ pub const gc = @import("common/gc.zig");
 pub const opcodes = @import("common/bytecode/opcodes.zig");
 pub const chunk = @import("common/bytecode/chunk.zig");
 pub const compiler = @import("common/bytecode/compiler.zig");
+pub const serialize = @import("common/bytecode/serialize.zig");
 pub const vm = @import("native/vm/vm.zig");
 pub const tree_walk = @import("native/evaluator/tree_walk.zig");
 pub const eval_engine = @import("common/eval_engine.zig");
@@ -55,6 +56,7 @@ test {
     _ = opcodes;
     _ = chunk;
     _ = compiler;
+    _ = serialize;
     _ = vm;
     _ = tree_walk;
     _ = eval_engine;
