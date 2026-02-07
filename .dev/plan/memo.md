@@ -24,22 +24,34 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> **30 (robustness)** -> 31
 
 ## Task Queue
 
-Phase 30 — Production Robustness. Planning needed. Read roadmap Phase 30:
-- Error reporting improvements (Babashka-quality stack traces)
-- Skip var recovery (re-evaluate 178 skipped vars for Zig equivalents)
-- nREPL/cider-nrepl compatibility
-- Zero-config project model
+Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.md
+
+- 30.1a Call stack tracking
+- 30.1b Source context display
+- 30.1c Throwable->map + ex-data
+- 30.1d REPL error formatting
+- 30.2a nREPL stacktrace op
+- 30.2b nREPL info extension (:file, :line)
+- 30.2c CIDER end-to-end test
+- 30.3a require file resolution
+- 30.3b src/ path auto-detect
+- 30.3c cljw.edn support
+- 30.4a letfn implementation
+- 30.4b with-open macro
+- 30.4c tagged-literal + reader-conditional
+- 30.4d with-local-vars + with-in-str
+- 30.4e Remaining type predicates
 
 ## Current Task
 
-Planning Phase 30. Need to create phase30 plan file with task queue.
+30.1a — Call stack tracking. Add threadlocal call stack to error.zig,
+push/pop frames in VM performCall() and TreeWalk evalFnCall().
 
 ## Previous Task
 
-Phase 29 analysis: File splitting impractical (Zig struct methods must be
-in same file, tests 50-78% of large files). D3 violations require
-BuiltinFn signature change (fn(Alloc,[]Value) → fn(Alloc,*Env,[]Value),
-500+ function signatures). Both dropped. Proceeding to Phase 30.
+Phase 30 planning: Created .dev/plan/phase30-robustness.md with 15 tasks
+across 4 sub-phases. Research: 72 true JVM-only vars, 106 recoverable.
+nREPL has 14 ops, needs stacktrace + info extension for CIDER.
 
 ## Known Issues from Phase 27
 
@@ -50,6 +62,7 @@ BuiltinFn signature change (fn(Alloc,[]Value) → fn(Alloc,*Env,[]Value),
 
 ## Handover Notes
 
+- **Phase 30 plan**: .dev/plan/phase30-robustness.md
 - **Phase 28 plan**: .dev/plan/phase28-single-binary.md
 - **Roadmap**: .dev/plan/roadmap.md — Phases 27-31 defined
 - **wasm_rt archive**: .dev/plan/phase26-wasm-rt.md + src/wasm_rt/README.md
