@@ -592,6 +592,65 @@ are prevented at the design level in production.
 
 ---
 
+## SS21. Deployment and Developer Experience
+
+Discussion notes (2026-02-07). Not yet committed to roadmap.
+
+### 21.1 Two Deployment Paths
+
+**wasm_rt (primary differentiator)**:
+Bundle user .clj + core.clj + runtime into a single .wasm file.
+Deploy to Wasm edge runtimes (Cloudflare Workers, Fastly Compute, Deno Deploy, etc.).
+No other Clojure implementation can target this. Unique positioning.
+
+- Phase A: Embed .clj source in Wasm data section, read+eval at startup
+- Phase B: AOT bytecode serialization (F7), embed bytecode instead (faster startup)
+- Phase C: (far future) Direct Clojure→Wasm compilation
+
+**native (secondary, Babashka-adjacent)**:
+Single native binary with user code embedded via Zig `@embedFile`.
+Cross-compile to any platform from any host (Zig's strength).
+Speed advantage over Babashka (19/20 benchmarks), but not a frontal competitor.
+
+- Babashka is respected — avoid positioning as a replacement
+- Marketing emphasis on wasm_rt as the distinctive feature
+- Native path valuable for building knowledge before wasm_rt
+
+### 21.2 Developer Experience Gap
+
+Current state: high-performance runtime, but no packaging or project tooling.
+
+Missing layers (to be addressed in future phases):
+- Project structure — deps.edn-like manifest (but Java libs unavailable)
+- Dependency management — Wasm binary libs? Pure-clj libs from Clojars?
+  Babashka and shadow-cljs both define custom EDN formats; same approach likely needed
+- Build tool — `cljw build` producing .wasm or native binary
+- REPL polish — nREPL foundation exists, CIDER compat needs work
+
+### 21.3 Dependency Strategy (open questions)
+
+- Java libraries are not usable — need alternative dependency story
+- Possible: load Wasm binary libraries (compiled from Rust/Go/Zig)
+  via wasm/load, exposed as Clojure namespaces
+- Possible: pure Clojure libraries from Clojars (subset that avoids Java interop)
+- Possible: custom registry for cljw-compatible packages
+- Reference: Babashka's bb.edn, shadow-cljs's shadow-cljs.edn
+
+### 21.4 Build Pipeline Vision
+
+```
+;; cljw.edn (future)
+{:paths ["src"]
+ :main my-app.core
+ :target :wasm}       ;; or :native
+
+;; cljw build → my-app.wasm (or my-app binary)
+```
+
+Packaging layer design deferred until wasm_rt (Phase 26) reveals constraints.
+
+---
+
 ## SS14. Security Design
 
 ### 14.1 Memory Safety
