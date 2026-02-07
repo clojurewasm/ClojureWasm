@@ -1618,7 +1618,7 @@ test "EvalEngine compare println returns nil" {
     var engine = EvalEngine.init(alloc, &env);
 
     // Capture output to avoid test noise
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     io_mod.setOutputCapture(alloc, &buf);
     defer io_mod.setOutputCapture(null, null);
@@ -1646,7 +1646,7 @@ test "EvalEngine compare prn returns nil" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     io_mod.setOutputCapture(alloc, &buf);
     defer io_mod.setOutputCapture(null, null);

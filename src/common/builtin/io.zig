@@ -19,11 +19,11 @@ const err = @import("../error.zig");
 // Output capture for testing
 // ============================================================
 
-var capture_buf: ?*std.ArrayListUnmanaged(u8) = null;
+var capture_buf: ?*std.ArrayList(u8) = null;
 var capture_alloc: ?Allocator = null;
 
 /// Set an output capture buffer. Pass null to restore stdout.
-pub fn setOutputCapture(alloc: ?Allocator, buf: ?*std.ArrayListUnmanaged(u8)) void {
+pub fn setOutputCapture(alloc: ?Allocator, buf: ?*std.ArrayList(u8)) void {
     capture_buf = buf;
     capture_alloc = alloc;
 }
@@ -150,7 +150,7 @@ pub fn flushFn(_: Allocator, args: []const Value) anyerror!Value {
 
 const MAX_CAPTURE_DEPTH = 16;
 const CaptureState = struct {
-    buf: ?*std.ArrayListUnmanaged(u8),
+    buf: ?*std.ArrayList(u8),
     alloc: ?Allocator,
 };
 
@@ -167,7 +167,7 @@ fn pushOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value
     capture_depth += 1;
 
     // Create new capture buffer
-    const buf = allocator.create(std.ArrayListUnmanaged(u8)) catch return error.OutOfMemory;
+    const buf = allocator.create(std.ArrayList(u8)) catch return error.OutOfMemory;
     buf.* = .empty;
     setOutputCapture(allocator, buf);
 
@@ -256,7 +256,7 @@ pub const builtins = [_]BuiltinDef{
 
 const testing = std.testing;
 
-fn capturedOutput(alloc: Allocator, buf: *std.ArrayListUnmanaged(u8), comptime f: fn (Allocator, []const Value) anyerror!Value, args: []const Value) ![]const u8 {
+fn capturedOutput(alloc: Allocator, buf: *std.ArrayList(u8), comptime f: fn (Allocator, []const Value) anyerror!Value, args: []const Value) ![]const u8 {
     buf.clearRetainingCapacity();
     setOutputCapture(alloc, buf);
     defer setOutputCapture(null, null);
@@ -265,7 +265,7 @@ fn capturedOutput(alloc: Allocator, buf: *std.ArrayListUnmanaged(u8), comptime f
 }
 
 test "println - no args prints newline" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const output = try capturedOutput(testing.allocator, &buf, printlnFn, &.{});
     try testing.expectEqualStrings("\n", output);
@@ -275,7 +275,7 @@ test "println - single string unquoted" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{Value.initString(alloc, "hello")};
     const output = try capturedOutput(alloc, &buf, printlnFn, &args);
@@ -286,7 +286,7 @@ test "println - multi-arg space separated" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{
         Value.initInteger(1),
@@ -298,7 +298,7 @@ test "println - multi-arg space separated" {
 }
 
 test "println - returns nil" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
@@ -308,7 +308,7 @@ test "println - returns nil" {
 }
 
 test "prn - no args prints newline" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const output = try capturedOutput(testing.allocator, &buf, prnFn, &.{});
     try testing.expectEqualStrings("\n", output);
@@ -318,7 +318,7 @@ test "prn - string is quoted" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{Value.initString(alloc, "hello")};
     const output = try capturedOutput(alloc, &buf, prnFn, &args);
@@ -329,7 +329,7 @@ test "prn - multi-arg space separated readable" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{
         Value.initInteger(1),
@@ -341,7 +341,7 @@ test "prn - multi-arg space separated readable" {
 }
 
 test "prn - returns nil" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
@@ -353,7 +353,7 @@ test "prn - returns nil" {
 // === print tests ===
 
 test "print - no args prints nothing" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const output = try capturedOutput(testing.allocator, &buf, printFn, &.{});
     try testing.expectEqualStrings("", output);
@@ -363,7 +363,7 @@ test "print - single string unquoted no newline" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{Value.initString(alloc, "hello")};
     const output = try capturedOutput(alloc, &buf, printFn, &args);
@@ -374,7 +374,7 @@ test "print - multi-arg space separated no newline" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{
         Value.initInteger(1),
@@ -388,7 +388,7 @@ test "print - multi-arg space separated no newline" {
 // === pr tests ===
 
 test "pr - no args prints nothing" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const output = try capturedOutput(testing.allocator, &buf, prFn, &.{});
     try testing.expectEqualStrings("", output);
@@ -398,7 +398,7 @@ test "pr - string is quoted no newline" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{Value.initString(alloc, "hello")};
     const output = try capturedOutput(alloc, &buf, prFn, &args);
@@ -409,7 +409,7 @@ test "pr - multi-arg space separated readable no newline" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     const args = [_]Value{
         Value.initInteger(1),
@@ -423,14 +423,14 @@ test "pr - multi-arg space separated readable no newline" {
 // === newline tests ===
 
 test "newline - prints newline character" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const output = try capturedOutput(testing.allocator, &buf, newlineFn, &.{});
     try testing.expectEqualStrings("\n", output);
 }
 
 test "newline - rejects args" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
@@ -442,7 +442,7 @@ test "newline - rejects args" {
 // === flush tests ===
 
 test "flush - returns nil" {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);

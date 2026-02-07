@@ -142,7 +142,7 @@ fn handleClient(state: *ServerState, conn: std.net.Server.Connection) void {
 /// Bencode message loop — read, decode, dispatch.
 fn messageLoop(state: *ServerState, stream: std.net.Stream) void {
     var recv_buf: [65536]u8 = undefined;
-    var pending: std.ArrayListUnmanaged(u8) = .empty;
+    var pending: std.ArrayList(u8) = .empty;
     defer pending.deinit(state.gpa);
 
     while (true) {
@@ -177,7 +177,7 @@ fn messageLoop(state: *ServerState, stream: std.net.Stream) void {
 }
 
 /// Remove consumed bytes from pending buffer.
-fn shiftPending(pending: *std.ArrayListUnmanaged(u8), n: usize) void {
+fn shiftPending(pending: *std.ArrayList(u8), n: usize) void {
     if (n >= pending.items.len) {
         pending.clearRetainingCapacity();
     } else {
@@ -384,7 +384,7 @@ fn opEval(
     }
 
     // Set up output capture
-    var capture_buf: std.ArrayListUnmanaged(u8) = .empty;
+    var capture_buf: std.ArrayList(u8) = .empty;
     defer capture_buf.deinit(state.gpa);
     io_mod.setOutputCapture(state.gpa, &capture_buf);
     defer io_mod.setOutputCapture(null, null);
@@ -549,7 +549,7 @@ fn opLsSessions(
     state.mutex.lock();
     defer state.mutex.unlock();
 
-    var session_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var session_list: std.ArrayList(BencodeValue) = .empty;
     var iter = state.sessions.iterator();
     while (iter.next()) |entry| {
         session_list.append(allocator, .{ .string = entry.value_ptr.id }) catch {};
@@ -576,7 +576,7 @@ fn opCompletions(
     state.mutex.lock();
     defer state.mutex.unlock();
 
-    var completions: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var completions: std.ArrayList(BencodeValue) = .empty;
 
     // Current namespace vars + refers
     if (state.env.current_ns) |ns| {
@@ -600,7 +600,7 @@ fn opCompletions(
 /// Collect completion candidates from a VarMap.
 fn collectCompletions(
     allocator: Allocator,
-    completions: *std.ArrayListUnmanaged(BencodeValue),
+    completions: *std.ArrayList(BencodeValue),
     var_map: *const clj.namespace.VarMap,
     prefix: []const u8,
     ns_name: ?[]const u8,
@@ -660,7 +660,7 @@ fn opInfo(
     }
 
     const var_ptr = v.?;
-    var info_entries: std.ArrayListUnmanaged(BencodeValue.DictEntry) = .empty;
+    var info_entries: std.ArrayList(BencodeValue.DictEntry) = .empty;
     info_entries.append(allocator, idEntry(msg)) catch {};
     info_entries.append(allocator, .{ .key = "name", .value = .{ .string = var_ptr.sym.name } }) catch {};
     if (var_ptr.ns_name.len > 0) {
@@ -710,7 +710,7 @@ fn opEldoc(
     }
 
     const var_ptr = v.?;
-    var eldoc_entries: std.ArrayListUnmanaged(BencodeValue.DictEntry) = .empty;
+    var eldoc_entries: std.ArrayList(BencodeValue.DictEntry) = .empty;
     eldoc_entries.append(allocator, idEntry(msg)) catch {};
     eldoc_entries.append(allocator, .{ .key = "name", .value = .{ .string = var_ptr.sym.name } }) catch {};
     if (var_ptr.ns_name.len > 0) {
@@ -739,7 +739,7 @@ fn opNsList(
     state.mutex.lock();
     defer state.mutex.unlock();
 
-    var ns_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var ns_list: std.ArrayList(BencodeValue) = .empty;
     var iter = state.env.namespaces.iterator();
     while (iter.next()) |entry| {
         ns_list.append(allocator, .{ .string = entry.key_ptr.* }) catch {};
@@ -810,7 +810,7 @@ fn opStacktrace(
 
     // Build stacktrace frame list
     const stack = state.last_error_stack[0..state.last_error_stack_depth];
-    var frame_list: std.ArrayListUnmanaged(BencodeValue) = .empty;
+    var frame_list: std.ArrayList(BencodeValue) = .empty;
 
     for (stack) |frame| {
         const fn_name = frame.fn_name orelse "unknown";
@@ -981,7 +981,7 @@ fn sendBencode(
     entries: []const BencodeValue.DictEntry,
     allocator: Allocator,
 ) void {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     bencode.encode(allocator, &buf, .{ .dict = entries }) catch return;
     stream.writeAll(buf.items) catch {};
 }
@@ -1519,7 +1519,7 @@ test "nrepl - TCP integration: describe op" {
             defer stream.close();
 
             // Send describe request
-            var send_buf: std.ArrayListUnmanaged(u8) = .empty;
+            var send_buf: std.ArrayList(u8) = .empty;
             defer send_buf.deinit(alloc);
             const msg_entries = [_]BencodeValue.DictEntry{
                 .{ .key = "op", .value = .{ .string = "describe" } },

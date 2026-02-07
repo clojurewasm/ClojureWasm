@@ -156,7 +156,7 @@ pub const Parser = struct {
         const first = try self.parseSequence();
 
         if (!self.isEof() and self.peek() == '|') {
-            var alts: std.ArrayListUnmanaged([]const RegexNode) = .empty;
+            var alts: std.ArrayList([]const RegexNode) = .empty;
             alts.append(self.allocator, first) catch return error.OutOfMemory;
 
             while (!self.isEof() and self.peek() == '|') {
@@ -180,7 +180,7 @@ pub const Parser = struct {
 
     /// sequence := quantified*
     fn parseSequence(self: *Parser) ParseError![]const RegexNode {
-        var nodes: std.ArrayListUnmanaged(RegexNode) = .empty;
+        var nodes: std.ArrayList(RegexNode) = .empty;
 
         while (!self.isEof()) {
             const c = self.peek();
@@ -339,8 +339,8 @@ pub const Parser = struct {
             self.advance();
         }
 
-        var ranges: std.ArrayListUnmanaged(CharRange) = .empty;
-        var singles: std.ArrayListUnmanaged(u8) = .empty;
+        var ranges: std.ArrayList(CharRange) = .empty;
+        var singles: std.ArrayList(u8) = .empty;
 
         // First ']' is treated as literal
         var first = true;
@@ -551,8 +551,8 @@ pub const Parser = struct {
 /// Expand predefined class into CharRange/singles
 fn expandPredefined(
     p: Predefined,
-    ranges: *std.ArrayListUnmanaged(CharRange),
-    singles: *std.ArrayListUnmanaged(u8),
+    ranges: *std.ArrayList(CharRange),
+    singles: *std.ArrayList(u8),
     allocator: std.mem.Allocator,
 ) !void {
     switch (p) {

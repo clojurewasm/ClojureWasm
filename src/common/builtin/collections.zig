@@ -126,7 +126,7 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const cp_len = std.unicode.utf8ByteSequenceLength(s[0]) catch 1;
             const rest_str = s[cp_len..];
             // Convert remaining chars to list of characters
-            var chars: std.ArrayListUnmanaged(Value) = .empty;
+            var chars: std.ArrayList(Value) = .empty;
             var i: usize = 0;
             while (i < rest_str.len) {
                 const cl = std.unicode.utf8ByteSequenceLength(rest_str[i]) catch 1;
@@ -672,7 +672,7 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .string => {
             const s = args[0].asString();
             if (s.len == 0) return Value.nil_val;
-            var chars: std.ArrayListUnmanaged(Value) = .empty;
+            var chars: std.ArrayList(Value) = .empty;
             var i: usize = 0;
             while (i < s.len) {
                 const cl = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
@@ -697,7 +697,7 @@ pub fn concatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // Collect all items from all sequences using collectSeqItems
-    var all: std.ArrayListUnmanaged(Value) = .empty;
+    var all: std.ArrayList(Value) = .empty;
     for (args) |arg| {
         if (arg == Value.nil_val) continue;
         const seq_items = try collectSeqItems(allocator, arg);
@@ -1339,7 +1339,7 @@ pub fn realizeValue(allocator: Allocator, val: Value) anyerror!Value {
 /// Collect all items from a seq-like value (list, vector, cons, lazy_seq)
 /// into a flat slice. Handles cons chains and lazy realization.
 pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value {
-    var items: std.ArrayListUnmanaged(Value) = .empty;
+    var items: std.ArrayList(Value) = .empty;
     var current = val;
     while (true) {
         switch (current.tag()) {
@@ -3618,7 +3618,8 @@ test "assoc on sorted-map maintains sort order" {
     // assoc :b — should sort into the middle
     const result = try assocFn(alloc, &.{
         sm,
-        Value.initKeyword(alloc, .{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .name = "b", .ns = null }),
+        Value.initInteger(2),
     });
     try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 3), result.asMap().count());

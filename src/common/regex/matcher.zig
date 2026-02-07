@@ -274,7 +274,7 @@ pub const Matcher = struct {
     }
 
     fn matchQuantifierGreedy(self: *Matcher, q: regex_mod.Quantifier, pos: usize) MatchError!?usize {
-        var positions: std.ArrayListUnmanaged(usize) = .empty;
+        var positions: std.ArrayList(usize) = .empty;
         defer positions.deinit(self.allocator);
         positions.append(self.allocator, pos) catch return null;
 

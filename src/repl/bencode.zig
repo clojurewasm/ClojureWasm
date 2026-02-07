@@ -73,7 +73,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []const u8) DecodeError!struct
         },
         // List: l<items>e
         'l' => {
-            var items: std.ArrayListUnmanaged(BencodeValue) = .empty;
+            var items: std.ArrayList(BencodeValue) = .empty;
             var pos: usize = 1;
             while (pos < data.len and data[pos] != 'e') {
                 const result = try decode(allocator, data[pos..]);
@@ -88,7 +88,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []const u8) DecodeError!struct
         },
         // Dict: d<key><val>...e
         'd' => {
-            var entries: std.ArrayListUnmanaged(BencodeValue.DictEntry) = .empty;
+            var entries: std.ArrayList(BencodeValue.DictEntry) = .empty;
             var pos: usize = 1;
             while (pos < data.len and data[pos] != 'e') {
                 const key_result = try decode(allocator, data[pos..]);
@@ -125,7 +125,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []const u8) DecodeError!struct
 }
 
 /// Encode a bencode value into buf.
-pub fn encode(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), val: BencodeValue) !void {
+pub fn encode(allocator: std.mem.Allocator, buf: *std.ArrayList(u8), val: BencodeValue) !void {
     switch (val) {
         .string => |s| {
             var len_buf: [20]u8 = undefined;
@@ -161,7 +161,7 @@ pub fn encode(allocator: std.mem.Allocator, buf: *std.ArrayListUnmanaged(u8), va
 
 /// Convenience: encode a dict and return the byte slice.
 pub fn encodeDict(allocator: std.mem.Allocator, entries: []const BencodeValue.DictEntry) ![]const u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     try encode(allocator, &buf, .{ .dict = entries });
     return try buf.toOwnedSlice(allocator);
 }
@@ -176,7 +176,7 @@ test "bencode encode/decode string" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     try encode(allocator, &buf, .{ .string = "hello" });
     try std.testing.expectEqualSlices(u8, "5:hello", buf.items);
@@ -190,7 +190,7 @@ test "bencode encode/decode integer" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     try encode(allocator, &buf, .{ .integer = 42 });
     try std.testing.expectEqualSlices(u8, "i42e", buf.items);
@@ -203,7 +203,7 @@ test "bencode encode/decode negative integer" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     try encode(allocator, &buf, .{ .integer = -42 });
     try std.testing.expectEqualSlices(u8, "i-42e", buf.items);
@@ -216,7 +216,7 @@ test "bencode encode/decode list" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     const items = [_]BencodeValue{
         .{ .string = "done" },
@@ -235,7 +235,7 @@ test "bencode encode/decode dict" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     const entries = [_]BencodeValue.DictEntry{
         .{ .key = "op", .value = .{ .string = "eval" } },
@@ -253,7 +253,7 @@ test "bencode nested dict roundtrip" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     const status_items = [_]BencodeValue{.{ .string = "done" }};
     const entries = [_]BencodeValue.DictEntry{
@@ -275,7 +275,7 @@ test "bencode empty string" {
     var arena = testArena();
     defer arena.deinit();
     const allocator = arena.allocator();
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
 
     try encode(allocator, &buf, .{ .string = "" });
     try std.testing.expectEqualSlices(u8, "0:", buf.items);

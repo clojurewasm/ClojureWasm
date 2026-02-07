@@ -48,7 +48,7 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
             };
         },
         .cons => blk: {
-            var elems: std.ArrayListUnmanaged(Value) = .empty;
+            var elems: std.ArrayList(Value) = .empty;
             var cur = coll;
             while (true) {
                 if (cur.tag() == .cons) {
@@ -106,7 +106,7 @@ pub fn splitFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 fn splitWithString(allocator: Allocator, s: []const u8, pattern: []const u8, limit: i64) anyerror!Value {
     if (pattern.len == 0) {
-        var chars: std.ArrayListUnmanaged(Value) = .empty;
+        var chars: std.ArrayList(Value) = .empty;
         var i: usize = 0;
         while (i < s.len) {
             const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
@@ -119,7 +119,7 @@ fn splitWithString(allocator: Allocator, s: []const u8, pattern: []const u8, lim
         return Value.initVector(vec);
     }
 
-    var parts: std.ArrayListUnmanaged(Value) = .empty;
+    var parts: std.ArrayList(Value) = .empty;
     var start: usize = 0;
     var count: i64 = 1;
     while (start <= s.len) {
@@ -147,7 +147,7 @@ fn splitWithRegex(allocator: Allocator, s: []const u8, regex_val: Value, limit: 
     var m = try matcher_mod.Matcher.init(allocator, compiled, s);
     defer m.deinit();
 
-    var parts: std.ArrayListUnmanaged(Value) = .empty;
+    var parts: std.ArrayList(Value) = .empty;
     var start: usize = 0;
     var count: i64 = 1;
 

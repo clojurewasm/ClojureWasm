@@ -1480,7 +1480,7 @@ fn eqlConsSeq(a: Value, b: Value, allocator: ?Allocator) bool {
 
     // Both walkers (cons/chunked_cons mix): flatten b then walk vs items
     const alloc = allocator orelse return false;
-    var b_items: std.ArrayListUnmanaged(Value) = .empty;
+    var b_items: std.ArrayList(Value) = .empty;
     var cur = b;
     while (true) {
         const cur_tag = cur.tag();

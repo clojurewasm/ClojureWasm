@@ -175,7 +175,7 @@ pub const ParseError = error{
 /// Parse a WIT source string into a list of interfaces.
 pub fn parse(allocator: Allocator, src: []const u8) ParseError![]const WitInterface {
     var tokenizer = Tokenizer.init(src);
-    var interfaces: std.ArrayListUnmanaged(WitInterface) = .empty;
+    var interfaces: std.ArrayList(WitInterface) = .empty;
     errdefer interfaces.deinit(allocator);
 
     while (true) {
@@ -200,7 +200,7 @@ fn parseInterface(allocator: Allocator, tok: *Tokenizer) ParseError!WitInterface
     const lbrace = tok.next();
     if (lbrace.tag != .lbrace) return error.WitParseError;
 
-    var funcs: std.ArrayListUnmanaged(WitFunc) = .empty;
+    var funcs: std.ArrayList(WitFunc) = .empty;
     errdefer funcs.deinit(allocator);
 
     while (true) {
@@ -231,7 +231,7 @@ fn parseFunc(allocator: Allocator, tok: *Tokenizer, name: []const u8) ParseError
     const lparen = tok.next();
     if (lparen.tag != .lparen) return error.WitParseError;
 
-    var params: std.ArrayListUnmanaged(WitParam) = .empty;
+    var params: std.ArrayList(WitParam) = .empty;
     errdefer params.deinit(allocator);
 
     // Parse params until ')'

@@ -118,7 +118,7 @@ pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "re-seq expects a string as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
 
-    var results: std.ArrayListUnmanaged(Value) = .empty;
+    var results: std.ArrayList(Value) = .empty;
 
     var m = try Matcher.init(allocator, compiled, input);
     defer m.deinit();

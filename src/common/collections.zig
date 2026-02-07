@@ -129,7 +129,7 @@ pub const PersistentHashSet = struct {
 /// Created via (transient [1 2 3]), mutated via conj!/assoc!/pop!,
 /// finalized via (persistent! tv).
 pub const TransientVector = struct {
-    items: std.ArrayListUnmanaged(Value) = .empty,
+    items: std.ArrayList(Value) = .empty,
     consumed: bool = false,
 
     pub fn initFrom(allocator: std.mem.Allocator, source: *const PersistentVector) !*TransientVector {
@@ -185,7 +185,7 @@ pub const TransientVector = struct {
 
 /// Transient array map — mutable builder for PersistentArrayMap.
 pub const TransientArrayMap = struct {
-    entries: std.ArrayListUnmanaged(Value) = .empty,
+    entries: std.ArrayList(Value) = .empty,
     consumed: bool = false,
 
     pub fn initFrom(allocator: std.mem.Allocator, source: *const PersistentArrayMap) !*TransientArrayMap {
@@ -272,7 +272,7 @@ pub const TransientArrayMap = struct {
 
 /// Transient hash set — mutable builder for PersistentHashSet.
 pub const TransientHashSet = struct {
-    items: std.ArrayListUnmanaged(Value) = .empty,
+    items: std.ArrayList(Value) = .empty,
     consumed: bool = false,
 
     pub fn initFrom(allocator: std.mem.Allocator, source: *const PersistentHashSet) !*TransientHashSet {
@@ -352,7 +352,7 @@ pub const ArrayChunk = struct {
 /// Created via (chunk-buffer n), elements added via (chunk-append b x),
 /// finalized via (chunk b) -> ArrayChunk.
 pub const ChunkBuffer = struct {
-    items: std.ArrayListUnmanaged(Value) = .empty,
+    items: std.ArrayList(Value) = .empty,
     consumed: bool = false,
 
     pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !*ChunkBuffer {
