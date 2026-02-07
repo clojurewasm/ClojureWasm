@@ -4,10 +4,11 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 27 complete (A, BE, B, C, CX, R, D, 20-27, 22b, 22c, 24.5)
+- All phases through 28.1 complete (A, BE, B, C, CX, R, D, 20-28.1, 22b, 22c, 24.5)
 - Coverage: 526/704 clojure.core vars done (0 todo, 178 skip)
 - **Direction**: Native production track (D79). wasm_rt deferred.
-- **Phase 28 IN PROGRESS** — Single Binary Builder
+- **Phase 28.1 COMPLETE** — Single Binary Builder MVP (1.7MB binary)
+- **Phase 29 IN PROGRESS** — Codebase Restructuring (file splitting + D3)
 
 ## Strategic Direction
 
@@ -17,20 +18,28 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27 (NaN boxing)~~ -> **28 (single binary)** -> 29 (restructure)
--> 30 (robustness/nREPL) -> 31 (Wasm FFI deep)
+Phase order: ~~27~~ -> ~~28.1~~ -> **29 (restructure)** -> 30 (robustness) -> 31 (FFI)
 
 ## Task Queue
 
-Phase 28.1 COMPLETE. Next: Phase 28 wrap-up and Phase 29 planning.
+Phase 29.1 — File Splitting:
+
+1. **29.1a**: collections.zig → extract transient ops → transient.zig
+2. **29.1b**: bootstrap.zig → extract hot_core_defs + callFnVal → bootstrap_hot.zig
+3. **29.1c**: analyzer.zig → extract special forms → special_forms.zig
+4. **29.1e**: vm.zig → extract performCall → vm_dispatch.zig
+5. **29.1f**: value.zig → extract formatPrStr → value_format.zig
+
+Phase 29.2 — D3 Violations:
+
+6. **29.2a**: io.zig capture_* → RuntimeContext
+7. **29.2b**: ns_ops.zig load_paths → Env
+8. **29.2c-d**: numeric.zig prng, misc.zig gensym → Env
 
 ## Current Task
 
-Phase 28.1 complete. All sub-tasks done:
-- 28.1a: readEmbeddedSource() — self exe path + trailer magic check
-- 28.1b: handleBuildCommand() — copy self + append source + trailer
-- 28.1c: setCommandLineArgs() — populate *command-line-args* from argv
-- 28.1d: Verified: hello.clj, fib.clj with args, ReleaseSafe 1.7MB
+29.1a: Split builtin/collections.zig (3737L). Extract transient collection
+builtins (TransientVector/Map/Set operations) into builtin/transient.zig.
 
 ## Previous Task
 
