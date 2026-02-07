@@ -19,9 +19,9 @@ const bootstrap = @import("../bootstrap.zig");
 /// Opens the file, reads all content as UTF-8 string, closes the file.
 pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to slurp", .{args.len});
-    const path = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "slurp expects a string filename, got {s}", .{@tagName(args[0])}),
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "slurp expects a string filename, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const cwd = std.fs.cwd();
@@ -29,7 +29,7 @@ pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
     defer file.close();
 
     const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.IOError;
-    return Value{ .string = content };
+    return Value.initString(content);
 }
 
 /// (spit filename content) => nil
@@ -37,14 +37,14 @@ pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Writes content to the file. Creates if not exists, truncates by default.
 pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to spit", .{args.len});
-    const path = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "spit expects a string filename, got {s}", .{@tagName(args[0])}),
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "spit expects a string filename, got {s}", .{@tagName(args[0].tag())}),
     };
 
     // Get content as string
-    const content = switch (args[1]) {
-        .string => |s| s,
+    const content = switch (args[1].tag()) {
+        .string => args[1].asString(),
         .nil => "",
         else => blk: {
             // Convert to string via formatStr
@@ -62,10 +62,10 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Check for :append true option
     var append = false;
     if (args.len >= 4) {
-        if (args[2] == .keyword) {
-            if (std.mem.eql(u8, args[2].keyword.name, "append")) {
-                if (args[3] == .boolean) {
-                    append = args[3].boolean;
+        if (args[2].tag() == .keyword) {
+            if (std.mem.eql(u8, args[2].asKeyword().name, "append")) {
+                if (args[3].tag() == .boolean) {
+                    append = args[3].asBoolean();
                 }
             }
         }
@@ -78,7 +78,7 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const new_file = cwd.createFile(path, .{}) catch return error.IOError;
             defer new_file.close();
             new_file.writeAll(content) catch return error.IOError;
-            return .nil;
+            return Value.nil_val;
         };
         defer file.close();
         file.seekFromEnd(0) catch return error.IOError;
@@ -89,7 +89,7 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
         file.writeAll(content) catch return error.IOError;
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (read-line) => string or nil
@@ -103,11 +103,11 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     while (pos < buf.len) {
         var byte: [1]u8 = undefined;
-        const n = stdin.read(&byte) catch return .nil;
+        const n = stdin.read(&byte) catch return Value.nil_val;
         if (n == 0) {
             // EOF
             if (pos > 0) break;
-            return .nil;
+            return Value.nil_val;
         }
         if (byte[0] == '\n') break;
         buf[pos] = byte[0];
@@ -119,7 +119,7 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const owned = try allocator.alloc(u8, pos);
     @memcpy(owned, buf[0..pos]);
-    return Value{ .string = owned };
+    return Value.initString(owned);
 }
 
 // ============================================================
@@ -131,9 +131,9 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns the value of the last form.
 pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to load-file", .{args.len});
-    const path = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-file expects a string path, got {s}", .{@tagName(args[0])}),
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-file expects a string path, got {s}", .{@tagName(args[0].tag())}),
     };
 
     // Read file content
@@ -193,14 +193,14 @@ test "slurp - read existing file" {
     defer file.close();
     try file.writeAll("hello world");
 
-    const args = [_]Value{.{ .string = tmp_path }};
+    const args = [_]Value{Value.initString(tmp_path)};
     const result = try slurpFn(testing.allocator, &args);
-    defer testing.allocator.free(result.string);
-    try testing.expectEqualStrings("hello world", result.string);
+    defer testing.allocator.free(result.asString());
+    try testing.expectEqualStrings("hello world", result.asString());
 }
 
 test "slurp - file not found" {
-    const args = [_]Value{.{ .string = "/tmp/cljw_nonexistent_file.txt" }};
+    const args = [_]Value{Value.initString("/tmp/cljw_nonexistent_file.txt")};
     const result = slurpFn(testing.allocator, &args);
     try testing.expectError(error.FileNotFound, result);
 }
@@ -211,7 +211,7 @@ test "slurp - arity error" {
 }
 
 test "slurp - type error" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = slurpFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }
@@ -219,11 +219,11 @@ test "slurp - type error" {
 test "spit - write new file" {
     const tmp_path = "/tmp/cljw_test_spit.txt";
     const args = [_]Value{
-        .{ .string = tmp_path },
-        .{ .string = "hello spit" },
+        Value.initString(tmp_path),
+        Value.initString("hello spit"),
     };
     const result = try spitFn(testing.allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 
     // Verify content
     const cwd = std.fs.cwd();
@@ -238,14 +238,14 @@ test "spit - overwrite existing file" {
     const tmp_path = "/tmp/cljw_test_spit_overwrite.txt";
     // Write first
     const args1 = [_]Value{
-        .{ .string = tmp_path },
-        .{ .string = "first" },
+        Value.initString(tmp_path),
+        Value.initString("first"),
     };
     _ = try spitFn(testing.allocator, &args1);
     // Overwrite
     const args2 = [_]Value{
-        .{ .string = tmp_path },
-        .{ .string = "second" },
+        Value.initString(tmp_path),
+        Value.initString("second"),
     };
     _ = try spitFn(testing.allocator, &args2);
 
@@ -261,16 +261,16 @@ test "spit - append mode" {
     const tmp_path = "/tmp/cljw_test_spit_append.txt";
     // Write initial content
     const args1 = [_]Value{
-        .{ .string = tmp_path },
-        .{ .string = "hello" },
+        Value.initString(tmp_path),
+        Value.initString("hello"),
     };
     _ = try spitFn(testing.allocator, &args1);
     // Append
     const args2 = [_]Value{
-        .{ .string = tmp_path },
-        .{ .string = " world" },
-        .{ .keyword = .{ .name = "append", .ns = null } },
-        .{ .boolean = true },
+        Value.initString(tmp_path),
+        Value.initString(" world"),
+        Value.initKeyword(.{ .name = "append", .ns = null }),
+        Value.true_val,
     };
     _ = try spitFn(testing.allocator, &args2);
 
@@ -283,13 +283,13 @@ test "spit - append mode" {
 }
 
 test "spit - arity error" {
-    const args = [_]Value{.{ .string = "/tmp/test.txt" }};
+    const args = [_]Value{Value.initString("/tmp/test.txt")};
     const result = spitFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
 
 test "read-line - arity error" {
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = readLineFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }

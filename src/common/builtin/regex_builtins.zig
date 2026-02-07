@@ -18,14 +18,14 @@ const err = @import("../error.zig");
 
 /// Helper: get or compile a Pattern from a Value (string or regex)
 fn getCompiledPattern(allocator: Allocator, val: Value) !*const CompiledRegex {
-    return switch (val) {
-        .regex => |p| @ptrCast(@alignCast(p.compiled)),
-        .string => |s| {
+    return switch (val.tag()) {
+        .regex => @ptrCast(@alignCast(val.asRegex().compiled)),
+        .string => {
             const compiled = try allocator.create(CompiledRegex);
-            compiled.* = try matcher_mod.compile(allocator, s);
+            compiled.* = try matcher_mod.compile(allocator, val.asString());
             return compiled;
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "re-find/re-matches pattern expects a regex or string, got {s}", .{@tagName(val)}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "re-find/re-matches pattern expects a regex or string, got {s}", .{@tagName(val.tag())}),
     };
 }
 
@@ -35,29 +35,30 @@ fn matchResultToValue(allocator: Allocator, result: MatchResult, input: []const 
     if (result.groups.len <= 1) {
         // No capture groups: return matched string
         const text = input[result.start..result.end];
-        return Value{ .string = text };
+        return Value.initString(text);
     }
 
     // Has capture groups: return [whole-match, group1, group2, ...]
     const items = try allocator.alloc(Value, result.groups.len);
     for (result.groups, 0..) |group_opt, i| {
         if (group_opt) |span| {
-            items[i] = Value{ .string = span.text(input) };
+            items[i] = Value.initString(span.text(input));
         } else {
-            items[i] = .nil;
+            items[i] = Value.nil_val;
         }
     }
     const vec = try allocator.create(PersistentVector);
     vec.* = .{ .items = items, .meta = null };
-    return Value{ .vector = vec };
+    return Value.initVector(vec);
 }
 
 /// (re-pattern s) — compile string to Pattern; if already Pattern, return as-is
 pub fn rePatternFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-pattern", .{args.len});
-    return switch (args[0]) {
+    return switch (args[0].tag()) {
         .regex => args[0], // already a Pattern
-        .string => |s| {
+        .string => {
+            const s = args[0].asString();
             const compiled = try allocator.create(CompiledRegex);
             compiled.* = matcher_mod.compile(allocator, s) catch return error.ValueError;
             const pat = try allocator.create(Pattern);
@@ -66,9 +67,9 @@ pub fn rePatternFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 .compiled = @ptrCast(compiled),
                 .group_count = compiled.group_count,
             };
-            return Value{ .regex = pat };
+            return Value.initRegex(pat);
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "re-pattern expects a string, got {s}", .{@tagName(args[0])}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "re-pattern expects a string, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -77,13 +78,13 @@ pub fn reFindFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-find", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
-    const input = switch (args[1]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-find expects a string as second argument, got {s}", .{@tagName(args[1])}),
+    const input = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-find expects a string as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
 
     const result = try matcher_mod.findFirst(allocator, compiled, input) orelse {
-        return .nil;
+        return Value.nil_val;
     };
     return matchResultToValue(allocator, result, input);
 }
@@ -93,16 +94,16 @@ pub fn reMatchesFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-matches", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
-    const input = switch (args[1]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-matches expects a string as second argument, got {s}", .{@tagName(args[1])}),
+    const input = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-matches expects a string as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
 
     var m = try Matcher.init(allocator, compiled, input);
     defer m.deinit();
 
     const result = try m.fullMatch() orelse {
-        return .nil;
+        return Value.nil_val;
     };
     return matchResultToValue(allocator, result, input);
 }
@@ -112,9 +113,9 @@ pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-seq", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
-    const input = switch (args[1]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-seq expects a string as second argument, got {s}", .{@tagName(args[1])}),
+    const input = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-seq expects a string as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
 
     var results: std.ArrayListUnmanaged(Value) = .empty;
@@ -133,7 +134,7 @@ pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const l = try allocator.create(PersistentList);
     l.* = .{ .items = try results.toOwnedSlice(allocator), .meta = null };
-    return Value{ .list = l };
+    return Value.initList(l);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -176,10 +177,10 @@ test "re-pattern - string to pattern" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const args = [_]Value{.{ .string = "\\d+" }};
+    const args = [_]Value{Value.initString("\\d+")};
     const result = try rePatternFn(allocator, &args);
-    try testing.expect(result == .regex);
-    try testing.expectEqualStrings("\\d+", result.regex.source);
+    try testing.expect(result.tag() == .regex);
+    try testing.expectEqualStrings("\\d+", result.asRegex().source);
 }
 
 test "re-pattern - pattern passthrough" {
@@ -188,13 +189,13 @@ test "re-pattern - pattern passthrough" {
     const allocator = arena.allocator();
 
     // Create a pattern first
-    const create_args = [_]Value{.{ .string = "abc" }};
+    const create_args = [_]Value{Value.initString("abc")};
     const pat = try rePatternFn(allocator, &create_args);
 
     // Pass it through re-pattern — should return same value
     const args = [_]Value{pat};
     const result = try rePatternFn(allocator, &args);
-    try testing.expect(result == .regex);
+    try testing.expect(result.tag() == .regex);
 }
 
 test "re-find - simple match" {
@@ -202,13 +203,13 @@ test "re-find - simple match" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "\\d+" }};
+    const pat_args = [_]Value{Value.initString("\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "abc123def" } };
+    const args = [_]Value{ pat, Value.initString("abc123def") };
     const result = try reFindFn(allocator, &args);
-    try testing.expect(result == .string);
-    try testing.expectEqualStrings("123", result.string);
+    try testing.expect(result.tag() == .string);
+    try testing.expectEqualStrings("123", result.asString());
 }
 
 test "re-find - no match returns nil" {
@@ -216,12 +217,12 @@ test "re-find - no match returns nil" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "\\d+" }};
+    const pat_args = [_]Value{Value.initString("\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "abc" } };
+    const args = [_]Value{ pat, Value.initString("abc") };
     const result = try reFindFn(allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 test "re-find - with capture groups returns vector" {
@@ -229,16 +230,16 @@ test "re-find - with capture groups returns vector" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "(\\d+)-(\\d+)" }};
+    const pat_args = [_]Value{Value.initString("(\\d+)-(\\d+)")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "x12-34y" } };
+    const args = [_]Value{ pat, Value.initString("x12-34y") };
     const result = try reFindFn(allocator, &args);
-    try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
-    try testing.expectEqualStrings("12-34", result.vector.items[0].string);
-    try testing.expectEqualStrings("12", result.vector.items[1].string);
-    try testing.expectEqualStrings("34", result.vector.items[2].string);
+    try testing.expect(result.tag() == .vector);
+    try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
+    try testing.expectEqualStrings("12-34", result.asVector().items[0].asString());
+    try testing.expectEqualStrings("12", result.asVector().items[1].asString());
+    try testing.expectEqualStrings("34", result.asVector().items[2].asString());
 }
 
 test "re-matches - full match" {
@@ -246,13 +247,13 @@ test "re-matches - full match" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "\\d+" }};
+    const pat_args = [_]Value{Value.initString("\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "123" } };
+    const args = [_]Value{ pat, Value.initString("123") };
     const result = try reMatchesFn(allocator, &args);
-    try testing.expect(result == .string);
-    try testing.expectEqualStrings("123", result.string);
+    try testing.expect(result.tag() == .string);
+    try testing.expectEqualStrings("123", result.asString());
 }
 
 test "re-matches - partial match returns nil" {
@@ -260,12 +261,12 @@ test "re-matches - partial match returns nil" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "\\d+" }};
+    const pat_args = [_]Value{Value.initString("\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "abc123" } };
+    const args = [_]Value{ pat, Value.initString("abc123") };
     const result = try reMatchesFn(allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 test "re-seq - all matches" {
@@ -273,14 +274,14 @@ test "re-seq - all matches" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{.{ .string = "\\d+" }};
+    const pat_args = [_]Value{Value.initString("\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, .{ .string = "a1b22c333" } };
+    const args = [_]Value{ pat, Value.initString("a1b22c333") };
     const result = try reSeqFn(allocator, &args);
-    try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.items.len);
-    try testing.expectEqualStrings("1", result.list.items[0].string);
-    try testing.expectEqualStrings("22", result.list.items[1].string);
-    try testing.expectEqualStrings("333", result.list.items[2].string);
+    try testing.expect(result.tag() == .list);
+    try testing.expectEqual(@as(usize, 3), result.asList().items.len);
+    try testing.expectEqualStrings("1", result.asList().items[0].asString());
+    try testing.expectEqualStrings("22", result.asList().items[1].asString());
+    try testing.expectEqualStrings("333", result.asList().items[2].asString());
 }

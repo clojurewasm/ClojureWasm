@@ -21,7 +21,7 @@ pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
     const ns: i128 = std.time.nanoTimestamp();
     // Clojure returns long (64-bit), truncate i128 to i64
     const truncated: i64 = @intCast(@as(i128, @rem(ns, std.math.maxInt(i64))));
-    return Value{ .integer = truncated };
+    return Value.initInteger(truncated);
 }
 
 /// (__current-time-millis) => integer
@@ -29,16 +29,16 @@ pub fn nanoTimeFn(_: Allocator, args: []const Value) anyerror!Value {
 pub fn currentTimeMillisFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/currentTimeMillis", .{args.len});
     const ms = std.time.milliTimestamp();
-    return Value{ .integer = ms };
+    return Value.initInteger(ms);
 }
 
 /// (__getenv key) => string or nil
 /// Returns the value of the environment variable, or nil if not set.
 pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/getenv", .{args.len});
-    const key = switch (args[0]) {
-        .string => |s| s,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/getenv expects a string, got {s}", .{@tagName(args[0])}),
+    const key = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/getenv expects a string, got {s}", .{@tagName(args[0].tag())}),
     };
 
     // Need null-terminated key for posix getenv
@@ -51,18 +51,18 @@ pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (result) |val| {
         const owned = try allocator.alloc(u8, val.len);
         @memcpy(owned, val);
-        return Value{ .string = owned };
+        return Value.initString(owned);
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (__exit n) => (does not return)
 /// Exits the process with the given exit code.
 pub fn exitFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to System/exit", .{args.len});
-    const code = switch (args[0]) {
-        .integer => |i| i,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/exit expects an integer, got {s}", .{@tagName(args[0])}),
+    const code = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "System/exit expects an integer, got {s}", .{@tagName(args[0].tag())}),
     };
     const exit_code: u8 = if (code >= 0 and code <= 255)
         @intCast(code)
@@ -108,37 +108,37 @@ const testing = std.testing;
 
 test "nano-time returns positive integer" {
     const result = try nanoTimeFn(testing.allocator, &.{});
-    try testing.expect(result == .integer);
+    try testing.expect(result.tag() == .integer);
     // Timestamp should be positive (though technically could wrap)
-    try testing.expect(result.integer > 0);
+    try testing.expect(result.asInteger() > 0);
 }
 
 test "nano-time arity error" {
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = nanoTimeFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
 
 test "current-time-millis returns positive integer" {
     const result = try currentTimeMillisFn(testing.allocator, &.{});
-    try testing.expect(result == .integer);
+    try testing.expect(result.tag() == .integer);
     // Should be a reasonable epoch millis (> year 2020)
-    try testing.expect(result.integer > 1577836800000);
+    try testing.expect(result.asInteger() > 1577836800000);
 }
 
 test "getenv - existing variable" {
     // PATH should always exist
-    const args = [_]Value{.{ .string = "PATH" }};
+    const args = [_]Value{Value.initString("PATH")};
     const result = try getenvFn(testing.allocator, &args);
-    try testing.expect(result == .string);
-    try testing.expect(result.string.len > 0);
-    defer testing.allocator.free(result.string);
+    try testing.expect(result.tag() == .string);
+    try testing.expect(result.asString().len > 0);
+    defer testing.allocator.free(result.asString());
 }
 
 test "getenv - non-existing variable" {
-    const args = [_]Value{.{ .string = "CLJW_NONEXISTENT_VAR_12345" }};
+    const args = [_]Value{Value.initString("CLJW_NONEXISTENT_VAR_12345")};
     const result = try getenvFn(testing.allocator, &args);
-    try testing.expect(result == .nil);
+    try testing.expect(result.isNil());
 }
 
 test "getenv - arity error" {
@@ -147,7 +147,7 @@ test "getenv - arity error" {
 }
 
 test "getenv - type error" {
-    const args = [_]Value{.{ .integer = 42 }};
+    const args = [_]Value{Value.initInteger(42)};
     const result = getenvFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }
@@ -159,7 +159,7 @@ test "exit - arity error" {
 }
 
 test "exit - type error" {
-    const args = [_]Value{.{ .string = "not a number" }};
+    const args = [_]Value{Value.initString("not a number")};
     const result = exitFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }
