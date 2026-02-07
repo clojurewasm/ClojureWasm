@@ -42,3 +42,5 @@ Check at session start for items that become actionable.
 | F109 | Zero-config project model                  | Phase 30 — auto-detect src/, require resolution, optional cljw.edn     |
 | F110 | Directory restructure (core/eval/cli)      | Phase 29 — common/native/ -> core/eval/cli/                            |
 | ~~F111~~ | ~~GC trace NaN-boxed heap pointers~~   | RESOLVED — bootstrap Symbols tracked in Env.owned_symbols, freed at deinit    |
+| ~~F112~~ | ~~nREPL Var corruption (ArenaAllocator)~~ | RESOLVED — Env.init(gpa) + eval_arena removed. See D80 for root cause analysis |
+| F113 | nREPL GC integration                      | Without GC, transient Values accumulate in GPA (same as main.zig REPL). Add MarkSweepGc to nREPL for true long-session memory management. |

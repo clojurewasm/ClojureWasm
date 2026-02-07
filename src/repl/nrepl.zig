@@ -35,8 +35,6 @@ pub const ServerState = struct {
     mutex: std.Thread.Mutex,
     running: bool,
     gpa: Allocator,
-    /// Arena allocator for evaluation scratch space.
-    eval_arena: std.heap.ArenaAllocator,
     port_file_written: bool,
     /// Last error info saved from eval (for stacktrace op).
     last_error_info: ?err_mod.Info = null,
@@ -53,31 +51,33 @@ pub const ServerState = struct {
 
 /// Start the nREPL server on the given port (0 = OS auto-assign).
 pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
-    // Initialize environment
-    var eval_arena = std.heap.ArenaAllocator.init(gpa_allocator);
-    const alloc = eval_arena.allocator();
-
-    var env = Env.init(alloc);
+    // Memory model: GPA for everything (consistent with main.zig REPL).
+    // Env uses GPA for persistent data (Namespaces, Vars).
+    // Bootstrap and eval use GPA for Values (FnVals bound to Vars survive,
+    // transient values accumulate — inherent without GC, same as main.zig REPL).
+    // See F113 for future GC integration.
+    var env = Env.init(gpa_allocator);
     defer env.deinit();
+
     registry.registerBuiltins(&env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});
         return;
     };
-    bootstrap.loadCore(alloc, &env) catch {
+    bootstrap.loadCore(gpa_allocator, &env) catch {
         std.debug.print("Error: failed to load core.clj\n", .{});
         return;
     };
-    bootstrap.loadTest(alloc, &env) catch {
+    bootstrap.loadTest(gpa_allocator, &env) catch {
         std.debug.print("Error: failed to load clojure.test\n", .{});
         return;
     };
-    bootstrap.loadSet(alloc, &env) catch {
+    bootstrap.loadSet(gpa_allocator, &env) catch {
         std.debug.print("Error: failed to load clojure.set\n", .{});
         return;
     };
 
     // Define REPL vars (*1, *2, *3, *e)
-    _ = bootstrap.evalString(alloc, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
+    _ = bootstrap.evalString(gpa_allocator, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
 
     var state = ServerState{
         .env = &env,
@@ -85,7 +85,6 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
         .mutex = .{},
         .running = true,
         .gpa = gpa_allocator,
-        .eval_arena = eval_arena,
         .port_file_written = false,
     };
     defer {
@@ -390,15 +389,15 @@ fn opEval(
     io_mod.setOutputCapture(state.gpa, &capture_buf);
     defer io_mod.setOutputCapture(null, null);
 
-    // Copy code to eval_arena so it outlives the message decode arena.
+    // Dupe code with GPA so it outlives the message decode arena.
     // evalString's Reader and Analyzer may reference the source string.
-    const code_persistent = state.eval_arena.allocator().dupe(u8, code) catch {
+    const code_persistent = state.gpa.dupe(u8, code) catch {
         sendError(stream, msg, "eval-error", "Out of memory", allocator);
         return;
     };
 
-    // Evaluate via bootstrap (TreeWalk)
-    const result = bootstrap.evalString(state.eval_arena.allocator(), state.env, code_persistent);
+    // Evaluate via bootstrap (TreeWalk) using GPA for Value allocation.
+    const result = bootstrap.evalString(state.gpa, state.env, code_persistent);
 
     // Flush captured output
     if (capture_buf.items.len > 0) {
@@ -1350,15 +1349,12 @@ test "nrepl - stacktrace op returns no-error when no previous error" {
     defer arena.deinit();
 
     // Create minimal ServerState (no env needed for stacktrace)
-    var eval_arena = std.heap.ArenaAllocator.init(allocator);
-    defer eval_arena.deinit();
     var state = ServerState{
         .env = undefined,
         .sessions = .empty,
         .mutex = .{},
         .running = true,
         .gpa = allocator,
-        .eval_arena = eval_arena,
         .port_file_written = false,
     };
 
@@ -1414,15 +1410,12 @@ test "nrepl - stacktrace op returns no-error when no previous error" {
 test "nrepl - stacktrace op returns frames when error saved" {
     const allocator = std.testing.allocator;
 
-    var eval_arena = std.heap.ArenaAllocator.init(allocator);
-    defer eval_arena.deinit();
     var state = ServerState{
         .env = undefined,
         .sessions = .empty,
         .mutex = .{},
         .running = true,
         .gpa = allocator,
-        .eval_arena = eval_arena,
         .port_file_written = false,
     };
 

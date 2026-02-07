@@ -1883,6 +1883,36 @@ Phase 27 may restructure further based on actual wasm_rt experience.
 - Phase 31: Wasm FFI Deep (Phase 25 extension)
 - Future: wasm_rt revival when ecosystem matures
 
+---
+
+## D80: nREPL Memory Model — GPA-only, no ArenaAllocator
+
+**Context**: Phase 30.2d discovered a Var memory corruption bug in nREPL.
+When `Env.init(eval_arena.allocator())` was used, Namespace.intern() allocated
+Vars on the same ArenaAllocator used for eval. During `(defn ...)`, fn* eval
+triggered alloc/free cycles inside the arena. ArenaAllocator.free() rolls back
+end_index when the freed buffer is the most recent allocation, causing
+subsequent allocs to reuse memory occupied by the Var struct. Result: Var.sym.name
+corrupted with 0xAA (Zig undefined sentinel).
+
+**Root cause**: ArenaAllocator.free() in Zig 0.15.2 performs a "last allocation
+rollback" optimization (arena_allocator.zig:263-264). When persistent data (Vars)
+and transient data (eval intermediates) share the same arena, free/alloc cycles
+for transient data can overwrite persistent allocations.
+
+**Decision**: nREPL uses GPA directly for all allocations — both Env (persistent)
+and evalString (transient). No ArenaAllocator. This matches main.zig's REPL pattern.
+
+- Persistent data (Namespace, Var, FnVal bound to Vars): GPA, survives correctly
+- Transient data (intermediate Values): GPA, accumulates (inherent without GC)
+- Memory growth: proportional to evaluated code, bounded for typical REPL sessions
+- GC integration (F113) will resolve transient accumulation in the future
+
+**Alternatives rejected**:
+- Per-eval arena with reset: FnVals bound to Vars would dangle after reset
+- Per-eval arena without reset: equivalent to one large arena, no benefit
+- Deep-copy persistent values to GPA: complex (closures have captured locals, etc.)
+
 **Positioning**: ClojureWasm = "Clojure expression power + Go distribution simplicity"
 - Ultra-fast (19/20 Babashka benchmark wins)
 - Tiny single binary (< 2MB with user code)

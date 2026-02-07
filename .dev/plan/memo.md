@@ -30,9 +30,10 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.1b Source context display~~
 - ~~30.1c Throwable->map + ex-data~~
 - ~~30.1d REPL error formatting~~
-- 30.2a nREPL stacktrace op
-- 30.2b nREPL info extension (:file, :line)
-- 30.2c CIDER end-to-end test
+- ~~30.2a nREPL stacktrace op~~
+- ~~30.2b nREPL info extension (:file, :line)~~
+- ~~30.2c Modular dispatch + describe~~
+- 30.2d CIDER end-to-end verification (IN PROGRESS)
 - 30.3a require file resolution
 - 30.3b src/ path auto-detect
 - 30.3c cljw.edn support
@@ -47,17 +48,23 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 30.2d — CIDER end-to-end verification. Test with actual CIDER/Emacs
 connection. Fix protocol compatibility issues found during testing.
 
+Critical bugfix included: nREPL Var memory corruption (D80). ArenaAllocator's
+free-rollback overwriting Var memory during fn* eval. Fixed by removing
+eval_arena and using GPA-only (matches main.zig REPL pattern). F113 added
+for future GC integration.
+
 ## Previous Task
 
-30.1e + REPL Line Editor — Added error messages to all UndefinedVar return
-sites (30.1e). Implemented interactive REPL line editor (src/repl/line_editor.zig):
-emacs keybindings, history (persistent ~/.cljw_history), multi-line continuation,
-tab completion from namespace symbols, paren matching flash, C-c/C-d handling.
-Non-TTY stdin falls back to simple reader for piped input.
+30.2a-c — Added stacktrace op, Var :file/:line metadata, modular dispatch
+table with comptime op routing.
 
-## Known Issues from Phase 27
+## Known Issues
 
 - ~~F111 RESOLVED: Bootstrap Symbol leaks fixed via Env.owned_symbols tracking.~~
+- ~~F112 RESOLVED: nREPL Var corruption from shared ArenaAllocator (D80).~~
+- F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA. Bounded
+  for typical REPL sessions (proportional to unique evaluated code). Not a
+  correctness issue; same behavior as main.zig interactive REPL.
 
 ## Handover Notes
 
