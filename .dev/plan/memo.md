@@ -17,19 +17,19 @@ Phase 26.R — wasm_rt Research:
 2. ~~26.R.2: Code Organization Strategy~~ DONE
 3. ~~26.R.3: Allocator and GC Strategy~~ DONE
 4. ~~26.R.4: Stack Depth and F99 Assessment~~ DONE
-5. 26.R.5: Backend Selection
+5. ~~26.R.5: Backend Selection~~ DONE
 6. 26.R.6: Modern Wasm Spec Assessment
 7. 26.R.7: MVP Definition and Full Plan
 
 ## Current Task
 
-26.R.5: Backend Selection — VM, TreeWalk, or both for wasm_rt?
+26.R.6: Modern Wasm Spec Assessment — WasmGC, tail-call, SIMD evaluation
 
 ## Previous Task
 
-26.R.4: Stack Depth and F99 Assessment — F99 NOT required for MVP.
-D74 handles pathological chains. 8MB stack covers edge cases.
-Wasmtime -W max-wasm-stack=8388608 recommended.
+26.R.5: Backend Selection — Both backends (Option C).
+VM+TreeWalk match native architecture. D73 two-phase bootstrap preserved.
+eval_engine and dumpBytecodeVM excluded (dev tools only).
 
 ## Handover Notes
 

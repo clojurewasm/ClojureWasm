@@ -379,3 +379,150 @@ Recommended default: `wasmtime -W max-wasm-stack=8388608` (8MB) in documentation
 
 **Conclusion**: 1MB default sufficient for most programs. 8MB handles edge cases.
 512MB native stack budget is not needed on Wasm.
+
+---
+
+## Section 5: Backend Selection (26.R.5)
+
+### Current Architecture
+
+```
+loadCore (bootstrap.zig):
+  Phase 1: evalString → TreeWalk evaluates core.clj (~526 vars, ~10ms)
+  Phase 2: evalStringVMBootstrap → VM re-compiles hot transducer fns (D73)
+
+User code evaluation (main.zig):
+  --tree-walk flag → evalString (TreeWalk only)
+  default (VM)    → evalStringVM (Compiler + VM)
+
+callFnVal (bootstrap.zig):
+  bytecode fn → active_vm bridge or bytecodeCallBridge (VM)
+  treewalk fn → treewalkCallBridge (TreeWalk)
+
+EvalEngine (eval_engine.zig):
+  --compare mode → runs both, compares results (dev tool only)
+```
+
+### Backend Dependencies in bootstrap.zig
+
+| Function                | TreeWalk | VM  | Purpose                          |
+|------------------------|----------|-----|----------------------------------|
+| evalString             | YES      | no  | Core bootstrap, TreeWalk eval    |
+| evalStringVM           | no       | YES | User code (VM mode)              |
+| evalStringVMBootstrap  | no       | YES | Hot recompile (D73)              |
+| dumpBytecodeVM         | no       | YES | Debug dump (dev tool)            |
+| callFnVal              | YES      | YES | Cross-backend dispatch           |
+| treewalkCallBridge     | YES      | no  | TW closure calls                 |
+| bytecodeCallBridge     | no       | YES | Bytecode closure calls           |
+
+### Size Analysis
+
+| Component      | Struct Size | Heap Allocated? | Notes                          |
+|---------------|-------------|-----------------|--------------------------------|
+| VM            | ~1.5MB      | Yes (D71)       | stack[32768]×48B + frames[256] |
+| TreeWalk      | ~25KB       | No (stack)      | locals[256]×48B + recur[256]   |
+| Compiler      | ~small      | Yes (dynamic)   | FnProto/Chunk use heap allocs  |
+| Bytecode/Chunk| ~small      | Yes (dynamic)   | Grows with program complexity  |
+
+VM at 1.5MB is heap-allocated (D71) — works on Wasm (linear memory, GPA-backed).
+TreeWalk at 25KB sits on the call stack — fine for Wasm's ~1MB default stack.
+
+### Option Analysis
+
+#### Option A: TreeWalk Only
+
+**Pros**:
+- Simplest to port — fewest native/ dependencies
+- Small struct, no heap allocation for evaluator itself
+- bootstrap.zig only needs TreeWalk import
+- No Compiler/VM/Chunk code compiled into wasm binary
+
+**Cons**:
+- ~200x slower for hot paths (transduce: 15ms→2134ms without D73)
+- No bytecode closures — all closures are TreeWalk closures
+- callFnVal simplified (no bytecode branch) — but less capable
+- Performance regression vs native build would make wasm_rt impractical for
+  real programs (D73 was essential for beating Babashka)
+
+**Verdict**: Rejected for MVP. Unacceptable performance.
+
+#### Option B: VM Only (No TreeWalk Bootstrap)
+
+**Pros**:
+- Maximum performance — all code runs through VM
+- No treewalkCallBridge overhead
+- Clean architecture — single evaluator
+
+**Cons**:
+- Bootstrap depends on TreeWalk for core.clj evaluation (D73 Phase 1)
+- Changing bootstrap to VM-first requires compiler to handle core.clj's
+  complex macro definitions — untested, risky
+- TreeWalk is still needed for macro expansion (analyzer calls callFnVal
+  which dispatches to treewalkCallBridge for macro fns)
+- Major refactoring required — defeats "research phase" scope
+
+**Verdict**: Rejected. Too risky, TreeWalk dependency is fundamental.
+
+#### Option C: Both Backends (Recommended)
+
+**Pros**:
+- Matches native architecture exactly — minimal changes needed
+- D73 two-phase bootstrap works as-is (TW→VM hot recompile)
+- callFnVal cross-dispatch works as-is
+- Performance parity with native build
+- User code runs via VM (default) — full speed
+
+**Cons**:
+- Larger wasm binary (includes both evaluator code paths)
+- Both native/ files must compile on wasm32-wasi
+- More comptime branches needed (but already planned in D78)
+
+**Impact on D78 Code Organization**:
+- bootstrap.zig needs `@import("../native/evaluator/tree_walk.zig")` and
+  `@import("../native/vm/vm.zig")` — these must compile on wasm32-wasi
+- Both VM and TreeWalk are platform-independent (no OS calls, no I/O)
+- The "native/" directory name is misleading — these evaluators work on any target
+- eval_engine.zig (--compare mode) can be excluded via comptime (dev tool only)
+
+### Recommendation: Option C — Both Backends
+
+**Rationale**: The two-phase bootstrap (D73) is the foundation of ClojureWasm's
+performance story. TreeWalk bootstraps core.clj quickly, VM handles hot paths.
+callFnVal dispatches between them seamlessly. Removing either backend would
+require significant refactoring with uncertain benefits.
+
+**Key insight**: VM and TreeWalk are NOT platform-dependent. They use only:
+- `std.mem.Allocator` interface (works on any target)
+- `std.ArrayList` (works on any target)
+- `Value` tagged union (platform-independent)
+- Analyzer/Compiler output (AST nodes, bytecode chunks)
+
+The only platform-dependent code is in main.zig (I/O, CLI, nREPL) and a few
+builtins (file I/O, environment variables). The evaluators themselves are portable.
+
+**wasm_rt exclusions** (dev-only, not needed):
+- `eval_engine.zig` — --compare mode is a development/testing tool
+- `dumpBytecodeVM` — --dump-bytecode is a debug tool
+- nREPL — not supported on wasm32-wasi (no networking)
+
+### Binary Size Impact
+
+| Configuration    | Est. Size | Notes                                    |
+|-----------------|-----------|------------------------------------------|
+| TW only         | ~800KB    | Smaller, but unacceptably slow           |
+| VM only         | ~900KB    | Not possible (TW needed for bootstrap)   |
+| Both (selected) | ~1.2MB    | Full capability, portable                |
+
+Binary size is not a concern — Wasm binaries are typically gzip'd for
+distribution, and 1.2MB compresses to ~300-400KB.
+
+### Summary
+
+| Aspect          | Decision                                           |
+|----------------|----------------------------------------------------|
+| Bootstrap       | TreeWalk (Phase 1) + VM hot recompile (Phase 2)   |
+| User eval       | VM (default), TreeWalk available via flag           |
+| callFnVal       | Both backends (cross-dispatch)                     |
+| eval_engine     | Excluded (comptime guard, dev tool only)           |
+| dumpBytecodeVM  | Excluded (comptime guard, debug only)              |
+| Architecture    | Matches native — minimal porting effort            |
