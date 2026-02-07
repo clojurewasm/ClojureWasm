@@ -19,6 +19,8 @@ const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
 const ns_ops = @import("common/builtin/ns_ops.zig");
+const Reader = @import("common/reader/reader.zig").Reader;
+const FormData = @import("common/reader/form.zig").FormData;
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
@@ -64,50 +66,6 @@ pub fn main() !void {
         return;
     }
 
-    if (args.len < 2) {
-        // No args — start REPL
-        // Env uses GPA for infrastructure (Namespace/Var/HashMap internals)
-        var env = Env.init(allocator);
-        defer env.deinit();
-        registry.registerBuiltins(&env) catch {
-            std.debug.print("Error: failed to register builtins\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadCore(alloc, &env) catch {
-            std.debug.print("Error: failed to load core.clj\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadWalk(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.walk\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadTemplate(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.template\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadTest(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.test\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadSet(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.set\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadData(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.data\n", .{});
-            std.process.exit(1);
-        };
-        // Mark bootstrap namespaces as loaded for require tracking
-        markBootstrapLibs();
-
-        // Enable GC for REPL evaluation (bootstrap runs without GC).
-        // Reset threshold to avoid immediate sweep on first safe point.
-        gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-        env.gc = @ptrCast(&gc);
-        runRepl(alloc, &env, &gc);
-        return;
-    }
-
     // Parse flags
     var use_vm = true;
     var dump_bytecode = false;
@@ -149,6 +107,18 @@ pub fn main() !void {
         return;
     }
 
+    // Load cljw.edn config if present (search CWD and entry file directory).
+    // Uses arena for config parsing — freed when config is no longer needed.
+    var config_arena = std.heap.ArenaAllocator.init(allocator);
+    defer config_arena.deinit();
+    const config_alloc = config_arena.allocator();
+    const file_dir = if (file) |f| std.fs.path.dirname(f) else null;
+    const config = if (findConfigFile(config_alloc, file_dir)) |content|
+        parseConfig(config_alloc, content)
+    else
+        ProjectConfig{};
+    applyConfig(config, file_dir);
+
     if (expr) |e| {
         err.setSourceFile(null);
         err.setSourceText(e);
@@ -170,6 +140,45 @@ pub fn main() !void {
         err.setSourceFile(f);
         err.setSourceText(source);
         evalAndPrint(alloc, allocator, &gc, source, use_vm, dump_bytecode);
+    } else if (config.main_ns) |main_ns| {
+        // cljw.edn :main — load the main namespace
+        runMainNs(alloc, allocator, &gc, main_ns, use_vm);
+    } else {
+        // No args, no file, no :main — start REPL
+        var env = Env.init(allocator);
+        defer env.deinit();
+        registry.registerBuiltins(&env) catch {
+            std.debug.print("Error: failed to register builtins\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadCore(alloc, &env) catch {
+            std.debug.print("Error: failed to load core.clj\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadWalk(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.walk\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadTemplate(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.template\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadTest(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.test\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadSet(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.set\n", .{});
+            std.process.exit(1);
+        };
+        bootstrap.loadData(alloc, &env) catch {
+            std.debug.print("Error: failed to load clojure.data\n", .{});
+            std.process.exit(1);
+        };
+        markBootstrapLibs();
+        gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+        env.gc = @ptrCast(&gc);
+        runRepl(alloc, &env, &gc);
     }
 }
 
@@ -407,6 +416,56 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     _ = stdout.write("\n") catch {};
 }
 
+/// Run a main namespace from cljw.edn :main config.
+/// Bootstraps, then requires the namespace (which loads and runs it).
+fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, main_ns: []const u8, use_vm: bool) void {
+    _ = use_vm;
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadCore(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load core.clj\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadWalk(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.walk\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadTemplate(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.template\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadTest(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.test\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadSet(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.set\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadData(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to load clojure.data\n", .{});
+        std.process.exit(1);
+    };
+    markBootstrapLibs();
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Generate and evaluate (require 'main-ns)
+    var buf: [4096]u8 = undefined;
+    const require_expr = std.fmt.bufPrint(&buf, "(require '{s})", .{main_ns}) catch {
+        std.debug.print("Error: namespace name too long\n", .{});
+        std.process.exit(1);
+    };
+    _ = bootstrap.evalString(gc_alloc, &env, require_expr) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+}
+
 /// Mark built-in namespaces as loaded so require skips them.
 fn markBootstrapLibs() void {
     const libs = [_][]const u8{
@@ -422,6 +481,94 @@ fn markBootstrapLibs() void {
     };
     for (libs) |name| {
         ns_ops.markLibLoaded(name) catch {};
+    }
+}
+
+// === cljw.edn config parsing ===
+
+/// Parsed cljw.edn configuration.
+const ProjectConfig = struct {
+    paths: []const []const u8 = &.{},
+    main_ns: ?[]const u8 = null,
+};
+
+/// Search for cljw.edn starting from dir, walking up to root.
+/// Returns file content if found, null otherwise.
+fn findConfigFile(allocator: Allocator, start_dir: ?[]const u8) ?[]const u8 {
+    // Try CWD first
+    if (readConfigFromDir(allocator, ".")) |content| return content;
+
+    // Walk up from start_dir
+    var current = start_dir orelse return null;
+    for (0..10) |_| {
+        if (readConfigFromDir(allocator, current)) |content| return content;
+        const parent = std.fs.path.dirname(current) orelse break;
+        if (std.mem.eql(u8, parent, current)) break;
+        current = parent;
+    }
+    return null;
+}
+
+fn readConfigFromDir(allocator: Allocator, dir: []const u8) ?[]const u8 {
+    var buf: [4096]u8 = undefined;
+    const path = std.fmt.bufPrint(&buf, "{s}/cljw.edn", .{dir}) catch return null;
+    return std.fs.cwd().readFileAlloc(allocator, path, 10_000) catch null;
+}
+
+/// Parse cljw.edn content using the Reader (no bootstrap needed).
+fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
+    var reader = Reader.init(allocator, source);
+    const form = reader.read() catch return .{};
+    const root = form orelse return .{};
+
+    if (root.data != .map) return .{};
+    const entries = root.data.map;
+
+    var config = ProjectConfig{};
+    var i: usize = 0;
+    while (i + 1 < entries.len) : (i += 2) {
+        if (entries[i].data != .keyword) continue;
+        const kw = entries[i].data.keyword.name;
+
+        if (std.mem.eql(u8, kw, "paths")) {
+            if (entries[i + 1].data == .vector) {
+                const vec = entries[i + 1].data.vector;
+                const paths = allocator.alloc([]const u8, vec.len) catch continue;
+                var count: usize = 0;
+                for (vec) |elem| {
+                    if (elem.data == .string) {
+                        paths[count] = elem.data.string;
+                        count += 1;
+                    }
+                }
+                config.paths = paths[0..count];
+            }
+        } else if (std.mem.eql(u8, kw, "main")) {
+            if (entries[i + 1].data == .symbol) {
+                const sym = entries[i + 1].data.symbol;
+                if (sym.ns) |ns| {
+                    // Qualified: my-app/core → my-app.core
+                    config.main_ns = std.fmt.allocPrint(allocator, "{s}.{s}", .{ ns, sym.name }) catch null;
+                } else {
+                    config.main_ns = sym.name;
+                }
+            }
+        }
+    }
+    return config;
+}
+
+/// Apply cljw.edn config: add paths to load paths.
+fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
+    for (config.paths) |path| {
+        if (config_dir) |dir| {
+            // Resolve relative paths against config file directory
+            var buf: [4096]u8 = undefined;
+            const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, path }) catch continue;
+            ns_ops.addLoadPath(full) catch {};
+        } else {
+            ns_ops.addLoadPath(path) catch {};
+        }
     }
 }
 

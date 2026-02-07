@@ -36,7 +36,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.2d CIDER end-to-end verification~~
 - ~~30.3a require file resolution~~
 - ~~30.3b src/ path auto-detect~~
-- 30.3c cljw.edn support
+- ~~30.3c cljw.edn support~~
 - 30.4a letfn implementation
 - 30.4b with-open macro
 - 30.4c tagged-literal + reader-conditional
@@ -49,14 +49,15 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.3c — cljw.edn support. Read {:paths ["src"] :main my-app.core} config
-file for project configuration.
+30.4a — letfn implementation. Mutual recursion support via simultaneous
+binding of functions.
 
 ## Previous Task
 
-30.3b — src/ path auto-detect. detectAndAddSrcPath walks up from entry
-file directory to find src/ subdirectory. Tested: direct src/ detection,
-parent walk-up, end-to-end with standard Clojure project layout.
+30.3c — cljw.edn support. Reader-based EDN parser for {:paths :main}.
+Restructured main.zig control flow: flags → config → exec/REPL.
+Arena allocator for config parsing (no leaks). Tested: :main runs
+namespace, :paths adds to load paths, all existing modes preserved.
 
 ## Known Issues
 
