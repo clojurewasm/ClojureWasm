@@ -67,7 +67,7 @@ pub fn printlnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     writeOutput(w.buffered());
     writeOutputByte('\n');
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (prn) => nil (prints newline)
@@ -85,7 +85,7 @@ pub fn prnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     writeOutput(w.buffered());
     writeOutputByte('\n');
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (print) => nil (prints nothing)
@@ -106,7 +106,7 @@ pub fn printFn(allocator: Allocator, args: []const Value) anyerror!Value {
         v.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (pr) => nil (prints nothing)
@@ -123,14 +123,14 @@ pub fn prFn(allocator: Allocator, args: []const Value) anyerror!Value {
         v.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (newline) => nil (prints newline character)
 pub fn newlineFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to newline", .{args.len});
     writeOutputByte('\n');
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (flush) => nil (flushes stdout)
@@ -141,7 +141,7 @@ pub fn flushFn(_: Allocator, args: []const Value) anyerror!Value {
         var file_writer = std.fs.File.stdout().writer(&wbuf);
         file_writer.interface.flush() catch {};
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -171,7 +171,7 @@ fn pushOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value
     buf.* = .empty;
     setOutputCapture(allocator, buf);
 
-    return .nil;
+    return Value.nil_val;
 }
 
 /// (pop-output-capture) — stop capturing, restore previous state, return captured string.
@@ -183,8 +183,8 @@ fn popOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value 
     const result: Value = if (capture_buf) |buf| blk: {
         const str = allocator.dupe(u8, buf.items) catch return error.OutOfMemory;
         buf.deinit(capture_alloc.?);
-        break :blk .{ .string = str };
-    } else .{ .string = "" };
+        break :blk Value.initString(str);
+    } else Value.initString("");
 
     // Restore previous state
     capture_depth -= 1;
@@ -274,7 +274,7 @@ test "println - no args prints newline" {
 test "println - single string unquoted" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{.{ .string = "hello" }};
+    const args = [_]Value{Value.initString("hello")};
     const output = try capturedOutput(&buf, printlnFn, &args);
     try testing.expectEqualStrings("hello\n", output);
 }
@@ -283,9 +283,9 @@ test "println - multi-arg space separated" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
-        .{ .integer = 1 },
-        .{ .string = "hello" },
-        .nil,
+        Value.initInteger(1),
+        Value.initString("hello"),
+        Value.nil_val,
     };
     const output = try capturedOutput(&buf, printlnFn, &args);
     try testing.expectEqualStrings("1 hello \n", output);
@@ -296,7 +296,7 @@ test "println - returns nil" {
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = try printlnFn(testing.allocator, &args);
     try testing.expect(result == .nil);
 }
@@ -311,7 +311,7 @@ test "prn - no args prints newline" {
 test "prn - string is quoted" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{.{ .string = "hello" }};
+    const args = [_]Value{Value.initString("hello")};
     const output = try capturedOutput(&buf, prnFn, &args);
     try testing.expectEqualStrings("\"hello\"\n", output);
 }
@@ -320,9 +320,9 @@ test "prn - multi-arg space separated readable" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
-        .{ .integer = 1 },
-        .{ .string = "hello" },
-        .nil,
+        Value.initInteger(1),
+        Value.initString("hello"),
+        Value.nil_val,
     };
     const output = try capturedOutput(&buf, prnFn, &args);
     try testing.expectEqualStrings("1 \"hello\" nil\n", output);
@@ -333,7 +333,7 @@ test "prn - returns nil" {
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = try prnFn(testing.allocator, &args);
     try testing.expect(result == .nil);
 }
@@ -350,7 +350,7 @@ test "print - no args prints nothing" {
 test "print - single string unquoted no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{.{ .string = "hello" }};
+    const args = [_]Value{Value.initString("hello")};
     const output = try capturedOutput(&buf, printFn, &args);
     try testing.expectEqualStrings("hello", output);
 }
@@ -359,9 +359,9 @@ test "print - multi-arg space separated no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
-        .{ .integer = 1 },
-        .{ .string = "hello" },
-        .nil,
+        Value.initInteger(1),
+        Value.initString("hello"),
+        Value.nil_val,
     };
     const output = try capturedOutput(&buf, printFn, &args);
     try testing.expectEqualStrings("1 hello ", output);
@@ -379,7 +379,7 @@ test "pr - no args prints nothing" {
 test "pr - string is quoted no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{.{ .string = "hello" }};
+    const args = [_]Value{Value.initString("hello")};
     const output = try capturedOutput(&buf, prFn, &args);
     try testing.expectEqualStrings("\"hello\"", output);
 }
@@ -388,9 +388,9 @@ test "pr - multi-arg space separated readable no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
-        .{ .integer = 1 },
-        .{ .string = "hello" },
-        .nil,
+        Value.initInteger(1),
+        Value.initString("hello"),
+        Value.nil_val,
     };
     const output = try capturedOutput(&buf, prFn, &args);
     try testing.expectEqualStrings("1 \"hello\" nil", output);
@@ -410,7 +410,7 @@ test "newline - rejects args" {
     defer buf.deinit(testing.allocator);
     setOutputCapture(testing.allocator, &buf);
     defer setOutputCapture(null, null);
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = newlineFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }
@@ -427,7 +427,7 @@ test "flush - returns nil" {
 }
 
 test "flush - rejects args" {
-    const args = [_]Value{.{ .integer = 1 }};
+    const args = [_]Value{Value.initInteger(1)};
     const result = flushFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }

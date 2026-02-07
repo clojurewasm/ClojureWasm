@@ -119,9 +119,9 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
     for (args) |arg| {
-        const path_str = switch (arg) {
-            .string => |s| s,
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "load expects string paths, got {s}", .{@tagName(arg)}),
+        const path_str = switch (arg.tag()) {
+            .string => arg.asString(),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "load expects string paths, got {s}", .{@tagName(arg.tag())}),
         };
 
         // Strip leading slash if present
@@ -136,7 +136,7 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -149,13 +149,13 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to the-ns", .{args.len});
-    const name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "the-ns expects a symbol, got {s}", .{@tagName(args[0])}),
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "the-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name) == null) return error.NamespaceNotFound;
-    return .{ .symbol = .{ .ns = null, .name = name } };
+    return Value.initSymbol(.{ .ns = null, .name = name });
 }
 
 // ============================================================
@@ -178,13 +178,13 @@ pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     ns_iter = env.namespaces.iterator();
     var i: usize = 0;
     while (ns_iter.next()) |entry| {
-        items[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        items[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
         i += 1;
     }
 
     const lst = try allocator.create(collections.PersistentList);
     lst.* = .{ .items = items };
-    return .{ .list = lst };
+    return Value.initList(lst);
 }
 
 // ============================================================
@@ -196,15 +196,15 @@ pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-ns", .{args.len});
-    const name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-ns expects a symbol, got {s}", .{@tagName(args[0])}),
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "find-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name)) |ns| {
-        return .{ .symbol = .{ .ns = null, .name = ns.name } };
+        return Value.initSymbol(.{ .ns = null, .name = ns.name });
     }
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -216,9 +216,9 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-name", .{args.len});
-    return switch (args[0]) {
-        .symbol => |s| .{ .symbol = .{ .ns = null, .name = s.name } },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "ns-name expects a symbol, got {s}", .{@tagName(args[0])}),
+    return switch (args[0].tag()) {
+        .symbol => Value.initSymbol(.{ .ns = null, .name = args[0].asSymbol().name }),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "ns-name expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
@@ -231,13 +231,13 @@ pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to create-ns", .{args.len});
-    const name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "create-ns expects a symbol, got {s}", .{@tagName(args[0])}),
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "create-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = try env.findOrCreateNamespace(name);
-    return .{ .symbol = .{ .ns = null, .name = ns.name } };
+    return Value.initSymbol(.{ .ns = null, .name = ns.name });
 }
 
 // ============================================================
@@ -250,9 +250,9 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to in-ns", .{args.len});
-    const name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0])}),
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = try env.findOrCreateNamespace(name);
@@ -281,11 +281,11 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Sync *ns* dynamic var
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
-            ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = ns.name } });
+            ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = ns.name }));
         }
     }
 
-    return .{ .symbol = .{ .ns = null, .name = ns.name } };
+    return Value.initSymbol(.{ .ns = null, .name = ns.name });
 }
 
 // ============================================================
@@ -298,9 +298,9 @@ const Var = var_mod.Var;
 /// Resolve a symbol arg to a Namespace via Env.
 fn resolveNs(args: []const Value) !*Namespace {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-resolve", .{args.len});
-    const name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(args[0])}),
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     return env.findNamespace(name) orelse return error.NamespaceNotFound;
@@ -319,14 +319,14 @@ fn varMapToValue(allocator: Allocator, map: anytype) !Value {
     var iter = map.iterator();
     var i: usize = 0;
     while (iter.next()) |entry| {
-        entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
-        entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+        entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+        entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
         i += 2;
     }
 
     const m = try allocator.create(collections.PersistentArrayMap);
     m.* = .{ .entries = entries };
-    return .{ .map = m };
+    return Value.initMap(m);
 }
 
 // ============================================================
@@ -379,8 +379,8 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     {
         var iter = ns.mappings.iterator();
         while (iter.next()) |entry| {
-            entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
-            entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+            entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+            entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
             i += 2;
         }
     }
@@ -389,15 +389,15 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     {
         var iter = ns.refers.iterator();
         while (iter.next()) |entry| {
-            entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
-            entries[i + 1] = .{ .var_ref = entry.value_ptr.* };
+            entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+            entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
             i += 2;
         }
     }
 
     const m = try allocator.create(collections.PersistentArrayMap);
     m.* = .{ .entries = entries };
-    return .{ .map = m };
+    return Value.initMap(m);
 }
 
 // ============================================================
@@ -412,30 +412,30 @@ pub fn nsResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-resolve", .{args.len});
 
     // First arg: namespace (symbol or namespace)
-    const ns_name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol as first argument, got {s}", .{@tagName(args[0])}),
+    const ns_name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol as first argument, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    const ns = env.findNamespace(ns_name) orelse return .nil;
+    const ns = env.findNamespace(ns_name) orelse return Value.nil_val;
 
     // Last arg is always the symbol to resolve
     const sym_arg = args[args.len - 1];
-    const sym_name = switch (sym_arg) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(sym_arg)}),
+    const sym_name = switch (sym_arg.tag()) {
+        .symbol => sym_arg.asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(sym_arg.tag())}),
     };
 
     // If 3-arg form, second arg is local env map — if symbol is in that map, return nil
     if (args.len == 3) {
-        if (args[1] == .map) {
+        if (args[1].tag() == .map) {
             // Check if sym is a key in the local env map
-            const map_entries = args[1].map.entries;
+            const map_entries = args[1].asMap().entries;
             var i: usize = 0;
             while (i + 1 < map_entries.len) : (i += 2) {
-                if (map_entries[i] == .symbol) {
-                    if (std.mem.eql(u8, map_entries[i].symbol.name, sym_name)) {
-                        return .nil; // Symbol is locally bound, not resolved
+                if (map_entries[i].tag() == .symbol) {
+                    if (std.mem.eql(u8, map_entries[i].asSymbol().name, sym_name)) {
+                        return Value.nil_val; // Symbol is locally bound, not resolved
                     }
                 }
             }
@@ -444,13 +444,13 @@ pub fn nsResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Try to resolve in the namespace: mappings first, then refers
     if (ns.resolve(sym_name)) |v| {
-        return .{ .var_ref = v };
+        return Value.initVarRef(v);
     }
     if (ns.refers.get(sym_name)) |v| {
-        return .{ .var_ref = v };
+        return Value.initVarRef(v);
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -469,20 +469,20 @@ pub fn nsAliasesFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (count == 0) {
         const m = try allocator.create(collections.PersistentArrayMap);
         m.* = .{ .entries = &.{} };
-        return .{ .map = m };
+        return Value.initMap(m);
     }
     const entries = try allocator.alloc(Value, count * 2);
     var iter = ns.aliases.iterator();
     var i: usize = 0;
     while (iter.next()) |entry| {
-        entries[i] = .{ .symbol = .{ .ns = null, .name = entry.key_ptr.* } };
+        entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
         // Represent the aliased namespace as a symbol of its name
-        entries[i + 1] = .{ .symbol = .{ .ns = null, .name = entry.value_ptr.*.name } };
+        entries[i + 1] = Value.initSymbol(.{ .ns = null, .name = entry.value_ptr.*.name });
         i += 2;
     }
     const m = try allocator.create(collections.PersistentArrayMap);
     m.* = .{ .entries = entries };
-    return .{ .map = m };
+    return Value.initMap(m);
 }
 
 // ============================================================
@@ -506,9 +506,9 @@ pub fn nsRefersFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to refer", .{args.len});
-    const ns_name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "refer expects a symbol, got {s}", .{@tagName(args[0])}),
+    const ns_name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "refer expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
@@ -519,18 +519,18 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var exclude_list: ?[]const Value = null;
     var i: usize = 1;
     while (i + 1 < args.len) : (i += 2) {
-        if (args[i] == .keyword) {
-            if (std.mem.eql(u8, args[i].keyword.name, "only")) {
-                if (args[i + 1] == .vector) {
-                    only_list = args[i + 1].vector.items;
-                } else if (args[i + 1] == .list) {
-                    only_list = args[i + 1].list.items;
+        if (args[i].tag() == .keyword) {
+            if (std.mem.eql(u8, args[i].asKeyword().name, "only")) {
+                if (args[i + 1].tag() == .vector) {
+                    only_list = args[i + 1].asVector().items;
+                } else if (args[i + 1].tag() == .list) {
+                    only_list = args[i + 1].asList().items;
                 }
-            } else if (std.mem.eql(u8, args[i].keyword.name, "exclude")) {
-                if (args[i + 1] == .vector) {
-                    exclude_list = args[i + 1].vector.items;
-                } else if (args[i + 1] == .list) {
-                    exclude_list = args[i + 1].list.items;
+            } else if (std.mem.eql(u8, args[i].asKeyword().name, "exclude")) {
+                if (args[i + 1].tag() == .vector) {
+                    exclude_list = args[i + 1].asVector().items;
+                } else if (args[i + 1].tag() == .list) {
+                    exclude_list = args[i + 1].asList().items;
                 }
             }
         }
@@ -548,14 +548,14 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (only_list) |syms| {
         // Refer only specified symbols — validate existence and accessibility
         for (syms) |sym| {
-            if (sym == .symbol) {
-                if (source_ns.resolve(sym.symbol.name)) |v| {
+            if (sym.tag() == .symbol) {
+                if (source_ns.resolve(sym.asSymbol().name)) |v| {
                     if (v.isPrivate()) {
-                        return err.setErrorFmt(.eval, .name_error, .{}, "{s} is not public", .{sym.symbol.name});
+                        return err.setErrorFmt(.eval, .name_error, .{}, "{s} is not public", .{sym.asSymbol().name});
                     }
-                    current_ns.refer(sym.symbol.name, v) catch {};
+                    current_ns.refer(sym.asSymbol().name, v) catch {};
                 } else {
-                    return err.setErrorFmt(.eval, .name_error, .{}, "{s} does not exist", .{sym.symbol.name});
+                    return err.setErrorFmt(.eval, .name_error, .{}, "{s} does not exist", .{sym.asSymbol().name});
                 }
             }
         }
@@ -565,7 +565,7 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
         while (iter.next()) |entry| {
             var excluded = false;
             for (excludes) |ex| {
-                if (ex == .symbol and std.mem.eql(u8, ex.symbol.name, entry.key_ptr.*)) {
+                if (ex.tag() == .symbol and std.mem.eql(u8, ex.asSymbol().name, entry.key_ptr.*)) {
                     excluded = true;
                     break;
                 }
@@ -582,7 +582,7 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -594,20 +594,20 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
     _ = allocator;
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alias", .{args.len});
-    const alias_name = switch (args[0]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as first argument, got {s}", .{@tagName(args[0])}),
+    const alias_name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as first argument, got {s}", .{@tagName(args[0].tag())}),
     };
-    const ns_name = switch (args[1]) {
-        .symbol => |s| s.name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1])}),
+    const ns_name = switch (args[1].tag()) {
+        .symbol => args[1].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const target_ns = env.findNamespace(ns_name) orelse
         return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{ns_name});
     const current_ns = env.current_ns orelse return error.EvalError;
     try current_ns.setAlias(alias_name, target_ns);
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -628,10 +628,10 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var reload = false;
     var has_lib_spec = false;
     for (args) |arg| {
-        if (arg == .keyword) {
-            if (std.mem.eql(u8, arg.keyword.name, "reload")) {
+        if (arg.tag() == .keyword) {
+            if (std.mem.eql(u8, arg.asKeyword().name, "reload")) {
                 reload = true;
-            } else if (std.mem.eql(u8, arg.keyword.name, "reload-all")) {
+            } else if (std.mem.eql(u8, arg.asKeyword().name, "reload-all")) {
                 reload = true;
             } else {
                 return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got keyword", .{});
@@ -645,16 +645,17 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (!has_lib_spec) return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got keyword", .{});
 
     for (args) |arg| {
-        switch (arg) {
+        switch (arg.tag()) {
             .keyword => continue, // Skip :reload/:reload-all flags
-            .symbol => |s| {
-                try requireLib(allocator, env, s.name, reload);
+            .symbol => {
+                try requireLib(allocator, env, arg.asSymbol().name, reload);
             },
-            .vector => |v| {
+            .vector => {
+                const v = arg.asVector();
                 if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to require", .{args.len});
-                const ns_name = switch (v.items[0]) {
-                    .symbol => |s| s.name,
-                    else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0])}),
+                const ns_name = switch (v.items[0].tag()) {
+                    .symbol => v.items[0].asSymbol().name,
+                    else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0].tag())}),
                 };
                 try requireLib(allocator, env, ns_name, reload);
                 const source_ns = env.findNamespace(ns_name) orelse
@@ -663,23 +664,23 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
                 var j: usize = 1;
                 while (j + 1 < v.items.len) : (j += 2) {
-                    if (v.items[j] == .keyword) {
-                        const kw = v.items[j].keyword.name;
+                    if (v.items[j].tag() == .keyword) {
+                        const kw = v.items[j].asKeyword().name;
                         if (std.mem.eql(u8, kw, "as")) {
-                            if (v.items[j + 1] == .symbol) {
-                                try current_ns.setAlias(v.items[j + 1].symbol.name, source_ns);
+                            if (v.items[j + 1].tag() == .symbol) {
+                                try current_ns.setAlias(v.items[j + 1].asSymbol().name, source_ns);
                             }
                         } else if (std.mem.eql(u8, kw, "refer")) {
-                            if (v.items[j + 1] == .vector) {
-                                for (v.items[j + 1].vector.items) |sym| {
-                                    if (sym == .symbol) {
-                                        if (source_ns.resolve(sym.symbol.name)) |var_ref| {
-                                            current_ns.refer(sym.symbol.name, var_ref) catch {};
+                            if (v.items[j + 1].tag() == .vector) {
+                                for (v.items[j + 1].asVector().items) |sym| {
+                                    if (sym.tag() == .symbol) {
+                                        if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
+                                            current_ns.refer(sym.asSymbol().name, var_ref) catch {};
                                         }
                                     }
                                 }
-                            } else if (v.items[j + 1] == .keyword) {
-                                if (std.mem.eql(u8, v.items[j + 1].keyword.name, "all")) {
+                            } else if (v.items[j + 1].tag() == .keyword) {
+                                if (std.mem.eql(u8, v.items[j + 1].asKeyword().name, "all")) {
                                     var iter = source_ns.mappings.iterator();
                                     while (iter.next()) |entry| {
                                         current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -690,11 +691,11 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     }
                 }
             },
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got {s}", .{@tagName(arg)}),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got {s}", .{@tagName(arg.tag())}),
         }
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 /// Core require logic: ensure namespace is loaded (from file if needed).
@@ -742,8 +743,9 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to use", .{});
 
     for (args) |arg| {
-        switch (arg) {
-            .symbol => |s| {
+        switch (arg.tag()) {
+            .symbol => {
+                const s = arg.asSymbol();
                 // (use 'ns) — load if needed, then refer all
                 try requireLib(allocator, env, s.name, false);
                 const source_ns = env.findNamespace(s.name) orelse
@@ -753,11 +755,12 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
                 }
             },
-            .vector => |v| {
+            .vector => {
+                const v = arg.asVector();
                 if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to use", .{args.len});
-                const ns_name = switch (v.items[0]) {
-                    .symbol => |s| s.name,
-                    else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol, got {s}", .{@tagName(v.items[0])}),
+                const ns_name = switch (v.items[0].tag()) {
+                    .symbol => v.items[0].asSymbol().name,
+                    else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol, got {s}", .{@tagName(v.items[0].tag())}),
                 };
                 try requireLib(allocator, env, ns_name, false);
                 const source_ns = env.findNamespace(ns_name) orelse
@@ -766,10 +769,10 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 var only_filter: ?[]const Value = null;
                 var j: usize = 1;
                 while (j + 1 < v.items.len) : (j += 2) {
-                    if (v.items[j] == .keyword) {
-                        if (std.mem.eql(u8, v.items[j].keyword.name, "only")) {
-                            if (v.items[j + 1] == .vector) {
-                                only_filter = v.items[j + 1].vector.items;
+                    if (v.items[j].tag() == .keyword) {
+                        if (std.mem.eql(u8, v.items[j].asKeyword().name, "only")) {
+                            if (v.items[j + 1].tag() == .vector) {
+                                only_filter = v.items[j + 1].asVector().items;
                             }
                         }
                     }
@@ -777,9 +780,9 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
                 if (only_filter) |syms| {
                     for (syms) |sym| {
-                        if (sym == .symbol) {
-                            if (source_ns.resolve(sym.symbol.name)) |var_ref| {
-                                current_ns.refer(sym.symbol.name, var_ref) catch {};
+                        if (sym.tag() == .symbol) {
+                            if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
+                                current_ns.refer(sym.asSymbol().name, var_ref) catch {};
                             }
                         }
                     }
@@ -790,11 +793,11 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     }
                 }
             },
-            else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol or vector, got {s}", .{@tagName(arg)}),
+            else => return err.setErrorFmt(.eval, .type_error, .{}, "use expects a symbol or vector, got {s}", .{@tagName(arg.tag())}),
         }
     }
 
-    return .nil;
+    return Value.nil_val;
 }
 
 // ============================================================
@@ -950,9 +953,9 @@ test "find-ns - existing namespace" {
         env.deinit();
     }
 
-    const result = try findNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
-    try testing.expect(result == .symbol);
-    try testing.expectEqualStrings("clojure.core", result.symbol.name);
+    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    try testing.expect(result.tag() == .symbol);
+    try testing.expectEqualStrings("clojure.core", result.asSymbol().name);
 }
 
 test "find-ns - nonexistent namespace returns nil" {
@@ -966,8 +969,8 @@ test "find-ns - nonexistent namespace returns nil" {
         env.deinit();
     }
 
-    const result = try findNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "nonexistent" } }});
-    try testing.expectEqual(Value.nil, result);
+    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "nonexistent" })});
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "all-ns - contains clojure.core and user" {
@@ -982,15 +985,15 @@ test "all-ns - contains clojure.core and user" {
     }
 
     const result = try allNsFn(alloc, &[_]Value{});
-    try testing.expect(result == .list);
-    try testing.expect(result.list.items.len >= 2); // at least clojure.core and user
+    try testing.expect(result.tag() == .list);
+    try testing.expect(result.asList().items.len >= 2); // at least clojure.core and user
 
     var found_core = false;
     var found_user = false;
-    for (result.list.items) |item| {
-        if (item == .symbol) {
-            if (std.mem.eql(u8, item.symbol.name, "clojure.core")) found_core = true;
-            if (std.mem.eql(u8, item.symbol.name, "user")) found_user = true;
+    for (result.asList().items) |item| {
+        if (item.tag() == .symbol) {
+            if (std.mem.eql(u8, item.asSymbol().name, "clojure.core")) found_core = true;
+            if (std.mem.eql(u8, item.asSymbol().name, "user")) found_user = true;
         }
     }
     try testing.expect(found_core);
@@ -1002,9 +1005,9 @@ test "ns-name - returns symbol" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try nsNameFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
-    try testing.expect(result == .symbol);
-    try testing.expectEqualStrings("user", result.symbol.name);
+    const result = try nsNameFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    try testing.expect(result.tag() == .symbol);
+    try testing.expectEqualStrings("user", result.asSymbol().name);
 }
 
 test "create-ns - creates new namespace" {
@@ -1021,9 +1024,9 @@ test "create-ns - creates new namespace" {
     // Verify namespace doesn't exist yet
     try testing.expect(env.findNamespace("test.new") == null);
 
-    const result = try createNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "test.new" } }});
-    try testing.expect(result == .symbol);
-    try testing.expectEqualStrings("test.new", result.symbol.name);
+    const result = try createNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "test.new" })});
+    try testing.expect(result.tag() == .symbol);
+    try testing.expectEqualStrings("test.new", result.asSymbol().name);
 
     // Verify namespace was created
     try testing.expect(env.findNamespace("test.new") != null);
@@ -1040,9 +1043,9 @@ test "the-ns - existing namespace" {
         env.deinit();
     }
 
-    const result = try theNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
-    try testing.expect(result == .symbol);
-    try testing.expectEqualStrings("user", result.symbol.name);
+    const result = try theNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    try testing.expect(result.tag() == .symbol);
+    try testing.expectEqualStrings("user", result.asSymbol().name);
 }
 
 test "the-ns - nonexistent namespace errors" {
@@ -1056,7 +1059,7 @@ test "the-ns - nonexistent namespace errors" {
         env.deinit();
     }
 
-    const result = theNsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "nonexistent" } }});
+    const result = theNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "nonexistent" })});
     try testing.expectError(error.NamespaceNotFound, result);
 }
 
@@ -1072,12 +1075,12 @@ test "ns-interns - returns map with interned vars" {
     }
 
     // clojure.core has interned vars (from registerBuiltins)
-    const result = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
-    try testing.expect(result == .map);
+    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    try testing.expect(result.tag() == .map);
     // Should have entries (at least the builtins)
-    try testing.expect(result.map.entries.len > 0);
+    try testing.expect(result.asMap().entries.len > 0);
     // Entries are key-value pairs, so length is even
-    try testing.expect(result.map.entries.len % 2 == 0);
+    try testing.expect(result.asMap().entries.len % 2 == 0);
 }
 
 test "ns-publics - same as ns-interns (no private vars)" {
@@ -1091,9 +1094,9 @@ test "ns-publics - same as ns-interns (no private vars)" {
         env.deinit();
     }
 
-    const interns = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
-    const publics = try nsPublicsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "clojure.core" } }});
-    try testing.expectEqual(interns.map.entries.len, publics.map.entries.len);
+    const interns = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    const publics = try nsPublicsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    try testing.expectEqual(interns.asMap().entries.len, publics.asMap().entries.len);
 }
 
 test "ns-map - includes interns and refers" {
@@ -1108,10 +1111,10 @@ test "ns-map - includes interns and refers" {
     }
 
     // user namespace has refers from clojure.core
-    const result = try nsMapFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
-    try testing.expect(result == .map);
+    const result = try nsMapFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    try testing.expect(result.tag() == .map);
     // user namespace should have referred vars (from registerBuiltins)
-    try testing.expect(result.map.entries.len > 0);
+    try testing.expect(result.asMap().entries.len > 0);
 }
 
 test "ns-interns - user namespace is initially empty" {
@@ -1126,7 +1129,7 @@ test "ns-interns - user namespace is initially empty" {
     }
 
     // user namespace has no interned vars (only refers)
-    const result = try nsInternsFn(alloc, &[_]Value{.{ .symbol = .{ .ns = null, .name = "user" } }});
-    try testing.expect(result == .map);
-    try testing.expectEqual(@as(usize, 0), result.map.entries.len);
+    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    try testing.expect(result.tag() == .map);
+    try testing.expectEqual(@as(usize, 0), result.asMap().entries.len);
 }

@@ -27,15 +27,15 @@ const Env = @import("../env.zig").Env;
 /// Reads one object from the string s. Returns nil if string is empty.
 pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-string", .{args.len});
-    const s = switch (args[0]) {
-        .string => |str| str,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "read-string expects a string, got {s}", .{@tagName(args[0])}),
+    const s = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "read-string expects a string, got {s}", .{@tagName(args[0].tag())}),
     };
-    if (s.len == 0) return .nil;
+    if (s.len == 0) return Value.nil_val;
 
     var reader = Reader.init(allocator, s);
     const form_opt = reader.read() catch return error.EvalError;
-    const form = form_opt orelse return .nil;
+    const form = form_opt orelse return Value.nil_val;
     return macro.formToValue(allocator, form);
 }
 
@@ -59,7 +59,7 @@ pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // This matches JVM Clojure's eval behavior.
     if (isDoForm(form)) {
         const body = form.data.list[1..]; // skip 'do symbol
-        var result: Value = .nil;
+        var result: Value = Value.nil_val;
         for (body) |sub_form| {
             result = try evalOneForm(allocator, env, sub_form);
         }
@@ -105,15 +105,15 @@ pub fn macroexpand1Fn(allocator: Allocator, args: []const Value) anyerror!Value 
 
 fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
     // Only expand list forms starting with a symbol
-    const lst = switch (form) {
-        .list => |l| l,
+    const lst = switch (form.tag()) {
+        .list => form.asList(),
         else => return form,
     };
     if (lst.items.len == 0) return form;
 
     const head = lst.items[0];
-    const sym = switch (head) {
-        .symbol => |s| s,
+    const sym = switch (head.tag()) {
+        .symbol => head.asSymbol(),
         else => return form,
     };
 
@@ -162,16 +162,16 @@ pub fn macroexpandFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Sequentially read and evaluate the set of forms contained in the string.
 pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to load-string", .{args.len});
-    const s = switch (args[0]) {
-        .string => |str| str,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-string expects a string, got {s}", .{@tagName(args[0])}),
+    const s = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "load-string expects a string, got {s}", .{@tagName(args[0].tag())}),
     };
-    if (s.len == 0) return .nil;
+    if (s.len == 0) return Value.nil_val;
 
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
 
     var reader = Reader.init(allocator, s);
-    var result: Value = .nil;
+    var result: Value = Value.nil_val;
     while (true) {
         const form_opt = reader.read() catch return error.EvalError;
         const form = form_opt orelse break;
@@ -203,28 +203,28 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
     switch (args.len) {
         1 => {
             // (edn/read-string s)
-            if (args[0] == .nil) return .nil;
-            const s = switch (args[0]) {
-                .string => |str| str,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string, got {s}", .{@tagName(args[0])}),
+            if (args[0] == .nil) return Value.nil_val;
+            const s = switch (args[0].tag()) {
+                .string => args[0].asString(),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string, got {s}", .{@tagName(args[0].tag())}),
             };
-            if (s.len == 0) return .nil;
+            if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
             const form_opt = reader.read() catch return error.EvalError;
-            const form = form_opt orelse return .nil;
+            const form = form_opt orelse return Value.nil_val;
             return macro.formToValue(allocator, form);
         },
         2 => {
             // (edn/read-string opts s) — opts map currently ignored
-            if (args[1] == .nil) return .nil;
-            const s = switch (args[1]) {
-                .string => |str| str,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string as second arg, got {s}", .{@tagName(args[1])}),
+            if (args[1] == .nil) return Value.nil_val;
+            const s = switch (args[1].tag()) {
+                .string => args[1].asString(),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.edn/read-string expects a string as second arg, got {s}", .{@tagName(args[1].tag())}),
             };
-            if (s.len == 0) return .nil;
+            if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
             const form_opt = reader.read() catch return error.EvalError;
-            const form = form_opt orelse return .nil;
+            const form = form_opt orelse return Value.nil_val;
             return macro.formToValue(allocator, form);
         },
         else => return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clojure.edn/read-string", .{args.len}),
@@ -295,8 +295,8 @@ test "read-string - integer" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "42" }});
-    try testing.expectEqual(Value{ .integer = 42 }, result);
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("42")});
+    try testing.expectEqual(Value.initInteger(42), result);
 }
 
 test "read-string - string" {
@@ -304,8 +304,8 @@ test "read-string - string" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "\"hello\"" }});
-    try testing.expectEqualStrings("hello", result.string);
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("\"hello\"")});
+    try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "read-string - symbol" {
@@ -313,9 +313,9 @@ test "read-string - symbol" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "foo" }});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("foo")});
     try testing.expect(result == .symbol);
-    try testing.expectEqualStrings("foo", result.symbol.name);
+    try testing.expectEqualStrings("foo", result.asSymbol().name);
 }
 
 test "read-string - keyword" {
@@ -323,9 +323,9 @@ test "read-string - keyword" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = ":bar" }});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(":bar")});
     try testing.expect(result == .keyword);
-    try testing.expectEqualStrings("bar", result.keyword.name);
+    try testing.expectEqualStrings("bar", result.asKeyword().name);
 }
 
 test "read-string - vector" {
@@ -333,9 +333,9 @@ test "read-string - vector" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "[1 2 3]" }});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("[1 2 3]")});
     try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 3), result.vector.items.len);
+    try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
 }
 
 test "read-string - empty string returns nil" {
@@ -343,8 +343,8 @@ test "read-string - empty string returns nil" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "" }});
-    try testing.expectEqual(Value.nil, result);
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("")});
+    try testing.expectEqual(Value.nil_val, result);
 }
 
 test "read-string - map" {
@@ -352,7 +352,7 @@ test "read-string - map" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "{:a 1}" }});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("{:a 1}")});
     try testing.expect(result == .map);
 }
 
@@ -361,7 +361,7 @@ test "read-string - list" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{.{ .string = "(+ 1 2)" }});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString("(+ 1 2)")});
     try testing.expect(result == .list);
-    try testing.expectEqual(@as(usize, 3), result.list.items.len);
+    try testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }

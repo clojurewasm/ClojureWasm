@@ -92,7 +92,7 @@ pub fn registerBuiltins(env: *Env) !void {
         v.applyBuiltinDef(b);
         // Bind runtime function as root value
         if (b.func) |f| {
-            v.bindRoot(.{ .builtin_fn = f });
+            v.bindRoot(Value.initBuiltinFn(f));
         }
     }
 
@@ -107,31 +107,31 @@ pub fn registerBuiltins(env: *Env) !void {
     // Register *ns* dynamic var (tracks current namespace)
     const ns_var = try core_ns.intern("*ns*");
     ns_var.dynamic = true;
-    ns_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "user" } });
+    ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "user" }));
     try user_ns.refer("*ns*", ns_var);
 
     // Register dynamic vars with default values
     const dynamic_vars = .{
-        .{ "*file*", Value.nil },
-        .{ "*command-line-args*", Value.nil },
-        .{ "*e", Value.nil },
-        .{ "*flush-on-newline*", Value{ .boolean = true } },
-        .{ "*print-dup*", Value{ .boolean = false } },
-        .{ "*print-length*", Value.nil },
-        .{ "*print-level*", Value.nil },
-        .{ "*print-meta*", Value{ .boolean = false } },
-        .{ "*print-namespace-maps*", Value{ .boolean = true } },
-        .{ "*print-readably*", Value{ .boolean = true } },
-        .{ "*read-eval*", Value{ .boolean = true } },
-        .{ "*data-readers*", Value.nil },
-        .{ "*default-data-reader-fn*", Value.nil },
-        .{ "*source-path*", Value.nil },
-        .{ "*unchecked-math*", Value{ .boolean = false } },
-        .{ "*verbose-defrecords*", Value{ .boolean = false } },
-        .{ "*repl*", Value{ .boolean = false } },
-        .{ "*err*", Value.nil }, // placeholder — no Java streams
-        .{ "*in*", Value.nil }, // placeholder — no Java streams
-        .{ "*out*", Value.nil }, // placeholder — no Java streams
+        .{ "*file*", Value.nil_val },
+        .{ "*command-line-args*", Value.nil_val },
+        .{ "*e", Value.nil_val },
+        .{ "*flush-on-newline*", Value.true_val },
+        .{ "*print-dup*", Value.false_val },
+        .{ "*print-length*", Value.nil_val },
+        .{ "*print-level*", Value.nil_val },
+        .{ "*print-meta*", Value.false_val },
+        .{ "*print-namespace-maps*", Value.true_val },
+        .{ "*print-readably*", Value.true_val },
+        .{ "*read-eval*", Value.true_val },
+        .{ "*data-readers*", Value.nil_val },
+        .{ "*default-data-reader-fn*", Value.nil_val },
+        .{ "*source-path*", Value.nil_val },
+        .{ "*unchecked-math*", Value.false_val },
+        .{ "*verbose-defrecords*", Value.false_val },
+        .{ "*repl*", Value.false_val },
+        .{ "*err*", Value.nil_val }, // placeholder — no Java streams
+        .{ "*in*", Value.nil_val }, // placeholder — no Java streams
+        .{ "*out*", Value.nil_val }, // placeholder — no Java streams
     };
     inline for (dynamic_vars) |entry| {
         const dv = try core_ns.intern(entry[0]);
@@ -142,11 +142,11 @@ pub fn registerBuiltins(env: *Env) !void {
 
     // Register constant vars
     const unquote_var = try core_ns.intern("unquote");
-    unquote_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "unquote" } });
+    unquote_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "unquote" }));
     try user_ns.refer("unquote", unquote_var);
 
     const unquote_splicing_var = try core_ns.intern("unquote-splicing");
-    unquote_splicing_var.bindRoot(.{ .symbol = .{ .ns = null, .name = "unquote-splicing" } });
+    unquote_splicing_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "unquote-splicing" }));
     try user_ns.refer("unquote-splicing", unquote_splicing_var);
 
     // Register clojure.string namespace builtins
@@ -155,7 +155,7 @@ pub fn registerBuiltins(env: *Env) !void {
         const v = try str_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
-            v.bindRoot(.{ .builtin_fn = f });
+            v.bindRoot(Value.initBuiltinFn(f));
         }
     }
 
@@ -165,7 +165,7 @@ pub fn registerBuiltins(env: *Env) !void {
         const v = try edn_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
-            v.bindRoot(.{ .builtin_fn = f });
+            v.bindRoot(Value.initBuiltinFn(f));
         }
     }
 
@@ -175,13 +175,13 @@ pub fn registerBuiltins(env: *Env) !void {
         const v = try math_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
-            v.bindRoot(.{ .builtin_fn = f });
+            v.bindRoot(Value.initBuiltinFn(f));
         }
     }
     const pi_var = try math_ns.intern("PI");
-    pi_var.bindRoot(.{ .float = math_mod.PI });
+    pi_var.bindRoot(Value.initFloat(math_mod.PI));
     const e_var = try math_ns.intern("E");
-    e_var.bindRoot(.{ .float = math_mod.E });
+    e_var.bindRoot(Value.initFloat(math_mod.E));
 
     // Register wasm namespace builtins (Phase 25)
     const wasm_ns = try env.findOrCreateNamespace("wasm");
@@ -189,7 +189,7 @@ pub fn registerBuiltins(env: *Env) !void {
         const v = try wasm_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
-            v.bindRoot(.{ .builtin_fn = f });
+            v.bindRoot(Value.initBuiltinFn(f));
         }
     }
 

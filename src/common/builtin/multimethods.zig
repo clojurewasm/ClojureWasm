@@ -18,30 +18,30 @@ const Env = @import("../env.zig").Env;
 /// (methods multifn) => map of dispatch-val -> method-fn
 pub fn methodsFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to methods", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "methods expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "methods expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
-    return Value{ .map = mf.methods };
+    return Value.initMap(mf.methods);
 }
 
 /// (get-method multifn dispatch-val) => method-fn or nil
 pub fn getMethodFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-method", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-method expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-method expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
-    return mf.methods.get(args[1]) orelse .nil;
+    return mf.methods.get(args[1]) orelse Value.nil_val;
 }
 
 /// (remove-method multifn dispatch-val) => multifn
 /// Removes the method associated with dispatch-val.
 pub fn removeMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-method", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-method expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-method expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
     const old_entries = mf.methods.entries;
     const dispatch_val = args[1];
@@ -83,9 +83,9 @@ pub fn removeMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
 /// Removes all methods from the multimethod.
 pub fn removeAllMethodsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-all-methods", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-all-methods expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-all-methods expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
 
     const empty_map = try allocator.create(PersistentArrayMap);
@@ -104,9 +104,9 @@ pub fn removeAllMethodsFn(allocator: Allocator, args: []const Value) anyerror!Va
 /// Causes the multimethod to prefer matches of dispatch-val-x over dispatch-val-y.
 pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to prefer-method", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefer-method expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefer-method expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
     const preferred = args[1];
     const over = args[2];
@@ -121,15 +121,15 @@ pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
     // Get existing set for preferred value, or create new one
     var new_items: []Value = undefined;
     if (pt.get(preferred)) |existing| {
-        if (existing == .set) {
+        if (existing.tag() == .set) {
             // Add 'over' to existing set (skip if already present)
-            for (existing.set.items) |item| {
+            for (existing.asSet().items) |item| {
                 if (item.eql(over)) {
                     // Already preferred, no-op
                     return args[0];
                 }
             }
-            const old = existing.set.items;
+            const old = existing.asSet().items;
             new_items = try allocator.alloc(Value, old.len + 1);
             @memcpy(new_items[0..old.len], old);
             new_items[old.len] = over;
@@ -144,7 +144,7 @@ pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
 
     const new_set = try allocator.create(PersistentHashSet);
     new_set.* = .{ .items = new_items };
-    const set_val = Value{ .set = new_set };
+    const set_val = Value.initSet(new_set);
 
     // Assoc into prefer table
     mf.prefer_table = try assocMap(allocator, pt, preferred, set_val);
@@ -155,16 +155,16 @@ pub fn preferMethodFn(allocator: Allocator, args: []const Value) anyerror!Value 
 /// (prefers multifn) => map of preferred dispatch values
 pub fn prefersFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to prefers", .{args.len});
-    const mf = switch (args[0]) {
-        .multi_fn => |m| m,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefers expects a multimethod, got {s}", .{@tagName(args[0])}),
+    const mf = switch (args[0].tag()) {
+        .multi_fn => args[0].asMultiFn(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "prefers expects a multimethod, got {s}", .{@tagName(args[0].tag())}),
     };
     if (mf.prefer_table) |pt| {
-        return Value{ .map = pt };
+        return Value.initMap(pt);
     }
     const empty_map = try allocator.create(PersistentArrayMap);
     empty_map.* = .{ .entries = &.{} };
-    return Value{ .map = empty_map };
+    return Value.initMap(empty_map);
 }
 
 // ============================================================
@@ -190,13 +190,13 @@ pub fn findBestMethod(mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Valu
     else
         null;
     if (hierarchy_val) |hv| {
-        if (hv == .map) {
-            if (findIsaMatch(mf, dispatch_val, hv.map)) |m| return m;
+        if (hv.tag() == .map) {
+            if (findIsaMatch(mf, dispatch_val, hv.asMap())) |m| return m;
         }
     }
 
     // 3. :default
-    return mf.methods.get(.{ .keyword = .{ .ns = null, .name = "default" } });
+    return mf.methods.get(Value.initKeyword(.{ .ns = null, .name = "default" }));
 }
 
 const Match = struct { key: Value, method: Value };
@@ -210,10 +210,10 @@ fn getGlobalHierarchy(env: *Env) ?Value {
 }
 
 fn findIsaMatch(mf: *const MultiFn, dispatch_val: Value, hierarchy: *const PersistentArrayMap) ?Value {
-    const ancestors_kw = Value{ .keyword = .{ .ns = null, .name = "ancestors" } };
+    const ancestors_kw = Value.initKeyword(.{ .ns = null, .name = "ancestors" });
     const ancestors_map_val = hierarchy.get(ancestors_kw) orelse return null;
-    if (ancestors_map_val != .map) return null;
-    const ancestors_map = ancestors_map_val.map;
+    if (ancestors_map_val.tag() != .map) return null;
+    const ancestors_map = ancestors_map_val.asMap();
 
     // Collect isa? matches
     var matches_buf: [64]Match = undefined;
@@ -253,9 +253,9 @@ fn isaCheck(ancestors_map: *const PersistentArrayMap, child: Value, parent: Valu
     if (child.eql(parent)) return true;
 
     // Vector isa?: element-wise
-    if (child == .vector and parent == .vector) {
-        const c = child.vector.items;
-        const p = parent.vector.items;
+    if (child.tag() == .vector and parent.tag() == .vector) {
+        const c = child.asVector().items;
+        const p = parent.asVector().items;
         if (c.len != p.len) return false;
         for (c, p) |ci, pi| {
             if (!isaCheck(ancestors_map, ci, pi)) return false;
@@ -265,8 +265,8 @@ fn isaCheck(ancestors_map: *const PersistentArrayMap, child: Value, parent: Valu
 
     // Hierarchy check: is parent in ancestors(child)?
     if (ancestors_map.get(child)) |ancestor_set_val| {
-        if (ancestor_set_val == .set) {
-            for (ancestor_set_val.set.items) |item| {
+        if (ancestor_set_val.tag() == .set) {
+            for (ancestor_set_val.asSet().items) |item| {
                 if (item.eql(parent)) return true;
             }
         }
@@ -275,9 +275,9 @@ fn isaCheck(ancestors_map: *const PersistentArrayMap, child: Value, parent: Valu
 }
 
 fn isDefaultKey(key: Value) bool {
-    if (key != .keyword) return false;
-    if (key.keyword.ns != null) return false;
-    return std.mem.eql(u8, key.keyword.name, "default");
+    if (key.tag() != .keyword) return false;
+    if (key.asKeyword().ns != null) return false;
+    return std.mem.eql(u8, key.asKeyword().name, "default");
 }
 
 fn resolveWithPrefers(matches: []const Match, pt: *const PersistentArrayMap, ancestors_map: *const PersistentArrayMap) ?Value {
@@ -313,8 +313,8 @@ fn resolveWithPrefers(matches: []const Match, pt: *const PersistentArrayMap, anc
 fn isPreferred(pt: *const PersistentArrayMap, preferred: Value, over: Value, ancestors_map: *const PersistentArrayMap) bool {
     // Direct preference check
     if (pt.get(preferred)) |set_val| {
-        if (set_val == .set) {
-            for (set_val.set.items) |item| {
+        if (set_val.tag() == .set) {
+            for (set_val.asSet().items) |item| {
                 if (item.eql(over)) return true;
                 // Indirect: preferred over an ancestor of `over`
                 if (isaCheck(ancestors_map, over, item)) return true;
@@ -323,8 +323,8 @@ fn isPreferred(pt: *const PersistentArrayMap, preferred: Value, over: Value, anc
     }
     // Indirect via preferred: check if any ancestor of `preferred` is preferred over `over`
     if (ancestors_map.get(preferred)) |ancestor_set_val| {
-        if (ancestor_set_val == .set) {
-            for (ancestor_set_val.set.items) |anc| {
+        if (ancestor_set_val.tag() == .set) {
+            for (ancestor_set_val.asSet().items) |anc| {
                 if (isPreferred(pt, anc, over, ancestors_map)) return true;
             }
         }
@@ -407,70 +407,70 @@ const testing = std.testing;
 
 test "methods - returns method map" {
     var entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } },
-        .{ .integer = 1 },
-        .{ .keyword = .{ .name = "b", .ns = null } },
-        .{ .integer = 2 },
+        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initInteger(1),
+        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
     var mf = MultiFn{
         .name = "test-mf",
-        .dispatch_fn = .nil,
+        .dispatch_fn = Value.nil_val,
         .methods = &map,
     };
 
-    const args = [_]Value{.{ .multi_fn = &mf }};
+    const args = [_]Value{Value.initMultiFn(&mf)};
     const result = try methodsFn(testing.allocator, &args);
-    try testing.expect(result == .map);
-    try testing.expectEqual(@as(usize, 4), result.map.entries.len);
+    try testing.expect(result.tag() == .map);
+    try testing.expectEqual(@as(usize, 4), result.asMap().entries.len);
 }
 
 test "get-method - returns method or nil" {
     var entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } },
-        .{ .integer = 42 },
+        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initInteger(42),
     };
     var map = PersistentArrayMap{ .entries = &entries };
     var mf = MultiFn{
         .name = "test-mf",
-        .dispatch_fn = .nil,
+        .dispatch_fn = Value.nil_val,
         .methods = &map,
     };
 
     // Found
-    const args1 = [_]Value{ .{ .multi_fn = &mf }, .{ .keyword = .{ .name = "a", .ns = null } } };
+    const args1 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "a", .ns = null }) };
     const r1 = try getMethodFn(testing.allocator, &args1);
-    try testing.expectEqual(Value{ .integer = 42 }, r1);
+    try testing.expectEqual(Value.initInteger(42), r1);
 
     // Not found
-    const args2 = [_]Value{ .{ .multi_fn = &mf }, .{ .keyword = .{ .name = "b", .ns = null } } };
+    const args2 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "b", .ns = null }) };
     const r2 = try getMethodFn(testing.allocator, &args2);
-    try testing.expectEqual(Value.nil, r2);
+    try testing.expectEqual(Value.nil_val, r2);
 }
 
 test "remove-method - removes dispatch entry" {
     var entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } },
-        .{ .integer = 1 },
-        .{ .keyword = .{ .name = "b", .ns = null } },
-        .{ .integer = 2 },
+        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initInteger(1),
+        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
     var mf = MultiFn{
         .name = "test-mf",
-        .dispatch_fn = .nil,
+        .dispatch_fn = Value.nil_val,
         .methods = &map,
     };
 
-    const args = [_]Value{ .{ .multi_fn = &mf }, .{ .keyword = .{ .name = "a", .ns = null } } };
+    const args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "a", .ns = null }) };
     const result = try removeMethodFn(testing.allocator, &args);
-    try testing.expect(result == .multi_fn);
+    try testing.expect(result.tag() == .multi_fn);
     try testing.expectEqual(@as(usize, 2), mf.methods.entries.len);
 
     // Verify :b remains
-    const get_args = [_]Value{ .{ .multi_fn = &mf }, .{ .keyword = .{ .name = "b", .ns = null } } };
+    const get_args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "b", .ns = null }) };
     const b_val = try getMethodFn(testing.allocator, &get_args);
-    try testing.expectEqual(Value{ .integer = 2 }, b_val);
+    try testing.expectEqual(Value.initInteger(2), b_val);
 
     // Clean up
     testing.allocator.free(mf.methods.entries);
@@ -479,19 +479,19 @@ test "remove-method - removes dispatch entry" {
 
 test "remove-all-methods - clears all methods" {
     var entries = [_]Value{
-        .{ .keyword = .{ .name = "a", .ns = null } },
-        .{ .integer = 1 },
+        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initInteger(1),
     };
     var map = PersistentArrayMap{ .entries = &entries };
     var mf = MultiFn{
         .name = "test-mf",
-        .dispatch_fn = .nil,
+        .dispatch_fn = Value.nil_val,
         .methods = &map,
     };
 
-    const args = [_]Value{.{ .multi_fn = &mf }};
+    const args = [_]Value{Value.initMultiFn(&mf)};
     const result = try removeAllMethodsFn(testing.allocator, &args);
-    try testing.expect(result == .multi_fn);
+    try testing.expect(result.tag() == .multi_fn);
     try testing.expectEqual(@as(usize, 0), mf.methods.entries.len);
 
     testing.allocator.destroy(mf.methods);

@@ -12,16 +12,16 @@ const BuiltinDef = @import("../var.zig").BuiltinDef;
 // --- Helpers ---
 
 fn toDouble(v: Value) !f64 {
-    return switch (v) {
-        .float => |f| f,
-        .integer => |i| @as(f64, @floatFromInt(i)),
+    return switch (v.tag()) {
+        .float => v.asFloat(),
+        .integer => @as(f64, @floatFromInt(v.asInteger())),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.math expects a numeric argument", .{}),
     };
 }
 
 fn toLong(v: Value) !i64 {
-    return switch (v) {
-        .integer => |i| i,
+    return switch (v.tag()) {
+        .integer => v.asInteger(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "clojure.math expects an integer argument", .{}),
     };
 }
@@ -43,11 +43,11 @@ fn checkArity2(args: []const Value, name: []const u8) !struct { f64, f64 } {
 }
 
 fn floatVal(v: f64) Value {
-    return Value{ .float = v };
+    return Value.initFloat(v);
 }
 
 fn intVal(v: i64) Value {
-    return Value{ .integer = v };
+    return Value.initInteger(v);
 }
 
 // --- Trigonometric ---
@@ -428,27 +428,27 @@ const test_alloc = testing.allocator;
 
 test "sin" {
     const r = try sinFn(test_alloc, &.{floatVal(0.0)});
-    try testing.expectEqual(@as(f64, 0.0), r.float);
+    try testing.expectEqual(@as(f64, 0.0), r.asFloat());
 }
 
 test "cos" {
     const r = try cosFn(test_alloc, &.{floatVal(0.0)});
-    try testing.expectEqual(@as(f64, 1.0), r.float);
+    try testing.expectEqual(@as(f64, 1.0), r.asFloat());
 }
 
 test "sqrt" {
     const r = try sqrtFn(test_alloc, &.{floatVal(4.0)});
-    try testing.expectEqual(@as(f64, 2.0), r.float);
+    try testing.expectEqual(@as(f64, 2.0), r.asFloat());
 }
 
 test "round NaN" {
     const r = try roundFn(test_alloc, &.{floatVal(std.math.nan(f64))});
-    try testing.expectEqual(@as(i64, 0), r.integer);
+    try testing.expectEqual(@as(i64, 0), r.asInteger());
 }
 
 test "round 3.5" {
     const r = try roundFn(test_alloc, &.{floatVal(3.5)});
-    try testing.expectEqual(@as(i64, 4), r.integer);
+    try testing.expectEqual(@as(i64, 4), r.asInteger());
 }
 
 test "add-exact overflow" {
@@ -457,12 +457,12 @@ test "add-exact overflow" {
 
 test "floor-div" {
     const r = try floorDivFn(test_alloc, &.{intVal(-2), intVal(5)});
-    try testing.expectEqual(@as(i64, -1), r.integer);
+    try testing.expectEqual(@as(i64, -1), r.asInteger());
 }
 
 test "floor-mod" {
     const r = try floorModFn(test_alloc, &.{intVal(-2), intVal(5)});
-    try testing.expectEqual(@as(i64, 3), r.integer);
+    try testing.expectEqual(@as(i64, 3), r.asInteger());
 }
 
 test "builtins table has 42 entries" {

@@ -26,17 +26,17 @@ pub fn metaFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Extract metadata from a Value. Returns nil if the value has no metadata
 /// or doesn't support metadata.
 pub fn getMeta(val: Value) Value {
-    return switch (val) {
-        .list => |l| if (l.meta) |m| m.* else .nil,
-        .vector => |v| if (v.meta) |m| m.* else .nil,
-        .map => |m| if (m.meta) |meta| meta.* else .nil,
-        .hash_map => |hm| if (hm.meta) |meta| meta.* else .nil,
-        .set => |s| if (s.meta) |m| m.* else .nil,
-        .fn_val => |f| if (f.meta) |m| m.* else .nil,
-        .symbol => |s| if (s.meta) |m| m.* else .nil,
-        .atom => |a| if (a.meta) |m| m.* else .nil,
-        .var_ref => |v| if (v.meta) |m| Value{ .map = m } else .nil,
-        else => .nil,
+    return switch (val.tag()) {
+        .list => if (val.asList().meta) |m| m.* else Value.nil_val,
+        .vector => if (val.asVector().meta) |m| m.* else Value.nil_val,
+        .map => if (val.asMap().meta) |meta| meta.* else Value.nil_val,
+        .hash_map => if (val.asHashMap().meta) |meta| meta.* else Value.nil_val,
+        .set => if (val.asSet().meta) |m| m.* else Value.nil_val,
+        .fn_val => if (val.asFn().meta) |m| m.* else Value.nil_val,
+        .symbol => if (val.asSymbol().meta) |m| m.* else Value.nil_val,
+        .atom => if (val.asAtom().meta) |m| m.* else Value.nil_val,
+        .var_ref => if (val.asVarRef().meta) |m| Value.initMap(m) else Value.nil_val,
+        else => Value.nil_val,
     };
 }
 
@@ -50,9 +50,9 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const new_meta = args[1];
 
     // Validate meta is a map or nil
-    switch (new_meta) {
+    switch (new_meta.tag()) {
         .map, .hash_map, .nil => {},
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a map for metadata, got {s}", .{@tagName(new_meta)}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
     }
 
     const meta_ptr: ?*const Value = if (new_meta == .nil) null else blk: {
@@ -61,23 +61,27 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
         break :blk ptr;
     };
 
-    return switch (obj) {
-        .list => |l| blk: {
+    return switch (obj.tag()) {
+        .list => blk: {
+            const l = obj.asList();
             const new_list = try allocator.create(@import("../collections.zig").PersistentList);
             new_list.* = .{ .items = l.items, .meta = meta_ptr };
-            break :blk Value{ .list = new_list };
+            break :blk Value.initList(new_list);
         },
-        .vector => |v| blk: {
+        .vector => blk: {
+            const v = obj.asVector();
             const new_vec = try allocator.create(@import("../collections.zig").PersistentVector);
             new_vec.* = .{ .items = v.items, .meta = meta_ptr };
-            break :blk Value{ .vector = new_vec };
+            break :blk Value.initVector(new_vec);
         },
-        .map => |m| blk: {
+        .map => blk: {
+            const m = obj.asMap();
             const new_map = try allocator.create(PersistentArrayMap);
             new_map.* = .{ .entries = m.entries, .meta = meta_ptr };
-            break :blk Value{ .map = new_map };
+            break :blk Value.initMap(new_map);
         },
-        .hash_map => |hm| blk: {
+        .hash_map => blk: {
+            const hm = obj.asHashMap();
             const new_hm = try allocator.create(@import("../collections.zig").PersistentHashMap);
             new_hm.* = .{
                 .count = hm.count,
@@ -86,14 +90,16 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 .null_val = hm.null_val,
                 .meta = meta_ptr,
             };
-            break :blk Value{ .hash_map = new_hm };
+            break :blk Value.initHashMap(new_hm);
         },
-        .set => |s| blk: {
+        .set => blk: {
+            const s = obj.asSet();
             const new_set = try allocator.create(@import("../collections.zig").PersistentHashSet);
             new_set.* = .{ .items = s.items, .meta = meta_ptr };
-            break :blk Value{ .set = new_set };
+            break :blk Value.initSet(new_set);
         },
-        .fn_val => |f| blk: {
+        .fn_val => blk: {
+            const f = obj.asFn();
             const new_fn = try allocator.create(@import("../value.zig").Fn);
             new_fn.* = .{
                 .proto = f.proto,
@@ -103,9 +109,9 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 .meta = meta_ptr,
                 .defining_ns = f.defining_ns,
             };
-            break :blk Value{ .fn_val = new_fn };
+            break :blk Value.initFn(new_fn);
         },
-        .symbol => |s| Value{ .symbol = .{ .ns = s.ns, .name = s.name, .meta = meta_ptr } },
+        .symbol => Value.initSymbol(.{ .ns = obj.asSymbol().ns, .name = obj.asSymbol().name, .meta = meta_ptr }),
         // Lazy seq / cons — realize to list, then apply meta
         .lazy_seq, .cons => {
             const collections = @import("collections.zig");
@@ -113,7 +119,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const with_meta_args = [2]Value{ realized, new_meta };
             return withMetaFn(allocator, &with_meta_args);
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection, symbol, or fn, got {s}", .{@tagName(obj)}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "with-meta expects a collection, symbol, or fn, got {s}", .{@tagName(obj.tag())}),
     };
 }
 
@@ -133,39 +139,41 @@ pub fn alterMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const call_args = try allocator.alloc(Value, 1 + extra.len);
     @memcpy(call_args[1..], extra);
 
-    switch (ref) {
-        .atom => |a| {
-            call_args[0] = if (a.meta) |m| m.* else .nil;
+    switch (ref.tag()) {
+        .atom => {
+            const a = ref.asAtom();
+            call_args[0] = if (a.meta) |m| m.* else Value.nil_val;
             const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
-            switch (new_meta) {
+            switch (new_meta.tag()) {
                 .map, .hash_map => {
                     const ptr = try allocator.create(Value);
                     ptr.* = new_meta;
                     a.meta = ptr;
                 },
                 .nil => a.meta = null,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
             }
             return new_meta;
         },
-        .var_ref => |v| {
-            call_args[0] = if (v.meta) |m| Value{ .map = m } else .nil;
+        .var_ref => {
+            const v = ref.asVarRef();
+            call_args[0] = if (v.meta) |m| Value.initMap(m) else Value.nil_val;
             const new_meta = try bootstrap.callFnVal(allocator, f, call_args);
-            switch (new_meta) {
-                .map => |m| v.meta = @constCast(m),
+            switch (new_meta.tag()) {
+                .map => v.meta = @constCast(new_meta.asMap()),
                 .hash_map => {
                     // Var meta is *const PersistentArrayMap; convert hash_map to ArrayMap
-                    const flat = try new_meta.hash_map.toEntries(allocator);
+                    const flat = try new_meta.asHashMap().toEntries(allocator);
                     const am = try allocator.create(PersistentArrayMap);
                     am.* = .{ .entries = flat };
                     v.meta = am;
                 },
                 .nil => v.meta = null,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
             }
             return new_meta;
         },
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects an atom or var, got {s}", .{@tagName(ref)}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "alter-meta! expects an atom or var, got {s}", .{@tagName(ref.tag())}),
     }
 }
 
@@ -178,35 +186,37 @@ pub fn resetMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const ref = args[0];
     const new_meta = args[1];
 
-    switch (ref) {
-        .atom => |a| {
-            switch (new_meta) {
+    switch (ref.tag()) {
+        .atom => {
+            const a = ref.asAtom();
+            switch (new_meta.tag()) {
                 .map, .hash_map => {
                     const ptr = try allocator.create(Value);
                     ptr.* = new_meta;
                     a.meta = ptr;
                 },
                 .nil => a.meta = null,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
             }
             return new_meta;
         },
-        .var_ref => |v| {
-            switch (new_meta) {
-                .map => |m| v.meta = @constCast(m),
+        .var_ref => {
+            const v = ref.asVarRef();
+            switch (new_meta.tag()) {
+                .map => v.meta = @constCast(new_meta.asMap()),
                 .hash_map => {
                     // Var meta is *const PersistentArrayMap; convert hash_map to ArrayMap
-                    const flat = try new_meta.hash_map.toEntries(allocator);
+                    const flat = try new_meta.asHashMap().toEntries(allocator);
                     const am = try allocator.create(PersistentArrayMap);
                     am.* = .{ .entries = flat };
                     v.meta = am;
                 },
                 .nil => v.meta = null,
-                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta)}),
+                else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects a map for metadata, got {s}", .{@tagName(new_meta.tag())}),
             }
             return new_meta;
         },
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects an atom or var, got {s}", .{@tagName(ref)}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "reset-meta! expects an atom or var, got {s}", .{@tagName(ref.tag())}),
     }
 }
 
@@ -250,20 +260,20 @@ pub const builtins = [_]BuiltinDef{
 // ============================================================
 
 test "meta on vector with no metadata returns nil" {
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const vec = @import("../collections.zig").PersistentVector{ .items = &items };
-    const val = Value{ .vector = &vec };
+    const val = Value.initVector(&vec);
     const result = try metaFn(testing.allocator, &.{val});
     try testing.expect(result == .nil);
 }
 
 test "meta on integer returns nil" {
-    const result = try metaFn(testing.allocator, &.{Value{ .integer = 42 }});
+    const result = try metaFn(testing.allocator, &.{Value.initInteger(42)});
     try testing.expect(result == .nil);
 }
 
 test "meta on nil returns nil" {
-    const result = try metaFn(testing.allocator, &.{Value.nil});
+    const result = try metaFn(testing.allocator, &.{Value.nil_val});
     try testing.expect(result == .nil);
 }
 
@@ -273,33 +283,33 @@ test "with-meta on vector attaches metadata" {
     const alloc = arena.allocator();
 
     // Create vector [1 2]
-    const items = [_]Value{ .{ .integer = 1 }, .{ .integer = 2 } };
+    const items = [_]Value{ Value.initInteger(1), Value.initInteger(2) };
     const vec = try alloc.create(@import("../collections.zig").PersistentVector);
     vec.* = .{ .items = &items };
-    const val = Value{ .vector = vec };
+    const val = Value.initVector(vec);
 
     // Create metadata map {:tag :int}
     const meta_entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "tag" } },
-        .{ .keyword = .{ .ns = null, .name = "int" } },
+        Value.initKeyword(.{ .ns = null, .name = "tag" }),
+        Value.initKeyword(.{ .ns = null, .name = "int" }),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
-    const meta_val = Value{ .map = meta_map };
+    const meta_val = Value.initMap(meta_map);
 
     // with-meta
     const result = try withMetaFn(alloc, &.{ val, meta_val });
 
     // Result is a vector
     try testing.expect(result == .vector);
-    try testing.expectEqual(@as(usize, 2), result.vector.count());
+    try testing.expectEqual(@as(usize, 2), result.asVector().count());
 
     // Metadata is attached
     const retrieved_meta = try metaFn(alloc, &.{result});
     try testing.expect(retrieved_meta == .map);
-    const tag_val = retrieved_meta.map.get(.{ .keyword = .{ .ns = null, .name = "tag" } });
+    const tag_val = retrieved_meta.asMap().get(Value.initKeyword(.{ .ns = null, .name = "tag" }));
     try testing.expect(tag_val != null);
-    try testing.expect(tag_val.?.eql(.{ .keyword = .{ .ns = null, .name = "int" } }));
+    try testing.expect(tag_val.?.eql(Value.initKeyword(.{ .ns = null, .name = "int" })));
 }
 
 test "with-meta on list attaches metadata" {
@@ -307,19 +317,19 @@ test "with-meta on list attaches metadata" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const items = [_]Value{ .{ .integer = 10 } };
+    const items = [_]Value{ Value.initInteger(10) };
     const list = try alloc.create(@import("../collections.zig").PersistentList);
     list.* = .{ .items = &items };
-    const val = Value{ .list = list };
+    const val = Value.initList(list);
 
     const meta_entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "source" } },
-        .{ .string = "test" },
+        Value.initKeyword(.{ .ns = null, .name = "source" }),
+        Value.initString("test"),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
 
-    const result = try withMetaFn(alloc, &.{ val, Value{ .map = meta_map } });
+    const result = try withMetaFn(alloc, &.{ val, Value.initMap(meta_map) });
     try testing.expect(result == .list);
 
     const m = try metaFn(alloc, &.{result});
@@ -332,20 +342,20 @@ test "with-meta on map attaches metadata" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "a" } },
-        .{ .integer = 1 },
+        Value.initKeyword(.{ .ns = null, .name = "a" }),
+        Value.initInteger(1),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
     const meta_entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "type" } },
-        .{ .keyword = .{ .ns = null, .name = "config" } },
+        Value.initKeyword(.{ .ns = null, .name = "type" }),
+        Value.initKeyword(.{ .ns = null, .name = "config" }),
     };
     const mm = try alloc.create(PersistentArrayMap);
     mm.* = .{ .entries = &meta_entries };
 
-    const result = try withMetaFn(alloc, &.{ Value{ .map = m }, Value{ .map = mm } });
+    const result = try withMetaFn(alloc, &.{ Value.initMap(m), Value.initMap(mm) });
     try testing.expect(result == .map);
 
     const meta_result = try metaFn(alloc, &.{result});
@@ -361,16 +371,16 @@ test "with-meta on fn_val attaches metadata" {
     var dummy_proto: u8 = 0;
     const fn_struct = try alloc.create(@import("../value.zig").Fn);
     fn_struct.* = .{ .proto = &dummy_proto };
-    const val = Value{ .fn_val = fn_struct };
+    const val = Value.initFn(fn_struct);
 
     const meta_entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "name" } },
-        .{ .string = "my-fn" },
+        Value.initKeyword(.{ .ns = null, .name = "name" }),
+        Value.initString("my-fn"),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
 
-    const result = try withMetaFn(alloc, &.{ val, Value{ .map = meta_map } });
+    const result = try withMetaFn(alloc, &.{ val, Value.initMap(meta_map) });
     try testing.expect(result == .fn_val);
 
     const m = try metaFn(alloc, &.{result});
@@ -382,28 +392,28 @@ test "with-meta with nil removes metadata" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const items = [_]Value{.{ .integer = 1 }};
+    const items = [_]Value{Value.initInteger(1)};
     const vec = try alloc.create(@import("../collections.zig").PersistentVector);
     vec.* = .{ .items = &items };
 
     // First add metadata
     const meta_entries = [_]Value{
-        .{ .keyword = .{ .ns = null, .name = "x" } },
-        .{ .integer = 1 },
+        Value.initKeyword(.{ .ns = null, .name = "x" }),
+        Value.initInteger(1),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
 
-    const with = try withMetaFn(alloc, &.{ Value{ .vector = vec }, Value{ .map = meta_map } });
+    const with = try withMetaFn(alloc, &.{ Value.initVector(vec), Value.initMap(meta_map) });
 
     // Now remove with nil
-    const without = try withMetaFn(alloc, &.{ with, Value.nil });
+    const without = try withMetaFn(alloc, &.{ with, Value.nil_val });
     const m = try metaFn(alloc, &.{without});
     try testing.expect(m == .nil);
 }
 
 test "with-meta on integer is type error" {
-    const result = withMetaFn(testing.allocator, &.{ Value{ .integer = 42 }, Value.nil });
+    const result = withMetaFn(testing.allocator, &.{ Value.initInteger(42), Value.nil_val });
     try testing.expectError(error.TypeError, result);
 }
 
