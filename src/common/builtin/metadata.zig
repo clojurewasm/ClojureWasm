@@ -111,7 +111,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
             };
             break :blk Value.initFn(new_fn);
         },
-        .symbol => Value.initSymbol(.{ .ns = obj.asSymbol().ns, .name = obj.asSymbol().name, .meta = meta_ptr }),
+        .symbol => Value.initSymbol(allocator, .{ .ns = obj.asSymbol().ns, .name = obj.asSymbol().name, .meta = meta_ptr }),
         // Lazy seq / cons — realize to list, then apply meta
         .lazy_seq, .cons => {
             const collections = @import("collections.zig");
@@ -290,8 +290,8 @@ test "with-meta on vector attaches metadata" {
 
     // Create metadata map {:tag :int}
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "tag" }),
-        Value.initKeyword(.{ .ns = null, .name = "int" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "tag" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "int" }),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
@@ -307,9 +307,9 @@ test "with-meta on vector attaches metadata" {
     // Metadata is attached
     const retrieved_meta = try metaFn(alloc, &.{result});
     try testing.expect(retrieved_meta == .map);
-    const tag_val = retrieved_meta.asMap().get(Value.initKeyword(.{ .ns = null, .name = "tag" }));
+    const tag_val = retrieved_meta.asMap().get(Value.initKeyword(alloc, .{ .ns = null, .name = "tag" }));
     try testing.expect(tag_val != null);
-    try testing.expect(tag_val.?.eql(Value.initKeyword(.{ .ns = null, .name = "int" })));
+    try testing.expect(tag_val.?.eql(Value.initKeyword(alloc, .{ .ns = null, .name = "int" })));
 }
 
 test "with-meta on list attaches metadata" {
@@ -323,8 +323,8 @@ test "with-meta on list attaches metadata" {
     const val = Value.initList(list);
 
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "source" }),
-        Value.initString("test"),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "source" }),
+        Value.initString(alloc, "test"),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
@@ -342,15 +342,15 @@ test "with-meta on map attaches metadata" {
     const alloc = arena.allocator();
 
     const entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "a" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }),
         Value.initInteger(1),
     };
     const m = try alloc.create(PersistentArrayMap);
     m.* = .{ .entries = &entries };
 
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "type" }),
-        Value.initKeyword(.{ .ns = null, .name = "config" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "type" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "config" }),
     };
     const mm = try alloc.create(PersistentArrayMap);
     mm.* = .{ .entries = &meta_entries };
@@ -374,8 +374,8 @@ test "with-meta on fn_val attaches metadata" {
     const val = Value.initFn(fn_struct);
 
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "name" }),
-        Value.initString("my-fn"),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "name" }),
+        Value.initString(alloc, "my-fn"),
     };
     const meta_map = try alloc.create(PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
@@ -398,7 +398,7 @@ test "with-meta with nil removes metadata" {
 
     // First add metadata
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "x" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "x" }),
         Value.initInteger(1),
     };
     const meta_map = try alloc.create(PersistentArrayMap);

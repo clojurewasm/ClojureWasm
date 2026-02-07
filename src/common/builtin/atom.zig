@@ -27,7 +27,7 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
     return switch (args[0].tag()) {
-        .atom => derefAtom(args[0].asAtom()),
+        .atom => derefAtom(allocator, args[0].asAtom()),
         .volatile_ref => args[0].asVolatile().value,
         .var_ref => args[0].asVarRef().deref(),
         .reduced => args[0].asReduced().value,
@@ -38,11 +38,11 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// Deref an atom, with special handling for promise atoms.
 /// Promise atoms contain a map with :__promise key; deref returns :val from the map.
-fn derefAtom(a: *Atom) Value {
+fn derefAtom(allocator: Allocator, a: *Atom) Value {
     if (a.value.tag() == .map) {
-        const promise_key = Value.initKeyword(.{ .ns = null, .name = "__promise" });
+        const promise_key = Value.initKeyword(allocator, .{ .ns = null, .name = "__promise" });
         if (a.value.asMap().get(promise_key) != null) {
-            const val_key = Value.initKeyword(.{ .ns = null, .name = "val" });
+            const val_key = Value.initKeyword(allocator, .{ .ns = null, .name = "val" });
             return a.value.asMap().get(val_key) orelse Value.nil_val;
         }
     }
@@ -238,13 +238,13 @@ fn throwInvalidState(allocator: Allocator) !void {
     const entries = allocator.alloc(Value, 8) catch return error.OutOfMemory;
     const empty_map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     empty_map.* = .{ .entries = &.{} };
-    entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
     entries[1] = Value.true_val;
-    entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
-    entries[3] = Value.initString("Invalid reference state");
-    entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    entries[3] = Value.initString(allocator, "Invalid reference state");
+    entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
     entries[5] = Value.initMap(empty_map);
-    entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+    entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
     entries[7] = Value.nil_val;
     const map = allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
     map.* = .{ .entries = entries };

@@ -187,14 +187,14 @@ pub const Analyzer = struct {
             .integer => |n| self.makeConstantFrom(Value.initInteger(n), form),
             .float => |n| self.makeConstantFrom(Value.initFloat(n), form),
             .char => |c| self.makeConstantFrom(Value.initChar(c), form),
-            .string => |s| self.makeConstantFrom(Value.initString(s), form),
+            .string => |s| self.makeConstantFrom(Value.initString(self.allocator, s), form),
             .keyword => |sym| blk: {
                 var resolved_ns = sym.ns;
                 if (sym.auto_resolve) {
                     resolved_ns = self.resolveAutoNs(sym.ns) orelse sym.ns;
                 }
                 keyword_intern.intern(resolved_ns, sym.name);
-                break :blk self.makeConstantFrom(Value.initKeyword(.{ .ns = resolved_ns, .name = sym.name }), form);
+                break :blk self.makeConstantFrom(Value.initKeyword(self.allocator, .{ .ns = resolved_ns, .name = sym.name }), form);
             },
             .symbol => |sym| self.analyzeSymbol(sym, form),
             .list => |items| self.analyzeList(items, form),
@@ -2033,21 +2033,21 @@ pub const Analyzer = struct {
 
     /// Generate (get coll :ns/keyword) or (get coll :keyword default) call node.
     fn makeGetKeywordCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(Value.initKeyword(.{ .ns = ns, .name = key_name }));
+        const key_node = try self.makeConstant(Value.initKeyword(self.allocator, .{ .ns = ns, .name = key_name }));
         const default_node = try self.findDefault(key_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 
     /// Generate (get coll "string") or (get coll "string" default) call node.
     fn makeGetStringCall(self: *Analyzer, coll_node: *Node, key_name: []const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(Value.initString(key_name));
+        const key_node = try self.makeConstant(Value.initString(self.allocator, key_name));
         const default_node = try self.findDefault(key_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
 
     /// Generate (get coll 'ns/symbol) or (get coll 'symbol default) call node.
     fn makeGetSymbolCall(self: *Analyzer, coll_node: *Node, sym_name: []const u8, ns: ?[]const u8, defaults: ?[]const Form) AnalyzeError!*Node {
-        const key_node = try self.makeConstant(Value.initSymbol(.{ .ns = ns, .name = sym_name }));
+        const key_node = try self.makeConstant(Value.initSymbol(self.allocator, .{ .ns = ns, .name = sym_name }));
         const default_node = try self.findDefault(sym_name, defaults);
         return self.makeGetCallNode(coll_node, key_node, default_node);
     }
@@ -2130,20 +2130,20 @@ pub const Analyzer = struct {
 
 /// Convert a Form to a runtime Value (used by quote).
 /// Collections are converted recursively.
-pub fn formToValue(form: Form) Value {
+pub fn formToValue(allocator: Allocator, form: Form) Value {
     return switch (form.data) {
         .nil => Value.nil_val,
         .boolean => |b| Value.initBoolean(b),
         .integer => |n| Value.initInteger(n),
         .float => |n| Value.initFloat(n),
         .char => |c| Value.initChar(c),
-        .string => |s| Value.initString(s),
-        .symbol => |sym| Value.initSymbol(.{ .ns = sym.ns, .name = sym.name }),
-        .keyword => |sym| Value.initKeyword(.{ .ns = sym.ns, .name = sym.name }),
+        .string => |s| Value.initString(allocator, s),
+        .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
+        .keyword => |sym| Value.initKeyword(allocator, .{ .ns = sym.ns, .name = sym.name }),
         // Collections require allocation; for Phase 1c, return nil placeholder.
         // Full collection quote support requires allocator (deferred).
         .list, .vector, .map, .set => Value.nil_val,
-        .regex => |_| Value.nil_val, // no allocator available; use macro.formToValue for regex support
+        .regex => |_| Value.nil_val, // use macro.formToValue for regex support
         .tag => Value.nil_val,
     };
 }
@@ -2191,7 +2191,7 @@ test "analyze string literal" {
     defer a.deinit();
 
     const result = try a.analyze(.{ .data = .{ .string = "hello" } });
-    try std.testing.expect(result.constant.value.eql(Value.initString("hello")));
+    try std.testing.expect(result.constant.value.eql(Value.initString(arena.allocator(), "hello")));
 }
 
 test "analyze keyword" {
@@ -2490,10 +2490,10 @@ test "analyze named fn with self-reference" {
 }
 
 test "formToValue converts primitives" {
-    const val = formToValue(.{ .data = .{ .integer = 42 } });
+    const val = formToValue(std.testing.allocator, .{ .data = .{ .integer = 42 } });
     try std.testing.expect(val.eql(Value.initInteger(42)));
 
-    const sym = formToValue(.{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
+    const sym = formToValue(std.testing.allocator, .{ .data = .{ .symbol = .{ .ns = null, .name = "foo" } } });
     try std.testing.expect(sym.tag() == .symbol);
     try std.testing.expectEqualStrings("foo", sym.asSymbol().name);
 }
@@ -2548,7 +2548,7 @@ test "analyze (throw \"error\")" {
     };
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     try std.testing.expectEqualStrings("throw", result.kindName());
-    try std.testing.expect(result.throw_node.expr.constant.value.eql(Value.initString("error")));
+    try std.testing.expect(result.throw_node.expr.constant.value.eql(Value.initString(arena.allocator(), "error")));
 }
 
 test "analyze (try 1 (catch Exception e 2))" {
@@ -2750,7 +2750,7 @@ test "macro expansion - builtin_fn macro" {
         fn expandFn(allocator: Allocator, args: []const Value) anyerror!Value {
             // Build (do arg0): list with symbol "do" + first arg
             const items = try allocator.alloc(Value, 1 + args.len);
-            items[0] = Value.initSymbol(.{ .ns = null, .name = "do" });
+            items[0] = Value.initSymbol(allocator, .{ .ns = null, .name = "do" });
             for (args, 0..) |arg, i| {
                 items[1 + i] = arg;
             }

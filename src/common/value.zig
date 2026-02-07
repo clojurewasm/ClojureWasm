@@ -606,15 +606,15 @@ pub const Value = union(enum) {
         return .{ .char = c };
     }
 
-    pub fn initString(s: []const u8) Value {
+    pub fn initString(_: Allocator, s: []const u8) Value {
         return .{ .string = s };
     }
 
-    pub fn initSymbol(s: Symbol) Value {
+    pub fn initSymbol(_: Allocator, s: Symbol) Value {
         return .{ .symbol = s };
     }
 
-    pub fn initKeyword(k: Keyword) Value {
+    pub fn initKeyword(_: Allocator, k: Keyword) Value {
         return .{ .keyword = k };
     }
 
@@ -1579,17 +1579,17 @@ test "Value - float creation" {
 }
 
 test "Value - string creation" {
-    const v = Value.initString("hello");
+    const v = Value.initString(testing.allocator,"hello");
     try testing.expect(!v.isNil());
 }
 
 test "Value - symbol creation" {
-    const v = Value.initSymbol(.{ .name = "foo", .ns = null });
+    const v = Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null });
     try testing.expect(!v.isNil());
 }
 
 test "Value - keyword creation" {
-    const v = Value.initKeyword(.{ .name = "bar", .ns = null });
+    const v = Value.initKeyword(testing.allocator,.{ .name = "bar", .ns = null });
     try testing.expect(!v.isNil());
 }
 
@@ -1600,12 +1600,12 @@ test "Value - char creation" {
 }
 
 test "Value - namespaced symbol" {
-    const v = Value.initSymbol(.{ .name = "inc", .ns = "clojure.core" });
+    const v = Value.initSymbol(testing.allocator,.{ .name = "inc", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
 test "Value - namespaced keyword" {
-    const v = Value.initKeyword(.{ .name = "keys", .ns = "clojure.core" });
+    const v = Value.initKeyword(testing.allocator,.{ .name = "keys", .ns = "clojure.core" });
     try testing.expect(!v.isNil());
 }
 
@@ -1646,18 +1646,18 @@ test "Value.formatPrStr - char" {
 }
 
 test "Value.formatPrStr - string" {
-    try expectFormat("\"hello\"", Value.initString("hello"));
-    try expectFormat("\"\"", Value.initString(""));
+    try expectFormat("\"hello\"", Value.initString(testing.allocator,"hello"));
+    try expectFormat("\"\"", Value.initString(testing.allocator,""));
 }
 
 test "Value.formatPrStr - symbol" {
-    try expectFormat("foo", Value.initSymbol(.{ .name = "foo", .ns = null }));
-    try expectFormat("clojure.core/inc", Value.initSymbol(.{ .name = "inc", .ns = "clojure.core" }));
+    try expectFormat("foo", Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null }));
+    try expectFormat("clojure.core/inc", Value.initSymbol(testing.allocator,.{ .name = "inc", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - keyword" {
-    try expectFormat(":bar", Value.initKeyword(.{ .name = "bar", .ns = null }));
-    try expectFormat(":clojure.core/keys", Value.initKeyword(.{ .name = "keys", .ns = "clojure.core" }));
+    try expectFormat(":bar", Value.initKeyword(testing.allocator,.{ .name = "bar", .ns = null }));
+    try expectFormat(":clojure.core/keys", Value.initKeyword(testing.allocator,.{ .name = "keys", .ns = "clojure.core" }));
 }
 
 test "Value.formatPrStr - list" {
@@ -1684,8 +1684,8 @@ test "Value.formatPrStr - empty vector" {
 
 test "Value.formatPrStr - map" {
     const entries = [_]Value{
-        Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1),
-        Value.initKeyword(.{ .name = "b", .ns = null }), Value.initInteger(2),
+        Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1),
+        Value.initKeyword(testing.allocator,.{ .name = "b", .ns = null }), Value.initInteger(2),
     };
     const m = PersistentArrayMap{ .entries = &entries };
     try expectFormat("{:a 1, :b 2}", Value.initMap(&m));
@@ -1748,24 +1748,24 @@ test "Value.eql - char" {
 }
 
 test "Value.eql - string" {
-    const a = Value.initString("hello");
-    try testing.expect(a.eql(Value.initString("hello")));
-    try testing.expect(!a.eql(Value.initString("world")));
+    const a = Value.initString(testing.allocator,"hello");
+    try testing.expect(a.eql(Value.initString(testing.allocator,"hello")));
+    try testing.expect(!a.eql(Value.initString(testing.allocator,"world")));
 }
 
 test "Value.eql - symbol" {
-    const a = Value.initSymbol(.{ .name = "foo", .ns = null });
-    try testing.expect(a.eql(Value.initSymbol(.{ .name = "foo", .ns = null })));
-    try testing.expect(!a.eql(Value.initSymbol(.{ .name = "bar", .ns = null })));
+    const a = Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null });
+    try testing.expect(a.eql(Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = null })));
+    try testing.expect(!a.eql(Value.initSymbol(testing.allocator,.{ .name = "bar", .ns = null })));
     // Namespaced vs non-namespaced
-    try testing.expect(!a.eql(Value.initSymbol(.{ .name = "foo", .ns = "x" })));
+    try testing.expect(!a.eql(Value.initSymbol(testing.allocator,.{ .name = "foo", .ns = "x" })));
 }
 
 test "Value.eql - keyword" {
-    const a = Value.initKeyword(.{ .name = "k", .ns = "ns" });
-    try testing.expect(a.eql(Value.initKeyword(.{ .name = "k", .ns = "ns" })));
-    try testing.expect(!a.eql(Value.initKeyword(.{ .name = "k", .ns = null })));
-    try testing.expect(!a.eql(Value.initKeyword(.{ .name = "other", .ns = "ns" })));
+    const a = Value.initKeyword(testing.allocator,.{ .name = "k", .ns = "ns" });
+    try testing.expect(a.eql(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = "ns" })));
+    try testing.expect(!a.eql(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = null })));
+    try testing.expect(!a.eql(Value.initKeyword(testing.allocator,.{ .name = "other", .ns = "ns" })));
 }
 
 test "Value.eql - list" {
@@ -1800,9 +1800,9 @@ test "Value.eql - vector" {
 }
 
 test "Value.eql - map" {
-    const entries_a = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1) };
-    const entries_b = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(1) };
-    const entries_c = [_]Value{ Value.initKeyword(.{ .name = "a", .ns = null }), Value.initInteger(2) };
+    const entries_a = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_b = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(1) };
+    const entries_c = [_]Value{ Value.initKeyword(testing.allocator,.{ .name = "a", .ns = null }), Value.initInteger(2) };
     const ma = PersistentArrayMap{ .entries = &entries_a };
     const mb = PersistentArrayMap{ .entries = &entries_b };
     const mc = PersistentArrayMap{ .entries = &entries_c };
@@ -1826,7 +1826,7 @@ test "Value.eql - different types" {
     const nil_v = Value.nil_val;
     const int_v = Value.initInteger(0);
     const bool_v = Value.false_val;
-    const str_v = Value.initString("nil");
+    const str_v = Value.initString(testing.allocator,"nil");
     try testing.expect(!nil_v.eql(int_v));
     try testing.expect(!nil_v.eql(bool_v));
     try testing.expect(!nil_v.eql(str_v));
@@ -1860,7 +1860,7 @@ test "Value - isTruthy" {
     const false_v = Value.false_val;
     const true_v = Value.true_val;
     const zero_v = Value.initInteger(0);
-    const empty_str = Value.initString("");
+    const empty_str = Value.initString(testing.allocator,"");
     try testing.expect(!nil_v.isTruthy());
     try testing.expect(!false_v.isTruthy());
     try testing.expect(true_v.isTruthy());
@@ -1880,7 +1880,7 @@ test "Value.formatStr - nil is empty string" {
 }
 
 test "Value.formatStr - string without quotes" {
-    try expectFormatStr("hello", Value.initString("hello"));
+    try expectFormatStr("hello", Value.initString(testing.allocator,"hello"));
 }
 
 test "Value.formatStr - char as literal" {
@@ -1892,7 +1892,7 @@ test "Value.formatStr - other types same as formatPrStr" {
     try expectFormatStr("42", Value.initInteger(42));
     try expectFormatStr("true", Value.true_val);
     try expectFormatStr("3.14", Value.initFloat(3.14));
-    try expectFormatStr(":foo", Value.initKeyword(.{ .name = "foo", .ns = null }));
+    try expectFormatStr(":foo", Value.initKeyword(testing.allocator,.{ .name = "foo", .ns = null }));
 }
 
 test "Value - atom creation and formatPrStr" {
@@ -1941,9 +1941,9 @@ test "Value.Tag - tag() returns correct tag" {
     try testing.expect(Value.initFloat(3.14).tag() == .float);
     try testing.expect(Value.initBoolean(true).tag() == .boolean);
     try testing.expect(Value.initChar('A').tag() == .char);
-    try testing.expect(Value.initString("hi").tag() == .string);
-    try testing.expect(Value.initSymbol(.{ .name = "x", .ns = null }).tag() == .symbol);
-    try testing.expect(Value.initKeyword(.{ .name = "k", .ns = null }).tag() == .keyword);
+    try testing.expect(Value.initString(testing.allocator,"hi").tag() == .string);
+    try testing.expect(Value.initSymbol(testing.allocator,.{ .name = "x", .ns = null }).tag() == .symbol);
+    try testing.expect(Value.initKeyword(testing.allocator,.{ .name = "k", .ns = null }).tag() == .keyword);
 }
 
 test "Value constants" {
@@ -1974,14 +1974,14 @@ test "Value.initChar / asChar round-trip" {
 }
 
 test "Value.initString / asString round-trip" {
-    const v = Value.initString("hello");
+    const v = Value.initString(testing.allocator,"hello");
     try testing.expect(v.tag() == .string);
     try testing.expectEqualStrings("hello", v.asString());
 }
 
 test "Value.initSymbol / asSymbol round-trip" {
     const sym = Symbol{ .name = "foo", .ns = "bar" };
-    const v = Value.initSymbol(sym);
+    const v = Value.initSymbol(testing.allocator,sym);
     try testing.expect(v.tag() == .symbol);
     const s = v.asSymbol();
     try testing.expectEqualStrings("foo", s.name);
@@ -1990,7 +1990,7 @@ test "Value.initSymbol / asSymbol round-trip" {
 
 test "Value.initKeyword / asKeyword round-trip" {
     const kw = Keyword{ .name = "id", .ns = "user" };
-    const v = Value.initKeyword(kw);
+    const v = Value.initKeyword(testing.allocator,kw);
     try testing.expect(v.tag() == .keyword);
     const k = v.asKeyword();
     try testing.expectEqualStrings("id", k.name);

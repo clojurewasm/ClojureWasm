@@ -347,7 +347,7 @@ test "Chunk.dump const_load shows constant value comment" {
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 
-    _ = try chunk.addConstant(Value.initSymbol(.{ .name = "foo", .ns = null }));
+    _ = try chunk.addConstant(Value.initSymbol(allocator, .{ .name = "foo", .ns = null }));
     try chunk.emit(.const_load, 0);
     try chunk.emitOp(.ret);
 

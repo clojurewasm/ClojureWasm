@@ -622,7 +622,7 @@ pub const Compiler = struct {
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
         // Push symbol name as constant
-        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.sym_name });
+        const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.sym_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile init expression if present
@@ -641,7 +641,7 @@ pub const Compiler = struct {
 
     fn emitSetBang(self: *Compiler, node: *const node_mod.SetNode) CompileError!void {
         // (set! var-sym expr) — mutate thread-local binding
-        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.var_name });
+        const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.var_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         // Compile expression (pushes value)
         try self.compile(node.expr); // +1
@@ -651,7 +651,7 @@ pub const Compiler = struct {
 
     fn emitDefmulti(self: *Compiler, node: *const node_mod.DefMultiNode) CompileError!void {
         // Push name as constant
-        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.name });
+        const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile optional hierarchy var reference (must be on stack BEFORE dispatch fn)
@@ -676,7 +676,7 @@ pub const Compiler = struct {
 
     fn emitDefmethod(self: *Compiler, node: *const node_mod.DefMethodNode) CompileError!void {
         // Push multimethod name as constant
-        const sym_val = Value.initSymbol(.{ .ns = null, .name = node.multi_name });
+        const sym_val = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.multi_name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
 
         // Compile dispatch value
@@ -700,14 +700,14 @@ pub const Compiler = struct {
 
     fn emitDefprotocol(self: *Compiler, node: *const node_mod.DefProtocolNode) CompileError!void {
         // Constant[idx] = protocol name symbol
-        const name_sym = Value.initSymbol(.{ .ns = null, .name = node.name });
+        const name_sym = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.name });
         const idx = self.chunk.addConstant(name_sym) catch return error.TooManyConstants;
 
         // Constant[idx+1] = sigs vector: [name1, arity1, name2, arity2, ...]
         const sigs_len = node.method_sigs.len * 2;
         const sigs_items = self.allocator.alloc(Value, sigs_len) catch return error.OutOfMemory;
         for (node.method_sigs, 0..) |sig, i| {
-            sigs_items[i * 2] = Value.initString(sig.name);
+            sigs_items[i * 2] = Value.initString(self.allocator, sig.name);
             sigs_items[i * 2 + 1] = Value.initInteger(@intCast(sig.arity));
         }
         const sigs_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
@@ -732,9 +732,9 @@ pub const Compiler = struct {
 
             // Create meta vector: [type_name, protocol_name, method_name]
             const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
-            meta_items[0] = Value.initString(node.type_name);
-            meta_items[1] = Value.initString(node.protocol_name);
-            meta_items[2] = Value.initString(method.name);
+            meta_items[0] = Value.initString(self.allocator, node.type_name);
+            meta_items[1] = Value.initString(self.allocator, node.protocol_name);
+            meta_items[2] = Value.initString(self.allocator, method.name);
             const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
             meta_vec.* = .{ .items = meta_items };
             const meta_idx = self.chunk.addConstant(Value.initVector(meta_vec)) catch return error.TooManyConstants;
@@ -852,7 +852,7 @@ pub const Compiler = struct {
         // Store the var reference symbol as a constant.
         // Symbols are NOT fully-qualified here — namespace isolation is handled
         // by setting Fn.defining_ns at closure creation time (D68).
-        const sym_val = Value.initSymbol(.{ .ns = ref.ns, .name = ref.name });
+        const sym_val = Value.initSymbol(self.allocator, .{ .ns = ref.ns, .name = ref.name });
         const idx = self.chunk.addConstant(sym_val) catch return error.TooManyConstants;
         try self.chunk.emit(.var_load, idx);
         self.stack_depth += 1;
@@ -1087,7 +1087,7 @@ test "compile throw_node" {
     var compiler = Compiler.init(allocator);
     defer compiler.deinit();
 
-    var expr = Node{ .constant = .{ .value = Value.initString("error!") } };
+    var expr = Node{ .constant = .{ .value = Value.initString(allocator, "error!") } };
     var throw_data = node_mod.ThrowNode{
         .expr = &expr,
         .source = .{},

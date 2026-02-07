@@ -546,7 +546,7 @@ test "QuoteNode holds a Value" {
 
     const quote_data = try allocator.create(QuoteNode);
     quote_data.* = .{
-        .value = Value.initSymbol(.{ .ns = null, .name = "foo" }),
+        .value = Value.initSymbol(allocator, .{ .ns = null, .name = "foo" }),
         .source = .{},
     };
 
@@ -628,7 +628,7 @@ test "ThrowNode" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var expr = constantNode(Value.initString("error!"));
+    var expr = constantNode(Value.initString(allocator, "error!"));
 
     const throw_data = try allocator.create(ThrowNode);
     throw_data.* = .{

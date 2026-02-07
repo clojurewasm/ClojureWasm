@@ -717,7 +717,7 @@ pub const TreeWalk = struct {
         if (def_n.is_dynamic) v.dynamic = true;
         if (def_n.is_private) v.private = true;
 
-        return Value.initSymbol(.{ .ns = ns.name, .name = v.sym.name });
+        return Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name });
     }
 
     fn runSetBang(self: *TreeWalk, set_n: *const node_mod.SetNode) TreeWalkError!Value {
@@ -756,10 +756,10 @@ pub const TreeWalk = struct {
 
         // Cache miss: full lookup
         const protocol = pf.protocol;
-        const method_map_val = protocol.impls.get(Value.initString(type_key)) orelse return error.TypeError;
+        const method_map_val = protocol.impls.get(Value.initString(self.allocator, type_key)) orelse return error.TypeError;
         if (method_map_val.tag() != .map) return error.TypeError;
         const method_map = method_map_val.asMap();
-        const fn_val = method_map.get(Value.initString(pf.method_name)) orelse return error.TypeError;
+        const fn_val = method_map.get(Value.initString(self.allocator, pf.method_name)) orelse return error.TypeError;
 
         // Update cache
         mutable_pf.cached_type_key = type_key;
@@ -825,7 +825,7 @@ pub const TreeWalk = struct {
         const method_count = et_n.methods.len;
         const entries = self.allocator.alloc(Value, method_count * 2) catch return error.OutOfMemory;
         for (et_n.methods, 0..) |method, i| {
-            entries[i * 2] = Value.initString(method.name);
+            entries[i * 2] = Value.initString(self.allocator, method.name);
             entries[i * 2 + 1] = try self.makeClosure(method.fn_node);
         }
         const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
@@ -835,7 +835,7 @@ pub const TreeWalk = struct {
         const old_impls = protocol.impls;
         const new_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
         @memcpy(new_entries[0..old_impls.entries.len], old_impls.entries);
-        new_entries[old_impls.entries.len] = Value.initString(type_key);
+        new_entries[old_impls.entries.len] = Value.initString(self.allocator, type_key);
         new_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
         const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
         new_impls.* = .{ .entries = new_entries };
@@ -1004,7 +1004,7 @@ pub const TreeWalk = struct {
                 if (cdv.eql(dispatch_val)) break :blk mf.cached_method;
             }
             // Cache miss: full lookup
-            const m = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+            const m = multimethods_mod.findBestMethod(self.allocator, mf, dispatch_val, self.env) orelse
                 return error.TypeError;
             const mf_mut: *value_mod.MultiFn = @constCast(mf);
             mf_mut.cached_dispatch_val = dispatch_val;
@@ -1163,13 +1163,13 @@ pub const TreeWalk = struct {
         const entries = self.allocator.alloc(Value, 8) catch return Value.nil_val;
         const empty_map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
         empty_map.* = .{ .entries = &.{} };
-        entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+        entries[0] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__ex_info" });
         entries[1] = Value.true_val;
-        entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
-        entries[3] = Value.initString(msg);
-        entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+        entries[2] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "message" });
+        entries[3] = Value.initString(self.allocator, msg);
+        entries[4] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "data" });
         entries[5] = Value.initMap(empty_map);
-        entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+        entries[6] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "cause" });
         entries[7] = Value.nil_val;
 
         const map = self.allocator.create(value_mod.PersistentArrayMap) catch return Value.nil_val;
@@ -1367,19 +1367,19 @@ test "TreeWalk let restores locals" {
 test "TreeWalk quote node" {
     var tw = TreeWalk.init(std.testing.allocator);
     var quote_data = node_mod.QuoteNode{
-        .value = Value.initSymbol(.{ .ns = null, .name = "foo" }),
+        .value = Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" }),
         .source = .{},
     };
     const n = Node{ .quote_node = &quote_data };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(Value.initSymbol(.{ .ns = null, .name = "foo" })));
+    try std.testing.expect(result.eql(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" })));
 }
 
 test "TreeWalk constant string" {
     var tw = TreeWalk.init(std.testing.allocator);
-    const n = Node{ .constant = .{ .value = Value.initString("hello") } };
+    const n = Node{ .constant = .{ .value = Value.initString(std.testing.allocator, "hello") } };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(Value.initString("hello")));
+    try std.testing.expect(result.eql(Value.initString(std.testing.allocator, "hello")));
 }
 
 test "TreeWalk fn and call" {
@@ -1687,7 +1687,7 @@ test "TreeWalk throw and try" {
     var tw = TreeWalk.init(allocator);
 
     // (try (throw "oops") (catch e e))
-    var throw_expr = Node{ .constant = .{ .value = Value.initString("oops") } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString(allocator, "oops") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var body = Node{ .throw_node = &throw_data };
 
@@ -1704,14 +1704,14 @@ test "TreeWalk throw and try" {
     };
     const n = Node{ .try_node = &try_data };
     const result = try tw.run(&n);
-    try std.testing.expect(result.eql(Value.initString("oops")));
+    try std.testing.expect(result.eql(Value.initString(allocator, "oops")));
 }
 
 test "TreeWalk throw without catch propagates" {
     const allocator = std.testing.allocator;
     var tw = TreeWalk.init(allocator);
 
-    var throw_expr = Node{ .constant = .{ .value = Value.initString("error") } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString(allocator, "error") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     const n = Node{ .throw_node = &throw_data };
     try std.testing.expectError(error.UserException, tw.run(&n));

@@ -107,7 +107,7 @@ pub fn registerBuiltins(env: *Env) !void {
     // Register *ns* dynamic var (tracks current namespace)
     const ns_var = try core_ns.intern("*ns*");
     ns_var.dynamic = true;
-    ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "user" }));
+    ns_var.bindRoot(Value.initSymbol(env.allocator, .{ .ns = null, .name = "user" }));
     try user_ns.refer("*ns*", ns_var);
 
     // Register dynamic vars with default values
@@ -142,11 +142,11 @@ pub fn registerBuiltins(env: *Env) !void {
 
     // Register constant vars
     const unquote_var = try core_ns.intern("unquote");
-    unquote_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "unquote" }));
+    unquote_var.bindRoot(Value.initSymbol(env.allocator, .{ .ns = null, .name = "unquote" }));
     try user_ns.refer("unquote", unquote_var);
 
     const unquote_splicing_var = try core_ns.intern("unquote-splicing");
-    unquote_splicing_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = "unquote-splicing" }));
+    unquote_splicing_var.bindRoot(Value.initSymbol(env.allocator, .{ .ns = null, .name = "unquote-splicing" }));
     try user_ns.refer("unquote-splicing", unquote_splicing_var);
 
     // Register clojure.string namespace builtins

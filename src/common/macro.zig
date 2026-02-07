@@ -32,25 +32,25 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
         .integer => |n| Value.initInteger(n),
         .float => |n| Value.initFloat(n),
         .char => |c| Value.initChar(c),
-        .string => |s| Value.initString(s),
-        .symbol => |sym| Value.initSymbol(.{ .ns = sym.ns, .name = sym.name }),
+        .string => |s| Value.initString(allocator, s),
+        .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
         .keyword => |sym| blk: {
             if (sym.auto_resolve) {
                 if (ns) |current_ns| {
                     if (sym.ns) |alias| {
                         // ::alias/name — resolve alias to full namespace
                         const resolved = current_ns.getAlias(alias);
-                        break :blk Value.initKeyword(.{ .ns = if (resolved) |r| r.name else alias, .name = sym.name });
+                        break :blk Value.initKeyword(allocator, .{ .ns = if (resolved) |r| r.name else alias, .name = sym.name });
                     } else {
                         // ::name — use current namespace
-                        break :blk Value.initKeyword(.{ .ns = current_ns.name, .name = sym.name });
+                        break :blk Value.initKeyword(allocator, .{ .ns = current_ns.name, .name = sym.name });
                     }
                 } else {
                     // No namespace available — fallback to sym.ns
-                    break :blk Value.initKeyword(.{ .ns = sym.ns, .name = sym.name });
+                    break :blk Value.initKeyword(allocator, .{ .ns = sym.ns, .name = sym.name });
                 }
             } else {
-                break :blk Value.initKeyword(.{ .ns = sym.ns, .name = sym.name });
+                break :blk Value.initKeyword(allocator, .{ .ns = sym.ns, .name = sym.name });
             }
         },
         .list => |items| {
@@ -116,7 +116,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             const compiled = allocator.create(regex_mod.CompiledRegex) catch return error.OutOfMemory;
             compiled.* = matcher_mod.compile(allocator, pattern) catch {
                 // Fallback to string if compilation fails (shouldn't happen — reader validated)
-                return Value.initString(pattern);
+                return Value.initString(allocator, pattern);
             };
             const pat = try allocator.create(value_mod.Pattern);
             pat.* = .{
@@ -268,13 +268,13 @@ test "valueToForm - primitives" {
     try testing.expect(f1.data == .nil);
     const f2 = try valueToForm(alloc, Value.initInteger(42));
     try testing.expectEqual(@as(i64, 42), f2.data.integer);
-    const f3 = try valueToForm(alloc, Value.initString("hello"));
+    const f3 = try valueToForm(alloc, Value.initString(alloc, "hello"));
     try testing.expectEqualStrings("hello", f3.data.string);
 }
 
 test "valueToForm - symbol" {
     const alloc = testing.allocator;
-    const f = try valueToForm(alloc, Value.initSymbol(.{ .ns = "ns", .name = "bar" }));
+    const f = try valueToForm(alloc, Value.initSymbol(alloc, .{ .ns = "ns", .name = "bar" }));
     try testing.expectEqualStrings("ns", f.data.symbol.ns.?);
     try testing.expectEqualStrings("bar", f.data.symbol.name);
 }

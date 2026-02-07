@@ -278,7 +278,7 @@ pub const WasmFn = struct {
                 const len: u32 = @truncate(wasm_results[0]);
                 const ptr: u32 = @truncate(wasm_results[1]);
                 const bytes = try self.module.memoryRead(allocator, ptr, len);
-                return Value.initString(bytes);
+                return Value.initString(allocator, bytes);
             },
             else => {
                 if (self.result_types.len == 0) return Value.nil_val;
@@ -592,14 +592,16 @@ fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
 
 /// Lookup a Clojure function from the nested imports map.
 fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
-    const mod_key = Value.initString(module_name);
+    // Allocator unused by initString (future NaN boxing prep), use page_allocator as placeholder.
+    const alloc = std.heap.page_allocator;
+    const mod_key = Value.initString(alloc, module_name);
     const sub_map_val = switch (imports_map.tag()) {
         .map => imports_map.asMap().get(mod_key),
         .hash_map => imports_map.asHashMap().get(mod_key),
         else => null,
     } orelse return null;
 
-    const fn_key = Value.initString(func_name);
+    const fn_key = Value.initString(alloc, func_name);
     return switch (sub_map_val.tag()) {
         .map => sub_map_val.asMap().get(fn_key),
         .hash_map => sub_map_val.asHashMap().get(fn_key),
@@ -730,16 +732,16 @@ test "lookupImportFn — nested map lookup" {
     const collections = @import("../common/collections.zig");
 
     // Build {"env" {"print_i32" :found}}
-    const target_val = Value.initKeyword(.{ .name = "found", .ns = null });
+    const target_val = Value.initKeyword(testing.allocator, .{ .name = "found", .ns = null });
     var inner_entries = [_]Value{
-        Value.initString("print_i32"), target_val,
+        Value.initString(testing.allocator, "print_i32"), target_val,
     };
     const inner_map = try testing.allocator.create(collections.PersistentArrayMap);
     defer testing.allocator.destroy(inner_map);
     inner_map.* = .{ .entries = &inner_entries };
 
     var outer_entries = [_]Value{
-        Value.initString("env"), Value.initMap(inner_map),
+        Value.initString(testing.allocator, "env"), Value.initMap(inner_map),
     };
     const outer_map = try testing.allocator.create(collections.PersistentArrayMap);
     defer testing.allocator.destroy(outer_map);

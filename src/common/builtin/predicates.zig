@@ -205,7 +205,7 @@ pub fn notFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (type x) — returns a keyword indicating the runtime type of x.
-pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to type", .{args.len});
     const name: []const u8 = switch (args[0].tag()) {
         .nil => "nil",
@@ -242,7 +242,7 @@ pub fn typeFn(_: Allocator, args: []const Value) anyerror!Value {
         .wasm_module => "wasm-module",
         .wasm_fn => "wasm-fn",
     };
-    return Value.initKeyword(.{ .ns = null, .name = name });
+    return Value.initKeyword(allocator, .{ .ns = null, .name = name });
 }
 
 /// (bound? & vars) — true if all vars have any bound value (root or thread-local).
@@ -310,11 +310,11 @@ pub fn varSetFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (satisfies? protocol x) — true if x's type has an impl for the protocol.
-pub fn satisfiesPred(_: Allocator, args: []const Value) anyerror!Value {
+pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to satisfies?", .{args.len});
     if (args[0] != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "satisfies? expects a protocol, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
-    const type_key = Value.initString(switch (args[1].tag()) {
+    const type_key = Value.initString(allocator, switch (args[1].tag()) {
         .nil => "nil",
         .boolean => "boolean",
         .integer => "integer",
@@ -698,17 +698,17 @@ test "nil? predicate" {
 test "number? predicate" {
     try testing.expectEqual(Value.true_val, try numberPred(test_alloc, &.{Value.initInteger(42)}));
     try testing.expectEqual(Value.true_val, try numberPred(test_alloc, &.{Value.initFloat(3.14)}));
-    try testing.expectEqual(Value.false_val, try numberPred(test_alloc, &.{Value.initString("hello")}));
+    try testing.expectEqual(Value.false_val, try numberPred(test_alloc, &.{Value.initString(test_alloc, "hello")}));
 }
 
 test "string? predicate" {
-    try testing.expectEqual(Value.true_val, try stringPred(test_alloc, &.{Value.initString("hi")}));
+    try testing.expectEqual(Value.true_val, try stringPred(test_alloc, &.{Value.initString(test_alloc, "hi")}));
     try testing.expectEqual(Value.false_val, try stringPred(test_alloc, &.{Value.initInteger(1)}));
 }
 
 test "keyword? predicate" {
-    try testing.expectEqual(Value.true_val, try keywordPred(test_alloc, &.{Value.initKeyword(.{ .name = "a", .ns = null })}));
-    try testing.expectEqual(Value.false_val, try keywordPred(test_alloc, &.{Value.initString("a")}));
+    try testing.expectEqual(Value.true_val, try keywordPred(test_alloc, &.{Value.initKeyword(test_alloc, .{ .name = "a", .ns = null })}));
+    try testing.expectEqual(Value.false_val, try keywordPred(test_alloc, &.{Value.initString(test_alloc, "a")}));
 }
 
 test "coll? predicate" {
@@ -789,14 +789,14 @@ test "hash of boolean" {
 }
 
 test "hash of string is deterministic" {
-    const h1 = try hashFn(test_alloc, &.{Value.initString("hello")});
-    const h2 = try hashFn(test_alloc, &.{Value.initString("hello")});
+    const h1 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
+    const h2 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
     try testing.expectEqual(h1.asInteger(), h2.asInteger());
 }
 
 test "hash of different strings differ" {
-    const h1 = try hashFn(test_alloc, &.{Value.initString("hello")});
-    const h2 = try hashFn(test_alloc, &.{Value.initString("world")});
+    const h1 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "hello")});
+    const h2 = try hashFn(test_alloc, &.{Value.initString(test_alloc, "world")});
     try testing.expect(h1.asInteger() != h2.asInteger());
 }
 
@@ -818,7 +818,7 @@ test "identical? different integers" {
 }
 
 test "identical? different types" {
-    const result = try identicalPred(test_alloc, &.{ Value.initInteger(1), Value.initString("1") });
+    const result = try identicalPred(test_alloc, &.{ Value.initInteger(1), Value.initString(test_alloc, "1") });
     try testing.expectEqual(Value.false_val, result);
 }
 
@@ -829,8 +829,8 @@ test "identical? nil" {
 
 test "identical? same keyword" {
     const result = try identicalPred(test_alloc, &.{
-        Value.initKeyword(.{ .name = "a", .ns = null }),
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(test_alloc, .{ .name = "a", .ns = null }),
+        Value.initKeyword(test_alloc, .{ .name = "a", .ns = null }),
     });
     try testing.expectEqual(Value.true_val, result);
 }
@@ -853,7 +853,7 @@ test "== numeric inequality" {
 }
 
 test "== non-numeric is error" {
-    try testing.expectError(error.TypeError, numericEqFn(test_alloc, &.{ Value.initString("a"), Value.initString("a") }));
+    try testing.expectError(error.TypeError, numericEqFn(test_alloc, &.{ Value.initString(test_alloc, "a"), Value.initString(test_alloc, "a") }));
 }
 
 // --- reduced tests ---

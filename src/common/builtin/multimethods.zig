@@ -175,7 +175,7 @@ pub fn prefersFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// 1. Exact match
 /// 2. isa?-based match (using global hierarchy)
 /// 3. :default fallback
-pub fn findBestMethod(mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Value {
+pub fn findBestMethod(allocator: Allocator, mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Value {
     // 1. Exact match
     if (mf.methods.get(dispatch_val)) |m| return m;
 
@@ -191,12 +191,12 @@ pub fn findBestMethod(mf: *const MultiFn, dispatch_val: Value, env: ?*Env) ?Valu
         null;
     if (hierarchy_val) |hv| {
         if (hv.tag() == .map) {
-            if (findIsaMatch(mf, dispatch_val, hv.asMap())) |m| return m;
+            if (findIsaMatch(allocator, mf, dispatch_val, hv.asMap())) |m| return m;
         }
     }
 
     // 3. :default
-    return mf.methods.get(Value.initKeyword(.{ .ns = null, .name = "default" }));
+    return mf.methods.get(Value.initKeyword(allocator, .{ .ns = null, .name = "default" }));
 }
 
 const Match = struct { key: Value, method: Value };
@@ -205,12 +205,12 @@ fn getGlobalHierarchy(env: *Env) ?Value {
     const core_ns = env.findNamespace("clojure.core") orelse return null;
     const hier_var = core_ns.resolve("global-hierarchy") orelse return null;
     const val = hier_var.deref();
-    if (val == .nil) return null;
+    if (val.tag() == .nil) return null;
     return val;
 }
 
-fn findIsaMatch(mf: *const MultiFn, dispatch_val: Value, hierarchy: *const PersistentArrayMap) ?Value {
-    const ancestors_kw = Value.initKeyword(.{ .ns = null, .name = "ancestors" });
+fn findIsaMatch(allocator: Allocator, mf: *const MultiFn, dispatch_val: Value, hierarchy: *const PersistentArrayMap) ?Value {
+    const ancestors_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "ancestors" });
     const ancestors_map_val = hierarchy.get(ancestors_kw) orelse return null;
     if (ancestors_map_val.tag() != .map) return null;
     const ancestors_map = ancestors_map_val.asMap();
@@ -407,9 +407,9 @@ const testing = std.testing;
 
 test "methods - returns method map" {
     var entries = [_]Value{
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
-        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -427,7 +427,7 @@ test "methods - returns method map" {
 
 test "get-method - returns method or nil" {
     var entries = [_]Value{
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
         Value.initInteger(42),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -438,21 +438,21 @@ test "get-method - returns method or nil" {
     };
 
     // Found
-    const args1 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "a", .ns = null }) };
+    const args1 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) };
     const r1 = try getMethodFn(testing.allocator, &args1);
     try testing.expectEqual(Value.initInteger(42), r1);
 
     // Not found
-    const args2 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "b", .ns = null }) };
+    const args2 = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }) };
     const r2 = try getMethodFn(testing.allocator, &args2);
     try testing.expectEqual(Value.nil_val, r2);
 }
 
 test "remove-method - removes dispatch entry" {
     var entries = [_]Value{
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
-        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     };
     var map = PersistentArrayMap{ .entries = &entries };
@@ -462,13 +462,13 @@ test "remove-method - removes dispatch entry" {
         .methods = &map,
     };
 
-    const args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "a", .ns = null }) };
+    const args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }) };
     const result = try removeMethodFn(testing.allocator, &args);
     try testing.expect(result.tag() == .multi_fn);
     try testing.expectEqual(@as(usize, 2), mf.methods.entries.len);
 
     // Verify :b remains
-    const get_args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(.{ .name = "b", .ns = null }) };
+    const get_args = [_]Value{ Value.initMultiFn(&mf), Value.initKeyword(testing.allocator, .{ .name = "b", .ns = null }) };
     const b_val = try getMethodFn(testing.allocator, &get_args);
     try testing.expectEqual(Value.initInteger(2), b_val);
 
@@ -479,7 +479,7 @@ test "remove-method - removes dispatch entry" {
 
 test "remove-all-methods - clears all methods" {
     var entries = [_]Value{
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(testing.allocator, .{ .name = "a", .ns = null }),
         Value.initInteger(1),
     };
     var map = PersistentArrayMap{ .entries = &entries };

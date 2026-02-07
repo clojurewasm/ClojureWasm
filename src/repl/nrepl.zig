@@ -430,7 +430,7 @@ fn opEval(
         else
             "evaluation failed";
 
-        setReplVar(state, "*e", Value.initString(err_msg));
+        setReplVar(state, "*e", Value.initString(allocator, err_msg));
 
         sendEvalError(stream, msg, err_msg, allocator);
     }
@@ -1127,7 +1127,7 @@ test "nrepl - writeValue integer" {
 test "nrepl - writeValue string" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), Value.initString("hello"));
+    writeValue(stream.writer(), Value.initString(std.testing.allocator, "hello"));
     try std.testing.expectEqualSlices(u8, "\"hello\"", stream.getWritten());
 }
 
@@ -1148,7 +1148,7 @@ test "nrepl - writeValue boolean" {
 test "nrepl - writeValue keyword" {
     var buf: [64]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    writeValue(stream.writer(), Value.initKeyword(.{ .name = "foo", .ns = null }));
+    writeValue(stream.writer(), Value.initKeyword(std.testing.allocator, .{ .name = "foo", .ns = null }));
     try std.testing.expectEqualSlices(u8, ":foo", stream.getWritten());
 }
 

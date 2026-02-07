@@ -42,8 +42,8 @@ pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var wit_path_opt: ?[]const u8 = null;
     if (args.len == 2) {
         const opts = args[1];
-        const imports_key = Value.initKeyword(.{ .name = "imports", .ns = null });
-        const wit_key = Value.initKeyword(.{ .name = "wit", .ns = null });
+        const imports_key = Value.initKeyword(allocator, .{ .name = "imports", .ns = null });
+        const wit_key = Value.initKeyword(allocator, .{ .name = "wit", .ns = null });
         imports_val_opt = switch (opts.tag()) {
             .map => opts.asMap().get(imports_key),
             .hash_map => opts.asHashMap().get(imports_key),
@@ -165,8 +165,8 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     // 3-arg: parse explicit signature
-    const params_key = Value.initKeyword(.{ .name = "params", .ns = null });
-    const results_key = Value.initKeyword(.{ .name = "results", .ns = null });
+    const params_key = Value.initKeyword(allocator, .{ .name = "params", .ns = null });
+    const results_key = Value.initKeyword(allocator, .{ .name = "results", .ns = null });
 
     const sig_map = args[2];
     const params_val = switch (sig_map.tag()) {
@@ -267,7 +267,7 @@ pub fn wasmMemoryReadFn(allocator: Allocator, args: []const Value) anyerror!Valu
 
     const bytes = wasm_mod.memoryRead(allocator, offset, length) catch
         return err.setErrorFmt(.eval, .index_error, .{}, "wasm/memory-read: out of bounds (offset={d}, length={d})", .{ offset, length });
-    return Value.initString(bytes);
+    return Value.initString(allocator, bytes);
 }
 
 /// (wasm/memory-write module offset data) => nil
@@ -315,7 +315,7 @@ pub fn wasmExportsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Build outer map entries: [name1, sig1, name2, sig2, ...]
     const outer_entries = try allocator.alloc(Value, export_fns.len * 2);
     for (export_fns, 0..) |ei, i| {
-        outer_entries[i * 2] = Value.initString(ei.name);
+        outer_entries[i * 2] = Value.initString(allocator, ei.name);
         outer_entries[i * 2 + 1] = try exportInfoToSigMap(allocator, ei);
     }
 
@@ -329,7 +329,7 @@ fn exportInfoToSigMap(allocator: Allocator, ei: ExportInfo) !Value {
     // Build :params vector
     const param_items = try allocator.alloc(Value, ei.param_types.len);
     for (ei.param_types, 0..) |pt, i| {
-        param_items[i] = Value.initKeyword(.{ .name = wasmTypeToKeyword(pt), .ns = null });
+        param_items[i] = Value.initKeyword(allocator, .{ .name = wasmTypeToKeyword(pt), .ns = null });
     }
     const param_vec = try allocator.create(collections.PersistentVector);
     param_vec.* = .{ .items = param_items };
@@ -337,16 +337,16 @@ fn exportInfoToSigMap(allocator: Allocator, ei: ExportInfo) !Value {
     // Build :results vector
     const result_items = try allocator.alloc(Value, ei.result_types.len);
     for (ei.result_types, 0..) |rt, i| {
-        result_items[i] = Value.initKeyword(.{ .name = wasmTypeToKeyword(rt), .ns = null });
+        result_items[i] = Value.initKeyword(allocator, .{ .name = wasmTypeToKeyword(rt), .ns = null });
     }
     const result_vec = try allocator.create(collections.PersistentVector);
     result_vec.* = .{ .items = result_items };
 
     // Build {:params [...] :results [...]}
     const sig_entries = try allocator.alloc(Value, 4);
-    sig_entries[0] = Value.initKeyword(.{ .name = "params", .ns = null });
+    sig_entries[0] = Value.initKeyword(allocator, .{ .name = "params", .ns = null });
     sig_entries[1] = Value.initVector(param_vec);
-    sig_entries[2] = Value.initKeyword(.{ .name = "results", .ns = null });
+    sig_entries[2] = Value.initKeyword(allocator, .{ .name = "results", .ns = null });
     sig_entries[3] = Value.initVector(result_vec);
 
     const sig_map = try allocator.create(collections.PersistentArrayMap);
@@ -385,7 +385,7 @@ pub fn wasmDescribeFn(allocator: Allocator, args: []const Value) anyerror!Value 
 
     const outer_entries = try allocator.alloc(Value, wit_funcs.len * 2);
     for (wit_funcs, 0..) |wf, i| {
-        outer_entries[i * 2] = Value.initString(wf.name);
+        outer_entries[i * 2] = Value.initString(allocator, wf.name);
         outer_entries[i * 2 + 1] = try witFuncToDescMap(allocator, wf);
     }
 
@@ -400,10 +400,10 @@ fn witFuncToDescMap(allocator: Allocator, wf: wit_parser.WitFunc) !Value {
     const param_items = try allocator.alloc(Value, wf.params.len);
     for (wf.params, 0..) |p, i| {
         const pmap_entries = try allocator.alloc(Value, 4);
-        pmap_entries[0] = Value.initKeyword(.{ .name = "name", .ns = null });
-        pmap_entries[1] = Value.initString(p.name);
-        pmap_entries[2] = Value.initKeyword(.{ .name = "type", .ns = null });
-        pmap_entries[3] = Value.initKeyword(.{ .name = witTypeToKeyword(p.type_), .ns = null });
+        pmap_entries[0] = Value.initKeyword(allocator, .{ .name = "name", .ns = null });
+        pmap_entries[1] = Value.initString(allocator, p.name);
+        pmap_entries[2] = Value.initKeyword(allocator, .{ .name = "type", .ns = null });
+        pmap_entries[3] = Value.initKeyword(allocator, .{ .name = witTypeToKeyword(p.type_), .ns = null });
         const pmap = try allocator.create(collections.PersistentArrayMap);
         pmap.* = .{ .entries = pmap_entries };
         param_items[i] = Value.initMap(pmap);
@@ -413,15 +413,15 @@ fn witFuncToDescMap(allocator: Allocator, wf: wit_parser.WitFunc) !Value {
 
     // Build result keyword (or nil for void functions)
     const result_val: Value = if (wf.result) |r|
-        Value.initKeyword(.{ .name = witTypeToKeyword(r), .ns = null })
+        Value.initKeyword(allocator, .{ .name = witTypeToKeyword(r), .ns = null })
     else
         Value.nil_val;
 
     // Build {:params [...] :results :type}
     const desc_entries = try allocator.alloc(Value, 4);
-    desc_entries[0] = Value.initKeyword(.{ .name = "params", .ns = null });
+    desc_entries[0] = Value.initKeyword(allocator, .{ .name = "params", .ns = null });
     desc_entries[1] = Value.initVector(param_vec);
-    desc_entries[2] = Value.initKeyword(.{ .name = "results", .ns = null });
+    desc_entries[2] = Value.initKeyword(allocator, .{ .name = "results", .ns = null });
     desc_entries[3] = result_val;
 
     const desc_map = try allocator.create(collections.PersistentArrayMap);

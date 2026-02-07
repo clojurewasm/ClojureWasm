@@ -601,7 +601,7 @@ test "EvalEngine compare pr-str builtin" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "pr-str", .source = .{} } };
-    var arg = Node{ .constant = .{ .value = Value.initString("hello") } };
+    var arg = Node{ .constant = .{ .value = Value.initString(alloc, "hello") } };
     var args = [_]*Node{&arg};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -943,7 +943,7 @@ test "EvalEngine compare number? float" {
 }
 
 test "EvalEngine compare number? string" {
-    try makePredicateCompareTest("number?", Value.initString("hi"), false).runTest();
+    try makePredicateCompareTest("number?", Value.initString(std.testing.allocator, "hi"), false).runTest();
 }
 
 test "EvalEngine compare integer? true" {
@@ -963,7 +963,7 @@ test "EvalEngine compare float? int" {
 }
 
 test "EvalEngine compare string? true" {
-    try makePredicateCompareTest("string?", Value.initString("hello"), true).runTest();
+    try makePredicateCompareTest("string?", Value.initString(std.testing.allocator, "hello"), true).runTest();
 }
 
 test "EvalEngine compare string? non-string" {
@@ -971,15 +971,15 @@ test "EvalEngine compare string? non-string" {
 }
 
 test "EvalEngine compare keyword? true" {
-    try makePredicateCompareTest("keyword?", Value.initKeyword(.{ .ns = null, .name = "foo" }), true).runTest();
+    try makePredicateCompareTest("keyword?", Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "foo" }), true).runTest();
 }
 
 test "EvalEngine compare keyword? non-keyword" {
-    try makePredicateCompareTest("keyword?", Value.initString("foo"), false).runTest();
+    try makePredicateCompareTest("keyword?", Value.initString(std.testing.allocator, "foo"), false).runTest();
 }
 
 test "EvalEngine compare symbol? true" {
-    try makePredicateCompareTest("symbol?", Value.initSymbol(.{ .ns = null, .name = "foo" }), true).runTest();
+    try makePredicateCompareTest("symbol?", Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "foo" }), true).runTest();
 }
 
 test "EvalEngine compare symbol? non-symbol" {
@@ -1088,7 +1088,7 @@ test "EvalEngine compare map? true" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    const entries = [_]Value{ Value.initKeyword(.{ .ns = null, .name = "a" }), Value.initInteger(1) };
+    const entries = [_]Value{ Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1) };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "map?", .source = .{} } };
     var arg = Node{ .constant = .{ .value = Value.initMap(&m) } };
@@ -1279,13 +1279,13 @@ test "EvalEngine compare get on map" {
     var engine = EvalEngine.init(alloc, &env);
 
     const entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "a" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }),
         Value.initInteger(1),
     };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "get", .source = .{} } };
     var a1 = Node{ .constant = .{ .value = Value.initMap(&m) } };
-    var a2 = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "a" }) } };
+    var a2 = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1332,13 +1332,13 @@ test "EvalEngine compare assoc on map" {
     var engine = EvalEngine.init(alloc, &env);
 
     const entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "a" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }),
         Value.initInteger(1),
     };
     var m = collections_mod.PersistentArrayMap{ .entries = &entries };
     var callee = Node{ .var_ref = .{ .ns = null, .name = "assoc", .source = .{} } };
     var a1 = Node{ .constant = .{ .value = Value.initMap(&m) } };
-    var a2 = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "b" }) } };
+    var a2 = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "b" }) } };
     var a3 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
@@ -1410,9 +1410,9 @@ test "EvalEngine compare hash-map constructor" {
     var engine = EvalEngine.init(alloc, &env);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "hash-map", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "a" }) } };
+    var a1 = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) } };
     var a2 = Node{ .constant = .{ .value = Value.initInteger(1) } };
-    var a3 = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "b" }) } };
+    var a3 = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "b" }) } };
     var a4 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &a1, &a2, &a3, &a4 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
@@ -1572,7 +1572,7 @@ test "EvalEngine compare prn returns nil" {
     defer io_mod.setOutputCapture(null, null);
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "prn", .source = .{} } };
-    var a1 = Node{ .constant = .{ .value = Value.initString("hello") } };
+    var a1 = Node{ .constant = .{ .value = Value.initString(alloc, "hello") } };
     var args = [_]*Node{&a1};
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
@@ -1595,7 +1595,7 @@ test "EvalEngine compare str multi-arg" {
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "str", .source = .{} } };
     var a1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
-    var a2 = Node{ .constant = .{ .value = Value.initString("hello") } };
+    var a2 = Node{ .constant = .{ .value = Value.initString(alloc, "hello") } };
     var a3 = Node{ .constant = .{ .value = Value.nil_val } };
     var args = [_]*Node{ &a1, &a2, &a3 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
@@ -1653,8 +1653,8 @@ test "EvalEngine compare with-meta attaches metadata" {
     var vec_node = Node{ .constant = .{ .value = Value.initVector(vec) } };
 
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "tag" }),
-        Value.initKeyword(.{ .ns = null, .name = "int" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "tag" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "int" }),
     };
     const meta_map = try alloc.create(collections.PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
@@ -1690,8 +1690,8 @@ test "EvalEngine compare meta retrieves attached metadata" {
     var vec_node = Node{ .constant = .{ .value = Value.initVector(vec) } };
 
     const meta_entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "tag" }),
-        Value.initKeyword(.{ .ns = null, .name = "int" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "tag" }),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "int" }),
     };
     const meta_map = try alloc.create(collections.PersistentArrayMap);
     meta_map.* = .{ .entries = &meta_entries };
@@ -1729,14 +1729,14 @@ test "EvalEngine compare re-find simple match" {
 
     // (re-pattern "\\d+")
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("\\d+") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "\\d+") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     // (re-find <pattern> "abc123")
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("abc123") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "abc123") } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1758,13 +1758,13 @@ test "EvalEngine compare re-find no match returns nil" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("\\d+") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "\\d+") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("abc") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "abc") } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1786,13 +1786,13 @@ test "EvalEngine compare re-matches full match" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("\\d+") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "\\d+") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("123") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "123") } };
     var rm_args = [_]*Node{ &rp_node, &input_str };
     var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
     const n = Node{ .call_node = &rm_call };
@@ -1814,13 +1814,13 @@ test "EvalEngine compare re-matches partial returns nil" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("\\d+") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "\\d+") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rm_callee = Node{ .var_ref = .{ .ns = null, .name = "re-matches", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("abc123") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "abc123") } };
     var rm_args = [_]*Node{ &rp_node, &input_str };
     var rm_call = node_mod.CallNode{ .callee = &rm_callee, .args = &rm_args, .source = .{} };
     const n = Node{ .call_node = &rm_call };
@@ -1842,13 +1842,13 @@ test "EvalEngine compare re-seq all matches" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("\\d+") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "\\d+") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rs_callee = Node{ .var_ref = .{ .ns = null, .name = "re-seq", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("a1b22c333") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "a1b22c333") } };
     var rs_args = [_]*Node{ &rp_node, &input_str };
     var rs_call = node_mod.CallNode{ .callee = &rs_callee, .args = &rs_args, .source = .{} };
     const n = Node{ .call_node = &rs_call };
@@ -1875,13 +1875,13 @@ test "EvalEngine compare re-find with capture groups" {
     var engine = EvalEngine.init(alloc, &env);
 
     var rp_callee = Node{ .var_ref = .{ .ns = null, .name = "re-pattern", .source = .{} } };
-    var pat_str = Node{ .constant = .{ .value = Value.initString("(\\d+)-(\\d+)") } };
+    var pat_str = Node{ .constant = .{ .value = Value.initString(alloc, "(\\d+)-(\\d+)") } };
     var rp_args = [_]*Node{&pat_str};
     var rp_call = node_mod.CallNode{ .callee = &rp_callee, .args = &rp_args, .source = .{} };
     var rp_node = Node{ .call_node = &rp_call };
 
     var rf_callee = Node{ .var_ref = .{ .ns = null, .name = "re-find", .source = .{} } };
-    var input_str = Node{ .constant = .{ .value = Value.initString("x12-34y") } };
+    var input_str = Node{ .constant = .{ .value = Value.initString(alloc, "x12-34y") } };
     var rf_args = [_]*Node{ &rp_node, &input_str };
     var rf_call = node_mod.CallNode{ .callee = &rf_callee, .args = &rf_args, .source = .{} };
     const n = Node{ .call_node = &rf_call };
@@ -1911,15 +1911,15 @@ test "EvalEngine compare dissoc removes key" {
     var engine = EvalEngine.init(alloc, &env);
 
     const entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "a" }), Value.initInteger(1),
-        Value.initKeyword(.{ .ns = null, .name = "b" }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "b" }), Value.initInteger(2),
     };
     const m = try alloc.create(collections.PersistentArrayMap);
     m.* = .{ .entries = &entries };
     var map_node = Node{ .constant = .{ .value = Value.initMap(m) } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "dissoc", .source = .{} } };
-    var key_node = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "a" }) } };
+    var key_node = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) } };
     var args = [_]*Node{ &map_node, &key_node };
     var call = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call };
@@ -1942,15 +1942,15 @@ test "EvalEngine compare find returns MapEntry" {
     var engine = EvalEngine.init(alloc, &env);
 
     const entries = [_]Value{
-        Value.initKeyword(.{ .ns = null, .name = "a" }), Value.initInteger(1),
-        Value.initKeyword(.{ .ns = null, .name = "b" }), Value.initInteger(2),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "a" }), Value.initInteger(1),
+        Value.initKeyword(alloc, .{ .ns = null, .name = "b" }), Value.initInteger(2),
     };
     const m = try alloc.create(collections.PersistentArrayMap);
     m.* = .{ .entries = &entries };
     var map_node = Node{ .constant = .{ .value = Value.initMap(m) } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "find", .source = .{} } };
-    var key_node = Node{ .constant = .{ .value = Value.initKeyword(.{ .ns = null, .name = "a" }) } };
+    var key_node = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .ns = null, .name = "a" }) } };
     var args = [_]*Node{ &map_node, &key_node };
     var call = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call };
@@ -2079,9 +2079,9 @@ test "EvalEngine compare sorted-map" {
     try registry.registerBuiltins(&env);
     var engine = EvalEngine.init(alloc, &env);
 
-    var kb = Node{ .constant = .{ .value = Value.initKeyword(.{ .name = "b", .ns = null }) } };
+    var kb = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .name = "b", .ns = null }) } };
     var v2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
-    var ka = Node{ .constant = .{ .value = Value.initKeyword(.{ .name = "a", .ns = null }) } };
+    var ka = Node{ .constant = .{ .value = Value.initKeyword(alloc, .{ .name = "a", .ns = null }) } };
     var v1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
 
     var callee = Node{ .var_ref = .{ .ns = null, .name = "sorted-map", .source = .{} } };

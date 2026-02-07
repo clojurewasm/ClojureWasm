@@ -295,7 +295,7 @@ test "read-string - integer" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("42")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "42")});
     try testing.expectEqual(Value.initInteger(42), result);
 }
 
@@ -304,7 +304,7 @@ test "read-string - string" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("\"hello\"")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "\"hello\"")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
@@ -313,7 +313,7 @@ test "read-string - symbol" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("foo")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "foo")});
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("foo", result.asSymbol().name);
 }
@@ -323,7 +323,7 @@ test "read-string - keyword" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString(":bar")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, ":bar")});
     try testing.expect(result == .keyword);
     try testing.expectEqualStrings("bar", result.asKeyword().name);
 }
@@ -333,7 +333,7 @@ test "read-string - vector" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("[1 2 3]")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "[1 2 3]")});
     try testing.expect(result == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
 }
@@ -343,7 +343,7 @@ test "read-string - empty string returns nil" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "")});
     try testing.expectEqual(Value.nil_val, result);
 }
 
@@ -352,7 +352,7 @@ test "read-string - map" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("{:a 1}")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "{:a 1}")});
     try testing.expect(result == .map);
 }
 
@@ -361,7 +361,7 @@ test "read-string - list" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try readStringFn(alloc, &[_]Value{Value.initString("(+ 1 2)")});
+    const result = try readStringFn(alloc, &[_]Value{Value.initString(alloc, "(+ 1 2)")});
     try testing.expect(result == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }

@@ -1241,7 +1241,7 @@ test "traceValue keeps map entries alive" {
 
     // Map {:a 1} — entries = [keyword, integer]
     const entries = try a.alloc(Value, 2);
-    entries[0] = Value.initKeyword(.{ .ns = null, .name = "a" });
+    entries[0] = Value.initKeyword(a, .{ .ns = null, .name = "a" });
     entries[1] = Value.initInteger(1);
     const m = try a.create(value_mod.PersistentArrayMap);
     m.* = .{ .entries = entries };
@@ -1272,7 +1272,7 @@ test "traceValue string marks backing array" {
 
     try std.testing.expectEqual(@as(usize, 2), gc.liveCount());
 
-    traceValue(&gc, Value.initString(str));
+    traceValue(&gc, Value.initString(a, str));
     gc.sweep();
 
     // String backing array survives, orphan freed

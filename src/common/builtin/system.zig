@@ -51,7 +51,7 @@ pub fn getenvFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (result) |val| {
         const owned = try allocator.alloc(u8, val.len);
         @memcpy(owned, val);
-        return Value.initString(owned);
+        return Value.initString(allocator, owned);
     }
     return Value.nil_val;
 }
@@ -128,7 +128,7 @@ test "current-time-millis returns positive integer" {
 
 test "getenv - existing variable" {
     // PATH should always exist
-    const args = [_]Value{Value.initString("PATH")};
+    const args = [_]Value{Value.initString(testing.allocator, "PATH")};
     const result = try getenvFn(testing.allocator, &args);
     try testing.expect(result.tag() == .string);
     try testing.expect(result.asString().len > 0);
@@ -136,7 +136,7 @@ test "getenv - existing variable" {
 }
 
 test "getenv - non-existing variable" {
-    const args = [_]Value{Value.initString("CLJW_NONEXISTENT_VAR_12345")};
+    const args = [_]Value{Value.initString(testing.allocator, "CLJW_NONEXISTENT_VAR_12345")};
     const result = try getenvFn(testing.allocator, &args);
     try testing.expect(result.isNil());
 }
@@ -159,7 +159,7 @@ test "exit - arity error" {
 }
 
 test "exit - type error" {
-    const args = [_]Value{Value.initString("not a number")};
+    const args = [_]Value{Value.initString(testing.allocator, "not a number")};
     const result = exitFn(testing.allocator, &args);
     try testing.expectError(error.TypeError, result);
 }

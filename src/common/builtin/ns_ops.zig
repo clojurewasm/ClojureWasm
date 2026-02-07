@@ -147,7 +147,6 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// If x is a symbol, finds namespace by name and returns the symbol.
 /// Throws if namespace not found.
 pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to the-ns", .{args.len});
     const name = switch (args[0].tag()) {
         .symbol => args[0].asSymbol().name,
@@ -155,7 +154,7 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name) == null) return error.NamespaceNotFound;
-    return Value.initSymbol(.{ .ns = null, .name = name });
+    return Value.initSymbol(allocator, .{ .ns = null, .name = name });
 }
 
 // ============================================================
@@ -178,7 +177,7 @@ pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     ns_iter = env.namespaces.iterator();
     var i: usize = 0;
     while (ns_iter.next()) |entry| {
-        items[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+        items[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
         i += 1;
     }
 
@@ -194,7 +193,6 @@ pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (find-ns sym)
 /// Returns the namespace named by symbol, or nil if not found.
 pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-ns", .{args.len});
     const name = switch (args[0].tag()) {
         .symbol => args[0].asSymbol().name,
@@ -202,7 +200,7 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     if (env.findNamespace(name)) |ns| {
-        return Value.initSymbol(.{ .ns = null, .name = ns.name });
+        return Value.initSymbol(allocator, .{ .ns = null, .name = ns.name });
     }
     return Value.nil_val;
 }
@@ -214,10 +212,9 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (ns-name ns)
 /// Returns the name of the namespace as a symbol.
 pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-name", .{args.len});
     return switch (args[0].tag()) {
-        .symbol => Value.initSymbol(.{ .ns = null, .name = args[0].asSymbol().name }),
+        .symbol => Value.initSymbol(allocator, .{ .ns = null, .name = args[0].asSymbol().name }),
         else => err.setErrorFmt(.eval, .type_error, .{}, "ns-name expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
 }
@@ -229,7 +226,6 @@ pub fn nsNameFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (create-ns sym)
 /// Finds or creates a namespace named by symbol. Returns the namespace symbol.
 pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to create-ns", .{args.len});
     const name = switch (args[0].tag()) {
         .symbol => args[0].asSymbol().name,
@@ -237,7 +233,7 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     const env = bootstrap.macro_eval_env orelse return error.EvalError;
     const ns = try env.findOrCreateNamespace(name);
-    return Value.initSymbol(.{ .ns = null, .name = ns.name });
+    return Value.initSymbol(allocator, .{ .ns = null, .name = ns.name });
 }
 
 // ============================================================
@@ -248,7 +244,6 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Switches to the namespace named by symbol (creating it if needed).
 /// Also refers all clojure.core vars into the new namespace.
 pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    _ = allocator;
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to in-ns", .{args.len});
     const name = switch (args[0].tag()) {
         .symbol => args[0].asSymbol().name,
@@ -281,11 +276,11 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Sync *ns* dynamic var
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
-            ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = ns.name }));
+            ns_var.bindRoot(Value.initSymbol(allocator, .{ .ns = null, .name = ns.name }));
         }
     }
 
-    return Value.initSymbol(.{ .ns = null, .name = ns.name });
+    return Value.initSymbol(allocator, .{ .ns = null, .name = ns.name });
 }
 
 // ============================================================
@@ -319,7 +314,7 @@ fn varMapToValue(allocator: Allocator, map: anytype) !Value {
     var iter = map.iterator();
     var i: usize = 0;
     while (iter.next()) |entry| {
-        entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+        entries[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
         entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
         i += 2;
     }
@@ -379,7 +374,7 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     {
         var iter = ns.mappings.iterator();
         while (iter.next()) |entry| {
-            entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+            entries[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
             entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
             i += 2;
         }
@@ -389,7 +384,7 @@ pub fn nsMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     {
         var iter = ns.refers.iterator();
         while (iter.next()) |entry| {
-            entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+            entries[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
             entries[i + 1] = Value.initVarRef(entry.value_ptr.*);
             i += 2;
         }
@@ -475,9 +470,9 @@ pub fn nsAliasesFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var iter = ns.aliases.iterator();
     var i: usize = 0;
     while (iter.next()) |entry| {
-        entries[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+        entries[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
         // Represent the aliased namespace as a symbol of its name
-        entries[i + 1] = Value.initSymbol(.{ .ns = null, .name = entry.value_ptr.*.name });
+        entries[i + 1] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.value_ptr.*.name });
         i += 2;
     }
     const m = try allocator.create(collections.PersistentArrayMap);
@@ -953,7 +948,7 @@ test "find-ns - existing namespace" {
         env.deinit();
     }
 
-    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "clojure.core" })});
     try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("clojure.core", result.asSymbol().name);
 }
@@ -969,7 +964,7 @@ test "find-ns - nonexistent namespace returns nil" {
         env.deinit();
     }
 
-    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "nonexistent" })});
+    const result = try findNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "nonexistent" })});
     try testing.expectEqual(Value.nil_val, result);
 }
 
@@ -1005,7 +1000,7 @@ test "ns-name - returns symbol" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try nsNameFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    const result = try nsNameFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "user" })});
     try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("user", result.asSymbol().name);
 }
@@ -1024,7 +1019,7 @@ test "create-ns - creates new namespace" {
     // Verify namespace doesn't exist yet
     try testing.expect(env.findNamespace("test.new") == null);
 
-    const result = try createNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "test.new" })});
+    const result = try createNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "test.new" })});
     try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("test.new", result.asSymbol().name);
 
@@ -1043,7 +1038,7 @@ test "the-ns - existing namespace" {
         env.deinit();
     }
 
-    const result = try theNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    const result = try theNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "user" })});
     try testing.expect(result.tag() == .symbol);
     try testing.expectEqualStrings("user", result.asSymbol().name);
 }
@@ -1059,7 +1054,7 @@ test "the-ns - nonexistent namespace errors" {
         env.deinit();
     }
 
-    const result = theNsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "nonexistent" })});
+    const result = theNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "nonexistent" })});
     try testing.expectError(error.NamespaceNotFound, result);
 }
 
@@ -1075,7 +1070,7 @@ test "ns-interns - returns map with interned vars" {
     }
 
     // clojure.core has interned vars (from registerBuiltins)
-    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "clojure.core" })});
     try testing.expect(result.tag() == .map);
     // Should have entries (at least the builtins)
     try testing.expect(result.asMap().entries.len > 0);
@@ -1094,8 +1089,8 @@ test "ns-publics - same as ns-interns (no private vars)" {
         env.deinit();
     }
 
-    const interns = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
-    const publics = try nsPublicsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "clojure.core" })});
+    const interns = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "clojure.core" })});
+    const publics = try nsPublicsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "clojure.core" })});
     try testing.expectEqual(interns.asMap().entries.len, publics.asMap().entries.len);
 }
 
@@ -1111,7 +1106,7 @@ test "ns-map - includes interns and refers" {
     }
 
     // user namespace has refers from clojure.core
-    const result = try nsMapFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    const result = try nsMapFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "user" })});
     try testing.expect(result.tag() == .map);
     // user namespace should have referred vars (from registerBuiltins)
     try testing.expect(result.asMap().entries.len > 0);
@@ -1129,7 +1124,7 @@ test "ns-interns - user namespace is initially empty" {
     }
 
     // user namespace has no interned vars (only refers)
-    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(.{ .ns = null, .name = "user" })});
+    const result = try nsInternsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "user" })});
     try testing.expect(result.tag() == .map);
     try testing.expectEqual(@as(usize, 0), result.asMap().entries.len);
 }

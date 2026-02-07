@@ -477,7 +477,7 @@ pub const VM = struct {
                 if (instr.op == .def_macro) v.setMacro(true);
                 if (instr.op == .def_dynamic) v.dynamic = true;
                 if (instr.op == .def_private) v.private = true;
-                try self.push(Value.initSymbol(.{ .ns = ns.name, .name = v.sym.name }));
+                try self.push(Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name }));
             },
 
             .defmulti => {
@@ -631,7 +631,7 @@ pub const VM = struct {
                 const protocol = proto_val.asProtocol();
 
                 // Get or create method map for this type in protocol.impls
-                const existing = protocol.impls.get(Value.initString(type_key));
+                const existing = protocol.impls.get(Value.initString(self.allocator, type_key));
                 if (existing) |ex_val| {
                     // Existing method map for this type — add method
                     if (ex_val != .map) return error.TypeError;
@@ -639,7 +639,7 @@ pub const VM = struct {
                     const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
                     @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
-                    new_entries[old_map.entries.len] = Value.initString(method_name);
+                    new_entries[old_map.entries.len] = Value.initString(self.allocator, method_name);
                     new_entries[old_map.entries.len + 1] = method_fn;
                     const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_method_map.* = .{ .entries = new_entries };
@@ -648,7 +648,7 @@ pub const VM = struct {
                     const impls = protocol.impls;
                     var i: usize = 0;
                     while (i < impls.entries.len) : (i += 2) {
-                        if (impls.entries[i].eql(Value.initString(type_key))) {
+                        if (impls.entries[i].eql(Value.initString(self.allocator, type_key))) {
                             // Mutate in place — protocol.impls is mutable
                             @constCast(impls.entries)[i + 1] = Value.initMap(new_method_map);
                             break;
@@ -658,7 +658,7 @@ pub const VM = struct {
                     // New type — create method map and add to impls
                     const method_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, method_entries) catch return error.OutOfMemory;
-                    method_entries[0] = Value.initString(method_name);
+                    method_entries[0] = Value.initString(self.allocator, method_name);
                     method_entries[1] = method_fn;
                     const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     method_map.* = .{ .entries = method_entries };
@@ -669,7 +669,7 @@ pub const VM = struct {
                     const new_impls_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
                     if (self.gc == null) self.allocated_slices.append(self.allocator, new_impls_entries) catch return error.OutOfMemory;
                     @memcpy(new_impls_entries[0..old_impls.entries.len], old_impls.entries);
-                    new_impls_entries[old_impls.entries.len] = Value.initString(type_key);
+                    new_impls_entries[old_impls.entries.len] = Value.initString(self.allocator, type_key);
                     new_impls_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
                     const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
                     new_impls.* = .{ .entries = new_impls_entries };
@@ -794,13 +794,13 @@ pub const VM = struct {
         empty_map.* = .{ .entries = &.{} };
         if (self.gc == null) self.allocated_maps.append(self.allocator, empty_map) catch return error.OutOfMemory;
 
-        entries[0] = Value.initKeyword(.{ .ns = null, .name = "__ex_info" });
+        entries[0] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__ex_info" });
         entries[1] = Value.true_val;
-        entries[2] = Value.initKeyword(.{ .ns = null, .name = "message" });
-        entries[3] = Value.initString(msg);
-        entries[4] = Value.initKeyword(.{ .ns = null, .name = "data" });
+        entries[2] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "message" });
+        entries[3] = Value.initString(self.allocator, msg);
+        entries[4] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "data" });
         entries[5] = Value.initMap(empty_map);
-        entries[6] = Value.initKeyword(.{ .ns = null, .name = "cause" });
+        entries[6] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "cause" });
         entries[7] = Value.nil_val;
 
         const map = self.allocator.create(PersistentArrayMap) catch return error.OutOfMemory;
@@ -1038,10 +1038,10 @@ pub const VM = struct {
                     }
                 }
                 // Cache miss: full protocol lookup (type_key -> method_map -> method_fn)
-                const method_map_val = pf.protocol.impls.get(Value.initString(type_key)) orelse
+                const method_map_val = pf.protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
                     return error.TypeError;
                 if (method_map_val != .map) return error.TypeError;
-                const method_fn = method_map_val.asMap().get(Value.initString(pf.method_name)) orelse
+                const method_fn = method_map_val.asMap().get(Value.initString(self.allocator, pf.method_name)) orelse
                     return error.TypeError;
                 // Update cache for next call
                 mutable_pf.cached_type_key = type_key;
@@ -1105,7 +1105,7 @@ pub const VM = struct {
                         if (cdv.eql(dispatch_val)) break :blk mf_mut.cached_method;
                     }
                     // Cache miss: full lookup
-                    const m = multimethods_mod.findBestMethod(mf, dispatch_val, self.env) orelse
+                    const m = multimethods_mod.findBestMethod(self.allocator, mf, dispatch_val, self.env) orelse
                         return error.TypeError;
                     mf_mut.cached_dispatch_val = dispatch_val;
                     mf_mut.cached_method = m;
@@ -1971,7 +1971,7 @@ test "VM var_load resolves pre-defined Var" {
     // Bytecode: var_load (symbol "x"), ret
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -1995,7 +1995,7 @@ test "VM def creates and binds a Var" {
     // Bytecode: const_load(42), def(symbol "x"), ret
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
     const val_idx = try chunk.addConstant(Value.initInteger(42));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
@@ -2030,14 +2030,14 @@ test "VM def then var_load round-trip" {
     defer chunk.deinit();
 
     // (def x 10)
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
     const val_idx = try chunk.addConstant(Value.initInteger(10));
     try chunk.emit(.const_load, val_idx);
     try chunk.emit(.def, sym_idx);
     try chunk.emitOp(.pop); // discard def result
 
     // x (var_load)
-    const var_sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const var_sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, var_sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2059,7 +2059,7 @@ test "VM var_load undefined var returns error" {
 
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "nonexistent" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "nonexistent" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2071,7 +2071,7 @@ test "VM var_load undefined var returns error" {
 test "VM var_load without env returns error" {
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = null, .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = null, .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2095,7 +2095,7 @@ test "VM var_load qualified symbol" {
 
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const sym_idx = try chunk.addConstant(Value.initSymbol(.{ .ns = "user", .name = "x" }));
+    const sym_idx = try chunk.addConstant(Value.initSymbol(std.testing.allocator, .{ .ns = "user", .name = "x" }));
     try chunk.emit(.var_load, sym_idx);
     try chunk.emitOp(.ret);
 
@@ -2219,9 +2219,9 @@ test "VM map_new creates map" {
     defer chunk.deinit();
 
     // {:a 1 :b 2} -> 4 values, map_new 2 (pairs)
-    const ka = try chunk.addConstant(Value.initKeyword(.{ .ns = null, .name = "a" }));
+    const ka = try chunk.addConstant(Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "a" }));
     const v1 = try chunk.addConstant(Value.initInteger(1));
-    const kb = try chunk.addConstant(Value.initKeyword(.{ .ns = null, .name = "b" }));
+    const kb = try chunk.addConstant(Value.initKeyword(std.testing.allocator, .{ .ns = null, .name = "b" }));
     const v2 = try chunk.addConstant(Value.initInteger(2));
     try chunk.emit(.const_load, ka);
     try chunk.emit(.const_load, v1);
@@ -2262,7 +2262,7 @@ test "VM try/catch handles throw" {
     defer compiler.deinit();
 
     // AST: (try (throw "err") (catch e e))
-    var throw_expr = Node{ .constant = .{ .value = Value.initString("err") } };
+    var throw_expr = Node{ .constant = .{ .value = Value.initString(allocator, "err") } };
     var throw_data = node_mod.ThrowNode{ .expr = &throw_expr, .source = .{} };
     var throw_node = Node{ .throw_node = &throw_data };
 
@@ -2293,7 +2293,7 @@ test "VM throw without handler returns UserException" {
     // (throw "err") without try/catch
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    const idx = try chunk.addConstant(Value.initString("oops"));
+    const idx = try chunk.addConstant(Value.initString(std.testing.allocator, "oops"));
     try chunk.emit(.const_load, idx);
     try chunk.emitOp(.throw_ex);
     try chunk.emitOp(.ret);

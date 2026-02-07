@@ -352,7 +352,7 @@ pub fn syncNsVar(env: *Env) void {
     const ns_name = if (env.current_ns) |ns| ns.name else "user";
     if (env.findNamespace("clojure.core")) |core| {
         if (core.resolve("*ns*")) |ns_var| {
-            ns_var.bindRoot(Value.initSymbol(.{ .ns = null, .name = ns_name }));
+            ns_var.bindRoot(Value.initSymbol(env.allocator, .{ .ns = null, .name = ns_name }));
         }
     }
 }
@@ -622,7 +622,7 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             // Dispatch: call dispatch_fn, lookup method, call method
             const dispatch_val = try callFnVal(allocator, mf.dispatch_fn, args);
             const method_fn = mf.methods.get(dispatch_val) orelse
-                mf.methods.get(Value.initKeyword(.{ .ns = null, .name = "default" })) orelse
+                mf.methods.get(Value.initKeyword(allocator, .{ .ns = null, .name = "default" })) orelse
                 return error.TypeError;
             return callFnVal(allocator, method_fn, args);
         },
@@ -676,9 +676,9 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             const pf = fn_val.asProtocolFn();
             if (args.len == 0) return error.ArityError;
             const type_key = TreeWalk.valueTypeKey(args[0]);
-            const method_map_val = pf.protocol.impls.get(Value.initString(type_key)) orelse return error.TypeError;
+            const method_map_val = pf.protocol.impls.get(Value.initString(allocator, type_key)) orelse return error.TypeError;
             if (method_map_val.tag() != .map) return error.TypeError;
-            const impl_fn = method_map_val.asMap().get(Value.initString(pf.method_name)) orelse return error.TypeError;
+            const impl_fn = method_map_val.asMap().get(Value.initString(allocator, pf.method_name)) orelse return error.TypeError;
             return callFnVal(allocator, impl_fn, args);
         },
         else => return error.TypeError,

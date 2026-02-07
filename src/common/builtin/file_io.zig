@@ -29,7 +29,7 @@ pub fn slurpFn(allocator: Allocator, args: []const Value) anyerror!Value {
     defer file.close();
 
     const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.IOError;
-    return Value.initString(content);
+    return Value.initString(allocator, content);
 }
 
 /// (spit filename content) => nil
@@ -119,7 +119,7 @@ pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const owned = try allocator.alloc(u8, pos);
     @memcpy(owned, buf[0..pos]);
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 // ============================================================
@@ -193,14 +193,14 @@ test "slurp - read existing file" {
     defer file.close();
     try file.writeAll("hello world");
 
-    const args = [_]Value{Value.initString(tmp_path)};
+    const args = [_]Value{Value.initString(testing.allocator, tmp_path)};
     const result = try slurpFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("hello world", result.asString());
 }
 
 test "slurp - file not found" {
-    const args = [_]Value{Value.initString("/tmp/cljw_nonexistent_file.txt")};
+    const args = [_]Value{Value.initString(testing.allocator, "/tmp/cljw_nonexistent_file.txt")};
     const result = slurpFn(testing.allocator, &args);
     try testing.expectError(error.FileNotFound, result);
 }
@@ -219,8 +219,8 @@ test "slurp - type error" {
 test "spit - write new file" {
     const tmp_path = "/tmp/cljw_test_spit.txt";
     const args = [_]Value{
-        Value.initString(tmp_path),
-        Value.initString("hello spit"),
+        Value.initString(testing.allocator, tmp_path),
+        Value.initString(testing.allocator, "hello spit"),
     };
     const result = try spitFn(testing.allocator, &args);
     try testing.expect(result.isNil());
@@ -238,14 +238,14 @@ test "spit - overwrite existing file" {
     const tmp_path = "/tmp/cljw_test_spit_overwrite.txt";
     // Write first
     const args1 = [_]Value{
-        Value.initString(tmp_path),
-        Value.initString("first"),
+        Value.initString(testing.allocator, tmp_path),
+        Value.initString(testing.allocator, "first"),
     };
     _ = try spitFn(testing.allocator, &args1);
     // Overwrite
     const args2 = [_]Value{
-        Value.initString(tmp_path),
-        Value.initString("second"),
+        Value.initString(testing.allocator, tmp_path),
+        Value.initString(testing.allocator, "second"),
     };
     _ = try spitFn(testing.allocator, &args2);
 
@@ -261,15 +261,15 @@ test "spit - append mode" {
     const tmp_path = "/tmp/cljw_test_spit_append.txt";
     // Write initial content
     const args1 = [_]Value{
-        Value.initString(tmp_path),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, tmp_path),
+        Value.initString(testing.allocator, "hello"),
     };
     _ = try spitFn(testing.allocator, &args1);
     // Append
     const args2 = [_]Value{
-        Value.initString(tmp_path),
-        Value.initString(" world"),
-        Value.initKeyword(.{ .name = "append", .ns = null }),
+        Value.initString(testing.allocator, tmp_path),
+        Value.initString(testing.allocator, " world"),
+        Value.initKeyword(testing.allocator, .{ .name = "append", .ns = null }),
         Value.true_val,
     };
     _ = try spitFn(testing.allocator, &args2);
@@ -283,7 +283,7 @@ test "spit - append mode" {
 }
 
 test "spit - arity error" {
-    const args = [_]Value{Value.initString("/tmp/test.txt")};
+    const args = [_]Value{Value.initString(testing.allocator, "/tmp/test.txt")};
     const result = spitFn(testing.allocator, &args);
     try testing.expectError(error.ArityError, result);
 }

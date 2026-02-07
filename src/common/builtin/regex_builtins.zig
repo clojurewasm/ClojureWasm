@@ -35,14 +35,14 @@ fn matchResultToValue(allocator: Allocator, result: MatchResult, input: []const 
     if (result.groups.len <= 1) {
         // No capture groups: return matched string
         const text = input[result.start..result.end];
-        return Value.initString(text);
+        return Value.initString(allocator, text);
     }
 
     // Has capture groups: return [whole-match, group1, group2, ...]
     const items = try allocator.alloc(Value, result.groups.len);
     for (result.groups, 0..) |group_opt, i| {
         if (group_opt) |span| {
-            items[i] = Value.initString(span.text(input));
+            items[i] = Value.initString(allocator, span.text(input));
         } else {
             items[i] = Value.nil_val;
         }
@@ -177,7 +177,7 @@ test "re-pattern - string to pattern" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const args = [_]Value{Value.initString("\\d+")};
+    const args = [_]Value{Value.initString(allocator, "\\d+")};
     const result = try rePatternFn(allocator, &args);
     try testing.expect(result.tag() == .regex);
     try testing.expectEqualStrings("\\d+", result.asRegex().source);
@@ -189,7 +189,7 @@ test "re-pattern - pattern passthrough" {
     const allocator = arena.allocator();
 
     // Create a pattern first
-    const create_args = [_]Value{Value.initString("abc")};
+    const create_args = [_]Value{Value.initString(allocator, "abc")};
     const pat = try rePatternFn(allocator, &create_args);
 
     // Pass it through re-pattern — should return same value
@@ -203,10 +203,10 @@ test "re-find - simple match" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("\\d+")};
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("abc123def") };
+    const args = [_]Value{ pat, Value.initString(allocator, "abc123def") };
     const result = try reFindFn(allocator, &args);
     try testing.expect(result.tag() == .string);
     try testing.expectEqualStrings("123", result.asString());
@@ -217,10 +217,10 @@ test "re-find - no match returns nil" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("\\d+")};
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("abc") };
+    const args = [_]Value{ pat, Value.initString(allocator, "abc") };
     const result = try reFindFn(allocator, &args);
     try testing.expect(result.isNil());
 }
@@ -230,10 +230,10 @@ test "re-find - with capture groups returns vector" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("(\\d+)-(\\d+)")};
+    const pat_args = [_]Value{Value.initString(allocator, "(\\d+)-(\\d+)")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("x12-34y") };
+    const args = [_]Value{ pat, Value.initString(allocator, "x12-34y") };
     const result = try reFindFn(allocator, &args);
     try testing.expect(result.tag() == .vector);
     try testing.expectEqual(@as(usize, 3), result.asVector().items.len);
@@ -247,10 +247,10 @@ test "re-matches - full match" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("\\d+")};
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("123") };
+    const args = [_]Value{ pat, Value.initString(allocator, "123") };
     const result = try reMatchesFn(allocator, &args);
     try testing.expect(result.tag() == .string);
     try testing.expectEqualStrings("123", result.asString());
@@ -261,10 +261,10 @@ test "re-matches - partial match returns nil" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("\\d+")};
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("abc123") };
+    const args = [_]Value{ pat, Value.initString(allocator, "abc123") };
     const result = try reMatchesFn(allocator, &args);
     try testing.expect(result.isNil());
 }
@@ -274,10 +274,10 @@ test "re-seq - all matches" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const pat_args = [_]Value{Value.initString("\\d+")};
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
     const pat = try rePatternFn(allocator, &pat_args);
 
-    const args = [_]Value{ pat, Value.initString("a1b22c333") };
+    const args = [_]Value{ pat, Value.initString(allocator, "a1b22c333") };
     const result = try reSeqFn(allocator, &args);
     try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);

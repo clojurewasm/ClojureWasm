@@ -20,7 +20,7 @@ const keyword_intern = @import("../keyword_intern.zig");
 /// (str x) => string representation of x (non-readable)
 /// (str x y ...) => concatenation of all args (no separator)
 pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return Value.initString("");
+    if (args.len == 0) return Value.initString(allocator, "");
 
     // Single arg fast path
     if (args.len == 1) {
@@ -35,7 +35,7 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
         try v.formatStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 /// Convert a single value to its string representation.
@@ -50,20 +50,20 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
     // Realize lazy seqs/cons before string conversion
     const v = try collections.realizeValue(allocator, val);
     switch (v.tag()) {
-        .nil => return Value.initString(""),
+        .nil => return Value.initString(allocator, ""),
         .string => return v, // Already a string — zero-copy return
         .boolean => {
             // Static literal + single dupe (no formatting overhead)
             const s: []const u8 = if (v.asBoolean()) "true" else "false";
             const owned = try allocator.dupe(u8, s);
-            return Value.initString(owned);
+            return Value.initString(allocator, owned);
         },
         .integer => {
             // Stack buffer + single dupe: avoids Writer's alloc/realloc cycles
             var buf: [24]u8 = undefined;
             const s = std.fmt.bufPrint(&buf, "{d}", .{v.asInteger()}) catch unreachable;
             const owned = try allocator.dupe(u8, s);
-            return Value.initString(owned);
+            return Value.initString(allocator, owned);
         },
         .keyword => {
             // Direct construction: compute exact length, single alloc, @memcpy.
@@ -76,13 +76,13 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
                 @memcpy(owned[1 .. 1 + ns.len], ns);
                 owned[1 + ns.len] = '/';
                 @memcpy(owned[2 + ns.len ..], kw.name);
-                return Value.initString(owned);
+                return Value.initString(allocator, owned);
             } else {
                 const len = 1 + kw.name.len;
                 const owned = try allocator.alloc(u8, len);
                 owned[0] = ':';
                 @memcpy(owned[1..], kw.name);
-                return Value.initString(owned);
+                return Value.initString(allocator, owned);
             }
         },
         else => {
@@ -90,7 +90,7 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
             defer aw.deinit();
             try v.formatStr(&aw.writer);
             const owned = try aw.toOwnedSlice();
-            return Value.initString(owned);
+            return Value.initString(allocator, owned);
         },
     }
 }
@@ -99,7 +99,7 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
 /// (pr-str x) => readable representation of x
 /// (pr-str x y ...) => readable representations separated by space
 pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return Value.initString("");
+    if (args.len == 0) return Value.initString(allocator, "");
 
     value_mod.setPrintAllocator(allocator);
     defer value_mod.setPrintAllocator(null);
@@ -111,7 +111,7 @@ pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
         try v.formatPrStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 /// (subs s start), (subs s start end) — returns substring.
@@ -140,37 +140,37 @@ pub fn subsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const slice = s[start..end];
     const owned = try allocator.alloc(u8, slice.len);
     @memcpy(owned, slice);
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 /// (name x) — returns the name part of a string, symbol, or keyword.
-pub fn nameFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn nameFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to name", .{args.len});
     return switch (args[0].tag()) {
         .string => args[0],
-        .keyword => Value.initString(args[0].asKeyword().name),
-        .symbol => Value.initString(args[0].asSymbol().name),
+        .keyword => Value.initString(allocator, args[0].asKeyword().name),
+        .symbol => Value.initString(allocator, args[0].asSymbol().name),
         else => err.setErrorFmt(.eval, .type_error, .{}, "name expects a string, keyword, or symbol, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (namespace x) — returns the namespace part of a symbol or keyword, or nil.
-pub fn namespaceFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn namespaceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to namespace", .{args.len});
     return switch (args[0].tag()) {
-        .keyword => if (args[0].asKeyword().ns) |ns| Value.initString(ns) else Value.nil_val,
-        .symbol => if (args[0].asSymbol().ns) |ns| Value.initString(ns) else Value.nil_val,
+        .keyword => if (args[0].asKeyword().ns) |ns| Value.initString(allocator, ns) else Value.nil_val,
+        .symbol => if (args[0].asSymbol().ns) |ns| Value.initString(allocator, ns) else Value.nil_val,
         else => err.setErrorFmt(.eval, .type_error, .{}, "namespace expects a keyword or symbol, got {s}", .{@tagName(args[0].tag())}),
     };
 }
 
 /// (keyword x), (keyword ns name) — coerce to keyword.
-pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn keywordFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) {
         const result: Value = switch (args[0].tag()) {
             .keyword => args[0],
-            .string => Value.initKeyword(.{ .name = args[0].asString(), .ns = null }),
-            .symbol => Value.initKeyword(.{ .name = args[0].asSymbol().name, .ns = args[0].asSymbol().ns }),
+            .string => Value.initKeyword(allocator, .{ .name = args[0].asString(), .ns = null }),
+            .symbol => Value.initKeyword(allocator, .{ .name = args[0].asSymbol().name, .ns = args[0].asSymbol().ns }),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword expects a string, keyword, or symbol, got {s}", .{@tagName(args[0].tag())}),
         };
         keyword_intern.intern(result.asKeyword().ns, result.asKeyword().name);
@@ -186,14 +186,14 @@ pub fn keywordFn(_: Allocator, args: []const Value) anyerror!Value {
             else => return err.setErrorFmt(.eval, .type_error, .{}, "keyword name expects a string, got {s}", .{@tagName(args[1].tag())}),
         };
         keyword_intern.intern(ns_str, name_str);
-        return Value.initKeyword(.{ .name = name_str, .ns = ns_str });
+        return Value.initKeyword(allocator, .{ .name = name_str, .ns = ns_str });
     }
     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to keyword", .{args.len});
 }
 
 /// (find-keyword name), (find-keyword ns name) — find interned keyword.
 /// Returns nil if the keyword has not been interned.
-pub fn findKeywordFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn findKeywordFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) {
         // (find-keyword :foo) or (find-keyword 'foo) or (find-keyword "foo")
         const ns: ?[]const u8 = switch (args[0].tag()) {
@@ -209,7 +209,7 @@ pub fn findKeywordFn(_: Allocator, args: []const Value) anyerror!Value {
             else => unreachable,
         };
         if (keyword_intern.contains(ns, name)) {
-            return Value.initKeyword(.{ .ns = ns, .name = name });
+            return Value.initKeyword(allocator, .{ .ns = ns, .name = name });
         }
         return Value.nil_val;
     } else if (args.len == 2) {
@@ -224,7 +224,7 @@ pub fn findKeywordFn(_: Allocator, args: []const Value) anyerror!Value {
             else => return err.setErrorFmt(.eval, .type_error, .{}, "find-keyword name expects a string, got {s}", .{@tagName(args[1].tag())}),
         };
         if (keyword_intern.contains(ns_str, name_str)) {
-            return Value.initKeyword(.{ .ns = ns_str, .name = name_str });
+            return Value.initKeyword(allocator, .{ .ns = ns_str, .name = name_str });
         }
         return Value.nil_val;
     }
@@ -232,12 +232,12 @@ pub fn findKeywordFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (symbol x), (symbol ns name) — coerce to symbol.
-pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn symbolFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 1) {
         return switch (args[0].tag()) {
             .symbol => args[0],
-            .string => Value.initSymbol(.{ .name = args[0].asString(), .ns = null }),
-            .keyword => Value.initSymbol(.{ .name = args[0].asKeyword().name, .ns = args[0].asKeyword().ns }),
+            .string => Value.initSymbol(allocator, .{ .name = args[0].asString(), .ns = null }),
+            .keyword => Value.initSymbol(allocator, .{ .name = args[0].asKeyword().name, .ns = args[0].asKeyword().ns }),
             else => err.setErrorFmt(.eval, .type_error, .{}, "symbol expects a string, keyword, or symbol, got {s}", .{@tagName(args[0].tag())}),
         };
     } else if (args.len == 2) {
@@ -250,7 +250,7 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
             .string => args[1].asString(),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "symbol name expects a string, got {s}", .{@tagName(args[1].tag())}),
         };
-        return Value.initSymbol(.{ .name = name_str, .ns = ns_str });
+        return Value.initSymbol(allocator, .{ .name = name_str, .ns = ns_str });
     }
     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to symbol", .{args.len});
 }
@@ -259,7 +259,7 @@ pub fn symbolFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (print-str x) => non-readable representation of x
 /// (print-str x y ...) => non-readable representations separated by space
 pub fn printStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0) return Value.initString("");
+    if (args.len == 0) return Value.initString(allocator, "");
 
     value_mod.setPrintAllocator(allocator);
     value_mod.setPrintReadably(false);
@@ -274,7 +274,7 @@ pub fn printStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
         try arg.formatPrStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 /// (prn-str) => "\n"
@@ -291,7 +291,7 @@ pub fn prnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     try aw.writer.writeAll("\n");
     const owned = try aw.toOwnedSlice();
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 /// (println-str) => "\n"
@@ -312,7 +312,7 @@ pub fn printlnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     try aw.writer.writeAll("\n");
     const owned = try aw.toOwnedSlice();
-    return Value.initString(owned);
+    return Value.initString(allocator, owned);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -411,7 +411,7 @@ test "str - nil returns empty string" {
 }
 
 test "str - string returns same string" {
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const result = try strFn(testing.allocator, &args);
     try testing.expectEqualStrings("hello", result.asString());
 }
@@ -431,7 +431,7 @@ test "str - boolean" {
 }
 
 test "str - keyword" {
-    const args = [_]Value{Value.initKeyword(.{ .name = "foo", .ns = null })};
+    const args = [_]Value{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = null })};
     const result = try strFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings(":foo", result.asString());
@@ -440,7 +440,7 @@ test "str - keyword" {
 test "str - multi-arg concatenation" {
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString(" + "),
+        Value.initString(testing.allocator, " + "),
         Value.initInteger(2),
     };
     const result = try strFn(testing.allocator, &args);
@@ -450,9 +450,9 @@ test "str - multi-arg concatenation" {
 
 test "str - nil in multi-arg is empty" {
     const args = [_]Value{
-        Value.initString("a"),
+        Value.initString(testing.allocator, "a"),
         Value.nil_val,
-        Value.initString("b"),
+        Value.initString(testing.allocator, "b"),
     };
     const result = try strFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
@@ -465,7 +465,7 @@ test "pr-str - no args returns empty string" {
 }
 
 test "pr-str - string is quoted" {
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const result = try prStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("\"hello\"", result.asString());
@@ -481,7 +481,7 @@ test "pr-str - nil" {
 test "pr-str - multi-arg space separated" {
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
         Value.nil_val,
     };
     const result = try prStrFn(testing.allocator, &args);
@@ -493,7 +493,7 @@ test "pr-str - multi-arg space separated" {
 
 test "subs with start" {
     const result = try subsFn(testing.allocator, &.{
-        Value.initString("hello world"),
+        Value.initString(testing.allocator, "hello world"),
         Value.initInteger(6),
     });
     defer testing.allocator.free(result.asString());
@@ -502,7 +502,7 @@ test "subs with start" {
 
 test "subs with start and end" {
     const result = try subsFn(testing.allocator, &.{
-        Value.initString("hello world"),
+        Value.initString(testing.allocator, "hello world"),
         Value.initInteger(0),
         Value.initInteger(5),
     });
@@ -512,7 +512,7 @@ test "subs with start and end" {
 
 test "subs out of bounds" {
     try testing.expectError(error.IndexError, subsFn(testing.allocator, &.{
-        Value.initString("hi"),
+        Value.initString(testing.allocator, "hi"),
         Value.initInteger(10),
     }));
 }
@@ -520,29 +520,29 @@ test "subs out of bounds" {
 // --- name/namespace tests ---
 
 test "name of keyword" {
-    const result = try nameFn(testing.allocator, &.{Value.initKeyword(.{ .name = "foo", .ns = "bar" })});
+    const result = try nameFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = "bar" })});
     try testing.expectEqualStrings("foo", result.asString());
 }
 
 test "name of string" {
-    const result = try nameFn(testing.allocator, &.{Value.initString("hello")});
+    const result = try nameFn(testing.allocator, &.{Value.initString(testing.allocator, "hello")});
     try testing.expectEqualStrings("hello", result.asString());
 }
 
 test "namespace of keyword with ns" {
-    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(.{ .name = "foo", .ns = "bar" })});
+    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = "bar" })});
     try testing.expectEqualStrings("bar", result.asString());
 }
 
 test "namespace of keyword without ns" {
-    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(.{ .name = "foo", .ns = null })});
+    const result = try namespaceFn(testing.allocator, &.{Value.initKeyword(testing.allocator, .{ .name = "foo", .ns = null })});
     try testing.expect(result == .nil);
 }
 
 // --- keyword/symbol coercion tests ---
 
 test "keyword from string" {
-    const result = try keywordFn(testing.allocator, &.{Value.initString("foo")});
+    const result = try keywordFn(testing.allocator, &.{Value.initString(testing.allocator, "foo")});
     try testing.expect(result == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
     try testing.expect(result.asKeyword().ns == null);
@@ -550,8 +550,8 @@ test "keyword from string" {
 
 test "keyword with ns and name" {
     const result = try keywordFn(testing.allocator, &.{
-        Value.initString("my.ns"),
-        Value.initString("foo"),
+        Value.initString(testing.allocator, "my.ns"),
+        Value.initString(testing.allocator, "foo"),
     });
     try testing.expect(result == .keyword);
     try testing.expectEqualStrings("foo", result.asKeyword().name);
@@ -559,7 +559,7 @@ test "keyword with ns and name" {
 }
 
 test "symbol from string" {
-    const result = try symbolFn(testing.allocator, &.{Value.initString("bar")});
+    const result = try symbolFn(testing.allocator, &.{Value.initString(testing.allocator, "bar")});
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
     try testing.expect(result.asSymbol().ns == null);
@@ -567,8 +567,8 @@ test "symbol from string" {
 
 test "symbol with ns and name" {
     const result = try symbolFn(testing.allocator, &.{
-        Value.initString("my.ns"),
-        Value.initString("bar"),
+        Value.initString(testing.allocator, "my.ns"),
+        Value.initString(testing.allocator, "bar"),
     });
     try testing.expect(result == .symbol);
     try testing.expectEqualStrings("bar", result.asSymbol().name);
@@ -583,7 +583,7 @@ test "print-str - no args returns empty string" {
 }
 
 test "print-str - string is unquoted" {
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const result = try printStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("hello", result.asString());
@@ -592,7 +592,7 @@ test "print-str - string is unquoted" {
 test "print-str - multi-arg space separated" {
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
     };
     const result = try printStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
@@ -608,7 +608,7 @@ test "prn-str - no args returns newline" {
 }
 
 test "prn-str - string is quoted with newline" {
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const result = try prnStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("\"hello\"\n", result.asString());
@@ -633,7 +633,7 @@ test "println-str - no args returns newline" {
 }
 
 test "println-str - string is unquoted with newline" {
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const result = try printlnStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
     try testing.expectEqualStrings("hello\n", result.asString());
@@ -642,7 +642,7 @@ test "println-str - string is unquoted with newline" {
 test "println-str - multi-arg space separated with newline" {
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
     };
     const result = try printlnStrFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());
@@ -654,7 +654,7 @@ test "str - large string over 4KB" {
     const chunk = "a" ** 100; // 100 bytes
     var args: [60]Value = undefined;
     for (&args) |*a| {
-        a.* = Value.initString(chunk);
+        a.* = Value.initString(testing.allocator, chunk);
     }
     const result = try strFn(testing.allocator, &args);
     defer testing.allocator.free(result.asString());

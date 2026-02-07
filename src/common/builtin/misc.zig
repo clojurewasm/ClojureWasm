@@ -34,7 +34,7 @@ pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
     try w.writeAll(prefix);
     try w.print("{d}", .{gensym_counter});
     const name = try allocator.dupe(u8, w.buffered());
-    return Value.initSymbol(.{ .ns = null, .name = name });
+    return Value.initSymbol(allocator, .{ .ns = null, .name = name });
 }
 
 // ============================================================
@@ -128,7 +128,7 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const result = try allocator.dupe(u8, aw.writer.buffered());
-    return Value.initString(result);
+    return Value.initString(allocator, result);
 }
 
 // ============================================================
@@ -317,7 +317,7 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (intern ns name) or (intern ns name val)
 /// Finds or creates a var named by the symbol name in the namespace ns, setting root to val if supplied.
-pub fn internFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn internFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to intern", .{args.len});
     const ns_name = switch (args[0].tag()) {
         .symbol => args[0].asSymbol().name,
@@ -336,7 +336,7 @@ pub fn internFn(_: Allocator, args: []const Value) anyerror!Value {
         v.bindRoot(args[2]);
     }
     // Return the qualified symbol representing the var
-    return Value.initSymbol(.{ .ns = ns_name, .name = var_name });
+    return Value.initSymbol(allocator, .{ .ns = ns_name, .name = var_name });
 }
 
 // ============================================================
@@ -360,7 +360,7 @@ pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var i: usize = 0;
     iter = env.namespaces.iterator();
     while (iter.next()) |entry| {
-        items[i] = Value.initSymbol(.{ .ns = null, .name = entry.key_ptr.* });
+        items[i] = Value.initSymbol(allocator, .{ .ns = null, .name = entry.key_ptr.* });
         i += 1;
     }
     const set = try allocator.create(value_mod.PersistentHashSet);
@@ -526,7 +526,7 @@ pub fn randomUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
 
     const result = try allocator.dupe(u8, &buf);
-    return Value.initString(result);
+    return Value.initString(allocator, result);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -691,7 +691,7 @@ test "gensym - with prefix" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const result = try gensymFn(alloc, &[_]Value{Value.initString("foo")});
+    const result = try gensymFn(alloc, &[_]Value{Value.initString(alloc, "foo")});
     try testing.expect(result == .symbol);
     try testing.expect(std.mem.startsWith(u8, result.asSymbol().name, "foo"));
 }
@@ -732,8 +732,8 @@ test "format - %s" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        Value.initString("hello %s"),
-        Value.initString("world"),
+        Value.initString(alloc, "hello %s"),
+        Value.initString(alloc, "world"),
     });
     try testing.expectEqualStrings("hello world", result.asString());
 }
@@ -744,7 +744,7 @@ test "format - %d" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        Value.initString("count: %d"),
+        Value.initString(alloc, "count: %d"),
         Value.initInteger(42),
     });
     try testing.expectEqualStrings("count: 42", result.asString());
@@ -756,7 +756,7 @@ test "format - %%" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        Value.initString("100%%"),
+        Value.initString(alloc, "100%%"),
     });
     try testing.expectEqualStrings("100%", result.asString());
 }
@@ -767,8 +767,8 @@ test "format - mixed" {
     const alloc = arena.allocator();
 
     const result = try formatFn(alloc, &[_]Value{
-        Value.initString("%s is %d"),
-        Value.initString("x"),
+        Value.initString(alloc, "%s is %d"),
+        Value.initString(alloc, "x"),
         Value.initInteger(10),
     });
     try testing.expectEqualStrings("x is 10", result.asString());

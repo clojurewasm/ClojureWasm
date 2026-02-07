@@ -183,8 +183,8 @@ fn popOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value 
     const result: Value = if (capture_buf) |buf| blk: {
         const str = allocator.dupe(u8, buf.items) catch return error.OutOfMemory;
         buf.deinit(capture_alloc.?);
-        break :blk Value.initString(str);
-    } else Value.initString("");
+        break :blk Value.initString(allocator, str);
+    } else Value.initString(allocator, "");
 
     // Restore previous state
     capture_depth -= 1;
@@ -274,7 +274,7 @@ test "println - no args prints newline" {
 test "println - single string unquoted" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const output = try capturedOutput(&buf, printlnFn, &args);
     try testing.expectEqualStrings("hello\n", output);
 }
@@ -284,7 +284,7 @@ test "println - multi-arg space separated" {
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
         Value.nil_val,
     };
     const output = try capturedOutput(&buf, printlnFn, &args);
@@ -311,7 +311,7 @@ test "prn - no args prints newline" {
 test "prn - string is quoted" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const output = try capturedOutput(&buf, prnFn, &args);
     try testing.expectEqualStrings("\"hello\"\n", output);
 }
@@ -321,7 +321,7 @@ test "prn - multi-arg space separated readable" {
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
         Value.nil_val,
     };
     const output = try capturedOutput(&buf, prnFn, &args);
@@ -350,7 +350,7 @@ test "print - no args prints nothing" {
 test "print - single string unquoted no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const output = try capturedOutput(&buf, printFn, &args);
     try testing.expectEqualStrings("hello", output);
 }
@@ -360,7 +360,7 @@ test "print - multi-arg space separated no newline" {
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
         Value.nil_val,
     };
     const output = try capturedOutput(&buf, printFn, &args);
@@ -379,7 +379,7 @@ test "pr - no args prints nothing" {
 test "pr - string is quoted no newline" {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(testing.allocator);
-    const args = [_]Value{Value.initString("hello")};
+    const args = [_]Value{Value.initString(testing.allocator, "hello")};
     const output = try capturedOutput(&buf, prFn, &args);
     try testing.expectEqualStrings("\"hello\"", output);
 }
@@ -389,7 +389,7 @@ test "pr - multi-arg space separated readable no newline" {
     defer buf.deinit(testing.allocator);
     const args = [_]Value{
         Value.initInteger(1),
-        Value.initString("hello"),
+        Value.initString(testing.allocator, "hello"),
         Value.nil_val,
     };
     const output = try capturedOutput(&buf, prFn, &args);

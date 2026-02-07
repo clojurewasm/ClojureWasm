@@ -254,7 +254,7 @@ test "transient map - assoc! dissoc! persistent!" {
 
     // Create persistent map {:a 1}
     const entries = try allocator.alloc(Value, 2);
-    entries[0] = Value.initKeyword(.{ .name = "a", .ns = null });
+    entries[0] = Value.initKeyword(allocator, .{ .name = "a", .ns = null });
     entries[1] = Value.initInteger(1);
     const pm = try allocator.create(PersistentArrayMap);
     pm.* = .{ .entries = entries };
@@ -271,7 +271,7 @@ test "transient map - assoc! dissoc! persistent!" {
     // (assoc! tm :b 2)
     _ = try assocBangFn(allocator, &.{
         tm_val,
-        Value.initKeyword(.{ .name = "b", .ns = null }),
+        Value.initKeyword(allocator, .{ .name = "b", .ns = null }),
         Value.initInteger(2),
     });
     try testing.expectEqual(@as(usize, 2), tm.count());
@@ -279,7 +279,7 @@ test "transient map - assoc! dissoc! persistent!" {
     // (dissoc! tm :a)
     _ = try dissocBangFn(allocator, &.{
         tm_val,
-        Value.initKeyword(.{ .name = "a", .ns = null }),
+        Value.initKeyword(allocator, .{ .name = "a", .ns = null }),
     });
     try testing.expectEqual(@as(usize, 1), tm.count());
 

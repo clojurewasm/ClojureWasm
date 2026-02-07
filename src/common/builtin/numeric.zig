@@ -299,7 +299,7 @@ fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var buf: [4]u8 = undefined;
     const len = std.unicode.utf8Encode(code, &buf) catch return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Invalid Unicode codepoint", .{});
     const str = allocator.dupe(u8, buf[0..len]) catch return error.OutOfMemory;
-    return Value.initString(str);
+    return Value.initString(allocator, str);
 }
 
 /// (parse-long s) — Parses string to integer, returns nil if not valid.
@@ -326,14 +326,14 @@ fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (parse-uuid s) — Parses string as UUID, returns the UUID string if valid, nil if not.
 /// Throws on non-string input. UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-fn parseUuidFn(_: Allocator, args: []const Value) anyerror!Value {
+fn parseUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-uuid", .{args.len});
     const s = switch (args[0].tag()) {
         .string => args[0].asString(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "parse-uuid expects a string argument", .{}),
     };
     if (isValidUuid(s)) {
-        return Value.initString(s);
+        return Value.initString(allocator, s);
     }
     return Value.nil_val;
 }
@@ -784,29 +784,29 @@ test "rand-int with non-positive n is error" {
 }
 
 test "parse-long valid integer" {
-    try testing.expectEqual(Value.initInteger(42), try parseLongFn(test_alloc, &.{Value.initString("42")}));
+    try testing.expectEqual(Value.initInteger(42), try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "42")}));
 }
 
 test "parse-long negative" {
-    try testing.expectEqual(Value.initInteger(-7), try parseLongFn(test_alloc, &.{Value.initString("-7")}));
+    try testing.expectEqual(Value.initInteger(-7), try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "-7")}));
 }
 
 test "parse-long invalid returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString("abc")}));
+    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "abc")}));
 }
 
 test "parse-long float string returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString("3.14")}));
+    try testing.expectEqual(Value.nil_val, try parseLongFn(test_alloc, &.{Value.initString(test_alloc, "3.14")}));
 }
 
 test "parse-double valid" {
-    const result = try parseDoubleFn(test_alloc, &.{Value.initString("3.14")});
+    const result = try parseDoubleFn(test_alloc, &.{Value.initString(test_alloc, "3.14")});
     try testing.expect(result.tag() == .float);
     try testing.expect(result.asFloat() == 3.14);
 }
 
 test "parse-double invalid returns nil" {
-    try testing.expectEqual(Value.nil_val, try parseDoubleFn(test_alloc, &.{Value.initString("xyz")}));
+    try testing.expectEqual(Value.nil_val, try parseDoubleFn(test_alloc, &.{Value.initString(test_alloc, "xyz")}));
 }
 
 test "parse-long non-string throws TypeError" {
