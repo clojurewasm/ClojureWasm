@@ -38,7 +38,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 - ~~30.3b src/ path auto-detect~~
 - ~~30.3c cljw.edn support~~
 - ~~30.4a letfn implementation~~
-- 30.4b with-open macro
+- ~~30.4b with-open macro~~
 - 30.4c tagged-literal + reader-conditional
 - 30.4d with-local-vars + with-in-str
 - 30.4e Remaining type predicates
@@ -49,15 +49,13 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-30.4b — with-open macro. Resource management: (with-open [r (expr)] body)
-auto-closes resource on exit.
+30.4c — tagged-literal + reader-conditional. EDN portability for .cljc files.
 
 ## Previous Task
 
-30.4a — letfn implementation. Added letfn* special form (analyzer, compiler,
-VM, TreeWalk) + letfn macro in core.clj. New letfn_patch opcode (0x69) for
-patching closure bindings after creation. Mutual recursion and multi-arity
-tested on both backends.
+30.4b — with-open macro. Added close function and with-open macro to core.clj.
+Uses (close x) instead of (.close x) Java interop. try/finally cleanup
+pattern, multiple bindings supported. Tested on both backends.
 
 ## Known Issues
 

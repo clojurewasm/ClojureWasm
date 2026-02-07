@@ -1579,6 +1579,33 @@
          _# (try (do ~@body) (catch Exception e# (pop-output-capture) (throw e#)))]
      (pop-output-capture)))
 
+;; CLJW: .close Java interop replaced with (close x) function call.
+;; No-op for now; will dispatch on type when file IO types are added.
+(defn close
+  "Closes a resource. No-op for types without close semantics."
+  {:added "1.0"}
+  [x] nil)
+
+(defmacro with-open
+  "bindings => [name init ...]
+
+  Evaluates body in a try expression with names bound to the values
+  of the inits, and a finally clause that calls (close name) on each
+  name in reverse order."
+  {:added "1.0"}
+  [bindings & body]
+  (assert-args
+   (vector? bindings) "a vector for its binding"
+   (even? (count bindings)) "an even number of forms in binding vector")
+  (cond
+    (= (count bindings) 0) `(do ~@body)
+    (symbol? (bindings 0)) `(let ~(subvec bindings 0 2)
+                              (try
+                                (with-open ~(subvec bindings 2) ~@body)
+                                (finally
+                                  (close ~(bindings 0)))))
+    :else (throw (str "with-open only allows Symbols in bindings"))))
+
 ;; === Transducer basics ===
 
 (defn transduce

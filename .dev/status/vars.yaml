@@ -706,7 +706,7 @@ vars:
     "with-loading-context": {type: macro, status: skip, note: JVM classloader}
     "with-local-vars": {type: macro, status: skip, note: needs Var.create()}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
-    "with-open": {type: macro, status: skip, note: needs .close interop}
+    "with-open": {type: macro, status: done, note: "UPSTREAM-DIFF: (close x) instead of (.close x)"}
     "with-out-str": {type: macro, status: done}
     "with-precision": {type: macro, status: skip, note: JVM BigDecimal}
     "with-redefs": {type: macro, status: done}
