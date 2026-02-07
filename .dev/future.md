@@ -11,7 +11,7 @@
 - **Zig-based full-scratch Clojure reimplementation**, no Java Interop
 - Single-binary distribution for native track
 - Dual backend: TreeWalk (correct) + BytecodeVM (fast), with `--compare` mode
-- **Current**: 526/704 vars implemented, Phase 26 (wasm_rt)
+- **Current**: 526/704 vars implemented, native production track (D79)
 - English-only codebase (D10): identifiers, comments, commits, docs
 - **Babashka-competitive performance** — beats Babashka 19/20 benchmarks (Phase 24)
 - OSS-ready from day one (EPL-1.0)
@@ -326,7 +326,8 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 - Optimization: LLVM optimizations at compile time. No runtime JIT.
 - Distribution: .wasm file, run on Wasmtime/WasmEdge/browsers (via WASI)
 - Use cases: Portable services, Wasm-first platforms, sandboxed execution
-- **Status**: Phase 26.R research complete. Implementation planned.
+- **Status**: Research complete (26.R). Implementation **deferred** (D79).
+  WasmGC blocked by LLVM, Wasmtime cycle GC unimplemented, WASI threads unstable.
 
 ### Key Decisions
 

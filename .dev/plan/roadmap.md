@@ -373,35 +373,76 @@ Call Wasm modules from native track. Use zware (pure Zig) as primary engine.
 
 **Reference**: .dev/future.md SS1, SS4, SS6; WasmResearch repo
 
-### Phase 26: wasm_rt Track
+### Phase 26: wasm_rt Track — DEFERRED
 
-Compile entire runtime to wasm32-wasi. eval + print on Wasmtime.
+Research complete (26.R). Implementation deferred pending Wasm ecosystem maturity.
+See `src/wasm_rt/README.md` for revival conditions.
+**Research archive**: `.dev/plan/phase26-wasm-rt.md`
 
-**Scope**: wasm32-wasi target, comptime switching (D78), both backends
-**Prerequisite**: Phase 25 complete, Phase 26.R research complete
-**Key findings**: F99 NOT required (D74 handles pathological cases),
-WasmGC not usable (LLVM), MarkSweepGc works as-is, WASI P1 sufficient.
-**Reference**: .dev/plan/phase26-wasm-rt.md, .dev/future.md SS7/SS8
+### Phase 27: NaN Boxing (Value 48B → 8B)
 
-| Task    | Description                                                |
-|---------|------------------------------------------------------------|
-| 26.1    | Build infrastructure — main_wasm.zig, comptime guards      |
-| 26.2    | WASI I/O layer — stdout/stderr, file I/O, getenv           |
-| 26.3    | Bootstrap and eval — core.clj + VM hot recompile on Wasm   |
-| 26.4    | Full feature verification — 526 vars, GC, benchmarks       |
+Fundamental performance optimization. Affects VM stack, collections, GC, cache.
 
-### Phase 27: Post-wasm_rt Refactoring
+**Scope**: Staged migration of Value representation
+**Prerequisite**: Phase 25 complete
+**Key risk**: 600+ call sites across 30+ files. Staged API migration (D72).
+**Reference**: .dev/notes/decisions.md D72
 
-Large-scale codebase refactoring after wasm_rt reveals true common/native/wasm_rt boundaries.
+| Sub-phase | Description                                              |
+|-----------|----------------------------------------------------------|
+| 27.1      | Add Value accessor API layer (tag(), asInteger(), etc.)  |
+| 27.2      | Migrate call sites file-by-file to new API               |
+| 27.3      | Switch internal representation to NaN-boxed u64          |
+
+### Phase 28: Single Binary Builder
+
+`cljw build app.clj -o app` — embed user code in self-contained binary.
+
+**Scope**: @embedFile user .clj, optional .wasm pre-linking
+**Prerequisite**: Phase 27 (NaN boxing makes binaries smaller/faster)
+**Reference**: .dev/plan/phase28-single-binary.md (to be created)
+
+| Sub-phase | Description                                              |
+|-----------|----------------------------------------------------------|
+| 28.1      | Source embedding: user .clj baked into binary             |
+| 28.2      | Wasm pre-linking: .wasm modules embedded via @embedFile   |
+| 28.3      | AOT bytecode: pre-compile to bytecode chunks (F7)        |
+
+### Phase 29: Codebase Restructuring
+
+Directory reorganization: common/native/ → core/eval/cli/.
 
 **Scope**:
+- Directory restructuring: core/ (platform-free), eval/ (VM+TW+bootstrap), cli/
 - File splitting (collections.zig 3696L, bootstrap.zig 3353L, vm.zig 2290L)
 - D3 violation resolution (move module-level state into structs)
-- Directory restructuring based on actual sharing patterns
-- Naming normalization, documentation pass
+- Import path cleanup, naming normalization
 
-**Prerequisite**: Phase 26 complete
-**Rationale**: D75 — wasm_rt reveals which code is truly common vs platform-specific
+**Prerequisite**: Phase 27 (single import rewrite pass after NaN boxing)
+
+### Phase 30: Production Robustness
+
+Error messages, stack traces, skip var recovery, nREPL/cider-nrepl.
+
+**Scope**:
+- Error reporting: Babashka-quality stack traces, source context
+- Skip var recovery: re-evaluate 178 skipped vars for Zig equivalents
+- nREPL: cider-nrepl op compatibility (eval, complete, info, stacktrace)
+- Zero-config project model: auto-detect src/, require resolution
+
+**Prerequisite**: Phase 29 (clean modular codebase for nREPL integration)
+
+### Phase 31: Wasm FFI Deep (Phase 25 Extension)
+
+Deepen Wasm InterOp with multi-module support and practical examples.
+
+**Scope**: Multi-module linking, WIT-based type-safe FFI, real-world samples
+**Prerequisite**: Phase 28 (.wasm pre-linking infrastructure)
+
+### Future: wasm_rt Revival
+
+When ecosystem conditions are met (see `src/wasm_rt/README.md`),
+revive Phase 26 using archived research in `.dev/plan/phase26-wasm-rt.md`.
 
 ---
 

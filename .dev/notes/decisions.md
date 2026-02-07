@@ -1847,3 +1847,44 @@ Total: ~12 comptime branches across 5 files. Well under the ">=3 per file → se
 
 **Consequence**: Phase 26 implementation adds main_wasm.zig and ~12 comptime guards.
 Phase 27 may restructure further based on actual wasm_rt experience.
+
+**Status**: Archived. Phase 26 implementation deferred (D79).
+
+---
+
+## D79: Strategic Pivot — Native Production Track
+
+**Date**: 2026-02-07
+**Context**: Phase 26.R research complete. Wasm ecosystem assessment reveals:
+
+1. **WasmGC**: LLVM cannot emit WasmGC types. No timeline for support.
+   All WasmGC languages (Kotlin, Dart, Go) bypass LLVM with custom backends.
+2. **Wasmtime GC**: Cycle collection unimplemented. Long-running programs leak.
+3. **WASI Threads**: Specification in flux (wasi-threads withdrawn).
+
+**Decision**: Defer wasm_rt implementation. Pivot to native production track.
+
+**Rationale**:
+- "Compile Zig runtime to Wasm" produces a working but unexciting result
+  (linear memory + self-managed GC = same as CPython/CRuby on Wasm)
+- True Wasm advantage (host GC cooperation, compact binaries, sandboxing)
+  requires WasmGC, which is inaccessible from Zig/LLVM
+- Native track has immediate high-value opportunities:
+  - NaN boxing: 6x memory reduction, cache efficiency
+  - Single binary builder: unique differentiator vs Babashka
+  - cider-nrepl: developer experience parity
+  - Skip var recovery: broader Clojure compatibility
+
+**New phase order**:
+- Phase 27: NaN Boxing (Value 48B -> 8B)
+- Phase 28: Single Binary Builder (`cljw build`)
+- Phase 29: Codebase Restructuring (core/eval/cli)
+- Phase 30: Production Robustness (errors, nREPL, skip vars)
+- Phase 31: Wasm FFI Deep (Phase 25 extension)
+- Future: wasm_rt revival when ecosystem matures
+
+**Positioning**: ClojureWasm = "Clojure expression power + Go distribution simplicity"
+- Ultra-fast (19/20 Babashka benchmark wins)
+- Tiny single binary (< 2MB with user code)
+- Wasm FFI (unique: no other Clojure runtime has this)
+- Zero-config (no deps.edn required, auto-detect src/)
