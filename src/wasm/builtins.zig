@@ -84,10 +84,10 @@ pub fn wasmLoadWasiFn(allocator: Allocator, args: []const Value) anyerror!Value 
     return Value{ .wasm_module = wasm_mod };
 }
 
-/// (wasm/fn module name sig) => WasmFn
-/// sig is a map: {:params [:i32 :i32] :results [:i32]}
+/// (wasm/fn module name) => WasmFn        ;; auto-resolve from binary
+/// (wasm/fn module name sig) => WasmFn     ;; explicit sig with cross-validation
 pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 3)
+    if (args.len < 2 or args.len > 3)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/fn", .{args.len});
 
     const wasm_mod = switch (args[0]) {
@@ -100,7 +100,21 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn expects a string function name, got {s}", .{@tagName(args[1])}),
     };
 
-    // Parse signature map {:params [...] :results [...]}
+    if (args.len == 2) {
+        // Auto-resolve from binary export info
+        const ei = wasm_mod.getExportInfo(name) orelse
+            return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn: no exported function \"{s}\" found in module", .{name});
+        const wfn = try allocator.create(WasmFn);
+        wfn.* = .{
+            .module = wasm_mod,
+            .name = name,
+            .param_types = ei.param_types,
+            .result_types = ei.result_types,
+        };
+        return Value{ .wasm_fn = wfn };
+    }
+
+    // 3-arg: parse explicit signature
     const params_key = Value{ .keyword = .{ .name = "params", .ns = null } };
     const results_key = Value{ .keyword = .{ .name = "results", .ns = null } };
 
@@ -116,11 +130,17 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => unreachable,
     };
 
-    // Parse :params vector of keyword type names
     const param_types = try parseTypeVec(allocator, params_val, "params");
     const result_types = try parseTypeVec(allocator, results_val, "results");
 
-    // Create WasmFn on the heap
+    // Cross-validate explicit sig against binary if export info exists
+    if (wasm_mod.getExportInfo(name)) |ei| {
+        if (!typesMatch(param_types, ei.param_types))
+            return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn: :params mismatch for \"{s}\" — declared vs binary signature differ", .{name});
+        if (!typesMatch(result_types, ei.result_types))
+            return err.setErrorFmt(.eval, .type_error, .{}, "wasm/fn: :results mismatch for \"{s}\" — declared vs binary signature differ", .{name});
+    }
+
     const wfn = try allocator.create(WasmFn);
     wfn.* = .{
         .module = wasm_mod,
@@ -130,6 +150,15 @@ pub fn wasmFnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     return Value{ .wasm_fn = wfn };
+}
+
+/// Compare two WasmValType slices for equality.
+fn typesMatch(a: []const WasmValType, b: []const WasmValType) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
+        if (x != y) return false;
+    }
+    return true;
 }
 
 /// Parse a Value (expected to be a vector of keywords like [:i32 :i64])
@@ -209,6 +238,72 @@ pub fn wasmMemoryWriteFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.nil;
 }
 
+const collections = @import("../common/collections.zig");
+const ExportInfo = wasm_types.ExportInfo;
+
+/// (wasm/exports module) => {"name" {:params [...] :results [...]}}
+/// Returns a map of exported function names to their type signatures.
+pub fn wasmExportsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1)
+        return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/exports", .{args.len});
+
+    const wasm_mod = switch (args[0]) {
+        .wasm_module => |m| m,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/exports expects a WasmModule, got {s}", .{@tagName(args[0])}),
+    };
+
+    const export_fns = wasm_mod.export_fns;
+    // Build outer map entries: [name1, sig1, name2, sig2, ...]
+    const outer_entries = try allocator.alloc(Value, export_fns.len * 2);
+    for (export_fns, 0..) |ei, i| {
+        outer_entries[i * 2] = .{ .string = ei.name };
+        outer_entries[i * 2 + 1] = try exportInfoToSigMap(allocator, ei);
+    }
+
+    const outer_map = try allocator.create(collections.PersistentArrayMap);
+    outer_map.* = .{ .entries = outer_entries };
+    return Value{ .map = outer_map };
+}
+
+/// Convert an ExportInfo into a Clojure map {:params [:i32 ...] :results [:i32 ...]}.
+fn exportInfoToSigMap(allocator: Allocator, ei: ExportInfo) !Value {
+    // Build :params vector
+    const param_items = try allocator.alloc(Value, ei.param_types.len);
+    for (ei.param_types, 0..) |pt, i| {
+        param_items[i] = .{ .keyword = .{ .name = wasmTypeToKeyword(pt), .ns = null } };
+    }
+    const param_vec = try allocator.create(collections.PersistentVector);
+    param_vec.* = .{ .items = param_items };
+
+    // Build :results vector
+    const result_items = try allocator.alloc(Value, ei.result_types.len);
+    for (ei.result_types, 0..) |rt, i| {
+        result_items[i] = .{ .keyword = .{ .name = wasmTypeToKeyword(rt), .ns = null } };
+    }
+    const result_vec = try allocator.create(collections.PersistentVector);
+    result_vec.* = .{ .items = result_items };
+
+    // Build {:params [...] :results [...]}
+    const sig_entries = try allocator.alloc(Value, 4);
+    sig_entries[0] = .{ .keyword = .{ .name = "params", .ns = null } };
+    sig_entries[1] = .{ .vector = param_vec };
+    sig_entries[2] = .{ .keyword = .{ .name = "results", .ns = null } };
+    sig_entries[3] = .{ .vector = result_vec };
+
+    const sig_map = try allocator.create(collections.PersistentArrayMap);
+    sig_map.* = .{ .entries = sig_entries };
+    return Value{ .map = sig_map };
+}
+
+fn wasmTypeToKeyword(wt: WasmValType) []const u8 {
+    return switch (wt) {
+        .i32 => "i32",
+        .i64 => "i64",
+        .f32 => "f32",
+        .f64 => "f64",
+    };
+}
+
 pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
     .{
         .name = "load",
@@ -225,8 +320,14 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
     .{
         .name = "fn",
         .func = wasmFnFn,
-        .doc = "Creates a callable Wasm function from a module, export name, and type signature map {:params [...] :results [...]}.",
-        .arglists = "([module name sig])",
+        .doc = "Creates a callable Wasm function. 2-arg auto-resolves signature from binary. 3-arg cross-validates explicit sig against binary.",
+        .arglists = "([module name] [module name sig])",
+    },
+    .{
+        .name = "exports",
+        .func = wasmExportsFn,
+        .doc = "Returns a map of exported function names to their type signatures {:params [...] :results [...]}.",
+        .arglists = "([module])",
     },
     .{
         .name = "memory-read",

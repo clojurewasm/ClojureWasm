@@ -23,14 +23,15 @@ Phase 25 — Wasm InterOp (FFI):
 
 ## Current Task
 
-25.5: WIT parser + module objects — parse WIT files to auto-resolve
-exports, type mappings, and create module objects with direct method calls.
+25.5a: Auto-export introspection — buildExportInfo() in loadCore,
+wasm/fn 2-arg auto-resolve, wasm/fn 3-arg cross-validation,
+wasm/exports builtin.
 
 ## Previous Task
 
-25.4: Host function injection — wasm/load with :imports option (D77),
-global trampoline + context table, callFnVal dispatch,
-example 03_host_functions.clj with print_i32/print_str callbacks.
+25.5: WIT parser + module objects (Phase 25.5 planned — 4 sub-tasks:
+25.5a auto-export, 25.5b module keyword lookup, 25.5c WIT parser,
+25.5d WIT string marshalling).
 
 ## Handover Notes
 

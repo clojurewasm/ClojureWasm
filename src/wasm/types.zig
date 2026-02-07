@@ -35,6 +35,13 @@ pub const WasmValType = enum {
     }
 };
 
+/// Export function signature — extracted from Wasm binary at load time.
+pub const ExportInfo = struct {
+    name: []const u8,
+    param_types: []const WasmValType,
+    result_types: []const WasmValType,
+};
+
 /// A loaded and instantiated Wasm module.
 /// Heap-allocated because zware Instance holds a *Store pointer — the
 /// struct must not move after instantiation.
@@ -43,6 +50,7 @@ pub const WasmModule = struct {
     store: zware.Store,
     module: zware.Module,
     instance: zware.Instance,
+    export_fns: []const ExportInfo = &[_]ExportInfo{},
 
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable for zware).
@@ -79,11 +87,19 @@ pub const WasmModule = struct {
         errdefer self.instance.deinit();
         try self.instance.instantiate();
 
+        self.export_fns = buildExportInfo(allocator, &self.module) catch &[_]ExportInfo{};
+
         return self;
     }
 
     pub fn deinit(self: *WasmModule) void {
         const allocator = self.allocator;
+        // Free export info
+        for (self.export_fns) |ei| {
+            allocator.free(ei.param_types);
+            allocator.free(ei.result_types);
+        }
+        if (self.export_fns.len > 0) allocator.free(self.export_fns);
         self.instance.deinit();
         self.module.deinit();
         self.store.deinit();
@@ -114,6 +130,14 @@ pub const WasmModule = struct {
         const end = @as(u64, offset) + @as(u64, data.len);
         if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
         @memcpy(mem_bytes[offset..][0..data.len], data);
+    }
+
+    /// Lookup export function info by name.
+    pub fn getExportInfo(self: *const WasmModule, name: []const u8) ?ExportInfo {
+        for (self.export_fns) |ei| {
+            if (std.mem.eql(u8, ei.name, name)) return ei;
+        }
+        return null;
     }
 };
 
@@ -355,6 +379,79 @@ pub fn registerHostFunctions(
     }
 }
 
+/// Build export function info by introspecting the Wasm binary's exports + types.
+fn buildExportInfo(allocator: Allocator, module: *zware.Module) ![]const ExportInfo {
+    // Count function exports
+    var func_count: usize = 0;
+    for (module.exports.list.items) |exp| {
+        if (exp.tag == .Func) func_count += 1;
+    }
+    if (func_count == 0) return &[_]ExportInfo{};
+
+    const infos = try allocator.alloc(ExportInfo, func_count);
+    errdefer allocator.free(infos);
+
+    var idx: usize = 0;
+    for (module.exports.list.items) |exp| {
+        if (exp.tag != .Func) continue;
+
+        const func_entry = module.functions.lookup(exp.index) catch continue;
+        const functype = module.types.lookup(func_entry.typeidx) catch continue;
+
+        // Convert zware ValType slices to WasmValType slices
+        const params = try allocator.alloc(WasmValType, functype.params.len);
+        errdefer allocator.free(params);
+        var valid = true;
+        for (functype.params, 0..) |p, i| {
+            params[i] = WasmValType.fromZware(p) orelse {
+                valid = false;
+                break;
+            };
+        }
+        if (!valid) {
+            allocator.free(params);
+            continue;
+        }
+
+        const results = try allocator.alloc(WasmValType, functype.results.len);
+        errdefer allocator.free(results);
+        for (functype.results, 0..) |r, i| {
+            results[i] = WasmValType.fromZware(r) orelse {
+                valid = false;
+                break;
+            };
+        }
+        if (!valid) {
+            allocator.free(params);
+            allocator.free(results);
+            continue;
+        }
+
+        infos[idx] = .{
+            .name = exp.name,
+            .param_types = params,
+            .result_types = results,
+        };
+        idx += 1;
+    }
+
+    // If some exports were skipped (unsupported types), shrink
+    if (idx < func_count) {
+        if (idx == 0) {
+            allocator.free(infos);
+            return &[_]ExportInfo{};
+        }
+        // Just return the full allocation — unused slots are harmless
+        // since we track idx. Actually, we need to return the right length.
+        const trimmed = try allocator.alloc(ExportInfo, idx);
+        @memcpy(trimmed, infos[0..idx]);
+        allocator.free(infos);
+        return trimmed;
+    }
+
+    return infos;
+}
+
 /// Lookup a Clojure function from the nested imports map.
 fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
     const mod_key = Value{ .string = module_name };
@@ -522,4 +619,61 @@ test "lookupImportFn — nested map lookup" {
 
     // Not found — wrong module name
     try testing.expect(lookupImportFn(imports, "other", "print_i32") == null);
+}
+
+test "buildExportInfo — add module exports" {
+    const wasm_bytes = @embedFile("testdata/01_add.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    // 01_add.wasm exports "add" with (i32, i32) -> i32
+    try testing.expect(wasm_mod.export_fns.len > 0);
+    const add_info = wasm_mod.getExportInfo("add");
+    try testing.expect(add_info != null);
+    const info = add_info.?;
+    try testing.expectEqual(@as(usize, 2), info.param_types.len);
+    try testing.expectEqual(WasmValType.i32, info.param_types[0]);
+    try testing.expectEqual(WasmValType.i32, info.param_types[1]);
+    try testing.expectEqual(@as(usize, 1), info.result_types.len);
+    try testing.expectEqual(WasmValType.i32, info.result_types[0]);
+}
+
+test "buildExportInfo — fibonacci module exports" {
+    const wasm_bytes = @embedFile("testdata/02_fibonacci.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    // 02_fibonacci.wasm exports "fib" with (i32) -> i32
+    const fib_info = wasm_mod.getExportInfo("fib");
+    try testing.expect(fib_info != null);
+    const info = fib_info.?;
+    try testing.expectEqual(@as(usize, 1), info.param_types.len);
+    try testing.expectEqual(WasmValType.i32, info.param_types[0]);
+    try testing.expectEqual(@as(usize, 1), info.result_types.len);
+    try testing.expectEqual(WasmValType.i32, info.result_types[0]);
+}
+
+test "buildExportInfo — memory module exports" {
+    const wasm_bytes = @embedFile("testdata/03_memory.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    // 03_memory.wasm exports "store" (i32, i32) -> void and "load" (i32) -> i32
+    const store_info = wasm_mod.getExportInfo("store");
+    try testing.expect(store_info != null);
+    try testing.expectEqual(@as(usize, 2), store_info.?.param_types.len);
+    try testing.expectEqual(@as(usize, 0), store_info.?.result_types.len);
+
+    const load_info = wasm_mod.getExportInfo("load");
+    try testing.expect(load_info != null);
+    try testing.expectEqual(@as(usize, 1), load_info.?.param_types.len);
+    try testing.expectEqual(@as(usize, 1), load_info.?.result_types.len);
+}
+
+test "getExportInfo — nonexistent name returns null" {
+    const wasm_bytes = @embedFile("testdata/01_add.wasm");
+    var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
+    defer wasm_mod.deinit();
+
+    try testing.expect(wasm_mod.getExportInfo("nonexistent") == null);
 }
