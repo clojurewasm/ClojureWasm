@@ -260,9 +260,17 @@ pub const TreeWalk = struct {
                 const closure: *const Closure = @ptrCast(@alignCast(fn_ptr.proto));
                 return self.callClosure(closure, callee, args);
             },
-            .keyword => {
+            .keyword => |kw| {
                 // Keyword-as-function: (:key map) => (get map :key)
                 if (args.len < 1 or args.len > 2) return error.ArityError;
+                if (args[0] == .wasm_module and args.len == 1) {
+                    // Keyword lookup on wasm_module: (:add mod) => cached WasmFn
+                    const wm = args[0].wasm_module;
+                    return if (wm.getExportFn(kw.name)) |wf|
+                        Value{ .wasm_fn = wf }
+                    else
+                        Value.nil;
+                }
                 if (args[0] == .map) {
                     return args[0].map.get(callee) orelse
                         if (args.len == 2) args[1] else .nil;
@@ -300,6 +308,19 @@ pub const TreeWalk = struct {
                 if (args.len < 1 or args.len > 2) return error.ArityError;
                 return hm.get(args[0]) orelse
                     if (args.len == 2) args[1] else .nil;
+            },
+            .wasm_module => |wm| {
+                // Module-as-function: (mod :add) => cached WasmFn
+                if (args.len != 1) return error.ArityError;
+                const name = switch (args[0]) {
+                    .keyword => |kw| kw.name,
+                    .string => |s| s,
+                    else => return error.TypeError,
+                };
+                return if (wm.getExportFn(name)) |wf|
+                    Value{ .wasm_fn = wf }
+                else
+                    Value.nil;
             },
             .var_ref => |v| {
                 // Var-as-IFn: (#'f x) => (f x)
@@ -350,6 +371,13 @@ pub const TreeWalk = struct {
                 return error.ArityError;
             }
             const target = try self.run(call_n.args[0]);
+            if (target == .wasm_module and call_n.args.len == 1) {
+                const wm = target.wasm_module;
+                return if (wm.getExportFn(callee.keyword.name)) |wf|
+                    Value{ .wasm_fn = wf }
+                else
+                    Value.nil;
+            }
             if (target == .map) {
                 return target.map.get(callee) orelse
                     if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
@@ -395,6 +423,21 @@ pub const TreeWalk = struct {
             const target = try self.run(call_n.args[0]);
             return callee.hash_map.get(target) orelse
                 if (call_n.args.len == 2) try self.run(call_n.args[1]) else .nil;
+        }
+
+        // Wasm module-as-function: (mod :add) => cached WasmFn
+        if (callee == .wasm_module) {
+            if (call_n.args.len != 1) return error.ArityError;
+            const key = try self.run(call_n.args[0]);
+            const name = switch (key) {
+                .keyword => |kw| kw.name,
+                .string => |s| s,
+                else => return error.TypeError,
+            };
+            return if (callee.wasm_module.getExportFn(name)) |wf|
+                Value{ .wasm_fn = wf }
+            else
+                Value.nil;
         }
 
         // Var-as-IFn: (#'f args) => deref var, then dispatch

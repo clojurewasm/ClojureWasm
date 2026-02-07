@@ -624,9 +624,16 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
                 return error.TypeError;
             return callFnVal(allocator, method_fn, args);
         },
-        .keyword => {
+        .keyword => |kw| {
             // Keyword-as-function: (:key map) => (get map :key)
             if (args.len < 1) return error.TypeError;
+            if (args[0] == .wasm_module and args.len == 1) {
+                const wm = args[0].wasm_module;
+                return if (wm.getExportFn(kw.name)) |wf|
+                    Value{ .wasm_fn = wf }
+                else
+                    Value.nil;
+            }
             if (args[0] == .map) {
                 return args[0].map.get(fn_val) orelse
                     if (args.len >= 2) args[1] else Value.nil;
@@ -643,6 +650,19 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             // Set-as-function: (#{:a :b} :a) => :a or nil
             if (args.len < 1) return error.TypeError;
             return if (s.contains(args[0])) args[0] else Value.nil;
+        },
+        .wasm_module => |wm| {
+            // Module-as-function: (mod :add) => cached WasmFn
+            if (args.len != 1) return error.ArityError;
+            const name = switch (args[0]) {
+                .keyword => |kw| kw.name,
+                .string => |s| s,
+                else => return error.TypeError,
+            };
+            return if (wm.getExportFn(name)) |wf|
+                Value{ .wasm_fn = wf }
+            else
+                Value.nil;
         },
         .wasm_fn => |wf| return wf.call(allocator, args),
         .var_ref => |v| return callFnVal(allocator, v.deref(), args),

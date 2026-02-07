@@ -51,6 +51,8 @@ pub const WasmModule = struct {
     module: zware.Module,
     instance: zware.Instance,
     export_fns: []const ExportInfo = &[_]ExportInfo{},
+    /// Pre-generated WasmFn instances for keyword lookup dispatch.
+    cached_fns: []const WasmFn = &[_]WasmFn{},
 
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable for zware).
@@ -88,12 +90,15 @@ pub const WasmModule = struct {
         try self.instance.instantiate();
 
         self.export_fns = buildExportInfo(allocator, &self.module) catch &[_]ExportInfo{};
+        self.cached_fns = buildCachedFns(allocator, self) catch &[_]WasmFn{};
 
         return self;
     }
 
     pub fn deinit(self: *WasmModule) void {
         const allocator = self.allocator;
+        // Free cached WasmFn instances
+        if (self.cached_fns.len > 0) allocator.free(self.cached_fns);
         // Free export info
         for (self.export_fns) |ei| {
             allocator.free(ei.param_types);
@@ -136,6 +141,14 @@ pub const WasmModule = struct {
     pub fn getExportInfo(self: *const WasmModule, name: []const u8) ?ExportInfo {
         for (self.export_fns) |ei| {
             if (std.mem.eql(u8, ei.name, name)) return ei;
+        }
+        return null;
+    }
+
+    /// Lookup a cached WasmFn by export name (for keyword dispatch).
+    pub fn getExportFn(self: *const WasmModule, name: []const u8) ?*const WasmFn {
+        for (self.cached_fns) |*wf| {
+            if (std.mem.eql(u8, wf.name, name)) return wf;
         }
         return null;
     }
@@ -450,6 +463,23 @@ fn buildExportInfo(allocator: Allocator, module: *zware.Module) ![]const ExportI
     }
 
     return infos;
+}
+
+/// Pre-generate WasmFn instances for all exports (used by keyword dispatch).
+fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]const WasmFn {
+    const exports = wasm_mod.export_fns;
+    if (exports.len == 0) return &[_]WasmFn{};
+
+    const fns = try allocator.alloc(WasmFn, exports.len);
+    for (exports, 0..) |ei, i| {
+        fns[i] = .{
+            .module = wasm_mod,
+            .name = ei.name,
+            .param_types = ei.param_types,
+            .result_types = ei.result_types,
+        };
+    }
+    return fns;
 }
 
 /// Lookup a Clojure function from the nested imports map.

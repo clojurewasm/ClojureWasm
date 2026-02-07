@@ -23,9 +23,9 @@ Phase 25 — Wasm InterOp (FFI):
 
 ## Current Task
 
-25.5a: Auto-export introspection — buildExportInfo() in loadCore,
-wasm/fn 2-arg auto-resolve, wasm/fn 3-arg cross-validation,
-wasm/exports builtin.
+25.5b: Module keyword lookup + module-as-function.
+((:add mod) 3 4) => keyword dispatch on wasm_module.
+(mod :add) => module-as-function. Cached WasmFn pre-generation.
 
 ## Previous Task
 

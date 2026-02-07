@@ -935,7 +935,14 @@ pub const VM = struct {
                     return error.ArityError;
                 }
                 const map_arg = self.stack[fn_idx + 1];
-                const result = if (map_arg == .map)
+                const result = if (map_arg == .wasm_module and arg_count == 1) blk: {
+                    // Keyword lookup on wasm_module: (:add mod) => cached WasmFn
+                    const wm = map_arg.wasm_module;
+                    break :blk if (wm.getExportFn(kw.name)) |wf|
+                        Value{ .wasm_fn = wf }
+                    else
+                        Value.nil;
+                } else if (map_arg == .map)
                     map_arg.map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
                 else if (map_arg == .hash_map)
                     map_arg.hash_map.get(callee) orelse (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil)
@@ -984,6 +991,22 @@ pub const VM = struct {
                 const key = self.stack[fn_idx + 1];
                 const result = hm.get(key) orelse
                     (if (arg_count >= 2) self.stack[fn_idx + 2] else Value.nil);
+                self.sp = fn_idx;
+                try self.push(result);
+            },
+            .wasm_module => |wm| {
+                // Module-as-function: (mod :add) => cached WasmFn
+                if (arg_count != 1) return error.ArityError;
+                const key = self.stack[fn_idx + 1];
+                const name = switch (key) {
+                    .keyword => |kw| kw.name,
+                    .string => |s| s,
+                    else => return error.TypeError,
+                };
+                const result = if (wm.getExportFn(name)) |wf|
+                    Value{ .wasm_fn = wf }
+                else
+                    Value.nil;
                 self.sp = fn_idx;
                 try self.push(result);
             },
