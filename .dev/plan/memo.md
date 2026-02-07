@@ -50,7 +50,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-31.1 — Bytecode binary format + Value serialization.
+31.3 — Env state snapshot / restore. Serialize Var bindings and namespace state.
 
 ## Task Queue
 
@@ -61,18 +61,18 @@ Startup already 10ms (ReleaseSafe), but AOT enables:
   - Foundation for future JIT / ahead-of-time optimizations
   - Phase 28.3 bytecode embedding in single binary
 
-- 31.1 Bytecode binary format + Value serialization
-- 31.2 FnProto + Chunk serialization
+- ~~31.1 Bytecode binary format + Value serialization~~
+- ~~31.2 FnProto + Chunk serialization~~
 - 31.3 Env state snapshot / restore
 - 31.4 Bootstrap cache integration (startup from cached state)
 - 31.5 `cljw compile` command + Phase 28.3 bytecode embedding
 
 ## Previous Task
 
-30.5a-d — clojure.repl functions (doc, dir, apropos, find-doc, source, pst).
-Added Var meta synthesis (getVarMeta in metadata.zig). Fixed resolve to use
-*ns* dynamic var instead of env.current_ns (core.clj functions couldn't
-resolve user-ns vars). source-fn uses paren-counting for form extraction.
+31.2 — FnProto + Chunk serialization. Added fn_val resolution via FnProto
+index mapping (inner-first depth-first ordering). serializeModule/deserializeModule
+for complete module round-trip. Multi-arity fn_val support with extra_arities +
+defining_ns. Two-phase serialization (body first to populate string table).
 
 ## Known Issues
 

@@ -27,7 +27,7 @@
 //!   0x05 string (u32 string table index)
 //!   0x06 symbol (i32 ns index + u32 name index)
 //!   0x07 keyword (i32 ns index + u32 name index)
-//!   0x08 fn_val (u32 FnProto table index)
+//!   0x08 fn_val (u32 proto_index + u32 extra_count + [extra_count]u32 indices + i32 defining_ns)
 //!   0x09 list (u32 count + [count]Value)
 //!   0x0A vector (u32 count + [count]Value)
 //!   0x0B map (u32 pair count + [count*2]Value)
@@ -119,13 +119,17 @@ pub const Serializer = struct {
     string_map: std.StringHashMapUnmanaged(u32) = .empty,
     /// Output buffer.
     buf: std.ArrayListUnmanaged(u8) = .empty,
-    /// FnProto count (assigned externally before serialization).
-    fn_proto_count: u32 = 0,
+    /// Map from FnProto opaque pointers to their indices in the fn_protos list.
+    fn_proto_map: std.AutoHashMapUnmanaged(*const anyopaque, u32) = .empty,
+    /// Ordered list of FnProto pointers (inner-first ordering for serialization).
+    fn_protos: std.ArrayListUnmanaged(*const anyopaque) = .empty,
 
     pub fn deinit(self: *Serializer, allocator: std.mem.Allocator) void {
         self.strings.deinit(allocator);
         self.string_map.deinit(allocator);
         self.buf.deinit(allocator);
+        self.fn_proto_map.deinit(allocator);
+        self.fn_protos.deinit(allocator);
     }
 
     /// Intern a string, returning its index in the string table.
@@ -193,8 +197,25 @@ pub const Serializer = struct {
             },
             .fn_val => {
                 try self.buf.append(allocator, @intFromEnum(ValueTag.fn_val));
-                // TODO: Map fn_val pointer to FnProto table index
-                try self.writeBytes(allocator, &encodeU32(0));
+                const fn_obj = val.asFn();
+                const proto_idx = self.fn_proto_map.get(fn_obj.proto) orelse return error.UnregisteredFnProto;
+                try self.writeBytes(allocator, &encodeU32(proto_idx));
+                // Extra arities
+                const extra_count: u32 = if (fn_obj.extra_arities) |e| @intCast(e.len) else 0;
+                try self.writeBytes(allocator, &encodeU32(extra_count));
+                if (fn_obj.extra_arities) |extras| {
+                    for (extras) |extra_opaque| {
+                        const eidx = self.fn_proto_map.get(extra_opaque) orelse return error.UnregisteredFnProto;
+                        try self.writeBytes(allocator, &encodeU32(eidx));
+                    }
+                }
+                // Defining namespace
+                if (fn_obj.defining_ns) |ns| {
+                    const ns_idx = try self.internString(allocator, ns);
+                    try self.writeBytes(allocator, &encodeI32(@intCast(ns_idx)));
+                } else {
+                    try self.writeBytes(allocator, &encodeI32(-1));
+                }
             },
             .vector => {
                 try self.buf.append(allocator, @intFromEnum(ValueTag.vector));
@@ -297,6 +318,102 @@ pub const Serializer = struct {
         }
     }
 
+    /// Recursively collect all FnProtos reachable from a Value (inner-first ordering).
+    pub fn collectFnProtos(self: *Serializer, allocator: std.mem.Allocator, val: Value) !void {
+        if (val.tag() != .fn_val) return;
+        const fn_obj = val.asFn();
+        if (self.fn_proto_map.get(fn_obj.proto) != null) return;
+
+        const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+        // Collect inner FnProtos from constants first (depth-first)
+        for (proto.constants) |c| {
+            try self.collectFnProtos(allocator, c);
+        }
+        // Register this proto
+        const idx: u32 = @intCast(self.fn_protos.items.len);
+        try self.fn_protos.append(allocator, fn_obj.proto);
+        try self.fn_proto_map.put(allocator, fn_obj.proto, idx);
+
+        // Also register extra arity protos
+        if (fn_obj.extra_arities) |extras| {
+            for (extras) |extra_opaque| {
+                if (self.fn_proto_map.get(extra_opaque) != null) continue;
+                const extra_proto: *const FnProto = @ptrCast(@alignCast(extra_opaque));
+                for (extra_proto.constants) |c| {
+                    try self.collectFnProtos(allocator, c);
+                }
+                const eidx: u32 = @intCast(self.fn_protos.items.len);
+                try self.fn_protos.append(allocator, extra_opaque);
+                try self.fn_proto_map.put(allocator, extra_opaque, eidx);
+            }
+        }
+    }
+
+    /// Collect all FnProtos from a Chunk's constants.
+    pub fn collectChunkFnProtos(self: *Serializer, allocator: std.mem.Allocator, c: *const Chunk) !void {
+        for (c.constants.items) |val| {
+            try self.collectFnProtos(allocator, val);
+        }
+    }
+
+    /// Write the FnProto table.
+    pub fn writeFnProtoTable(self: *Serializer, allocator: std.mem.Allocator) !void {
+        try self.writeBytes(allocator, &encodeU32(@intCast(self.fn_protos.items.len)));
+        for (self.fn_protos.items) |proto_opaque| {
+            const proto: *const FnProto = @ptrCast(@alignCast(proto_opaque));
+            try self.serializeFnProto(allocator, proto);
+        }
+    }
+
+    /// Serialize a top-level Chunk (code + constants + debug info).
+    pub fn serializeChunk(self: *Serializer, allocator: std.mem.Allocator, c: *const Chunk) !void {
+        // Code
+        try self.writeBytes(allocator, &encodeU32(@intCast(c.code.items.len)));
+        for (c.code.items) |instr| {
+            try self.buf.append(allocator, @intFromEnum(instr.op));
+            try self.writeBytes(allocator, &encodeU16(instr.operand));
+        }
+        // Constants
+        try self.writeBytes(allocator, &encodeU32(@intCast(c.constants.items.len)));
+        for (c.constants.items) |val| {
+            try self.serializeValue(allocator, val);
+        }
+        // Debug info
+        try self.writeBytes(allocator, &encodeU32(@intCast(c.lines.items.len)));
+        for (c.lines.items) |line| {
+            try self.writeBytes(allocator, &encodeU32(line));
+        }
+        try self.writeBytes(allocator, &encodeU32(@intCast(c.columns.items.len)));
+        for (c.columns.items) |col| {
+            try self.writeBytes(allocator, &encodeU32(col));
+        }
+    }
+
+    /// Serialize a complete module: header + string table + FnProto table + chunk.
+    /// Uses a two-phase approach: serializes body first to populate string table,
+    /// then writes header + string table + body in correct order.
+    pub fn serializeModule(self: *Serializer, allocator: std.mem.Allocator, c: *const Chunk) !void {
+        // Phase 1: collect all FnProtos (inner-first ordering)
+        try self.collectChunkFnProtos(allocator, c);
+
+        // Phase 2: serialize body to temp buffer (populates string table)
+        const saved_buf = self.buf;
+        self.buf = .empty;
+
+        try self.writeFnProtoTable(allocator);
+        try self.serializeChunk(allocator, c);
+
+        var body_buf = self.buf;
+        self.buf = saved_buf;
+
+        // Phase 3: write header + string table + body to output
+        try self.writeHeader(allocator);
+        try self.writeStringTable(allocator);
+        try self.writeBytes(allocator, body_buf.items);
+
+        body_buf.deinit(allocator);
+    }
+
     /// Get the serialized bytes.
     pub fn getBytes(self: *const Serializer) []const u8 {
         return self.buf.items;
@@ -309,6 +426,8 @@ pub const Deserializer = struct {
     pos: usize = 0,
     /// Reconstructed string table.
     strings: []const []const u8 = &.{},
+    /// Reconstructed FnProto pointers for fn_val resolution.
+    fn_protos: []const *const anyopaque = &.{},
 
     pub fn readU8(self: *Deserializer) !u8 {
         if (self.pos >= self.data.len) return error.UnexpectedEof;
@@ -419,8 +538,35 @@ pub const Deserializer = struct {
                 break :blk Value.initKeyword(allocator, .{ .ns = ns, .name = self.strings[name_idx] });
             },
             .fn_val => blk: {
-                _ = try self.readU32(); // FnProto index (TODO: resolve)
-                break :blk Value.nil_val; // placeholder
+                const proto_idx = try self.readU32();
+                // Extra arities
+                const extra_count = try self.readU32();
+                var extra_arities: ?[]const *const anyopaque = null;
+                if (extra_count > 0) {
+                    const extras = try allocator.alloc(*const anyopaque, extra_count);
+                    for (0..extra_count) |i| {
+                        const eidx = try self.readU32();
+                        if (eidx >= self.fn_protos.len) return error.InvalidFnProtoIndex;
+                        extras[i] = self.fn_protos[eidx];
+                    }
+                    extra_arities = extras;
+                }
+                // Defining namespace
+                const ns_idx = try self.readI32();
+                const defining_ns: ?[]const u8 = if (ns_idx >= 0) blk2: {
+                    const idx: u32 = @intCast(ns_idx);
+                    if (idx >= self.strings.len) return error.InvalidStringIndex;
+                    break :blk2 self.strings[idx];
+                } else null;
+
+                if (proto_idx >= self.fn_protos.len) return error.InvalidFnProtoIndex;
+                const fn_obj = try allocator.create(value_mod.Fn);
+                fn_obj.* = .{
+                    .proto = self.fn_protos[proto_idx],
+                    .extra_arities = extra_arities,
+                    .defining_ns = defining_ns,
+                };
+                break :blk Value.initFn(fn_obj);
             },
             .vector => blk: {
                 const count = try self.readU32();
@@ -534,6 +680,57 @@ pub const Deserializer = struct {
             .lines = lines,
             .columns = columns,
         };
+    }
+
+    /// Read the FnProto table and populate fn_protos for fn_val resolution.
+    pub fn readFnProtoTable(self: *Deserializer, allocator: std.mem.Allocator) !void {
+        const count = try self.readU32();
+        const protos = try allocator.alloc(*const anyopaque, count);
+        // Set early so fn_vals in constants can resolve during deserialization.
+        // Inner-first ordering guarantees proto[j] is populated before proto[i] (j < i) references it.
+        self.fn_protos = protos;
+        for (0..count) |i| {
+            const proto = try self.deserializeFnProto(allocator);
+            const proto_ptr = try allocator.create(FnProto);
+            proto_ptr.* = proto;
+            protos[i] = proto_ptr;
+        }
+    }
+
+    /// Deserialize a top-level Chunk (code + constants + debug info).
+    pub fn deserializeChunk(self: *Deserializer, allocator: std.mem.Allocator) !Chunk {
+        var c = Chunk.init(allocator);
+        // Code
+        const code_len = try self.readU32();
+        for (0..code_len) |_| {
+            const op: OpCode = @enumFromInt(try self.readU8());
+            const operand = try self.readU16();
+            try c.code.append(allocator, .{ .op = op, .operand = operand });
+        }
+        // Constants
+        const const_len = try self.readU32();
+        for (0..const_len) |_| {
+            const val = try self.deserializeValue(allocator);
+            try c.constants.append(allocator, val);
+        }
+        // Debug info
+        const lines_len = try self.readU32();
+        for (0..lines_len) |_| {
+            try c.lines.append(allocator, try self.readU32());
+        }
+        const cols_len = try self.readU32();
+        for (0..cols_len) |_| {
+            try c.columns.append(allocator, try self.readU32());
+        }
+        return c;
+    }
+
+    /// Deserialize a complete module: header + string table + FnProto table + chunk.
+    pub fn deserializeModule(self: *Deserializer, allocator: std.mem.Allocator) !Chunk {
+        try self.readHeader();
+        try self.readStringTable(allocator);
+        try self.readFnProtoTable(allocator);
+        return self.deserializeChunk(allocator);
     }
 };
 
@@ -826,4 +1023,276 @@ test "serialize/deserialize FnProto with captures" {
     try std.testing.expect(result.has_self_ref);
     try std.testing.expectEqual(@as(u16, 3), result.capture_slots[0]);
     try std.testing.expectEqual(@as(u16, 7), result.capture_slots[1]);
+}
+
+test "serialize/deserialize fn_val with FnProto resolution" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a FnProto
+    const fn_code = [_]Instruction{
+        .{ .op = .const_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{Value.initInteger(42)};
+    const proto = try alloc.create(FnProto);
+    proto.* = .{
+        .name = "test-fn",
+        .arity = 0,
+        .variadic = false,
+        .local_count = 0,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+
+    // Create a Fn referencing the proto
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{
+        .proto = proto,
+        .defining_ns = "user",
+    };
+    const fn_val = Value.initFn(fn_obj);
+
+    // Create a Chunk containing the fn_val as a constant
+    var chunk = Chunk.init(alloc);
+    const idx = try chunk.addConstant(fn_val);
+    chunk.current_line = 1;
+    try chunk.emit(.const_load, idx);
+    try chunk.emitOp(.ret);
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeModule(alloc, &chunk);
+
+    // Deserialize
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    var result = try de.deserializeModule(alloc);
+    _ = &result;
+
+    // Verify chunk
+    try std.testing.expectEqual(@as(usize, 2), result.code.items.len);
+    try std.testing.expectEqual(OpCode.const_load, result.code.items[0].op);
+    try std.testing.expectEqual(OpCode.ret, result.code.items[1].op);
+
+    // Verify fn_val constant was reconstructed
+    try std.testing.expectEqual(@as(usize, 1), result.constants.items.len);
+    const result_fn_val = result.constants.items[0];
+    try std.testing.expect(result_fn_val.tag() == .fn_val);
+
+    const result_fn = result_fn_val.asFn();
+    const result_proto: *const FnProto = @ptrCast(@alignCast(result_fn.proto));
+    try std.testing.expectEqualStrings("test-fn", result_proto.name.?);
+    try std.testing.expectEqual(@as(u8, 0), result_proto.arity);
+    try std.testing.expectEqual(@as(usize, 2), result_proto.code.len);
+    try std.testing.expectEqual(@as(usize, 1), result_proto.constants.len);
+    try std.testing.expectEqual(Value.initInteger(42), result_proto.constants[0]);
+    try std.testing.expectEqualStrings("user", result_fn.defining_ns.?);
+}
+
+test "serialize/deserialize multi-arity fn_val" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Primary proto (arity 1)
+    const code1 = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const constants1 = [_]Value{};
+    const proto1 = try alloc.create(FnProto);
+    proto1.* = .{
+        .name = "multi",
+        .arity = 1,
+        .variadic = false,
+        .local_count = 1,
+        .code = &code1,
+        .constants = &constants1,
+    };
+
+    // Extra arity proto (arity 2)
+    const code2 = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 },
+        .{ .op = .local_load, .operand = 1 },
+        .{ .op = .add },
+        .{ .op = .ret },
+    };
+    const constants2 = [_]Value{};
+    const proto2 = try alloc.create(FnProto);
+    proto2.* = .{
+        .name = "multi",
+        .arity = 2,
+        .variadic = false,
+        .local_count = 2,
+        .code = &code2,
+        .constants = &constants2,
+    };
+
+    // Create multi-arity Fn
+    const extra_arities = try alloc.alloc(*const anyopaque, 1);
+    extra_arities[0] = proto2;
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{
+        .proto = proto1,
+        .extra_arities = extra_arities,
+        .defining_ns = "clojure.core",
+    };
+
+    // Create chunk
+    var chunk = Chunk.init(alloc);
+    _ = try chunk.addConstant(Value.initFn(fn_obj));
+    try chunk.emit(.const_load, 0);
+    try chunk.emitOp(.ret);
+
+    // Serialize + Deserialize
+    var ser: Serializer = .{};
+    try ser.serializeModule(alloc, &chunk);
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    var result = try de.deserializeModule(alloc);
+    _ = &result;
+
+    // Verify fn_val
+    const result_fn = result.constants.items[0].asFn();
+    const result_proto: *const FnProto = @ptrCast(@alignCast(result_fn.proto));
+    try std.testing.expectEqualStrings("multi", result_proto.name.?);
+    try std.testing.expectEqual(@as(u8, 1), result_proto.arity);
+
+    // Verify extra arities
+    try std.testing.expect(result_fn.extra_arities != null);
+    try std.testing.expectEqual(@as(usize, 1), result_fn.extra_arities.?.len);
+    const extra_proto: *const FnProto = @ptrCast(@alignCast(result_fn.extra_arities.?[0]));
+    try std.testing.expectEqualStrings("multi", extra_proto.name.?);
+    try std.testing.expectEqual(@as(u8, 2), extra_proto.arity);
+    try std.testing.expectEqual(@as(usize, 4), extra_proto.code.len);
+    try std.testing.expectEqualStrings("clojure.core", result_fn.defining_ns.?);
+}
+
+test "serializeModule/deserializeModule full round-trip" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Inner function proto: (fn [x] (+ x 1))
+    const inner_code = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 },
+        .{ .op = .const_load, .operand = 0 },
+        .{ .op = .add },
+        .{ .op = .ret },
+    };
+    const inner_constants = [_]Value{Value.initInteger(1)};
+    const inner_proto = try alloc.create(FnProto);
+    inner_proto.* = .{
+        .name = "inc",
+        .arity = 1,
+        .variadic = false,
+        .local_count = 1,
+        .code = &inner_code,
+        .constants = &inner_constants,
+    };
+    const inner_fn_obj = try alloc.create(value_mod.Fn);
+    inner_fn_obj.* = .{ .proto = inner_proto };
+    const inner_fn_val = Value.initFn(inner_fn_obj);
+
+    // Outer function proto that references inner fn as a constant
+    const outer_code = [_]Instruction{
+        .{ .op = .const_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const outer_constants = [_]Value{inner_fn_val};
+    const outer_proto = try alloc.create(FnProto);
+    outer_proto.* = .{
+        .name = "make-inc",
+        .arity = 0,
+        .variadic = false,
+        .local_count = 0,
+        .code = &outer_code,
+        .constants = &outer_constants,
+    };
+    const outer_fn_obj = try alloc.create(value_mod.Fn);
+    outer_fn_obj.* = .{ .proto = outer_proto, .defining_ns = "user" };
+    const outer_fn_val = Value.initFn(outer_fn_obj);
+
+    // Top-level chunk references the outer function
+    var chunk = Chunk.init(alloc);
+    chunk.current_line = 10;
+    chunk.current_column = 0;
+    _ = try chunk.addConstant(outer_fn_val);
+    try chunk.emit(.const_load, 0);
+    _ = try chunk.addConstant(Value.initInteger(99));
+    try chunk.emit(.const_load, 1);
+    try chunk.emitOp(.ret);
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeModule(alloc, &chunk);
+
+    // Verify FnProto collection (inner-first)
+    try std.testing.expectEqual(@as(usize, 2), ser.fn_protos.items.len);
+
+    // Deserialize
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    var result = try de.deserializeModule(alloc);
+    _ = &result;
+
+    // Verify chunk structure
+    try std.testing.expectEqual(@as(usize, 3), result.code.items.len);
+    try std.testing.expectEqual(OpCode.const_load, result.code.items[0].op);
+    try std.testing.expectEqual(OpCode.const_load, result.code.items[1].op);
+    try std.testing.expectEqual(OpCode.ret, result.code.items[2].op);
+
+    // Verify constants
+    try std.testing.expectEqual(@as(usize, 2), result.constants.items.len);
+    try std.testing.expectEqual(Value.initInteger(99), result.constants.items[1]);
+
+    // Verify outer fn → inner fn nesting
+    const r_outer_fn = result.constants.items[0].asFn();
+    const r_outer_proto: *const FnProto = @ptrCast(@alignCast(r_outer_fn.proto));
+    try std.testing.expectEqualStrings("make-inc", r_outer_proto.name.?);
+    try std.testing.expectEqualStrings("user", r_outer_fn.defining_ns.?);
+
+    // Outer proto's constant[0] should be fn_val pointing to inner proto
+    try std.testing.expectEqual(@as(usize, 1), r_outer_proto.constants.len);
+    const r_inner_fn_val = r_outer_proto.constants[0];
+    try std.testing.expect(r_inner_fn_val.tag() == .fn_val);
+    const r_inner_proto: *const FnProto = @ptrCast(@alignCast(r_inner_fn_val.asFn().proto));
+    try std.testing.expectEqualStrings("inc", r_inner_proto.name.?);
+    try std.testing.expectEqual(@as(u8, 1), r_inner_proto.arity);
+    try std.testing.expectEqual(Value.initInteger(1), r_inner_proto.constants[0]);
+
+    // Verify debug info round-trip
+    try std.testing.expectEqual(@as(usize, 3), result.lines.items.len);
+    try std.testing.expectEqual(@as(u32, 10), result.lines.items[0]);
+    try std.testing.expectEqual(@as(usize, 3), result.columns.items.len);
+    try std.testing.expectEqual(@as(u32, 0), result.columns.items[0]);
+}
+
+test "serializeModule with no fn_vals" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Simple chunk with only scalar constants
+    var chunk = Chunk.init(alloc);
+    _ = try chunk.addConstant(Value.initInteger(1));
+    _ = try chunk.addConstant(Value.initInteger(2));
+    try chunk.emit(.const_load, 0);
+    try chunk.emit(.const_load, 1);
+    try chunk.emitOp(.add);
+    try chunk.emitOp(.ret);
+
+    var ser: Serializer = .{};
+    try ser.serializeModule(alloc, &chunk);
+
+    // No FnProtos should be collected
+    try std.testing.expectEqual(@as(usize, 0), ser.fn_protos.items.len);
+
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    var result = try de.deserializeModule(alloc);
+    _ = &result;
+
+    try std.testing.expectEqual(@as(usize, 4), result.code.items.len);
+    try std.testing.expectEqual(@as(usize, 2), result.constants.items.len);
+    try std.testing.expectEqual(Value.initInteger(1), result.constants.items[0]);
+    try std.testing.expectEqual(Value.initInteger(2), result.constants.items[1]);
 }
