@@ -433,6 +433,7 @@ fn opEval(
         setReplVar(state, "*e", Value.initString(allocator, err_msg));
 
         sendEvalError(stream, msg, err_msg, allocator);
+        err_import.saveCallStack();
         err_import.clearCallStack();
     }
 

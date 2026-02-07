@@ -356,28 +356,51 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
 
 // === Error reporting (babashka-style) ===
 
+// ANSI color codes (empty strings when not a TTY)
+const Ansi = struct {
+    red: []const u8,
+    bold: []const u8,
+    dim: []const u8,
+    cyan: []const u8,
+    reset: []const u8,
+
+    const color = Ansi{
+        .red = "\x1b[31m",
+        .bold = "\x1b[1m",
+        .dim = "\x1b[2m",
+        .cyan = "\x1b[36m",
+        .reset = "\x1b[0m",
+    };
+    const plain = Ansi{
+        .red = "",
+        .bold = "",
+        .dim = "",
+        .cyan = "",
+        .reset = "",
+    };
+};
+
 fn reportError(eval_err: anyerror) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     var buf: [4096]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
     const w = stream.writer();
+    const c = if (std.posix.isatty(std.posix.STDERR_FILENO)) Ansi.color else Ansi.plain;
 
     if (err.getLastError()) |info| {
-        w.writeAll("----- Error -----------------------------------------------\n") catch {};
-        w.print("Type:     {s}\n", .{@tagName(info.kind)}) catch {};
-        w.print("Message:  {s}\n", .{info.message}) catch {};
-        if (info.phase != .eval) {
-            w.print("Phase:    {s}\n", .{@tagName(info.phase)}) catch {};
-        }
+        w.print("{s}----- Error -----------------------------------------------{s}\n", .{ c.red, c.reset }) catch {};
+        w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, info.message, c.reset }) catch {};
         if (info.location.line > 0) {
             const file = info.location.file orelse "<expr>";
-            w.print("Location: {s}:{d}:{d}\n", .{ file, info.location.line, info.location.column }) catch {};
+            w.print("{s}{s}:{d}:{d}{s}\n", .{ c.dim, file, info.location.line, info.location.column, c.reset }) catch {};
+        }
+        if (info.phase != .eval) {
+            w.print("{s}Phase: {s}{s}\n", .{ c.dim, @tagName(info.phase), c.reset }) catch {};
         }
         // Call stack trace
         const stack = err.getCallStack();
         if (stack.len > 0) {
-            w.writeAll("Trace:\n") catch {};
-            // Show most recent frames first (innermost to outermost)
+            w.print("{s}Trace:{s}\n", .{ c.dim, c.reset }) catch {};
             var i: usize = stack.len;
             while (i > 0) {
                 i -= 1;
@@ -386,29 +409,29 @@ fn reportError(eval_err: anyerror) void {
                 const fn_name = f.fn_name orelse "anonymous";
                 if (f.file) |file| {
                     if (f.line > 0) {
-                        w.print("  at {s}/{s} ({s}:{d})\n", .{ ns_name, fn_name, file, f.line }) catch {};
+                        w.print("{s}  {s}/{s} ({s}:{d}){s}\n", .{ c.dim, ns_name, fn_name, file, f.line, c.reset }) catch {};
                     } else {
-                        w.print("  at {s}/{s} ({s})\n", .{ ns_name, fn_name, file }) catch {};
+                        w.print("{s}  {s}/{s} ({s}){s}\n", .{ c.dim, ns_name, fn_name, file, c.reset }) catch {};
                     }
                 } else {
-                    w.print("  at {s}/{s}\n", .{ ns_name, fn_name }) catch {};
+                    w.print("{s}  {s}/{s}{s}\n", .{ c.dim, ns_name, fn_name, c.reset }) catch {};
                 }
             }
         }
         err.clearCallStack();
         // Source context
         if (info.location.line > 0) {
-            showSourceContext(w, info.location, info.message);
+            showSourceContext(w, info.location, info.message, c);
         }
     } else {
         // No detailed error info — fallback to Zig error name
-        w.print("Error: {s}\n", .{@errorName(eval_err)}) catch {};
+        w.print("{s}Error: {s}{s}\n", .{ c.red, @errorName(eval_err), c.reset }) catch {};
     }
 
     _ = stderr.write(stream.getWritten()) catch {};
 }
 
-fn showSourceContext(w: anytype, location: err.SourceLocation, message: []const u8) void {
+fn showSourceContext(w: anytype, location: err.SourceLocation, message: []const u8, c: Ansi) void {
     const source = getSourceForLocation(location) orelse return;
     const error_line = location.line; // 1-based
 
@@ -434,10 +457,15 @@ fn showSourceContext(w: anytype, location: err.SourceLocation, message: []const 
     var line_num: u32 = start;
     while (line_num <= end) : (line_num += 1) {
         const line_text = lines[line_num - 1];
-        writeLineNumber(w, line_num, max_digits);
-        w.print(" | {s}\n", .{line_text}) catch {};
         if (line_num == error_line) {
-            writeErrorPointer(w, max_digits, location.column, message);
+            w.print("{s}", .{c.dim}) catch {};
+            writeLineNumber(w, line_num, max_digits);
+            w.print(" | {s}{s}{s}\n", .{ c.reset, line_text, c.reset }) catch {};
+            writeErrorPointer(w, max_digits, location.column, message, c);
+        } else {
+            w.print("{s}", .{c.dim}) catch {};
+            writeLineNumber(w, line_num, max_digits);
+            w.print(" | {s}{s}\n", .{ line_text, c.reset }) catch {};
         }
     }
     w.writeByte('\n') catch {};
@@ -453,14 +481,14 @@ fn writeLineNumber(w: anytype, line_num: u32, width: u32) void {
     w.print("{d}", .{line_num}) catch {};
 }
 
-fn writeErrorPointer(w: anytype, max_digits: u32, column: u32, message: []const u8) void {
+fn writeErrorPointer(w: anytype, max_digits: u32, column: u32, message: []const u8, c: Ansi) void {
     // "  " + digits + " | " = 2 + max_digits + 3
     const prefix_len = 2 + max_digits + 3;
     var i: u32 = 0;
     while (i < prefix_len + column) : (i += 1) {
         w.writeByte(' ') catch {};
     }
-    w.print("^--- {s}\n", .{message}) catch {};
+    w.print("{s}^--- {s}{s}\n", .{ c.red, message, c.reset }) catch {};
 }
 
 fn countDigits(n: u32) u32 {
