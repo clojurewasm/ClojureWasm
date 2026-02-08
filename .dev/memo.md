@@ -23,17 +23,18 @@ Phase 36 complete. Next: Phase 37 (Advanced GC + JIT Research).
 
 ## Current Task
 
-Phase 36 complete. Plan Phase 37 or continue per roadmap.
+F113 complete. Plan Phase 37 or continue per roadmap.
 
 ## Previous Task
 
-36.10: Documentation + cleanup.
-Updated wasm-spec-support.md (SIMD 236 opcodes, multi-module linking section,
-461 total opcodes). Closed F118, F119 in checklist. Phase 36 complete.
+F113: nREPL GC integration.
+Added MarkSweepGc to nREPL ServerState. GC safe point after each eval.
+startServer creates local GC; startServerWithEnv receives caller's GC.
+Closed F113 in checklist.
 
 ## Known Issues
 
-- F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA.
+- (none currently open)
 
 ## Reference Chain
 
@@ -65,6 +66,10 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **F113 RESOLVED**: nREPL GC integration
+  - Added MarkSweepGc to ServerState, GC safe point after each eval
+  - startServer creates local GC; startServerWithEnv receives caller's GC
+  - Transient Values now collected automatically during long nREPL sessions
 - **Phase 36 COMPLETE**: Wasm SIMD + FFI Deep (F118)
   - 36.1-36.6: SIMD full implementation (236 opcodes, v128 type, 2.58x speedup)
   - 36.7: Interpreter optimization (VM reuse 7.9x, sidetable 1.44x, D86)

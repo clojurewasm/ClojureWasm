@@ -990,7 +990,7 @@ fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
 
     // Start nREPL server with user's Env (blocking accept loop).
     // Returns when shutdown signal is received.
-    nrepl.startServerWithEnv(infra_alloc, &env, nrepl_port) catch |e| {
+    nrepl.startServerWithEnv(infra_alloc, &env, gc, nrepl_port) catch |e| {
         const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
         _ = stderr.write("Error: nREPL server failed: ") catch {};
         _ = stderr.write(@errorName(e)) catch {};

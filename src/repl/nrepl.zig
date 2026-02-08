@@ -18,6 +18,7 @@ const io_mod = clj.builtin_io;
 const registry = clj.builtin_registry;
 const err_mod = clj.err;
 const lifecycle = @import("../common/lifecycle.zig");
+const gc_mod = @import("../common/gc.zig");
 
 // ====================================================================
 // Types
@@ -36,6 +37,7 @@ pub const ServerState = struct {
     mutex: std.Thread.Mutex,
     running: bool,
     gpa: Allocator,
+    gc: ?*gc_mod.MarkSweepGc,
     port_file_written: bool,
     /// Last error info saved from eval (for stacktrace op).
     last_error_info: ?err_mod.Info = null,
@@ -51,56 +53,62 @@ pub const ServerState = struct {
 // ====================================================================
 
 /// Start the nREPL server on the given port (0 = OS auto-assign).
-/// Bootstraps its own Env from scratch.
+/// Bootstraps its own Env from scratch with GC for Value collection.
 pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
-    // Memory model: GPA for everything (consistent with main.zig REPL).
-    // Env uses GPA for persistent data (Namespaces, Vars).
-    // Bootstrap and eval use GPA for Values (FnVals bound to Vars survive,
-    // transient values accumulate — inherent without GC, same as main.zig REPL).
-    // See F113 for future GC integration.
+    // Two allocators: GPA for infrastructure, GC for Values.
+    // GC collects transient Values after each eval (F113).
+    var gc = gc_mod.MarkSweepGc.init(gpa_allocator);
+    defer gc.deinit();
+    const gc_alloc = gc.allocator();
+
     var env = Env.init(gpa_allocator);
     defer env.deinit();
+    env.gc = @ptrCast(&gc);
 
     registry.registerBuiltins(&env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});
         return;
     };
-    bootstrap.loadCore(gpa_allocator, &env) catch {
+    bootstrap.loadCore(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load core.clj\n", .{});
         return;
     };
-    bootstrap.loadTest(gpa_allocator, &env) catch {
+    bootstrap.loadTest(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.test\n", .{});
         return;
     };
-    bootstrap.loadSet(gpa_allocator, &env) catch {
+    bootstrap.loadSet(gc_alloc, &env) catch {
         std.debug.print("Error: failed to load clojure.set\n", .{});
         return;
     };
 
-    // Define REPL vars (*1, *2, *3, *e)
-    _ = bootstrap.evalString(gpa_allocator, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
+    // Grow threshold after bootstrap (many live Values in Vars)
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
 
-    try runServerLoop(gpa_allocator, &env, port);
+    // Define REPL vars (*1, *2, *3, *e)
+    _ = bootstrap.evalString(gc_alloc, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
+
+    try runServerLoop(gpa_allocator, &env, &gc, port);
 }
 
 /// Start nREPL server on an already-bootstrapped Env.
 /// Used by built binaries (cljw build) with --nrepl flag.
-pub fn startServerWithEnv(gpa_allocator: Allocator, env: *Env, port: u16) !void {
+pub fn startServerWithEnv(gpa_allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc, port: u16) !void {
     // Ensure REPL vars exist (*e may not be defined in user code)
-    _ = bootstrap.evalString(gpa_allocator, env, "(def *e nil)") catch {};
+    _ = bootstrap.evalString(gc.allocator(), env, "(def *e nil)") catch {};
 
-    try runServerLoop(gpa_allocator, env, port);
+    try runServerLoop(gpa_allocator, env, gc, port);
 }
 
 /// TCP listen/accept loop shared by startServer and startServerWithEnv.
-fn runServerLoop(gpa_allocator: Allocator, env: *Env, port: u16) !void {
+fn runServerLoop(gpa_allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc, port: u16) !void {
     var state = ServerState{
         .env = env,
         .sessions = .empty,
         .mutex = .{},
         .running = true,
         .gpa = gpa_allocator,
+        .gc = gc,
         .port_file_written = false,
     };
     defer {
@@ -404,15 +412,18 @@ fn opEval(
     io_mod.setOutputCapture(state.gpa, &capture_buf);
     defer io_mod.setOutputCapture(null, null);
 
-    // Dupe code with GPA so it outlives the message decode arena.
+    // Use GC allocator for Value allocation so transient values are collected.
+    const eval_alloc = if (state.gc) |gc| gc.allocator() else state.gpa;
+
+    // Dupe code with eval allocator so it outlives the message decode arena.
     // evalString's Reader and Analyzer may reference the source string.
-    const code_persistent = state.gpa.dupe(u8, code) catch {
+    const code_persistent = eval_alloc.dupe(u8, code) catch {
         sendError(stream, msg, "eval-error", "Out of memory", allocator);
         return;
     };
 
-    // Evaluate via bootstrap (TreeWalk) using GPA for Value allocation.
-    const result = bootstrap.evalString(state.gpa, state.env, code_persistent);
+    // Evaluate via bootstrap (TreeWalk) using GC allocator for Value allocation.
+    const result = bootstrap.evalString(eval_alloc, state.env, code_persistent);
 
     // Flush captured output
     if (capture_buf.items.len > 0) {
@@ -487,6 +498,11 @@ fn opEval(
                 session.ns_name = state.gpa.dupe(u8, ns.name) catch session.ns_name;
             }
         }
+    }
+
+    // GC safe point — collect transient Values after eval (F113)
+    if (state.gc) |gc| {
+        gc.collectIfNeeded(.{ .env = state.env });
     }
 }
 
@@ -1370,6 +1386,7 @@ test "nrepl - stacktrace op returns no-error when no previous error" {
         .mutex = .{},
         .running = true,
         .gpa = allocator,
+        .gc = null,
         .port_file_written = false,
     };
 
@@ -1431,6 +1448,7 @@ test "nrepl - stacktrace op returns frames when error saved" {
         .mutex = .{},
         .running = true,
         .gpa = allocator,
+        .gc = null,
         .port_file_written = false,
     };
 

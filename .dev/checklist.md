@@ -26,7 +26,7 @@ Check at session start for items that become actionable.
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
-| F113 | nREPL GC integration                         | Without GC, transient Values accumulate in GPA. Add MarkSweepGc to nREPL. |
+| ~~F113~~ | ~~nREPL GC integration~~                 | **DONE**: MarkSweepGc added to nREPL ServerState. GC collectIfNeeded after each eval. |
 | ~~F118~~ | ~~Wasm FFI deep (Phase 36)~~              | **DONE**: SIMD 236 opcodes, optimization D86, multi-module, F119 fix, docs. |
 | ~~F119~~ | ~~WIT string return marshalling~~        | **DONE**: Swapped ptr/len order in callWithWitMarshalling. |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
