@@ -67,6 +67,15 @@ Completed optimizations and future opportunities, ordered by introduction.
 |25 | Sidetable (branch table)            | wasm_fib 11046→7663ms (1.44x)     |
 |   | cached_memory + @memset             | DECIDED-AGAINST (ROI < 1%)        |
 
+### Phase 37.2-37.3: VM Superinstructions + Branch Fusion
+
+| # | Optimization                        | Impact                            |
+|---|-------------------------------------|-----------------------------------|
+|26 | Superinstructions (10 fused ops)    | arith_loop 53→40ms (1.33x)        |
+|27 | Compare-and-branch fusion (7 ops)   | arith_loop 40→31ms (1.29x)        |
+|28 | Recur-loop fusion                   | Dispatch: 6→4 per loop iteration  |
+|   | Cumulative (37.1 base → 37.3)      | arith_loop 53→31ms (1.71x)        |
+
 ---
 
 ## 2. Performance Summary

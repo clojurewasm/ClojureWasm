@@ -199,6 +199,27 @@ pub const OpCode = enum(u8) {
     /// local_load + const_load + le → push locals[slot] <= constants[idx]
     le_local_const = 0xC9,
 
+    // === [T] Fused branch + loop superinstructions (0xD0-0xDF) ===
+    // Compare-and-branch: fuse comparison + jump_if_false into single dispatch.
+    // Operand packs (slot_a << 8 | slot_b). Next code word holds jump offset.
+    // Branch is taken when comparison is FALSE (negated logic).
+
+    /// eq_locals + jump_if_false: branch if locals[a] != locals[b]
+    branch_ne_locals = 0xD0,
+    /// lt_locals + jump_if_false: branch if locals[a] >= locals[b]
+    branch_ge_locals = 0xD1,
+    /// le_locals + jump_if_false: branch if locals[a] > locals[b]
+    branch_gt_locals = 0xD2,
+    /// eq_local_const + jump_if_false: branch if locals[s] != constants[i]
+    branch_ne_local_const = 0xD3,
+    /// lt_local_const + jump_if_false: branch if locals[s] >= constants[i]
+    branch_ge_local_const = 0xD4,
+    /// le_local_const + jump_if_false: branch if locals[s] > constants[i]
+    branch_gt_local_const = 0xD5,
+    /// recur + jump_back: rebind loop vars and jump back in single dispatch.
+    /// Operand: (base_offset << 8) | arg_count. Next code word holds loop offset.
+    recur_loop = 0xD6,
+
     // === [Z] Reserved/debug (0xF0-0xFF) ===
 
     /// No operation

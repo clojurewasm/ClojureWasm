@@ -634,3 +634,30 @@ entries:
       string_ops: {time_ms: 26, mem_mb: 16.2}
       multimethod_dispatch: {time_ms: 5, mem_mb: 9.1}
       real_workload: {time_ms: 9, mem_mb: 15.2}
+  - id: "37.3"
+    date: "2026-02-09"
+    reason: "Fused branch+loop superinstructions"
+    commit: "868d938"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 16, mem_mb: 9.1}
+      fib_loop: {time_ms: 4, mem_mb: 9.1}
+      tak: {time_ms: 7, mem_mb: 9.1}
+      arith_loop: {time_ms: 31, mem_mb: 9.0}
+      map_filter_reduce: {time_ms: 5, mem_mb: 9.9}
+      vector_ops: {time_ms: 5, mem_mb: 13.3}
+      map_ops: {time_ms: 4, mem_mb: 12.4}
+      list_build: {time_ms: 4, mem_mb: 9.9}
+      sieve: {time_ms: 4, mem_mb: 12.0}
+      nqueens: {time_ms: 15, mem_mb: 18.0}
+      atom_swap: {time_ms: 4, mem_mb: 9.1}
+      gc_stress: {time_ms: 26, mem_mb: 11.2}
+      lazy_chain: {time_ms: 5, mem_mb: 9.1}
+      transduce: {time_ms: 5, mem_mb: 9.1}
+      keyword_lookup: {time_ms: 5, mem_mb: 9.1}
+      protocol_dispatch: {time_ms: 4, mem_mb: 9.1}
+      nested_update: {time_ms: 8, mem_mb: 12.4}
+      string_ops: {time_ms: 23, mem_mb: 16.2}
+      multimethod_dispatch: {time_ms: 5, mem_mb: 9.1}
+      real_workload: {time_ms: 10, mem_mb: 15.2}

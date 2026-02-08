@@ -22,24 +22,26 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 37: VM Optimization + JIT (A→B incremental)
 1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
 2. [x] 37.2: Superinstructions (fuse common opcode sequences)
-3. [ ] 37.3: Specializing adaptive interpreter (runtime quickening)
+3. [x] 37.3: Fused branch + loop superinstructions
 4. [ ] 37.4: JIT PoC — hot loop native code generation
 5. [ ] 37.5: Slab GC + bitmap marking (if GC bottleneck remains)
 6. [ ] 37.6: Escape analysis + polymorphic IC (if needed)
 
 ## Current Task
 
-37.3: Specializing adaptive interpreter (runtime quickening).
-CPython 3.12 QUICKEN model: after warmup, replace generic opcodes with
-type-specialized versions. Guard + deopt on type mismatch.
+37.4: JIT PoC — hot loop native code generation.
+Evaluate approach: copy-and-patch vs trace JIT. Target: arith_loop hot loop
+compiled to native ARM64/x86_64 code.
 
 ## Previous Task
 
-37.2: Superinstructions — DONE.
-- 10 fused opcodes (0xC0-0xC9): *_locals and *_local_const variants
-- Peephole pass in compiler.zig: pattern match, compact, fix jump offsets
-- arith_loop: 56ms → 40ms (1.4x), fib_recursive: 19ms → 16ms (1.2x)
-- Error location preserved (lines/columns from operator instruction)
+37.3: Fused branch + loop superinstructions — DONE.
+- 7 fused opcodes (0xD0-0xD6): branch_ne/ge/gt_locals, branch_ne/ge/gt_local_const, recur_loop
+- Compare-and-branch: eq/lt/le_locals + jump_if_false → single branch dispatch
+- Recur+loop: recur + jump_back → recur_loop (consumes next code word)
+- In-place replacement (no instruction removal, no jump fixup needed)
+- arith_loop: 40ms → 31ms (1.29x), cumulative 53ms → 31ms (1.71x)
+- Dispatch reduction: arith_loop 6→4 instructions/iteration (33%)
 
 ## Known Issues
 
@@ -75,6 +77,11 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 37.3 COMPLETE**: Fused branch + loop superinstructions
+  - 7 fused opcodes (0xD0-0xD6): compare-and-branch, recur_loop
+  - In-place replacement: second instruction becomes consumed data word
+  - arith_loop 40→31ms (1.29x), cumulative 53→31ms (1.71x)
+  - Dispatch: 6→4 instructions/iteration (33% fewer dispatches)
 - **Phase 37.2 COMPLETE**: Superinstructions
   - 10 fused opcodes: add/sub/eq/lt/le_locals, add/sub/eq/lt/le_local_const
   - Peephole optimizer in compiler.zig with jump offset fixup

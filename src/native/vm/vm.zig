@@ -887,6 +887,15 @@ pub const VM = struct {
             .lt_local_const => try self.vmSuperCompareLocalConst(frame, instr.operand, .lt),
             .le_local_const => try self.vmSuperCompareLocalConst(frame, instr.operand, .le),
 
+            // [T] Fused branch + loop superinstructions (37.3)
+            .branch_ne_locals => self.vmBranchEqLocals(frame, instr.operand, true),
+            .branch_ge_locals => try self.vmBranchCompareLocals(frame, instr.operand, .lt, true),
+            .branch_gt_locals => try self.vmBranchCompareLocals(frame, instr.operand, .le, true),
+            .branch_ne_local_const => self.vmBranchEqLocalConst(frame, instr.operand, true),
+            .branch_ge_local_const => try self.vmBranchCompareLocalConst(frame, instr.operand, .lt, true),
+            .branch_gt_local_const => try self.vmBranchCompareLocalConst(frame, instr.operand, .le, true),
+            .recur_loop => self.vmRecurLoop(frame, instr.operand),
+
             // [Z] Debug
             .nop => {},
             .debug_print => _ = self.pop(),
@@ -1623,6 +1632,116 @@ pub const VM = struct {
         }
         self.saveVmArgSources();
         try self.push(Value.initBoolean(arith.compareFn(a, b, op) catch return error.TypeError));
+    }
+
+    // --- Fused branch + loop helpers (37.3) ---
+    //
+    // Compare-and-branch: fuse comparison superinstruction + jump_if_false
+    // into a single dispatch. Eliminates intermediate boolean push/pop and
+    // the jump_if_false dispatch. Next code word holds the jump offset.
+    //
+    // recur_loop: fuse recur + jump_back into single dispatch. Next code
+    // word holds the loop offset.
+
+    /// Fused eq_locals + jump_if_false. Branches if NOT equal.
+    fn vmBranchEqLocals(self: *VM, frame: *CallFrame, operand: u16, comptime negate: bool) void {
+        const slots = unpackSuper(operand);
+        const a = self.stack[frame.base + slots[0]];
+        const b = self.stack[frame.base + slots[1]];
+        const eq = a.eqlAlloc(b, self.allocator);
+        const branch = if (negate) !eq else eq;
+        // Consume next code word (jump offset)
+        const offset = frame.code[frame.ip].signedOperand();
+        frame.ip += 1;
+        if (branch) {
+            frame.ip = @intCast(@as(i32, @intCast(frame.ip)) + @as(i32, offset));
+        }
+    }
+
+    /// Fused lt/le_locals + jump_if_false. Branches if comparison is false.
+    fn vmBranchCompareLocals(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.CompareOp, comptime negate: bool) VMError!void {
+        const slots = unpackSuper(operand);
+        const a = self.stack[frame.base + slots[0]];
+        const b = self.stack[frame.base + slots[1]];
+        var cmp: bool = undefined;
+        if (a.tag() == .integer and b.tag() == .integer) {
+            cmp = switch (op) {
+                .lt => a.asInteger() < b.asInteger(),
+                .le => a.asInteger() <= b.asInteger(),
+                .gt => a.asInteger() > b.asInteger(),
+                .ge => a.asInteger() >= b.asInteger(),
+            };
+        } else {
+            self.saveVmArgSources();
+            cmp = arith.compareFn(a, b, op) catch return error.TypeError;
+        }
+        const branch = if (negate) !cmp else cmp;
+        const offset = frame.code[frame.ip].signedOperand();
+        frame.ip += 1;
+        if (branch) {
+            frame.ip = @intCast(@as(i32, @intCast(frame.ip)) + @as(i32, offset));
+        }
+    }
+
+    /// Fused eq_local_const + jump_if_false. Branches if NOT equal.
+    fn vmBranchEqLocalConst(self: *VM, frame: *CallFrame, operand: u16, comptime negate: bool) void {
+        const parts = unpackSuper(operand);
+        const a = self.stack[frame.base + parts[0]];
+        const b = frame.constants[parts[1]];
+        const eq = a.eqlAlloc(b, self.allocator);
+        const branch = if (negate) !eq else eq;
+        const offset = frame.code[frame.ip].signedOperand();
+        frame.ip += 1;
+        if (branch) {
+            frame.ip = @intCast(@as(i32, @intCast(frame.ip)) + @as(i32, offset));
+        }
+    }
+
+    /// Fused lt/le_local_const + jump_if_false. Branches if comparison is false.
+    fn vmBranchCompareLocalConst(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.CompareOp, comptime negate: bool) VMError!void {
+        const parts = unpackSuper(operand);
+        const a = self.stack[frame.base + parts[0]];
+        const b = frame.constants[parts[1]];
+        var cmp: bool = undefined;
+        if (a.tag() == .integer and b.tag() == .integer) {
+            cmp = switch (op) {
+                .lt => a.asInteger() < b.asInteger(),
+                .le => a.asInteger() <= b.asInteger(),
+                .gt => a.asInteger() > b.asInteger(),
+                .ge => a.asInteger() >= b.asInteger(),
+            };
+        } else {
+            self.saveVmArgSources();
+            cmp = arith.compareFn(a, b, op) catch return error.TypeError;
+        }
+        const branch = if (negate) !cmp else cmp;
+        const offset = frame.code[frame.ip].signedOperand();
+        frame.ip += 1;
+        if (branch) {
+            frame.ip = @intCast(@as(i32, @intCast(frame.ip)) + @as(i32, offset));
+        }
+    }
+
+    /// Fused recur + jump_back: rebind loop vars and jump back in single dispatch.
+    fn vmRecurLoop(self: *VM, frame: *CallFrame, operand: u16) void {
+        const arg_count: u16 = operand & 0xFF;
+        const base_offset: u16 = (operand >> 8) & 0xFF;
+
+        // Copy recur args directly from stack to loop binding slots.
+        // Source (top of stack) is always above target (loop binding slots),
+        // so there is no overlap — direct copy is safe.
+        const src_start = self.sp - arg_count;
+        const dst_start = frame.base + base_offset;
+        for (0..arg_count) |idx| {
+            self.stack[dst_start + idx] = self.stack[src_start + idx];
+        }
+
+        // Reset sp to just after loop bindings
+        self.sp = dst_start + arg_count;
+
+        // Consume next code word (loop offset) and jump back
+        const loop_offset = frame.code[frame.ip].operand;
+        frame.ip = frame.ip + 1 - loop_offset;
     }
 
     /// Save arg sources from VM debug info for the current binary op instruction.

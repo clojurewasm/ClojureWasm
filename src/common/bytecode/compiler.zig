@@ -1363,6 +1363,68 @@ fn peepholeOptimize(
         }
     }
 
+    // Pass 5: In-place fusion (compare-and-branch, recur-loop).
+    // These replace instruction pairs without changing count. The second
+    // instruction becomes a data word consumed by the first.
+    {
+        const final_code = code[0..new_len];
+        // Rebuild jump targets on the (possibly compacted) code.
+        var jt2 = std.StaticBitSet(65536).initEmpty();
+        for (final_code, 0..) |instr2, ip2| {
+            switch (instr2.op) {
+                .jump, .jump_if_false => {
+                    const signed2: i32 = @as(i32, @intCast(ip2)) + 1 + @as(i32, instr2.signedOperand());
+                    if (signed2 >= 0 and signed2 < @as(i32, @intCast(new_len))) {
+                        jt2.set(@intCast(signed2));
+                    }
+                },
+                .jump_back => {
+                    const target2 = ip2 + 1 -| instr2.operand;
+                    if (target2 < new_len) jt2.set(target2);
+                },
+                else => {},
+            }
+        }
+
+        var j: usize = 0;
+        while (j + 1 < new_len) : (j += 1) {
+            // Don't fuse if the second instruction is a jump target.
+            if (jt2.isSet(j + 1)) continue;
+
+            const first = final_code[j];
+            const second = final_code[j + 1];
+
+            // Compare-and-branch: *_locals/local_const + jump_if_false
+            // → branch_*. Note: jump_if_false branches when false, so
+            // eq → branch_ne (branch when NOT equal), lt → branch_ge, le → branch_gt.
+            if (second.op == .jump_if_false) {
+                const branch_op: ?OpCode = switch (first.op) {
+                    .eq_locals => .branch_ne_locals,
+                    .lt_locals => .branch_ge_locals,
+                    .le_locals => .branch_gt_locals,
+                    .eq_local_const => .branch_ne_local_const,
+                    .lt_local_const => .branch_ge_local_const,
+                    .le_local_const => .branch_gt_local_const,
+                    else => null,
+                };
+                if (branch_op) |op| {
+                    final_code[j] = .{ .op = op, .operand = first.operand };
+                    // Keep second instruction as data word (operand = jump offset).
+                    j += 1; // skip data word
+                    continue;
+                }
+            }
+
+            // Recur + jump_back → recur_loop (data word holds loop offset).
+            if (first.op == .recur and second.op == .jump_back) {
+                final_code[j] = .{ .op = .recur_loop, .operand = first.operand };
+                // Keep second instruction as data word (operand = loop offset).
+                j += 1; // skip data word
+                continue;
+            }
+        }
+    }
+
     // If nothing was removed, return originals unchanged.
     if (new_len == n) return .{ .code = code, .lines = lines, .columns = columns };
 
