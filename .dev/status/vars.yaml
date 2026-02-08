@@ -104,6 +104,7 @@ vars:
     accessor: {type: function, status: skip, note: deprecated struct system}
     aclone: {type: function, status: skip, note: JVM interop}
     "add-classpath": {type: function, status: skip, note: JVM interop}
+    "add-shutdown-hook!": {type: function, status: done, note: "cljw extension"}
     "add-tap": {type: function, status: done}
     "add-watch": {type: function, status: done}
     agent: {type: function, status: skip, note: JVM interop}
@@ -544,6 +545,7 @@ vars:
     "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "remove-ns": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    "remove-shutdown-hook!": {type: function, status: done, note: "cljw extension"}
     "remove-tap": {type: function, status: done}
     "remove-watch": {type: function, status: done}
     repeat: {type: function, status: done, note: 'lazy, infinite + n-arity'}

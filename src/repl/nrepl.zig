@@ -17,6 +17,7 @@ const bootstrap = clj.bootstrap;
 const io_mod = clj.builtin_io;
 const registry = clj.builtin_registry;
 const err_mod = clj.err;
+const lifecycle = @import("../common/lifecycle.zig");
 
 // ====================================================================
 // Types
@@ -132,12 +133,9 @@ fn runServerLoop(gpa_allocator: Allocator, env: *Env, port: u16) !void {
 
     std.debug.print("nREPL server started on port {d} on host 127.0.0.1 - nrepl://127.0.0.1:{d}\n", .{ actual_port, actual_port });
 
-    // Accept loop
-    while (state.running) {
-        const conn = server.accept() catch |e| {
-            std.debug.print("accept error: {s}\n", .{@errorName(e)});
-            continue;
-        };
+    // Accept loop (poll-based with shutdown check)
+    while (state.running and !lifecycle.isShutdownRequested()) {
+        const conn = lifecycle.acceptWithShutdownCheck(&server) orelse break;
 
         const thread = std.Thread.spawn(.{}, handleClient, .{ &state, conn }) catch |e| {
             std.debug.print("thread spawn error: {s}\n", .{@errorName(e)});
@@ -146,6 +144,8 @@ fn runServerLoop(gpa_allocator: Allocator, env: *Env, port: u16) !void {
         };
         thread.detach();
     }
+
+    std.debug.print("nREPL server shutting down\n", .{});
 }
 
 /// Client connection handler (thread entry).

@@ -37,6 +37,7 @@ pub const bencode = @import("repl/bencode.zig");
 pub const nrepl = @import("repl/nrepl.zig");
 pub const line_editor = @import("repl/line_editor.zig");
 pub const wasm_types = @import("wasm/types.zig");
+pub const lifecycle = @import("common/lifecycle.zig");
 pub const wasm_builtins = @import("wasm/builtins.zig");
 pub const wit_parser = @import("wasm/wit_parser.zig");
 
@@ -76,6 +77,7 @@ test {
     _ = bencode;
     _ = nrepl;
     _ = line_editor;
+    _ = lifecycle;
     _ = wasm_types;
     _ = wasm_builtins;
     _ = wit_parser;

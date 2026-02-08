@@ -19,6 +19,7 @@ const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err_mod = @import("../error.zig");
 const Env = @import("../env.zig").Env;
+const lifecycle = @import("../lifecycle.zig");
 
 // ============================================================
 // Build mode flag
@@ -153,11 +154,8 @@ pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // ============================================================
 
 fn acceptLoop(state: *ServerState) void {
-    while (state.running) {
-        const conn = state.listener.accept() catch |e| {
-            std.debug.print("accept error: {s}\n", .{@errorName(e)});
-            continue;
-        };
+    while (state.running and !lifecycle.isShutdownRequested()) {
+        const conn = lifecycle.acceptWithShutdownCheck(&state.listener) orelse break;
         const thread = std.Thread.spawn(.{}, handleConnection, .{ state, conn }) catch |e| {
             std.debug.print("thread spawn error: {s}\n", .{@errorName(e)});
             conn.stream.close();
@@ -165,6 +163,7 @@ fn acceptLoop(state: *ServerState) void {
         };
         thread.detach();
     }
+    std.debug.print("cljw.http server shutting down\n", .{});
 }
 
 fn handleConnection(state: *ServerState, conn: std.net.Server.Connection) void {

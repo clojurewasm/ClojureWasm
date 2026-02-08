@@ -9,7 +9,7 @@ Session handover document. Read at session start.
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
 - **Phase 33 COMPLETE** — Namespace & Portability Design (F115, D82)
-- **Phase 34 IN PROGRESS** — Server Mode & Networking (F116)
+- **Phase 34 COMPLETE** — Server Mode & Networking (F116)
 
 ## Strategic Direction
 
@@ -34,19 +34,21 @@ Phase 34 — Server Mode & Networking (F116)
 - ~~34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)~~
 - ~~34.2+34.3 HTTP server with Ring-compatible handler model (D83)~~
 - ~~34.4 HTTP client (cljw.http/get, cljw.http/post, put, delete)~~
-- 34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)
+- ~~34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)~~
 
 ## Current Task
 
-34.5 — Stateful long-running process lifecycle (signal handling, graceful shutdown).
+(Phase 34 complete — Task Queue empty)
 
 ## Previous Task
 
-34.4 — HTTP client (cljw.http/get, cljw.http/post, put, delete).
-- Added get/post/put/delete builtins using Zig std.http.Client.fetch
-- API: (http/get url [opts]) -> {:status N :body "..."}
-- opts supports :body and :headers (map of string->string)
-- Verified: GET, POST with body, 404 handling, custom headers
+34.5 — Stateful long-running process lifecycle (signal handling, graceful shutdown).
+- New lifecycle.zig: SIGINT/SIGTERM → atomic shutdown flag
+- Accept loops: poll() with 1s timeout, check shutdown flag each iteration
+- Shutdown hooks: (add-shutdown-hook! key f) / (remove-shutdown-hook! key)
+- SIGPIPE ignored (broken pipe safety)
+- .nrepl-port cleanup via existing defers (now runs because accept exits cleanly)
+- Verified: HTTP server, nREPL, built binary all shut down gracefully
 
 ## Known Issues
 
@@ -66,11 +68,13 @@ Phase 34 — Server Mode & Networking (F116)
   - System/getProperty with 9 native property mappings
   - Portability test suite: 2/2 PASS (0 diff with JVM Clojure 1.12)
   - vars.yaml audit: 659 vars done (was 535+8, fixed clojure.math/edn staleness)
-- **Phase 34 IN PROGRESS** (D83): Server mode & networking
+- **Phase 34 COMPLETE** (D83): Server mode & networking
   - 34.1: --nrepl flag passthrough in built binaries
   - 34.2+34.3: HTTP server (cljw.http/run-server, Ring-compatible)
     - Blocking/background/build modes, thread per connection
     - Live reload via nREPL: HTTP + nREPL simultaneous operation
+  - 34.4: HTTP client (get/post/put/delete) using Zig std.http.Client
+  - 34.5: Lifecycle management (SIGINT/SIGTERM, shutdown hooks, graceful exit)
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
   clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user

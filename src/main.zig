@@ -21,6 +21,7 @@ const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
 const ns_ops = @import("common/builtin/ns_ops.zig");
 const http_server = @import("common/builtin/http_server.zig");
+const lifecycle = @import("common/lifecycle.zig");
 const Reader = @import("common/reader/reader.zig").Reader;
 const FormData = @import("common/reader/form.zig").FormData;
 
@@ -51,6 +52,9 @@ pub fn main() !void {
     // Initialize load path infrastructure for require/load
     ns_ops.init(allocator);
     defer ns_ops.deinit();
+
+    // Install signal handlers for graceful shutdown (SIGINT/SIGTERM/SIGPIPE)
+    lifecycle.installSignalHandlers();
 
     // Check for embedded payload (built binary via `cljw build`).
     // If this binary has a CLJW trailer, run the embedded payload and exit.
@@ -394,6 +398,11 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     _ = stdout.write(output) catch {};
     _ = stdout.write("\n") catch {};
+
+    // Run shutdown hooks if shutdown was requested (e.g. SIGINT during run-server)
+    if (lifecycle.isShutdownRequested()) {
+        lifecycle.runShutdownHooks(gc_alloc, &env);
+    }
 }
 
 /// Run a main namespace from cljw.edn :main config.
@@ -951,6 +960,11 @@ fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
         reportError(e);
         std.process.exit(1);
     };
+
+    // Run shutdown hooks (relevant when run-server returns via SIGINT)
+    if (lifecycle.isShutdownRequested()) {
+        lifecycle.runShutdownHooks(gc_alloc, &env);
+    }
 }
 
 /// Evaluate embedded source, then start nREPL server on the same Env.
@@ -974,7 +988,8 @@ fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
         std.process.exit(1);
     };
 
-    // Start nREPL server with user's Env (blocking accept loop)
+    // Start nREPL server with user's Env (blocking accept loop).
+    // Returns when shutdown signal is received.
     nrepl.startServerWithEnv(infra_alloc, &env, nrepl_port) catch |e| {
         const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
         _ = stderr.write("Error: nREPL server failed: ") catch {};
@@ -982,6 +997,9 @@ fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
         _ = stderr.write("\n") catch {};
         std.process.exit(1);
     };
+
+    // Run user-registered shutdown hooks before exit
+    lifecycle.runShutdownHooks(gc_alloc, &env);
 }
 
 /// Set *command-line-args* to a list of string Values.

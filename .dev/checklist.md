@@ -6,7 +6,7 @@ Check at session start for items that become actionable.
 ## Invariants (always enforce)
 
 - [ ] D3: No threadlocal / global mutable state (Env is instantiated)
-  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception, keyword_intern.table, collections._vec_gen_counter (24C.4) — module-level, single-thread only
+  - **Known exceptions**: macro_eval_env (D15), predicates.current_env (T9.5.5), bootstrap.last_thrown_exception, keyword_intern.table, collections._vec_gen_counter (24C.4), lifecycle.shutdown_requested/hooks (34.5), http_server.build_mode/background_mode/bg_server (34.2) — module-level, single-thread only
 - [ ] D6: New features must be in both TreeWalk and VM + EvalEngine.compare() test
 - [ ] D10: All code in English (identifiers, comments, commits)
 
@@ -46,5 +46,5 @@ Check at session start for items that become actionable.
 | F113 | nREPL GC integration                      | Without GC, transient Values accumulate in GPA (same as main.zig REPL). Add MarkSweepGc to nREPL for true long-session memory management. |
 | ~~F114~~ | ~~clojure.repl namespace~~            | Done: Phase 30.5, doc/dir/apropos/find-doc/source/pst + Var meta synthesis |
 | ~~F115~~ | ~~Namespace naming strategy~~ | Done: Phase 33 (D82). clojure.* for JVM compat, cljw.* for extensions. wasm→cljw.wasm, clojure.repl extracted, clojure.java.io compat layer added, System/getProperty added. Portability test suite passes (0 diff with JVM Clojure 1.12). |
-| F116 | Long-running server mode + networking       | Built binaries currently only run-and-exit. Need: (1) nREPL in built binaries (--nrepl flag passthrough), (2) HTTP server/client library (cljw.http or ring-compatible handler model), (3) stateful long-running process support. Babashka provides babashka.http-client + org.httpkit.server. Consider which phase: likely between 34 and future phases. |
+| ~~F116~~ | ~~Long-running server mode + networking~~ | Done: Phase 34 (D83). nREPL passthrough, HTTP server/client, graceful shutdown with signal handling. |
 | F117 | Cross-platform build & distribution         | Two axes: (A) cljw itself cross-compiles for Linux/Windows/macOS via Zig (-Dtarget=), (B) binaries produced by `cljw build` must also work on target platforms (binary trailer on ELF/PE, not just Mach-O). Need: CI matrix, verify binary trailer format per platform, path handling (std.fs.path), codesign macOS-only, nREPL/networking per platform. |
