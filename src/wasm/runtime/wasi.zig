@@ -920,6 +920,235 @@ pub fn sched_yield(ctx: *anyopaque, _: usize) anyerror!void {
     try pushErrno(vm, .SUCCESS);
 }
 
+/// fd_advise(fd: i32, offset: i64, len: i64, advice: i32) -> errno
+pub fn fd_advise(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandU32(); // advice
+    _ = vm.popOperandI64(); // len
+    _ = vm.popOperandI64(); // offset
+    _ = vm.popOperandI32(); // fd
+    // Advisory only — no-op is valid
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_allocate(fd: i32, offset: i64, len: i64) -> errno
+pub fn fd_allocate(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandI64(); // len
+    _ = vm.popOperandI64(); // offset
+    _ = vm.popOperandI32(); // fd
+    // fallocate not portable — stub as NOSYS
+    try pushErrno(vm, .NOSYS);
+}
+
+/// fd_fdstat_set_flags(fd: i32, flags: i32) -> errno
+pub fn fd_fdstat_set_flags(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandU32(); // flags
+    _ = vm.popOperandI32(); // fd
+    // Stub — flags modification not commonly needed
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_filestat_set_size(fd: i32, size: i64) -> errno
+pub fn fd_filestat_set_size(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const size = vm.popOperandI64();
+    const fd = vm.popOperandI32();
+
+    if (fd <= 2) {
+        try pushErrno(vm, .INVAL);
+        return;
+    }
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    if (wasi.getHostFd(fd)) |host_fd| {
+        posix.ftruncate(host_fd, @bitCast(size)) catch |err| {
+            try pushErrno(vm, toWasiErrno(err));
+            return;
+        };
+        try pushErrno(vm, .SUCCESS);
+    } else {
+        try pushErrno(vm, .BADF);
+    }
+}
+
+/// fd_filestat_set_times(fd: i32, atim: i64, mtim: i64, fst_flags: i32) -> errno
+pub fn fd_filestat_set_times(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandU32(); // fst_flags
+    _ = vm.popOperandI64(); // mtim
+    _ = vm.popOperandI64(); // atim
+    _ = vm.popOperandI32(); // fd
+    // Stub — timestamp modification not commonly needed
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_pread(fd: i32, iovs_ptr: i32, iovs_len: i32, offset: i64, nread_ptr: i32) -> errno
+pub fn fd_pread(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const nread_ptr = vm.popOperandU32();
+    const file_offset = vm.popOperandI64();
+    const iovs_len = vm.popOperandU32();
+    const iovs_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm);
+    const host_fd: posix.fd_t = if (wasi) |w| w.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    } else if (fd >= 0 and fd <= 2) @intCast(fd) else {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+
+    var total: u32 = 0;
+    var cur_offset: u64 = @bitCast(file_offset);
+    for (0..iovs_len) |i| {
+        const offset: u32 = @intCast(i * 8);
+        const iov_ptr = try memory.read(u32, iovs_ptr, offset);
+        const iov_len = try memory.read(u32, iovs_ptr, offset + 4);
+        if (iov_ptr + iov_len > data.len) return error.OutOfBoundsMemoryAccess;
+
+        const buf = data[iov_ptr .. iov_ptr + iov_len];
+        const n = posix.pread(host_fd, buf, cur_offset) catch |err| {
+            try pushErrno(vm, toWasiErrno(err));
+            return;
+        };
+        total += @intCast(n);
+        cur_offset += n;
+        if (n < buf.len) break;
+    }
+
+    try memory.write(u32, nread_ptr, 0, total);
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_pwrite(fd: i32, iovs_ptr: i32, iovs_len: i32, offset: i64, nwritten_ptr: i32) -> errno
+pub fn fd_pwrite(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const nwritten_ptr = vm.popOperandU32();
+    const file_offset = vm.popOperandI64();
+    const iovs_len = vm.popOperandU32();
+    const iovs_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm);
+    const host_fd: posix.fd_t = if (wasi) |w| w.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    } else if (fd >= 0 and fd <= 2) @intCast(fd) else {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+
+    var total: u32 = 0;
+    var cur_offset: u64 = @bitCast(file_offset);
+    for (0..iovs_len) |i| {
+        const offset: u32 = @intCast(i * 8);
+        const iov_ptr = try memory.read(u32, iovs_ptr, offset);
+        const iov_len = try memory.read(u32, iovs_ptr, offset + 4);
+        if (iov_ptr + iov_len > data.len) return error.OutOfBoundsMemoryAccess;
+
+        const buf = data[iov_ptr .. iov_ptr + iov_len];
+        const n = posix.pwrite(host_fd, buf, cur_offset) catch |err| {
+            try pushErrno(vm, toWasiErrno(err));
+            return;
+        };
+        total += @intCast(n);
+        cur_offset += n;
+        if (n < buf.len) break;
+    }
+
+    try memory.write(u32, nwritten_ptr, 0, total);
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_renumber(fd_from: i32, fd_to: i32) -> errno
+pub fn fd_renumber(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const fd_to = vm.popOperandI32();
+    const fd_from = vm.popOperandI32();
+
+    _ = fd_to;
+    _ = fd_from;
+
+    // dup2 equivalent — stub for now
+    try pushErrno(vm, .NOSYS);
+}
+
+/// path_filestat_set_times(fd: i32, flags: i32, path_ptr: i32, path_len: i32, atim: i64, mtim: i64, fst_flags: i32) -> errno
+pub fn path_filestat_set_times(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandU32(); // fst_flags
+    _ = vm.popOperandI64(); // mtim
+    _ = vm.popOperandI64(); // atim
+    _ = vm.popOperandU32(); // path_len
+    _ = vm.popOperandU32(); // path_ptr
+    _ = vm.popOperandU32(); // flags
+    _ = vm.popOperandI32(); // fd
+    // Stub — timestamp modification
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// path_readlink(fd: i32, path_ptr: i32, path_len: i32, buf_ptr: i32, buf_len: i32, bufused_ptr: i32) -> errno
+pub fn path_readlink(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const bufused_ptr = vm.popOperandU32();
+    const buf_len = vm.popOperandU32();
+    const buf_ptr = vm.popOperandU32();
+    const path_len = vm.popOperandU32();
+    const path_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    const host_fd = wasi.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+    if (path_ptr + path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    if (buf_ptr + buf_len > data.len) return error.OutOfBoundsMemoryAccess;
+
+    const path = data[path_ptr .. path_ptr + path_len];
+    const buf = data[buf_ptr .. buf_ptr + buf_len];
+
+    const result = posix.readlinkat(host_fd, path, buf) catch |err| {
+        try pushErrno(vm, toWasiErrno(err));
+        return;
+    };
+    try memory.write(u32, bufused_ptr, 0, @intCast(result.len));
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// path_symlink(old_path_ptr: i32, old_path_len: i32, fd: i32, new_path_ptr: i32, new_path_len: i32) -> errno
+pub fn path_symlink(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    _ = vm.popOperandU32(); // new_path_len
+    _ = vm.popOperandU32(); // new_path_ptr
+    _ = vm.popOperandI32(); // fd
+    _ = vm.popOperandU32(); // old_path_len
+    _ = vm.popOperandU32(); // old_path_ptr
+    // symlinkat not in std.posix — stub as NOSYS
+    try pushErrno(vm, .NOSYS);
+}
+
 // ============================================================
 // Error mapping
 // ============================================================
@@ -965,23 +1194,34 @@ const wasi_table = [_]WasiEntry{
     .{ .name = "clock_time_get", .func = &clock_time_get },
     .{ .name = "environ_get", .func = &environ_get },
     .{ .name = "environ_sizes_get", .func = &environ_sizes_get },
+    .{ .name = "fd_advise", .func = &fd_advise },
+    .{ .name = "fd_allocate", .func = &fd_allocate },
     .{ .name = "fd_close", .func = &fd_close },
     .{ .name = "fd_datasync", .func = &fd_datasync },
     .{ .name = "fd_fdstat_get", .func = &fd_fdstat_get },
+    .{ .name = "fd_fdstat_set_flags", .func = &fd_fdstat_set_flags },
     .{ .name = "fd_filestat_get", .func = &fd_filestat_get },
+    .{ .name = "fd_filestat_set_size", .func = &fd_filestat_set_size },
+    .{ .name = "fd_filestat_set_times", .func = &fd_filestat_set_times },
+    .{ .name = "fd_pread", .func = &fd_pread },
     .{ .name = "fd_prestat_get", .func = &fd_prestat_get },
     .{ .name = "fd_prestat_dir_name", .func = &fd_prestat_dir_name },
+    .{ .name = "fd_pwrite", .func = &fd_pwrite },
     .{ .name = "fd_read", .func = &fd_read },
     .{ .name = "fd_readdir", .func = &fd_readdir },
+    .{ .name = "fd_renumber", .func = &fd_renumber },
     .{ .name = "fd_seek", .func = &fd_seek },
     .{ .name = "fd_sync", .func = &fd_sync },
     .{ .name = "fd_tell", .func = &fd_tell },
     .{ .name = "fd_write", .func = &fd_write },
     .{ .name = "path_create_directory", .func = &path_create_directory },
     .{ .name = "path_filestat_get", .func = &path_filestat_get },
+    .{ .name = "path_filestat_set_times", .func = &path_filestat_set_times },
     .{ .name = "path_open", .func = &path_open },
+    .{ .name = "path_readlink", .func = &path_readlink },
     .{ .name = "path_remove_directory", .func = &path_remove_directory },
     .{ .name = "path_rename", .func = &path_rename },
+    .{ .name = "path_symlink", .func = &path_symlink },
     .{ .name = "path_unlink_file", .func = &path_unlink_file },
     .{ .name = "proc_exit", .func = &proc_exit },
     .{ .name = "random_get", .func = &random_get },
