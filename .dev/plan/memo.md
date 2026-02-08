@@ -24,23 +24,22 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
 
 1. ~~**35X.1** Linux x86_64 cross-compile + Docker verification~~ DONE
-2. **35X.2** Linux aarch64 cross-compile + Docker verification (QEMU)
+2. ~~**35X.2** Linux aarch64 cross-compile + Docker verification~~ DONE
 3. **35X.3** macOS x86_64 cross-compile + Rosetta verification
 4. **35X.4** LICENSE file (EPL-1.0)
 5. **35X.5** GitHub Actions CI
 
 ## Current Task
 
-35X.2: Linux aarch64 cross-compile + Docker verification.
-Cross-compile with `zig build -Dtarget=aarch64-linux-gnu`, fix errors,
-verify in Docker (debian:bookworm-slim on Apple Silicon): eval, file exec, build, http, wasm.
+35X.3: macOS x86_64 cross-compile + Rosetta verification.
+Cross-compile with `zig build -Dtarget=x86_64-macos-none`, verify via Rosetta on
+Apple Silicon: eval, file exec, build, http, wasm.
 
 ## Previous Task
 
-35X.1: Linux x86_64 cross-compile + Docker verification.
-NaN boxing redesign required (D85): original 40-bit address scheme too narrow for
-Linux 47-48 bit addresses. Implemented 4-heap-tag scheme with 48-bit effective range.
-Docker verification passed: eval, file exec, build, http, wasm all working.
+35X.2: Linux aarch64 cross-compile + Docker verification.
+Zero compilation errors. Docker verification (--platform linux/arm64) passed on first
+try: eval, file exec, build, http, wasm all working. 48-bit NaN boxing (D85) confirmed.
 
 ## Known Issues
 
@@ -106,6 +105,10 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 35X.2 COMPLETE** — Linux aarch64 cross-compile + Docker verification
+  - Zero compilation errors, Docker verification passed on first try
+  - Binary: ELF aarch64, statically linked, 14MB
+  - 48-bit NaN boxing (D85) confirmed working on real aarch64 Linux
 - **Phase 35X.1 COMPLETE** — Linux x86_64 cross-compile + Docker verification
   - NaN boxing redesigned: 1-tag (40-bit) → 4-tag (48-bit) scheme (D85)
   - Tags: 0xFFF8/0xFFFA/0xFFFE/0xFFFF, 3-bit sub-type, 45-bit shifted addr
