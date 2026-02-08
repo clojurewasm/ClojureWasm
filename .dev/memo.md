@@ -19,20 +19,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-1. **36.8** Multi-module linking
-2. **36.9** F119 fix — WIT string return marshalling
-3. **36.10** Documentation + cleanup
+1. **36.9** F119 fix — WIT string return marshalling
+2. **36.10** Documentation + cleanup
 
 ## Current Task
 
-Next task: 36.8 Multi-module linking (or plan next phase if needed).
+Next task: 36.9 F119 fix — WIT string return marshalling.
 
 ## Previous Task
 
-F121: Cross-language benchmark equivalence fixes.
-6/7 benchmarks fixed (07_map_ops, 09_sieve, 15_keyword_lookup, 08_list_build,
-12_gc_stress, 17_nested_update). 05_map_filter_reduce deferred (minor).
-Clojure code unchanged — history.yaml CW results remain valid.
+36.8: Multi-module linking — function imports across .wasm modules.
+Added `registerWasmModuleImports()` in types.zig. API: `(wasm/load "app.wasm" {:imports {"math" math-mod}})`.
+Tests: two-module (math→app), three-module chain (base→mid→top). Both backends verified.
 Cross-language comparison baseline note added to history.yaml.
 
 ## Known Issues

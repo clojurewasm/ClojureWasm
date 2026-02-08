@@ -27,7 +27,7 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
 | F113 | nREPL GC integration                         | Without GC, transient Values accumulate in GPA. Add MarkSweepGc to nREPL. |
-| F118 | Wasm FFI deep (Phase 36)                     | SIMD + optimization done. Remaining: 36.8 multi-module, 36.9 F119, 36.10 docs |
+| F118 | Wasm FFI deep (Phase 36)                     | SIMD + optimization + multi-module done. Remaining: 36.9 F119, 36.10 docs |
 | F119 | WIT string return marshalling                | `wasm/fn` with WIT returns accumulated memory. Fix: slice by (ptr, len). |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
 | ~~F121~~ | ~~Cross-language benchmark equivalence fixes~~ | **DONE**: 6/7 fixed. Only 05_map_filter_reduce deferred (minor). |

@@ -83,7 +83,7 @@ Remaining work from Phase 36:
 | 36.5  | SIMD Clojure API                 | COMPLETE    |
 | 36.6  | SIMD benchmark                   | COMPLETE    |
 | 36.7  | Interpreter optimization (D86)   | COMPLETE    |
-| 36.8  | Multi-module linking             | TODO        |
+| 36.8  | Multi-module linking             | COMPLETE    |
 | 36.9  | F119 WIT string fix              | TODO        |
 | 36.10 | Documentation + cleanup          | TODO        |
 

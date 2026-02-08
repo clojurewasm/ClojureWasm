@@ -96,7 +96,10 @@ pub const WasmModule = struct {
         }
         errdefer if (self.wasi_ctx) |*wc| wc.deinit();
 
-        if (imports_map) |im| try registerHostFunctions(&self.store, &self.module, im, allocator);
+        if (imports_map) |im| {
+            try registerWasmModuleImports(&self.store, &self.module, im, allocator);
+            try registerHostFunctions(&self.store, &self.module, im, allocator);
+        }
 
         self.instance = rt.instance_mod.Instance.init(allocator, &self.store, &self.module);
         errdefer self.instance.deinit();
@@ -401,6 +404,59 @@ fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
     }
 }
 
+/// Register exported functions from WasmModule values as imports in the target store.
+/// imports_map: {"module_name" WasmModule-or-map}
+/// When the value for a module name is a WasmModule, its exported functions are
+/// copied into the target store and registered as imports.
+pub fn registerWasmModuleImports(
+    store: *rt.store_mod.Store,
+    module: *const rt.module_mod.Module,
+    imports_map: Value,
+    allocator: Allocator,
+) !void {
+    _ = allocator;
+    for (module.imports.items) |imp| {
+        if (imp.kind != .func) continue;
+        if (std.mem.eql(u8, imp.module, "wasi_snapshot_preview1")) continue;
+
+        // Look up the source for this import's module name
+        const source = lookupImportSource(imports_map, imp.module) orelse continue;
+
+        // Only handle WasmModule values here
+        if (source.tag() != .wasm_module) continue;
+        const src_module = source.asWasmModule();
+
+        // Look up the exported function in the source module's Instance
+        const export_addr = src_module.instance.getExportFunc(imp.name) orelse
+            return error.ImportNotFound;
+
+        // Copy the Function from source store into target store.
+        // Reset branch_table to null — it will be lazily rebuilt.
+        // (Sharing branch_table pointers across stores would cause double-free.)
+        var src_func = src_module.store.getFunction(export_addr) catch
+            return error.ImportNotFound;
+        if (src_func.subtype == .wasm_function) {
+            src_func.subtype.wasm_function.branch_table = null;
+        }
+        const addr = store.addFunction(src_func) catch
+            return error.WasmInstantiateError;
+        store.addExport(imp.module, imp.name, .func, addr) catch
+            return error.WasmInstantiateError;
+    }
+}
+
+/// Look up the value for a module name in the imports map.
+/// Returns the sub-value (either a sub-map for host functions, or a WasmModule).
+fn lookupImportSource(imports_map: Value, module_name: []const u8) ?Value {
+    const alloc = std.heap.page_allocator;
+    const mod_key = Value.initString(alloc, module_name);
+    return switch (imports_map.tag()) {
+        .map => imports_map.asMap().get(mod_key),
+        .hash_map => imports_map.asHashMap().get(mod_key),
+        else => null,
+    };
+}
+
 /// Register Clojure functions as Wasm host functions.
 /// imports_map: {"module_name" {"func_name" clj-fn}}
 pub fn registerHostFunctions(
@@ -414,6 +470,11 @@ pub fn registerHostFunctions(
 
         // Skip wasi imports (handled separately)
         if (std.mem.eql(u8, imp.module, "wasi_snapshot_preview1")) continue;
+
+        // Skip imports already handled by WasmModule sources
+        if (lookupImportSource(imports_map, imp.module)) |source| {
+            if (source.tag() == .wasm_module) continue;
+        }
 
         if (imp.index >= module.types.items.len) continue;
         const functype = module.types.items[imp.index];
@@ -728,4 +789,92 @@ test "getExportInfo — nonexistent name returns null" {
     defer wasm_mod.deinit();
 
     try testing.expect(wasm_mod.getExportInfo("nonexistent") == null);
+}
+
+// ============================================================
+// Multi-module linking tests (Phase 36.8)
+// ============================================================
+
+test "multi-module — two modules, function import" {
+    const collections = @import("../common/collections.zig");
+
+    // math_mod exports "add" and "mul"
+    const math_bytes = @embedFile("testdata/20_math_export.wasm");
+    var math_mod = try WasmModule.load(testing.allocator, math_bytes);
+    defer math_mod.deinit();
+
+    // Verify math module works standalone
+    var add_args = [_]u64{ 3, 4 };
+    var add_results = [_]u64{0};
+    try math_mod.invoke("add", &add_args, &add_results);
+    try testing.expectEqual(@as(u64, 7), add_results[0]);
+
+    // Build imports map: {"math" WasmModule}
+    const math_val = Value.initWasmModule(math_mod);
+    var import_entries = [_]Value{
+        Value.initString(std.heap.page_allocator, "math"), math_val,
+    };
+    const import_map = try testing.allocator.create(collections.PersistentArrayMap);
+    import_map.* = .{ .entries = &import_entries };
+    defer testing.allocator.destroy(import_map);
+
+    // app_mod imports "add" and "mul" from "math", exports "add_and_mul"
+    const app_bytes = @embedFile("testdata/21_app_import.wasm");
+    var app_mod = try WasmModule.loadWithImports(testing.allocator, app_bytes, Value.initMap(import_map));
+    defer app_mod.deinit();
+
+    // add_and_mul(3, 4, 5) = (3 + 4) * 5 = 35
+    var args = [_]u64{ 3, 4, 5 };
+    var results = [_]u64{0};
+    try app_mod.invoke("add_and_mul", &args, &results);
+    try testing.expectEqual(@as(u64, 35), results[0]);
+}
+
+test "multi-module — three module chain" {
+    const collections = @import("../common/collections.zig");
+
+    // base exports "double"
+    const base_bytes = @embedFile("testdata/22_base.wasm");
+    var base_mod = try WasmModule.load(testing.allocator, base_bytes);
+    defer base_mod.deinit();
+
+    // Build imports map for mid: {"base" WasmModule}
+    const base_val = Value.initWasmModule(base_mod);
+    var base_entries = [_]Value{
+        Value.initString(std.heap.page_allocator, "base"), base_val,
+    };
+    const base_map = try testing.allocator.create(collections.PersistentArrayMap);
+    base_map.* = .{ .entries = &base_entries };
+    defer testing.allocator.destroy(base_map);
+
+    // mid imports "double" from "base", exports "quadruple"
+    const mid_bytes = @embedFile("testdata/23_mid.wasm");
+    var mid_mod = try WasmModule.loadWithImports(testing.allocator, mid_bytes, Value.initMap(base_map));
+    defer mid_mod.deinit();
+
+    // Verify mid: quadruple(5) = 20
+    var mid_args = [_]u64{5};
+    var mid_results = [_]u64{0};
+    try mid_mod.invoke("quadruple", &mid_args, &mid_results);
+    try testing.expectEqual(@as(u64, 20), mid_results[0]);
+
+    // Build imports map for top: {"mid" WasmModule}
+    const mid_val = Value.initWasmModule(mid_mod);
+    var mid_entries = [_]Value{
+        Value.initString(std.heap.page_allocator, "mid"), mid_val,
+    };
+    const mid_map = try testing.allocator.create(collections.PersistentArrayMap);
+    mid_map.* = .{ .entries = &mid_entries };
+    defer testing.allocator.destroy(mid_map);
+
+    // top imports "quadruple" from "mid", exports "octuple"
+    const top_bytes = @embedFile("testdata/24_top.wasm");
+    var top_mod = try WasmModule.loadWithImports(testing.allocator, top_bytes, Value.initMap(mid_map));
+    defer top_mod.deinit();
+
+    // octuple(3) = 3 * 8 = 24
+    var top_args = [_]u64{3};
+    var top_results = [_]u64{0};
+    try top_mod.invoke("octuple", &top_args, &top_results);
+    try testing.expectEqual(@as(u64, 24), top_results[0]);
 }
