@@ -838,6 +838,7 @@ vars:
     post: {type: function, status: done, notes: "builtin (Zig), HTTP POST client"}
     put: {type: function, status: done, notes: "builtin (Zig), HTTP PUT client"}
     delete: {type: function, status: done, notes: "builtin (Zig), HTTP DELETE client"}
+    "set-handler!": {type: function, status: done, notes: "builtin (Zig), cljw extension — live reload handler"}
   clojure_java_shell:
     "*sh-dir*": {type: dynamic-var, status: todo}
     "*sh-env*": {type: dynamic-var, status: todo}

@@ -75,6 +75,7 @@ Phase 34 — Server Mode & Networking (F116)
     - Live reload via nREPL: HTTP + nREPL simultaneous operation
   - 34.4: HTTP client (get/post/put/delete) using Zig std.http.Client
   - 34.5: Lifecycle management (SIGINT/SIGTERM, shutdown hooks, graceful exit)
+  - 34.6: Fix :background opt parsing + set-handler! for live reload
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
   clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user
