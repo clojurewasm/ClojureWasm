@@ -13,6 +13,8 @@ const opcode = @import("opcode.zig");
 const ValType = opcode.ValType;
 const store_mod = @import("store.zig");
 const Store = store_mod.Store;
+const wasi_mod = @import("wasi.zig");
+pub const WasiContext = wasi_mod.WasiContext;
 const WasmMemory = @import("memory.zig").Memory;
 const module_mod = @import("module.zig");
 const Module = module_mod.Module;
@@ -29,6 +31,9 @@ pub const Instance = struct {
     globaladdrs: ArrayList(usize),
     elemaddrs: ArrayList(usize),
     dataaddrs: ArrayList(usize),
+
+    // WASI context (optional, set before instantiate for WASI modules)
+    wasi: ?*WasiContext = null,
 
     pub fn init(alloc: Allocator, store: *Store, module: *const Module) Instance {
         return .{

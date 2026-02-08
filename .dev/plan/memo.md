@@ -32,20 +32,23 @@ Phase 35W — Custom Wasm Runtime (D84)
 - ~~35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)~~ DONE
 - ~~35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)~~ DONE
 - ~~35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)~~ DONE
-- 35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)
+- ~~35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)~~ DONE
 - 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
 - 35W.9 Cleanup: verify all tests, update docs
 
 ## Current Task
 
-35W.7 — WASI: wasi.zig — 19 WASI Preview 1 functions for fd_write, args, environ, etc.
+35W.8 — Integration: update types.zig + build.zig, remove zware dependency.
 
 ## Previous Task
 
-35W.6 — VM: vm.zig — switch-based interpreter for all MVP opcodes.
-1316 LOC. Three stacks (operand 4096, frame 256, label 256). Switch dispatch.
-All control flow, memory, arithmetic, conversions, 0xFC misc prefix implemented.
-5 VM tests + 69 dependency tests = 74 total pass.
+35W.7 — WASI: wasi.zig — 19 WASI Preview 1 functions.
+WasiContext (args, environ, preopens), fd_write/read/seek/tell/close,
+args_get/sizes_get, environ_get/sizes_get, clock_time_get, random_get,
+fd_prestat_get/dir_name, fd_fdstat/filestat_get, path_open/filestat_get,
+fd_readdir (stub), proc_exit. Vm gains current_instance + getMemory for
+host function access. Instance gains wasi field. 07_wasi_hello.wasm runs
+end-to-end. 6 WASI tests + 74 dependency tests = 80 total pass.
 
 35W.5 — Instance: instance.zig — module instantiation with import resolution,
 function/memory/table/global allocation, data/element active segment application,

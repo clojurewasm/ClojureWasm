@@ -115,6 +115,7 @@ pub const Vm = struct {
     label_stack: [LABEL_STACK_SIZE]Label,
     label_ptr: usize,
     alloc: Allocator,
+    current_instance: ?*Instance = null,
 
     pub fn init(alloc: Allocator) Vm {
         return .{
@@ -144,7 +145,7 @@ pub const Vm = struct {
     /// Call a function (wasm or host) with given args, writing results.
     fn callFunction(
         self: *Vm,
-        _: *Instance,
+        instance: *Instance,
         func: store_mod.Function,
         args: []const u64,
         results: []u64,
@@ -193,6 +194,7 @@ pub const Vm = struct {
                 for (args) |arg| try self.push(arg);
 
                 // Call host function
+                self.current_instance = instance;
                 hf.func(@ptrCast(self), hf.context) catch return error.Trap;
 
                 // Pop results
@@ -791,6 +793,7 @@ pub const Vm = struct {
                 reader.* = frame.return_reader;
             },
             .host_function => |hf| {
+                self.current_instance = instance;
                 hf.func(@ptrCast(self), hf.context) catch return error.Trap;
             },
         }
@@ -921,6 +924,15 @@ pub const Vm = struct {
     // Host function stack access (for WASI and host callbacks)
     pub fn pushOperand(self: *Vm, val: u64) WasmError!void { try self.push(val); }
     pub fn popOperand(self: *Vm) u64 { return self.pop(); }
+    pub fn popOperandI32(self: *Vm) i32 { return self.popI32(); }
+    pub fn popOperandU32(self: *Vm) u32 { return self.popU32(); }
+    pub fn popOperandI64(self: *Vm) i64 { return self.popI64(); }
+
+    /// Get memory from the current instance (for host/WASI functions).
+    pub fn getMemory(self: *Vm, idx: u32) !*WasmMemory {
+        const inst = self.current_instance orelse return error.Trap;
+        return inst.getMemory(idx);
+    }
 
     fn pushFrame(self: *Vm, frame: Frame) WasmError!void {
         if (self.frame_ptr >= FRAME_STACK_SIZE) return error.StackOverflow;
