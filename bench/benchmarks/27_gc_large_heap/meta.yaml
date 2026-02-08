@@ -1,0 +1,4 @@
+name: "GC Large Heap"
+category: gc
+expected_output: "5000050000"
+description: "GC cycle time with 100K live maps — measures mark-sweep tracing overhead on large heap"

@@ -28,6 +28,8 @@ const arith = @import("../../common/builtin/arithmetic.zig");
 const bootstrap = @import("../../common/bootstrap.zig");
 const multimethods_mod = @import("../../common/builtin/multimethods.zig");
 const gc_mod = @import("../../common/gc.zig");
+const build_options = @import("build_options");
+const profile_opcodes = build_options.profile_opcodes;
 
 /// VM execution errors.
 const err_mod = @import("../../common/error.zig");
@@ -76,6 +78,61 @@ const CallFrame = struct {
     /// Saved current_ns before this call (restored on ret) for D68 namespace isolation.
     saved_ns: ?*anyopaque = null,
 };
+
+/// Module-level opcode profiling counters (37.1). Accumulate across VM instances.
+/// Gated by -Dprofile-opcodes=true. Violates D3 (no global state) by design —
+/// profiling is a development tool, not production code.
+var global_opcode_counts: if (profile_opcodes) [256]u64 else void = if (profile_opcodes) .{0} ** 256 else {};
+
+/// Dump accumulated opcode frequency profile to stderr.
+pub fn dumpOpcodeProfile() void {
+    if (!profile_opcodes) return;
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+
+    const counts = &global_opcode_counts;
+    var total: u64 = 0;
+    for (counts) |c| total += c;
+    if (total == 0) return;
+
+    // Collect non-zero entries
+    var entries: [256]struct { count: u64, idx: u8 } = undefined;
+    var n: usize = 0;
+    for (0..256) |i| {
+        if (counts[i] > 0) {
+            entries[n] = .{ .count = counts[i], .idx = @intCast(i) };
+            n += 1;
+        }
+    }
+
+    // Sort by count descending (selection sort — max ~45 opcodes)
+    for (0..n) |i| {
+        var max_j = i;
+        for (i + 1..n) |j| {
+            if (entries[j].count > entries[max_j].count) max_j = j;
+        }
+        if (max_j != i) {
+            const tmp = entries[i];
+            entries[i] = entries[max_j];
+            entries[max_j] = tmp;
+        }
+    }
+
+    var buf: [256]u8 = undefined;
+    _ = stderr.write("\n=== Opcode Frequency Profile ===\n") catch return;
+    var len = std.fmt.bufPrint(&buf, "Total instructions: {d}\n\n", .{total}) catch return;
+    _ = stderr.write(len) catch return;
+
+    _ = stderr.write("Opcode                  Count        %\n") catch return;
+    _ = stderr.write("--------------------  ----------  ------\n") catch return;
+
+    for (entries[0..n]) |e| {
+        const name = @tagName(@as(OpCode, @enumFromInt(e.idx)));
+        const pct: f64 = @as(f64, @floatFromInt(e.count)) / @as(f64, @floatFromInt(total)) * 100.0;
+        len = std.fmt.bufPrint(&buf, "{s:<20}  {d:>10}  {d:>5.1}%\n", .{ name, e.count, pct }) catch continue;
+        _ = stderr.write(len) catch return;
+    }
+    _ = stderr.write("\n") catch return;
+}
 
 /// Active VM reference for fused reduce (builtins can call back into VM).
 /// Set during execute(), cleared on return. Enables efficient function
@@ -294,6 +351,10 @@ pub const VM = struct {
 
         const instr = frame.code[frame.ip];
         frame.ip += 1;
+
+        if (profile_opcodes) {
+            global_opcode_counts[@intFromEnum(instr.op)] += 1;
+        }
 
         switch (instr.op) {
             // [A] Constants

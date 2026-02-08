@@ -19,26 +19,31 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 37: Advanced GC + JIT Research
-1. [ ] Generational GC design (write barrier strategy, nursery sizing)
-2. [ ] JIT compilation survey (trace JIT vs method JIT vs Cranelift)
-3. [ ] Escape analysis PoC (F103: local-only Values skip GC tracking)
-4. [ ] Profile-guided optimization design (F104: extend IC beyond monomorphic)
-5. [ ] Design documents + summary
+Phase 37: VM Optimization + JIT (A→B incremental)
+1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
+2. [ ] 37.2: Superinstructions (fuse common opcode sequences)
+3. [ ] 37.3: Specializing adaptive interpreter (runtime quickening)
+4. [ ] 37.4: JIT PoC — hot loop native code generation
+5. [ ] 37.5: Slab GC + bitmap marking (if GC bottleneck remains)
+6. [ ] 37.6: Escape analysis + polymorphic IC (if needed)
 
 ## Current Task
 
-Phase 37 planning. Transition from pre-JIT optimizations.
+37.2: Superinstructions.
+Based on profiling data from 37.1, fuse common opcode sequences
+to reduce VM dispatch overhead. Top candidates from arith_loop:
+- local_load + local_load + add (41.7% + 16.7%)
+- local_load + const_load + eq + jump_if_false (comparison pattern)
 
 ## Previous Task
 
-Phase 36.11: READY optimizations (pre-JIT).
-- F101: DONE — into() transient optimization (core.clj)
-- F102: DEFERRED — CW range is eager, no chunked-seq producers exist
-- SmallString widening: DEFERRED — asString() returns []const u8, lifetime problem for inline data
-- String interning: DEFERRED — string_ops bottleneck is allocation/conversion, not comparison
-- Baseline recorded (36.11-base). No measurable benchmark regression or improvement.
-- Analysis captured in optimizations.md ANALYZED section.
+37.1: Profiling infrastructure — DONE.
+- Opcode frequency profiling: `-Dprofile-opcodes=true` build flag
+- Allocation histogram: `-Dprofile-alloc=true` build flag
+- New GC benchmarks: gc_alloc_rate (53ms), gc_large_heap (29ms)
+- Baseline recorded (37.1 in history.yaml, 27 benchmarks)
+- Key insight: arith_loop dominated by local_load (41.7%), add (16.7%),
+  eq/const_load/jump_if_false each ~8.3%
 
 ## Known Issues
 
@@ -74,6 +79,11 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 37.1 COMPLETE**: Profiling infrastructure
+  - Opcode frequency: `-Dprofile-opcodes` → VM dispatch loop counter + sorted dump
+  - Allocation histogram: `-Dprofile-alloc` → per-size bucket counting in MarkSweepGc
+  - New GC benchmarks: 26_gc_alloc_rate (200K vectors), 27_gc_large_heap (100K live maps)
+  - Profiling data: arith_loop local_load 41.7%, add 16.7%, eq 8.3%
 - **Phase 36.11 COMPLETE**: Pre-JIT optimizations
   - F101 DONE: into() transient optimization
   - F102, SmallString, String interning: analyzed and deferred (see optimizations.md)

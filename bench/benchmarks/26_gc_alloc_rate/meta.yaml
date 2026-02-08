@@ -1,0 +1,4 @@
+name: "GC Alloc Rate"
+category: gc
+expected_output: "20000300000"
+description: "Pure allocation throughput — 200K short-lived vectors, measures raw GC allocation speed"

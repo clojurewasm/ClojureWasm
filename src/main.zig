@@ -18,6 +18,7 @@ const nrepl = @import("repl/nrepl.zig");
 const line_editor = @import("repl/line_editor.zig");
 const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
+const vm_mod = @import("native/vm/vm.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
 const ns_ops = @import("common/builtin/ns_ops.zig");
 const http_server = @import("common/builtin/http_server.zig");
@@ -40,6 +41,8 @@ pub fn main() !void {
     //   alloc (GC)        — for Values (Fn, collections, strings, reader/analyzer)
     var gc = gc_mod.MarkSweepGc.init(allocator);
     defer gc.deinit();
+    defer vm_mod.dumpOpcodeProfile(); // 37.1: dump opcode profile at exit
+    defer gc.dumpAllocProfile(); // 37.1: dump allocation profile at exit
     const alloc = gc.allocator();
 
     const args = try std.process.argsAlloc(allocator);

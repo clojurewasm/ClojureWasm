@@ -5,6 +5,8 @@
 
 const std = @import("std");
 const Alignment = std.mem.Alignment;
+const build_options = @import("build_options");
+const profile_alloc = build_options.profile_alloc;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const chunk_mod = @import("bytecode/chunk.zig");
@@ -144,28 +146,6 @@ pub const ArenaGc = struct {
 ///   - node_arena: AST nodes (freed per-eval)
 ///   - GC allocator (this): runtime Values (mark-sweep collected)
 pub const MarkSweepGc = struct {
-    backing: std.mem.Allocator,
-    allocations: std.AutoArrayHashMapUnmanaged(usize, AllocInfo) = .empty,
-    bytes_allocated: usize = 0,
-    alloc_count: u64 = 0,
-    collect_count: u64 = 0,
-    threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
-
-    // --- Free-pool recycling (24C.5) ---
-    //
-    // Dead allocations from sweep are not immediately freed back to the OS.
-    // Instead, they are cached in per-(size, alignment) free pools. On the
-    // next allocation of the same size, the pool provides a recycled block
-    // in O(1) — a simple linked-list pop. This avoids the full GPA
-    // rawAlloc/rawFree overhead (which includes page-level bookkeeping).
-    //
-    // The FreeNode struct is overlaid directly on the freed memory (intrusive
-    // linked list), so no extra allocation is needed to track free blocks.
-    //
-    // Impact: gc_stress 324ms -> 46ms (7x), nested_update 124ms -> 41ms (3x).
-    free_pools: [MAX_FREE_POOLS]FreePool = [_]FreePool{.{}} ** MAX_FREE_POOLS,
-    free_pool_count: u8 = 0,
-
     /// Free-list node — overlaid directly on freed allocation memory.
     /// The freed block must be >= @sizeOf(FreeNode) to be recyclable.
     const FreeNode = struct {
@@ -189,6 +169,39 @@ pub const MarkSweepGc = struct {
         alignment: Alignment,
         marked: bool,
     };
+
+    // Allocation profiling (37.1)
+    const MAX_ALLOC_BUCKETS = 32;
+    const AllocBucket = struct { size: usize, count: u64, total_bytes: u64 };
+
+    backing: std.mem.Allocator,
+    allocations: std.AutoArrayHashMapUnmanaged(usize, AllocInfo) = .empty,
+    bytes_allocated: usize = 0,
+    alloc_count: u64 = 0,
+    collect_count: u64 = 0,
+    threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
+
+    // --- Free-pool recycling (24C.5) ---
+    //
+    // Dead allocations from sweep are not immediately freed back to the OS.
+    // Instead, they are cached in per-(size, alignment) free pools. On the
+    // next allocation of the same size, the pool provides a recycled block
+    // in O(1) — a simple linked-list pop. This avoids the full GPA
+    // rawAlloc/rawFree overhead (which includes page-level bookkeeping).
+    //
+    // The FreeNode struct is overlaid directly on the freed memory (intrusive
+    // linked list), so no extra allocation is needed to track free blocks.
+    //
+    // Impact: gc_stress 324ms -> 46ms (7x), nested_update 124ms -> 41ms (3x).
+    free_pools: [MAX_FREE_POOLS]FreePool = [_]FreePool{.{}} ** MAX_FREE_POOLS,
+    free_pool_count: u8 = 0,
+
+    // --- Allocation profiling (37.1) ---
+    alloc_buckets: if (profile_alloc) [MAX_ALLOC_BUCKETS]AllocBucket else void =
+        if (profile_alloc) .{AllocBucket{ .size = 0, .count = 0, .total_bytes = 0 }} ** MAX_ALLOC_BUCKETS else {},
+    alloc_bucket_count: if (profile_alloc) u8 else void = if (profile_alloc) 0 else {},
+    total_alloc_calls: if (profile_alloc) u64 else void = if (profile_alloc) 0 else {},
+    total_alloc_bytes: if (profile_alloc) u64 else void = if (profile_alloc) 0 else {},
 
     const allocator_vtable: std.mem.Allocator.VTable = .{
         .alloc = &msAlloc,
@@ -366,6 +379,7 @@ pub const MarkSweepGc = struct {
                     }) catch return null;
                     self.bytes_allocated += len;
                     self.alloc_count += 1;
+                    if (profile_alloc) self.recordAllocBucket(len);
                     return result;
                 }
                 break; // Pool exists but empty — fall through to backing
@@ -384,6 +398,7 @@ pub const MarkSweepGc = struct {
         };
         self.bytes_allocated += len;
         self.alloc_count += 1;
+        if (profile_alloc) self.recordAllocBucket(len);
         return result;
     }
 
@@ -476,6 +491,68 @@ pub const MarkSweepGc = struct {
         if (self.bytes_allocated >= self.threshold) {
             self.threshold = self.bytes_allocated * 2;
         }
+    }
+
+    // --- Allocation profiling helpers (37.1) ---
+
+    fn recordAllocBucket(self: *MarkSweepGc, size: usize) void {
+        self.total_alloc_calls += 1;
+        self.total_alloc_bytes += size;
+        const buckets = &self.alloc_buckets;
+        const count = self.alloc_bucket_count;
+        for (buckets[0..count]) |*b| {
+            if (b.size == size) {
+                b.count += 1;
+                b.total_bytes += size;
+                return;
+            }
+        }
+        if (count < MAX_ALLOC_BUCKETS) {
+            buckets[count] = .{ .size = size, .count = 1, .total_bytes = size };
+            self.alloc_bucket_count += 1;
+        }
+    }
+
+    pub fn dumpAllocProfile(self: *const MarkSweepGc) void {
+        if (!profile_alloc) return;
+        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        const count = self.alloc_bucket_count;
+        if (count == 0) return;
+
+        // Copy and sort by count descending
+        var sorted: [MAX_ALLOC_BUCKETS]AllocBucket = undefined;
+        @memcpy(sorted[0..count], self.alloc_buckets[0..count]);
+        for (0..count) |i| {
+            var max_j = i;
+            for (i + 1..count) |j| {
+                if (sorted[j].count > sorted[max_j].count) max_j = j;
+            }
+            if (max_j != i) {
+                const tmp = sorted[i];
+                sorted[i] = sorted[max_j];
+                sorted[max_j] = tmp;
+            }
+        }
+
+        var buf: [256]u8 = undefined;
+        _ = stderr.write("\n=== Allocation Size Profile ===\n") catch return;
+        var len = std.fmt.bufPrint(&buf, "Total allocs: {d}, Total bytes: {d}\n\n", .{
+            self.total_alloc_calls, self.total_alloc_bytes,
+        }) catch return;
+        _ = stderr.write(len) catch return;
+
+        _ = stderr.write("  Size (B)      Count    Total (B)      %\n") catch return;
+        _ = stderr.write("----------  ----------  ----------  ------\n") catch return;
+
+        for (sorted[0..count]) |b| {
+            const pct: f64 = @as(f64, @floatFromInt(b.count)) /
+                @as(f64, @floatFromInt(self.total_alloc_calls)) * 100.0;
+            len = std.fmt.bufPrint(&buf, "{d:>10}  {d:>10}  {d:>10}  {d:>5.1}%\n", .{
+                b.size, b.count, b.total_bytes, pct,
+            }) catch continue;
+            _ = stderr.write(len) catch return;
+        }
+        _ = stderr.write("\n") catch return;
     }
 };
 

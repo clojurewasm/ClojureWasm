@@ -4,11 +4,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // --- Build options (37.1: profiling infrastructure) ---
+    const profile_opcodes = b.option(bool, "profile-opcodes", "Enable opcode frequency profiling") orelse false;
+    const profile_alloc = b.option(bool, "profile-alloc", "Enable allocation size profiling") orelse false;
+
+    const options = b.addOptions();
+    options.addOption(bool, "profile_opcodes", profile_opcodes);
+    options.addOption(bool, "profile_alloc", profile_alloc);
+    const options_module = options.createModule();
+
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+    mod.addImport("build_options", options_module);
 
     // --- Bootstrap cache generation (D81) ---
     // Build-time tool that bootstraps from .clj sources, serializes the env
@@ -22,6 +32,7 @@ pub fn build(b: *std.Build) void {
             .optimize = .ReleaseSafe,
         }),
     });
+    cache_gen.root_module.addImport("build_options", options_module);
     cache_gen.stack_size = 512 * 1024 * 1024;
 
     const run_cache_gen = b.addRunArtifact(cache_gen);
@@ -45,6 +56,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    exe.root_module.addImport("build_options", options_module);
     exe.root_module.addAnonymousImport("bootstrap_cache", .{
         .root_source_file = wrapper,
     });
@@ -75,6 +87,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    wasm_exe.root_module.addImport("build_options", options_module);
     const wasm_step = b.step("wasm", "Build for wasm32-wasi");
     const wasm_install = b.addInstallArtifact(wasm_exe, .{});
     wasm_step.dependOn(&wasm_install.step);
