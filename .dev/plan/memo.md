@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 32 complete (A, BE, B, C, CX, R, D, 20-32, 22b, 22c, 24.5)
-- Coverage: 535/704 clojure.core vars done, 8 clojure.repl vars done
+- Coverage: 652 vars done across all namespaces (535/704 core, 44/45 math, 21/21 string, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
 - **Phase 33 IN PROGRESS** — Namespace & Portability Design (F115)
@@ -24,7 +24,6 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 Phase 33 — Namespace & Portability Design (F115)
 
-- 33.1 Audit current namespaces and compare with JVM Clojure + Babashka
 - 33.2 Design namespace naming convention (D## decision) + implement renames
 - 33.3 Add clojure.java.io compatibility layer (slurp/spit/reader/writer)
 - 33.4 Add System interop routing (System/getenv, System/exit, System/nanoTime)
@@ -32,28 +31,24 @@ Phase 33 — Namespace & Portability Design (F115)
 
 ## Current Task
 
-33.1 — Audit current namespaces and compare with JVM Clojure + Babashka.
+33.2 — Design namespace naming convention (D## decision) + implement renames.
 
-Scope:
-- Inventory all namespaces in ClojureWasm (registry.zig, bootstrap.zig, .clj files)
-  Current: clojure.core, clojure.string, clojure.edn, clojure.math, clojure.walk,
-  clojure.template, clojure.test, clojure.set, clojure.data, clojure.repl, wasm, user
-- Compare each with JVM Clojure: which are standard, which are CW-specific
-- Compare with Babashka: what babashka.* namespaces exist, what's the boundary
-- Identify gaps: missing standard namespaces, naming conflicts, interop needs
-- Output: audit document with recommendations for 33.2 design decision
+Based on 33.1 audit (.dev/notes/namespace-audit.md):
+- Naming convention: clojure.* (JVM compat), cljw.* (CW extensions)
+- Rename `wasm` → `cljw.wasm`
+- Extract clojure.repl from core.clj to separate namespace
+- Fix vars.yaml staleness (done in 33.1 for math/edn)
 
 ## Previous Task
 
-32.5 — `cljw build` overhaul: source bundling + require resolution. Changes:
-- handleBuildCommand: bootstraps from cache, evaluates entry file to resolve
-  all requires, tracks loaded files in depth-first order, concatenates
-  deps (in load order) + entry source, embeds in binary trailer
-- loadResource: records file content AFTER evaluation (not before) so nested
-  deps are recorded first (depth-first: lib.util.math before lib.core)
-- Content duped with infrastructure allocator before evaluation for safety
-- Verified: multi-file project (4-level chain) and single file both work
-- Build output: "Built: myapp (N bytes, 3 deps, source: M bytes)"
+33.1 — Namespace audit. Deliverables:
+- Created .dev/notes/namespace-audit.md with full comparison
+- CW: 10 functional ns + user + wasm
+- JVM Clojure: ~46 standard ns, Babashka: ~30 (clojure.* compat + babashka.*)
+- Key gaps: clojure.java.io, clojure.java.shell, clojure.pprint, clojure.stacktrace
+- Key issues: wasm→cljw.wasm rename, clojure.repl not a real ns
+- Fixed vars.yaml: clojure.math 0→44 done, clojure.edn read-string marked done
+- Total coverage: 652 vars across all namespaces
 
 ## Known Issues
 

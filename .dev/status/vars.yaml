@@ -777,7 +777,7 @@ vars:
     nav: {type: function, status: todo}
   clojure_edn:
     read: {type: function, status: todo}
-    "read-string": {type: function, status: todo}
+    "read-string": {type: function, status: done, notes: builtin (Zig)}
   clojure_inspector:
     "atom?": {type: function, status: todo}
     "collection-tag": {type: function, status: todo}
@@ -858,51 +858,51 @@ vars:
     "with-bindings": {type: macro, status: todo}
     "with-read-known": {type: macro, status: todo}
   clojure_math:
-    E: {type: var, status: todo}
-    "IEEE-remainder": {type: function, status: todo}
-    PI: {type: var, status: todo}
-    acos: {type: function, status: todo}
-    "add-exact": {type: function, status: todo}
-    asin: {type: function, status: todo}
-    atan: {type: function, status: todo}
-    atan2: {type: function, status: todo}
-    cbrt: {type: function, status: todo}
-    ceil: {type: function, status: todo}
-    "copy-sign": {type: function, status: todo}
-    cos: {type: function, status: todo}
-    cosh: {type: function, status: todo}
-    "decrement-exact": {type: function, status: todo}
-    exp: {type: function, status: todo}
-    expm1: {type: function, status: todo}
-    floor: {type: function, status: todo}
-    "floor-div": {type: function, status: todo}
-    "floor-mod": {type: function, status: todo}
-    "get-exponent": {type: function, status: todo}
-    hypot: {type: function, status: todo}
-    "increment-exact": {type: function, status: todo}
-    log: {type: function, status: todo}
-    log10: {type: function, status: todo}
-    log1p: {type: function, status: todo}
-    "multiply-exact": {type: function, status: todo}
-    "negate-exact": {type: function, status: todo}
-    "next-after": {type: function, status: todo}
-    "next-down": {type: function, status: todo}
-    "next-up": {type: function, status: todo}
-    pow: {type: function, status: todo}
+    E: {type: var, status: done, notes: builtin (Zig)}
+    "IEEE-remainder": {type: function, status: done, notes: builtin (Zig)}
+    PI: {type: var, status: done, notes: builtin (Zig)}
+    acos: {type: function, status: done, notes: builtin (Zig)}
+    "add-exact": {type: function, status: done, notes: builtin (Zig)}
+    asin: {type: function, status: done, notes: builtin (Zig)}
+    atan: {type: function, status: done, notes: builtin (Zig)}
+    atan2: {type: function, status: done, notes: builtin (Zig)}
+    cbrt: {type: function, status: done, notes: builtin (Zig)}
+    ceil: {type: function, status: done, notes: builtin (Zig)}
+    "copy-sign": {type: function, status: done, notes: builtin (Zig)}
+    cos: {type: function, status: done, notes: builtin (Zig)}
+    cosh: {type: function, status: done, notes: builtin (Zig)}
+    "decrement-exact": {type: function, status: done, notes: builtin (Zig)}
+    exp: {type: function, status: done, notes: builtin (Zig)}
+    expm1: {type: function, status: done, notes: builtin (Zig)}
+    floor: {type: function, status: done, notes: builtin (Zig)}
+    "floor-div": {type: function, status: done, notes: builtin (Zig)}
+    "floor-mod": {type: function, status: done, notes: builtin (Zig)}
+    "get-exponent": {type: function, status: done, notes: builtin (Zig)}
+    hypot: {type: function, status: done, notes: builtin (Zig)}
+    "increment-exact": {type: function, status: done, notes: builtin (Zig)}
+    log: {type: function, status: done, notes: builtin (Zig)}
+    log10: {type: function, status: done, notes: builtin (Zig)}
+    log1p: {type: function, status: done, notes: builtin (Zig)}
+    "multiply-exact": {type: function, status: done, notes: builtin (Zig)}
+    "negate-exact": {type: function, status: done, notes: builtin (Zig)}
+    "next-after": {type: function, status: done, notes: builtin (Zig)}
+    "next-down": {type: function, status: done, notes: builtin (Zig)}
+    "next-up": {type: function, status: done, notes: builtin (Zig)}
+    pow: {type: function, status: done, notes: builtin (Zig)}
     random: {type: function, status: todo}
-    rint: {type: function, status: todo}
-    round: {type: function, status: todo}
-    scalb: {type: function, status: todo}
-    signum: {type: function, status: todo}
-    sin: {type: function, status: todo}
-    sinh: {type: function, status: todo}
-    sqrt: {type: function, status: todo}
-    "subtract-exact": {type: function, status: todo}
-    tan: {type: function, status: todo}
-    tanh: {type: function, status: todo}
-    "to-degrees": {type: function, status: todo}
-    "to-radians": {type: function, status: todo}
-    ulp: {type: function, status: todo}
+    rint: {type: function, status: done, notes: builtin (Zig)}
+    round: {type: function, status: done, notes: builtin (Zig)}
+    scalb: {type: function, status: done, notes: builtin (Zig)}
+    signum: {type: function, status: done, notes: builtin (Zig)}
+    sin: {type: function, status: done, notes: builtin (Zig)}
+    sinh: {type: function, status: done, notes: builtin (Zig)}
+    sqrt: {type: function, status: done, notes: builtin (Zig)}
+    "subtract-exact": {type: function, status: done, notes: builtin (Zig)}
+    tan: {type: function, status: done, notes: builtin (Zig)}
+    tanh: {type: function, status: done, notes: builtin (Zig)}
+    "to-degrees": {type: function, status: done, notes: builtin (Zig)}
+    "to-radians": {type: function, status: done, notes: builtin (Zig)}
+    ulp: {type: function, status: done, notes: builtin (Zig)}
   clojure_pprint:
     "*print-base*": {type: dynamic-var, status: todo}
     "*print-miser-width*": {type: dynamic-var, status: todo}
