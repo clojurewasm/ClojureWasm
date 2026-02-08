@@ -63,8 +63,7 @@ Session resume procedure: read this file → follow references below.
 | Roadmap              | `.dev/plan/roadmap.md`                    |
 | Deferred items       | `.dev/checklist.md` (F3-F120)             |
 | Decisions            | `.dev/notes/decisions.md` (D1-D86)        |
-| Optimization roadmap | `.dev/notes/optimization-roadmap.md`      |
-| Optimization history | `.dev/notes/optimization-catalog.md`      |
+| Optimizations        | `.dev/notes/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |
 | Archived plans       | `.dev/plan/archive/` (Phase 24-30, CX, A) |

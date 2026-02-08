@@ -218,6 +218,6 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Roadmap            | `.dev/plan/roadmap.md`                       | Phase planning, future phase notes         |
 | Deferred items     | `.dev/checklist.md`                          | F## items — blockers to resolve            |
 | Design document    | `.dev/future.md`                             | When planning new phases or major features |
-| Optimization road  | `.dev/notes/optimization-roadmap.md`         | Future optimization planning               |
+| Optimizations      | `.dev/notes/optimizations.md`                | Completed + future optimization catalog    |
 | Bench history      | `bench/history.yaml`                         | Benchmark progression across optimizations |
 | Bytecode debug     | `./zig-out/bin/cljw --dump-bytecode`         | When VM tests fail or bytecode looks wrong |

@@ -19,12 +19,12 @@ Check at session start for items that become actionable.
 | F6   | Multi-thread dynamic bindings                | Native multi-thread target                                         |
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
-| F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimization-roadmap.md` |
-| F101 | into() transient optimization                | into uses reduce+conj, could use transient. See `optimization-roadmap.md` |
-| F102 | map/filter chunked processing                | chunk.zig infra exists, map/filter don't use it. See `optimization-roadmap.md` |
+| F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
+| F101 | into() transient optimization                | into uses reduce+conj, could use transient. See `optimizations.md` |
+| F102 | map/filter chunked processing                | chunk.zig infra exists, map/filter don't use it. See `optimizations.md` |
 | F103 | Escape analysis (local scope skip GC)        | Compiler detects local-only Values, skip GC tracking               |
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |
-| F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimization-roadmap.md` |
+| F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
 | F113 | nREPL GC integration                         | Without GC, transient Values accumulate in GPA. Add MarkSweepGc to nREPL. |
 | F118 | Wasm FFI deep (Phase 36)                     | SIMD + optimization done. Remaining: 36.8 multi-module, 36.9 F119, 36.10 docs |
