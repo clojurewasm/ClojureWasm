@@ -50,6 +50,9 @@ const set_clj_source = @embedFile("../clj/clojure/set.clj");
 /// Embedded clojure/data.clj source (compiled into binary).
 const data_clj_source = @embedFile("../clj/clojure/data.clj");
 
+/// Embedded clojure/repl.clj source (compiled into binary).
+const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -345,6 +348,44 @@ pub fn loadData(allocator: Allocator, env: *Env) BootstrapError!void {
     // Restore namespace
     env.current_ns = saved_ns;
     syncNsVar(env);
+}
+
+/// Load and evaluate clojure/repl.clj in the given Env.
+/// Creates the clojure.repl namespace and defines REPL utility functions
+/// (doc, dir, source, apropos, find-doc, pst).
+/// Re-refers repl bindings into user namespace for convenience.
+pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Create clojure.repl namespace
+    const repl_ns = env.findOrCreateNamespace("clojure.repl") catch return error.EvalError;
+
+    // Refer all clojure.core bindings into clojure.repl so core functions are available
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        repl_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Also refer clojure.string into clojure.repl (repl.clj requires it)
+    if (env.findNamespace("clojure.string")) |string_ns| {
+        repl_ns.setAlias("clojure.string", string_ns) catch {};
+    }
+
+    // Save current namespace and switch to clojure.repl
+    const saved_ns = env.current_ns;
+    env.current_ns = repl_ns;
+
+    // Evaluate clojure/repl.clj (defines functions in clojure.repl)
+    _ = try evalString(allocator, env, repl_clj_source);
+
+    // Restore user namespace and re-refer repl bindings
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+    if (saved_ns) |user_ns| {
+        var iter = repl_ns.mappings.iterator();
+        while (iter.next()) |entry| {
+            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
 }
 
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.
@@ -808,6 +849,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadTest(allocator, env);
     try loadSet(allocator, env);
     try loadData(allocator, env);
+    try loadRepl(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -856,6 +898,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.data")) |data_ns| {
         env.current_ns = data_ns;
         _ = try evalStringVMBootstrap(allocator, env, data_clj_source);
+    }
+
+    // Re-compile repl.clj
+    if (env.findNamespace("clojure.repl")) |repl_ns| {
+        env.current_ns = repl_ns;
+        _ = try evalStringVMBootstrap(allocator, env, repl_clj_source);
     }
 
     // Restore namespace

@@ -1951,3 +1951,36 @@ The bootstrap cache restores everything else (Clojure-defined Vars, namespaces,
 macro definitions).
 
 **Consequence**: ~6x faster startup. Built binaries start with full runtime in ~2-3ms.
+
+## D82: Namespace Naming Convention — clojure.* + cljw.* Split
+
+**Context**: ClojureWasm has 10 functional namespaces + wasm + user. The `wasm`
+namespace is a bare name with no prefix — collision risk and non-standard. Functions
+like doc/dir/source are in core.clj, not in a proper clojure.repl namespace.
+Babashka uses `clojure.*` for JVM-compatible namespaces and `babashka.*` for
+extensions. We need a clear convention.
+
+**Decision**: Two-prefix convention:
+
+1. **`clojure.*`** — JVM Clojure-compatible namespaces. Same API surface so user code
+   runs on both JVM Clojure and ClojureWasm. Includes compatibility layers for
+   `clojure.java.io`, `clojure.java.shell` etc. (native Zig implementations behind
+   the same Clojure API).
+
+2. **`cljw.*`** — ClojureWasm-unique extensions. Features that don't exist in JVM
+   Clojure or have CW-specific semantics:
+   - `cljw.wasm` (was: `wasm`) — Wasm FFI (load, fn, memory-read/write)
+   - `cljw.build` (future) — build system API
+   - `cljw.native` (future) — native system access beyond clojure.java.* compat
+
+3. **`user`** — Default namespace (same as JVM Clojure).
+
+**Rationale**: Following Babashka's proven model. `clojure.*` provides portability
+(code works on JVM), `cljw.*` provides unique value (Wasm FFI, native integration).
+The `clojure.java.*` names are kept for compatibility even though there's no Java —
+this matches Babashka's approach and ensures scripts requiring `clojure.java.io`
+work without modification.
+
+**Consequence**: `wasm` namespace renamed to `cljw.wasm`. All existing code using
+`(require '[wasm :as w])` must change to `(require '[cljw.wasm :as w])`.
+`clojure.repl` becomes a real separate namespace.

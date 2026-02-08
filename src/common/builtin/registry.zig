@@ -189,8 +189,8 @@ pub fn registerBuiltins(env: *Env) !void {
     const e_var = try math_ns.intern("E");
     e_var.bindRoot(Value.initFloat(math_mod.E));
 
-    // Register wasm namespace builtins (Phase 25)
-    const wasm_ns = try env.findOrCreateNamespace("wasm");
+    // Register wasm namespace builtins (Phase 25, D82: renamed wasm -> cljw.wasm)
+    const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
     for (wasm_builtins_mod.builtins) |b| {
         const v = try wasm_ns.intern(b.name);
         v.applyBuiltinDef(b);
