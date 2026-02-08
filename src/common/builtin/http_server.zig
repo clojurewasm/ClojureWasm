@@ -74,8 +74,9 @@ pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "run-server: first argument must be a function" }),
     }
 
-    // Extract :port from opts map (default 8080)
+    // Extract :port and :background from opts map
     var port: u16 = 8080;
+    var use_background = background_mode;
     if (opts.tag() == .map) {
         const m = opts.asMap();
         for (0..m.entries.len / 2) |i| {
@@ -90,6 +91,8 @@ pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
                             port = @intCast(p);
                         }
                     }
+                } else if (std.mem.eql(u8, name, "background")) {
+                    use_background = v.isTruthy();
                 }
             }
         }
@@ -114,7 +117,7 @@ pub fn runServerFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const actual_port = listener.listen_address.getPort();
     std.debug.print("cljw.http server running on port {d}\n", .{actual_port});
 
-    if (background_mode) {
+    if (use_background) {
         // Non-blocking: store state in module-level static, run accept loop
         // in background thread. Used with --nrepl so nREPL can start after eval.
         bg_server = .{
@@ -196,8 +199,20 @@ fn handleConnection(state: *ServerState, conn: std.net.Server.Connection) void {
         return;
     };
 
+    // Resolve handler: re-read from __handler Var to support live reload via nREPL.
+    // When user does (defn handler ...), the Var is rebound, and we pick it up here.
+    const current_handler = blk: {
+        if (state.env.findNamespace("cljw.http")) |ns| {
+            if (ns.resolve("__handler")) |v| {
+                const val = v.deref();
+                if (val.tag() == .fn_val or val.tag() == .builtin_fn) break :blk val;
+            }
+        }
+        break :blk state.handler; // fallback to captured handler
+    };
+
     // Call handler function
-    const response = bootstrap.callFnVal(state.alloc, state.handler, &[1]Value{ring_req}) catch |e| {
+    const response = bootstrap.callFnVal(state.alloc, current_handler, &[1]Value{ring_req}) catch |e| {
         std.debug.print("handler error: {s}\n", .{@errorName(e)});
         sendErrorResponse(conn.stream, 500, "Internal Server Error");
         return;
@@ -601,6 +616,25 @@ pub fn deleteFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // Builtin definitions
 // ============================================================
 
+/// (set-handler! f)
+/// Updates the handler function for the running HTTP server.
+/// Enables live reload: redefine handler, then call set-handler! to apply.
+pub fn setHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err_mod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-handler!", .{args.len});
+    const new_handler = args[0];
+    switch (new_handler.tag()) {
+        .builtin_fn, .fn_val => {},
+        else => return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-handler!: argument must be a function" }),
+    }
+    const env = bootstrap.macro_eval_env orelse return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-handler!: no evaluation environment" });
+    if (env.findNamespace("cljw.http")) |ns| {
+        if (ns.resolve("__handler")) |v| {
+            v.bindRoot(new_handler);
+        }
+    }
+    return Value.nil_val;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "run-server",
@@ -635,6 +669,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &deleteFn,
         .doc = "Performs an HTTP DELETE request. Returns {:status N :body \"...\"}.",
         .arglists = "([url] [url opts])",
+        .added = "cljw",
+    },
+    .{
+        .name = "set-handler!",
+        .func = &setHandlerFn,
+        .doc = "Updates the handler function for the running HTTP server. Enables live reload.",
+        .arglists = "([handler])",
         .added = "cljw",
     },
 };
