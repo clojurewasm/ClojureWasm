@@ -68,7 +68,7 @@ pub fn main() !void {
 
     // Handle `build` subcommand: cljw build <file> [-o <output>]
     if (args.len >= 2 and std.mem.eql(u8, args[1], "build")) {
-        handleBuildCommand(allocator, args[2..]);
+        handleBuildCommand(alloc, allocator, &gc, args[2..]);
         return;
     }
 
@@ -941,7 +941,9 @@ fn setCommandLineArgs(gc_alloc: Allocator, env: *Env, cli_args: []const [:0]cons
 }
 
 /// Handle `cljw build <file> [-o <output>]` subcommand.
-fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) void {
+/// Evaluates the entry file to resolve all requires, then bundles dependency
+/// sources (in load order) + entry source into a single binary.
+fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, build_args: []const [:0]const u8) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
 
@@ -966,13 +968,53 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
         std.process.exit(1);
     }
 
-    // Read user source
+    // Read entry file source
     const max_file_size = 10 * 1024 * 1024; // 10MB
-    const user_source = std.fs.cwd().readFileAlloc(allocator, source_file.?, max_file_size) catch {
+    const user_source = std.fs.cwd().readFileAlloc(infra_alloc, source_file.?, max_file_size) catch {
         _ = stderr.write("Error: could not read source file\n") catch {};
         std.process.exit(1);
     };
-    defer allocator.free(user_source);
+    defer infra_alloc.free(user_source);
+
+    // Bootstrap runtime from cache
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    bootstrapFromCache(gc_alloc, &env);
+    _ = gc;
+
+    // Set up load paths from entry file directory
+    const dir = std.fs.path.dirname(source_file.?) orelse ".";
+    ns_ops.addLoadPath(dir) catch {};
+    ns_ops.detectAndAddSrcPath(dir) catch {};
+
+    // Enable file tracking, then evaluate entry file to resolve all requires.
+    // Each file loaded by require is recorded in load order.
+    ns_ops.enableFileTracking();
+    _ = bootstrap.evalStringVM(gc_alloc, &env, user_source) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+
+    // Collect dependency sources (in load order) and bundle with entry source
+    const loaded_files = ns_ops.getLoadedFiles();
+    var bundled_size: usize = user_source.len;
+    for (loaded_files) |rec| {
+        bundled_size += rec.content.len + 1; // +1 for newline separator
+    }
+    const bundled = infra_alloc.alloc(u8, bundled_size) catch {
+        _ = stderr.write("Error: out of memory\n") catch {};
+        std.process.exit(1);
+    };
+    defer infra_alloc.free(bundled);
+
+    var offset: usize = 0;
+    for (loaded_files) |rec| {
+        @memcpy(bundled[offset..][0..rec.content.len], rec.content);
+        offset += rec.content.len;
+        bundled[offset] = '\n';
+        offset += 1;
+    }
+    @memcpy(bundled[offset..][0..user_source.len], user_source);
 
     // Determine output filename (default: strip .clj extension)
     const out_name = output_file orelse blk: {
@@ -989,13 +1031,13 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
         _ = stderr.write("Error: could not determine self executable path\n") catch {};
         std.process.exit(1);
     };
-    const self_bytes = std.fs.cwd().readFileAlloc(allocator, self_path, 100 * 1024 * 1024) catch {
+    const self_bytes = std.fs.cwd().readFileAlloc(infra_alloc, self_path, 100 * 1024 * 1024) catch {
         _ = stderr.write("Error: could not read self executable\n") catch {};
         std.process.exit(1);
     };
-    defer allocator.free(self_bytes);
+    defer infra_alloc.free(self_bytes);
 
-    // Write output: [self binary] + [user source] + [u64 source_len] + "CLJW"
+    // Write output: [self binary] + [bundled source] + [u64 size] + "CLJW"
     const out_file = std.fs.cwd().createFile(out_name, .{ .mode = 0o755 }) catch {
         _ = stderr.write("Error: could not create output file\n") catch {};
         std.process.exit(1);
@@ -1006,12 +1048,11 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
         _ = stderr.write("Error: write failed\n") catch {};
         std.process.exit(1);
     };
-    out_file.writeAll(user_source) catch {
+    out_file.writeAll(bundled) catch {
         _ = stderr.write("Error: write failed\n") catch {};
         std.process.exit(1);
     };
-    // Write payload size as u64 LE
-    const size_bytes = std.mem.toBytes(std.mem.nativeTo(u64, @as(u64, @intCast(user_source.len)), .little));
+    const size_bytes = std.mem.toBytes(std.mem.nativeTo(u64, @as(u64, @intCast(bundled.len)), .little));
     out_file.writeAll(&size_bytes) catch {
         _ = stderr.write("Error: write failed\n") catch {};
         std.process.exit(1);
@@ -1022,11 +1063,16 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
     };
 
     // Report success
-    const total_size = self_bytes.len + user_source.len + embed_trailer_size;
-    var msg_buf: [256]u8 = undefined;
+    const dep_count = loaded_files.len;
+    const total_size = self_bytes.len + bundled.len + embed_trailer_size;
+    var msg_buf: [512]u8 = undefined;
     var stream = std.io.fixedBufferStream(&msg_buf);
     const w = stream.writer();
-    w.print("Built: {s} ({d} bytes, source: {d} bytes)\n", .{ out_name, total_size, user_source.len }) catch {};
+    if (dep_count > 0) {
+        w.print("Built: {s} ({d} bytes, {d} deps, source: {d} bytes)\n", .{ out_name, total_size, dep_count, bundled.len }) catch {};
+    } else {
+        w.print("Built: {s} ({d} bytes, source: {d} bytes)\n", .{ out_name, total_size, bundled.len }) catch {};
+    }
     _ = stdout.write(stream.getWritten()) catch {};
 }
 

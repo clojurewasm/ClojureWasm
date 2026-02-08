@@ -31,11 +31,30 @@ var loaded_libs_allocator: ?Allocator = null;
 /// Libs currently being loaded (for circular dependency detection).
 var loading_libs: std.StringHashMapUnmanaged(void) = .empty;
 
+/// Record of files loaded by require (for cljw build source bundling).
+pub const LoadedFileRecord = struct {
+    content: []const u8,
+};
+var loaded_file_records: std.ArrayList(LoadedFileRecord) = .empty;
+var track_loaded_files: bool = false;
+
+/// Enable file tracking for cljw build. Call before evaluating entry file.
+pub fn enableFileTracking() void {
+    track_loaded_files = true;
+}
+
+/// Get all files loaded since tracking was enabled.
+pub fn getLoadedFiles() []const LoadedFileRecord {
+    return loaded_file_records.items;
+}
+
 /// Initialize the load infrastructure. Call once at startup.
 pub fn init(allocator: Allocator) void {
     loaded_libs_allocator = allocator;
     loaded_libs = .empty;
     dynamic_load_paths = .empty;
+    loaded_file_records = .empty;
+    track_loaded_files = false;
     // Start with default "." path
     dynamic_load_paths.append(allocator, ".") catch {};
     load_paths = dynamic_load_paths.items;
@@ -59,6 +78,14 @@ pub fn deinit() void {
     }
     loading_libs.deinit(alloc);
     loading_libs = .empty;
+
+    // Free loaded file records
+    for (loaded_file_records.items) |rec| {
+        alloc.free(rec.content);
+    }
+    loaded_file_records.deinit(alloc);
+    loaded_file_records = .empty;
+    track_loaded_files = false;
 
     // Free dynamic path strings (skip "." which is static)
     for (dynamic_load_paths.items) |p| {
@@ -189,12 +216,33 @@ fn loadResource(allocator: Allocator, env: *@import("../env.zig").Env, resource:
         if (cwd.openFile(full_path, .{})) |file| {
             defer file.close();
             const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+
+            // Dupe content for build tracking before evaluation (content
+            // allocated by GC allocator may not survive evaluation).
+            var tracked_content: ?[]const u8 = null;
+            if (track_loaded_files) {
+                if (loaded_libs_allocator) |tracking_alloc| {
+                    tracked_content = tracking_alloc.dupe(u8, content) catch null;
+                }
+            }
+
             _ = bootstrap.evalString(allocator, env, content) catch {
-                // Restore ns even on error
                 env.current_ns = saved_ns;
                 bootstrap.syncNsVar(env);
+                if (tracked_content) |tc| {
+                    if (loaded_libs_allocator) |ta| ta.free(tc);
+                }
                 return error.EvalError;
             };
+
+            // Record AFTER evaluation so nested deps are recorded first
+            // (depth-first order: lib.util.math before lib.core).
+            if (tracked_content) |tc| {
+                if (loaded_libs_allocator) |tracking_alloc| {
+                    loaded_file_records.append(tracking_alloc, .{ .content = tc }) catch {};
+                }
+            }
+
             env.current_ns = saved_ns;
             bootstrap.syncNsVar(env);
             return true;
