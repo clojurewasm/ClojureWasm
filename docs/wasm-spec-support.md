@@ -42,6 +42,23 @@ from Clojure code via the `cljw.wasm` namespace.
   - Numeric extensions: 24
 - **Total**: 225 opcodes
 
+## Conformance Tests
+
+The runtime includes Wasm 2.0 conformance tests covering key specification areas:
+
+| Test File | Category | Functions Tested |
+|-----------|----------|------------------|
+| `block.wasm` | Control flow | block, nested br, loop, if/else |
+| `i32_arith.wasm` | i32 arithmetic | add, sub, mul, div_s/u, rem_s, clz, ctz, popcnt, rotl, rotr |
+| `i64_arith.wasm` | i64 arithmetic | add, sub, mul, div_s, clz, popcnt, eqz |
+| `f64_arith.wasm` | f64 arithmetic | add, mul, sqrt, min, max, floor, ceil, abs, neg |
+| `conversions.wasm` | Type conversions | extend, wrap, convert, trunc, promote, demote, reinterpret |
+| `sign_extension.wasm` | Sign-ext (2.0) | i32.extend8_s, i32.extend16_s, i64.extend8/16/32_s |
+| `memory_ops.wasm` | Memory | i32/i64 store+load, store8+load8_s/u, size, grow |
+| `bulk_memory.wasm` | Bulk memory (2.0) | memory.fill, memory.copy |
+
+Source files: `src/wasm/testdata/conformance/` (WAT + compiled Wasm)
+
 ## Limitations
 
 - No validation pass (modules are trusted)
