@@ -222,4 +222,5 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Design document | `.dev/future.md`                     | When planning new phases or major features |
 | Optimizations   | `.dev/optimizations.md`              | Completed + future optimization catalog    |
 | Bench history   | `bench/history.yaml`                 | Benchmark progression across optimizations |
+| Cross-lang      | `bench/cross-lang-results.yaml`      | Cross-language comparison (F121 fair)      |
 | Bytecode debug  | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
