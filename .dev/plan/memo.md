@@ -26,19 +26,18 @@ Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
 1. ~~**35X.1** Linux x86_64 cross-compile + Docker verification~~ DONE
 2. ~~**35X.2** Linux aarch64 cross-compile + Docker verification~~ DONE
 3. ~~**35X.3** macOS x86_64 cross-compile + Rosetta verification~~ DONE
-4. **35X.4** LICENSE file (EPL-1.0)
+4. ~~**35X.4** LICENSE file (EPL-1.0)~~ DONE
 5. **35X.5** GitHub Actions CI
 
 ## Current Task
 
-35X.4: LICENSE file (EPL-1.0).
-Add EPL-1.0 license file to the repository root.
+35X.5: GitHub Actions CI.
+Set up CI workflow for automated testing on Linux x86_64, Linux aarch64,
+and macOS (aarch64 + x86_64 via Rosetta).
 
 ## Previous Task
 
-35X.3: macOS x86_64 cross-compile + Rosetta verification.
-Zero compilation errors. Rosetta 2 verification passed: eval, file exec, build, HTTP,
-Wasm all working. Binary: Mach-O x86_64, 2.9MB.
+35X.4: LICENSE file (EPL-1.0). Added to repository root.
 
 ## Known Issues
 
