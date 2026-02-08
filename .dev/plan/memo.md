@@ -25,21 +25,20 @@ Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
 
 1. ~~**35X.1** Linux x86_64 cross-compile + Docker verification~~ DONE
 2. ~~**35X.2** Linux aarch64 cross-compile + Docker verification~~ DONE
-3. **35X.3** macOS x86_64 cross-compile + Rosetta verification
+3. ~~**35X.3** macOS x86_64 cross-compile + Rosetta verification~~ DONE
 4. **35X.4** LICENSE file (EPL-1.0)
 5. **35X.5** GitHub Actions CI
 
 ## Current Task
 
-35X.3: macOS x86_64 cross-compile + Rosetta verification.
-Cross-compile with `zig build -Dtarget=x86_64-macos-none`, verify via Rosetta on
-Apple Silicon: eval, file exec, build, http, wasm.
+35X.4: LICENSE file (EPL-1.0).
+Add EPL-1.0 license file to the repository root.
 
 ## Previous Task
 
-35X.2: Linux aarch64 cross-compile + Docker verification.
-Zero compilation errors. Docker verification (--platform linux/arm64) passed on first
-try: eval, file exec, build, http, wasm all working. 48-bit NaN boxing (D85) confirmed.
+35X.3: macOS x86_64 cross-compile + Rosetta verification.
+Zero compilation errors. Rosetta 2 verification passed: eval, file exec, build, HTTP,
+Wasm all working. Binary: Mach-O x86_64, 2.9MB.
 
 ## Known Issues
 
@@ -105,6 +104,10 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 35X.3 COMPLETE** — macOS x86_64 cross-compile + Rosetta verification
+  - Zero compilation errors, Rosetta 2 verification passed
+  - Binary: Mach-O x86_64, 2.9MB (much smaller than Linux static binaries)
+  - All tests pass: eval, file exec, build, HTTP, Wasm
 - **Phase 35X.2 COMPLETE** — Linux aarch64 cross-compile + Docker verification
   - Zero compilation errors, Docker verification passed on first try
   - Binary: ELF aarch64, statically linked, 14MB
