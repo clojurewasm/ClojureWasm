@@ -29,27 +29,23 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 4. ~~**36.4** SIMD float arithmetic (~50 opcodes)~~
 5. ~~**36.5** SIMD shuffle + swizzle + remaining ops (covered by 36.2-36.4)~~
 6. ~~**36.6** SIMD benchmark + regression measurement~~
-7. **36.7A** VM reuse (WasmModule Vm cache)
-8. **36.7B** Branch target precomputation (sidetable)
-9. **36.7C** Memory + local optimization
-10. **36.7D** Benchmark measurement + recording
+7. ~~**36.7A** VM reuse (WasmModule Vm cache)~~
+8. ~~**36.7B** Branch target precomputation (sidetable)~~
+9. ~~**36.7C** Memory + local optimization (abandoned — ROI too low)~~
+10. ~~**36.7D** Benchmark measurement + recording~~
 11. **36.8** Multi-module linking
 12. **36.9** F119 fix — WIT string return marshalling
 13. **36.10** Documentation + cleanup
 
 ## Current Task
 
-36.7B: Branch target precomputation (sidetable).
-- Add branch_table field to WasmFunction in store.zig
-- Add computeBranchTable() to vm.zig
-- Lazy computation: first call builds table, subsequent calls use O(1) lookup
-- Replace skipToEnd/findElseOrEnd in block/if handlers with table lookup
+36.8: Multi-module linking.
 
 ## Previous Task
 
-36.7A: VM reuse (WasmModule Vm cache).
-Added Vm.reset() and cached Vm pointer to WasmModule.
-invoke() reuses same Vm instance. wasm_call 1.22x, wasm_memory 6.8x.
+36.7D: Benchmark measurement + recording.
+D86 decision recorded. Final results: wasm_call 7.9x, wasm_fib 1.44x, wasm_memory 7.4x.
+36.7C abandoned (cached_memory + @memset ROI too low).
 
 ## Known Issues
 
@@ -116,7 +112,7 @@ Session resume procedure: read this file → follow references below.
 |--------------------|------------------------------------------|
 | Roadmap            | `.dev/plan/roadmap.md`                   |
 | Deferred items     | `.dev/checklist.md` (F113, F117, F118, F119) |
-| Decisions          | `.dev/notes/decisions.md` (D1-D85)       |
+| Decisions          | `.dev/notes/decisions.md` (D1-D86)       |
 | Optimization       | `.dev/notes/optimization-catalog.md`     |
 | Benchmarks         | `bench/history.yaml`                     |
 | Zig tips           | `.claude/references/zig-tips.md`         |

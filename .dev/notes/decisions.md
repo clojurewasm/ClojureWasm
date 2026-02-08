@@ -2085,3 +2085,41 @@ Linux aarch64) without comptime branching. Slight overhead: one extra comparison
 
 **Trade-off**: Lost ~8 negative quiet NaN payload patterns. These are never produced by
 standard arithmetic and not observable in Clojure semantics.
+
+---
+
+## D86: Wasm Interpreter Optimization Strategy (Non-JIT)
+
+**Decision**: Apply three targeted optimizations to the switch-based Wasm interpreter
+before considering JIT compilation (Phase 37):
+
+1. **VM reuse** (36.7A): Cache `Vm` instance in `WasmModule`, call `reset()` per invoke
+   instead of allocating ~92KB stack per call.
+2. **Branch target precomputation** (36.7B): Lazy-computed sidetable mapping block/if
+   body offsets to end/else positions. Stored in `WasmFunction.branch_table` as
+   `AutoHashMapUnmanaged(usize, usize)`. First call computes, subsequent calls O(1).
+3. **Memory/local optimization** (36.7C): Evaluated cached_memory pointer and @memset
+   local init. Abandoned — ROI too low to justify added complexity.
+
+**Skipped techniques** (deferred to Phase 37 JIT or abandoned):
+- LEB128 predecode: ROI low (7-15%), sidetable eliminates biggest cost
+- Bytecode fusion: better as JIT superinstructions
+- Register-based IR: major rewrite, Phase 37
+- Tail-call dispatch: incompatible with cross-compile (D84 switch decision)
+
+**Results** (hyperfine, ReleaseSafe):
+
+| Benchmark   | Before  | After  | Speedup  |
+|-------------|---------|--------|----------|
+| wasm_call   | 931ms   | 118ms  | 7.9x     |
+| wasm_fib    | 11046ms | 7663ms | 1.44x    |
+| wasm_memory | 192ms   | 26ms   | 7.4x     |
+| wasm_sieve  | 822ms   | 792ms  | 1.04x    |
+
+**Rationale**: VM reuse dominates for FFI-heavy workloads (wasm_call, wasm_memory)
+by eliminating per-call stack allocation. Sidetable dominates for compute-heavy
+workloads (wasm_fib) by replacing O(n) bytecode scanning with O(1) lookup.
+Combined effect delivers 7.9x on the most important FFI benchmark.
+
+**Consequence**: Interpreter is now practical for FFI use cases. Further gains
+require JIT compilation (Phase 37). No native Clojure benchmark regression.
