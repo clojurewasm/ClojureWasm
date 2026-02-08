@@ -743,46 +743,271 @@ pub const Vm = struct {
     }
 
     fn executeSimd(self: *Vm, reader: *Reader, instance: *Instance) WasmError!void {
-        _ = .{ self, instance };
         const sub = try reader.readU32();
         const simd: opcode.SimdOpcode = @enumFromInt(sub);
         switch (simd) {
-            // Stub — all SIMD opcodes trap until implemented in tasks 36.2-36.5
-            .v128_load,
-            .v128_load8x8_s,
-            .v128_load8x8_u,
-            .v128_load16x4_s,
-            .v128_load16x4_u,
-            .v128_load32x2_s,
-            .v128_load32x2_u,
-            .v128_load8_splat,
-            .v128_load16_splat,
-            .v128_load32_splat,
-            .v128_load64_splat,
-            .v128_store,
-            .v128_const,
-            .i8x16_shuffle,
-            .i8x16_swizzle,
-            .i8x16_splat,
-            .i16x8_splat,
-            .i32x4_splat,
-            .i64x2_splat,
-            .f32x4_splat,
-            .f64x2_splat,
-            .i8x16_extract_lane_s,
-            .i8x16_extract_lane_u,
-            .i8x16_replace_lane,
-            .i16x8_extract_lane_s,
-            .i16x8_extract_lane_u,
-            .i16x8_replace_lane,
-            .i32x4_extract_lane,
-            .i32x4_replace_lane,
-            .i64x2_extract_lane,
-            .i64x2_replace_lane,
-            .f32x4_extract_lane,
-            .f32x4_replace_lane,
-            .f64x2_extract_lane,
-            .f64x2_replace_lane,
+            // ---- Memory operations (36.2) ----
+            .v128_load => {
+                _ = try reader.readU32(); // alignment
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u128, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                try self.pushV128(val);
+            },
+            .v128_store => {
+                _ = try reader.readU32(); // alignment
+                const offset = try reader.readU32();
+                const val = self.popV128();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                m.write(u128, offset, base, val) catch return error.OutOfBoundsMemoryAccess;
+            },
+            .v128_const => {
+                // 16 raw bytes (little-endian u128)
+                var bytes: [16]u8 = undefined;
+                for (&bytes) |*b| b.* = try reader.readByte();
+                try self.pushV128(std.mem.readInt(u128, &bytes, .little));
+            },
+
+            // Splat loads
+            .v128_load8_splat => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u8, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                const vec: @Vector(16, u8) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .v128_load16_splat => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u16, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                const vec: @Vector(8, u16) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .v128_load32_splat => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u32, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                const vec: @Vector(4, u32) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .v128_load64_splat => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u64, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                const vec: @Vector(2, u64) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+
+            // Extending loads
+            .v128_load8x8_s => try self.simdExtendLoad(i8, i16, reader, instance),
+            .v128_load8x8_u => try self.simdExtendLoad(u8, u16, reader, instance),
+            .v128_load16x4_s => try self.simdExtendLoad(i16, i32, reader, instance),
+            .v128_load16x4_u => try self.simdExtendLoad(u16, u32, reader, instance),
+            .v128_load32x2_s => try self.simdExtendLoad(i32, i64, reader, instance),
+            .v128_load32x2_u => try self.simdExtendLoad(u32, u64, reader, instance),
+
+            // Zero-extending loads
+            .v128_load32_zero => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u32, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                try self.pushV128(@as(u128, val));
+            },
+            .v128_load64_zero => {
+                _ = try reader.readU32();
+                const offset = try reader.readU32();
+                const base = @as(u32, @bitCast(self.popI32()));
+                const m = try instance.getMemory(0);
+                const val = m.read(u64, offset, base) catch return error.OutOfBoundsMemoryAccess;
+                try self.pushV128(@as(u128, val));
+            },
+
+            // Lane loads — load N bytes from memory into a specific lane
+            .v128_load8_lane => try self.simdLoadLane(u8, 16, reader, instance),
+            .v128_load16_lane => try self.simdLoadLane(u16, 8, reader, instance),
+            .v128_load32_lane => try self.simdLoadLane(u32, 4, reader, instance),
+            .v128_load64_lane => try self.simdLoadLane(u64, 2, reader, instance),
+
+            // Lane stores — store N bytes from a specific lane to memory
+            .v128_store8_lane => try self.simdStoreLane(u8, 16, reader, instance),
+            .v128_store16_lane => try self.simdStoreLane(u16, 8, reader, instance),
+            .v128_store32_lane => try self.simdStoreLane(u32, 4, reader, instance),
+            .v128_store64_lane => try self.simdStoreLane(u64, 2, reader, instance),
+
+            // ---- Splat ----
+            .i8x16_splat => {
+                const val: u8 = @truncate(self.pop());
+                const vec: @Vector(16, u8) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .i16x8_splat => {
+                const val: u16 = @truncate(self.pop());
+                const vec: @Vector(8, u16) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .i32x4_splat => {
+                const val: u32 = @truncate(self.pop());
+                const vec: @Vector(4, u32) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .i64x2_splat => {
+                const val = self.pop();
+                const vec: @Vector(2, u64) = @splat(val);
+                try self.pushV128(@bitCast(vec));
+            },
+            .f32x4_splat => {
+                const val = self.popF32();
+                const bits: u32 = @bitCast(val);
+                const vec: @Vector(4, u32) = @splat(bits);
+                try self.pushV128(@bitCast(vec));
+            },
+            .f64x2_splat => {
+                const val = self.popF64();
+                const bits: u64 = @bitCast(val);
+                const vec: @Vector(2, u64) = @splat(bits);
+                try self.pushV128(@bitCast(vec));
+            },
+
+            // ---- Extract / replace lane ----
+            .i8x16_extract_lane_s => {
+                const lane = try reader.readByte();
+                const vec: @Vector(16, i8) = @bitCast(self.popV128());
+                try self.pushI32(@as(i32, vec[lane]));
+            },
+            .i8x16_extract_lane_u => {
+                const lane = try reader.readByte();
+                const vec: @Vector(16, u8) = @bitCast(self.popV128());
+                try self.push(@as(u64, vec[lane]));
+            },
+            .i8x16_replace_lane => {
+                const lane = try reader.readByte();
+                const val: u8 = @truncate(self.pop());
+                var vec: @Vector(16, u8) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+            .i16x8_extract_lane_s => {
+                const lane = try reader.readByte();
+                const vec: @Vector(8, i16) = @bitCast(self.popV128());
+                try self.pushI32(@as(i32, vec[lane]));
+            },
+            .i16x8_extract_lane_u => {
+                const lane = try reader.readByte();
+                const vec: @Vector(8, u16) = @bitCast(self.popV128());
+                try self.push(@as(u64, vec[lane]));
+            },
+            .i16x8_replace_lane => {
+                const lane = try reader.readByte();
+                const val: u16 = @truncate(self.pop());
+                var vec: @Vector(8, u16) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+            .i32x4_extract_lane => {
+                const lane = try reader.readByte();
+                const vec: @Vector(4, i32) = @bitCast(self.popV128());
+                try self.pushI32(vec[lane]);
+            },
+            .i32x4_replace_lane => {
+                const lane = try reader.readByte();
+                const val = self.popI32();
+                var vec: @Vector(4, i32) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+            .i64x2_extract_lane => {
+                const lane = try reader.readByte();
+                const vec: @Vector(2, i64) = @bitCast(self.popV128());
+                try self.pushI64(vec[lane]);
+            },
+            .i64x2_replace_lane => {
+                const lane = try reader.readByte();
+                const val = self.popI64();
+                var vec: @Vector(2, i64) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+            .f32x4_extract_lane => {
+                const lane = try reader.readByte();
+                const vec: @Vector(4, u32) = @bitCast(self.popV128());
+                try self.pushF32(@bitCast(vec[lane]));
+            },
+            .f32x4_replace_lane => {
+                const lane = try reader.readByte();
+                const val: u32 = @bitCast(self.popF32());
+                var vec: @Vector(4, u32) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+            .f64x2_extract_lane => {
+                const lane = try reader.readByte();
+                const vec: @Vector(2, u64) = @bitCast(self.popV128());
+                try self.pushF64(@bitCast(vec[lane]));
+            },
+            .f64x2_replace_lane => {
+                const lane = try reader.readByte();
+                const val: u64 = @bitCast(self.popF64());
+                var vec: @Vector(2, u64) = @bitCast(self.popV128());
+                vec[lane] = val;
+                try self.pushV128(@bitCast(vec));
+            },
+
+            // ---- Shuffle / swizzle ----
+            .i8x16_shuffle => {
+                var lanes: [16]u8 = undefined;
+                for (&lanes) |*l| l.* = try reader.readByte();
+                const b: @Vector(16, u8) = @bitCast(self.popV128());
+                const a: @Vector(16, u8) = @bitCast(self.popV128());
+                // Concatenate a ++ b (32 bytes), select by lane indices
+                var result: [16]u8 = undefined;
+                const a_bytes: [16]u8 = @bitCast(a);
+                const b_bytes: [16]u8 = @bitCast(b);
+                for (lanes, 0..) |idx, i| {
+                    result[i] = if (idx < 16) a_bytes[idx] else b_bytes[idx - 16];
+                }
+                try self.pushV128(@bitCast(@as(@Vector(16, u8), result)));
+            },
+            .i8x16_swizzle => {
+                const indices: @Vector(16, u8) = @bitCast(self.popV128());
+                const vec: [16]u8 = @bitCast(self.popV128());
+                var result: [16]u8 = undefined;
+                for (0..16) |i| {
+                    const idx = indices[i];
+                    result[i] = if (idx < 16) vec[idx] else 0;
+                }
+                try self.pushV128(@bitCast(@as(@Vector(16, u8), result)));
+            },
+
+            // ---- Bitwise (36.3) ----
+            .v128_not => { const a = self.popV128(); try self.pushV128(~a); },
+            .v128_and => { const b = self.popV128(); const a = self.popV128(); try self.pushV128(a & b); },
+            .v128_andnot => { const b = self.popV128(); const a = self.popV128(); try self.pushV128(a & ~b); },
+            .v128_or => { const b = self.popV128(); const a = self.popV128(); try self.pushV128(a | b); },
+            .v128_xor => { const b = self.popV128(); const a = self.popV128(); try self.pushV128(a ^ b); },
+            .v128_bitselect => {
+                const c = self.popV128();
+                const b = self.popV128();
+                const a = self.popV128();
+                try self.pushV128((a & c) | (b & ~c));
+            },
+            .v128_any_true => {
+                const a = self.popV128();
+                try self.pushI32(b2i(a != 0));
+            },
+
+            // ---- Stub: remaining ops (36.3-36.5) ----
             .i8x16_eq,
             .i8x16_ne,
             .i8x16_lt_s,
@@ -825,23 +1050,6 @@ pub const Vm = struct {
             .f64x2_gt,
             .f64x2_le,
             .f64x2_ge,
-            .v128_not,
-            .v128_and,
-            .v128_andnot,
-            .v128_or,
-            .v128_xor,
-            .v128_bitselect,
-            .v128_any_true,
-            .v128_load8_lane,
-            .v128_load16_lane,
-            .v128_load32_lane,
-            .v128_load64_lane,
-            .v128_store8_lane,
-            .v128_store16_lane,
-            .v128_store32_lane,
-            .v128_store64_lane,
-            .v128_load32_zero,
-            .v128_load64_zero,
             .f32x4_demote_f64x2_zero,
             .f64x2_promote_low_f32x4,
             .i8x16_abs,
@@ -988,6 +1196,72 @@ pub const Vm = struct {
 
             _ => return error.Trap,
         }
+    }
+
+    // SIMD helper: extending load (e.g. load 8 i8 values, extend to 8 i16 values)
+    fn simdExtendLoad(
+        self: *Vm,
+        comptime NarrowT: type,
+        comptime WideT: type,
+        reader: *Reader,
+        instance: *Instance,
+    ) WasmError!void {
+        const N = 16 / @sizeOf(WideT); // number of lanes
+        _ = try reader.readU32(); // alignment
+        const offset = try reader.readU32();
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = try instance.getMemory(0);
+        // Read N narrow values
+        const byte_count = N * @sizeOf(NarrowT);
+        const effective = @as(u33, offset) + @as(u33, base);
+        if (effective + byte_count > m.data.items.len) return error.OutOfBoundsMemoryAccess;
+        var narrow: [N]NarrowT = undefined;
+        for (&narrow, 0..) |*n, i| {
+            const ptr: *const [@sizeOf(NarrowT)]u8 = @ptrCast(&m.data.items[effective + i * @sizeOf(NarrowT)]);
+            n.* = std.mem.readInt(NarrowT, ptr, .little);
+        }
+        // Extend to wide
+        var wide: @Vector(N, WideT) = undefined;
+        for (0..N) |i| {
+            wide[i] = @as(WideT, narrow[i]);
+        }
+        try self.pushV128(@bitCast(wide));
+    }
+
+    // SIMD helper: load a value from memory into a specific lane of v128
+    fn simdLoadLane(
+        self: *Vm,
+        comptime T: type,
+        comptime N: comptime_int,
+        reader: *Reader,
+        instance: *Instance,
+    ) WasmError!void {
+        _ = try reader.readU32(); // alignment
+        const offset = try reader.readU32();
+        const lane = try reader.readByte();
+        var vec: @Vector(N, T) = @bitCast(self.popV128());
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = try instance.getMemory(0);
+        const val = m.read(T, offset, base) catch return error.OutOfBoundsMemoryAccess;
+        vec[lane] = val;
+        try self.pushV128(@bitCast(vec));
+    }
+
+    // SIMD helper: store a specific lane of v128 to memory
+    fn simdStoreLane(
+        self: *Vm,
+        comptime T: type,
+        comptime N: comptime_int,
+        reader: *Reader,
+        instance: *Instance,
+    ) WasmError!void {
+        _ = try reader.readU32(); // alignment
+        const offset = try reader.readU32();
+        const lane = try reader.readByte();
+        const vec: @Vector(N, T) = @bitCast(self.popV128());
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = try instance.getMemory(0);
+        m.write(T, offset, base, vec[lane]) catch return error.OutOfBoundsMemoryAccess;
     }
 
     // ================================================================
@@ -1334,6 +1608,7 @@ fn skipToEnd(reader: *Reader) !void {
                     else => {},
                 }
             },
+            .simd_prefix => try skipSimdImmediates(reader),
             else => {}, // Simple opcodes with no immediates
         }
     }
@@ -1403,10 +1678,37 @@ fn findElseOrEnd(else_reader: *Reader, end_reader: *Reader) !bool {
                     else => {},
                 }
             },
+            .simd_prefix => try skipSimdImmediates(reader),
             else => {},
         }
     }
     return found_else;
+}
+
+/// Skip SIMD instruction immediates when scanning bytecode (for skipToEnd/findElseOrEnd).
+fn skipSimdImmediates(reader: *Reader) !void {
+    const sub = try reader.readU32();
+    switch (sub) {
+        // Memory ops: memarg (align u32 + offset u32)
+        0x00...0x0B, 0x5C, 0x5D => {
+            _ = try reader.readU32(); // align
+            _ = try reader.readU32(); // offset
+        },
+        // v128.const: 16 raw bytes
+        0x0C => _ = try reader.readBytes(16),
+        // i8x16.shuffle: 16 lane indices
+        0x0D => _ = try reader.readBytes(16),
+        // Extract/replace lane: 1 byte lane index
+        0x15...0x22 => _ = try reader.readByte(),
+        // Lane load/store: memarg + 1 byte lane index
+        0x54...0x5B => {
+            _ = try reader.readU32(); // align
+            _ = try reader.readU32(); // offset
+            _ = try reader.readByte(); // lane
+        },
+        // All other ops: no immediates
+        else => {},
+    }
 }
 
 /// Wasm nearest (round-to-even).
@@ -2187,4 +2489,86 @@ test "Conformance — bulk memory (Wasm 2.0)" {
     var args_load32 = [_]u64{32};
     try vm.invoke(&inst, "load_i32", &args_load32, &results);
     try testing.expectEqual(@as(u64, 0xDEADBEEF), results[0]);
+}
+
+test "Conformance — SIMD basic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/simd_basic.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+    const no_args = [_]u64{};
+
+    // v128.const + i32x4.extract_lane 0 = 42
+    try vm.invoke(&inst, "const_extract", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 42), results[0]);
+
+    // v128.const + i32x4.extract_lane 2 = 30
+    try vm.invoke(&inst, "const_extract_lane2", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 30), results[0]);
+
+    // i32x4.splat(7) + extract_lane 0 = 7
+    var args_splat = [_]u64{7};
+    try vm.invoke(&inst, "splat_i32", &args_splat, &results);
+    try testing.expectEqual(@as(u64, 7), results[0]);
+
+    // i8x16.splat(0xAB) + extract_lane_u 5 = 0xAB
+    var args_i8 = [_]u64{0xAB};
+    try vm.invoke(&inst, "splat_i8", &args_i8, &results);
+    try testing.expectEqual(@as(u64, 0xAB), results[0]);
+
+    // v128.store + v128.load roundtrip, lane 1 = 200
+    try vm.invoke(&inst, "store_load", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 200), results[0]);
+
+    // v128.not(0) = all 1s, extract byte 0 = 255
+    try vm.invoke(&inst, "v128_not", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 255), results[0]);
+
+    // v128.and(0xFF00FF, 0x00FFFF) = 0x0000FF
+    try vm.invoke(&inst, "v128_and", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0x0000FF), results[0]);
+
+    // v128.or(0xF0, 0x0F) = 0xFF
+    try vm.invoke(&inst, "v128_or", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0xFF), results[0]);
+
+    // v128.xor(0xFF, 0x0F) = 0xF0
+    try vm.invoke(&inst, "v128_xor", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0xF0), results[0]);
+
+    // v128.any_true(0,0,1,0) = 1
+    try vm.invoke(&inst, "any_true_yes", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+
+    // v128.any_true(0,0,0,0) = 0
+    try vm.invoke(&inst, "any_true_no", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0), results[0]);
+
+    // i8x16.shuffle — swap first two bytes: 0x01,0x02,0x03,0x04 → byte 0 = 0x02
+    try vm.invoke(&inst, "shuffle_swap", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0x02), results[0]);
+
+    // i32x4.replace_lane 2 with 999, extract lane 2 = 999
+    try vm.invoke(&inst, "replace_lane", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 999), results[0]);
+
+    // v128.load32_zero: lane 1 should be 0 (only lane 0 loaded)
+    try vm.invoke(&inst, "load32_zero", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0), results[0]);
+
+    // v128.load8_splat: byte 7 at offset 0, splat to all lanes, extract lane 15 = 7
+    try vm.invoke(&inst, "load8_splat", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 7), results[0]);
 }

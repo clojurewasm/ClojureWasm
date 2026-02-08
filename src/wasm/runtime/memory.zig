@@ -97,6 +97,7 @@ pub const Memory = struct {
         const ptr: *const [@sizeOf(T)]u8 = @ptrCast(&self.data.items[effective]);
         return switch (T) {
             u8, u16, u32, u64, i8, i16, i32, i64 => mem.readInt(T, ptr, .little),
+            u128 => mem.readInt(u128, ptr, .little),
             f32 => @bitCast(mem.readInt(u32, @ptrCast(ptr), .little)),
             f64 => @bitCast(mem.readInt(u64, @ptrCast(ptr), .little)),
             else => @compileError("Memory.read: unsupported type " ++ @typeName(T)),
@@ -111,6 +112,7 @@ pub const Memory = struct {
         const ptr: *[@sizeOf(T)]u8 = @ptrCast(&self.data.items[effective]);
         switch (T) {
             u8, u16, u32, u64, i8, i16, i32, i64 => mem.writeInt(T, ptr, value, .little),
+            u128 => mem.writeInt(u128, ptr, value, .little),
             f32 => mem.writeInt(u32, @ptrCast(ptr), @bitCast(value), .little),
             f64 => mem.writeInt(u64, @ptrCast(ptr), @bitCast(value), .little),
             else => @compileError("Memory.write: unsupported type " ++ @typeName(T)),

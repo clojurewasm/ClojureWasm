@@ -23,8 +23,8 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 
 Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 
-1. **36.1** v128 value stack + SIMD opcode enum (foundation)
-2. **36.2** SIMD memory + constant ops (~20 opcodes)
+1. ~~**36.1** v128 value stack + SIMD opcode enum (foundation)~~
+2. ~~**36.2** SIMD memory + constant ops (~40 opcodes)~~
 3. **36.3** SIMD integer arithmetic (~50 opcodes)
 4. **36.4** SIMD float arithmetic (~25 opcodes)
 5. **36.5** SIMD shuffle + swizzle + remaining ops (~10 opcodes)
@@ -35,18 +35,21 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 
 ## Current Task
 
-36.1: v128 value stack + SIMD opcode enum (foundation).
-- Add `SimdOpcode` enum to `opcode.zig` (~100 SIMD opcodes, 0xFD prefix)
-- Widen VM value stack from `[]u64` to `[]u128`
-- Add `pushV128`/`popV128` to vm.zig
-- Wire `simd_prefix` dispatch to `executeSimd` (initially all → error.Trap)
-- Verify all existing tests pass (non-SIMD behavior unchanged)
-- Benchmark non-SIMD before/after to verify no regression
+36.3: SIMD integer arithmetic (~50 opcodes).
+- Comparison: i8x16/i16x8/i32x4/i64x2 eq/ne/lt/gt/le/ge
+- Arithmetic: abs, neg, add, sub, mul, min, max, avgr
+- Saturating: add_sat, sub_sat
+- Shift: shl, shr_s, shr_u
+- Other: popcnt, all_true, bitmask, narrow, extend, extadd_pairwise, extmul, dot, q15mulr_sat
+- WAT conformance tests
 
 ## Previous Task
 
-36.0: Plan Phase 36. Created `.dev/plan/phase36-simd-ffi.md` with 9 tasks.
-Read phase35-custom-wasm.md, checklist.md, roadmap.md, bench/simd/results.md.
+36.2: SIMD memory + constant + splat + extract/replace + shuffle + bitwise (~40 opcodes).
+v128.load/store, v128.const, splat loads, extending loads, zero-extending loads,
+lane loads/stores, 6 splat ops, 14 extract/replace lane ops, shuffle/swizzle,
+7 bitwise ops. skipToEnd/findElseOrEnd SIMD immediate handling.
+simd_basic.wat conformance test (15 functions). All tests pass.
 
 ## Known Issues
 
