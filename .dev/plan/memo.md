@@ -30,7 +30,7 @@ Phase 35W — Custom Wasm Runtime (D84)
 - ~~35W.2 Memory: memory.zig — linear memory with pages, grow, read/write (~200 LOC)~~ DONE
 - ~~35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)~~ DONE
 - ~~35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)~~ DONE
-- 35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)
+- ~~35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)~~ DONE
 - 35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)
 - 35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)
 - 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
@@ -38,14 +38,13 @@ Phase 35W — Custom Wasm Runtime (D84)
 
 ## Current Task
 
-35W.5 — Instance: instance.zig — module instantiation, invoke, getMemory.
+35W.6 — VM: vm.zig — switch-based interpreter for ~200 Wasm opcodes.
 
 ## Previous Task
 
-35W.4 — Module decoder: module.zig — Wasm binary parser for all MVP sections
-(0-12). Decodes types, imports, functions, tables, memories, globals, exports,
-start, elements, code, data. Raw bytecode storage (no Rr). 15 tests pass
-across all 10 test .wasm files including TinyGo module.
+35W.5 — Instance: instance.zig — module instantiation with import resolution,
+function/memory/table/global allocation, data/element active segment application,
+evalInitExpr. 8 instance tests + 61 dependency tests pass.
 
 ## Known Issues
 
