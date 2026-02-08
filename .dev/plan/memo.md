@@ -29,15 +29,21 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 4. ~~**36.4** SIMD float arithmetic (~50 opcodes)~~
 5. ~~**36.5** SIMD shuffle + swizzle + remaining ops (covered by 36.2-36.4)~~
 6. ~~**36.6** SIMD benchmark + regression measurement~~
-7. **36.7** Multi-module linking
-8. **36.8** F119 fix — WIT string return marshalling
-9. **36.9** Documentation + cleanup
+7. **36.7A** VM reuse (WasmModule Vm cache)
+8. **36.7B** Branch target precomputation (sidetable)
+9. **36.7C** Memory + local optimization
+10. **36.7D** Benchmark measurement + recording
+11. **36.8** Multi-module linking
+12. **36.9** F119 fix — WIT string return marshalling
+13. **36.10** Documentation + cleanup
 
 ## Current Task
 
-36.7: Multi-module linking.
-- Wasm module imports/exports between multiple modules
-- Import resolution, linking
+36.7A: VM reuse (WasmModule Vm cache).
+- Add Vm pointer field to WasmModule
+- Add Vm.reset() method
+- Change invoke() to reuse cached Vm instead of creating new one each call
+- Expected: 2-5x speedup on wasm_call benchmark
 
 ## Previous Task
 

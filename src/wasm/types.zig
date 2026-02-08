@@ -57,6 +57,8 @@ pub const WasmModule = struct {
     cached_fns: []WasmFn = &[_]WasmFn{},
     /// WIT function signatures (set via wasm/load :wit option).
     wit_funcs: []const wit_parser.WitFunc = &[_]wit_parser.WitFunc{},
+    /// Cached VM instance — reused across invoke() calls to avoid stack reallocation.
+    vm: *rt.vm_mod.Vm = undefined,
 
     /// Load a Wasm module from binary bytes, decode, and instantiate.
     /// Returns a heap-allocated WasmModule (pointer-stable).
@@ -105,6 +107,9 @@ pub const WasmModule = struct {
         self.cached_fns = buildCachedFns(allocator, self) catch &[_]WasmFn{};
         self.wit_funcs = &[_]wit_parser.WitFunc{};
 
+        self.vm = try allocator.create(rt.vm_mod.Vm);
+        self.vm.* = rt.vm_mod.Vm.init(allocator);
+
         return self;
     }
 
@@ -118,6 +123,7 @@ pub const WasmModule = struct {
             allocator.free(ei.result_types);
         }
         if (self.export_fns.len > 0) allocator.free(self.export_fns);
+        allocator.destroy(self.vm);
         self.instance.deinit();
         if (self.wasi_ctx) |*wc| wc.deinit();
         self.module.deinit();
@@ -128,8 +134,8 @@ pub const WasmModule = struct {
     /// Invoke an exported function by name.
     /// Args and results are passed as u64 arrays.
     pub fn invoke(self: *WasmModule, name: []const u8, args: []u64, results: []u64) !void {
-        var vm = rt.vm_mod.Vm.init(self.allocator);
-        try vm.invoke(&self.instance, name, args, results);
+        self.vm.reset();
+        try self.vm.invoke(&self.instance, name, args, results);
     }
 
     /// Read bytes from linear memory at the given offset.

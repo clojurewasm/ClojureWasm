@@ -129,6 +129,14 @@ pub const Vm = struct {
         };
     }
 
+    /// Reset VM state for reuse — avoids reallocating the large stack arrays.
+    pub fn reset(self: *Vm) void {
+        self.op_ptr = 0;
+        self.frame_ptr = 0;
+        self.label_ptr = 0;
+        self.current_instance = null;
+    }
+
     /// Invoke an exported function by name.
     pub fn invoke(
         self: *Vm,
