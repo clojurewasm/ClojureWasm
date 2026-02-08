@@ -27,21 +27,22 @@ Phase 32 — Build System & Startup Optimization (D81)
 - ~~32.1 Remove `cljw compile` subcommand and standalone .cljc execution~~
 - ~~32.2 Build-time bootstrap cache generation (build.zig cache generator)~~
 - ~~32.3 Startup path switch to cache restoration + measurement~~
-- 32.4 Multi-file require robustness verification and fixes
+- ~~32.4 Multi-file require robustness verification and fixes~~
 - 32.5 `cljw build` overhaul: bytecode embedding + require resolution
 
 ## Current Task
 
-32.4 — Multi-file require robustness verification and fixes.
+32.5 — `cljw build` overhaul: bytecode embedding + require resolution.
 
 ## Previous Task
 
-32.3 — Startup path switch to cache restoration. Results:
-- All 5 startup paths (REPL, evalAndPrint, runMainNs, evalEmbedded,
-  runEmbeddedBytecode) switched from loadBootstrapAll to bootstrapFromCache
-- bootstrapFromCache: registerBuiltins + restoreFromBootstrapCache
-- ReleaseSafe startup: ~12ms -> ~3-4ms (3-4x faster)
-- 125 lines of repetitive bootstrap code eliminated via shared helper
+32.4 — Multi-file require robustness. Fixed:
+- detectAndAddSrcPath: now detects when file is inside src/ directory
+  (walks up path looking for "src" component, not just src/ subdirectory)
+- Circular dependency detection: loading_libs set prevents infinite loops
+  (JVM Clojure behavior: circular requires see partially-loaded namespaces)
+- CWD file detection: dirname null case now falls back to "." for src/ detection
+- Verified: 4-level chain, 5-level chain, dedup, circular, missing file error
 
 ## Known Issues
 

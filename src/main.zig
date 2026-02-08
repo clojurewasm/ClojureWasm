@@ -131,10 +131,9 @@ pub fn main() !void {
         evalAndPrint(alloc, allocator, &gc, e, use_vm, dump_bytecode);
     } else if (file) |f| {
         // Add entry file's directory and detect src/ for require resolution
-        if (std.fs.path.dirname(f)) |dir| {
-            ns_ops.addLoadPath(dir) catch {};
-            ns_ops.detectAndAddSrcPath(dir) catch {};
-        }
+        const dir = std.fs.path.dirname(f) orelse ".";
+        ns_ops.addLoadPath(dir) catch {};
+        ns_ops.detectAndAddSrcPath(dir) catch {};
 
         const max_file_size = 10 * 1024 * 1024; // 10MB
         const file_bytes = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {

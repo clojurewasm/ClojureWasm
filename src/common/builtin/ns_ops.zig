@@ -28,6 +28,9 @@ var dynamic_load_paths: std.ArrayList([]const u8) = .empty;
 var loaded_libs: std.StringHashMapUnmanaged(void) = .empty;
 var loaded_libs_allocator: ?Allocator = null;
 
+/// Libs currently being loaded (for circular dependency detection).
+var loading_libs: std.StringHashMapUnmanaged(void) = .empty;
+
 /// Initialize the load infrastructure. Call once at startup.
 pub fn init(allocator: Allocator) void {
     loaded_libs_allocator = allocator;
@@ -48,6 +51,14 @@ pub fn deinit() void {
     }
     loaded_libs.deinit(alloc);
     loaded_libs = .empty;
+
+    // Free loading_libs keys
+    var loading_iter = loading_libs.iterator();
+    while (loading_iter.next()) |entry| {
+        alloc.free(entry.key_ptr.*);
+    }
+    loading_libs.deinit(alloc);
+    loading_libs = .empty;
 
     // Free dynamic path strings (skip "." which is static)
     for (dynamic_load_paths.items) |p| {
@@ -73,25 +84,47 @@ pub fn addLoadPath(path: []const u8) !void {
     load_paths = dynamic_load_paths.items;
 }
 
-/// Walk up from a starting directory to find a src/ subdirectory.
-/// If found, add it to load paths. Searches up to 10 parent levels.
+/// Detect and add src/ directory to load paths.
+/// Two strategies:
+/// 1. Walk up the path to find a component named "src" (file is inside src/)
+/// 2. Walk up parent directories looking for a src/ subdirectory
 pub fn detectAndAddSrcPath(start_dir: []const u8) !void {
     _ = loaded_libs_allocator orelse return;
-    var buf: [4096]u8 = undefined;
-    var current = start_dir;
 
-    for (0..10) |_| {
-        const src_path = std.fmt.bufPrint(&buf, "{s}/src", .{current}) catch break;
-        if (std.fs.cwd().openDir(src_path, .{})) |dir| {
-            var d = dir;
-            d.close();
-            try addLoadPath(src_path);
-            return;
-        } else |_| {}
+    // Strategy 1: Check if start_dir itself is inside a src/ directory.
+    // e.g., "src/app" → add "src", "/abs/project/src/app/lib" → add "/abs/project/src"
+    {
+        var current = start_dir;
+        for (0..20) |_| {
+            const basename = std.fs.path.basename(current);
+            if (std.mem.eql(u8, basename, "src")) {
+                try addLoadPath(current);
+                return;
+            }
+            const parent = std.fs.path.dirname(current) orelse break;
+            if (std.mem.eql(u8, parent, current)) break;
+            current = parent;
+        }
+    }
 
-        const parent = std.fs.path.dirname(current) orelse break;
-        if (std.mem.eql(u8, parent, current)) break;
-        current = parent;
+    // Strategy 2: Look for a src/ subdirectory in parent directories.
+    // e.g., start_dir = "app" and ./src/ exists → add "./src" or "app/../src"
+    {
+        var buf: [4096]u8 = undefined;
+        var current = start_dir;
+        for (0..10) |_| {
+            const src_path = std.fmt.bufPrint(&buf, "{s}/src", .{current}) catch break;
+            if (std.fs.cwd().openDir(src_path, .{})) |dir| {
+                var d = dir;
+                d.close();
+                try addLoadPath(src_path);
+                return;
+            } else |_| {}
+
+            const parent = std.fs.path.dirname(current) orelse break;
+            if (std.mem.eql(u8, parent, current)) break;
+            current = parent;
+        }
     }
 }
 
@@ -772,6 +805,26 @@ fn requireLib(allocator: Allocator, env: *@import("../env.zig").Env, ns_name: []
     if (!reload and env.findNamespace(ns_name) != null) {
         try markLibLoaded(ns_name);
         return;
+    }
+
+    // Circular dependency detection: if this lib is currently being loaded
+    // (i.e., we're in a nested require from within its own source file),
+    // skip loading. The namespace was already created by (ns ...) at the
+    // top of the file. This matches JVM Clojure behavior where circular
+    // requires see partially-loaded namespaces.
+    if (loading_libs.contains(ns_name)) {
+        return;
+    }
+
+    // Mark as currently loading (for circular dependency detection)
+    const alloc = loaded_libs_allocator orelse return;
+    const loading_key = try alloc.dupe(u8, ns_name);
+    try loading_libs.put(alloc, loading_key, {});
+    defer {
+        // Remove from loading set when done (whether success or error)
+        if (loading_libs.fetchRemove(ns_name)) |kv| {
+            alloc.free(kv.key);
+        }
     }
 
     // Try to load from file
