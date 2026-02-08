@@ -853,8 +853,12 @@ pub const Vm = struct {
         const base = @as(u32, @bitCast(self.popI32()));
         const m = try instance.getMemory(0);
         const val = m.read(LoadT, offset, base) catch return error.OutOfBoundsMemoryAccess;
-        // Sign/zero extend to ResultT then push
-        const result: ResultT = @intCast(val);
+        // Sign/zero extend to ResultT then push.
+        // Same-size: bitCast (e.g. i32→u32). Different-size: intCast (e.g. i8→i32 sign-ext).
+        const result: ResultT = if (@bitSizeOf(LoadT) == @bitSizeOf(ResultT))
+            @bitCast(val)
+        else
+            @intCast(val);
         try self.push(asU64(ResultT, result));
     }
 
@@ -1498,4 +1502,430 @@ test "VM — fib(20) = 6765" {
     var results = [_]u64{0};
     try vm.invoke(&inst, "fib", &args, &results);
     try testing.expectEqual(@as(u64, 6765), results[0]);
+}
+
+// --- Conformance tests ---
+
+test "Conformance — block control flow" {
+    const wasm = try readTestFile(testing.allocator, "conformance/block.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // block_result: returns 42
+    try vm.invoke(&inst, "block_result", &.{}, &results);
+    try testing.expectEqual(@as(u64, 42), results[0]);
+
+    // nested_br: param=0 → falls through inner block, drop, return 20
+    var args0 = [_]u64{0};
+    try vm.invoke(&inst, "nested_br", &args0, &results);
+    try testing.expectEqual(@as(u64, 20), results[0]);
+
+    // nested_br: param=1 → br_if 1 jumps to outer with value 99
+    var args1 = [_]u64{1};
+    try vm.invoke(&inst, "nested_br", &args1, &results);
+    try testing.expectEqual(@as(u64, 99), results[0]);
+
+    // loop_sum: sum(10) = 55
+    var args10 = [_]u64{10};
+    try vm.invoke(&inst, "loop_sum", &args10, &results);
+    try testing.expectEqual(@as(u64, 55), results[0]);
+
+    // if_else: true → 1, false → 0
+    try vm.invoke(&inst, "if_else", &args1, &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+    try vm.invoke(&inst, "if_else", &args0, &results);
+    try testing.expectEqual(@as(u64, 0), results[0]);
+}
+
+test "Conformance — i32 arithmetic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/i32_arith.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // add(7, 3) = 10
+    var args_add = [_]u64{ 7, 3 };
+    try vm.invoke(&inst, "add", &args_add, &results);
+    try testing.expectEqual(@as(u64, 10), results[0]);
+
+    // sub(10, 4) = 6
+    var args_sub = [_]u64{ 10, 4 };
+    try vm.invoke(&inst, "sub", &args_sub, &results);
+    try testing.expectEqual(@as(u64, 6), results[0]);
+
+    // mul(6, 7) = 42
+    var args_mul = [_]u64{ 6, 7 };
+    try vm.invoke(&inst, "mul", &args_mul, &results);
+    try testing.expectEqual(@as(u64, 42), results[0]);
+
+    // div_s(-10, 3) = -3 (signed)
+    var args_divs = [_]u64{ @bitCast(@as(i64, -10)), 3 };
+    try vm.invoke(&inst, "div_s", &args_divs, &results);
+    try testing.expectEqual(@as(u32, @bitCast(@as(i32, -3))), @as(u32, @truncate(results[0])));
+
+    // div_u(10, 3) = 3 (unsigned)
+    var args_divu = [_]u64{ 10, 3 };
+    try vm.invoke(&inst, "div_u", &args_divu, &results);
+    try testing.expectEqual(@as(u64, 3), results[0]);
+
+    // rem_s(10, 3) = 1
+    var args_rem = [_]u64{ 10, 3 };
+    try vm.invoke(&inst, "rem_s", &args_rem, &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+
+    // clz(1) = 31
+    var args_clz = [_]u64{1};
+    try vm.invoke(&inst, "clz", &args_clz, &results);
+    try testing.expectEqual(@as(u64, 31), results[0]);
+
+    // ctz(0x80) = 7
+    var args_ctz = [_]u64{0x80};
+    try vm.invoke(&inst, "ctz", &args_ctz, &results);
+    try testing.expectEqual(@as(u64, 7), results[0]);
+
+    // popcnt(0xFF) = 8
+    var args_pop = [_]u64{0xFF};
+    try vm.invoke(&inst, "popcnt", &args_pop, &results);
+    try testing.expectEqual(@as(u64, 8), results[0]);
+
+    // rotl(0x80000001, 1) = 0x00000003
+    var args_rotl = [_]u64{ 0x80000001, 1 };
+    try vm.invoke(&inst, "rotl", &args_rotl, &results);
+    try testing.expectEqual(@as(u64, 0x00000003), results[0]);
+
+    // rotr(0x80000001, 1) = 0xC0000000
+    var args_rotr = [_]u64{ 0x80000001, 1 };
+    try vm.invoke(&inst, "rotr", &args_rotr, &results);
+    try testing.expectEqual(@as(u64, 0xC0000000), results[0]);
+}
+
+test "Conformance — i64 arithmetic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/i64_arith.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // add
+    var args_add = [_]u64{ 100, 200 };
+    try vm.invoke(&inst, "add", &args_add, &results);
+    try testing.expectEqual(@as(u64, 300), results[0]);
+
+    // sub
+    var args_sub = [_]u64{ 500, 200 };
+    try vm.invoke(&inst, "sub", &args_sub, &results);
+    try testing.expectEqual(@as(u64, 300), results[0]);
+
+    // mul
+    var args_mul = [_]u64{ 1000000, 1000000 };
+    try vm.invoke(&inst, "mul", &args_mul, &results);
+    try testing.expectEqual(@as(u64, 1000000000000), results[0]);
+
+    // div_s(-100, 3) = -33
+    var args_divs = [_]u64{@bitCast(@as(i64, -100)), 3};
+    try vm.invoke(&inst, "div_s", &args_divs, &results);
+    try testing.expectEqual(@as(i64, -33), @as(i64, @bitCast(results[0])));
+
+    // clz(1) = 63
+    var args_clz = [_]u64{1};
+    try vm.invoke(&inst, "clz", &args_clz, &results);
+    try testing.expectEqual(@as(u64, 63), results[0]);
+
+    // popcnt(0xFF) = 8
+    var args_pop = [_]u64{0xFF};
+    try vm.invoke(&inst, "popcnt", &args_pop, &results);
+    try testing.expectEqual(@as(u64, 8), results[0]);
+
+    // eqz(0) = 1, eqz(5) = 0
+    var args_eqz0 = [_]u64{0};
+    try vm.invoke(&inst, "eqz", &args_eqz0, &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+    var args_eqz5 = [_]u64{5};
+    try vm.invoke(&inst, "eqz", &args_eqz5, &results);
+    try testing.expectEqual(@as(u64, 0), results[0]);
+}
+
+test "Conformance — f64 arithmetic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/f64_arith.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // add(1.5, 2.5) = 4.0
+    var args_add = [_]u64{ @bitCast(@as(f64, 1.5)), @bitCast(@as(f64, 2.5)) };
+    try vm.invoke(&inst, "add", &args_add, &results);
+    try testing.expectEqual(@as(f64, 4.0), @as(f64, @bitCast(results[0])));
+
+    // mul(3.0, 4.0) = 12.0
+    var args_mul = [_]u64{ @bitCast(@as(f64, 3.0)), @bitCast(@as(f64, 4.0)) };
+    try vm.invoke(&inst, "mul", &args_mul, &results);
+    try testing.expectEqual(@as(f64, 12.0), @as(f64, @bitCast(results[0])));
+
+    // sqrt(9.0) = 3.0
+    var args_sqrt = [_]u64{@bitCast(@as(f64, 9.0))};
+    try vm.invoke(&inst, "sqrt", &args_sqrt, &results);
+    try testing.expectEqual(@as(f64, 3.0), @as(f64, @bitCast(results[0])));
+
+    // min(3.0, 5.0) = 3.0
+    var args_min = [_]u64{ @bitCast(@as(f64, 3.0)), @bitCast(@as(f64, 5.0)) };
+    try vm.invoke(&inst, "min", &args_min, &results);
+    try testing.expectEqual(@as(f64, 3.0), @as(f64, @bitCast(results[0])));
+
+    // max(3.0, 5.0) = 5.0
+    var args_max = [_]u64{ @bitCast(@as(f64, 3.0)), @bitCast(@as(f64, 5.0)) };
+    try vm.invoke(&inst, "max", &args_max, &results);
+    try testing.expectEqual(@as(f64, 5.0), @as(f64, @bitCast(results[0])));
+
+    // floor(3.7) = 3.0
+    var args_floor = [_]u64{@bitCast(@as(f64, 3.7))};
+    try vm.invoke(&inst, "floor", &args_floor, &results);
+    try testing.expectEqual(@as(f64, 3.0), @as(f64, @bitCast(results[0])));
+
+    // ceil(3.2) = 4.0
+    var args_ceil = [_]u64{@bitCast(@as(f64, 3.2))};
+    try vm.invoke(&inst, "ceil", &args_ceil, &results);
+    try testing.expectEqual(@as(f64, 4.0), @as(f64, @bitCast(results[0])));
+
+    // abs(-5.0) = 5.0
+    var args_abs = [_]u64{@bitCast(@as(f64, -5.0))};
+    try vm.invoke(&inst, "abs", &args_abs, &results);
+    try testing.expectEqual(@as(f64, 5.0), @as(f64, @bitCast(results[0])));
+
+    // neg(5.0) = -5.0
+    var args_neg = [_]u64{@bitCast(@as(f64, 5.0))};
+    try vm.invoke(&inst, "neg", &args_neg, &results);
+    try testing.expectEqual(@as(f64, -5.0), @as(f64, @bitCast(results[0])));
+}
+
+test "Conformance — type conversions" {
+    const wasm = try readTestFile(testing.allocator, "conformance/conversions.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // i64_extend_i32_s(-1) = -1 as i64
+    var args_ext_s = [_]u64{@bitCast(@as(i64, -1))};
+    try vm.invoke(&inst, "i64_extend_i32_s", &args_ext_s, &results);
+    try testing.expectEqual(@as(i64, -1), @as(i64, @bitCast(results[0])));
+
+    // i64_extend_i32_u(0xFFFFFFFF) = 0xFFFFFFFF as u64
+    var args_ext_u = [_]u64{0xFFFFFFFF};
+    try vm.invoke(&inst, "i64_extend_i32_u", &args_ext_u, &results);
+    try testing.expectEqual(@as(u64, 0xFFFFFFFF), results[0]);
+
+    // i32_wrap_i64(0x100000042) = 0x42
+    var args_wrap = [_]u64{0x100000042};
+    try vm.invoke(&inst, "i32_wrap_i64", &args_wrap, &results);
+    try testing.expectEqual(@as(u64, 0x42), results[0]);
+
+    // f64_convert_i32_s(-42) = -42.0
+    var args_cvt = [_]u64{@bitCast(@as(i64, -42))};
+    try vm.invoke(&inst, "f64_convert_i32_s", &args_cvt, &results);
+    try testing.expectEqual(@as(f64, -42.0), @as(f64, @bitCast(results[0])));
+
+    // i32_trunc_f64_s(3.9) = 3
+    var args_trunc = [_]u64{@bitCast(@as(f64, 3.9))};
+    try vm.invoke(&inst, "i32_trunc_f64_s", &args_trunc, &results);
+    try testing.expectEqual(@as(u64, 3), results[0]);
+
+    // f32_reinterpret_i32(0x40490FDB) ≈ pi
+    var args_reint = [_]u64{0x40490FDB};
+    try vm.invoke(&inst, "f32_reinterpret_i32", &args_reint, &results);
+    const f32_val: f32 = @bitCast(@as(u32, @truncate(results[0])));
+    try testing.expect(@abs(f32_val - 3.14159265) < 0.001);
+}
+
+test "Conformance — sign extension (Wasm 2.0)" {
+    const wasm = try readTestFile(testing.allocator, "conformance/sign_extension.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // i32_extend8_s(0x80) = -128 (sign-extend from bit 7)
+    var args_8s = [_]u64{0x80};
+    try vm.invoke(&inst, "i32_extend8_s", &args_8s, &results);
+    try testing.expectEqual(@as(u32, @bitCast(@as(i32, -128))), @as(u32, @truncate(results[0])));
+
+    // i32_extend8_s(0x7F) = 127
+    var args_7f = [_]u64{0x7F};
+    try vm.invoke(&inst, "i32_extend8_s", &args_7f, &results);
+    try testing.expectEqual(@as(u64, 127), results[0]);
+
+    // i32_extend16_s(0x8000) = -32768
+    var args_16s = [_]u64{0x8000};
+    try vm.invoke(&inst, "i32_extend16_s", &args_16s, &results);
+    try testing.expectEqual(@as(u32, @bitCast(@as(i32, -32768))), @as(u32, @truncate(results[0])));
+
+    // i64_extend8_s(0xFF) = -1
+    var args_i64_8s = [_]u64{0xFF};
+    try vm.invoke(&inst, "i64_extend8_s", &args_i64_8s, &results);
+    try testing.expectEqual(@as(i64, -1), @as(i64, @bitCast(results[0])));
+
+    // i64_extend32_s(0xFFFFFFFF) = -1
+    var args_i64_32s = [_]u64{0xFFFFFFFF};
+    try vm.invoke(&inst, "i64_extend32_s", &args_i64_32s, &results);
+    try testing.expectEqual(@as(i64, -1), @as(i64, @bitCast(results[0])));
+}
+
+test "Conformance — memory operations" {
+    const wasm = try readTestFile(testing.allocator, "conformance/memory_ops.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // i32 store+load
+    var args_i32 = [_]u64{ 0, 12345 };
+    try vm.invoke(&inst, "i32_store_load", &args_i32, &results);
+    try testing.expectEqual(@as(u64, 12345), results[0]);
+
+    // i64 store+load
+    var args_i64 = [_]u64{ 8, 0xDEADBEEFCAFE };
+    try vm.invoke(&inst, "i64_store_load", &args_i64, &results);
+    try testing.expectEqual(@as(u64, 0xDEADBEEFCAFE), results[0]);
+
+    // i32.store8 + i32.load8_u: 0xFF → 255
+    var args_8u = [_]u64{ 16, 0xFF };
+    try vm.invoke(&inst, "i32_store8_load8_u", &args_8u, &results);
+    try testing.expectEqual(@as(u64, 255), results[0]);
+
+    // i32.store8 + i32.load8_s: 0xFF → -1 (sign-extended)
+    var args_8s = [_]u64{ 17, 0xFF };
+    try vm.invoke(&inst, "i32_store8_load8_s", &args_8s, &results);
+    try testing.expectEqual(@as(u32, @bitCast(@as(i32, -1))), @as(u32, @truncate(results[0])));
+
+    // memory_size = 1 (one page)
+    try vm.invoke(&inst, "memory_size", &.{}, &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+
+    // memory_grow(2) returns old size 1, new size 3
+    var args_grow = [_]u64{2};
+    try vm.invoke(&inst, "memory_grow", &args_grow, &results);
+    try testing.expectEqual(@as(u64, 1), results[0]); // old size
+    try vm.invoke(&inst, "memory_size", &.{}, &results);
+    try testing.expectEqual(@as(u64, 3), results[0]); // new size
+}
+
+test "Conformance — bulk memory (Wasm 2.0)" {
+    const wasm = try readTestFile(testing.allocator, "conformance/bulk_memory.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+
+    // memory.fill: fill 4 bytes at offset 0 with value 0xAB
+    var args_fill = [_]u64{ 0, 0xAB, 4 };
+    try vm.invoke(&inst, "memory_fill", &args_fill, &.{});
+
+    // verify: load i32 at offset 0 = 0xABABABAB
+    var args_load = [_]u64{0};
+    try vm.invoke(&inst, "load_i32", &args_load, &results);
+    try testing.expectEqual(@as(u64, 0xABABABAB), results[0]);
+
+    // store at offset 16: 0xDEADBEEF
+    var args_store = [_]u64{ 16, 0xDEADBEEF };
+    try vm.invoke(&inst, "store_i32", &args_store, &.{});
+
+    // memory.copy: copy 4 bytes from offset 16 to offset 32
+    var args_copy = [_]u64{ 32, 16, 4 };
+    try vm.invoke(&inst, "memory_copy", &args_copy, &.{});
+
+    // verify: load i32 at offset 32 = 0xDEADBEEF
+    var args_load32 = [_]u64{32};
+    try vm.invoke(&inst, "load_i32", &args_load32, &results);
+    try testing.expectEqual(@as(u64, 0xDEADBEEF), results[0]);
 }
