@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-macos:
+    runs-on: macos-14  # Apple Silicon (M1)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Run tests
+        run: zig build test
+      - name: Build native
+        run: zig build -Doptimize=ReleaseSafe
+      - name: Smoke test
+        run: |
+          ./zig-out/bin/cljw -e '(+ 1 2 3)'
+          ./zig-out/bin/cljw -e '(println "CI pass")'
+      - name: E2E tests
+        run: bash test/e2e/run_e2e.sh
+
+  test-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Run tests
+        run: zig build test
+      - name: Build native
+        run: zig build -Doptimize=ReleaseSafe
+      - name: Smoke test
+        run: |
+          ./zig-out/bin/cljw -e '(+ 1 2 3)'
+          ./zig-out/bin/cljw -e '(println "CI pass")'
+      - name: E2E tests
+        run: bash test/e2e/run_e2e.sh
+
+  cross-compile:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target:
+          - x86_64-linux-gnu
+          - aarch64-linux-gnu
+          - x86_64-macos-none
+          - aarch64-macos-none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Cross-compile
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
+      - name: Check binary
+        run: file zig-out/bin/cljw && ls -lh zig-out/bin/cljw

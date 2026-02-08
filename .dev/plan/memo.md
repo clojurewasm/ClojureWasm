@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 35.5 complete (A, BE, B, C, CX, R, D, 20-34, 22b, 22c, 24.5, 35W, 35.5)
-- **Phase 35X IN PROGRESS** — Cross-Platform Build & Verification
+- **Phase 35X COMPLETE** — Cross-Platform Build & Verification
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 
@@ -27,17 +27,17 @@ Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
 2. ~~**35X.2** Linux aarch64 cross-compile + Docker verification~~ DONE
 3. ~~**35X.3** macOS x86_64 cross-compile + Rosetta verification~~ DONE
 4. ~~**35X.4** LICENSE file (EPL-1.0)~~ DONE
-5. **35X.5** GitHub Actions CI
+5. ~~**35X.5** GitHub Actions CI~~ DONE
 
 ## Current Task
 
-35X.5: GitHub Actions CI.
-Set up CI workflow for automated testing on Linux x86_64, Linux aarch64,
-and macOS (aarch64 + x86_64 via Rosetta).
+Phase 35X complete. All 5 tasks done.
+Next: Phase 36 (SIMD + FFI deep) or address deferred items.
 
 ## Previous Task
 
-35X.4: LICENSE file (EPL-1.0). Added to repository root.
+35X.5: GitHub Actions CI. Added `.github/workflows/ci.yml` with test-macos,
+test-linux, cross-compile (4 targets) jobs.
 
 ## Known Issues
 
@@ -103,10 +103,13 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
-- **Phase 35X.3 COMPLETE** — macOS x86_64 cross-compile + Rosetta verification
-  - Zero compilation errors, Rosetta 2 verification passed
-  - Binary: Mach-O x86_64, 2.9MB (much smaller than Linux static binaries)
-  - All tests pass: eval, file exec, build, HTTP, Wasm
+- **Phase 35X COMPLETE** — Cross-Platform Build & Verification
+  - 35X.1: Linux x86_64 — NaN boxing redesign (D85), Docker verified
+  - 35X.2: Linux aarch64 — Docker verified, 48-bit NaN boxing confirmed
+  - 35X.3: macOS x86_64 — Rosetta 2 verified, 2.9MB binary
+  - 35X.4: EPL-1.0 LICENSE file added
+  - 35X.5: GitHub Actions CI (test-macos, test-linux, cross-compile 4 targets)
+  - Binaries: Linux 14MB (static), macOS 2.9MB (dynamic)
 - **Phase 35X.2 COMPLETE** — Linux aarch64 cross-compile + Docker verification
   - Zero compilation errors, Docker verification passed on first try
   - Binary: ELF aarch64, statically linked, 14MB
