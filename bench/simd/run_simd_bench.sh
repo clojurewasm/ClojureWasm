@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SIMD benchmark runner — compares native, wasmtime, and ClojureWasm
+# SIMD benchmark runner — compares native, wasmtime, CljWasm (scalar), CljWasm (SIMD)
 # Usage: bash bench/simd/run_simd_bench.sh
 set -euo pipefail
 
@@ -14,7 +14,7 @@ cd "$SCRIPT_DIR"
 # Build all variants
 echo "=== Building benchmarks ==="
 make -s all
-echo "  Native + Wasm builds: OK"
+echo "  Native + Wasm (scalar + SIMD) builds: OK"
 
 # Build ClojureWasm (ReleaseSafe)
 echo "  Building cljw (ReleaseSafe)..."
@@ -35,10 +35,10 @@ WARMUP=2
 RUNS=5
 
 # Print header
-printf "%-14s  %12s  %12s  %12s  %10s  %10s\n" \
-    "Benchmark" "Native(ms)" "Wasmtime(ms)" "CljWasm(ms)" "WT/Native" "CW/Native"
-printf "%-14s  %12s  %12s  %12s  %10s  %10s\n" \
-    "---------" "----------" "------------" "-----------" "---------" "---------"
+printf "%-14s  %10s  %10s  %10s  %10s  %10s  %10s\n" \
+    "Benchmark" "Native" "Wasmtime" "CW-scalar" "CW-SIMD" "Scalar/N" "SIMD/N"
+printf "%-14s  %10s  %10s  %10s  %10s  %10s  %10s\n" \
+    "---------" "------" "--------" "---------" "-------" "--------" "------"
 
 for i in "${!BENCHMARKS[@]}"; do
     name="${BENCHMARKS[$i]}"
@@ -49,18 +49,17 @@ for i in "${!BENCHMARKS[@]}"; do
         --export-json "$JSON_FILE" "./${name}_native" >/dev/null 2>&1
     native_ms=$(extract_mean_ms)
 
-    # --- Wasmtime ---
-    # wasmtime --invoke outputs to stdout, redirect to suppress
+    # --- Wasmtime (SIMD wasm) ---
     if [ -n "$init_fn" ]; then
-        cmd="wasmtime run --invoke $init_fn $SCRIPT_DIR/${name}.wasm >/dev/null 2>&1; wasmtime run --invoke ${name} $SCRIPT_DIR/${name}.wasm >/dev/null 2>&1"
+        cmd="wasmtime run --invoke $init_fn $SCRIPT_DIR/${name}_simd.wasm >/dev/null 2>&1; wasmtime run --invoke ${name} $SCRIPT_DIR/${name}_simd.wasm >/dev/null 2>&1"
     else
-        cmd="wasmtime run --invoke ${name} $SCRIPT_DIR/${name}.wasm >/dev/null 2>&1"
+        cmd="wasmtime run --invoke ${name} $SCRIPT_DIR/${name}_simd.wasm >/dev/null 2>&1"
     fi
     hyperfine --warmup $WARMUP --runs $RUNS -i \
         --export-json "$JSON_FILE" "$cmd" >/dev/null 2>&1
     wasmtime_ms=$(extract_mean_ms)
 
-    # --- ClojureWasm ---
+    # --- ClojureWasm (scalar wasm) ---
     cat > /tmp/cw_bench_${name}.clj << CLJEOF
 (require '[cljw.wasm :as wasm])
 (let [mod (wasm/load "$SCRIPT_DIR/${name}.wasm")]
@@ -70,14 +69,26 @@ CLJEOF
 
     hyperfine --warmup 1 --runs $RUNS -i \
         --export-json "$JSON_FILE" "$CLJW /tmp/cw_bench_${name}.clj" >/dev/null 2>&1
-    cw_ms=$(extract_mean_ms)
+    cw_scalar_ms=$(extract_mean_ms)
+
+    # --- ClojureWasm (SIMD wasm) ---
+    cat > /tmp/cw_bench_${name}_simd.clj << CLJEOF
+(require '[cljw.wasm :as wasm])
+(let [mod (wasm/load "$SCRIPT_DIR/${name}_simd.wasm")]
+  $(if [ -n "$init_fn" ]; then echo "((wasm/fn mod \"$init_fn\"))"; fi)
+  ((wasm/fn mod "$name")))
+CLJEOF
+
+    hyperfine --warmup 1 --runs $RUNS -i \
+        --export-json "$JSON_FILE" "$CLJW /tmp/cw_bench_${name}_simd.clj" >/dev/null 2>&1
+    cw_simd_ms=$(extract_mean_ms)
 
     # Ratios
-    wt_ratio=$(python3 -c "print(f'{$wasmtime_ms / $native_ms:.1f}x')")
-    cw_ratio=$(python3 -c "print(f'{$cw_ms / $native_ms:.1f}x')")
+    scalar_ratio=$(python3 -c "print(f'{$cw_scalar_ms / $native_ms:.1f}x')")
+    simd_ratio=$(python3 -c "print(f'{$cw_simd_ms / $native_ms:.1f}x')")
 
-    printf "%-14s  %12s  %12s  %12s  %10s  %10s\n" \
-        "$name" "$native_ms" "$wasmtime_ms" "$cw_ms" "$wt_ratio" "$cw_ratio"
+    printf "%-14s  %8sms  %8sms  %8sms  %8sms  %10s  %10s\n" \
+        "$name" "$native_ms" "$wasmtime_ms" "$cw_scalar_ms" "$cw_simd_ms" "$scalar_ratio" "$simd_ratio"
 done
 
 rm -f "$JSON_FILE"
@@ -87,5 +98,7 @@ echo "Environment:"
 echo "  CPU: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'unknown')"
 echo "  Native: cc -O2 (Apple Silicon)"
 echo "  Wasmtime: v$(wasmtime --version 2>/dev/null | awk '{print $2}')"
-echo "  ClojureWasm: interpreter-based Wasm runtime"
+echo "  ClojureWasm: switch-based interpreter (SIMD Phase 36)"
+echo "  Scalar wasm: zig cc -O2 (no SIMD)"
+echo "  SIMD wasm: zig cc -O2 -msimd128"
 echo "  Runs: $RUNS (warmup: $WARMUP native/wasmtime, 1 cljw)"

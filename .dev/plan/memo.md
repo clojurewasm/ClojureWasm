@@ -27,28 +27,25 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 2. ~~**36.2** SIMD memory + constant ops (~40 opcodes)~~
 3. ~~**36.3** SIMD integer arithmetic (~130 opcodes)~~
 4. ~~**36.4** SIMD float arithmetic (~50 opcodes)~~
-5. **36.5** SIMD shuffle + swizzle + remaining ops (~10 opcodes)
-6. **36.6** SIMD benchmark + regression measurement
+5. ~~**36.5** SIMD shuffle + swizzle + remaining ops (covered by 36.2-36.4)~~
+6. ~~**36.6** SIMD benchmark + regression measurement~~
 7. **36.7** Multi-module linking
 8. **36.8** F119 fix — WIT string return marshalling
 9. **36.9** Documentation + cleanup
 
 ## Current Task
 
-36.5: SIMD shuffle + swizzle + remaining ops.
-- Review what was already implemented in 36.2 (shuffle, swizzle done)
-- Identify any remaining unimplemented SIMD ops
-- Clean up and verify completeness
+36.7: Multi-module linking.
+- Wasm module imports/exports between multiple modules
+- Import resolution, linking
 
 ## Previous Task
 
-36.4: SIMD float arithmetic (~50 opcodes). 3 new helpers (simdMinMax,
-simdRound, roundToEven). Comparison (12 ops), unary abs/neg/sqrt (6),
-arithmetic add/sub/mul/div (8), min/max/pmin/pmax (8), rounding
-ceil/floor/trunc/nearest (8), conversion trunc_sat/convert/demote/promote (8).
-simd_float.wat conformance test (18 functions). All tests pass.
-Bug fix: wasmNearest used @round (ties-away-from-zero) instead of
-roundToEven (ties-to-even per IEEE 754 / Wasm spec).
+36.6: SIMD benchmark + regression measurement.
+Makefile updated: scalar + SIMD wasm variants. Benchmark script updated
+to compare 4 configurations (native, wasmtime, CW-scalar, CW-SIMD).
+vector_add: 2.58x speedup from SIMD. No regression in main benchmarks.
+Recorded as entry 36.6 in bench/history.yaml.
 
 ## Known Issues
 
