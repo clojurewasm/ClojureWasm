@@ -10,7 +10,7 @@ Session handover document. Read at session start.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
 - **Phase 33 COMPLETE** — Namespace & Portability Design (D82)
 - **Phase 34 COMPLETE** — Server Mode & Networking (D83)
-- **Phase 35W NEXT** — Custom Wasm Runtime (D84)
+- **Phase 35W IN PROGRESS** — Custom Wasm Runtime (D84)
 
 ## Strategic Direction
 
@@ -26,7 +26,7 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 
 Phase 35W — Custom Wasm Runtime (D84)
 
-- 35W.1 Foundation: opcode.zig + leb128.zig (~150 LOC)
+- ~~35W.1 Foundation: opcode.zig + leb128.zig (~150 LOC)~~ DONE
 - 35W.2 Memory: memory.zig — linear memory with pages, grow, read/write (~200 LOC)
 - 35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)
 - 35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)
@@ -38,11 +38,13 @@ Phase 35W — Custom Wasm Runtime (D84)
 
 ## Current Task
 
-(Phase 35W plan approved — start from 35W.1)
+35W.2 — Memory: memory.zig — linear memory with pages, grow, read/write.
 
 ## Previous Task
 
-34.6 — Fix run-server :background option and add set-handler! for live reload.
+35W.1 — Foundation: opcode.zig (Wasm MVP opcode enum, MiscOpcode 0xFC prefix,
+SIMD 0xFD reservation, ValType, Section, etc.) + leb128.zig (Reader with
+readU32/I32/U64/I64/I33/F32/F64, subReader). All 18 tests pass.
 
 ## Known Issues
 
