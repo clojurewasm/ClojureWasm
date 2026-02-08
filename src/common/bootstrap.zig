@@ -737,9 +737,65 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 /// Public so eval builtins (eval.zig) can access the current Env.
 pub var macro_eval_env: ?*Env = null;
 
-// === Bootstrap Cache (AOT compilation) ===
+// === AOT Compilation ===
 
 const serialize_mod = @import("bytecode/serialize.zig");
+
+/// Compile source to a serialized bytecode Module.
+///
+/// Parses, analyzes (with macro expansion), and compiles all top-level forms
+/// into a single Chunk. The resulting Module (header + string table + FnProto
+/// table + Chunk) is returned as owned bytes.
+///
+/// Requires bootstrap already loaded (macros must be available for expansion).
+pub fn compileToModule(allocator: Allocator, env: *Env, source: []const u8) BootstrapError![]const u8 {
+    const node_alloc = env.nodeAllocator();
+    const forms = try readForms(node_alloc, source);
+    if (forms.len == 0) return error.CompileError;
+
+    const prev = setupMacroEnv(env);
+    defer restoreMacroEnv(prev);
+
+    // Compile all forms into a single Chunk.
+    // Intermediate form results are popped; final form result is returned by .ret.
+    var compiler = Compiler.init(allocator);
+    if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+    for (forms, 0..) |form, i| {
+        const node = try analyzeForm(node_alloc, env, form);
+        compiler.compile(node) catch return error.CompileError;
+        if (i < forms.len - 1) {
+            compiler.chunk.emitOp(.pop) catch return error.CompileError;
+        }
+    }
+    compiler.chunk.emitOp(.ret) catch return error.CompileError;
+
+    // Serialize the Module
+    var ser: serialize_mod.Serializer = .{};
+    ser.serializeModule(allocator, &compiler.chunk) catch return error.CompileError;
+    const bytes = ser.getBytes();
+    return allocator.dupe(u8, bytes) catch return error.OutOfMemory;
+}
+
+/// Run a compiled bytecode Module in the given Env.
+///
+/// Deserializes the Module, then runs the top-level Chunk via VM.
+/// Returns the value of the last form.
+pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const u8) BootstrapError!Value {
+    const prev = setupMacroEnv(env);
+    defer restoreMacroEnv(prev);
+
+    var de: serialize_mod.Deserializer = .{ .data = module_bytes };
+    const chunk = de.deserializeModule(allocator) catch return error.CompileError;
+
+    const gc: ?*gc_mod.MarkSweepGc = if (env.gc) |g| @ptrCast(@alignCast(g)) else null;
+
+    // Heap-allocate VM (struct is ~1.5MB)
+    const vm = env.allocator.create(VM) catch return error.CompileError;
+    defer env.allocator.destroy(vm);
+    vm.* = VM.initWithEnv(allocator, env);
+    vm.gc = gc;
+    return vm.run(&chunk) catch return error.EvalError;
+}
 
 /// Unified bootstrap: loads all standard library namespaces.
 ///
@@ -3539,4 +3595,66 @@ test "bootstrap cache - round-trip: generate and restore" {
     // Verify: macros from clojure.test namespace available
     const test_ns = env2.findNamespace("clojure.test");
     try testing.expect(test_ns != null);
+}
+
+test "compileToModule - compile and run bytecode" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Compile source to bytecode Module
+    const module_bytes = try compileToModule(alloc, &env,
+        \\(+ 10 (* 3 4))
+    );
+    try testing.expect(module_bytes.len > 0);
+    // Check CLJC magic
+    try testing.expectEqualStrings("CLJC", module_bytes[0..4]);
+
+    // Run the compiled Module in the same env
+    const result = try runBytecodeModule(alloc, &env, module_bytes);
+    try testing.expectEqual(Value.initInteger(22), result);
+}
+
+test "compileToModule - multi-form source" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Multi-form: defn + call. Only last form's value is returned.
+    const module_bytes = try compileToModule(alloc, &env,
+        \\(defn triple [x] (* x 3))
+        \\(triple 7)
+    );
+
+    const result = try runBytecodeModule(alloc, &env, module_bytes);
+    try testing.expectEqual(Value.initInteger(21), result);
+}
+
+test "compileToModule - uses core macros" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Source uses when macro from core.clj
+    const module_bytes = try compileToModule(alloc, &env,
+        \\(when (> 5 3) (+ 100 200))
+    );
+
+    const result = try runBytecodeModule(alloc, &env, module_bytes);
+    try testing.expectEqual(Value.initInteger(300), result);
 }

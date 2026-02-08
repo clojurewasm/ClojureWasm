@@ -50,19 +50,30 @@ pub fn main() !void {
     ns_ops.init(allocator);
     defer ns_ops.deinit();
 
-    // Check for embedded source (built binary via `cljw build`).
-    // If this binary has a CLJW trailer, run the embedded source and exit.
-    if (readEmbeddedSource(allocator)) |source| {
-        defer allocator.free(source);
-        err.setSourceFile("<embedded>");
-        err.setSourceText(source);
-        evalEmbedded(alloc, allocator, &gc, source, args[1..]);
+    // Check for embedded payload (built binary via `cljw build`).
+    // If this binary has a CLJW trailer, run the embedded payload and exit.
+    // Payload may be raw .clj source or compiled .cljc bytecode (detected by CLJC magic).
+    if (readEmbeddedSource(allocator)) |payload| {
+        defer allocator.free(payload);
+        if (isBytecodeModule(payload)) {
+            runEmbeddedBytecode(alloc, allocator, &gc, payload);
+        } else {
+            err.setSourceFile("<embedded>");
+            err.setSourceText(payload);
+            evalEmbedded(alloc, allocator, &gc, payload, args[1..]);
+        }
         return;
     }
 
     // Handle `build` subcommand: cljw build <file> [-o <output>]
     if (args.len >= 2 and std.mem.eql(u8, args[1], "build")) {
         handleBuildCommand(allocator, args[2..]);
+        return;
+    }
+
+    // Handle `compile` subcommand: cljw compile <file.clj> [-o <output.cljc>]
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "compile")) {
+        handleCompileCommand(alloc, allocator, &gc, args[2..]);
         return;
     }
 
@@ -131,15 +142,22 @@ pub fn main() !void {
         }
 
         const max_file_size = 10 * 1024 * 1024; // 10MB
-        const source = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
+        const file_bytes = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
             const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
             _ = stderr.write("Error: could not read file (max 10MB)\n") catch {};
             std.process.exit(1);
         };
-        defer allocator.free(source);
-        err.setSourceFile(f);
-        err.setSourceText(source);
-        evalAndPrint(alloc, allocator, &gc, source, use_vm, dump_bytecode);
+        defer allocator.free(file_bytes);
+
+        if (isBytecodeModule(file_bytes)) {
+            // Compiled bytecode (.cljc) — run via VM
+            runBytecodeFile(alloc, allocator, &gc, file_bytes);
+        } else {
+            // Source (.clj) — parse/analyze/eval
+            err.setSourceFile(f);
+            err.setSourceText(file_bytes);
+            evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+        }
     } else if (config.main_ns) |main_ns| {
         // cljw.edn :main — load the main namespace
         runMainNs(alloc, allocator, &gc, main_ns, use_vm);
@@ -1119,4 +1137,155 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
     const w = stream.writer();
     w.print("Built: {s} ({d} bytes, source: {d} bytes)\n", .{ out_name, total_size, user_source.len }) catch {};
     _ = stdout.write(stream.getWritten()) catch {};
+}
+
+/// Run embedded bytecode payload (built binary with compiled .cljc).
+/// Like evalEmbedded but for bytecode — does NOT print the result (scripts handle output).
+fn runEmbeddedBytecode(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, module_bytes: []const u8) void {
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadBootstrapAll(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to bootstrap\n", .{});
+        std.process.exit(1);
+    };
+    markBootstrapLibs();
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    _ = bootstrap.runBytecodeModule(gc_alloc, &env, module_bytes) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+}
+
+/// Check if bytes are a compiled bytecode Module (starts with "CLJC" magic).
+fn isBytecodeModule(bytes: []const u8) bool {
+    if (bytes.len < 4) return false;
+    return std.mem.eql(u8, bytes[0..4], "CLJC");
+}
+
+/// Handle `cljw compile <source.clj> [-o <output.cljc>]` subcommand.
+///
+/// Compiles source to a bytecode Module file. Requires bootstrap for macro expansion.
+fn handleCompileCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, compile_args: []const [:0]const u8) void {
+    _ = gc;
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+
+    var source_file: ?[]const u8 = null;
+    var output_file: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < compile_args.len) : (i += 1) {
+        if (std.mem.eql(u8, compile_args[i], "-o")) {
+            i += 1;
+            if (i >= compile_args.len) {
+                _ = stderr.write("Error: -o requires an output file argument\n") catch {};
+                std.process.exit(1);
+            }
+            output_file = compile_args[i];
+        } else {
+            source_file = compile_args[i];
+        }
+    }
+
+    if (source_file == null) {
+        _ = stderr.write("Usage: cljw compile <source.clj> [-o <output.cljc>]\n") catch {};
+        std.process.exit(1);
+    }
+
+    // Read user source
+    const max_file_size = 10 * 1024 * 1024;
+    const user_source = std.fs.cwd().readFileAlloc(infra_alloc, source_file.?, max_file_size) catch {
+        _ = stderr.write("Error: could not read source file\n") catch {};
+        std.process.exit(1);
+    };
+    defer infra_alloc.free(user_source);
+
+    // Determine output filename (default: replace .clj with .cljc)
+    const out_name = output_file orelse blk: {
+        const src = source_file.?;
+        if (std.mem.endsWith(u8, src, ".clj")) {
+            var buf: [4096]u8 = undefined;
+            const base = src[0 .. src.len - 4];
+            const name = std.fmt.bufPrint(&buf, "{s}.cljc", .{base}) catch {
+                break :blk "output.cljc";
+            };
+            break :blk name;
+        }
+        break :blk "output.cljc";
+    };
+
+    // Bootstrap (for macro expansion)
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        _ = stderr.write("Error: failed to register builtins\n") catch {};
+        std.process.exit(1);
+    };
+    bootstrap.loadBootstrapAll(gc_alloc, &env) catch {
+        _ = stderr.write("Error: failed to bootstrap\n") catch {};
+        std.process.exit(1);
+    };
+
+    // Compile source to bytecode Module
+    const module_bytes = bootstrap.compileToModule(gc_alloc, &env, user_source) catch {
+        _ = stderr.write("Error: compilation failed\n") catch {};
+        std.process.exit(1);
+    };
+
+    // Write compiled bytecode
+    const out_file = std.fs.cwd().createFile(out_name, .{}) catch {
+        _ = stderr.write("Error: could not create output file\n") catch {};
+        std.process.exit(1);
+    };
+    defer out_file.close();
+    out_file.writeAll(module_bytes) catch {
+        _ = stderr.write("Error: write failed\n") catch {};
+        std.process.exit(1);
+    };
+
+    // Report success
+    var msg_buf: [256]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&msg_buf);
+    const w = stream.writer();
+    w.print("Compiled: {s} ({d} bytes)\n", .{ out_name, module_bytes.len }) catch {};
+    _ = stdout.write(stream.getWritten()) catch {};
+}
+
+/// Run a compiled bytecode Module.
+///
+/// Bootstraps the env, then deserializes and runs the bytecode via VM.
+fn runBytecodeFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, module_bytes: []const u8) void {
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    registry.registerBuiltins(&env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.loadBootstrapAll(gc_alloc, &env) catch {
+        std.debug.print("Error: failed to bootstrap\n", .{});
+        std.process.exit(1);
+    };
+    markBootstrapLibs();
+
+    // Enable GC
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Deserialize and run bytecode Module
+    const result = bootstrap.runBytecodeModule(gc_alloc, &env, module_bytes) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+
+    // Print result
+    var buf: [65536]u8 = undefined;
+    const output = formatValue(&buf, result);
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    _ = stdout.write(output) catch {};
+    _ = stdout.write("\n") catch {};
 }

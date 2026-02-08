@@ -11,7 +11,7 @@ Session handover document. Read at session start.
 - **Phase 29 SKIPPED** — File splitting impractical (Zig struct constraint),
   D3 violations require BuiltinFn signature change (500+ functions)
 - **Phase 30 COMPLETE** — Production Robustness
-- **Phase 31 IN PROGRESS** — AOT Compilation
+- **Phase 31 COMPLETE** — AOT Compilation
 
 ## Strategic Direction
 
@@ -21,7 +21,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30 (robustness)~~ -> **31 (AOT)** -> 32 (GC/JIT research) -> 33 (FFI deep)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30 (robustness)~~ -> ~~31 (AOT)~~ -> 32 (GC/JIT research) -> 33 (FFI deep)
 
 ## Task Queue
 
@@ -50,33 +50,27 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-31.5 — `cljw compile` command + Phase 28.3 bytecode embedding.
+Phase 31 COMPLETE. Plan next phase.
 
 ## Task Queue
 
-Phase 31 — AOT Compilation. Bytecode serialization and bootstrap caching.
-Startup already 10ms (ReleaseSafe), but AOT enables:
-  - Source code protection in distributed binaries
-  - Bootstrap cache for constrained environments
-  - Foundation for future JIT / ahead-of-time optimizations
-  - Phase 28.3 bytecode embedding in single binary
+Phase 31 — AOT Compilation. COMPLETE.
 
 - ~~31.1 Bytecode binary format + Value serialization~~
 - ~~31.2 FnProto + Chunk serialization~~
 - ~~31.3 Env state snapshot / restore~~
 - ~~31.4 Bootstrap cache integration (startup from cached state)~~
-- 31.5 `cljw compile` command + Phase 28.3 bytecode embedding
+- ~~31.5 `cljw compile` command + Phase 28.3 bytecode embedding~~
 
 ## Previous Task
 
-31.4 — Bootstrap cache integration. Added vmRecompileAll (re-compiles all bootstrap
-TreeWalk closures to bytecode via VM), generateBootstrapCache (serializes post-bootstrap
-env), restoreFromBootstrapCache (restores env from cache bytes). Key insight: TreeWalk
-closures cannot be serialized (proto→Closure, not FnProto), so vmRecompileAll runs
-all bootstrap .clj sources through VM compiler first. Guard added in serialize.zig
-rejects treewalk fn_vals with error.TreeWalkClosureNotSerializable. Also added
-loadBootstrapAll() as unified bootstrap entry point. Integration test verifies
-round-trip: generate → restore → eval (arithmetic, inc, when, defn, map, filter).
+31.5 — `cljw compile` command + bytecode embedding. Added:
+- compileToModule(): compile source → serialized bytecode Module (multi-form, single Chunk)
+- runBytecodeModule(): deserialize + VM.run from bytecode bytes
+- `cljw compile source.clj [-o output.cljc]` — compiles .clj to .cljc bytecode
+- `cljw file.cljc` — runs compiled bytecode (CLJC magic detection)
+- `cljw build file.cljc -o app` — embeds bytecode in single binary (source protection)
+- Embedded bytecode execution via runEmbeddedBytecode (no result print, consistent with evalEmbedded)
 
 ## Known Issues
 
