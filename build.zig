@@ -14,6 +14,33 @@ pub fn build(b: *std.Build) void {
     });
     mod.addImport("zware", zware_dep.module("zware"));
 
+    // --- Bootstrap cache generation (D81) ---
+    // Build-time tool that bootstraps from .clj sources, serializes the env
+    // snapshot, and writes it to a file. The main binary embeds this cache
+    // for instant startup (restoreFromBootstrapCache instead of loadBootstrapAll).
+    const cache_gen = b.addExecutable(.{
+        .name = "cache_gen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/cache_gen.zig"),
+            .target = b.resolveTargetQuery(.{}),
+            .optimize = .ReleaseSafe,
+        }),
+    });
+    cache_gen.root_module.addImport("zware", zware_dep.module("zware"));
+    cache_gen.stack_size = 512 * 1024 * 1024;
+
+    const run_cache_gen = b.addRunArtifact(cache_gen);
+    const cache_bin = run_cache_gen.addOutputFileArg("bootstrap.cache");
+
+    // Create a wrapper .zig file that @embedFile's the generated cache.
+    // Both files live in the same WriteFile directory so the relative path works.
+    const embed_files = b.addWriteFiles();
+    _ = embed_files.addCopyFile(cache_bin, "bootstrap.cache");
+    const wrapper = embed_files.add("bootstrap_cache.zig",
+        \\pub const data: []const u8 = @embedFile("bootstrap.cache");
+        \\
+    );
+
     // Executable (same source tree, no module boundary — avoids self-referential type loop)
     const exe = b.addExecutable(.{
         .name = "cljw",
@@ -24,6 +51,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addImport("zware", zware_dep.module("zware"));
+    exe.root_module.addAnonymousImport("bootstrap_cache", .{
+        .root_source_file = wrapper,
+    });
     // 512MB stack for Debug builds — deeply nested lazy-seq realization
     // (e.g. sieve of Eratosthenes with 168 nested filters) creates ~381KB
     // frames per recursion level in Debug mode. ReleaseSafe needs ~64MB.
