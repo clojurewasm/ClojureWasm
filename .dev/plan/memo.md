@@ -8,7 +8,8 @@ Session handover document. Read at session start.
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
-- **Phase 33 IN PROGRESS** — Namespace & Portability Design (F115)
+- **Phase 33 COMPLETE** — Namespace & Portability Design (F115, D82)
+- **Phase 34 IN PROGRESS** — Server Mode & Networking (F116)
 
 ## Strategic Direction
 
@@ -18,7 +19,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 (build system)~~ -> **33 (namespace design)** -> 34 (server/networking) -> 35 (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT research)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 (build system)~~ -> ~~33 (namespace design)~~ -> **34 (server/networking)** -> 35 (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT research)
 
 ## Task Queue
 
@@ -26,9 +27,19 @@ Phase 33 — Namespace & Portability Design (F115)
 
   (Task Queue empty — Phase 33 complete)
 
+## Task Queue
+
+Phase 34 — Server Mode & Networking (F116)
+
+- 34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)
+- 34.2 TCP server foundation (Zig std.net, accept loop)
+- 34.3 HTTP server (basic request/response, ring-compatible handler model)
+- 34.4 HTTP client (cljw.http/get, cljw.http/post)
+- 34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)
+
 ## Current Task
 
-Phase 33 complete. Ready for Phase 34 (server/networking).
+34.1 — nREPL flag passthrough in built binaries.
 
 ## Previous Task
 
@@ -51,13 +62,16 @@ Phase 33 complete. Ready for Phase 34 (server/networking).
 - **Phase 32 results**: 32.1 removed cljw compile, 32.2 build-time cache gen,
   32.3 startup ~3-4ms (was ~12ms), 32.4 multi-file require robustness,
   32.5 source bundling build with require resolution
-- **Phase 33 context**: Babashka model researched (see optimization-catalog.md
-  Section 7, and F115 in checklist.md). Babashka uses clojure.* for JVM-compat,
-  babashka.* for extensions. Key issue: `wasm` ns should be `cljw.wasm`,
-  IO/system interop needs clojure.java.io compat layer.
+- **Phase 33 COMPLETE** (D82): Namespace naming convention + portability
+  - clojure.* for JVM compat, cljw.* for extensions
+  - wasm → cljw.wasm rename, clojure.repl extracted to separate ns
+  - clojure.java.io compat layer (7 builtins: file, delete-file, make-parents, etc.)
+  - System/getProperty with 9 native property mappings
+  - Portability test suite: 2/2 PASS (0 diff with JVM Clojure 1.12)
+  - vars.yaml audit: 659 vars done (was 535+8, fixed clojure.math/edn staleness)
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
-  clojure.data, clojure.repl, wasm, user
+  clojure.data, clojure.repl, clojure.java.io, cljw.wasm, user
 - **Benchmark (Phase 32)**: bench/history.yaml entry "32". Startup ~3-4ms
   (C/Zig level). Cross-lang comparison in optimization-catalog.md Section 7.5.
 - **Phase 31 (AOT)**: serialize.zig (bytecode format), bootstrap.zig
