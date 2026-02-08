@@ -24,31 +24,24 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> **32 
 
 Phase 32 — Build System & Startup Optimization (D81)
 
-- 32.1 Remove `cljw compile` subcommand and standalone .cljc execution
-- 32.2 Build-time bootstrap cache generation (build.zig cache generator)
-- 32.3 Startup path switch to cache restoration + measurement
+- ~~32.1 Remove `cljw compile` subcommand and standalone .cljc execution~~
+- ~~32.2 Build-time bootstrap cache generation (build.zig cache generator)~~
+- ~~32.3 Startup path switch to cache restoration + measurement~~
 - 32.4 Multi-file require robustness verification and fixes
 - 32.5 `cljw build` overhaul: bytecode embedding + require resolution
 
 ## Current Task
 
-32.1 — Remove `cljw compile` subcommand and standalone .cljc execution.
-
-User-facing paths are now two only:
-- `cljw file.clj` — run source directly
-- `cljw build file.clj -o app` — build single binary
-
-Remove: handleCompileCommand, runBytecodeFile from main.zig.
-Keep: compileToModule, runBytecodeModule (internal API for build),
-      isBytecodeModule (binary trailer detection),
-      runEmbeddedBytecode (built binary execution).
+32.4 — Multi-file require robustness verification and fixes.
 
 ## Previous Task
 
-31.5 — `cljw compile` command + bytecode embedding. Added:
-- compileToModule(): compile source -> serialized bytecode Module
-- runBytecodeModule(): deserialize + VM.run from bytecode bytes
-- Embedded bytecode execution via runEmbeddedBytecode
+32.3 — Startup path switch to cache restoration. Results:
+- All 5 startup paths (REPL, evalAndPrint, runMainNs, evalEmbedded,
+  runEmbeddedBytecode) switched from loadBootstrapAll to bootstrapFromCache
+- bootstrapFromCache: registerBuiltins + restoreFromBootstrapCache
+- ReleaseSafe startup: ~12ms -> ~3-4ms (3-4x faster)
+- 125 lines of repetitive bootstrap code eliminated via shared helper
 
 ## Known Issues
 

@@ -11,6 +11,7 @@ const Allocator = std.mem.Allocator;
 const Env = @import("common/env.zig").Env;
 const registry = @import("common/builtin/registry.zig");
 const bootstrap = @import("common/bootstrap.zig");
+const bootstrap_cache = @import("bootstrap_cache");
 const Value = @import("common/value.zig").Value;
 const collections = @import("common/collections.zig");
 const nrepl = @import("repl/nrepl.zig");
@@ -153,35 +154,7 @@ pub fn main() !void {
         // No args, no file, no :main — start REPL
         var env = Env.init(allocator);
         defer env.deinit();
-        registry.registerBuiltins(&env) catch {
-            std.debug.print("Error: failed to register builtins\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadCore(alloc, &env) catch {
-            std.debug.print("Error: failed to load core.clj\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadWalk(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.walk\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadTemplate(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.template\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadTest(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.test\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadSet(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.set\n", .{});
-            std.process.exit(1);
-        };
-        bootstrap.loadData(alloc, &env) catch {
-            std.debug.print("Error: failed to load clojure.data\n", .{});
-            std.process.exit(1);
-        };
-        markBootstrapLibs();
+        bootstrapFromCache(alloc, &env);
         gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
         env.gc = @ptrCast(&gc);
         runRepl(alloc, &env, &gc);
@@ -353,36 +326,7 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     // bootstrap and evaluation use gc_alloc (MarkSweepGc) for Values.
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    registry.registerBuiltins(&env) catch {
-        std.debug.print("Error: failed to register builtins\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadCore(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load core.clj\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadWalk(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.walk\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTemplate(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.template\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTest(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.test\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadSet(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.set\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadData(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.data\n", .{});
-        std.process.exit(1);
-    };
-    // Mark bootstrap namespaces as loaded for require tracking
-    markBootstrapLibs();
+    bootstrapFromCache(gc_alloc, &env);
 
     // Enable GC for user evaluation (bootstrap runs without GC).
     // Reset threshold to avoid immediate sweep on first safe point.
@@ -428,35 +372,7 @@ fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepG
     _ = use_vm;
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    registry.registerBuiltins(&env) catch {
-        std.debug.print("Error: failed to register builtins\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadCore(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load core.clj\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadWalk(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.walk\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTemplate(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.template\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTest(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.test\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadSet(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.set\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadData(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.data\n", .{});
-        std.process.exit(1);
-    };
-    markBootstrapLibs();
+    bootstrapFromCache(gc_alloc, &env);
     gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
     env.gc = @ptrCast(gc);
 
@@ -470,6 +386,21 @@ fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepG
         reportError(e);
         std.process.exit(1);
     };
+}
+
+/// Initialize env from pre-compiled bootstrap cache (D81).
+/// Registers builtins (Zig function pointers), then restores Clojure-defined
+/// Vars from the serialized env snapshot embedded at build time.
+fn bootstrapFromCache(gc_alloc: Allocator, env: *Env) void {
+    registry.registerBuiltins(env) catch {
+        std.debug.print("Error: failed to register builtins\n", .{});
+        std.process.exit(1);
+    };
+    bootstrap.restoreFromBootstrapCache(gc_alloc, env, bootstrap_cache.data) catch {
+        std.debug.print("Error: failed to restore bootstrap cache\n", .{});
+        std.process.exit(1);
+    };
+    markBootstrapLibs();
 }
 
 /// Mark built-in namespaces as loaded so require skips them.
@@ -976,34 +907,7 @@ fn readEmbeddedSource(allocator: Allocator) ?[]const u8 {
 fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, cli_args: []const [:0]const u8) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    registry.registerBuiltins(&env) catch {
-        std.debug.print("Error: failed to register builtins\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadCore(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load core.clj\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadWalk(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.walk\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTemplate(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.template\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadTest(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.test\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadSet(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.set\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadData(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.data\n", .{});
-        std.process.exit(1);
-    };
+    bootstrapFromCache(gc_alloc, &env);
 
     // Set *command-line-args*
     setCommandLineArgs(gc_alloc, &env, cli_args);
@@ -1132,15 +1036,7 @@ fn handleBuildCommand(allocator: Allocator, build_args: []const [:0]const u8) vo
 fn runEmbeddedBytecode(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, module_bytes: []const u8) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    registry.registerBuiltins(&env) catch {
-        std.debug.print("Error: failed to register builtins\n", .{});
-        std.process.exit(1);
-    };
-    bootstrap.loadBootstrapAll(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to bootstrap\n", .{});
-        std.process.exit(1);
-    };
-    markBootstrapLibs();
+    bootstrapFromCache(gc_alloc, &env);
     gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
     env.gc = @ptrCast(gc);
 
