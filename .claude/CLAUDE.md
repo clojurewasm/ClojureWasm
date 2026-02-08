@@ -50,6 +50,7 @@ Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
 
 - TDD cycle: Red → Green → Refactor
 - Run tests: `zig build test`
+- Run e2e tests: `bash test/e2e/run_e2e.sh`
 - `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 
 **4. Complete** (per task)
@@ -101,7 +102,8 @@ Run before every commit:
 1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done`
-4. **memo.md**: Advance to next task
+4. **e2e tests**: `bash test/e2e/run_e2e.sh` passes (VM + TreeWalk)
+5. **memo.md**: Advance to next task
    - Update `## Current Task` with next task details
    - Remove completed task from Task Queue
    - Update Handover Notes if status changed (done/architecture/new info)

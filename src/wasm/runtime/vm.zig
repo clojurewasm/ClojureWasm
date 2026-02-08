@@ -1338,3 +1338,164 @@ test "VM — globals" {
     try vm.invoke(&inst, "get_counter", &args, &results);
     try testing.expectEqual(initial + 1, results[0]);
 }
+
+test "VM — memory sum_range (loop branch)" {
+    const wasm = try readTestFile(testing.allocator, "03_memory.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+
+    // Store values: mem[100]=10, mem[104]=20, mem[108]=30
+    var s1 = [_]u64{ 100, 10 };
+    var s2 = [_]u64{ 104, 20 };
+    var s3 = [_]u64{ 108, 30 };
+    var no_results = [_]u64{};
+    try vm.invoke(&inst, "store", &s1, &no_results);
+    try vm.invoke(&inst, "store", &s2, &no_results);
+    try vm.invoke(&inst, "store", &s3, &no_results);
+
+    // sum_range(100, 3) should return 60
+    var sum_args = [_]u64{ 100, 3 };
+    var sum_results = [_]u64{0};
+    try vm.invoke(&inst, "sum_range", &sum_args, &sum_results);
+    try testing.expectEqual(@as(u64, 60), sum_results[0]);
+}
+
+test "VM — table indirect call" {
+    const wasm = try readTestFile(testing.allocator, "05_table_indirect_call.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+
+    // dispatch(0, 10, 20) — calls function at table[0]
+    var args0 = [_]u64{ 0, 10, 20 };
+    var results = [_]u64{0};
+    try vm.invoke(&inst, "dispatch", &args0, &results);
+    const r0 = @as(u32, @truncate(results[0]));
+
+    // dispatch(1, 10, 20) — calls function at table[1]
+    var args1 = [_]u64{ 1, 10, 20 };
+    try vm.invoke(&inst, "dispatch", &args1, &results);
+    const r1 = @as(u32, @truncate(results[0]));
+
+    // Two different functions should return different results (add vs sub)
+    try testing.expect(r0 != r1);
+}
+
+test "VM — multi-value return" {
+    const wasm = try readTestFile(testing.allocator, "08_multi_value.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+
+    // swap(10, 20) should return (20, 10)
+    var args = [_]u64{ 10, 20 };
+    var results = [_]u64{ 0, 0 };
+    try vm.invoke(&inst, "swap", &args, &results);
+    try testing.expectEqual(@as(u64, 20), results[0]);
+    try testing.expectEqual(@as(u64, 10), results[1]);
+}
+
+test "VM — host function imports" {
+    const alloc = testing.allocator;
+    const wasm = try readTestFile(alloc, "04_imports.wasm");
+    defer alloc.free(wasm);
+
+    var mod = Module.init(alloc, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(alloc);
+    defer store.deinit();
+
+    // Stub host functions — pop args from the Vm operand stack
+    const stub_i32 = struct {
+        fn f(ctx: *anyopaque, _: usize) anyerror!void {
+            const vm_inner: *Vm = @ptrCast(@alignCast(ctx));
+            _ = vm_inner.popOperand(); // value
+        }
+    }.f;
+
+    const stub_i32_i32 = struct {
+        fn f(ctx: *anyopaque, _: usize) anyerror!void {
+            const vm_inner: *Vm = @ptrCast(@alignCast(ctx));
+            _ = vm_inner.popOperand(); // len
+            _ = vm_inner.popOperand(); // offset
+        }
+    }.f;
+
+    try store.exposeHostFunction("env", "print_i32", &stub_i32, 0,
+        &.{.i32}, &.{});
+    try store.exposeHostFunction("env", "print_str", &stub_i32_i32, 0,
+        &.{ .i32, .i32 }, &.{});
+
+    var inst = Instance.init(alloc, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm_inst = Vm.init(alloc);
+
+    // greet() should succeed (calls print_str host function)
+    var no_args = [_]u64{};
+    var no_results = [_]u64{};
+    try vm_inst.invoke(&inst, "greet", &no_args, &no_results);
+
+    // compute_and_print(10, 20) should succeed
+    var compute_args = [_]u64{ 10, 20 };
+    try vm_inst.invoke(&inst, "compute_and_print", &compute_args, &no_results);
+}
+
+test "VM — fib(20) = 6765" {
+    const wasm = try readTestFile(testing.allocator, "02_fibonacci.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var args = [_]u64{20};
+    var results = [_]u64{0};
+    try vm.invoke(&inst, "fib", &args, &results);
+    try testing.expectEqual(@as(u64, 6765), results[0]);
+}
