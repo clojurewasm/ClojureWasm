@@ -20,7 +20,7 @@ Check at session start for items that become actionable.
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
-| F101 | into() transient optimization                | into uses reduce+conj, could use transient. See `optimizations.md` |
+| ~~F101~~ | ~~into() transient optimization~~        | **DONE**: into uses transient for vector/map/set targets. |
 | F102 | map/filter chunked processing                | chunk.zig infra exists, map/filter don't use it. See `optimizations.md` |
 | F103 | Escape analysis (local scope skip GC)        | Compiler detects local-only Values, skip GC tracking               |
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |

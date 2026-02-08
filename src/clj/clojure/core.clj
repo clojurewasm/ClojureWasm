@@ -1619,15 +1619,20 @@
 
 ;; UPSTREAM-DIFF: simplified from clojure.core.protocols/coll-reduce to plain reduce
 
-;; Override builtin into to support 3-arity (transducer)
+;; Override builtin into to support 3-arity (transducer) and transient optimization (F101)
 (defn into
   "Returns a new coll consisting of to with all of the items of
   from conjoined. A transducer may be supplied."
   ([] [])
   ([to] to)
-  ([to from] (reduce conj to from))
+  ([to from]
+   (if (or (vector? to) (map? to) (set? to))
+     (persistent! (reduce conj! (transient to) from))
+     (reduce conj to from)))
   ([to xform from]
-   (transduce xform conj to from)))
+   (if (or (vector? to) (map? to) (set? to))
+     (persistent! (transduce xform conj! (transient to) from))
+     (transduce xform conj to from))))
 
 (defn- preserving-reduced
   [rf]

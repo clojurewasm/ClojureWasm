@@ -19,18 +19,23 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 36 complete. Next: Phase 37 (Advanced GC + JIT Research).
+Phase 36.11: READY optimizations (pre-JIT)
+1. [x] Baseline benchmark record
+2. [x] F101: into() transient optimization
+3. [ ] F102: map/filter chunked processing
+4. [ ] SmallString widening (inline strings > 7 bytes)
+5. [ ] String interning expansion (beyond keywords)
+6. [ ] Final benchmark record + summary
 
 ## Current Task
 
-F113 complete. Plan Phase 37 or continue per roadmap.
+36.11.3: F102 map/filter chunked processing.
 
 ## Previous Task
 
-F113: nREPL GC integration.
-Added MarkSweepGc to nREPL ServerState. GC safe point after each eval.
-startServer creates local GC; startServerWithEnv receives caller's GC.
-Closed F113 in checklist.
+36.11.2: F101 into() transient optimization.
+Changed core.clj into to use transient/persistent! for vector/map/set targets.
+Both 2-arity and 3-arity (transducer) paths optimized. Closed F101.
 
 ## Known Issues
 
