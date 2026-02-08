@@ -382,3 +382,30 @@ entries:
       string_ops: {time_ms: 29, mem_mb: 23.5}
       multimethod_dispatch: {time_ms: 10, mem_mb: 16.0}
       real_workload: {time_ms: 20, mem_mb: 19.2}
+  - id: "32"
+    date: "2026-02-08"
+    reason: "Phase 32 complete: build-time bootstrap cache, source bundling build"
+    commit: "22bb3a2"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 24, mem_mb: 8.5}
+      fib_loop: {time_ms: 4, mem_mb: 8.5}
+      tak: {time_ms: 8, mem_mb: 8.5}
+      arith_loop: {time_ms: 58, mem_mb: 8.5}
+      map_filter_reduce: {time_ms: 6, mem_mb: 9.3}
+      vector_ops: {time_ms: 8, mem_mb: 12.7}
+      map_ops: {time_ms: 7, mem_mb: 11.8}
+      list_build: {time_ms: 5, mem_mb: 9.3}
+      sieve: {time_ms: 5, mem_mb: 11.4}
+      nqueens: {time_ms: 16, mem_mb: 17.4}
+      atom_swap: {time_ms: 5, mem_mb: 8.5}
+      gc_stress: {time_ms: 29, mem_mb: 10.7}
+      lazy_chain: {time_ms: 5, mem_mb: 8.5}
+      transduce: {time_ms: 5, mem_mb: 8.5}
+      keyword_lookup: {time_ms: 14, mem_mb: 8.5}
+      protocol_dispatch: {time_ms: 4, mem_mb: 8.5}
+      nested_update: {time_ms: 10, mem_mb: 12.0}
+      string_ops: {time_ms: 27, mem_mb: 15.9}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 8.5}
+      real_workload: {time_ms: 16, mem_mb: 15.2}

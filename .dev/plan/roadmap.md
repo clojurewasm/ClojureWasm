@@ -471,7 +471,61 @@ project support. Architecture decision: D81.
 **Prerequisite**: Phase 31 (AOT serialization infrastructure)
 **Reference**: D81 in decisions.md
 
-### Phase 33: Advanced GC + JIT Research
+### Phase 33: Namespace & Portability Design (F115)
+
+Design the namespace naming convention for JVM Clojure portability.
+Audit all current namespaces, establish `cljw.*` for ClojureWasm-specific
+extensions, ensure `clojure.*` code runs on both JVM and ClojureWasm.
+Babashka model as reference: `clojure.*` (compat) + `babashka.*` (extensions).
+
+**Scope**:
+- Audit all current namespaces (clojure.math, clojure.string, etc.)
+- IO namespace naming: clojure.java.io compat layer vs cljw.io
+- System interop routing: System/getenv, System/exit equivalents
+- `cljw.*` namespace design for unique features (wasm FFI, native IO)
+- Portability test suite: code that runs on both JVM Clojure and ClojureWasm
+
+**Prerequisite**: Phase 32 (build system stable)
+**Reference**: F115 in checklist.md, Babashka namespace strategy
+
+### Phase 34: Server Mode & Networking (F116)
+
+Long-running server support: nREPL in built binaries, HTTP server/client
+library, ring-compatible handler model for web applications.
+
+**Scope**:
+- nREPL flag passthrough in built binaries (`./myapp --nrepl 7888`)
+- TCP/HTTP server (Zig `std.net`), cljw.http namespace
+- Stateful long-running process lifecycle
+- ring-compatible handler model for web applications
+
+**Prerequisite**: Phase 33 (namespace conventions established)
+**Reference**: F116 in checklist.md
+
+### Phase 35: Cross-Platform Distribution (F117)
+
+Two axes: (A) cljw cross-compiles for Linux/Windows/macOS via Zig,
+(B) binaries produced by `cljw build` work on target platforms.
+
+**Scope**:
+- Cross-compile cljw itself: `-Dtarget=x86_64-linux-gnu`, Windows, etc.
+- Verify binary trailer format on ELF (Linux) and PE (Windows)
+- Verify `cljw build` output binaries on each platform
+- CI pipeline for multi-platform builds
+- Platform-specific testing (paths, networking, signals)
+- Release workflow (GitHub releases with multi-platform binaries)
+
+**Prerequisite**: Phase 34 (networking features testable cross-platform)
+**Reference**: F117 in checklist.md
+
+### Phase 36: Wasm FFI Deep (Phase 25 Extension)
+
+Deepen Wasm InterOp with multi-module support and practical examples.
+
+**Scope**: Multi-module linking, WIT-based type-safe FFI, real-world samples
+**Prerequisite**: Phase 35 (cross-platform distribution)
+
+### Phase 37: Advanced GC + JIT Research
 
 Research phase for generational GC and JIT compilation feasibility.
 
@@ -481,18 +535,9 @@ Research phase for generational GC and JIT compilation feasibility.
 - Escape analysis (F103): local-only Values skip GC tracking
 - Profile-guided optimization (F104): extend inline caching beyond monomorphic
 - Design documents + PoC prototypes, not full implementation
-- Full implementation in subsequent phases based on research findings
 
-**Prerequisite**: Phase 32 (build system stable, AOT infrastructure informs JIT design)
-**Note**: Both items require deep architectural changes. Design documents
-and PoC first, full implementation in subsequent phases.
-
-### Phase 34: Wasm FFI Deep (Phase 25 Extension)
-
-Deepen Wasm InterOp with multi-module support and practical examples.
-
-**Scope**: Multi-module linking, WIT-based type-safe FFI, real-world samples
-**Prerequisite**: Phase 32 (single binary builder mature)
+**Prerequisite**: Phase 35 (stable cross-platform base for benchmarking)
+**Note**: Design documents and PoC first, full implementation in subsequent phases.
 
 ### Future: wasm_rt Revival
 

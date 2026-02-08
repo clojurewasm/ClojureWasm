@@ -17,7 +17,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 (build system)~~ -> 33 (GC/JIT research) -> 34 (FFI deep)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 (build system)~~ -> **33 (namespace design)** -> 34 (server/networking) -> 35 (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT research)
 
 ## Task Queue
 
@@ -25,7 +25,7 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 ## Current Task
 
-Plan Phase 33.
+Plan Phase 33 — Namespace & Portability Design (F115).
 
 ## Previous Task
 
@@ -71,3 +71,10 @@ Plan Phase 33.
 - **Build-time bootstrap**: cache_gen.zig generates cache at Zig build time,
   embedded via build.zig WriteFile+addAnonymousImport pattern.
   Startup: registerBuiltins (~<1ms) + restoreFromBootstrapCache (~2-3ms).
+- **Future design items** (F115-F117):
+  - F115: Namespace naming strategy — clojure.* (JVM compat) vs cljw.* (unique).
+    Babashka model: clojure.* for compat, babashka.* for extensions.
+    clojure.math is fine (real JVM 1.11 ns). IO/system interop needs design.
+  - F116: Long-running server + networking — nREPL in built binaries,
+    HTTP server/client, stateful process support.
+  - F117: Cross-platform — Zig cross-compile, CI matrix, ELF/PE trailer verify.
