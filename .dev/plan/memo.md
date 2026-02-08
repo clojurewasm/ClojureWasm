@@ -28,7 +28,7 @@ Phase 35W — Custom Wasm Runtime (D84)
 
 - ~~35W.1 Foundation: opcode.zig + leb128.zig (~150 LOC)~~ DONE
 - ~~35W.2 Memory: memory.zig — linear memory with pages, grow, read/write (~200 LOC)~~ DONE
-- 35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)
+- ~~35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)~~ DONE
 - 35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)
 - 35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)
 - 35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)
@@ -38,12 +38,12 @@ Phase 35W — Custom Wasm Runtime (D84)
 
 ## Current Task
 
-35W.3 — Store: store.zig — function registry, host functions, tables, globals.
+35W.4 — Module decoder: module.zig — Wasm binary parser, sections 0-12.
 
 ## Previous Task
 
-35W.2 — Memory: memory.zig — page-based linear memory (grow, typed read/write,
-copy, fill, copyWithin, bounds checking). 16 tests pass.
+35W.3 — Store: store.zig — Function (wasm/host), Table, Global, Elem, Data,
+Store with add/get/lookup/export. 12 store tests + 16 memory + 7 opcode pass.
 
 ## Known Issues
 
