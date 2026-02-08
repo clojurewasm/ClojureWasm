@@ -560,6 +560,12 @@ ClojureWasm-native API evolution.
 **Value proposition**: "Clojure dynamism + C/Rust compute performance"
 — unique to ClojureWasm (Babashka has no Wasm FFI path).
 
+**Baseline (Phase 35.5)**: Interpreter overhead vs native:
+- vector_add/dot_product: 64x-289x (memory-bound, SIMD expected to improve 4-8x)
+- mandelbrot: 74x, matrix_mul: 14x (compute-bound)
+- See `bench/simd/results.md` for full comparison (native/wasmtime/cljw)
+- Wasm micro-benchmarks: `bench/benchmarks/21-25_wasm_*/`, `bench/history.yaml` entry "35.5E"
+
 **Prerequisite**: Phase 35X (cross-platform stable)
 **Reference**: F118 in checklist.md, `.dev/plan/phase35-custom-wasm.md` Phase 36 section
 
@@ -573,6 +579,12 @@ Research phase for generational GC and JIT compilation feasibility.
 - Escape analysis (F103): local-only Values skip GC tracking
 - Profile-guided optimization (F104): extend inline caching beyond monomorphic
 - Design documents + PoC prototypes, not full implementation
+
+**Baseline (Phase 35.5)**: Interpreter overhead targets for JIT:
+- Wasm fib(20): 1.16ms/call (interpreter) vs wasmtime ~0.02ms (JIT) — 50x gap
+- Wasm sieve(65536): 8.4ms (interpreter) vs wasmtime ~0.3ms — 28x gap
+- Target: JIT should bring CW within 2-5x of wasmtime (Cranelift-class)
+- See `bench/simd/results.md`, `bench/history.yaml` entry "35.5E"
 
 **Prerequisite**: Phase 35X (stable cross-platform base for benchmarking)
 **Note**: Design documents and PoC first, full implementation in subsequent phases.

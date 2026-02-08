@@ -364,6 +364,12 @@ After 35X, deepen Wasm FFI with ClojureWasm-native optimizations:
 **Value proposition**: "Clojure dynamism + C/Rust compute performance"
 — unique to ClojureWasm (Babashka has no Wasm FFI path).
 
+**Benchmark baseline (Phase 35.5)**:
+- SIMD comparison: `bench/simd/results.md` (native vs wasmtime vs cljw)
+- CW interpreter overhead: 14x-289x vs native (SIMD target: 4-8x improvement)
+- Wasm micro-benchmarks: `bench/benchmarks/21-25_wasm_*/`
+- History: `bench/history.yaml` entry "35.5E"
+
 ## Reference
 
 | Item                        | Location                                         |
@@ -373,6 +379,11 @@ After 35X, deepen Wasm FFI with ClojureWasm-native optimizations:
 | zware source (reference)    | add-dir: `/Users/shota.508/Documents/OSS/zware/` |
 | Current Wasm types          | `src/wasm/types.zig` (820 LOC)                   |
 | Current Wasm builtins       | `src/wasm/builtins.zig` (504 LOC)                |
+| SIMD benchmark baseline     | `bench/simd/results.md`                          |
+| Wasm benchmarks (21-25)     | `bench/benchmarks/21-25_wasm_*/`                 |
+| Conformance tests           | `src/wasm/testdata/conformance/` (9 WAT+WASM)    |
+| WASI coverage doc           | `docs/wasi-support.md` (38/45, 84%)              |
+| Wasm spec coverage doc      | `docs/wasm-spec-support.md`                      |
 | Current Wasm tests          | `src/wasm/testdata/` (12 .wasm files)            |
 | WIT parser (no zware dep)   | `src/wasm/wit_parser.zig` (443 LOC)              |
 | Roadmap                     | `.dev/plan/roadmap.md` Phase 35W/35X/36          |
