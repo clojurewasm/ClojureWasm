@@ -24,25 +24,24 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 Phase 33 — Namespace & Portability Design (F115)
 
-- 33.4 Add System interop routing (System/getenv, System/exit, System/nanoTime)
 - 33.5 Portability test suite (code that runs on both JVM Clojure and cljw)
 
 ## Current Task
 
-33.4 — Add System interop routing (System/getenv, System/exit, System/nanoTime).
+33.5 — Portability test suite (code that runs on both JVM Clojure and cljw).
 
-Scope: Provide common System-level operations that JVM Clojure accesses via
-Java interop (System/getenv, System/exit, System/getProperty, etc.).
-CW needs these as either builtins or a cljw.system namespace.
+Scope: Write a set of .clj test files that exercise cross-platform features
+and verify they produce identical output on JVM Clojure and ClojureWasm.
+Focus areas: clojure.java.io, System/ interop, clojure.repl, namespaces.
 
 ## Previous Task
 
-33.3 — clojure.java.io compatibility layer. Changes:
-- New java_io.zig: 7 builtins (file, delete-file, make-parents, as-file,
-  as-relative-path, copy, resource) using Zig native I/O
-- Registered as clojure.java.io namespace in registry.zig
-- reader/writer/stream ops deferred (need handle/resource type system)
-- vars.yaml: 7 done, 8 skip (stream ops), 4 skip (protocols/URL)
+33.4 — System interop routing. Changes:
+- Added System/getProperty builtin (maps user.dir, user.home, os.name, etc.)
+- Analyzer routing: System/getProperty → __get-property
+- 9 Java system properties mapped to native equivalents
+- System/getenv, System/exit, System/nanoTime, System/currentTimeMillis
+  already existed from earlier phase
 - Both backends verified
 
 ## Known Issues

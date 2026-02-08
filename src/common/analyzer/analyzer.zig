@@ -330,6 +330,7 @@ pub const Analyzer = struct {
         .{ "exit", "__exit" },
         .{ "nanoTime", "__nano-time" },
         .{ "currentTimeMillis", "__current-time-millis" },
+        .{ "getProperty", "__get-property" },
     });
 
     /// Resolve a symbol to a Var if possible (via env).
