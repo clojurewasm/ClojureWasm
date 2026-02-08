@@ -12,8 +12,8 @@ Session-spanning tracking document. Read at session start if cleanup incomplete.
 | 4 | decisions.md review/prune         | DONE    | 86→25 entries (2126→349 lines) |
 | 5 | checklist.md review/prune         | DONE    | Removed F21, F24, F98         |
 | 6 | Merge optimization files          | DONE    | 1293+154→170 lines, refs updated |
-| 7 | plan/ directory consolidation     | TODO    | Keep: memo, roadmap, archive/ |
-| 8 | Top-level directory cleanup       | TODO    | See directory plan below      |
+| 7 | plan/ directory consolidation     | DONE    | notes/+plan/ → flat .dev/     |
+| 8 | Top-level directory cleanup       | DONE    | scripts/examples/docs → .dev/, .gitkeep全削除 |
 | 10| Path reference integrity check    | TODO    | After all moves, fix refs     |
 
 ## Directory Reorganization Plan
