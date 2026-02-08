@@ -111,9 +111,10 @@ Python's deque is array-backed, not a linked list.
 
 ## Suggested priority
 
-1. 07_map_ops (C array → hash map) — easiest fix, most misleading
-2. 09_sieve (align algorithms) — most impactful on reported results
-3. 15_keyword_lookup (C struct → hash map) — semantic mismatch
-4. 08_list_build (Python deque → linked list) — easy fix
-5. 12_gc_stress, 17_nested_update — harder to fix fairly
-6. 05_map_filter_reduce — low priority, minor impact
+1. ~~07_map_ops (C array → hash map)~~ **DONE** — C uses open-addressing hash map
+2. ~~09_sieve (align algorithms)~~ **DONE** — C/Python/Ruby/Zig/Java use filter-based sieve
+3. ~~15_keyword_lookup (C struct → hash map)~~ **DONE** — C/Zig use string-keyed hash map
+4. ~~08_list_build (Python deque → linked list)~~ **DONE** — Python uses class-based linked list
+5. ~~12_gc_stress~~ **DONE** — C/Zig use hash map alloc/free loop
+6. ~~17_nested_update~~ **DONE** — C/Zig use hash map navigation
+7. 05_map_filter_reduce — low priority, minor impact (deferred)

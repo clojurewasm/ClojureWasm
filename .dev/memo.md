@@ -19,20 +19,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-1. **F121** Benchmark equivalence fixes (see `.dev/bench-equivalence.md`)
-2. **36.8** Multi-module linking
-3. **36.9** F119 fix — WIT string return marshalling
-4. **36.10** Documentation + cleanup
+1. **36.8** Multi-module linking
+2. **36.9** F119 fix — WIT string return marshalling
+3. **36.10** Documentation + cleanup
 
 ## Current Task
 
-F121: Cross-language benchmark equivalence fixes.
-7 benchmarks with unfair comparisons. Details: `.dev/bench-equivalence.md`
+Next task: 36.8 Multi-module linking (or plan next phase if needed).
 
 ## Previous Task
 
-Cleanup sprint (Tasks 1-10) + .claude/ refactoring.
-Directory reorganization, document pruning, path reference fixes, .claude/ consolidation.
+F121: Cross-language benchmark equivalence fixes.
+6/7 benchmarks fixed (07_map_ops, 09_sieve, 15_keyword_lookup, 08_list_build,
+12_gc_stress, 17_nested_update). 05_map_filter_reduce deferred (minor).
+Clojure code unchanged — history.yaml CW results remain valid.
+Cross-language comparison baseline note added to history.yaml.
 
 ## Known Issues
 

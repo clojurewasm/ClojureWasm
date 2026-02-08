@@ -3,6 +3,16 @@ env:
   ram: 48 GB
   os: Darwin 25.2.0
   tool: hyperfine
+
+# NOTE: F121 (2026-02-09) changed cross-language benchmark implementations.
+# CW (Clojure) code unchanged — all CW results below remain valid.
+# Cross-language comparisons before F121 used inequivalent algorithms:
+#   07_map_ops: C used plain array (now hash map)
+#   09_sieve: C/Python/Ruby/Zig/Java used standard Eratosthenes (now filter-based)
+#   15_keyword_lookup: C/Zig used struct field access (now hash map)
+#   08_list_build: Python used deque (now linked list)
+#   12_gc_stress: C/Zig used simple struct malloc (now hash map)
+#   17_nested_update: C/Zig used plain counter/struct (now hash map navigation)
 entries:
   - id: "pre-24"
     date: "2026-02-06"

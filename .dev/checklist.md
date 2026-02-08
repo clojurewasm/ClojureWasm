@@ -30,4 +30,4 @@ Check at session start for items that become actionable.
 | F118 | Wasm FFI deep (Phase 36)                     | SIMD + optimization done. Remaining: 36.8 multi-module, 36.9 F119, 36.10 docs |
 | F119 | WIT string return marshalling                | `wasm/fn` with WIT returns accumulated memory. Fix: slice by (ptr, len). |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
-| F121 | Cross-language benchmark equivalence fixes   | 7 benchmarks have unfair comparisons. See `.dev/bench-equivalence.md` |
+| ~~F121~~ | ~~Cross-language benchmark equivalence fixes~~ | **DONE**: 6/7 fixed. Only 05_map_filter_reduce deferred (minor). |
