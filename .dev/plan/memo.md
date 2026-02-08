@@ -17,32 +17,36 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> ~~35W~~ -> ~~35.5~~ -> **35X (cross-platform)** -> 36 (SIMD + FFI deep) -> 37 (GC/JIT)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> ~~35W~~ -> ~~35.5~~ -> ~~35X~~ -> **36 (SIMD + FFI deep)** -> 37 (GC/JIT)
 
 ## Task Queue
 
-Phase 36 (SIMD + FFI deep). Plan: TBD — create during planning task.
+Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 
-1. **36.0** Plan Phase 36: read `.dev/plan/phase35-custom-wasm.md` Phase 36 section,
-   F118 in checklist.md, `bench/simd/results.md` baseline, `.dev/plan/roadmap.md`.
-   Create `.dev/plan/phase36-simd-ffi.md` with task breakdown.
+1. **36.1** v128 value stack + SIMD opcode enum (foundation)
+2. **36.2** SIMD memory + constant ops (~20 opcodes)
+3. **36.3** SIMD integer arithmetic (~50 opcodes)
+4. **36.4** SIMD float arithmetic (~25 opcodes)
+5. **36.5** SIMD shuffle + swizzle + remaining ops (~10 opcodes)
+6. **36.6** SIMD benchmark + regression measurement
+7. **36.7** Multi-module linking
+8. **36.8** F119 fix — WIT string return marshalling
+9. **36.9** Documentation + cleanup
 
 ## Current Task
 
-36.0: Plan Phase 36 (SIMD + FFI deep).
-Read references, design task breakdown, create phase plan file.
-
-Key references:
-- `.dev/plan/phase35-custom-wasm.md` "Phase 36" section (SIMD opcode reservations)
-- `.dev/checklist.md` F118 (scope definition)
-- `bench/simd/results.md` (baseline: interpreter 14x-289x vs native)
-- `.dev/plan/roadmap.md` Phase 36 notes
-- `.dev/future.md` for broader context
+36.1: v128 value stack + SIMD opcode enum (foundation).
+- Add `SimdOpcode` enum to `opcode.zig` (~100 SIMD opcodes, 0xFD prefix)
+- Widen VM value stack from `[]u64` to `[]u128`
+- Add `pushV128`/`popV128` to vm.zig
+- Wire `simd_prefix` dispatch to `executeSimd` (initially all → error.Trap)
+- Verify all existing tests pass (non-SIMD behavior unchanged)
+- Benchmark non-SIMD before/after to verify no regression
 
 ## Previous Task
 
-Phase 35X complete (5 tasks). NaN boxing 4-tag redesign (D85), Linux/macOS
-cross-compile verified, EPL-1.0 license, GitHub Actions CI.
+36.0: Plan Phase 36. Created `.dev/plan/phase36-simd-ffi.md` with 9 tasks.
+Read phase35-custom-wasm.md, checklist.md, roadmap.md, bench/simd/results.md.
 
 ## Known Issues
 
@@ -87,12 +91,20 @@ Session resume procedure: read this file → follow references below.
 | **Wasm test corpus**         | `src/wasm/testdata/` (12 .wasm files)             |
 | **WIT parser**               | `src/wasm/wit_parser.zig` (443 LOC)               |
 
+### Phase 36 (current)
+
+| Item                         | Location                                          |
+|------------------------------|---------------------------------------------------|
+| **Phase plan**               | `.dev/plan/phase36-simd-ffi.md`                   |
+| **SIMD opcode reservation**  | `src/wasm/runtime/opcode.zig:271`                 |
+| **VM extension point**       | `src/wasm/runtime/vm.zig:639`                     |
+| **SIMD benchmarks**          | `bench/simd/` (4 programs + results.md)           |
+| **Checklist entries**        | `.dev/checklist.md` F118, F119                    |
+
 ### Upcoming phases
 
 | Phase | Plan                                              | Key reference                       |
 |-------|---------------------------------------------------|-------------------------------------|
-| 35X   | Cross-platform (Linux/Mac)                        | `.dev/plan/phase35X-cross-platform.md`          |
-| 36    | SIMD + FFI deep + multi-module                    | phase35-custom-wasm.md "Phase 36" + F118 |
 | 37    | GC + JIT research                                 | `.dev/plan/roadmap.md`              |
 
 ### Global references
