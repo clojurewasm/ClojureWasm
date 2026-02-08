@@ -1,7 +1,7 @@
-// Wasm MVP opcode definitions.
+// Wasm opcode definitions.
 //
 // Single-byte opcodes (0x00-0xd2), 0xFC-prefixed misc opcodes,
-// and 0xFD-prefixed SIMD opcode reservations (Phase 36).
+// and 0xFD-prefixed SIMD opcodes (Phase 36).
 
 const std = @import("std");
 
@@ -268,7 +268,7 @@ pub const Opcode = enum(u8) {
 
     // Multi-byte prefix
     misc_prefix = 0xFC,
-    simd_prefix = 0xFD, // Phase 36 reservation
+    simd_prefix = 0xFD,
 
     _,
 };
@@ -298,6 +298,313 @@ pub const MiscOpcode = enum(u32) {
     table_grow = 0x0F,
     table_size = 0x10,
     table_fill = 0x11,
+
+    _,
+};
+
+/// 0xFD-prefixed SIMD opcodes (Wasm SIMD proposal, 128-bit packed).
+pub const SimdOpcode = enum(u32) {
+    // Memory
+    v128_load = 0x00,
+    v128_load8x8_s = 0x01,
+    v128_load8x8_u = 0x02,
+    v128_load16x4_s = 0x03,
+    v128_load16x4_u = 0x04,
+    v128_load32x2_s = 0x05,
+    v128_load32x2_u = 0x06,
+    v128_load8_splat = 0x07,
+    v128_load16_splat = 0x08,
+    v128_load32_splat = 0x09,
+    v128_load64_splat = 0x0A,
+    v128_store = 0x0B,
+
+    // Constant
+    v128_const = 0x0C,
+
+    // Shuffle / swizzle
+    i8x16_shuffle = 0x0D,
+    i8x16_swizzle = 0x0E,
+
+    // Splat
+    i8x16_splat = 0x0F,
+    i16x8_splat = 0x10,
+    i32x4_splat = 0x11,
+    i64x2_splat = 0x12,
+    f32x4_splat = 0x13,
+    f64x2_splat = 0x14,
+
+    // Extract / replace lane
+    i8x16_extract_lane_s = 0x15,
+    i8x16_extract_lane_u = 0x16,
+    i8x16_replace_lane = 0x17,
+    i16x8_extract_lane_s = 0x18,
+    i16x8_extract_lane_u = 0x19,
+    i16x8_replace_lane = 0x1A,
+    i32x4_extract_lane = 0x1B,
+    i32x4_replace_lane = 0x1C,
+    i64x2_extract_lane = 0x1D,
+    i64x2_replace_lane = 0x1E,
+    f32x4_extract_lane = 0x1F,
+    f32x4_replace_lane = 0x20,
+    f64x2_extract_lane = 0x21,
+    f64x2_replace_lane = 0x22,
+
+    // i8x16 comparison
+    i8x16_eq = 0x23,
+    i8x16_ne = 0x24,
+    i8x16_lt_s = 0x25,
+    i8x16_lt_u = 0x26,
+    i8x16_gt_s = 0x27,
+    i8x16_gt_u = 0x28,
+    i8x16_le_s = 0x29,
+    i8x16_le_u = 0x2A,
+    i8x16_ge_s = 0x2B,
+    i8x16_ge_u = 0x2C,
+
+    // i16x8 comparison
+    i16x8_eq = 0x2D,
+    i16x8_ne = 0x2E,
+    i16x8_lt_s = 0x2F,
+    i16x8_lt_u = 0x30,
+    i16x8_gt_s = 0x31,
+    i16x8_gt_u = 0x32,
+    i16x8_le_s = 0x33,
+    i16x8_le_u = 0x34,
+    i16x8_ge_s = 0x35,
+    i16x8_ge_u = 0x36,
+
+    // i32x4 comparison
+    i32x4_eq = 0x37,
+    i32x4_ne = 0x38,
+    i32x4_lt_s = 0x39,
+    i32x4_lt_u = 0x3A,
+    i32x4_gt_s = 0x3B,
+    i32x4_gt_u = 0x3C,
+    i32x4_le_s = 0x3D,
+    i32x4_le_u = 0x3E,
+    i32x4_ge_s = 0x3F,
+    i32x4_ge_u = 0x40,
+
+    // f32x4 comparison
+    f32x4_eq = 0x41,
+    f32x4_ne = 0x42,
+    f32x4_lt = 0x43,
+    f32x4_gt = 0x44,
+    f32x4_le = 0x45,
+    f32x4_ge = 0x46,
+
+    // f64x2 comparison
+    f64x2_eq = 0x47,
+    f64x2_ne = 0x48,
+    f64x2_lt = 0x49,
+    f64x2_gt = 0x4A,
+    f64x2_le = 0x4B,
+    f64x2_ge = 0x4C,
+
+    // v128 bitwise
+    v128_not = 0x4D,
+    v128_and = 0x4E,
+    v128_andnot = 0x4F,
+    v128_or = 0x50,
+    v128_xor = 0x51,
+    v128_bitselect = 0x52,
+    v128_any_true = 0x53,
+
+    // Lane-wise load/store
+    v128_load8_lane = 0x54,
+    v128_load16_lane = 0x55,
+    v128_load32_lane = 0x56,
+    v128_load64_lane = 0x57,
+    v128_store8_lane = 0x58,
+    v128_store16_lane = 0x59,
+    v128_store32_lane = 0x5A,
+    v128_store64_lane = 0x5B,
+
+    // Zero-extending loads
+    v128_load32_zero = 0x5C,
+    v128_load64_zero = 0x5D,
+
+    // Float conversion (interleaved with integer ops)
+    f32x4_demote_f64x2_zero = 0x5E,
+    f64x2_promote_low_f32x4 = 0x5F,
+
+    // i8x16 integer ops
+    i8x16_abs = 0x60,
+    i8x16_neg = 0x61,
+    i8x16_popcnt = 0x62,
+    i8x16_all_true = 0x63,
+    i8x16_bitmask = 0x64,
+    i8x16_narrow_i16x8_s = 0x65,
+    i8x16_narrow_i16x8_u = 0x66,
+
+    // f32x4 rounding (interleaved)
+    f32x4_ceil = 0x67,
+    f32x4_floor = 0x68,
+    f32x4_trunc = 0x69,
+    f32x4_nearest = 0x6A,
+
+    // i8x16 shifts and arithmetic
+    i8x16_shl = 0x6B,
+    i8x16_shr_s = 0x6C,
+    i8x16_shr_u = 0x6D,
+    i8x16_add = 0x6E,
+    i8x16_add_sat_s = 0x6F,
+    i8x16_add_sat_u = 0x70,
+    i8x16_sub = 0x71,
+    i8x16_sub_sat_s = 0x72,
+    i8x16_sub_sat_u = 0x73,
+
+    // f64x2 rounding (interleaved)
+    f64x2_ceil = 0x74,
+    f64x2_floor = 0x75,
+
+    // i8x16 min/max
+    i8x16_min_s = 0x76,
+    i8x16_min_u = 0x77,
+    i8x16_max_s = 0x78,
+    i8x16_max_u = 0x79,
+
+    // f64x2 rounding (interleaved)
+    f64x2_trunc = 0x7A,
+
+    // i8x16 average
+    i8x16_avgr_u = 0x7B,
+
+    // Pairwise add
+    i16x8_extadd_pairwise_i8x16_s = 0x7C,
+    i16x8_extadd_pairwise_i8x16_u = 0x7D,
+    i32x4_extadd_pairwise_i16x8_s = 0x7E,
+    i32x4_extadd_pairwise_i16x8_u = 0x7F,
+
+    // i16x8 integer ops
+    i16x8_abs = 0x80,
+    i16x8_neg = 0x81,
+    i16x8_q15mulr_sat_s = 0x82,
+    i16x8_all_true = 0x83,
+    i16x8_bitmask = 0x84,
+    i16x8_narrow_i32x4_s = 0x85,
+    i16x8_narrow_i32x4_u = 0x86,
+    i16x8_extend_low_i8x16_s = 0x87,
+    i16x8_extend_high_i8x16_s = 0x88,
+    i16x8_extend_low_i8x16_u = 0x89,
+    i16x8_extend_high_i8x16_u = 0x8A,
+    i16x8_shl = 0x8B,
+    i16x8_shr_s = 0x8C,
+    i16x8_shr_u = 0x8D,
+    i16x8_add = 0x8E,
+    i16x8_add_sat_s = 0x8F,
+    i16x8_add_sat_u = 0x90,
+    i16x8_sub = 0x91,
+    i16x8_sub_sat_s = 0x92,
+    i16x8_sub_sat_u = 0x93,
+
+    // f64x2 rounding (interleaved)
+    f64x2_nearest = 0x94,
+
+    // i16x8 multiply and min/max
+    i16x8_mul = 0x95,
+    i16x8_min_s = 0x96,
+    i16x8_min_u = 0x97,
+    i16x8_max_s = 0x98,
+    i16x8_max_u = 0x99,
+
+    // i16x8 average and extended multiply
+    i16x8_avgr_u = 0x9B,
+    i16x8_extmul_low_i8x16_s = 0x9C,
+    i16x8_extmul_high_i8x16_s = 0x9D,
+    i16x8_extmul_low_i8x16_u = 0x9E,
+    i16x8_extmul_high_i8x16_u = 0x9F,
+
+    // i32x4 integer ops
+    i32x4_abs = 0xA0,
+    i32x4_neg = 0xA1,
+    i32x4_all_true = 0xA3,
+    i32x4_bitmask = 0xA4,
+    i32x4_extend_low_i16x8_s = 0xA7,
+    i32x4_extend_high_i16x8_s = 0xA8,
+    i32x4_extend_low_i16x8_u = 0xA9,
+    i32x4_extend_high_i16x8_u = 0xAA,
+    i32x4_shl = 0xAB,
+    i32x4_shr_s = 0xAC,
+    i32x4_shr_u = 0xAD,
+    i32x4_add = 0xAE,
+    i32x4_sub = 0xB1,
+    i32x4_mul = 0xB5,
+    i32x4_min_s = 0xB6,
+    i32x4_min_u = 0xB7,
+    i32x4_max_s = 0xB8,
+    i32x4_max_u = 0xB9,
+    i32x4_dot_i16x8_s = 0xBA,
+    i32x4_extmul_low_i16x8_s = 0xBC,
+    i32x4_extmul_high_i16x8_s = 0xBD,
+    i32x4_extmul_low_i16x8_u = 0xBE,
+    i32x4_extmul_high_i16x8_u = 0xBF,
+
+    // i64x2 integer ops
+    i64x2_abs = 0xC0,
+    i64x2_neg = 0xC1,
+    i64x2_all_true = 0xC3,
+    i64x2_bitmask = 0xC4,
+    i64x2_extend_low_i32x4_s = 0xC7,
+    i64x2_extend_high_i32x4_s = 0xC8,
+    i64x2_extend_low_i32x4_u = 0xC9,
+    i64x2_extend_high_i32x4_u = 0xCA,
+    i64x2_shl = 0xCB,
+    i64x2_shr_s = 0xCC,
+    i64x2_shr_u = 0xCD,
+    i64x2_add = 0xCE,
+    i64x2_sub = 0xD1,
+    i64x2_mul = 0xD5,
+
+    // i64x2 comparison
+    i64x2_eq = 0xD6,
+    i64x2_ne = 0xD7,
+    i64x2_lt_s = 0xD8,
+    i64x2_gt_s = 0xD9,
+    i64x2_le_s = 0xDA,
+    i64x2_ge_s = 0xDB,
+
+    // i64x2 extended multiply
+    i64x2_extmul_low_i32x4_s = 0xDC,
+    i64x2_extmul_high_i32x4_s = 0xDD,
+    i64x2_extmul_low_i32x4_u = 0xDE,
+    i64x2_extmul_high_i32x4_u = 0xDF,
+
+    // f32x4 arithmetic
+    f32x4_abs = 0xE0,
+    f32x4_neg = 0xE1,
+    f32x4_sqrt = 0xE3,
+    f32x4_add = 0xE4,
+    f32x4_sub = 0xE5,
+    f32x4_mul = 0xE6,
+    f32x4_div = 0xE7,
+    f32x4_min = 0xE8,
+    f32x4_max = 0xE9,
+    f32x4_pmin = 0xEA,
+    f32x4_pmax = 0xEB,
+
+    // f64x2 arithmetic
+    f64x2_abs = 0xEC,
+    f64x2_neg = 0xED,
+    f64x2_sqrt = 0xEF,
+    f64x2_add = 0xF0,
+    f64x2_sub = 0xF1,
+    f64x2_mul = 0xF2,
+    f64x2_div = 0xF3,
+    f64x2_min = 0xF4,
+    f64x2_max = 0xF5,
+    f64x2_pmin = 0xF6,
+    f64x2_pmax = 0xF7,
+
+    // Conversion
+    i32x4_trunc_sat_f32x4_s = 0xF8,
+    i32x4_trunc_sat_f32x4_u = 0xF9,
+    f32x4_convert_i32x4_s = 0xFA,
+    f32x4_convert_i32x4_u = 0xFB,
+    i32x4_trunc_sat_f64x2_s_zero = 0xFC,
+    i32x4_trunc_sat_f64x2_u_zero = 0xFD,
+    f64x2_convert_low_i32x4_s = 0xFE,
+    f64x2_convert_low_i32x4_u = 0xFF,
 
     _,
 };
@@ -436,6 +743,69 @@ test "Section — correct IDs" {
     try std.testing.expectEqual(@as(u8, 7), @intFromEnum(Section.@"export"));
     try std.testing.expectEqual(@as(u8, 10), @intFromEnum(Section.code));
     try std.testing.expectEqual(@as(u8, 12), @intFromEnum(Section.data_count));
+}
+
+test "SimdOpcode — SIMD opcodes have correct values" {
+    // Memory
+    try std.testing.expectEqual(@as(u32, 0x00), @intFromEnum(SimdOpcode.v128_load));
+    try std.testing.expectEqual(@as(u32, 0x0B), @intFromEnum(SimdOpcode.v128_store));
+    try std.testing.expectEqual(@as(u32, 0x0C), @intFromEnum(SimdOpcode.v128_const));
+
+    // Shuffle/splat
+    try std.testing.expectEqual(@as(u32, 0x0D), @intFromEnum(SimdOpcode.i8x16_shuffle));
+    try std.testing.expectEqual(@as(u32, 0x0F), @intFromEnum(SimdOpcode.i8x16_splat));
+    try std.testing.expectEqual(@as(u32, 0x14), @intFromEnum(SimdOpcode.f64x2_splat));
+
+    // Extract/replace
+    try std.testing.expectEqual(@as(u32, 0x15), @intFromEnum(SimdOpcode.i8x16_extract_lane_s));
+    try std.testing.expectEqual(@as(u32, 0x22), @intFromEnum(SimdOpcode.f64x2_replace_lane));
+
+    // Comparison
+    try std.testing.expectEqual(@as(u32, 0x23), @intFromEnum(SimdOpcode.i8x16_eq));
+    try std.testing.expectEqual(@as(u32, 0x4C), @intFromEnum(SimdOpcode.f64x2_ge));
+
+    // Bitwise
+    try std.testing.expectEqual(@as(u32, 0x4D), @intFromEnum(SimdOpcode.v128_not));
+    try std.testing.expectEqual(@as(u32, 0x53), @intFromEnum(SimdOpcode.v128_any_true));
+
+    // Lane load/store
+    try std.testing.expectEqual(@as(u32, 0x54), @intFromEnum(SimdOpcode.v128_load8_lane));
+    try std.testing.expectEqual(@as(u32, 0x5D), @intFromEnum(SimdOpcode.v128_load64_zero));
+
+    // i8x16 ops
+    try std.testing.expectEqual(@as(u32, 0x60), @intFromEnum(SimdOpcode.i8x16_abs));
+    try std.testing.expectEqual(@as(u32, 0x6E), @intFromEnum(SimdOpcode.i8x16_add));
+    try std.testing.expectEqual(@as(u32, 0x7B), @intFromEnum(SimdOpcode.i8x16_avgr_u));
+
+    // i16x8 ops
+    try std.testing.expectEqual(@as(u32, 0x80), @intFromEnum(SimdOpcode.i16x8_abs));
+    try std.testing.expectEqual(@as(u32, 0x95), @intFromEnum(SimdOpcode.i16x8_mul));
+
+    // i32x4 ops
+    try std.testing.expectEqual(@as(u32, 0xA0), @intFromEnum(SimdOpcode.i32x4_abs));
+    try std.testing.expectEqual(@as(u32, 0xBA), @intFromEnum(SimdOpcode.i32x4_dot_i16x8_s));
+
+    // i64x2 ops
+    try std.testing.expectEqual(@as(u32, 0xC0), @intFromEnum(SimdOpcode.i64x2_abs));
+    try std.testing.expectEqual(@as(u32, 0xD5), @intFromEnum(SimdOpcode.i64x2_mul));
+
+    // f32x4 arithmetic
+    try std.testing.expectEqual(@as(u32, 0xE0), @intFromEnum(SimdOpcode.f32x4_abs));
+    try std.testing.expectEqual(@as(u32, 0xEB), @intFromEnum(SimdOpcode.f32x4_pmax));
+
+    // f64x2 arithmetic
+    try std.testing.expectEqual(@as(u32, 0xEC), @intFromEnum(SimdOpcode.f64x2_abs));
+    try std.testing.expectEqual(@as(u32, 0xF7), @intFromEnum(SimdOpcode.f64x2_pmax));
+
+    // Conversion
+    try std.testing.expectEqual(@as(u32, 0xF8), @intFromEnum(SimdOpcode.i32x4_trunc_sat_f32x4_s));
+    try std.testing.expectEqual(@as(u32, 0xFF), @intFromEnum(SimdOpcode.f64x2_convert_low_i32x4_u));
+}
+
+test "SimdOpcode — decode from raw u32" {
+    const val: u32 = 0x6E; // i8x16.add
+    const op: SimdOpcode = @enumFromInt(val);
+    try std.testing.expectEqual(SimdOpcode.i8x16_add, op);
 }
 
 test "MAGIC and VERSION" {

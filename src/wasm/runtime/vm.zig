@@ -108,7 +108,7 @@ const BranchTable = struct {
 };
 
 pub const Vm = struct {
-    op_stack: [OPERAND_STACK_SIZE]u64,
+    op_stack: [OPERAND_STACK_SIZE]u128,
     op_ptr: usize,
     frame_stack: [FRAME_STACK_SIZE]Frame,
     frame_ptr: usize,
@@ -185,7 +185,7 @@ pub const Vm = struct {
 
                 // Copy results
                 const result_start = self.op_ptr - results.len;
-                for (results, 0..) |*r, i| r.* = self.op_stack[result_start + i];
+                for (results, 0..) |*r, i| r.* = @truncate(self.op_stack[result_start + i]);
                 self.op_ptr = base;
             },
             .host_function => |hf| {
@@ -200,7 +200,7 @@ pub const Vm = struct {
                 // Pop results
                 for (results, 0..) |*r, i| {
                     if (base + i < self.op_ptr)
-                        r.* = self.op_stack[base + i]
+                        r.* = @truncate(self.op_stack[base + i])
                     else
                         r.* = 0;
                 }
@@ -356,17 +356,17 @@ pub const Vm = struct {
                 .local_get => {
                     const idx = try reader.readU32();
                     const frame = self.peekFrame();
-                    try self.push(self.op_stack[frame.locals_start + idx]);
+                    try self.pushV128(self.op_stack[frame.locals_start + idx]);
                 },
                 .local_set => {
                     const idx = try reader.readU32();
                     const frame = self.peekFrame();
-                    self.op_stack[frame.locals_start + idx] = self.pop();
+                    self.op_stack[frame.locals_start + idx] = self.popV128();
                 },
                 .local_tee => {
                     const idx = try reader.readU32();
                     const frame = self.peekFrame();
-                    self.op_stack[frame.locals_start + idx] = self.peek();
+                    self.op_stack[frame.locals_start + idx] = self.op_stack[self.op_ptr - 1];
                 },
                 .global_get => {
                     const idx = try reader.readU32();
@@ -635,8 +635,8 @@ pub const Vm = struct {
                 // ---- 0xFC prefix (misc) ----
                 .misc_prefix => try self.executeMisc(reader, instance),
 
-                // ---- SIMD prefix (Phase 36) ----
-                .simd_prefix => return error.Trap,
+                // ---- SIMD prefix ----
+                .simd_prefix => try self.executeSimd(reader, instance),
 
                 _ => return error.Trap,
             }
@@ -738,6 +738,254 @@ pub const Vm = struct {
                 const e = try instance.store.getElem(elem_idx);
                 e.dropped = true;
             },
+            _ => return error.Trap,
+        }
+    }
+
+    fn executeSimd(self: *Vm, reader: *Reader, instance: *Instance) WasmError!void {
+        _ = .{ self, instance };
+        const sub = try reader.readU32();
+        const simd: opcode.SimdOpcode = @enumFromInt(sub);
+        switch (simd) {
+            // Stub — all SIMD opcodes trap until implemented in tasks 36.2-36.5
+            .v128_load,
+            .v128_load8x8_s,
+            .v128_load8x8_u,
+            .v128_load16x4_s,
+            .v128_load16x4_u,
+            .v128_load32x2_s,
+            .v128_load32x2_u,
+            .v128_load8_splat,
+            .v128_load16_splat,
+            .v128_load32_splat,
+            .v128_load64_splat,
+            .v128_store,
+            .v128_const,
+            .i8x16_shuffle,
+            .i8x16_swizzle,
+            .i8x16_splat,
+            .i16x8_splat,
+            .i32x4_splat,
+            .i64x2_splat,
+            .f32x4_splat,
+            .f64x2_splat,
+            .i8x16_extract_lane_s,
+            .i8x16_extract_lane_u,
+            .i8x16_replace_lane,
+            .i16x8_extract_lane_s,
+            .i16x8_extract_lane_u,
+            .i16x8_replace_lane,
+            .i32x4_extract_lane,
+            .i32x4_replace_lane,
+            .i64x2_extract_lane,
+            .i64x2_replace_lane,
+            .f32x4_extract_lane,
+            .f32x4_replace_lane,
+            .f64x2_extract_lane,
+            .f64x2_replace_lane,
+            .i8x16_eq,
+            .i8x16_ne,
+            .i8x16_lt_s,
+            .i8x16_lt_u,
+            .i8x16_gt_s,
+            .i8x16_gt_u,
+            .i8x16_le_s,
+            .i8x16_le_u,
+            .i8x16_ge_s,
+            .i8x16_ge_u,
+            .i16x8_eq,
+            .i16x8_ne,
+            .i16x8_lt_s,
+            .i16x8_lt_u,
+            .i16x8_gt_s,
+            .i16x8_gt_u,
+            .i16x8_le_s,
+            .i16x8_le_u,
+            .i16x8_ge_s,
+            .i16x8_ge_u,
+            .i32x4_eq,
+            .i32x4_ne,
+            .i32x4_lt_s,
+            .i32x4_lt_u,
+            .i32x4_gt_s,
+            .i32x4_gt_u,
+            .i32x4_le_s,
+            .i32x4_le_u,
+            .i32x4_ge_s,
+            .i32x4_ge_u,
+            .f32x4_eq,
+            .f32x4_ne,
+            .f32x4_lt,
+            .f32x4_gt,
+            .f32x4_le,
+            .f32x4_ge,
+            .f64x2_eq,
+            .f64x2_ne,
+            .f64x2_lt,
+            .f64x2_gt,
+            .f64x2_le,
+            .f64x2_ge,
+            .v128_not,
+            .v128_and,
+            .v128_andnot,
+            .v128_or,
+            .v128_xor,
+            .v128_bitselect,
+            .v128_any_true,
+            .v128_load8_lane,
+            .v128_load16_lane,
+            .v128_load32_lane,
+            .v128_load64_lane,
+            .v128_store8_lane,
+            .v128_store16_lane,
+            .v128_store32_lane,
+            .v128_store64_lane,
+            .v128_load32_zero,
+            .v128_load64_zero,
+            .f32x4_demote_f64x2_zero,
+            .f64x2_promote_low_f32x4,
+            .i8x16_abs,
+            .i8x16_neg,
+            .i8x16_popcnt,
+            .i8x16_all_true,
+            .i8x16_bitmask,
+            .i8x16_narrow_i16x8_s,
+            .i8x16_narrow_i16x8_u,
+            .f32x4_ceil,
+            .f32x4_floor,
+            .f32x4_trunc,
+            .f32x4_nearest,
+            .i8x16_shl,
+            .i8x16_shr_s,
+            .i8x16_shr_u,
+            .i8x16_add,
+            .i8x16_add_sat_s,
+            .i8x16_add_sat_u,
+            .i8x16_sub,
+            .i8x16_sub_sat_s,
+            .i8x16_sub_sat_u,
+            .f64x2_ceil,
+            .f64x2_floor,
+            .i8x16_min_s,
+            .i8x16_min_u,
+            .i8x16_max_s,
+            .i8x16_max_u,
+            .f64x2_trunc,
+            .i8x16_avgr_u,
+            .i16x8_extadd_pairwise_i8x16_s,
+            .i16x8_extadd_pairwise_i8x16_u,
+            .i32x4_extadd_pairwise_i16x8_s,
+            .i32x4_extadd_pairwise_i16x8_u,
+            .i16x8_abs,
+            .i16x8_neg,
+            .i16x8_q15mulr_sat_s,
+            .i16x8_all_true,
+            .i16x8_bitmask,
+            .i16x8_narrow_i32x4_s,
+            .i16x8_narrow_i32x4_u,
+            .i16x8_extend_low_i8x16_s,
+            .i16x8_extend_high_i8x16_s,
+            .i16x8_extend_low_i8x16_u,
+            .i16x8_extend_high_i8x16_u,
+            .i16x8_shl,
+            .i16x8_shr_s,
+            .i16x8_shr_u,
+            .i16x8_add,
+            .i16x8_add_sat_s,
+            .i16x8_add_sat_u,
+            .i16x8_sub,
+            .i16x8_sub_sat_s,
+            .i16x8_sub_sat_u,
+            .f64x2_nearest,
+            .i16x8_mul,
+            .i16x8_min_s,
+            .i16x8_min_u,
+            .i16x8_max_s,
+            .i16x8_max_u,
+            .i16x8_avgr_u,
+            .i16x8_extmul_low_i8x16_s,
+            .i16x8_extmul_high_i8x16_s,
+            .i16x8_extmul_low_i8x16_u,
+            .i16x8_extmul_high_i8x16_u,
+            .i32x4_abs,
+            .i32x4_neg,
+            .i32x4_all_true,
+            .i32x4_bitmask,
+            .i32x4_extend_low_i16x8_s,
+            .i32x4_extend_high_i16x8_s,
+            .i32x4_extend_low_i16x8_u,
+            .i32x4_extend_high_i16x8_u,
+            .i32x4_shl,
+            .i32x4_shr_s,
+            .i32x4_shr_u,
+            .i32x4_add,
+            .i32x4_sub,
+            .i32x4_mul,
+            .i32x4_min_s,
+            .i32x4_min_u,
+            .i32x4_max_s,
+            .i32x4_max_u,
+            .i32x4_dot_i16x8_s,
+            .i32x4_extmul_low_i16x8_s,
+            .i32x4_extmul_high_i16x8_s,
+            .i32x4_extmul_low_i16x8_u,
+            .i32x4_extmul_high_i16x8_u,
+            .i64x2_abs,
+            .i64x2_neg,
+            .i64x2_all_true,
+            .i64x2_bitmask,
+            .i64x2_extend_low_i32x4_s,
+            .i64x2_extend_high_i32x4_s,
+            .i64x2_extend_low_i32x4_u,
+            .i64x2_extend_high_i32x4_u,
+            .i64x2_shl,
+            .i64x2_shr_s,
+            .i64x2_shr_u,
+            .i64x2_add,
+            .i64x2_sub,
+            .i64x2_mul,
+            .i64x2_eq,
+            .i64x2_ne,
+            .i64x2_lt_s,
+            .i64x2_gt_s,
+            .i64x2_le_s,
+            .i64x2_ge_s,
+            .i64x2_extmul_low_i32x4_s,
+            .i64x2_extmul_high_i32x4_s,
+            .i64x2_extmul_low_i32x4_u,
+            .i64x2_extmul_high_i32x4_u,
+            .f32x4_abs,
+            .f32x4_neg,
+            .f32x4_sqrt,
+            .f32x4_add,
+            .f32x4_sub,
+            .f32x4_mul,
+            .f32x4_div,
+            .f32x4_min,
+            .f32x4_max,
+            .f32x4_pmin,
+            .f32x4_pmax,
+            .f64x2_abs,
+            .f64x2_neg,
+            .f64x2_sqrt,
+            .f64x2_add,
+            .f64x2_sub,
+            .f64x2_mul,
+            .f64x2_div,
+            .f64x2_min,
+            .f64x2_max,
+            .f64x2_pmin,
+            .f64x2_pmax,
+            .i32x4_trunc_sat_f32x4_s,
+            .i32x4_trunc_sat_f32x4_u,
+            .f32x4_convert_i32x4_s,
+            .f32x4_convert_i32x4_u,
+            .i32x4_trunc_sat_f64x2_s_zero,
+            .i32x4_trunc_sat_f64x2_u_zero,
+            .f64x2_convert_low_i32x4_s,
+            .f64x2_convert_low_i32x4_u,
+            => return error.Trap,
+
             _ => return error.Trap,
         }
     }
@@ -912,17 +1160,28 @@ pub const Vm = struct {
 
     fn push(self: *Vm, val: u64) WasmError!void {
         if (self.op_ptr >= OPERAND_STACK_SIZE) return error.StackOverflow;
-        self.op_stack[self.op_ptr] = val;
+        self.op_stack[self.op_ptr] = @as(u128, val);
         self.op_ptr += 1;
     }
 
     fn pop(self: *Vm) u64 {
         self.op_ptr -= 1;
-        return self.op_stack[self.op_ptr];
+        return @truncate(self.op_stack[self.op_ptr]);
     }
 
     fn peek(self: *Vm) u64 {
-        return self.op_stack[self.op_ptr - 1];
+        return @truncate(self.op_stack[self.op_ptr - 1]);
+    }
+
+    fn pushV128(self: *Vm, val: u128) WasmError!void {
+        if (self.op_ptr >= OPERAND_STACK_SIZE) return error.StackOverflow;
+        self.op_stack[self.op_ptr] = val;
+        self.op_ptr += 1;
+    }
+
+    fn popV128(self: *Vm) u128 {
+        self.op_ptr -= 1;
+        return self.op_stack[self.op_ptr];
     }
 
     fn pushI32(self: *Vm, val: i32) WasmError!void { try self.push(@as(u64, @as(u32, @bitCast(val)))); }
