@@ -39,19 +39,17 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 
 ## Current Task
 
-36.7A: VM reuse (WasmModule Vm cache).
-- Add Vm pointer field to WasmModule
-- Add Vm.reset() method
-- Change invoke() to reuse cached Vm instead of creating new one each call
-- Expected: 2-5x speedup on wasm_call benchmark
+36.7B: Branch target precomputation (sidetable).
+- Add branch_table field to WasmFunction in store.zig
+- Add computeBranchTable() to vm.zig
+- Lazy computation: first call builds table, subsequent calls use O(1) lookup
+- Replace skipToEnd/findElseOrEnd in block/if handlers with table lookup
 
 ## Previous Task
 
-36.6: SIMD benchmark + regression measurement.
-Makefile updated: scalar + SIMD wasm variants. Benchmark script updated
-to compare 4 configurations (native, wasmtime, CW-scalar, CW-SIMD).
-vector_add: 2.58x speedup from SIMD. No regression in main benchmarks.
-Recorded as entry 36.6 in bench/history.yaml.
+36.7A: VM reuse (WasmModule Vm cache).
+Added Vm.reset() and cached Vm pointer to WasmModule.
+invoke() reuses same Vm instance. wasm_call 1.22x, wasm_memory 6.8x.
 
 ## Known Issues
 

@@ -86,14 +86,14 @@ const LabelTarget = union(enum) {
 
 /// Pre-computed branch target info for a function.
 /// Maps bytecode offset → branch target offset.
-const BranchTable = struct {
-    /// offset → target offset for 'end' of each block/if/loop
+pub const BranchTable = struct {
+    /// block/if/loop start offset → end offset (position after the 'end' opcode)
     end_targets: std.AutoHashMapUnmanaged(usize, usize),
-    /// offset → else offset for 'if' blocks
+    /// if start offset → else body offset (position after the 'else' opcode)
     else_targets: std.AutoHashMapUnmanaged(usize, usize),
     alloc: Allocator,
 
-    fn init(alloc: Allocator) BranchTable {
+    pub fn init(alloc: Allocator) BranchTable {
         return .{
             .end_targets = .empty,
             .else_targets = .empty,
@@ -101,11 +101,113 @@ const BranchTable = struct {
         };
     }
 
-    fn deinit(self: *BranchTable) void {
+    pub fn deinit(self: *BranchTable) void {
         self.end_targets.deinit(self.alloc);
         self.else_targets.deinit(self.alloc);
     }
 };
+
+/// Compute branch target table for a function's bytecode.
+/// Scans the code once and records block/if/loop → end/else offsets.
+pub fn computeBranchTable(alloc: Allocator, code: []const u8) !*BranchTable {
+    const bt = try alloc.create(BranchTable);
+    bt.* = BranchTable.init(alloc);
+    errdefer {
+        bt.deinit();
+        alloc.destroy(bt);
+    }
+
+    // Stack of (opcode_type, body_start_offset) for nesting
+    const StructEntry = struct { kind: enum { block, loop, @"if" }, offset: usize };
+    var stack: std.ArrayList(StructEntry) = .empty;
+    defer stack.deinit(alloc);
+
+    var reader = Reader.init(code);
+    while (reader.hasMore()) {
+        const pos_before = reader.pos;
+        const byte = reader.readByte() catch break;
+        const op: Opcode = @enumFromInt(byte);
+
+        switch (op) {
+            .block => {
+                _ = readBlockType(&reader) catch break;
+                // Record body start (after block type) — this is where block body begins
+                try stack.append(alloc,.{ .kind = .block, .offset = reader.pos });
+            },
+            .loop => {
+                _ = readBlockType(&reader) catch break;
+                try stack.append(alloc,.{ .kind = .loop, .offset = reader.pos });
+            },
+            .@"if" => {
+                _ = readBlockType(&reader) catch break;
+                try stack.append(alloc,.{ .kind = .@"if", .offset = reader.pos });
+            },
+            .@"else" => {
+                // Map the if's body_start → else body position
+                if (stack.items.len > 0) {
+                    const top = &stack.items[stack.items.len - 1];
+                    if (top.kind == .@"if") {
+                        try bt.else_targets.put(alloc, top.offset, reader.pos);
+                    }
+                }
+            },
+            .end => {
+                if (stack.pop()) |entry| {
+                    // Map body_start → position after end opcode
+                    try bt.end_targets.put(alloc, entry.offset, reader.pos);
+                }
+                // else: function-level end, ignore
+            },
+            // Skip immediates for all other opcodes
+            .br, .br_if => _ = reader.readU32() catch break,
+            .br_table => {
+                const count = reader.readU32() catch break;
+                for (0..count + 1) |_| _ = reader.readU32() catch break;
+            },
+            .call, .local_get, .local_set, .local_tee,
+            .global_get, .global_set, .ref_func, .table_get, .table_set,
+            => _ = reader.readU32() catch break,
+            .call_indirect => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+            .select_t => { const n = reader.readU32() catch break; for (0..n) |_| _ = reader.readByte() catch break; },
+            .i32_const => _ = reader.readI32() catch break,
+            .i64_const => _ = reader.readI64() catch break,
+            .f32_const => _ = reader.readBytes(4) catch break,
+            .f64_const => _ = reader.readBytes(8) catch break,
+            .i32_load, .i64_load, .f32_load, .f64_load,
+            .i32_load8_s, .i32_load8_u, .i32_load16_s, .i32_load16_u,
+            .i64_load8_s, .i64_load8_u, .i64_load16_s, .i64_load16_u,
+            .i64_load32_s, .i64_load32_u,
+            .i32_store, .i64_store, .f32_store, .f64_store,
+            .i32_store8, .i32_store16,
+            .i64_store8, .i64_store16, .i64_store32,
+            => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+            .memory_size, .memory_grow => _ = reader.readU32() catch break,
+            .ref_null => _ = reader.readByte() catch break,
+            .misc_prefix => {
+                const sub = reader.readU32() catch break;
+                switch (sub) {
+                    0x0A => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+                    0x0B => _ = reader.readU32() catch break,
+                    0x08 => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+                    0x09 => _ = reader.readU32() catch break,
+                    0x0C => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+                    0x0D => _ = reader.readU32() catch break,
+                    0x0E => { _ = reader.readU32() catch break; _ = reader.readU32() catch break; },
+                    0x0F => _ = reader.readU32() catch break,
+                    0x10 => _ = reader.readU32() catch break,
+                    0x11 => _ = reader.readU32() catch break,
+                    else => {},
+                }
+            },
+            .simd_prefix => skipSimdImmediates(&reader) catch break,
+            else => {},
+        }
+        _ = pos_before;
+    }
+
+    return bt;
+}
+
 
 pub const Vm = struct {
     op_stack: [OPERAND_STACK_SIZE]u128,
@@ -116,6 +218,7 @@ pub const Vm = struct {
     label_ptr: usize,
     alloc: Allocator,
     current_instance: ?*Instance = null,
+    current_branch_table: ?*BranchTable = null,
 
     pub fn init(alloc: Allocator) Vm {
         return .{
@@ -135,6 +238,7 @@ pub const Vm = struct {
         self.frame_ptr = 0;
         self.label_ptr = 0;
         self.current_instance = null;
+        self.current_branch_table = null;
     }
 
     /// Invoke an exported function by name.
@@ -146,20 +250,20 @@ pub const Vm = struct {
         results: []u64,
     ) WasmError!void {
         const func_addr = instance.getExportFunc(name) orelse return error.FunctionIndexOutOfBounds;
-        const func = try instance.store.getFunction(func_addr);
-        try self.callFunction(instance, func, args, results);
+        const func_ptr = try instance.store.getFunctionPtr(func_addr);
+        try self.callFunction(instance, func_ptr, args, results);
     }
 
     /// Call a function (wasm or host) with given args, writing results.
     fn callFunction(
         self: *Vm,
         instance: *Instance,
-        func: store_mod.Function,
+        func_ptr: *store_mod.Function,
         args: []const u64,
         results: []u64,
     ) WasmError!void {
-        switch (func.subtype) {
-            .wasm_function => |wf| {
+        switch (func_ptr.subtype) {
+            .wasm_function => |*wf| {
                 const base = self.op_ptr;
 
                 // Push args as locals
@@ -168,11 +272,17 @@ pub const Vm = struct {
                 // Zero-initialize locals
                 for (0..wf.locals_count) |_| try self.push(0);
 
+                // Lazy branch table computation
+                if (wf.branch_table == null) {
+                    wf.branch_table = computeBranchTable(self.alloc, wf.code) catch null;
+                }
+                self.current_branch_table = wf.branch_table;
+
                 // Push frame
                 try self.pushFrame(.{
                     .locals_start = base,
                     .locals_count = args.len + wf.locals_count,
-                    .return_arity = func.results.len,
+                    .return_arity = func_ptr.results.len,
                     .op_stack_base = base,
                     .label_stack_base = self.label_ptr,
                     .return_reader = Reader.init(&.{}),
@@ -182,7 +292,7 @@ pub const Vm = struct {
                 // Push implicit function label
                 var body_reader = Reader.init(wf.code);
                 try self.pushLabel(.{
-                    .arity = func.results.len,
+                    .arity = func_ptr.results.len,
                     .op_stack_base = base + args.len + wf.locals_count,
                     .target = .{ .forward = body_reader },
                 });
@@ -233,9 +343,19 @@ pub const Vm = struct {
                 .block => {
                     const bt = try readBlockType(reader);
                     const result_arity = blockTypeArity(bt, instance);
-                    // Find matching end
-                    var end_reader = reader.*;
-                    try skipToEnd(&end_reader);
+                    const body_start = reader.pos;
+                    var end_reader: Reader = undefined;
+                    if (self.current_branch_table) |cbt| {
+                        if (cbt.end_targets.get(body_start)) |end_pos| {
+                            end_reader = .{ .bytes = reader.bytes, .pos = end_pos };
+                        } else {
+                            end_reader = reader.*;
+                            try skipToEnd(&end_reader);
+                        }
+                    } else {
+                        end_reader = reader.*;
+                        try skipToEnd(&end_reader);
+                    }
                     try self.pushLabel(.{
                         .arity = result_arity,
                         .op_stack_base = self.op_ptr,
@@ -256,10 +376,27 @@ pub const Vm = struct {
                     const bt = try readBlockType(reader);
                     const result_arity = blockTypeArity(bt, instance);
                     const cond = self.popI32();
-                    // Find matching else/end
-                    var else_reader = reader.*;
-                    var end_reader = reader.*;
-                    const has_else = try findElseOrEnd(&else_reader, &end_reader);
+                    const body_start = reader.pos;
+                    var end_reader: Reader = undefined;
+                    var else_reader: Reader = undefined;
+                    var has_else = false;
+                    if (self.current_branch_table) |cbt| {
+                        if (cbt.end_targets.get(body_start)) |end_pos| {
+                            end_reader = .{ .bytes = reader.bytes, .pos = end_pos };
+                            if (cbt.else_targets.get(body_start)) |else_pos| {
+                                else_reader = .{ .bytes = reader.bytes, .pos = else_pos };
+                                has_else = true;
+                            }
+                        } else {
+                            else_reader = reader.*;
+                            end_reader = reader.*;
+                            has_else = try findElseOrEnd(&else_reader, &end_reader);
+                        }
+                    } else {
+                        else_reader = reader.*;
+                        end_reader = reader.*;
+                        has_else = try findElseOrEnd(&else_reader, &end_reader);
+                    }
 
                     if (cond != 0) {
                         // True branch: execute, push label to end
@@ -337,17 +474,17 @@ pub const Vm = struct {
                     const elem_idx = @as(u32, @bitCast(self.popI32()));
                     const t = try instance.getTable(table_idx);
                     const func_addr = try t.lookup(elem_idx);
-                    const func = try instance.store.getFunction(func_addr);
+                    const func_ptr = try instance.store.getFunctionPtr(func_addr);
 
                     // Type check
                     if (type_idx < instance.module.types.items.len) {
                         const expected = instance.module.types.items[type_idx];
-                        if (expected.params.len != func.params.len or
-                            expected.results.len != func.results.len)
+                        if (expected.params.len != func_ptr.params.len or
+                            expected.results.len != func_ptr.results.len)
                             return error.MismatchedSignatures;
                     }
 
-                    try self.doCallDirect(instance, func, reader);
+                    try self.doCallDirect(instance, func_ptr, reader);
                 },
 
                 // ---- Parametric ----
@@ -1517,23 +1654,30 @@ pub const Vm = struct {
     // ================================================================
 
     fn doCall(self: *Vm, instance: *Instance, func_idx: u32, reader: *Reader) WasmError!void {
-        const func = try instance.getFunc(func_idx);
-        try self.doCallDirect(instance, func, reader);
+        const func_ptr = try instance.getFuncPtr(func_idx);
+        try self.doCallDirect(instance, func_ptr, reader);
     }
 
-    fn doCallDirect(self: *Vm, instance: *Instance, func: store_mod.Function, reader: *Reader) WasmError!void {
-        switch (func.subtype) {
-            .wasm_function => |wf| {
-                const param_count = func.params.len;
+    fn doCallDirect(self: *Vm, instance: *Instance, func_ptr: *store_mod.Function, reader: *Reader) WasmError!void {
+        switch (func_ptr.subtype) {
+            .wasm_function => |*wf| {
+                const param_count = func_ptr.params.len;
                 const locals_start = self.op_ptr - param_count;
 
                 // Zero-initialize locals
                 for (0..wf.locals_count) |_| try self.push(0);
 
+                // Lazy branch table computation
+                if (wf.branch_table == null) {
+                    wf.branch_table = computeBranchTable(self.alloc, wf.code) catch null;
+                }
+                const saved_bt = self.current_branch_table;
+                self.current_branch_table = wf.branch_table;
+
                 try self.pushFrame(.{
                     .locals_start = locals_start,
                     .locals_count = param_count + wf.locals_count,
-                    .return_arity = func.results.len,
+                    .return_arity = func_ptr.results.len,
                     .op_stack_base = locals_start,
                     .label_stack_base = self.label_ptr,
                     .return_reader = reader.*,
@@ -1542,7 +1686,7 @@ pub const Vm = struct {
 
                 var body_reader = Reader.init(wf.code);
                 try self.pushLabel(.{
-                    .arity = func.results.len,
+                    .arity = func_ptr.results.len,
                     .op_stack_base = self.op_ptr,
                     .target = .{ .forward = body_reader },
                 });
@@ -1552,6 +1696,7 @@ pub const Vm = struct {
 
                 // Move results to correct position
                 const frame = self.popFrame();
+                self.current_branch_table = saved_bt;
                 const n = frame.return_arity;
                 if (n > 0) {
                     const src_start = self.op_ptr - n;

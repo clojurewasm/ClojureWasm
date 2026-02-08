@@ -40,7 +40,11 @@ pub const WasmFunction = struct {
     locals_count: usize,
     code: []const u8,
     instance: *Instance,
+    /// Pre-computed branch targets (lazy: null until first call).
+    branch_table: ?*vm_mod.BranchTable = null,
 };
+
+const vm_mod = @import("vm.zig");
 
 /// Host function callback signature.
 /// Takes a pointer to the VM and a context value.
@@ -203,6 +207,14 @@ pub const Store = struct {
     }
 
     pub fn deinit(self: *Store) void {
+        for (self.functions.items) |*f| {
+            if (f.subtype == .wasm_function) {
+                if (f.subtype.wasm_function.branch_table) |bt| {
+                    bt.deinit();
+                    self.alloc.destroy(bt);
+                }
+            }
+        }
         for (self.memories.items) |*m| m.deinit();
         for (self.tables.items) |*t| t.deinit();
         for (self.elems.items) |*e| e.deinit();
@@ -221,6 +233,11 @@ pub const Store = struct {
     pub fn getFunction(self: *Store, addr: usize) !Function {
         if (addr >= self.functions.items.len) return error.BadFunctionIndex;
         return self.functions.items[addr];
+    }
+
+    pub fn getFunctionPtr(self: *Store, addr: usize) !*Function {
+        if (addr >= self.functions.items.len) return error.BadFunctionIndex;
+        return &self.functions.items[addr];
     }
 
     pub fn getMemory(self: *Store, addr: usize) !*WasmMemory {

@@ -81,6 +81,11 @@ pub const Instance = struct {
         return self.store.getFunction(self.funcaddrs.items[idx]);
     }
 
+    pub fn getFuncPtr(self: *Instance, idx: usize) !*store_mod.Function {
+        if (idx >= self.funcaddrs.items.len) return error.FunctionIndexOutOfBounds;
+        return self.store.getFunctionPtr(self.funcaddrs.items[idx]);
+    }
+
     pub fn getMemory(self: *Instance, idx: usize) !*WasmMemory {
         if (idx >= self.memaddrs.items.len) return error.MemoryIndexOutOfBounds;
         return self.store.getMemory(self.memaddrs.items[idx]);
