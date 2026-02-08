@@ -518,7 +518,11 @@ Debug cross-compilation. Custom runtime uses switch-based dispatch.
 
 **Design**: External API zware-compatible (minimal types.zig changes),
 internal design optimized for ClojureWasm (host call affinity, error
-propagation, SIMD enum reservation). ~3900 LOC total.
+propagation, SIMD enum reservation). 5312 LOC total (8 files).
+
+**Status**: COMPLETE. All 8 runtime files + types.zig rewrite + build.zig
+cleanup. 80 Zig tests pass. End-to-end Clojure-level wasm/load + wasm/fn
+verified. Zero zware references remain.
 
 **Prerequisite**: Phase 34 complete
 **Reference**: `.dev/plan/phase35-custom-wasm.md`, D84 in decisions.md

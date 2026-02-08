@@ -4,13 +4,12 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 34 complete (A, BE, B, C, CX, R, D, 20-34, 22b, 22c, 24.5)
+- All phases through 35W complete (A, BE, B, C, CX, R, D, 20-34, 22b, 22c, 24.5, 35W)
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
-- **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
-- **Phase 33 COMPLETE** — Namespace & Portability Design (D82)
 - **Phase 34 COMPLETE** — Server Mode & Networking (D83)
-- **Phase 35W IN PROGRESS** — Custom Wasm Runtime (D84)
+- **Phase 35W COMPLETE** — Custom Wasm Runtime (D84)
+- **Phase 35X NEXT** — Cross-Platform Build & Verification (F117)
 
 ## Strategic Direction
 
@@ -20,42 +19,24 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> **35W (custom wasm)** -> 35X (cross-platform) -> 36 (SIMD + FFI deep) -> 37 (GC/JIT)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> ~~35W~~ -> **35X (cross-platform)** -> 36 (SIMD + FFI deep) -> 37 (GC/JIT)
 
 ## Task Queue
 
-Phase 35W — Custom Wasm Runtime (D84)
-
-- ~~35W.1 Foundation: opcode.zig + leb128.zig (~150 LOC)~~ DONE
-- ~~35W.2 Memory: memory.zig — linear memory with pages, grow, read/write (~200 LOC)~~ DONE
-- ~~35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)~~ DONE
-- ~~35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)~~ DONE
-- ~~35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)~~ DONE
-- ~~35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)~~ DONE
-- ~~35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)~~ DONE
-- ~~35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)~~ DONE
-- 35W.9 Cleanup: verify all tests, update docs
+(Empty — Phase 35W complete. Plan Phase 35X next.)
 
 ## Current Task
 
-35W.9 — Cleanup: verify all tests, update docs.
+Phase 35W complete. Next: plan Phase 35X (Cross-Platform Build & Verification).
+Saved plan: `.claude/plans/phase35-cross-platform-saved.md`
 
 ## Previous Task
 
-35W.8 — Integration: types.zig rewritten for custom runtime, build.zig/zon
-cleaned of zware dependency. WasmModule.invoke now uses custom Vm. WASI ctx
-lifecycle managed per-module. Host trampoline targets custom VM API.
-All existing types.zig tests pass unchanged. Binary builds and runs.
-WasiContext (args, environ, preopens), fd_write/read/seek/tell/close,
-args_get/sizes_get, environ_get/sizes_get, clock_time_get, random_get,
-fd_prestat_get/dir_name, fd_fdstat/filestat_get, path_open/filestat_get,
-fd_readdir (stub), proc_exit. Vm gains current_instance + getMemory for
-host function access. Instance gains wasi field. 07_wasi_hello.wasm runs
-end-to-end. 6 WASI tests + 74 dependency tests = 80 total pass.
-
-35W.5 — Instance: instance.zig — module instantiation with import resolution,
-function/memory/table/global allocation, data/element active segment application,
-evalInitExpr. 8 instance tests + 61 dependency tests pass.
+35W.9 — Cleanup: verify all tests (80 pass), update docs (phase35-custom-wasm.md,
+roadmap.md, checklist.md, memo.md). End-to-end Clojure-level wasm verification:
+add(3+4=7), fib(10=55, 20=6765), memory store/load — all work.
+Phase 35W summary: 8 runtime files (5312 LOC), types.zig rewrite (725 LOC),
+zero zware references, all tests pass.
 
 ## Known Issues
 
@@ -66,18 +47,25 @@ evalInitExpr. 8 instance tests + 61 dependency tests pass.
 
 Session resume procedure: read this file → follow references below.
 
-### Phase 35W (current)
+### Phase 35X (next)
+
+| Item                         | Location                                          |
+|------------------------------|---------------------------------------------------|
+| **Saved plan**               | `.claude/plans/phase35-cross-platform-saved.md`   |
+| **Checklist entry**          | `.dev/checklist.md` F117                          |
+| **Roadmap section**          | `.dev/plan/roadmap.md` Phase 35X                  |
+
+### Phase 35W (completed)
 
 | Item                         | Location                                          |
 |------------------------------|---------------------------------------------------|
 | **Detailed plan + tasks**    | `.dev/plan/phase35-custom-wasm.md`                |
 | **Decision**                 | `.dev/notes/decisions.md` D84                     |
-| **Design principles**        | phase35-custom-wasm.md "Design Principles" section|
-| **zware source (reference)** | add-dir: `Documents/OSS/zware/`                   |
-| **Current Wasm types**       | `src/wasm/types.zig` (820 LOC, zware wrapper)     |
-| **Current Wasm builtins**    | `src/wasm/builtins.zig` (504 LOC, Clojure API)    |
+| **Custom runtime**           | `src/wasm/runtime/` (8 files, 5312 LOC)           |
+| **Wasm types (rewritten)**   | `src/wasm/types.zig` (725 LOC, custom runtime)    |
+| **Wasm builtins**            | `src/wasm/builtins.zig` (504 LOC, Clojure API)    |
 | **Wasm test corpus**         | `src/wasm/testdata/` (12 .wasm files)             |
-| **WIT parser (no zware)**    | `src/wasm/wit_parser.zig` (443 LOC)               |
+| **WIT parser**               | `src/wasm/wit_parser.zig` (443 LOC)               |
 
 ### Upcoming phases
 
@@ -86,15 +74,6 @@ Session resume procedure: read this file → follow references below.
 | 35X   | Cross-platform (Linux/Mac)                        | `.claude/plans/phase35-cross-platform-saved.md` |
 | 36    | SIMD + FFI deep + multi-module                    | phase35-custom-wasm.md "Phase 36" + F118 |
 | 37    | GC + JIT research                                 | `.dev/plan/roadmap.md`              |
-
-### Key design decisions for 35W
-
-1. **Switch-based dispatch** (not `.always_tail`) — cross-compile friendly
-2. **External API zware-compatible** — minimal types.zig changes
-3. **Internal ClojureWasm affinity** — host call optimization, error propagation,
-   u64 stack compat, SIMD enum reservations
-4. **Direct bytecode execution** (no IR) — simpler than zware's Rr
-5. **SIMD deferred to Phase 36** — opcode enum reservations only in 35W
 
 ### Global references
 
@@ -109,6 +88,13 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 35W COMPLETE** (D84): Custom Wasm runtime replacing zware
+  - 35W.1-35W.2: Foundation (opcode, leb128, memory) — 1028 LOC
+  - 35W.3-35W.5: Store, module decoder, instance — 1877 LOC
+  - 35W.6: Switch-based VM, ~200 MVP opcodes — 1328 LOC
+  - 35W.7: WASI Preview 1 (19 functions) — 1079 LOC
+  - 35W.8: types.zig rewrite + build.zig cleanup, zero zware refs
+  - 35W.9: All tests pass (80 Zig), end-to-end Clojure wasm verified
 - **Phase 34 COMPLETE** (D83): Server mode & networking
   - 34.1: --nrepl flag passthrough in built binaries
   - 34.2+34.3: HTTP server (cljw.http/run-server, Ring-compatible)
