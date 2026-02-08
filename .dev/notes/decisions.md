@@ -1918,3 +1918,36 @@ and evalString (transient). No ArenaAllocator. This matches main.zig's REPL patt
 - Tiny single binary (< 2MB with user code)
 - Wasm FFI (unique: no other Clojure runtime has this)
 - Zero-config (no deps.edn required, auto-detect src/)
+
+---
+
+## D81: Build System Architecture — Pre-compiled Bootstrap Cache
+
+**Date**: 2026-02-08
+**Context**: Phase 31 (AOT) complete. Designing Phase 32 build system overhaul.
+
+**Decision**: Generate bootstrap cache at Zig build time, embed as binary data.
+User-facing paths reduced to two: `cljw file.clj` (run) and
+`cljw build file.clj -o app` (single binary).
+
+**Rationale**:
+- Current @embedFile embeds .clj source text, parsed/compiled at startup (~12ms)
+- Pre-compiled cache skips parse/analyze/compile, restoring serialized env (~1-2ms)
+- registerBuiltins() remains at startup (Zig function pointers not serializable)
+- Bytecode files never exposed to users — internal format only
+- `cljw compile` subcommand removed — simplified to two user paths
+- Full runtime always included in built binaries (eval/require/load-string work)
+
+**Implementation**:
+1. Build-time cache generator (separate Zig tool, runs during `zig build`)
+2. Generated cache embedded via build system module import
+3. Startup: registerBuiltins → restoreFromBootstrapCache (replaces loadBootstrapAll)
+4. `cljw build` resolves require graph, compiles user code to bytecode, embeds all
+
+**Key design**: registerBuiltins() is equivalent to JVM's class loading for
+clojure.lang.RT — maps Zig function pointers to Clojure Vars. This step is
+unavoidable (function pointers change per process due to ASLR) and fast (<1ms).
+The bootstrap cache restores everything else (Clojure-defined Vars, namespaces,
+macro definitions).
+
+**Consequence**: ~6x faster startup. Built binaries start with full runtime in ~2-3ms.

@@ -4,14 +4,11 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 28.1 complete (A, BE, B, C, CX, R, D, 20-28.1, 22b, 22c, 24.5)
+- All phases through 31 complete (A, BE, B, C, CX, R, D, 20-31, 22b, 22c, 24.5)
 - Coverage: 535/704 clojure.core vars done, 8 clojure.repl vars done
 - **Direction**: Native production track (D79). wasm_rt deferred.
-- **Phase 28.1 COMPLETE** — Single Binary Builder MVP (1.7MB binary)
-- **Phase 29 SKIPPED** — File splitting impractical (Zig struct constraint),
-  D3 violations require BuiltinFn signature change (500+ functions)
-- **Phase 30 COMPLETE** — Production Robustness
-- **Phase 31 COMPLETE** — AOT Compilation
+- **Phase 31 COMPLETE** — AOT Compilation (serialize.zig, bootstrap cache, bytecode module)
+- **Phase 32 IN PROGRESS** — Build System & Startup Optimization (D81)
 
 ## Strategic Direction
 
@@ -21,82 +18,60 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30 (robustness)~~ -> ~~31 (AOT)~~ -> 32 (GC/JIT research) -> 33 (FFI deep)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> **32 (build system)** -> 33 (GC/JIT research) -> 34 (FFI deep)
 
 ## Task Queue
 
-Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.md
+Phase 32 — Build System & Startup Optimization (D81)
 
-- ~~30.1a Call stack tracking~~
-- ~~30.1b Source context display~~
-- ~~30.1c Throwable->map + ex-data~~
-- ~~30.1d REPL error formatting~~
-- ~~30.2a nREPL stacktrace op~~
-- ~~30.2b nREPL info extension (:file, :line)~~
-- ~~30.2c Modular dispatch + describe~~
-- ~~30.2d CIDER end-to-end verification~~
-- ~~30.3a require file resolution~~
-- ~~30.3b src/ path auto-detect~~
-- ~~30.3c cljw.edn support~~
-- ~~30.4a letfn implementation~~
-- ~~30.4b with-open macro~~
-- ~~30.4c tagged-literal + reader-conditional~~
-- ~~30.4d with-local-vars + with-in-str~~
-- ~~30.4e Remaining type predicates~~ (N/A: bytes?/uri?/uuid? need new Value types)
-- ~~30.5a doc macro~~
-- ~~30.5b dir~~
-- ~~30.5c apropos + find-doc~~
-- ~~30.5d source + pst~~
+- 32.1 Remove `cljw compile` subcommand and standalone .cljc execution
+- 32.2 Build-time bootstrap cache generation (build.zig cache generator)
+- 32.3 Startup path switch to cache restoration + measurement
+- 32.4 Multi-file require robustness verification and fixes
+- 32.5 `cljw build` overhaul: bytecode embedding + require resolution
 
 ## Current Task
 
-Phase 31 COMPLETE. Plan next phase.
+32.1 — Remove `cljw compile` subcommand and standalone .cljc execution.
 
-## Task Queue
+User-facing paths are now two only:
+- `cljw file.clj` — run source directly
+- `cljw build file.clj -o app` — build single binary
 
-Phase 31 — AOT Compilation. COMPLETE.
-
-- ~~31.1 Bytecode binary format + Value serialization~~
-- ~~31.2 FnProto + Chunk serialization~~
-- ~~31.3 Env state snapshot / restore~~
-- ~~31.4 Bootstrap cache integration (startup from cached state)~~
-- ~~31.5 `cljw compile` command + Phase 28.3 bytecode embedding~~
+Remove: handleCompileCommand, runBytecodeFile from main.zig.
+Keep: compileToModule, runBytecodeModule (internal API for build),
+      isBytecodeModule (binary trailer detection),
+      runEmbeddedBytecode (built binary execution).
 
 ## Previous Task
 
 31.5 — `cljw compile` command + bytecode embedding. Added:
-- compileToModule(): compile source → serialized bytecode Module (multi-form, single Chunk)
+- compileToModule(): compile source -> serialized bytecode Module
 - runBytecodeModule(): deserialize + VM.run from bytecode bytes
-- `cljw compile source.clj [-o output.cljc]` — compiles .clj to .cljc bytecode
-- `cljw file.cljc` — runs compiled bytecode (CLJC magic detection)
-- `cljw build file.cljc -o app` — embeds bytecode in single binary (source protection)
-- Embedded bytecode execution via runEmbeddedBytecode (no result print, consistent with evalEmbedded)
+- Embedded bytecode execution via runEmbeddedBytecode
 
 ## Known Issues
 
-- ~~F111 RESOLVED: Bootstrap Symbol leaks fixed via Env.owned_symbols tracking.~~
-- ~~F112 RESOLVED: nREPL Var corruption from shared ArenaAllocator (D80). eval_arena removed, GPA-only.~~
 - F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA. Bounded
-  for typical REPL sessions (proportional to unique evaluated code). Not a
-  correctness issue; same behavior as main.zig interactive REPL.
+  for typical REPL sessions. Not a correctness issue.
 
 ## Handover Notes
 
+- **Phase 32 architecture**: D81 in decisions.md
+- **Phase 31 (AOT)**: serialize.zig (bytecode format), bootstrap.zig
+  (generateBootstrapCache/restoreFromBootstrapCache/compileToModule/runBytecodeModule)
 - **Phase 30 plan**: .dev/plan/phase30-robustness.md
 - **Phase 28 plan**: .dev/plan/phase28-single-binary.md
-- **Roadmap**: .dev/plan/roadmap.md — Phases 27-31 defined
+- **Roadmap**: .dev/plan/roadmap.md
 - **wasm_rt archive**: .dev/plan/phase26-wasm-rt.md + src/wasm_rt/README.md
 - **Optimization catalog**: .dev/notes/optimization-catalog.md
-- **Optimization backlog**: .dev/notes/optimization-backlog.md
-- **Phase 25 plan**: .dev/plan/phase25-wasm-interop.md
 - **Benchmark history**: bench/history.yaml
-- **NaN boxing (D72)**: COMPLETE. Value 48B→8B. 17 commits (27.1-27.4).
+- **NaN boxing (D72)**: COMPLETE. Value 48B->8B. 17 commits (27.1-27.4).
 - **Single binary**: Binary trailer approach (Deno-style). No Zig needed on user machine.
-  Format: [cljw binary] + [.clj source] + [u64 size] + "CLJW" magic.
+  Format: [cljw binary] + [payload] + [u64 size] + "CLJW" magic.
 - **macOS signing**: Ad-hoc resign with `codesign -s - -f` after build.
-  Proper section injection deferred.
-- **nREPL/CIDER**: Phase 30.2 complete. 14 ops (eval, clone, close, describe,
-  load-file, ls-sessions, completions, info, eldoc, ns-list, stacktrace,
-  analyze-last-stacktrace, stdin, interrupt). Start: `cljw --nrepl-server --port=0`
-- **Var metadata**: doc/arglists propagated from defn→analyzer→DefNode→Var.
-  Arglists auto-extracted from fn form. File/line set for all def forms.
+- **nREPL/CIDER**: Phase 30.2 complete. 14 ops. Start: `cljw --nrepl-server --port=0`
+- **Var metadata**: doc/arglists propagated from defn->analyzer->DefNode->Var.
+- **Bootstrap cache**: Phase 31.4 added generateBootstrapCache/restoreFromBootstrapCache.
+  vmRecompileAll converts TreeWalk closures to bytecode for serialization.
+  registerBuiltins() still required at startup (Zig fn pointers not serializable).

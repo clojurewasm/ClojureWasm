@@ -444,10 +444,34 @@ Resolve F7 (macro serialization) and enable bytecode pre-compilation.
 - User code AOT: compile user .clj to bytecode for Phase 28.3 embedding
 - Startup time optimization: skip runtime parse+analyze for pre-compiled code
 
-**Prerequisite**: Phase 30 (stable runtime with robust error handling)
+**Status**: COMPLETE. Bytecode format (serialize.zig), FnProto/Chunk serialization,
+env snapshot/restore, bootstrap cache generation, compileToModule/runBytecodeModule.
 **Reference**: optimization-backlog.md F7, phase28-single-binary.md 28.3
 
-### Phase 32: Advanced GC + JIT Research
+### Phase 32: Build System & Startup Optimization
+
+Pre-compiled bootstrap for instant startup, clean user interface, multi-file
+project support. Architecture decision: D81.
+
+**Scope**:
+- Remove `cljw compile` — bytecode is internal only, two user paths
+- Build-time bootstrap cache generation via build.zig
+- Startup switch from source parsing to cache restoration (~12ms → ~2ms)
+- Multi-file require robustness (deep chains, circular detection, dedup)
+- `cljw build` overhaul: require graph resolution + bytecode embedding
+
+| Sub   | Content                                        | Deliverables                            |
+|-------|------------------------------------------------|-----------------------------------------|
+| 32.1  | Remove cljw compile, clean up bytecode exposure | Simplified main.zig, two user paths     |
+| 32.2  | Build-time bootstrap cache generation          | cache_gen tool, build.zig integration   |
+| 32.3  | Startup path switch to cache restoration       | ~6x faster startup, measured            |
+| 32.4  | Multi-file require robustness                  | Deep chains, circular detect, dedup     |
+| 32.5  | cljw build overhaul                            | Require resolution + bytecode embedding |
+
+**Prerequisite**: Phase 31 (AOT serialization infrastructure)
+**Reference**: D81 in decisions.md
+
+### Phase 33: Advanced GC + JIT Research
 
 Research phase for generational GC and JIT compilation feasibility.
 
@@ -459,16 +483,16 @@ Research phase for generational GC and JIT compilation feasibility.
 - Design documents + PoC prototypes, not full implementation
 - Full implementation in subsequent phases based on research findings
 
-**Prerequisite**: Phase 31 (AOT infrastructure informs JIT design)
+**Prerequisite**: Phase 32 (build system stable, AOT infrastructure informs JIT design)
 **Note**: Both items require deep architectural changes. Design documents
 and PoC first, full implementation in subsequent phases.
 
-### Phase 33: Wasm FFI Deep (Phase 25 Extension)
+### Phase 34: Wasm FFI Deep (Phase 25 Extension)
 
 Deepen Wasm InterOp with multi-module support and practical examples.
 
 **Scope**: Multi-module linking, WIT-based type-safe FFI, real-world samples
-**Prerequisite**: Phase 28 (.wasm pre-linking infrastructure)
+**Prerequisite**: Phase 32 (single binary builder mature)
 
 ### Future: wasm_rt Revival
 

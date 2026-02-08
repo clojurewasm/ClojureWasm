@@ -19,7 +19,7 @@ Check at session start for items that become actionable.
 | F3  | Ratio type (`1/3`)                          | SCI tests fail on float precision loss                             |
 | F4  | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                              |
 | F6  | Multi-thread dynamic bindings               | Native multi-thread target                                        |
-| F7  | Macro body serialization (AOT blocker)      | Phase 28.3 — AOT bytecode embedding for single binary              |
+| ~~F7~~  | ~~Macro body serialization (AOT blocker)~~  | Done: Phase 31, vmRecompileAll converts TreeWalk closures to bytecode |
 | ~~F20~~ | ~~Safe point GC design~~                | Done: Phase 23.4, VM/REPL safe points (D70)                       |
 | F21 | 3-layer separation (Memory/Exec/Opt)        | Introduction of fused reduce or optimization pass                  |
 | F24 | vars.yaml status refinement                 | When stub functions appear                                         |
