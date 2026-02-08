@@ -50,7 +50,7 @@ Phase 30 — Production Robustness. Detailed plan: .dev/plan/phase30-robustness.
 
 ## Current Task
 
-31.4 — Bootstrap cache integration (startup from cached state).
+31.5 — `cljw compile` command + Phase 28.3 bytecode embedding.
 
 ## Task Queue
 
@@ -64,15 +64,19 @@ Startup already 10ms (ReleaseSafe), but AOT enables:
 - ~~31.1 Bytecode binary format + Value serialization~~
 - ~~31.2 FnProto + Chunk serialization~~
 - ~~31.3 Env state snapshot / restore~~
-- 31.4 Bootstrap cache integration (startup from cached state)
+- ~~31.4 Bootstrap cache integration (startup from cached state)~~
 - 31.5 `cljw compile` command + Phase 28.3 bytecode embedding
 
 ## Previous Task
 
-31.3 — Env state snapshot / restore. Added serializeEnvSnapshot/restoreEnvSnapshot
-for full env round-trip. Var serialization with root_kind flag (0=value, 1=builtin_keep)
-to preserve BuiltinFn pointers during restore. Two-pass restore: 1) create NSes+Vars,
-2) connect refers+aliases. Tests cover scalar vars, builtin preservation, fn_val roots.
+31.4 — Bootstrap cache integration. Added vmRecompileAll (re-compiles all bootstrap
+TreeWalk closures to bytecode via VM), generateBootstrapCache (serializes post-bootstrap
+env), restoreFromBootstrapCache (restores env from cache bytes). Key insight: TreeWalk
+closures cannot be serialized (proto→Closure, not FnProto), so vmRecompileAll runs
+all bootstrap .clj sources through VM compiler first. Guard added in serialize.zig
+rejects treewalk fn_vals with error.TreeWalkClosureNotSerializable. Also added
+loadBootstrapAll() as unified bootstrap entry point. Integration test verifies
+round-trip: generate → restore → eval (arithmetic, inc, when, defn, map, filter).
 
 ## Known Issues
 

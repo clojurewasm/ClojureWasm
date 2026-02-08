@@ -737,6 +737,114 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 /// Public so eval builtins (eval.zig) can access the current Env.
 pub var macro_eval_env: ?*Env = null;
 
+// === Bootstrap Cache (AOT compilation) ===
+
+const serialize_mod = @import("bytecode/serialize.zig");
+
+/// Unified bootstrap: loads all standard library namespaces.
+///
+/// Equivalent to the sequence: loadCore + loadWalk + loadTemplate + loadTest + loadSet + loadData.
+/// Use this instead of calling each individually.
+pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
+    try loadCore(allocator, env);
+    try loadWalk(allocator, env);
+    try loadTemplate(allocator, env);
+    try loadTest(allocator, env);
+    try loadSet(allocator, env);
+    try loadData(allocator, env);
+}
+
+/// Re-compile all bootstrap functions to bytecode via VM compiler.
+///
+/// After normal TreeWalk bootstrap, vars hold TreeWalk closures (kind=treewalk).
+/// These cannot be serialized because their proto points to TreeWalk.Closure (AST),
+/// not FnProto (bytecode). This function re-evaluates all bootstrap source files
+/// through the VM compiler, replacing all defn/defmacro var roots with bytecode closures.
+///
+/// Must be called after loadBootstrapAll(). After this, all top-level fn_val vars
+/// are bytecode-backed and eligible for serialization.
+pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
+    const saved_ns = env.current_ns;
+
+    // Re-compile core.clj (all defn/defmacro forms → bytecode)
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    env.current_ns = core_ns;
+    _ = try evalStringVMBootstrap(allocator, env, core_clj_source);
+    _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
+
+    // Re-compile walk.clj
+    if (env.findNamespace("clojure.walk")) |walk_ns| {
+        env.current_ns = walk_ns;
+        _ = try evalStringVMBootstrap(allocator, env, walk_clj_source);
+    }
+
+    // Re-compile template.clj
+    if (env.findNamespace("clojure.template")) |template_ns| {
+        env.current_ns = template_ns;
+        _ = try evalStringVMBootstrap(allocator, env, template_clj_source);
+    }
+
+    // Re-compile test.clj
+    if (env.findNamespace("clojure.test")) |test_ns| {
+        env.current_ns = test_ns;
+        _ = try evalStringVMBootstrap(allocator, env, test_clj_source);
+    }
+
+    // Re-compile set.clj
+    if (env.findNamespace("clojure.set")) |set_ns| {
+        env.current_ns = set_ns;
+        _ = try evalStringVMBootstrap(allocator, env, set_clj_source);
+    }
+
+    // Re-compile data.clj
+    if (env.findNamespace("clojure.data")) |data_ns| {
+        env.current_ns = data_ns;
+        _ = try evalStringVMBootstrap(allocator, env, data_clj_source);
+    }
+
+    // Restore namespace
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Generate a bootstrap cache: serialized env state with all fns as bytecode.
+///
+/// Performs full bootstrap (TreeWalk), re-compiles all fns to bytecode,
+/// then serializes the entire env state. Returns owned bytes that can
+/// be written to a cache file or embedded in a binary.
+pub fn generateBootstrapCache(allocator: Allocator, env: *Env) BootstrapError![]const u8 {
+    // Re-compile all bootstrap fns to bytecode (required for serialization)
+    try vmRecompileAll(allocator, env);
+
+    // Serialize env snapshot
+    var ser: serialize_mod.Serializer = .{};
+    ser.serializeEnvSnapshot(allocator, env) catch return error.CompileError;
+    // Return a copy of the serialized bytes owned by the caller's allocator
+    const bytes = ser.getBytes();
+    return allocator.dupe(u8, bytes) catch return error.OutOfMemory;
+}
+
+/// Restore bootstrap state from a cache (serialized env snapshot).
+///
+/// Expects registerBuiltins(env) already called. Restores all namespaces,
+/// vars, refers, and aliases from the cache bytes. Reconnects *print-length*
+/// and *print-level* var caches for correct print behavior.
+pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: []const u8) BootstrapError!void {
+    var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
+    de.restoreEnvSnapshot(allocator, env) catch return error.EvalError;
+
+    // Reconnect printVar caches (value.initPrintVars)
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    if (core_ns.resolve("*print-length*")) |pl_var| {
+        if (core_ns.resolve("*print-level*")) |pv_var| {
+            value_mod.initPrintVars(pl_var, pv_var);
+        }
+    }
+
+    // Ensure *ns* is synced
+    syncNsVar(env);
+}
+
 // === Tests ===
 
 const testing = std.testing;
@@ -3381,4 +3489,54 @@ test "macroexpand fully expands nested macros" {
     try testing.expect(result.tag() == .list);
     try testing.expect(result.asList().items[0].tag() == .symbol);
     try testing.expectEqualStrings("if", result.asList().items[0].asSymbol().name);
+}
+
+test "bootstrap cache - round-trip: generate and restore" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Phase 1: Full bootstrap + generate cache
+    var env1 = Env.init(alloc);
+    try registry.registerBuiltins(&env1);
+    try loadBootstrapAll(alloc, &env1);
+
+    const cache_bytes = try generateBootstrapCache(alloc, &env1);
+
+    // Phase 2: Restore from cache into fresh env
+    var env2 = Env.init(alloc);
+    try registry.registerBuiltins(&env2);
+    try restoreFromBootstrapCache(alloc, &env2, cache_bytes);
+
+    // Verify: basic arithmetic via builtins
+    const r1 = try evalStringVM(alloc, &env2, "(+ 1 2)");
+    try testing.expectEqual(Value.initInteger(3), r1);
+
+    // Verify: core fn (inc) works
+    const r2 = try evalStringVM(alloc, &env2, "(inc 41)");
+    try testing.expectEqual(Value.initInteger(42), r2);
+
+    // Verify: core macro (when) works
+    const r3 = try evalStringVM(alloc, &env2, "(when true 99)");
+    try testing.expectEqual(Value.initInteger(99), r3);
+
+    // Verify: defn + call works
+    const r4 = try evalStringVM(alloc, &env2, "(defn f [x] (* x 2)) (f 5)");
+    try testing.expectEqual(Value.initInteger(10), r4);
+
+    // Verify: map (hot_core_defs function) works
+    const r5 = try evalStringVM(alloc, &env2,
+        \\(apply + (map inc [1 2 3]))
+    );
+    try testing.expectEqual(Value.initInteger(9), r5);
+
+    // Verify: filter works
+    const r6 = try evalStringVM(alloc, &env2,
+        \\(count (filter odd? [1 2 3 4 5]))
+    );
+    try testing.expectEqual(Value.initInteger(3), r6);
+
+    // Verify: macros from clojure.test namespace available
+    const test_ns = env2.findNamespace("clojure.test");
+    try testing.expect(test_ns != null);
 }

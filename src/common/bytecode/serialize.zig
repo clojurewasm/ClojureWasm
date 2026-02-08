@@ -204,6 +204,8 @@ pub const Serializer = struct {
             .fn_val => {
                 try self.buf.append(allocator, @intFromEnum(ValueTag.fn_val));
                 const fn_obj = val.asFn();
+                // TreeWalk closures store Closure*, not FnProto* — cannot be serialized.
+                if (fn_obj.kind == .treewalk) return error.TreeWalkClosureNotSerializable;
                 const proto_idx = self.fn_proto_map.get(fn_obj.proto) orelse return error.UnregisteredFnProto;
                 try self.writeBytes(allocator, &encodeU32(proto_idx));
                 // Extra arities
@@ -328,6 +330,8 @@ pub const Serializer = struct {
     pub fn collectFnProtos(self: *Serializer, allocator: std.mem.Allocator, val: Value) !void {
         if (val.tag() != .fn_val) return;
         const fn_obj = val.asFn();
+        // TreeWalk closures store Closure*, not FnProto* — cannot be serialized.
+        if (fn_obj.kind == .treewalk) return error.TreeWalkClosureNotSerializable;
         if (self.fn_proto_map.get(fn_obj.proto) != null) return;
 
         const proto: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
@@ -1784,4 +1788,42 @@ test "env snapshot with fn_val root" {
     try std.testing.expectEqual(@as(u8, 0), r_proto.arity);
     try std.testing.expectEqual(Value.initInteger(7), r_proto.constants[0]);
     try std.testing.expectEqualStrings("test.core", r_fn.defining_ns.?);
+}
+
+test "collectFnProtos rejects treewalk closure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a fn_val with kind=treewalk (proto points to non-FnProto data)
+    const fake_closure = try alloc.create([4]u64);
+    fake_closure.* = .{ 0, 0, 0, 0 };
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{
+        .proto = @ptrCast(fake_closure),
+        .kind = .treewalk,
+    };
+
+    var ser: Serializer = .{};
+    const result = ser.collectFnProtos(alloc, Value.initFn(fn_obj));
+    try std.testing.expectError(error.TreeWalkClosureNotSerializable, result);
+}
+
+test "serializeValue rejects treewalk fn_val" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a fn_val with kind=treewalk
+    const fake_closure = try alloc.create([4]u64);
+    fake_closure.* = .{ 0, 0, 0, 0 };
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{
+        .proto = @ptrCast(fake_closure),
+        .kind = .treewalk,
+    };
+
+    var ser: Serializer = .{};
+    const result = ser.serializeValue(alloc, Value.initFn(fn_obj));
+    try std.testing.expectError(error.TreeWalkClosureNotSerializable, result);
 }
