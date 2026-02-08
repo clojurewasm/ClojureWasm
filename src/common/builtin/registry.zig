@@ -33,6 +33,7 @@ const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
 const math_mod = @import("math.zig");
+const java_io_mod = @import("java_io.zig");
 const wasm_builtins_mod = @import("../../wasm/builtins.zig");
 
 // ============================================================
@@ -193,6 +194,16 @@ pub fn registerBuiltins(env: *Env) !void {
     const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
     for (wasm_builtins_mod.builtins) |b| {
         const v = try wasm_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.java.io namespace builtins (Phase 33.3, D82)
+    const java_io_ns = try env.findOrCreateNamespace("clojure.java.io");
+    for (java_io_mod.builtins) |b| {
+        const v = try java_io_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

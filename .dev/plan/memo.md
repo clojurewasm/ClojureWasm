@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 32 complete (A, BE, B, C, CX, R, D, 20-32, 22b, 22c, 24.5)
-- Coverage: 652 vars done across all namespaces (535/704 core, 44/45 math, 21/21 string, etc.)
+- Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
 - **Phase 33 IN PROGRESS** — Namespace & Portability Design (F115)
@@ -24,31 +24,26 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 Phase 33 — Namespace & Portability Design (F115)
 
-- 33.2 Design namespace naming convention (D## decision) + implement renames
-- 33.3 Add clojure.java.io compatibility layer (slurp/spit/reader/writer)
 - 33.4 Add System interop routing (System/getenv, System/exit, System/nanoTime)
 - 33.5 Portability test suite (code that runs on both JVM Clojure and cljw)
 
 ## Current Task
 
-33.2 — Design namespace naming convention (D## decision) + implement renames.
+33.4 — Add System interop routing (System/getenv, System/exit, System/nanoTime).
 
-Based on 33.1 audit (.dev/notes/namespace-audit.md):
-- Naming convention: clojure.* (JVM compat), cljw.* (CW extensions)
-- Rename `wasm` → `cljw.wasm`
-- Extract clojure.repl from core.clj to separate namespace
-- Fix vars.yaml staleness (done in 33.1 for math/edn)
+Scope: Provide common System-level operations that JVM Clojure accesses via
+Java interop (System/getenv, System/exit, System/getProperty, etc.).
+CW needs these as either builtins or a cljw.system namespace.
 
 ## Previous Task
 
-33.1 — Namespace audit. Deliverables:
-- Created .dev/notes/namespace-audit.md with full comparison
-- CW: 10 functional ns + user + wasm
-- JVM Clojure: ~46 standard ns, Babashka: ~30 (clojure.* compat + babashka.*)
-- Key gaps: clojure.java.io, clojure.java.shell, clojure.pprint, clojure.stacktrace
-- Key issues: wasm→cljw.wasm rename, clojure.repl not a real ns
-- Fixed vars.yaml: clojure.math 0→44 done, clojure.edn read-string marked done
-- Total coverage: 652 vars across all namespaces
+33.3 — clojure.java.io compatibility layer. Changes:
+- New java_io.zig: 7 builtins (file, delete-file, make-parents, as-file,
+  as-relative-path, copy, resource) using Zig native I/O
+- Registered as clojure.java.io namespace in registry.zig
+- reader/writer/stream ops deferred (need handle/resource type system)
+- vars.yaml: 7 done, 8 skip (stream ops), 4 skip (protocols/URL)
+- Both backends verified
 
 ## Known Issues
 

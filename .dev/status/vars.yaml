@@ -802,25 +802,25 @@ vars:
     "*open-url-script*": {type: dynamic-var, status: todo}
     "browse-url": {type: function, status: todo}
   clojure_java_io:
-    Coercions: {type: var, status: todo}
-    IOFactory: {type: var, status: todo}
-    "as-file": {type: function, status: todo}
-    "as-relative-path": {type: function, status: todo}
-    "as-url": {type: function, status: todo}
-    copy: {type: function, status: todo}
-    "default-streams-impl": {type: var, status: todo}
-    "delete-file": {type: function, status: todo}
-    file: {type: function, status: todo}
-    "input-stream": {type: function, status: todo}
-    "make-input-stream": {type: function, status: todo}
-    "make-output-stream": {type: function, status: todo}
-    "make-parents": {type: function, status: todo}
-    "make-reader": {type: function, status: todo}
-    "make-writer": {type: function, status: todo}
-    "output-stream": {type: function, status: todo}
-    reader: {type: function, status: todo}
-    resource: {type: function, status: todo}
-    writer: {type: function, status: todo}
+    Coercions: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
+    IOFactory: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
+    "as-file": {type: function, status: done, notes: builtin (Zig)}
+    "as-relative-path": {type: function, status: done, notes: builtin (Zig)}
+    "as-url": {type: function, status: skip, notes: Needs URL type}
+    copy: {type: function, status: done, notes: builtin (Zig)}
+    "default-streams-impl": {type: var, status: skip, notes: 'Java protocol, no equivalent'}
+    "delete-file": {type: function, status: done, notes: builtin (Zig)}
+    file: {type: function, status: done, notes: builtin (Zig)}
+    "input-stream": {type: function, status: skip, notes: Needs handle/resource type system}
+    "make-input-stream": {type: function, status: skip, notes: Needs handle/resource type system}
+    "make-output-stream": {type: function, status: skip, notes: Needs handle/resource type system}
+    "make-parents": {type: function, status: done, notes: builtin (Zig)}
+    "make-reader": {type: function, status: skip, notes: Needs handle/resource type system}
+    "make-writer": {type: function, status: skip, notes: Needs handle/resource type system}
+    "output-stream": {type: function, status: skip, notes: Needs handle/resource type system}
+    reader: {type: function, status: skip, notes: Needs handle/resource type system}
+    resource: {type: function, status: done, notes: builtin (Zig)}
+    writer: {type: function, status: skip, notes: Needs handle/resource type system}
   clojure_java_javadoc:
     "*core-java-api*": {type: dynamic-var, status: todo}
     "*feeling-lucky*": {type: dynamic-var, status: todo}
