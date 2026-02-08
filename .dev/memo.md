@@ -19,18 +19,17 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-1. **36.9** F119 fix — WIT string return marshalling
-2. **36.10** Documentation + cleanup
+1. **36.10** Documentation + cleanup
 
 ## Current Task
 
-Next task: 36.9 F119 fix — WIT string return marshalling.
+Next task: 36.10 Documentation + cleanup.
 
 ## Previous Task
 
-36.8: Multi-module linking — function imports across .wasm modules.
-Added `registerWasmModuleImports()` in types.zig. API: `(wasm/load "app.wasm" {:imports {"math" math-mod}})`.
-Tests: two-module (math→app), three-module chain (base→mid→top). Both backends verified.
+36.9: F119 fix — WIT string return marshalling.
+Bug: callWithWitMarshalling read (len, ptr) but WAT returns (ptr, len).
+Fix: swapped wasm_results[0]/[1] in .string return handler. Exact match now works.
 Cross-language comparison baseline note added to history.yaml.
 
 ## Known Issues

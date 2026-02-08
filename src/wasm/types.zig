@@ -283,8 +283,9 @@ pub const WasmFn = struct {
         switch (wit_result) {
             .string => {
                 if (self.result_types.len < 2) return error.TypeError;
-                const len: u32 = @truncate(wasm_results[0]);
-                const ptr: u32 = @truncate(wasm_results[1]);
+                // Multi-value return: (ptr, len) — pointer first, length second
+                const ptr: u32 = @truncate(wasm_results[0]);
+                const len: u32 = @truncate(wasm_results[1]);
                 const bytes = try self.module.memoryRead(allocator, ptr, len);
                 return Value.initString(allocator, bytes);
             },

@@ -1,7 +1,5 @@
 ;; 05_wit_test.clj — E2E test: WIT-powered string auto-marshalling
-;; Verifies: WIT loading, wasm/describe, basic string marshalling
-;; NOTE: WIT string return marshalling has a known issue (F119) where
-;; accumulated memory includes prior writes. Tests verify partial behavior.
+;; Verifies: WIT loading, wasm/describe, string marshalling
 
 (require '[cljw.wasm :as wasm])
 
@@ -19,12 +17,13 @@
   (assert (contains? exports "greet") "Core exports should contain 'greet'")
   (assert (contains? exports "cabi_realloc") "Should have cabi_realloc"))
 
-;; Part 3: String marshalling — greet returns a string containing the greeting
-;; (exact match disabled due to F119: accumulated memory in WIT return)
+;; Part 3: String marshalling — greet returns exact greeting string
 (def greet (wasm/fn greet-mod "greet"))
-(let [result (greet "World")]
-  (assert (string? result) "greet should return a string")
-  (assert (clojure.string/includes? result "Hello, World!")
-          "greet(World) should contain Hello, World!"))
+(assert (= "Hello, World!" (greet "World"))
+        "greet(World) should be exactly 'Hello, World!'")
+(assert (= "Hello, ClojureWasm!" (greet "ClojureWasm"))
+        "greet(ClojureWasm) should be exactly 'Hello, ClojureWasm!'")
+(assert (= "Hello, !" (greet ""))
+        "greet('') should be exactly 'Hello, !'")
 
 (println "PASS: 05_wit_test")
