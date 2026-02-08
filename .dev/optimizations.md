@@ -103,11 +103,16 @@ Re-run with `bash bench/compare_langs.sh --both` for latest numbers.
 
 | ID   | Technique                    | Expected Impact | Effort | Notes                      |
 |------|------------------------------|-----------------|--------|----------------------------|
-| F101 | into() transient optimization| 2-5x into       | LOW    | core.clj change only       |
-| F102 | map/filter chunked processing| 2-4x map/filter | MEDIUM | chunk.zig infra exists     |
-| —    | SmallString widening         | 5-10% string ops| LOW    | Inline strings > 7 bytes   |
-| —    | String interning expansion   | Memory + compare| LOW    | Beyond keywords            |
 | —    | LEB128 predecode (Wasm)      | 10-15% decode   | MEDIUM | Fixed-width IR from bytecode|
+
+### ANALYZED — Deferred (Phase 36.11)
+
+| ID   | Technique                    | Status | Reason                                            |
+|------|------------------------------|--------|---------------------------------------------------|
+| F101 | into() transient optimization| DONE   | core.clj transient/persistent! for vec/map/set    |
+| F102 | map/filter chunked processing| DEFER  | CW range is eager; no chunked-seq producers exist |
+| —    | SmallString widening         | DEFER  | asString() returns []const u8 — lifetime problem  |
+| —    | String interning expansion   | DEFER  | string_ops bottleneck is alloc, not comparison    |
 
 ### DEFERRED (need JIT/GC infrastructure — Phase 37)
 

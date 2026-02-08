@@ -21,7 +21,7 @@ Check at session start for items that become actionable.
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
 | ~~F101~~ | ~~into() transient optimization~~        | **DONE**: into uses transient for vector/map/set targets. |
-| F102 | map/filter chunked processing                | chunk.zig infra exists, map/filter don't use it. See `optimizations.md` |
+| F102 | map/filter chunked processing                | DEFERRED: CW range is eager (no chunked producers). Needs lazy range first. |
 | F103 | Escape analysis (local scope skip GC)        | Compiler detects local-only Values, skip GC tracking               |
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |

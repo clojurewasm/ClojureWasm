@@ -19,23 +19,26 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 36.11: READY optimizations (pre-JIT)
-1. [x] Baseline benchmark record
-2. [x] F101: into() transient optimization
-3. [ ] F102: map/filter chunked processing
-4. [ ] SmallString widening (inline strings > 7 bytes)
-5. [ ] String interning expansion (beyond keywords)
-6. [ ] Final benchmark record + summary
+Phase 37: Advanced GC + JIT Research
+1. [ ] Generational GC design (write barrier strategy, nursery sizing)
+2. [ ] JIT compilation survey (trace JIT vs method JIT vs Cranelift)
+3. [ ] Escape analysis PoC (F103: local-only Values skip GC tracking)
+4. [ ] Profile-guided optimization design (F104: extend IC beyond monomorphic)
+5. [ ] Design documents + summary
 
 ## Current Task
 
-36.11.3: F102 map/filter chunked processing.
+Phase 37 planning. Transition from pre-JIT optimizations.
 
 ## Previous Task
 
-36.11.2: F101 into() transient optimization.
-Changed core.clj into to use transient/persistent! for vector/map/set targets.
-Both 2-arity and 3-arity (transducer) paths optimized. Closed F101.
+Phase 36.11: READY optimizations (pre-JIT).
+- F101: DONE — into() transient optimization (core.clj)
+- F102: DEFERRED — CW range is eager, no chunked-seq producers exist
+- SmallString widening: DEFERRED — asString() returns []const u8, lifetime problem for inline data
+- String interning: DEFERRED — string_ops bottleneck is allocation/conversion, not comparison
+- Baseline recorded (36.11-base). No measurable benchmark regression or improvement.
+- Analysis captured in optimizations.md ANALYZED section.
 
 ## Known Issues
 
@@ -71,6 +74,10 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 36.11 COMPLETE**: Pre-JIT optimizations
+  - F101 DONE: into() transient optimization
+  - F102, SmallString, String interning: analyzed and deferred (see optimizations.md)
+  - Baseline benchmark recorded (36.11-base in history.yaml)
 - **F113 RESOLVED**: nREPL GC integration
   - Added MarkSweepGc to ServerState, GC safe point after each eval
   - startServer creates local GC; startServerWithEnv receives caller's GC

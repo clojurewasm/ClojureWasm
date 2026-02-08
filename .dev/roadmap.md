@@ -67,6 +67,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 36.8  | Multi-module linking             | Cross-module function imports via wasm/load :imports   |
 | 36.9  | F119 WIT string fix              | ptr/len swap in callWithWitMarshalling                 |
 | 36.10 | Documentation + cleanup          | wasm-spec-support.md updated, Phase 36 complete        |
+| 36.11 | Pre-JIT optimizations            | F101 into transient, F102/SmallStr/Intern analyzed+deferred |
 
 **Stats**: 659/704 core vars done (535 clojure.core, 14 namespaces total)
 
