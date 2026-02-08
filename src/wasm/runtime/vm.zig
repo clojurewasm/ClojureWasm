@@ -821,14 +821,26 @@ pub const Vm = struct {
         // Push results back
         for (0..arity) |j| try self.push(results[j]);
 
-        // Set reader to target
+        // Set reader to target and pop labels
         switch (label.target) {
-            .forward => |r| reader.* = r,
-            .loop_start => |r| reader.* = r,
+            .forward => |r| {
+                reader.* = r;
+                // Pop labels up to and including target
+                self.label_ptr -= (depth + 1);
+            },
+            .loop_start => |r| {
+                // For loops: save label, pop intermediates, re-push loop label
+                // so the loop can branch again on next iteration
+                const loop_label = label;
+                self.label_ptr -= (depth + 1);
+                try self.pushLabel(.{
+                    .arity = loop_label.arity,
+                    .op_stack_base = self.op_ptr,
+                    .target = .{ .loop_start = r },
+                });
+                reader.* = r;
+            },
         }
-
-        // Pop labels up to and including target
-        self.label_ptr -= (depth + 1);
     }
 
     // ================================================================
