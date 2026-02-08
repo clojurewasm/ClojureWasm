@@ -64,6 +64,9 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 36.5  | SIMD Clojure API                 | wasm/v128-*, type conversion, benchmark                |
 | 36.6  | SIMD benchmark                   | vector_add 2.58x speedup                               |
 | 36.7  | Wasm interpreter optimization    | VM reuse 7.9x, sidetable 1.44x (D86)                  |
+| 36.8  | Multi-module linking             | Cross-module function imports via wasm/load :imports   |
+| 36.9  | F119 WIT string fix              | ptr/len swap in callWithWitMarshalling                 |
+| 36.10 | Documentation + cleanup          | wasm-spec-support.md updated, Phase 36 complete        |
 
 **Stats**: 659/704 core vars done (535 clojure.core, 14 namespaces total)
 
@@ -85,7 +88,7 @@ Remaining work from Phase 36:
 | 36.7  | Interpreter optimization (D86)   | COMPLETE    |
 | 36.8  | Multi-module linking             | COMPLETE    |
 | 36.9  | F119 WIT string fix              | COMPLETE    |
-| 36.10 | Documentation + cleanup          | TODO        |
+| 36.10 | Documentation + cleanup          | COMPLETE    |
 
 **Reference**: F118, F119 in checklist.md
 

@@ -4,10 +4,10 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 36.7 complete
+- **All phases through 36 COMPLETE**
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
-- **Wasm interpreter**: 7.9x FFI improvement (D86), 236 SIMD opcodes
+- **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 
 ## Strategic Direction
 
@@ -19,29 +19,27 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-1. **36.10** Documentation + cleanup
+Phase 36 complete. Next: Phase 37 (Advanced GC + JIT Research).
 
 ## Current Task
 
-Next task: 36.10 Documentation + cleanup.
+Phase 36 complete. Plan Phase 37 or continue per roadmap.
 
 ## Previous Task
 
-36.9: F119 fix — WIT string return marshalling.
-Bug: callWithWitMarshalling read (len, ptr) but WAT returns (ptr, len).
-Fix: swapped wasm_results[0]/[1] in .string return handler. Exact match now works.
-Cross-language comparison baseline note added to history.yaml.
+36.10: Documentation + cleanup.
+Updated wasm-spec-support.md (SIMD 236 opcodes, multi-module linking section,
+461 total opcodes). Closed F118, F119 in checklist. Phase 36 complete.
 
 ## Known Issues
 
 - F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA.
-- F119 OPEN: WIT string return marshalling — returns accumulated memory.
 
 ## Reference Chain
 
 Session resume procedure: read this file → follow references below.
 
-### Phase 36 (current)
+### Phase 36 (COMPLETE)
 
 | Item                         | Location                                          |
 |------------------------------|---------------------------------------------------|
@@ -51,6 +49,7 @@ Session resume procedure: read this file → follow references below.
 | **Wasm benchmarks**          | `bench/benchmarks/21-25_wasm_*/`                  |
 | **Conformance tests**        | `src/wasm/testdata/conformance/` (9 WAT+WASM)     |
 | **E2E tests**                | `test/e2e/wasm/*.clj`, `test/e2e/run_e2e.sh`     |
+| **Multi-module tests**       | `src/wasm/testdata/20-24_*.wasm`                  |
 
 ### Global references
 
@@ -66,14 +65,12 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
-- **Phase 36.7 COMPLETE** (D86): Wasm interpreter optimization
-  - 36.7A: VM reuse — cached Vm in WasmModule, 7.9x wasm_call
-  - 36.7B: Sidetable — lazy branch table in WasmFunction, 1.44x wasm_fib
-  - 36.7C: Abandoned (cached_memory + @memset ROI < 1%)
-  - 36.7D: Benchmark recorded, D86 decision
-- **Phase 36.1-36.6 COMPLETE**: SIMD full implementation
-  - 236 SIMD opcodes (v128 type, integer/float arithmetic, memory, shuffle)
-  - vector_add 2.58x speedup over non-SIMD Wasm
+- **Phase 36 COMPLETE**: Wasm SIMD + FFI Deep (F118)
+  - 36.1-36.6: SIMD full implementation (236 opcodes, v128 type, 2.58x speedup)
+  - 36.7: Interpreter optimization (VM reuse 7.9x, sidetable 1.44x, D86)
+  - 36.8: Multi-module linking (cross-module function imports)
+  - 36.9: F119 fix (WIT string return ptr/len swap)
+  - 36.10: Documentation update (wasm-spec-support.md, 461 opcodes)
 - **Phase 35X COMPLETE**: Cross-platform build (D85 NaN boxing, CI)
 - **Phase 35W COMPLETE** (D84): Custom Wasm runtime (8 files, switch dispatch)
 - **Phase 35.5 COMPLETE**: Wasm runtime hardening (WASI 84%, conformance tests)
