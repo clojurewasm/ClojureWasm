@@ -31,7 +31,7 @@ Phase 33 — Namespace & Portability Design (F115)
 
 Phase 34 — Server Mode & Networking (F116)
 
-- 34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)
+- ~~34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)~~
 - 34.2 TCP server foundation (Zig std.net, accept loop)
 - 34.3 HTTP server (basic request/response, ring-compatible handler model)
 - 34.4 HTTP client (cljw.http/get, cljw.http/post)
@@ -39,17 +39,15 @@ Phase 34 — Server Mode & Networking (F116)
 
 ## Current Task
 
-34.1 — nREPL flag passthrough in built binaries.
+34.2 — TCP server foundation (Zig std.net, accept loop).
 
 ## Previous Task
 
-33.5 — Portability test suite. Created test/portability/ with:
-- core_compat.clj: 80+ assertions covering arithmetic, collections,
-  sequences, predicates, control flow, destructuring, atoms, strings, sets, walk
-- io_compat.clj: I/O, System interop, env vars, time functions
-- run_compat.sh: automated diff between CW and JVM Clojure output
-- Result: 2/2 PASS (zero diff with JVM Clojure 1.12)
-- Known limitation: F3 (Ratio) causes / to return float instead of Ratio
+34.1 — nREPL flag passthrough in built binaries.
+- Built binaries accept `--nrepl [port]` flag
+- Refactored nrepl.zig: startServer + startServerWithEnv + shared runServerLoop
+- main.zig: parse --nrepl, filter from *command-line-args*, evalEmbeddedWithNrepl
+- Verified: user namespaces accessible via nREPL, args filtered correctly
 
 ## Known Issues
 

@@ -50,6 +50,7 @@ pub const ServerState = struct {
 // ====================================================================
 
 /// Start the nREPL server on the given port (0 = OS auto-assign).
+/// Bootstraps its own Env from scratch.
 pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
     // Memory model: GPA for everything (consistent with main.zig REPL).
     // Env uses GPA for persistent data (Namespaces, Vars).
@@ -79,8 +80,22 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
     // Define REPL vars (*1, *2, *3, *e)
     _ = bootstrap.evalString(gpa_allocator, &env, "(def *1 nil) (def *2 nil) (def *3 nil) (def *e nil)") catch {};
 
+    try runServerLoop(gpa_allocator, &env, port);
+}
+
+/// Start nREPL server on an already-bootstrapped Env.
+/// Used by built binaries (cljw build) with --nrepl flag.
+pub fn startServerWithEnv(gpa_allocator: Allocator, env: *Env, port: u16) !void {
+    // Ensure REPL vars exist (*e may not be defined in user code)
+    _ = bootstrap.evalString(gpa_allocator, env, "(def *e nil)") catch {};
+
+    try runServerLoop(gpa_allocator, env, port);
+}
+
+/// TCP listen/accept loop shared by startServer and startServerWithEnv.
+fn runServerLoop(gpa_allocator: Allocator, env: *Env, port: u16) !void {
     var state = ServerState{
-        .env = &env,
+        .env = env,
         .sessions = .empty,
         .mutex = .{},
         .running = true,

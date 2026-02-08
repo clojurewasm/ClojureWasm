@@ -59,9 +59,39 @@ pub fn main() !void {
         if (isBytecodeModule(payload)) {
             runEmbeddedBytecode(alloc, allocator, &gc, payload);
         } else {
+            // Parse --nrepl flag for built binaries.
+            // Usage: ./myapp --nrepl [port] [other args...]
+            var embed_nrepl_port: ?u16 = null;
+            var filtered_buf: [256][:0]const u8 = undefined;
+            var filtered_count: usize = 0;
+            {
+                var ai: usize = 1;
+                while (ai < args.len) : (ai += 1) {
+                    if (std.mem.eql(u8, args[ai], "--nrepl")) {
+                        // Check if next arg is a port number
+                        if (ai + 1 < args.len) {
+                            if (std.fmt.parseInt(u16, args[ai + 1], 10)) |p| {
+                                embed_nrepl_port = p;
+                                ai += 1;
+                                continue;
+                            } else |_| {}
+                        }
+                        embed_nrepl_port = 0; // auto-assign
+                    } else if (filtered_count < filtered_buf.len) {
+                        filtered_buf[filtered_count] = args[ai];
+                        filtered_count += 1;
+                    }
+                }
+            }
+            const filtered_args = filtered_buf[0..filtered_count];
+
             err.setSourceFile("<embedded>");
             err.setSourceText(payload);
-            evalEmbedded(alloc, allocator, &gc, payload, args[1..]);
+            if (embed_nrepl_port) |port| {
+                evalEmbeddedWithNrepl(alloc, allocator, &gc, payload, filtered_args, port);
+            } else {
+                evalEmbedded(alloc, allocator, &gc, payload, filtered_args);
+            }
         }
         return;
     }
@@ -918,6 +948,34 @@ fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     // Evaluate using VM backend
     _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
         reportError(e);
+        std.process.exit(1);
+    };
+}
+
+/// Evaluate embedded source, then start nREPL server on the same Env.
+/// Used by built binaries with --nrepl flag.
+fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, cli_args: []const [:0]const u8, nrepl_port: u16) void {
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    bootstrapFromCache(gc_alloc, &env);
+
+    setCommandLineArgs(gc_alloc, &env, cli_args);
+
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Evaluate embedded source (defines user namespaces/defs)
+    _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+
+    // Start nREPL server with user's Env (blocking accept loop)
+    nrepl.startServerWithEnv(infra_alloc, &env, nrepl_port) catch |e| {
+        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr.write("Error: nREPL server failed: ") catch {};
+        _ = stderr.write(@errorName(e)) catch {};
+        _ = stderr.write("\n") catch {};
         std.process.exit(1);
     };
 }
