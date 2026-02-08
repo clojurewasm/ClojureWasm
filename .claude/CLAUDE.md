@@ -138,29 +138,29 @@ zig build test -- "X"  # Specific test only
 
 ## Benchmarks
 
-**Always use ReleaseSafe for benchmarks.** Never use Debug or ReleaseFast.
+**Always use ReleaseSafe for benchmarks.** All scripts auto-build ReleaseSafe.
+All measurement uses hyperfine (warmup + multiple runs).
 
 ```bash
-# Run all benchmarks (display only)
-bash bench/run_bench.sh --release-safe --backend=vm
+# Run all benchmarks
+bash bench/run_bench.sh
 # Single benchmark
-bash bench/run_bench.sh --release-safe --backend=vm --bench=lazy_chain
+bash bench/run_bench.sh --bench=fib_recursive
+# Fast check (1 run, no warmup)
+bash bench/run_bench.sh --quick
 
-# Record to history (hyperfine, auto-builds ReleaseSafe)
-bash bench/record.sh --id="24C.1" --reason="Closure specialization"
-# Single benchmark record
-bash bench/record.sh --id="24C.1" --reason="test" --bench=fib_recursive
-# Overwrite existing entry
-bash bench/record.sh --id="24C.1" --reason="re-measure" --overwrite
-# Delete entry
-bash bench/record.sh --delete="24C.1"
+# Record to history (hyperfine 5 runs + 2 warmup)
+bash bench/record.sh --id="36.7" --reason="Wasm optimization"
+bash bench/record.sh --id="36.7" --reason="test" --bench=fib_recursive
+bash bench/record.sh --id="36.7" --reason="re-measure" --overwrite
+bash bench/record.sh --delete="36.7"
 
-# Manual ReleaseSafe build
-zig build -Doptimize=ReleaseSafe
+# Cross-language comparison
+bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 ```
 
 History: `bench/history.yaml` — all entries with id, date, reason, commit, time_ms, mem_mb.
-**Record after every optimization task.** Use task ID as entry id (e.g. "24C.1").
+**Record after every optimization task.** Use task ID as entry id (e.g. "36.7").
 
 ## Notice
 
@@ -209,16 +209,15 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 
 ## References
 
-| Topic            | Location                             | When to read                               |
-| ---------------- | ------------------------------------ | ------------------------------------------ |
-| Zig tips         | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
-| Impl tiers       | `.claude/references/impl-tiers.md`   | When implementing a new function           |
-| Java interop     | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
-| Test porting     | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
-| Test gap analysis| `.dev/plan/test-gap-analysis.md`     | Phase 22c planning and execution           |
-| Roadmap          | `.dev/plan/roadmap.md`               | Phase planning, future phase notes         |
-| Deferred items   | `.dev/checklist.md`                  | F## items — blockers to resolve            |
-| Design document  | `.dev/future.md`                     | When planning new phases or major features |
-| Optimization KB  | `.claude/references/optimization-knowledge.md` | Phase 24C planning, Babashka comparison    |
-| Bench history    | `bench/history.yaml`                 | Benchmark progression across optimizations |
-| Bytecode debug   | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
+| Topic              | Location                                     | When to read                               |
+| ------------------ | -------------------------------------------- | ------------------------------------------ |
+| Zig tips           | `.claude/references/zig-tips.md`             | Before writing Zig code, on compile errors |
+| Impl tiers         | `.claude/references/impl-tiers.md`           | When implementing a new function           |
+| Java interop       | `.claude/rules/java-interop.md`              | Auto-loads on .clj/analyzer/builtin edits  |
+| Test porting       | `.claude/rules/test-porting.md`              | Auto-loads on test file edits              |
+| Roadmap            | `.dev/plan/roadmap.md`                       | Phase planning, future phase notes         |
+| Deferred items     | `.dev/checklist.md`                          | F## items — blockers to resolve            |
+| Design document    | `.dev/future.md`                             | When planning new phases or major features |
+| Optimization road  | `.dev/notes/optimization-roadmap.md`         | Future optimization planning               |
+| Bench history      | `bench/history.yaml`                         | Benchmark progression across optimizations |
+| Bytecode debug     | `./zig-out/bin/cljw --dump-bytecode`         | When VM tests fail or bytecode looks wrong |

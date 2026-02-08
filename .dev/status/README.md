@@ -4,10 +4,11 @@ Structured data for tracking progress.
 
 ## Files
 
-| File         | Content                       |
-| ------------ | ----------------------------- |
-| `vars.yaml`  | Var implementation status     |
-| `bench.yaml` | Benchmark results and history |
+| File        | Content                   |
+|-------------|---------------------------|
+| `vars.yaml` | Var implementation status |
+
+Benchmark history: `bench/history.yaml`
 
 ## vars.yaml
 
@@ -37,7 +38,4 @@ yq '.vars.clojure_core | to_entries[] | select(.value.status == "todo" and .valu
 
 # Find entries with notes
 yq '.vars.clojure_core | to_entries[] | select(.value.note) | .key + " -> " + .value.note' vars.yaml
-
-# Benchmark history
-yq '.history' bench.yaml
 ```
