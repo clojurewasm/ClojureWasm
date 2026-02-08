@@ -33,22 +33,20 @@ Phase 34 — Server Mode & Networking (F116)
 
 - ~~34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)~~
 - ~~34.2+34.3 HTTP server with Ring-compatible handler model (D83)~~
-- 34.4 HTTP client (cljw.http/get, cljw.http/post)
+- ~~34.4 HTTP client (cljw.http/get, cljw.http/post, put, delete)~~
 - 34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)
 
 ## Current Task
 
-34.4 — HTTP client (cljw.http/get, cljw.http/post).
+34.5 — Stateful long-running process lifecycle (signal handling, graceful shutdown).
 
 ## Previous Task
 
-34.2+34.3 — HTTP server with Ring-compatible handler model (D83).
-- Created src/common/builtin/http_server.zig with TCP accept loop
-- Ring request map: {:request-method, :uri, :headers, :body, :server-port, :remote-addr, :query-string}
-- Ring response map: {:status, :headers, :body}
-- Three modes: blocking (default), background (--nrepl), build (cljw build)
-- Thread per connection, mutex on handler call, macro_eval_env set per thread
-- Verified: standalone, built binary, --nrepl combined (live update via nREPL)
+34.4 — HTTP client (cljw.http/get, cljw.http/post, put, delete).
+- Added get/post/put/delete builtins using Zig std.http.Client.fetch
+- API: (http/get url [opts]) -> {:status N :body "..."}
+- opts supports :body and :headers (map of string->string)
+- Verified: GET, POST with body, 404 handling, custom headers
 
 ## Known Issues
 

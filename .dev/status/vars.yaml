@@ -832,6 +832,10 @@ vars:
     javadoc: {type: function, status: todo}
   cljw_http:
     "run-server": {type: function, status: done, notes: "builtin (Zig), Ring-compatible HTTP server"}
+    get: {type: function, status: done, notes: "builtin (Zig), HTTP GET client"}
+    post: {type: function, status: done, notes: "builtin (Zig), HTTP POST client"}
+    put: {type: function, status: done, notes: "builtin (Zig), HTTP PUT client"}
+    delete: {type: function, status: done, notes: "builtin (Zig), HTTP DELETE client"}
   clojure_java_shell:
     "*sh-dir*": {type: dynamic-var, status: todo}
     "*sh-env*": {type: dynamic-var, status: todo}

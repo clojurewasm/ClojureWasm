@@ -503,6 +503,102 @@ fn statusText(code: i64) []const u8 {
 }
 
 // ============================================================
+// HTTP client
+// ============================================================
+
+/// Shared implementation for HTTP client requests.
+/// method: .GET, .POST, .PUT, .DELETE
+/// args[0]: url (string)
+/// args[1]: opts (map, optional) — {:body "..." :headers {...}}
+fn doHttpRequest(allocator: Allocator, method: std.http.Method, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err_mod.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to http request", .{args.len});
+
+    const url_val = args[0];
+    if (url_val.tag() != .string) return err_mod.setError(.{ .kind = .type_error, .phase = .eval, .message = "http request: url must be a string" });
+    const url = url_val.asString();
+
+    // Extract :body and :headers from opts
+    var payload: ?[]const u8 = null;
+    var extra_headers_buf: [32]std.http.Header = undefined;
+    var extra_header_count: usize = 0;
+    if (args.len >= 2 and args[1].tag() == .map) {
+        const opts = args[1].asMap();
+        for (0..opts.entries.len / 2) |i| {
+            const k = opts.entries[i * 2];
+            const v = opts.entries[i * 2 + 1];
+            if (k.tag() == .keyword) {
+                const name = k.asKeyword().name;
+                if (std.mem.eql(u8, name, "body") and v.tag() == .string) {
+                    payload = v.asString();
+                } else if (std.mem.eql(u8, name, "headers") and v.tag() == .map) {
+                    const hdrs = v.asMap();
+                    for (0..hdrs.entries.len / 2) |j| {
+                        if (extra_header_count >= extra_headers_buf.len) break;
+                        const hk = hdrs.entries[j * 2];
+                        const hv = hdrs.entries[j * 2 + 1];
+                        if (hk.tag() == .string and hv.tag() == .string) {
+                            extra_headers_buf[extra_header_count] = .{
+                                .name = hk.asString(),
+                                .value = hv.asString(),
+                            };
+                            extra_header_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Perform HTTP request using Zig std.http.Client
+    var client: std.http.Client = .{ .allocator = allocator };
+    defer client.deinit();
+
+    var response_buf = std.Io.Writer.Allocating.init(allocator);
+    defer response_buf.deinit();
+
+    const result = client.fetch(.{
+        .location = .{ .url = url },
+        .method = method,
+        .payload = payload,
+        .extra_headers = extra_headers_buf[0..extra_header_count],
+        .response_writer = &response_buf.writer,
+    }) catch {
+        return err_mod.setErrorFmt(.eval, .value_error, .{}, "HTTP request failed for {s}", .{url});
+    };
+
+    // Build response map: {:status N :body "..."}
+    const body_data = response_buf.toOwnedSlice() catch "";
+    const entries = try allocator.alloc(Value, 4);
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "status" });
+    entries[1] = Value.initInteger(@intFromEnum(result.status));
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "body" });
+    entries[3] = Value.initString(allocator, body_data);
+    const resp_map = try allocator.create(PersistentArrayMap);
+    resp_map.* = .{ .entries = entries };
+    return Value.initMap(resp_map);
+}
+
+/// (http/get url) or (http/get url opts) -> {:status N :body "..."}
+pub fn getFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return doHttpRequest(allocator, .GET, args);
+}
+
+/// (http/post url opts) -> {:status N :body "..."}
+pub fn postFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return doHttpRequest(allocator, .POST, args);
+}
+
+/// (http/put url opts) -> {:status N :body "..."}
+pub fn putFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return doHttpRequest(allocator, .PUT, args);
+}
+
+/// (http/delete url) or (http/delete url opts) -> {:status N :body "..."}
+pub fn deleteFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return doHttpRequest(allocator, .DELETE, args);
+}
+
+// ============================================================
 // Builtin definitions
 // ============================================================
 
@@ -512,6 +608,34 @@ pub const builtins = [_]BuiltinDef{
         .func = &runServerFn,
         .doc = "Starts an HTTP server with the given Ring-compatible handler function. Options: {:port N}. Blocks until server is stopped.",
         .arglists = "([handler opts])",
+        .added = "cljw",
+    },
+    .{
+        .name = "get",
+        .func = &getFn,
+        .doc = "Performs an HTTP GET request. Returns {:status N :body \"...\"}.",
+        .arglists = "([url] [url opts])",
+        .added = "cljw",
+    },
+    .{
+        .name = "post",
+        .func = &postFn,
+        .doc = "Performs an HTTP POST request. Returns {:status N :body \"...\"}.",
+        .arglists = "([url opts])",
+        .added = "cljw",
+    },
+    .{
+        .name = "put",
+        .func = &putFn,
+        .doc = "Performs an HTTP PUT request. Returns {:status N :body \"...\"}.",
+        .arglists = "([url opts])",
+        .added = "cljw",
+    },
+    .{
+        .name = "delete",
+        .func = &deleteFn,
+        .doc = "Performs an HTTP DELETE request. Returns {:status N :body \"...\"}.",
+        .arglists = "([url] [url opts])",
         .added = "cljw",
     },
 };
