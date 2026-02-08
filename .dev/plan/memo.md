@@ -8,6 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 535/704 clojure.core vars done, 8 clojure.repl vars done
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
+- **Phase 33 IN PROGRESS** — Namespace & Portability Design (F115)
 
 ## Strategic Direction
 
@@ -21,11 +22,26 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 ## Task Queue
 
-(empty — plan next phase)
+Phase 33 — Namespace & Portability Design (F115)
+
+- 33.1 Audit current namespaces and compare with JVM Clojure + Babashka
+- 33.2 Design namespace naming convention (D## decision) + implement renames
+- 33.3 Add clojure.java.io compatibility layer (slurp/spit/reader/writer)
+- 33.4 Add System interop routing (System/getenv, System/exit, System/nanoTime)
+- 33.5 Portability test suite (code that runs on both JVM Clojure and cljw)
 
 ## Current Task
 
-Plan Phase 33 — Namespace & Portability Design (F115).
+33.1 — Audit current namespaces and compare with JVM Clojure + Babashka.
+
+Scope:
+- Inventory all namespaces in ClojureWasm (registry.zig, bootstrap.zig, .clj files)
+  Current: clojure.core, clojure.string, clojure.edn, clojure.math, clojure.walk,
+  clojure.template, clojure.test, clojure.set, clojure.data, clojure.repl, wasm, user
+- Compare each with JVM Clojure: which are standard, which are CW-specific
+- Compare with Babashka: what babashka.* namespaces exist, what's the boundary
+- Identify gaps: missing standard namespaces, naming conflicts, interop needs
+- Output: audit document with recommendations for 33.2 design decision
 
 ## Previous Task
 
@@ -50,31 +66,31 @@ Plan Phase 33 — Namespace & Portability Design (F115).
 - **Phase 32 results**: 32.1 removed cljw compile, 32.2 build-time cache gen,
   32.3 startup ~3-4ms (was ~12ms), 32.4 multi-file require robustness,
   32.5 source bundling build with require resolution
+- **Phase 33 context**: Babashka model researched (see optimization-catalog.md
+  Section 7, and F115 in checklist.md). Babashka uses clojure.* for JVM-compat,
+  babashka.* for extensions. Key issue: `wasm` ns should be `cljw.wasm`,
+  IO/system interop needs clojure.java.io compat layer.
+- **Current namespaces**: clojure.core, clojure.string, clojure.edn,
+  clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
+  clojure.data, clojure.repl, wasm, user
+- **Benchmark (Phase 32)**: bench/history.yaml entry "32". Startup ~3-4ms
+  (C/Zig level). Cross-lang comparison in optimization-catalog.md Section 7.5.
 - **Phase 31 (AOT)**: serialize.zig (bytecode format), bootstrap.zig
   (generateBootstrapCache/restoreFromBootstrapCache/compileToModule/runBytecodeModule)
-- **Phase 30 plan**: .dev/plan/phase30-robustness.md
-- **Phase 28 plan**: .dev/plan/phase28-single-binary.md
 - **Roadmap**: .dev/plan/roadmap.md
-- **wasm_rt archive**: .dev/plan/phase26-wasm-rt.md + src/wasm_rt/README.md
 - **Optimization catalog**: .dev/notes/optimization-catalog.md
 - **Benchmark history**: bench/history.yaml
 - **NaN boxing (D72)**: COMPLETE. Value 48B->8B. 17 commits (27.1-27.4).
 - **Single binary**: Binary trailer approach (Deno-style). No Zig needed on user machine.
   Format: [cljw binary] + [bundled source] + [u64 size] + "CLJW" magic.
   Multi-file: deps concatenated in depth-first load order + entry file.
-- **macOS signing**: Ad-hoc resign with `codesign -s - -f` after build.
 - **nREPL/CIDER**: Phase 30.2 complete. 14 ops. Start: `cljw --nrepl-server --port=0`
-- **Var metadata**: doc/arglists propagated from defn->analyzer->DefNode->Var.
-- **Bootstrap cache**: Phase 31.4 added generateBootstrapCache/restoreFromBootstrapCache.
-  vmRecompileAll converts TreeWalk closures to bytecode for serialization.
-  registerBuiltins() still required at startup (Zig fn pointers not serializable).
-- **Build-time bootstrap**: cache_gen.zig generates cache at Zig build time,
+- **Bootstrap cache**: cache_gen.zig generates cache at Zig build time,
   embedded via build.zig WriteFile+addAnonymousImport pattern.
   Startup: registerBuiltins (~<1ms) + restoreFromBootstrapCache (~2-3ms).
 - **Future design items** (F115-F117):
   - F115: Namespace naming strategy — clojure.* (JVM compat) vs cljw.* (unique).
-    Babashka model: clojure.* for compat, babashka.* for extensions.
-    clojure.math is fine (real JVM 1.11 ns). IO/system interop needs design.
   - F116: Long-running server + networking — nREPL in built binaries,
     HTTP server/client, stateful process support.
   - F117: Cross-platform — Zig cross-compile, CI matrix, ELF/PE trailer verify.
+    Includes cljw build output binaries on other platforms.
