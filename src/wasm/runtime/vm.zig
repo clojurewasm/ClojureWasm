@@ -1007,191 +1007,212 @@ pub const Vm = struct {
                 try self.pushI32(b2i(a != 0));
             },
 
-            // ---- Stub: remaining ops (36.3-36.5) ----
-            .i8x16_eq,
-            .i8x16_ne,
-            .i8x16_lt_s,
-            .i8x16_lt_u,
-            .i8x16_gt_s,
-            .i8x16_gt_u,
-            .i8x16_le_s,
-            .i8x16_le_u,
-            .i8x16_ge_s,
-            .i8x16_ge_u,
-            .i16x8_eq,
-            .i16x8_ne,
-            .i16x8_lt_s,
-            .i16x8_lt_u,
-            .i16x8_gt_s,
-            .i16x8_gt_u,
-            .i16x8_le_s,
-            .i16x8_le_u,
-            .i16x8_ge_s,
-            .i16x8_ge_u,
-            .i32x4_eq,
-            .i32x4_ne,
-            .i32x4_lt_s,
-            .i32x4_lt_u,
-            .i32x4_gt_s,
-            .i32x4_gt_u,
-            .i32x4_le_s,
-            .i32x4_le_u,
-            .i32x4_ge_s,
-            .i32x4_ge_u,
-            .f32x4_eq,
-            .f32x4_ne,
-            .f32x4_lt,
-            .f32x4_gt,
-            .f32x4_le,
-            .f32x4_ge,
-            .f64x2_eq,
-            .f64x2_ne,
-            .f64x2_lt,
-            .f64x2_gt,
-            .f64x2_le,
-            .f64x2_ge,
-            .f32x4_demote_f64x2_zero,
-            .f64x2_promote_low_f32x4,
-            .i8x16_abs,
-            .i8x16_neg,
-            .i8x16_popcnt,
-            .i8x16_all_true,
-            .i8x16_bitmask,
-            .i8x16_narrow_i16x8_s,
-            .i8x16_narrow_i16x8_u,
-            .f32x4_ceil,
-            .f32x4_floor,
-            .f32x4_trunc,
-            .f32x4_nearest,
-            .i8x16_shl,
-            .i8x16_shr_s,
-            .i8x16_shr_u,
-            .i8x16_add,
-            .i8x16_add_sat_s,
-            .i8x16_add_sat_u,
-            .i8x16_sub,
-            .i8x16_sub_sat_s,
-            .i8x16_sub_sat_u,
-            .f64x2_ceil,
-            .f64x2_floor,
-            .i8x16_min_s,
-            .i8x16_min_u,
-            .i8x16_max_s,
-            .i8x16_max_u,
-            .f64x2_trunc,
-            .i8x16_avgr_u,
-            .i16x8_extadd_pairwise_i8x16_s,
-            .i16x8_extadd_pairwise_i8x16_u,
-            .i32x4_extadd_pairwise_i16x8_s,
-            .i32x4_extadd_pairwise_i16x8_u,
-            .i16x8_abs,
-            .i16x8_neg,
-            .i16x8_q15mulr_sat_s,
-            .i16x8_all_true,
-            .i16x8_bitmask,
-            .i16x8_narrow_i32x4_s,
-            .i16x8_narrow_i32x4_u,
-            .i16x8_extend_low_i8x16_s,
-            .i16x8_extend_high_i8x16_s,
-            .i16x8_extend_low_i8x16_u,
-            .i16x8_extend_high_i8x16_u,
-            .i16x8_shl,
-            .i16x8_shr_s,
-            .i16x8_shr_u,
-            .i16x8_add,
-            .i16x8_add_sat_s,
-            .i16x8_add_sat_u,
-            .i16x8_sub,
-            .i16x8_sub_sat_s,
-            .i16x8_sub_sat_u,
-            .f64x2_nearest,
-            .i16x8_mul,
-            .i16x8_min_s,
-            .i16x8_min_u,
-            .i16x8_max_s,
-            .i16x8_max_u,
-            .i16x8_avgr_u,
-            .i16x8_extmul_low_i8x16_s,
-            .i16x8_extmul_high_i8x16_s,
-            .i16x8_extmul_low_i8x16_u,
-            .i16x8_extmul_high_i8x16_u,
-            .i32x4_abs,
-            .i32x4_neg,
-            .i32x4_all_true,
-            .i32x4_bitmask,
-            .i32x4_extend_low_i16x8_s,
-            .i32x4_extend_high_i16x8_s,
-            .i32x4_extend_low_i16x8_u,
-            .i32x4_extend_high_i16x8_u,
-            .i32x4_shl,
-            .i32x4_shr_s,
-            .i32x4_shr_u,
-            .i32x4_add,
-            .i32x4_sub,
-            .i32x4_mul,
-            .i32x4_min_s,
-            .i32x4_min_u,
-            .i32x4_max_s,
-            .i32x4_max_u,
-            .i32x4_dot_i16x8_s,
-            .i32x4_extmul_low_i16x8_s,
-            .i32x4_extmul_high_i16x8_s,
-            .i32x4_extmul_low_i16x8_u,
-            .i32x4_extmul_high_i16x8_u,
-            .i64x2_abs,
-            .i64x2_neg,
-            .i64x2_all_true,
-            .i64x2_bitmask,
-            .i64x2_extend_low_i32x4_s,
-            .i64x2_extend_high_i32x4_s,
-            .i64x2_extend_low_i32x4_u,
-            .i64x2_extend_high_i32x4_u,
-            .i64x2_shl,
-            .i64x2_shr_s,
-            .i64x2_shr_u,
-            .i64x2_add,
-            .i64x2_sub,
-            .i64x2_mul,
-            .i64x2_eq,
-            .i64x2_ne,
-            .i64x2_lt_s,
-            .i64x2_gt_s,
-            .i64x2_le_s,
-            .i64x2_ge_s,
-            .i64x2_extmul_low_i32x4_s,
-            .i64x2_extmul_high_i32x4_s,
-            .i64x2_extmul_low_i32x4_u,
-            .i64x2_extmul_high_i32x4_u,
-            .f32x4_abs,
-            .f32x4_neg,
-            .f32x4_sqrt,
-            .f32x4_add,
-            .f32x4_sub,
-            .f32x4_mul,
-            .f32x4_div,
-            .f32x4_min,
-            .f32x4_max,
-            .f32x4_pmin,
-            .f32x4_pmax,
-            .f64x2_abs,
-            .f64x2_neg,
-            .f64x2_sqrt,
-            .f64x2_add,
-            .f64x2_sub,
-            .f64x2_mul,
-            .f64x2_div,
-            .f64x2_min,
-            .f64x2_max,
-            .f64x2_pmin,
-            .f64x2_pmax,
-            .i32x4_trunc_sat_f32x4_s,
-            .i32x4_trunc_sat_f32x4_u,
-            .f32x4_convert_i32x4_s,
-            .f32x4_convert_i32x4_u,
-            .i32x4_trunc_sat_f64x2_s_zero,
-            .i32x4_trunc_sat_f64x2_u_zero,
-            .f64x2_convert_low_i32x4_s,
-            .f64x2_convert_low_i32x4_u,
+            // ---- Integer comparison (36.3) ----
+            .i8x16_eq => try self.simdCmpOp(i8, 16, .eq),
+            .i8x16_ne => try self.simdCmpOp(i8, 16, .ne),
+            .i8x16_lt_s => try self.simdCmpOp(i8, 16, .lt),
+            .i8x16_lt_u => try self.simdCmpOp(u8, 16, .lt),
+            .i8x16_gt_s => try self.simdCmpOp(i8, 16, .gt),
+            .i8x16_gt_u => try self.simdCmpOp(u8, 16, .gt),
+            .i8x16_le_s => try self.simdCmpOp(i8, 16, .le),
+            .i8x16_le_u => try self.simdCmpOp(u8, 16, .le),
+            .i8x16_ge_s => try self.simdCmpOp(i8, 16, .ge),
+            .i8x16_ge_u => try self.simdCmpOp(u8, 16, .ge),
+            .i16x8_eq => try self.simdCmpOp(i16, 8, .eq),
+            .i16x8_ne => try self.simdCmpOp(i16, 8, .ne),
+            .i16x8_lt_s => try self.simdCmpOp(i16, 8, .lt),
+            .i16x8_lt_u => try self.simdCmpOp(u16, 8, .lt),
+            .i16x8_gt_s => try self.simdCmpOp(i16, 8, .gt),
+            .i16x8_gt_u => try self.simdCmpOp(u16, 8, .gt),
+            .i16x8_le_s => try self.simdCmpOp(i16, 8, .le),
+            .i16x8_le_u => try self.simdCmpOp(u16, 8, .le),
+            .i16x8_ge_s => try self.simdCmpOp(i16, 8, .ge),
+            .i16x8_ge_u => try self.simdCmpOp(u16, 8, .ge),
+            .i32x4_eq => try self.simdCmpOp(i32, 4, .eq),
+            .i32x4_ne => try self.simdCmpOp(i32, 4, .ne),
+            .i32x4_lt_s => try self.simdCmpOp(i32, 4, .lt),
+            .i32x4_lt_u => try self.simdCmpOp(u32, 4, .lt),
+            .i32x4_gt_s => try self.simdCmpOp(i32, 4, .gt),
+            .i32x4_gt_u => try self.simdCmpOp(u32, 4, .gt),
+            .i32x4_le_s => try self.simdCmpOp(i32, 4, .le),
+            .i32x4_le_u => try self.simdCmpOp(u32, 4, .le),
+            .i32x4_ge_s => try self.simdCmpOp(i32, 4, .ge),
+            .i32x4_ge_u => try self.simdCmpOp(u32, 4, .ge),
+            .i64x2_eq => try self.simdCmpOp(i64, 2, .eq),
+            .i64x2_ne => try self.simdCmpOp(i64, 2, .ne),
+            .i64x2_lt_s => try self.simdCmpOp(i64, 2, .lt),
+            .i64x2_gt_s => try self.simdCmpOp(i64, 2, .gt),
+            .i64x2_le_s => try self.simdCmpOp(i64, 2, .le),
+            .i64x2_ge_s => try self.simdCmpOp(i64, 2, .ge),
+
+            // ---- Integer unary (36.3) ----
+            .i8x16_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(16, i8), @bitCast(self.popV128()))))); },
+            .i16x8_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(8, i16), @bitCast(self.popV128()))))); },
+            .i32x4_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(4, i32), @bitCast(self.popV128()))))); },
+            .i64x2_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(2, i64), @bitCast(self.popV128()))))); },
+            .i8x16_neg => { const a: @Vector(16, i8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@as(@Vector(16, i8), @splat(@as(i8, 0))) -% a)); },
+            .i16x8_neg => { const a: @Vector(8, i16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@as(@Vector(8, i16), @splat(@as(i16, 0))) -% a)); },
+            .i32x4_neg => { const a: @Vector(4, i32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@as(@Vector(4, i32), @splat(@as(i32, 0))) -% a)); },
+            .i64x2_neg => { const a: @Vector(2, i64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@as(@Vector(2, i64), @splat(@as(i64, 0))) -% a)); },
+            .i8x16_popcnt => {
+                const a: @Vector(16, u8) = @bitCast(self.popV128());
+                const counts: @Vector(16, u4) = @popCount(a);
+                const widened: @Vector(16, u8) = counts;
+                try self.pushV128(@bitCast(widened));
+            },
+            .i8x16_all_true => try self.simdAllTrue(u8, 16),
+            .i16x8_all_true => try self.simdAllTrue(u16, 8),
+            .i32x4_all_true => try self.simdAllTrue(u32, 4),
+            .i64x2_all_true => try self.simdAllTrue(u64, 2),
+            .i8x16_bitmask => try self.simdBitmask(16, 8),
+            .i16x8_bitmask => try self.simdBitmask(8, 16),
+            .i32x4_bitmask => try self.simdBitmask(4, 32),
+            .i64x2_bitmask => try self.simdBitmask(2, 64),
+
+            // ---- Narrowing (36.3) ----
+            .i8x16_narrow_i16x8_s => try self.simdNarrow(i8, i16, 8),
+            .i8x16_narrow_i16x8_u => try self.simdNarrow(u8, i16, 8),
+            .i16x8_narrow_i32x4_s => try self.simdNarrow(i16, i32, 4),
+            .i16x8_narrow_i32x4_u => try self.simdNarrow(u16, i32, 4),
+
+            // ---- Extending (36.3) ----
+            .i16x8_extend_low_i8x16_s => try self.simdExtend(i16, i8, 8, true),
+            .i16x8_extend_high_i8x16_s => try self.simdExtend(i16, i8, 8, false),
+            .i16x8_extend_low_i8x16_u => try self.simdExtend(i16, u8, 8, true),
+            .i16x8_extend_high_i8x16_u => try self.simdExtend(i16, u8, 8, false),
+            .i32x4_extend_low_i16x8_s => try self.simdExtend(i32, i16, 4, true),
+            .i32x4_extend_high_i16x8_s => try self.simdExtend(i32, i16, 4, false),
+            .i32x4_extend_low_i16x8_u => try self.simdExtend(i32, u16, 4, true),
+            .i32x4_extend_high_i16x8_u => try self.simdExtend(i32, u16, 4, false),
+            .i64x2_extend_low_i32x4_s => try self.simdExtend(i64, i32, 2, true),
+            .i64x2_extend_high_i32x4_s => try self.simdExtend(i64, i32, 2, false),
+            .i64x2_extend_low_i32x4_u => try self.simdExtend(i64, u32, 2, true),
+            .i64x2_extend_high_i32x4_u => try self.simdExtend(i64, u32, 2, false),
+
+            // ---- Shift (36.3) ----
+            .i8x16_shl => try self.simdShift(u8, 16, .shl),
+            .i8x16_shr_s => try self.simdShift(i8, 16, .shr),
+            .i8x16_shr_u => try self.simdShift(u8, 16, .shr),
+            .i16x8_shl => try self.simdShift(u16, 8, .shl),
+            .i16x8_shr_s => try self.simdShift(i16, 8, .shr),
+            .i16x8_shr_u => try self.simdShift(u16, 8, .shr),
+            .i32x4_shl => try self.simdShift(u32, 4, .shl),
+            .i32x4_shr_s => try self.simdShift(i32, 4, .shr),
+            .i32x4_shr_u => try self.simdShift(u32, 4, .shr),
+            .i64x2_shl => try self.simdShift(u64, 2, .shl),
+            .i64x2_shr_s => try self.simdShift(i64, 2, .shr),
+            .i64x2_shr_u => try self.simdShift(u64, 2, .shr),
+
+            // ---- Wrapping arithmetic (36.3) ----
+            .i8x16_add => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +% b)); },
+            .i8x16_sub => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -% b)); },
+            .i16x8_add => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +% b)); },
+            .i16x8_sub => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -% b)); },
+            .i16x8_mul => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a *% b)); },
+            .i32x4_add => { const b: @Vector(4, u32) = @bitCast(self.popV128()); const a: @Vector(4, u32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +% b)); },
+            .i32x4_sub => { const b: @Vector(4, u32) = @bitCast(self.popV128()); const a: @Vector(4, u32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -% b)); },
+            .i32x4_mul => { const b: @Vector(4, u32) = @bitCast(self.popV128()); const a: @Vector(4, u32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a *% b)); },
+            .i64x2_add => { const b: @Vector(2, u64) = @bitCast(self.popV128()); const a: @Vector(2, u64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +% b)); },
+            .i64x2_sub => { const b: @Vector(2, u64) = @bitCast(self.popV128()); const a: @Vector(2, u64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -% b)); },
+            .i64x2_mul => { const b: @Vector(2, u64) = @bitCast(self.popV128()); const a: @Vector(2, u64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a *% b)); },
+
+            // ---- Saturating arithmetic (36.3) ----
+            .i8x16_add_sat_s => { const b: @Vector(16, i8) = @bitCast(self.popV128()); const a: @Vector(16, i8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +| b)); },
+            .i8x16_add_sat_u => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +| b)); },
+            .i8x16_sub_sat_s => { const b: @Vector(16, i8) = @bitCast(self.popV128()); const a: @Vector(16, i8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -| b)); },
+            .i8x16_sub_sat_u => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -| b)); },
+            .i16x8_add_sat_s => { const b: @Vector(8, i16) = @bitCast(self.popV128()); const a: @Vector(8, i16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +| b)); },
+            .i16x8_add_sat_u => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a +| b)); },
+            .i16x8_sub_sat_s => { const b: @Vector(8, i16) = @bitCast(self.popV128()); const a: @Vector(8, i16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -| b)); },
+            .i16x8_sub_sat_u => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a -| b)); },
+
+            // ---- Min / max (36.3) ----
+            .i8x16_min_s => { const b: @Vector(16, i8) = @bitCast(self.popV128()); const a: @Vector(16, i8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i8x16_min_u => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i8x16_max_s => { const b: @Vector(16, i8) = @bitCast(self.popV128()); const a: @Vector(16, i8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+            .i8x16_max_u => { const b: @Vector(16, u8) = @bitCast(self.popV128()); const a: @Vector(16, u8) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+            .i16x8_min_s => { const b: @Vector(8, i16) = @bitCast(self.popV128()); const a: @Vector(8, i16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i16x8_min_u => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i16x8_max_s => { const b: @Vector(8, i16) = @bitCast(self.popV128()); const a: @Vector(8, i16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+            .i16x8_max_u => { const b: @Vector(8, u16) = @bitCast(self.popV128()); const a: @Vector(8, u16) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+            .i32x4_min_s => { const b: @Vector(4, i32) = @bitCast(self.popV128()); const a: @Vector(4, i32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i32x4_min_u => { const b: @Vector(4, u32) = @bitCast(self.popV128()); const a: @Vector(4, u32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@min(a, b))); },
+            .i32x4_max_s => { const b: @Vector(4, i32) = @bitCast(self.popV128()); const a: @Vector(4, i32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+            .i32x4_max_u => { const b: @Vector(4, u32) = @bitCast(self.popV128()); const a: @Vector(4, u32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@max(a, b))); },
+
+            // ---- Unsigned rounding average (36.3) ----
+            .i8x16_avgr_u => {
+                const b: [16]u8 = @bitCast(self.popV128());
+                const a: [16]u8 = @bitCast(self.popV128());
+                var r: [16]u8 = undefined;
+                inline for (0..16) |i| r[i] = @truncate((@as(u16, a[i]) + @as(u16, b[i]) + 1) / 2);
+                try self.pushV128(@bitCast(r));
+            },
+            .i16x8_avgr_u => {
+                const b: [8]u16 = @bitCast(self.popV128());
+                const a: [8]u16 = @bitCast(self.popV128());
+                var r: [8]u16 = undefined;
+                inline for (0..8) |i| r[i] = @truncate((@as(u32, a[i]) + @as(u32, b[i]) + 1) / 2);
+                try self.pushV128(@bitCast(r));
+            },
+
+            // ---- Extended pairwise addition (36.3) ----
+            .i16x8_extadd_pairwise_i8x16_s => try self.simdExtAddPairwise(i8, i16),
+            .i16x8_extadd_pairwise_i8x16_u => try self.simdExtAddPairwise(u8, u16),
+            .i32x4_extadd_pairwise_i16x8_s => try self.simdExtAddPairwise(i16, i32),
+            .i32x4_extadd_pairwise_i16x8_u => try self.simdExtAddPairwise(u16, u32),
+
+            // ---- Extended multiply (36.3) ----
+            .i16x8_extmul_low_i8x16_s => try self.simdExtMul(i8, i16, 8, true),
+            .i16x8_extmul_high_i8x16_s => try self.simdExtMul(i8, i16, 8, false),
+            .i16x8_extmul_low_i8x16_u => try self.simdExtMul(u8, u16, 8, true),
+            .i16x8_extmul_high_i8x16_u => try self.simdExtMul(u8, u16, 8, false),
+            .i32x4_extmul_low_i16x8_s => try self.simdExtMul(i16, i32, 4, true),
+            .i32x4_extmul_high_i16x8_s => try self.simdExtMul(i16, i32, 4, false),
+            .i32x4_extmul_low_i16x8_u => try self.simdExtMul(u16, u32, 4, true),
+            .i32x4_extmul_high_i16x8_u => try self.simdExtMul(u16, u32, 4, false),
+            .i64x2_extmul_low_i32x4_s => try self.simdExtMul(i32, i64, 2, true),
+            .i64x2_extmul_high_i32x4_s => try self.simdExtMul(i32, i64, 2, false),
+            .i64x2_extmul_low_i32x4_u => try self.simdExtMul(u32, u64, 2, true),
+            .i64x2_extmul_high_i32x4_u => try self.simdExtMul(u32, u64, 2, false),
+
+            // ---- Dot product (36.3) ----
+            .i32x4_dot_i16x8_s => {
+                const b: [8]i16 = @bitCast(self.popV128());
+                const a: [8]i16 = @bitCast(self.popV128());
+                var r: [4]i32 = undefined;
+                inline for (0..4) |i| r[i] = @as(i32, a[i * 2]) * @as(i32, b[i * 2]) + @as(i32, a[i * 2 + 1]) * @as(i32, b[i * 2 + 1]);
+                try self.pushV128(@bitCast(r));
+            },
+
+            // ---- Q15 saturating multiply (36.3) ----
+            .i16x8_q15mulr_sat_s => {
+                const b: [8]i16 = @bitCast(self.popV128());
+                const a: [8]i16 = @bitCast(self.popV128());
+                var r: [8]i16 = undefined;
+                inline for (0..8) |i| {
+                    const product: i32 = @as(i32, a[i]) * @as(i32, b[i]);
+                    r[i] = @intCast(std.math.clamp((product + 0x4000) >> 15, -32768, 32767));
+                }
+                try self.pushV128(@bitCast(r));
+            },
+
+            // ---- Stub: float ops (36.4) ----
+            .f32x4_eq, .f32x4_ne, .f32x4_lt, .f32x4_gt, .f32x4_le, .f32x4_ge,
+            .f64x2_eq, .f64x2_ne, .f64x2_lt, .f64x2_gt, .f64x2_le, .f64x2_ge,
+            .f32x4_abs, .f32x4_neg, .f32x4_sqrt,
+            .f32x4_add, .f32x4_sub, .f32x4_mul, .f32x4_div,
+            .f32x4_min, .f32x4_max, .f32x4_pmin, .f32x4_pmax,
+            .f64x2_abs, .f64x2_neg, .f64x2_sqrt,
+            .f64x2_add, .f64x2_sub, .f64x2_mul, .f64x2_div,
+            .f64x2_min, .f64x2_max, .f64x2_pmin, .f64x2_pmax,
+            .f32x4_ceil, .f32x4_floor, .f32x4_trunc, .f32x4_nearest,
+            .f64x2_ceil, .f64x2_floor, .f64x2_trunc, .f64x2_nearest,
+            .f32x4_demote_f64x2_zero, .f64x2_promote_low_f32x4,
+            .i32x4_trunc_sat_f32x4_s, .i32x4_trunc_sat_f32x4_u,
+            .f32x4_convert_i32x4_s, .f32x4_convert_i32x4_u,
+            .i32x4_trunc_sat_f64x2_s_zero, .i32x4_trunc_sat_f64x2_u_zero,
+            .f64x2_convert_low_i32x4_s, .f64x2_convert_low_i32x4_u,
             => return error.Trap,
 
             _ => return error.Trap,
@@ -1262,6 +1283,94 @@ pub const Vm = struct {
         const base = @as(u32, @bitCast(self.popI32()));
         const m = try instance.getMemory(0);
         m.write(T, offset, base, vec[lane]) catch return error.OutOfBoundsMemoryAccess;
+    }
+
+    // SIMD helper: lane-wise comparison producing all-ones/all-zeros result
+    fn simdCmpOp(self: *Vm, comptime T: type, comptime N: comptime_int, comptime op: enum { eq, ne, lt, gt, le, ge }) WasmError!void {
+        const VT = @Vector(N, T);
+        const b: VT = @bitCast(self.popV128());
+        const a: VT = @bitCast(self.popV128());
+        const mask = switch (op) {
+            .eq => a == b,
+            .ne => a != b,
+            .lt => a < b,
+            .gt => a > b,
+            .le => a <= b,
+            .ge => a >= b,
+        };
+        const ResultT = std.meta.Int(.signed, @bitSizeOf(T));
+        try self.pushV128(@bitCast(@select(ResultT, mask, @as(@Vector(N, ResultT), @splat(@as(ResultT, -1))), @as(@Vector(N, ResultT), @splat(@as(ResultT, 0))))));
+    }
+
+    // SIMD helper: shift by scalar amount (mod lane_bits)
+    fn simdShift(self: *Vm, comptime T: type, comptime N: comptime_int, comptime dir: enum { shl, shr }) WasmError!void {
+        const ShiftT = std.math.Log2Int(T);
+        const shift: ShiftT = @truncate(@as(u32, @bitCast(self.popI32())));
+        const vec: @Vector(N, T) = @bitCast(self.popV128());
+        try self.pushV128(@bitCast(switch (dir) {
+            .shl => vec << @splat(shift),
+            .shr => vec >> @splat(shift),
+        }));
+    }
+
+    // SIMD helper: narrowing with saturation (two wide vectors → one narrow vector)
+    fn simdNarrow(self: *Vm, comptime DstT: type, comptime SrcT: type, comptime SrcN: comptime_int) WasmError!void {
+        const DstN = SrcN * 2;
+        const b: [SrcN]SrcT = @bitCast(self.popV128());
+        const a: [SrcN]SrcT = @bitCast(self.popV128());
+        const min_val: SrcT = std.math.minInt(DstT);
+        const max_val: SrcT = std.math.maxInt(DstT);
+        var result: [DstN]DstT = undefined;
+        inline for (0..SrcN) |i| result[i] = @intCast(std.math.clamp(a[i], min_val, max_val));
+        inline for (0..SrcN) |i| result[SrcN + i] = @intCast(std.math.clamp(b[i], min_val, max_val));
+        try self.pushV128(@bitCast(result));
+    }
+
+    // SIMD helper: extend half of narrow vector to wider lanes
+    fn simdExtend(self: *Vm, comptime DstT: type, comptime SrcT: type, comptime DstN: comptime_int, comptime low: bool) WasmError!void {
+        const SrcN = DstN * 2;
+        const src: [SrcN]SrcT = @bitCast(self.popV128());
+        const offset = if (low) 0 else DstN;
+        var result: [DstN]DstT = undefined;
+        inline for (0..DstN) |i| result[i] = src[offset + i];
+        try self.pushV128(@bitCast(result));
+    }
+
+    // SIMD helper: extended (widening) multiply of half-width lanes
+    fn simdExtMul(self: *Vm, comptime NarrowT: type, comptime WideT: type, comptime N: comptime_int, comptime low: bool) WasmError!void {
+        const SrcN = N * 2;
+        const b: [SrcN]NarrowT = @bitCast(self.popV128());
+        const a: [SrcN]NarrowT = @bitCast(self.popV128());
+        const offset = if (low) 0 else N;
+        var result: [N]WideT = undefined;
+        inline for (0..N) |i| result[i] = @as(WideT, a[offset + i]) * @as(WideT, b[offset + i]);
+        try self.pushV128(@bitCast(result));
+    }
+
+    // SIMD helper: extended pairwise addition (adjacent lane pairs summed into wider lanes)
+    fn simdExtAddPairwise(self: *Vm, comptime NarrowT: type, comptime WideT: type) WasmError!void {
+        const WideN = 16 / @sizeOf(WideT);
+        const a: [WideN * 2]NarrowT = @bitCast(self.popV128());
+        var result: [WideN]WideT = undefined;
+        inline for (0..WideN) |i| result[i] = @as(WideT, a[i * 2]) + @as(WideT, a[i * 2 + 1]);
+        try self.pushV128(@bitCast(result));
+    }
+
+    // SIMD helper: all_true — 1 if all lanes non-zero
+    fn simdAllTrue(self: *Vm, comptime T: type, comptime N: comptime_int) WasmError!void {
+        const a: @Vector(N, T) = @bitCast(self.popV128());
+        try self.pushI32(b2i(@reduce(.And, a != @as(@Vector(N, T), @splat(@as(T, 0))))));
+    }
+
+    // SIMD helper: bitmask — extract high bit of each lane into i32
+    fn simdBitmask(self: *Vm, comptime N: comptime_int, comptime bits: comptime_int) WasmError!void {
+        const T = std.meta.Int(.signed, bits);
+        const a: [N]T = @bitCast(self.popV128());
+        var mask: u32 = 0;
+        inline for (0..N) |i| {
+            if (a[i] < 0) mask |= @as(u32, 1) << @as(u5, i);
+        }
+        try self.pushI32(@bitCast(mask));
     }
 
     // ================================================================
@@ -2571,4 +2680,108 @@ test "Conformance — SIMD basic" {
     // v128.load8_splat: byte 7 at offset 0, splat to all lanes, extract lane 15 = 7
     try vm.invoke(&inst, "load8_splat", @constCast(&no_args), &results);
     try testing.expectEqual(@as(u64, 7), results[0]);
+}
+
+test "Conformance — SIMD integer arithmetic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/simd_integer.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    var results = [_]u64{0};
+    const no_args = [_]u64{};
+
+    // i32x4.eq: lane 0 matches → -1 (all ones)
+    try vm.invoke(&inst, "i32x4_eq", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, 0xFFFFFFFF)), results[0]);
+
+    // i32x4.lt_s: -1 < 0 → -1
+    try vm.invoke(&inst, "i32x4_lt_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, 0xFFFFFFFF)), results[0]);
+
+    // i8x16.add: 0x64 + 0x01 = 0x65 = 101
+    try vm.invoke(&inst, "i8x16_add", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 101), results[0]);
+
+    // i16x8.mul: 10 * 3 = 30
+    try vm.invoke(&inst, "i16x8_mul", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 30), results[0]);
+
+    // i8x16.add_sat_s: 120 + 120 saturated = 127
+    try vm.invoke(&inst, "i8x16_add_sat_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 127), results[0]);
+
+    // i32x4.shl: 1 << 2 = 4
+    try vm.invoke(&inst, "i32x4_shl", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 4), results[0]);
+
+    // i32x4.shr_s: -8 >> 1 = -4
+    try vm.invoke(&inst, "i32x4_shr_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(i32, -4)))), results[0]);
+
+    // i32x4.abs: |-5| = 5
+    try vm.invoke(&inst, "i32x4_abs", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 5), results[0]);
+
+    // i32x4.neg: -(5) = -5
+    try vm.invoke(&inst, "i32x4_neg", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(i32, -5)))), results[0]);
+
+    // i8x16.min_s: min(10, 20) = 10
+    try vm.invoke(&inst, "i8x16_min_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 10), results[0]);
+
+    // i32x4.max_s: max(10, 20) = 20
+    try vm.invoke(&inst, "i32x4_max_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 20), results[0]);
+
+    // i16x8.narrow_i32x4_s: 32768 saturated to i16 → 32767
+    try vm.invoke(&inst, "narrow_sat", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 32767), results[0]);
+
+    // i32x4.extend_low_i16x8_s: -5 sign-extended to i32
+    try vm.invoke(&inst, "extend_low_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(i32, -5)))), results[0]);
+
+    // i32x4.extmul_low_i16x8_s: -10 * 5 = -50
+    try vm.invoke(&inst, "extmul_low_s", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(i32, -50)))), results[0]);
+
+    // i32x4.dot_i16x8_s: 1*2 + 3*4 = 14
+    try vm.invoke(&inst, "dot_product", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 14), results[0]);
+
+    // i8x16.all_true: all non-zero → 1
+    try vm.invoke(&inst, "all_true_yes", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+
+    // i8x16.all_true: has zero → 0
+    try vm.invoke(&inst, "all_true_no", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 0), results[0]);
+
+    // i32x4.bitmask: (-1, 0, -1, 0) → 0b0101 = 5
+    try vm.invoke(&inst, "bitmask", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 5), results[0]);
+
+    // i8x16.popcnt: popcount(0xFF) = 8
+    try vm.invoke(&inst, "popcnt", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 8), results[0]);
+
+    // i16x8.extadd_pairwise: (-1) + 2 = 1
+    try vm.invoke(&inst, "extadd_pairwise", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 1), results[0]);
+
+    // i8x16.avgr_u: (10 + 20 + 1) / 2 = 15 (truncated)
+    try vm.invoke(&inst, "avgr_u", @constCast(&no_args), &results);
+    try testing.expectEqual(@as(u64, 15), results[0]);
 }
