@@ -148,7 +148,7 @@ Minimal wasm32-wasi binary compiled and ran on wasmtime 41.0.0:
 
 ### Decision: D78 — Separate Entry + Comptime Guards
 
-See `.dev/notes/decisions.md` D78 for full rationale.
+See `.dev/decisions.md` D78 for full rationale.
 
 **Summary**: No wasm_rt/ directory with code copies. Instead:
 1. New `src/main_wasm.zig` entry point (eval-only, no nREPL/wasm-interop)

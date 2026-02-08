@@ -299,5 +299,5 @@ Use `@memcpy` + local `@Vector` variable for safe unaligned access.
 | Benchmark baseline      | `bench/simd/results.md`                         |
 | F118 (scope)            | `.dev/checklist.md`                             |
 | F119 (WIT bug)          | `.dev/checklist.md`                             |
-| Phase 35W plan          | `.dev/plan/phase35-custom-wasm.md`              |
+| Phase 35W plan          | `.dev/archive/phase35-custom-wasm.md`              |
 | Zig @Vector docs        | Zig language reference, @Vector section         |

@@ -1,7 +1,7 @@
 # ClojureWasm
 
 Full-scratch Clojure implementation in Zig 0.15.2. Behavioral compatibility target.
-Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/plan/memo.md`.
+Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/memo.md`.
 
 ## Language Policy
 
@@ -20,7 +20,7 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/
 ## Critical Rules
 
 - **One task = one commit**. Never batch multiple tasks.
-- **Architectural decisions only** → `.dev/notes/decisions.md` (D## entry).
+- **Architectural decisions only** → `.dev/decisions.md` (D## entry).
   Bug fixes and one-time migrations do NOT need D## entries.
 - **Update `.dev/checklist.md`** when deferred items are resolved or added.
 
@@ -38,7 +38,7 @@ git log --oneline -3 && git status --short
 yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
 ```
 
-Read: `.dev/plan/memo.md` (current state, task queue, handover notes)
+Read: `.dev/memo.md` (current state, task queue, handover notes)
 
 **2. Plan**
 
@@ -75,7 +75,7 @@ Key points: implement don't skip, no assertion reduction, both backends, CLJW ma
 
 ### When to Stop
 
-See `.dev/plan/memo.md` for task queue and current state.
+See `.dev/memo.md` for task queue and current state.
 Do NOT stop between tasks within a phase.
 
 **Phase order**: ... → 22c(test gaps) → **24(optimize)** → 24.5(cleanup) → 25(wasm) → 26(wasm_rt) → 27(refactor)
@@ -215,9 +215,9 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Impl tiers         | `.claude/references/impl-tiers.md`           | When implementing a new function           |
 | Java interop       | `.claude/rules/java-interop.md`              | Auto-loads on .clj/analyzer/builtin edits  |
 | Test porting       | `.claude/rules/test-porting.md`              | Auto-loads on test file edits              |
-| Roadmap            | `.dev/plan/roadmap.md`                       | Phase planning, future phase notes         |
+| Roadmap            | `.dev/roadmap.md`                            | Phase planning, future phase notes         |
 | Deferred items     | `.dev/checklist.md`                          | F## items — blockers to resolve            |
 | Design document    | `.dev/future.md`                             | When planning new phases or major features |
-| Optimizations      | `.dev/notes/optimizations.md`                | Completed + future optimization catalog    |
+| Optimizations      | `.dev/optimizations.md`                      | Completed + future optimization catalog    |
 | Bench history      | `bench/history.yaml`                         | Benchmark progression across optimizations |
 | Bytecode debug     | `./zig-out/bin/cljw --dump-bytecode`         | When VM tests fail or bytecode looks wrong |

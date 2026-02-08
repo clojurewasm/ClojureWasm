@@ -14,7 +14,7 @@ Session-spanning tracking document. Read at session start if cleanup incomplete.
 | 6 | Merge optimization files          | DONE    | 1293+154→170 lines, refs updated |
 | 7 | plan/ directory consolidation     | DONE    | notes/+plan/ → flat .dev/     |
 | 8 | Top-level directory cleanup       | DONE    | scripts/examples/docs → .dev/, .gitkeep全削除 |
-| 10| Path reference integrity check    | TODO    | After all moves, fix refs     |
+| 10| Path reference integrity check    | DONE    | 21 refs fixed across 12 files |
 
 ## Directory Reorganization Plan
 

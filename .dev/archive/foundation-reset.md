@@ -123,7 +123,7 @@ CLJW-SKIP → implement → unblock → commit.
 
 | File                                    | Purpose                        |
 |-----------------------------------------|--------------------------------|
-| `.dev/plan/memo.md`                     | Session handover               |
+| `.dev/memo.md`                          | Session handover               |
 | `.dev/status/audit-progress.yaml`       | Audit progress tracker         |
 | `.claude/rules/test-porting.md`         | Test porting rules (auto-load) |
 | `.claude/references/interop-patterns.md`| Java→CW pattern mapping        |

@@ -164,7 +164,7 @@ JIT (Phase 37) target: bring Wasm gap to 2-5x of native.
 |------------------------|--------------------------------------|
 | Benchmark history      | `bench/history.yaml`                 |
 | Cross-language script  | `bench/compare_langs.sh`             |
-| D84 Custom Wasm        | `.dev/notes/decisions.md`            |
-| D85 NaN boxing         | `.dev/notes/decisions.md`            |
-| D86 Wasm optimization  | `.dev/notes/decisions.md`            |
+| D84 Custom Wasm        | `.dev/decisions.md`            |
+| D85 NaN boxing         | `.dev/decisions.md`            |
+| D86 Wasm optimization  | `.dev/decisions.md`            |
 | Checklist items        | `.dev/checklist.md` (F99-F120)       |

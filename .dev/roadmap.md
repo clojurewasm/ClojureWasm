@@ -8,7 +8,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 **References**:
 
 - `.dev/future.md` — Design document (SS sections)
-- `.dev/plan/memo.md` — Session handover memo
+- `.dev/memo.md` — Session handover memo
 - `.dev/checklist.md` — Deferred items (F## entries)
 - `.dev/status/vars.yaml` — Var implementation tracking
 
@@ -122,7 +122,7 @@ Directory reorganization: common/native/ → core/eval/cli/.
 ### Future: wasm_rt Revival
 
 When ecosystem conditions are met (see `src/wasm_rt/README.md`),
-revive Phase 26 using archived research in `.dev/plan/phase26-wasm-rt.md`.
+revive Phase 26 using archived research in `.dev/archive/phase26-wasm-rt.md`.
 
 ---
 

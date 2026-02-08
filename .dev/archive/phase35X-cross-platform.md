@@ -105,7 +105,7 @@ Workflow: `.github/workflows/ci.yml`
 | Item                    | Location                                     |
 |-------------------------|----------------------------------------------|
 | Checklist entry         | `.dev/checklist.md` F117                     |
-| Roadmap section         | `.dev/plan/roadmap.md` Phase 35X             |
-| Phase 35W (zware removed) | `.dev/plan/phase35-custom-wasm.md`          |
-| Decision D84            | `.dev/notes/decisions.md`                    |
+| Roadmap section         | `.dev/roadmap.md` Phase 35X                  |
+| Phase 35W (zware removed) | `.dev/archive/phase35-custom-wasm.md`       |
+| Decision D84            | `.dev/decisions.md`                          |
 | Original plan (obsolete)| `~/.claude/plans/phase35-cross-platform-saved.md` |

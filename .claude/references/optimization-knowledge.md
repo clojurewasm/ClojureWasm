@@ -211,6 +211,6 @@ This is a portable optimization — benefits native too (removes 512MB stack hac
 ### Phase 24 Complete — Final Summary (2026-02-07)
 
 CW beats Babashka on 19/20 benchmarks (1 tied: nested_update +/-1ms).
-Full optimization catalog: .dev/notes/optimizations.md
+Full optimization catalog: .dev/optimizations.md
 Future optimization IDs: F101-F105 (see backlog for prioritized items).
 Key decisions: D72 (NaN boxing), D73 (two-phase bootstrap), D74 (filter chain collapsing).

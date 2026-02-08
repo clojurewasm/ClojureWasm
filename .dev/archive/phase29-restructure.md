@@ -112,6 +112,6 @@ value.zig remains ~1700L.
 
 ## References
 
-- .dev/notes/file-size-audit.md — Phase 24.5 audit
-- .dev/notes/mutable-state-audit.md — D3 catalog
+- .dev/archive/file-size-audit.md — Phase 24.5 audit
+- .dev/archive/mutable-state-audit.md — D3 catalog
 - .dev/future.md SS8 — Architecture

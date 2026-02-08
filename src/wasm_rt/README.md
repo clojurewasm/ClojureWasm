@@ -16,7 +16,7 @@ Research phase (26.R) complete. Implementation deferred pending:
 
 ## Research Findings
 
-Full analysis in `.dev/plan/phase26-wasm-rt.md`:
+Full analysis in `.dev/archive/phase26-wasm-rt.md`:
 
 | Topic              | Finding                                          |
 |--------------------|--------------------------------------------------|

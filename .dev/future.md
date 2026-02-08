@@ -920,7 +920,7 @@ GitHub renders directly. Migration to mdBook possible later.
 
 ### 18.3 ADR (Architecture Decision Records)
 
-Production uses `.dev/notes/decisions.md` for D## entries during development.
+Production uses `.dev/decisions.md` for D## entries during development.
 These promote to formal `docs/adr/` at release time.
 
 ### 18.4 Compatibility Status Auto-Generation (planned)
@@ -1030,7 +1030,7 @@ stay stable, fine enough for programmatic handling (`catch SyntaxError`).
 
 ## Design Decisions Index
 
-Key decisions recorded in `.dev/notes/decisions.md`:
+Key decisions recorded in `.dev/decisions.md`:
 
 | ID  | Topic                           | Section |
 | --- | ------------------------------- | ------- |

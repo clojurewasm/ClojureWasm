@@ -19,7 +19,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
+Phase 36 (SIMD + FFI deep). Plan: `.dev/archive/phase36-simd-ffi.md`.
 
 1. ~~**36.1-36.6** SIMD implementation + benchmarks (236 opcodes)~~
 2. ~~**36.7** Wasm interpreter optimization (D86: VM reuse + sidetable)~~
@@ -49,8 +49,8 @@ Session resume procedure: read this file → follow references below.
 
 | Item                         | Location                                          |
 |------------------------------|---------------------------------------------------|
-| **Phase plan**               | `.dev/plan/phase36-simd-ffi.md`                   |
-| **Optimization decision**    | `.dev/notes/decisions.md` D86                     |
+| **Phase plan**               | `.dev/archive/phase36-simd-ffi.md`                   |
+| **Optimization decision**    | `.dev/decisions.md` D86                     |
 | **SIMD benchmarks**          | `bench/simd/` (4 programs + results.md)           |
 | **Wasm benchmarks**          | `bench/benchmarks/21-25_wasm_*/`                  |
 | **Conformance tests**        | `src/wasm/testdata/conformance/` (9 WAT+WASM)     |
@@ -60,13 +60,13 @@ Session resume procedure: read this file → follow references below.
 
 | Topic               | Location                                  |
 |----------------------|-------------------------------------------|
-| Roadmap              | `.dev/plan/roadmap.md`                    |
+| Roadmap              | `.dev/roadmap.md`                    |
 | Deferred items       | `.dev/checklist.md` (F3-F120)             |
-| Decisions            | `.dev/notes/decisions.md` (D1-D86)        |
-| Optimizations        | `.dev/notes/optimizations.md`             |
+| Decisions            | `.dev/decisions.md` (D1-D86)        |
+| Optimizations        | `.dev/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |
-| Archived plans       | `.dev/plan/archive/` (Phase 24-30, CX, A) |
+| Archived plans       | `.dev/archive/` (Phase 24-30, CX, A) |
 
 ## Handover Notes
 
