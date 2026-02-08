@@ -2049,3 +2049,39 @@ design goals and update cadence from ClojureWasm.
 unblocked. SIMD and multi-module can be added on our schedule (Phase 36).
 
 **Reference**: `.dev/plan/phase35-custom-wasm.md`
+
+## D85: NaN Boxing 4-Heap-Tag — 48-Bit Address Support
+
+**Context**: Phase 35X cross-platform build revealed that Linux x86_64 uses 47-bit
+user-space addresses and Linux aarch64 uses 48-bit addresses. The original NaN boxing
+scheme (D72) stored heap pointers in 40 bits (1TB range), which is insufficient for
+Linux. macOS aarch64 uses addresses below 40 bits and was unaffected.
+
+**Decision**: Replace single heap tag (0xFFFA) with 4-heap-tag scheme using
+0xFFF8/0xFFFA/0xFFFE/0xFFFF, each holding 3-bit sub-type + 45-bit shifted address.
+
+**Design**:
+
+1. **4 NaN tags for heap types**: 8 types per tag, 28 types total (4 spare slots).
+   - 0xFFFA: types 0-7 (string, symbol, keyword, list, vector, map, hash_map, set)
+   - 0xFFFE: types 8-15 (fn_val, atom, volatile_ref, regex, protocol, protocol_fn, multi_fn, lazy_seq)
+   - 0xFFF8: types 16-23 (cons, var_ref, delay, reduced, transient_*, chunked_cons)
+   - 0xFFFF: types 24-27 (chunk_buffer, array_chunk, wasm_module, wasm_fn)
+
+2. **8-byte alignment shift** (addr >> 3): universally guaranteed by Zig allocators.
+   45-bit shifted + 3-bit shift = 48-bit effective address range.
+
+3. **Negative NaN canonicalization**: tags 0xFFF8-0xFFFF overlap with negative quiet
+   NaN bit patterns. `initFloat` canonicalizes any f64 with top16 >= 0xFFF8 to
+   positive NaN (0x7FF8_0000_0000_0000). Negative NaN is extremely rare in practice
+   (only via `-NaN` or raw bit manipulation, neither common in Clojure).
+
+4. **Volatile/Reduced padding**: 8-byte structs padded to 16 bytes with `_pad: u64`
+   to ensure they land in 16-byte GPA buckets (better alignment properties).
+
+**Consequence**: Uniform NaN boxing layout supports all platforms (macOS, Linux x86_64,
+Linux aarch64) without comptime branching. Slight overhead: one extra comparison in
+`initFloat` (negative NaN check), and `tag()` switch has 8 arms instead of 6.
+
+**Trade-off**: Lost ~8 negative quiet NaN payload patterns. These are never produced by
+standard arithmetic and not observable in Clojure semantics.

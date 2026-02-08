@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - All phases through 35.5 complete (A, BE, B, C, CX, R, D, 20-34, 22b, 22c, 24.5, 35W, 35.5)
-- **Phase 35.5 COMPLETE** — Wasm Runtime Hardening, Testing & Benchmarking
+- **Phase 35X IN PROGRESS** — Cross-Platform Build & Verification
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 
@@ -21,18 +21,26 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 
 ## Task Queue
 
-Next phase: 35X (cross-platform)
-Plan: `.dev/plan/phase35X-cross-platform.md`
+Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
+
+1. ~~**35X.1** Linux x86_64 cross-compile + Docker verification~~ DONE
+2. **35X.2** Linux aarch64 cross-compile + Docker verification (QEMU)
+3. **35X.3** macOS x86_64 cross-compile + Rosetta verification
+4. **35X.4** LICENSE file (EPL-1.0)
+5. **35X.5** GitHub Actions CI
 
 ## Current Task
 
-Phase 35.5 COMPLETE. Ready for Phase 35X (cross-platform).
+35X.2: Linux aarch64 cross-compile + Docker verification.
+Cross-compile with `zig build -Dtarget=aarch64-linux-gnu`, fix errors,
+verify in Docker (debian:bookworm-slim on Apple Silicon): eval, file exec, build, http, wasm.
 
 ## Previous Task
 
-Phase 35.5 — Wasm Runtime Hardening, Testing & Benchmarking.
-All 5 sub-phases complete (A.1-A.3, B.1-B.2, C.1-C.4, D.1-D.3, E.1-E.3).
-10 commits: e2e tests, docs, 19 WASI functions, conformance tests, benchmarks.
+35X.1: Linux x86_64 cross-compile + Docker verification.
+NaN boxing redesign required (D85): original 40-bit address scheme too narrow for
+Linux 47-48 bit addresses. Implemented 4-heap-tag scheme with 48-bit effective range.
+Docker verification passed: eval, file exec, build, http, wasm all working.
 
 ## Known Issues
 
@@ -56,11 +64,12 @@ Session resume procedure: read this file → follow references below.
 | **Wasm benchmarks**          | `bench/benchmarks/21-25_wasm_*/`                  |
 | **Conformance tests**        | `src/wasm/testdata/conformance/` (9 WAT+WASM)     |
 
-### Phase 35X (next)
+### Phase 35X (current)
 
 | Item                         | Location                                          |
 |------------------------------|---------------------------------------------------|
 | **Phase plan**               | `.dev/plan/phase35X-cross-platform.md`            |
+| **NaN boxing decision**      | `.dev/notes/decisions.md` D85                     |
 | **Checklist entry**          | `.dev/checklist.md` F117                          |
 | **Roadmap section**          | `.dev/plan/roadmap.md` Phase 35X                  |
 
@@ -90,13 +99,20 @@ Session resume procedure: read this file → follow references below.
 |--------------------|------------------------------------------|
 | Roadmap            | `.dev/plan/roadmap.md`                   |
 | Deferred items     | `.dev/checklist.md` (F113, F117, F118, F119) |
-| Decisions          | `.dev/notes/decisions.md` (D1-D84)       |
+| Decisions          | `.dev/notes/decisions.md` (D1-D85)       |
 | Optimization       | `.dev/notes/optimization-catalog.md`     |
 | Benchmarks         | `bench/history.yaml`                     |
 | Zig tips           | `.claude/references/zig-tips.md`         |
 
 ## Handover Notes
 
+- **Phase 35X.1 COMPLETE** — Linux x86_64 cross-compile + Docker verification
+  - NaN boxing redesigned: 1-tag (40-bit) → 4-tag (48-bit) scheme (D85)
+  - Tags: 0xFFF8/0xFFFA/0xFFFE/0xFFFF, 3-bit sub-type, 45-bit shifted addr
+  - 8-byte alignment shift (universal Zig allocator guarantee)
+  - Negative quiet NaN canonicalized in initFloat (top16 >= 0xFFF8 → positive NaN)
+  - Docker verified: eval, file exec, build, http, wasm — all pass
+  - Binary: ELF x86_64, statically linked, 14MB
 - **Phase 35.5 COMPLETE** — Wasm Runtime Hardening
   - 35.5A: E2E test infrastructure (5 tests, run_e2e.sh, Zig integration tests)
   - 35.5B: docs/wasm-spec-support.md, docs/wasi-support.md
@@ -115,7 +131,7 @@ Session resume procedure: read this file → follow references below.
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
   clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user
-- **NaN boxing (D72)**: COMPLETE. Value 48B->8B.
+- **NaN boxing (D72→D85)**: 4-heap-tag scheme, 48-bit address, Value 8B.
 - **Single binary**: Binary trailer `[cljw binary][source][u64 size]["CLJW"]`
 - **nREPL/CIDER**: 14 ops. Start: `cljw --nrepl-server --port=0`
 - **Bootstrap cache**: cache_gen.zig at build time, ~3ms startup.

@@ -196,12 +196,14 @@ pub const Atom = struct {
 /// Like Atom but without CAS semantics. Used for thread-local mutation.
 pub const Volatile = struct {
     value: Value,
+    _pad: u64 = 0, // Pad to 16 bytes for GPA bucket alignment
 };
 
 /// Reduced — wrapper for early termination in reduce.
 /// (reduced x) wraps x; reduce checks for Reduced to stop iteration.
 pub const Reduced = struct {
     value: Value,
+    _pad: u64 = 0, // Pad to 16 bytes for GPA bucket alignment
 };
 
 /// Delay — lazy thunk with cached result. Force to evaluate.
@@ -506,17 +508,28 @@ pub const Fn = struct {
 };
 
 // --- NaN boxing encoding constants ---
+// 4-heap-tag scheme: supports 48-bit addresses (Linux aarch64 + x86_64).
+// Tags 0xFFF8/0xFFFA/0xFFFE/0xFFFF each hold 8 heap types (3-bit sub-type)
+// with 45-bit shifted address (>> 3 for 8-byte alignment = 48-bit effective).
+// Negative quiet NaN floats (top16 >= 0xFFF8) are canonicalized to positive NaN.
+const NB_HEAP_TAG_C: u64 = 0xFFF8_0000_0000_0000; // heap types 16-23
 const NB_INT_TAG: u64 = 0xFFF9_0000_0000_0000;
-const NB_HEAP_TAG: u64 = 0xFFFA_0000_0000_0000;
+const NB_HEAP_TAG_A: u64 = 0xFFFA_0000_0000_0000; // heap types 0-7
 const NB_CONST_TAG: u64 = 0xFFFB_0000_0000_0000;
 const NB_CHAR_TAG: u64 = 0xFFFC_0000_0000_0000;
 const NB_BUILTIN_FN_TAG: u64 = 0xFFFD_0000_0000_0000;
+const NB_HEAP_TAG_B: u64 = 0xFFFE_0000_0000_0000; // heap types 8-15
+const NB_HEAP_TAG_D: u64 = 0xFFFF_0000_0000_0000; // heap types 24-27
 const NB_TAG_SHIFT: u6 = 48;
 const NB_PAYLOAD_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
-const NB_ADDR_MASK: u64 = 0x0000_00FF_FFFF_FFFF;
-const NB_HEAP_TYPE_SHIFT: u6 = 40;
+const NB_ADDR_SHIFTED_MASK: u64 = 0x0000_1FFF_FFFF_FFFF; // 45 bits for addr >> 3
+const NB_HEAP_SUBTYPE_SHIFT: u6 = 45; // 3-bit sub-type in bits 47-45
+const NB_ADDR_ALIGN_SHIFT: u3 = 3; // 8-byte alignment (>>3), 48-bit effective
+const NB_HEAP_GROUP_SIZE: u8 = 8; // 8 types per heap tag group
 
-/// NaN boxing heap type tag (8 bits, stored in bits 47-40 of heap pointers).
+/// NaN boxing heap type tag (5 bits effective, stored as u8).
+/// Types 0-7=0xFFFA, 8-15=0xFFFE, 16-23=0xFFF8, 24-27=0xFFFF.
+/// Address stored as addr >> 3 (8-byte aligned, 45 bits = 48-bit effective).
 const NanHeapTag = enum(u8) {
     string = 0, symbol = 1, keyword = 2,
     list = 3, vector = 4, map = 5, hash_map = 6, set = 7,
@@ -534,10 +547,13 @@ const NanHeapTag = enum(u8) {
 /// IEEE 754 double NaN space encodes tagged values:
 ///   top16 < 0xFFF9 → float (raw f64 bits pass-through)
 ///   0xFFF9 → integer (i48 signed, overflow → float promotion)
-///   0xFFFA → heap pointer (NanHeapTag[47:40] + address[39:0])
+///   0xFFF8 → heap C (sub-type[47:45] + addr>>3[44:0]), types 16-23
+///   0xFFFA → heap A (sub-type[47:45] + addr>>3[44:0]), types 0-7
 ///   0xFFFB → constant (0=nil, 1=true, 2=false)
 ///   0xFFFC → char (u21 codepoint)
 ///   0xFFFD → builtin_fn (48-bit function pointer)
+///   0xFFFE → heap B (sub-type[47:45] + addr>>3[44:0]), types 8-15
+///   0xFFFF → heap D (sub-type[47:45] + addr>>3[44:0]), types 24-27
 pub const Value = enum(u64) {
     nil_val = NB_CONST_TAG | 0,
     true_val = NB_CONST_TAG | 1,
@@ -562,12 +578,27 @@ pub const Value = enum(u64) {
 
     fn encodeHeapPtr(ht: NanHeapTag, ptr: anytype) Value {
         const addr: u64 = @intFromPtr(ptr);
-        std.debug.assert(addr <= NB_ADDR_MASK);
-        return @enumFromInt(NB_HEAP_TAG | (@as(u64, @intFromEnum(ht)) << NB_HEAP_TYPE_SHIFT) | addr);
+        std.debug.assert(addr & 0x7 == 0); // 8-byte aligned required
+        const shifted = addr >> NB_ADDR_ALIGN_SHIFT;
+        if (shifted > NB_ADDR_SHIFTED_MASK) {
+            @panic("heap address exceeds 48-bit NaN boxing range");
+        }
+        const type_val = @intFromEnum(ht);
+        const group = type_val / NB_HEAP_GROUP_SIZE;
+        const tag_base: u64 = switch (group) {
+            0 => NB_HEAP_TAG_A, // 0xFFFA: types 0-7
+            1 => NB_HEAP_TAG_B, // 0xFFFE: types 8-15
+            2 => NB_HEAP_TAG_C, // 0xFFF8: types 16-23
+            3 => NB_HEAP_TAG_D, // 0xFFFF: types 24-27
+            else => unreachable,
+        };
+        const sub_type: u64 = type_val % NB_HEAP_GROUP_SIZE;
+        return @enumFromInt(tag_base | (sub_type << NB_HEAP_SUBTYPE_SHIFT) | shifted);
     }
 
     fn decodePtr(self: Value, comptime T: type) T {
-        return @ptrFromInt(@as(usize, @intCast(@intFromEnum(self) & NB_ADDR_MASK)));
+        const shifted = @intFromEnum(self) & NB_ADDR_SHIFTED_MASK;
+        return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
     }
 
     fn heapTagToTag(ht_raw: u8) Tag {
@@ -597,10 +628,11 @@ pub const Value = enum(u64) {
     pub fn tag(self: Value) Tag {
         const bits = @intFromEnum(self);
         const top16: u16 = @truncate(bits >> NB_TAG_SHIFT);
-        if (top16 < 0xFFF9) return .float;
+        if (top16 < 0xFFF8) return .float;
         return switch (top16) {
+            0xFFF8 => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
             0xFFF9 => .integer,
-            0xFFFA => heapTagToTag(@truncate(bits >> NB_HEAP_TYPE_SHIFT)),
+            0xFFFA => heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
             0xFFFB => switch (bits & NB_PAYLOAD_MASK) {
                 0 => .nil,
                 1, 2 => .boolean,
@@ -608,6 +640,8 @@ pub const Value = enum(u64) {
             },
             0xFFFC => .char,
             0xFFFD => .builtin_fn,
+            0xFFFE => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
+            0xFFFF => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
             else => unreachable,
         };
     }
@@ -628,7 +662,9 @@ pub const Value = enum(u64) {
 
     pub fn initFloat(f: f64) Value {
         const bits: u64 = @bitCast(f);
-        if ((bits >> NB_TAG_SHIFT) >= 0xFFF9) {
+        // Canonicalize negative quiet NaN (top16 >= 0xFFF8) to positive NaN,
+        // because 0xFFF8-0xFFFF are reserved for tagged values.
+        if ((bits >> NB_TAG_SHIFT) >= 0xFFF8) {
             return @enumFromInt(@as(u64, 0x7FF8_0000_0000_0000));
         }
         return @enumFromInt(bits);
