@@ -1197,23 +1197,127 @@ pub const Vm = struct {
                 try self.pushV128(@bitCast(r));
             },
 
-            // ---- Stub: float ops (36.4) ----
-            .f32x4_eq, .f32x4_ne, .f32x4_lt, .f32x4_gt, .f32x4_le, .f32x4_ge,
-            .f64x2_eq, .f64x2_ne, .f64x2_lt, .f64x2_gt, .f64x2_le, .f64x2_ge,
-            .f32x4_abs, .f32x4_neg, .f32x4_sqrt,
-            .f32x4_add, .f32x4_sub, .f32x4_mul, .f32x4_div,
-            .f32x4_min, .f32x4_max, .f32x4_pmin, .f32x4_pmax,
-            .f64x2_abs, .f64x2_neg, .f64x2_sqrt,
-            .f64x2_add, .f64x2_sub, .f64x2_mul, .f64x2_div,
-            .f64x2_min, .f64x2_max, .f64x2_pmin, .f64x2_pmax,
-            .f32x4_ceil, .f32x4_floor, .f32x4_trunc, .f32x4_nearest,
-            .f64x2_ceil, .f64x2_floor, .f64x2_trunc, .f64x2_nearest,
-            .f32x4_demote_f64x2_zero, .f64x2_promote_low_f32x4,
-            .i32x4_trunc_sat_f32x4_s, .i32x4_trunc_sat_f32x4_u,
-            .f32x4_convert_i32x4_s, .f32x4_convert_i32x4_u,
-            .i32x4_trunc_sat_f64x2_s_zero, .i32x4_trunc_sat_f64x2_u_zero,
-            .f64x2_convert_low_i32x4_s, .f64x2_convert_low_i32x4_u,
-            => return error.Trap,
+            // ---- Float comparison (36.4) ----
+            .f32x4_eq => try self.simdCmpOp(f32, 4, .eq),
+            .f32x4_ne => try self.simdCmpOp(f32, 4, .ne),
+            .f32x4_lt => try self.simdCmpOp(f32, 4, .lt),
+            .f32x4_gt => try self.simdCmpOp(f32, 4, .gt),
+            .f32x4_le => try self.simdCmpOp(f32, 4, .le),
+            .f32x4_ge => try self.simdCmpOp(f32, 4, .ge),
+            .f64x2_eq => try self.simdCmpOp(f64, 2, .eq),
+            .f64x2_ne => try self.simdCmpOp(f64, 2, .ne),
+            .f64x2_lt => try self.simdCmpOp(f64, 2, .lt),
+            .f64x2_gt => try self.simdCmpOp(f64, 2, .gt),
+            .f64x2_le => try self.simdCmpOp(f64, 2, .le),
+            .f64x2_ge => try self.simdCmpOp(f64, 2, .ge),
+
+            // ---- Float unary (36.4) ----
+            .f32x4_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(4, f32), @bitCast(self.popV128()))))); },
+            .f64x2_abs => { try self.pushV128(@bitCast(@abs(@as(@Vector(2, f64), @bitCast(self.popV128()))))); },
+            .f32x4_neg => {
+                const a_bits: @Vector(4, u32) = @bitCast(self.popV128());
+                try self.pushV128(@bitCast(a_bits ^ @as(@Vector(4, u32), @splat(@as(u32, 0x80000000)))));
+            },
+            .f64x2_neg => {
+                const a_bits: @Vector(2, u64) = @bitCast(self.popV128());
+                try self.pushV128(@bitCast(a_bits ^ @as(@Vector(2, u64), @splat(@as(u64, 0x8000000000000000)))));
+            },
+            .f32x4_sqrt => { try self.pushV128(@bitCast(@sqrt(@as(@Vector(4, f32), @bitCast(self.popV128()))))); },
+            .f64x2_sqrt => { try self.pushV128(@bitCast(@sqrt(@as(@Vector(2, f64), @bitCast(self.popV128()))))); },
+
+            // ---- Float arithmetic (36.4) ----
+            .f32x4_add => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a + b)); },
+            .f32x4_sub => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a - b)); },
+            .f32x4_mul => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a * b)); },
+            .f32x4_div => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a / b)); },
+            .f64x2_add => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a + b)); },
+            .f64x2_sub => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a - b)); },
+            .f64x2_mul => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a * b)); },
+            .f64x2_div => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(a / b)); },
+
+            // ---- Float min/max (36.4) — IEEE 754 semantics with NaN propagation ----
+            .f32x4_min => { try self.simdMinMax(f32, 4, .min); },
+            .f32x4_max => { try self.simdMinMax(f32, 4, .max); },
+            .f64x2_min => { try self.simdMinMax(f64, 2, .min); },
+            .f64x2_max => { try self.simdMinMax(f64, 2, .max); },
+
+            // ---- Float pseudo min/max (36.4) — simple comparison, no NaN propagation ----
+            .f32x4_pmin => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@select(f32, b < a, b, a))); },
+            .f32x4_pmax => { const b: @Vector(4, f32) = @bitCast(self.popV128()); const a: @Vector(4, f32) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@select(f32, a < b, b, a))); },
+            .f64x2_pmin => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@select(f64, b < a, b, a))); },
+            .f64x2_pmax => { const b: @Vector(2, f64) = @bitCast(self.popV128()); const a: @Vector(2, f64) = @bitCast(self.popV128()); try self.pushV128(@bitCast(@select(f64, a < b, b, a))); },
+
+            // ---- Float rounding (36.4) ----
+            .f32x4_ceil => try self.simdRound(f32, 4, .ceil),
+            .f32x4_floor => try self.simdRound(f32, 4, .floor),
+            .f32x4_trunc => try self.simdRound(f32, 4, .trunc_fn),
+            .f32x4_nearest => try self.simdRound(f32, 4, .nearest),
+            .f64x2_ceil => try self.simdRound(f64, 2, .ceil),
+            .f64x2_floor => try self.simdRound(f64, 2, .floor),
+            .f64x2_trunc => try self.simdRound(f64, 2, .trunc_fn),
+            .f64x2_nearest => try self.simdRound(f64, 2, .nearest),
+
+            // ---- Float conversion (36.4) ----
+            .i32x4_trunc_sat_f32x4_s => {
+                const a: [4]f32 = @bitCast(self.popV128());
+                var r: [4]i32 = undefined;
+                inline for (0..4) |i| r[i] = truncSatClamp(i32, f32, a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .i32x4_trunc_sat_f32x4_u => {
+                const a: [4]f32 = @bitCast(self.popV128());
+                var r: [4]u32 = undefined;
+                inline for (0..4) |i| r[i] = truncSatClamp(u32, f32, a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f32x4_convert_i32x4_s => {
+                const a: [4]i32 = @bitCast(self.popV128());
+                var r: [4]f32 = undefined;
+                inline for (0..4) |i| r[i] = @floatFromInt(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f32x4_convert_i32x4_u => {
+                const a: [4]u32 = @bitCast(self.popV128());
+                var r: [4]f32 = undefined;
+                inline for (0..4) |i| r[i] = @floatFromInt(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .i32x4_trunc_sat_f64x2_s_zero => {
+                const a: [2]f64 = @bitCast(self.popV128());
+                var r: [4]i32 = .{ 0, 0, 0, 0 };
+                inline for (0..2) |i| r[i] = truncSatClamp(i32, f64, a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .i32x4_trunc_sat_f64x2_u_zero => {
+                const a: [2]f64 = @bitCast(self.popV128());
+                var r: [4]u32 = .{ 0, 0, 0, 0 };
+                inline for (0..2) |i| r[i] = truncSatClamp(u32, f64, a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f64x2_convert_low_i32x4_s => {
+                const a: [4]i32 = @bitCast(self.popV128());
+                var r: [2]f64 = undefined;
+                inline for (0..2) |i| r[i] = @floatFromInt(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f64x2_convert_low_i32x4_u => {
+                const a: [4]u32 = @bitCast(self.popV128());
+                var r: [2]f64 = undefined;
+                inline for (0..2) |i| r[i] = @floatFromInt(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f32x4_demote_f64x2_zero => {
+                const a: [2]f64 = @bitCast(self.popV128());
+                var r: [4]f32 = .{ 0, 0, 0, 0 };
+                inline for (0..2) |i| r[i] = @floatCast(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
+            .f64x2_promote_low_f32x4 => {
+                const a: [4]f32 = @bitCast(self.popV128());
+                var r: [2]f64 = undefined;
+                inline for (0..2) |i| r[i] = @floatCast(a[i]);
+                try self.pushV128(@bitCast(r));
+            },
 
             _ => return error.Trap,
         }
@@ -1371,6 +1475,33 @@ pub const Vm = struct {
             if (a[i] < 0) mask |= @as(u32, 1) << @as(u5, i);
         }
         try self.pushI32(@bitCast(mask));
+    }
+
+    // SIMD helper: IEEE 754 min/max with NaN propagation and -0/+0 handling
+    fn simdMinMax(self: *Vm, comptime T: type, comptime N: comptime_int, comptime op: enum { min, max }) WasmError!void {
+        const b: [N]T = @bitCast(self.popV128());
+        const a: [N]T = @bitCast(self.popV128());
+        var r: [N]T = undefined;
+        inline for (0..N) |i| {
+            r[i] = switch (op) {
+                .min => wasmMin(T, a[i], b[i]),
+                .max => wasmMax(T, a[i], b[i]),
+            };
+        }
+        try self.pushV128(@bitCast(r));
+    }
+
+    fn simdRound(self: *Vm, comptime T: type, comptime N: comptime_int, comptime op: enum { ceil, floor, trunc_fn, nearest }) WasmError!void {
+        var a: [N]T = @bitCast(self.popV128());
+        inline for (0..N) |i| {
+            a[i] = switch (op) {
+                .ceil => @ceil(a[i]),
+                .floor => @floor(a[i]),
+                .trunc_fn => @trunc(a[i]),
+                .nearest => roundToEven(T, a[i]),
+            };
+        }
+        try self.pushV128(@bitCast(a));
     }
 
     // ================================================================
@@ -1822,9 +1953,7 @@ fn skipSimdImmediates(reader: *Reader) !void {
 
 /// Wasm nearest (round-to-even).
 fn wasmNearest(comptime T: type, val: T) T {
-    if (math.isNan(val)) return val;
-    if (math.isInf(val)) return val;
-    return @round(val);
+    return roundToEven(T, val);
 }
 
 /// Wasm min (propagate NaN, handle -0).
@@ -1870,6 +1999,20 @@ fn truncSatClamp(comptime I: type, comptime F: type, val: F) I {
     if (trunc_val <= min_val) return math.minInt(I);
     if (trunc_val >= max_val) return math.maxInt(I);
     return @intFromFloat(trunc_val);
+}
+
+/// IEEE 754 roundToIntegralTiesToEven (Wasm nearest).
+fn roundToEven(comptime T: type, x: T) T {
+    if (math.isNan(x) or math.isInf(x) or x == 0) return x;
+    const magic: T = switch (T) {
+        f32 => 8388608.0, // 2^23
+        f64 => 4503599627370496.0, // 2^52
+        else => unreachable,
+    };
+    const ax = @abs(x);
+    if (ax >= magic) return x;
+    if (x > 0) return (x + magic) - magic;
+    return (x - magic) + magic;
 }
 
 // ============================================================
@@ -2784,4 +2927,98 @@ test "Conformance — SIMD integer arithmetic" {
     // i8x16.avgr_u: (10 + 20 + 1) / 2 = 15 (truncated)
     try vm.invoke(&inst, "avgr_u", @constCast(&no_args), &results);
     try testing.expectEqual(@as(u64, 15), results[0]);
+}
+
+test "Conformance — SIMD float arithmetic" {
+    const wasm = try readTestFile(testing.allocator, "conformance/simd_float.wasm");
+    defer testing.allocator.free(wasm);
+
+    var mod = Module.init(testing.allocator, wasm);
+    defer mod.deinit();
+    try mod.decode();
+
+    var store = Store.init(testing.allocator);
+    defer store.deinit();
+
+    var inst = Instance.init(testing.allocator, &store, &mod);
+    defer inst.deinit();
+    try inst.instantiate();
+
+    var vm = Vm.init(testing.allocator);
+    const no_args = [_]u64{};
+
+    // f32 results use bit comparison via u64
+    var r64 = [_]u64{0};
+
+    // f32x4.add: 1.5 + 0.5 = 2.0
+    try vm.invoke(&inst, "f32x4_add", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 2.0)))), r64[0]);
+
+    // f64x2.mul: 2.0 * 4.0 = 8.0
+    try vm.invoke(&inst, "f64x2_mul", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @bitCast(@as(f64, 8.0))), r64[0]);
+
+    // f32x4.eq: 1.0 == 1.0 → all-ones (0xFFFFFFFF)
+    try vm.invoke(&inst, "f32x4_eq", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, 0xFFFFFFFF), r64[0]);
+
+    // f32x4.abs: |-1.5| = 1.5
+    try vm.invoke(&inst, "f32x4_abs", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 1.5)))), r64[0]);
+
+    // f32x4.neg: -(1.0) = -1.0
+    try vm.invoke(&inst, "f32x4_neg", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, -1.0)))), r64[0]);
+
+    // f32x4.sqrt: sqrt(4.0) = 2.0
+    try vm.invoke(&inst, "f32x4_sqrt", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 2.0)))), r64[0]);
+
+    // f32x4.ceil: ceil(1.3) = 2.0
+    try vm.invoke(&inst, "f32x4_ceil", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 2.0)))), r64[0]);
+
+    // f32x4.floor: floor(1.7) = 1.0
+    try vm.invoke(&inst, "f32x4_floor", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 1.0)))), r64[0]);
+
+    // f32x4.nearest: nearest(2.5) = 2.0 (round to even)
+    try vm.invoke(&inst, "f32x4_nearest", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 2.0)))), r64[0]);
+
+    // f32x4.min: min(1.0, 2.0) = 1.0
+    try vm.invoke(&inst, "f32x4_min", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 1.0)))), r64[0]);
+
+    // f32x4.max: max(1.0, 2.0) = 2.0
+    try vm.invoke(&inst, "f32x4_max", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 2.0)))), r64[0]);
+
+    // f32x4.pmin: pmin(3.0, 1.0) = 1.0
+    try vm.invoke(&inst, "f32x4_pmin", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 1.0)))), r64[0]);
+
+    // i32x4.trunc_sat_f32x4_s: trunc(2.9) = 2
+    try vm.invoke(&inst, "trunc_sat_s", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, 2), r64[0]);
+
+    // f32x4.convert_i32x4_s: convert(42) = 42.0
+    try vm.invoke(&inst, "convert_s", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 42.0)))), r64[0]);
+
+    // f32x4.demote: lane 2 = 0.0 (zero-padded)
+    try vm.invoke(&inst, "demote", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @as(u32, @bitCast(@as(f32, 0.0)))), r64[0]);
+
+    // f64x2.promote_low_f32x4: promote(1.5f) ≈ 1.5
+    try vm.invoke(&inst, "promote", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @bitCast(@as(f64, 1.5))), r64[0]);
+
+    // f64x2.convert_low_i32x4_s: convert(-7) = -7.0
+    try vm.invoke(&inst, "f64_convert_s", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, @bitCast(@as(f64, -7.0))), r64[0]);
+
+    // i32x4.trunc_sat_f64x2_s_zero: lane 2 = 0 (zero-padded)
+    try vm.invoke(&inst, "trunc_f64_zero", @constCast(&no_args), &r64);
+    try testing.expectEqual(@as(u64, 0), r64[0]);
 }

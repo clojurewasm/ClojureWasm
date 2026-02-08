@@ -26,7 +26,7 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 1. ~~**36.1** v128 value stack + SIMD opcode enum (foundation)~~
 2. ~~**36.2** SIMD memory + constant ops (~40 opcodes)~~
 3. ~~**36.3** SIMD integer arithmetic (~130 opcodes)~~
-4. **36.4** SIMD float arithmetic (~50 opcodes)
+4. ~~**36.4** SIMD float arithmetic (~50 opcodes)~~
 5. **36.5** SIMD shuffle + swizzle + remaining ops (~10 opcodes)
 6. **36.6** SIMD benchmark + regression measurement
 7. **36.7** Multi-module linking
@@ -35,23 +35,20 @@ Phase 36 (SIMD + FFI deep). Plan: `.dev/plan/phase36-simd-ffi.md`.
 
 ## Current Task
 
-36.4: SIMD float arithmetic (~50 opcodes).
-- Comparison: f32x4/f64x2 eq/ne/lt/gt/le/ge
-- Arithmetic: abs, neg, sqrt, add, sub, mul, div, min, max, pmin, pmax
-- Rounding: ceil, floor, trunc, nearest
-- Conversion: trunc_sat, convert, demote, promote
-- WAT conformance tests
+36.5: SIMD shuffle + swizzle + remaining ops.
+- Review what was already implemented in 36.2 (shuffle, swizzle done)
+- Identify any remaining unimplemented SIMD ops
+- Clean up and verify completeness
 
 ## Previous Task
 
-36.3: SIMD integer arithmetic (~130 opcodes). 10 helper functions.
-Comparison (36 ops), unary/abs/neg/popcnt/all_true/bitmask (17 ops),
-narrowing (4), extending (12), shift (12), wrapping add/sub/mul (11),
-saturating add/sub (8), min/max (12), avgr_u (2), extadd_pairwise (4),
-extmul (12), dot product (1), q15mulr_sat (1).
-simd_integer.wat conformance test (21 functions). All tests pass.
-7 bitwise ops. skipToEnd/findElseOrEnd SIMD immediate handling.
-simd_basic.wat conformance test (15 functions). All tests pass.
+36.4: SIMD float arithmetic (~50 opcodes). 3 new helpers (simdMinMax,
+simdRound, roundToEven). Comparison (12 ops), unary abs/neg/sqrt (6),
+arithmetic add/sub/mul/div (8), min/max/pmin/pmax (8), rounding
+ceil/floor/trunc/nearest (8), conversion trunc_sat/convert/demote/promote (8).
+simd_float.wat conformance test (18 functions). All tests pass.
+Bug fix: wasmNearest used @round (ties-away-from-zero) instead of
+roundToEven (ties-to-even per IEEE 754 / Wasm spec).
 
 ## Known Issues
 
