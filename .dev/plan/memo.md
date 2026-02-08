@@ -31,16 +31,21 @@ Phase 35W — Custom Wasm Runtime (D84)
 - ~~35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)~~ DONE
 - ~~35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)~~ DONE
 - ~~35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)~~ DONE
-- 35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)
+- ~~35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)~~ DONE
 - 35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)
 - 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
 - 35W.9 Cleanup: verify all tests, update docs
 
 ## Current Task
 
-35W.6 — VM: vm.zig — switch-based interpreter for ~200 Wasm opcodes.
+35W.7 — WASI: wasi.zig — 19 WASI Preview 1 functions for fd_write, args, environ, etc.
 
 ## Previous Task
+
+35W.6 — VM: vm.zig — switch-based interpreter for all MVP opcodes.
+1316 LOC. Three stacks (operand 4096, frame 256, label 256). Switch dispatch.
+All control flow, memory, arithmetic, conversions, 0xFC misc prefix implemented.
+5 VM tests + 69 dependency tests = 74 total pass.
 
 35W.5 — Instance: instance.zig — module instantiation with import resolution,
 function/memory/table/global allocation, data/element active segment application,
