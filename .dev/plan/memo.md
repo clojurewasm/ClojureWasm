@@ -33,16 +33,19 @@ Phase 35W — Custom Wasm Runtime (D84)
 - ~~35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)~~ DONE
 - ~~35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)~~ DONE
 - ~~35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)~~ DONE
-- 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
+- ~~35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)~~ DONE
 - 35W.9 Cleanup: verify all tests, update docs
 
 ## Current Task
 
-35W.8 — Integration: update types.zig + build.zig, remove zware dependency.
+35W.9 — Cleanup: verify all tests, update docs.
 
 ## Previous Task
 
-35W.7 — WASI: wasi.zig — 19 WASI Preview 1 functions.
+35W.8 — Integration: types.zig rewritten for custom runtime, build.zig/zon
+cleaned of zware dependency. WasmModule.invoke now uses custom Vm. WASI ctx
+lifecycle managed per-module. Host trampoline targets custom VM API.
+All existing types.zig tests pass unchanged. Binary builds and runs.
 WasiContext (args, environ, preopens), fd_write/read/seek/tell/close,
 args_get/sizes_get, environ_get/sizes_get, clock_time_get, random_get,
 fd_prestat_get/dir_name, fd_fdstat/filestat_get, path_open/filestat_get,

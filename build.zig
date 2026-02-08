@@ -4,15 +4,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // zware dependency (pure-Zig Wasm runtime, Phase 25)
-    const zware_dep = b.dependency("zware", .{});
-
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
-    mod.addImport("zware", zware_dep.module("zware"));
 
     // --- Bootstrap cache generation (D81) ---
     // Build-time tool that bootstraps from .clj sources, serializes the env
@@ -26,7 +22,6 @@ pub fn build(b: *std.Build) void {
             .optimize = .ReleaseSafe,
         }),
     });
-    cache_gen.root_module.addImport("zware", zware_dep.module("zware"));
     cache_gen.stack_size = 512 * 1024 * 1024;
 
     const run_cache_gen = b.addRunArtifact(cache_gen);
@@ -50,7 +45,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    exe.root_module.addImport("zware", zware_dep.module("zware"));
     exe.root_module.addAnonymousImport("bootstrap_cache", .{
         .root_source_file = wrapper,
     });

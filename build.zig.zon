@@ -1,12 +1,7 @@
 .{
     .name = .clojure_wasm,
     .version = "0.0.1",
-    .dependencies = .{
-        .zware = .{
-            .url = "https://github.com/malcolmstill/zware/archive/7c505ed.tar.gz",
-            .hash = "zware-0.0.1-ZA7j6QwqBQA3LRAg37cZYusj_JRPY-rMAMOSQAOs_7Hh",
-        },
-    },
+    .dependencies = .{},
     .fingerprint = 0x62a7be489d633543,
     .minimum_zig_version = "0.15.0",
     .paths = .{
