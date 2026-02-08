@@ -4,12 +4,13 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- All phases through 32 complete (A, BE, B, C, CX, R, D, 20-32, 22b, 22c, 24.5)
+- All phases through 34 complete (A, BE, B, C, CX, R, D, 20-34, 22b, 22c, 24.5)
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
 - **Phase 33 COMPLETE** — Namespace & Portability Design (F115, D82)
-- **Phase 34 COMPLETE** — Server Mode & Networking (F116)
+- **Phase 34 COMPLETE** — Server Mode & Networking (F116, D83)
+- **Phase 35W NEXT** — Custom Wasm Runtime (replace zware dependency)
 
 ## Strategic Direction
 
@@ -19,36 +20,33 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 (build system)~~ -> ~~33 (namespace design)~~ -> **34 (server/networking)** -> 35 (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT research)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> **35W (custom wasm)** -> 35X (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT)
 
 ## Task Queue
 
-Phase 33 — Namespace & Portability Design (F115)
+Phase 35W — Custom Wasm Runtime (D84)
 
-  (Task Queue empty — Phase 33 complete)
-
-## Task Queue
-
-Phase 34 — Server Mode & Networking (F116)
-
-- ~~34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)~~
-- ~~34.2+34.3 HTTP server with Ring-compatible handler model (D83)~~
-- ~~34.4 HTTP client (cljw.http/get, cljw.http/post, put, delete)~~
-- ~~34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)~~
+- 35W.1 Foundation: opcode.zig + leb128.zig (~150 LOC)
+- 35W.2 Memory: memory.zig — linear memory with pages, grow, read/write (~200 LOC)
+- 35W.3 Store: store.zig — function registry, host functions, tables, globals (~250 LOC)
+- 35W.4 Module decoder: module.zig — Wasm binary parser, sections 0-12 (~800 LOC)
+- 35W.5 Instance: instance.zig — instantiation, invoke, getMemory (~400 LOC)
+- 35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)
+- 35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)
+- 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
+- 35W.9 Cleanup: verify all tests, D84 decision entry, update docs
 
 ## Current Task
 
-(Phase 34 complete — Task Queue empty)
+(Awaiting approval — Phase 35W plan at `.dev/plan/phase35-custom-wasm.md`)
 
 ## Previous Task
 
-34.5 — Stateful long-running process lifecycle (signal handling, graceful shutdown).
-- New lifecycle.zig: SIGINT/SIGTERM → atomic shutdown flag
-- Accept loops: poll() with 1s timeout, check shutdown flag each iteration
-- Shutdown hooks: (add-shutdown-hook! key f) / (remove-shutdown-hook! key)
-- SIGPIPE ignored (broken pipe safety)
-- .nrepl-port cleanup via existing defers (now runs because accept exits cleanly)
-- Verified: HTTP server, nREPL, built binary all shut down gracefully
+34.6 — Fix run-server :background option and add set-handler! for live reload.
+- Parse :background from opts map (was module-level only)
+- Add set-handler! builtin for live handler replacement
+- Per-request handler resolution from __handler Var
+- README.md comprehensive rewrite (Phase 34 features)
 
 ## Known Issues
 
@@ -76,6 +74,13 @@ Phase 34 — Server Mode & Networking (F116)
   - 34.4: HTTP client (get/post/put/delete) using Zig std.http.Client
   - 34.5: Lifecycle management (SIGINT/SIGTERM, shutdown hooks, graceful exit)
   - 34.6: Fix :background opt parsing + set-handler! for live reload
+- **Phase 35W plan**: `.dev/plan/phase35-custom-wasm.md`
+  - Replace zware with custom Wasm runtime (~3900 LOC)
+  - Switch-based dispatch (no .always_tail — cross-compile friendly)
+  - Wasm MVP + WASI Preview 1 (19 functions)
+  - Same public API as zware (minimal types.zig changes)
+- **Cross-platform plan (saved)**: `.claude/plans/phase35-cross-platform-saved.md`
+  - After 35W: Linux verification, CI, LICENSE as Phase 35X
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
   clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user
@@ -94,9 +99,6 @@ Phase 34 — Server Mode & Networking (F116)
 - **Bootstrap cache**: cache_gen.zig generates cache at Zig build time,
   embedded via build.zig WriteFile+addAnonymousImport pattern.
   Startup: registerBuiltins (~<1ms) + restoreFromBootstrapCache (~2-3ms).
-- **Future design items** (F115-F117):
-  - F115: Namespace naming strategy — clojure.* (JVM compat) vs cljw.* (unique).
-  - F116: Long-running server + networking — nREPL in built binaries,
-    HTTP server/client, stateful process support.
+- **Future design items** (F117):
   - F117: Cross-platform — Zig cross-compile, CI matrix, ELF/PE trailer verify.
     Includes cljw build output binaries on other platforms.
