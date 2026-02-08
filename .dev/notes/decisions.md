@@ -2011,3 +2011,41 @@ HTTP and nREPL run simultaneously.
 
 **Consequence**: Built binaries can serve HTTP and be debugged via nREPL simultaneously.
 Live code reload via nREPL changes are reflected in HTTP responses immediately.
+
+---
+
+## D84: Custom Wasm Runtime — Replace zware Dependency
+
+**Context**: Phase 35 cross-platform build revealed that zware uses `.always_tail`
+calling convention, requiring LLVM backend. Debug cross-compilation to Linux fails
+with 184 compile errors. Additionally, external dependency risk: zware has different
+design goals and update cadence from ClojureWasm.
+
+**Decision**: Build a custom Wasm runtime in `src/wasm/runtime/` replacing zware.
+
+**Design**:
+
+1. **Switch-based dispatch** instead of `.always_tail` — works on all Zig backends,
+   enabling cross-compilation to any target. ~10-20% slower than tail-call dispatch,
+   acceptable since Wasm FFI is not the hot path.
+
+2. **External API compatible, internal affinity** — keep zware-compatible public API
+   (Store, Module, Instance, invoke, getMemory) for minimal types.zig changes,
+   but design internals for ClojureWasm integration:
+   - Host function calls pass Env/allocator directly (reduced trampoline overhead)
+   - Error propagation via `anyerror` instead of WasmError mapping
+   - u64 operand stack matches ClojureWasm VM stack (future zero-copy bridge)
+   - SIMD opcode enum reservations for Phase 36
+
+3. **Direct bytecode execution** — no intermediate representation (zware's Rr).
+   Pre-pass resolves branch targets, function locals. Simpler, fewer LOC.
+
+4. **Wasm MVP + WASI Preview 1** — ~200 opcodes, 19 WASI functions.
+   SIMD (v128), multi-memory, Component Model deferred to Phase 36.
+
+**Scope**: ~3900 LOC (vs zware ~7100 LOC). 8 files in `src/wasm/runtime/`.
+
+**Consequence**: Zero external dependencies for Wasm execution. Cross-compilation
+unblocked. SIMD and multi-module can be added on our schedule (Phase 36).
+
+**Reference**: `.dev/plan/phase35-custom-wasm.md`

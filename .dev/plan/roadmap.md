@@ -502,28 +502,62 @@ library, ring-compatible handler model for web applications.
 **Prerequisite**: Phase 33 (namespace conventions established)
 **Reference**: F116 in checklist.md
 
-### Phase 35: Cross-Platform Distribution (F117)
+### Phase 35W: Custom Wasm Runtime (D84)
 
-Two axes: (A) cljw cross-compiles for Linux/Windows/macOS via Zig,
-(B) binaries produced by `cljw build` work on target platforms.
+Replace zware dependency with custom Wasm runtime in `src/wasm/runtime/`.
+zware uses `.always_tail` calling convention requiring LLVM backend, blocking
+Debug cross-compilation. Custom runtime uses switch-based dispatch.
 
 **Scope**:
-- Cross-compile cljw itself: `-Dtarget=x86_64-linux-gnu`, Windows, etc.
-- Verify binary trailer format on ELF (Linux) and PE (Windows)
-- Verify `cljw build` output binaries on each platform
-- CI pipeline for multi-platform builds
-- Platform-specific testing (paths, networking, signals)
-- Release workflow (GitHub releases with multi-platform binaries)
+- Wasm binary decoder (module sections 0-12)
+- Stack-based VM with switch dispatch (~200 opcodes, ~1500 LOC)
+- Linear memory, tables, globals, function calls
+- WASI Preview 1 (19 functions)
+- Host function injection (Clojure fns callable from Wasm)
+- Integration: update types.zig + build.zig, remove zware dep
 
-**Prerequisite**: Phase 34 (networking features testable cross-platform)
+**Design**: External API zware-compatible (minimal types.zig changes),
+internal design optimized for ClojureWasm (host call affinity, error
+propagation, SIMD enum reservation). ~3900 LOC total.
+
+**Prerequisite**: Phase 34 complete
+**Reference**: `.dev/plan/phase35-custom-wasm.md`, D84 in decisions.md
+
+### Phase 35X: Cross-Platform Build & Verification (F117)
+
+Cross-compile cljw for Linux, verify `cljw build` output on other
+platforms, establish CI pipeline.
+
+**Scope**:
+- Linux x86_64/aarch64 cross-compile + Docker verification
+- macOS x86_64 cross-compile + Rosetta verification
+- `cljw build` output verification on Linux (binary trailer on ELF)
+- LICENSE file (EPL-1.0)
+- GitHub Actions CI (build + test matrix)
+
+**Explicitly out of scope**: Windows (all of it)
+
+**Prerequisite**: Phase 35W (zware blocker eliminated)
+**Saved plan**: `.claude/plans/phase35-cross-platform-saved.md`
 **Reference**: F117 in checklist.md
 
-### Phase 36: Wasm FFI Deep (Phase 25 Extension)
+### Phase 36: Wasm FFI Deep + SIMD (F118)
 
-Deepen Wasm InterOp with multi-module support and practical examples.
+Deepen Wasm FFI with SIMD support, multi-module linking, and
+ClojureWasm-native API evolution.
 
-**Scope**: Multi-module linking, WIT-based type-safe FFI, real-world samples
-**Prerequisite**: Phase 35 (cross-platform distribution)
+**Scope**:
+- SIMD (v128): ~100 opcodes, Zig `@Vector` mapping. Near-native speed
+  for C/Rust SIMD-compiled .wasm modules (simdjson, stb_image, ML).
+- Multi-module linking: import/export across .wasm modules
+- Native API evolution: drop zware-compat API, expose ClojureWasm-native
+- Real-world samples: JSON parsing, image processing, ML inference
+
+**Value proposition**: "Clojure dynamism + C/Rust compute performance"
+— unique to ClojureWasm (Babashka has no Wasm FFI path).
+
+**Prerequisite**: Phase 35X (cross-platform stable)
+**Reference**: F118 in checklist.md, `.dev/plan/phase35-custom-wasm.md` Phase 36 section
 
 ### Phase 37: Advanced GC + JIT Research
 
@@ -536,7 +570,7 @@ Research phase for generational GC and JIT compilation feasibility.
 - Profile-guided optimization (F104): extend inline caching beyond monomorphic
 - Design documents + PoC prototypes, not full implementation
 
-**Prerequisite**: Phase 35 (stable cross-platform base for benchmarking)
+**Prerequisite**: Phase 35X (stable cross-platform base for benchmarking)
 **Note**: Design documents and PoC first, full implementation in subsequent phases.
 
 ### Future: wasm_rt Revival
@@ -622,7 +656,7 @@ Full targets in `.dev/plan/phase24-optimization.md` Section 8.
 
 FFI for calling Wasm modules from native track. Distinct from wasm_rt.
 **Research**: WasmResearch repo — docs/, examples/wat/, examples/wit/
-**Engine**: zware (pure Zig, MIT, Wasm 2.0 minus SIMD). Verify Zig 0.15.2 compat.
+**Engine**: ~~zware (replaced in Phase 35W, D84)~~ → custom `src/wasm/runtime/`.
 **Latest Wasm status** (research at Phase 25 start):
 - WASI Preview 2 stabilization
 - WasmGC (part of Wasm 3.0 draft)

@@ -1,4 +1,4 @@
-# Phase 35: Custom Wasm Runtime (Replace zware)
+# Phase 35W: Custom Wasm Runtime (Replace zware) — D84
 
 ## Motivation
 
@@ -6,18 +6,59 @@ zware dependency creates two problems:
 1. **Cross-compile blocker**: zware VM uses `.always_tail` calling convention,
    requiring LLVM backend. Debug cross-compile fails with 184 errors.
 2. **Dependency risk**: External dep with different design goals. ClojureWasm
-   needs a focused subset, not a full spec-compliant runtime.
+   needs a focused subset, not a full spec-compliant runtime. zware's update
+   cadence and roadmap do not align with ClojureWasm's needs.
 
 Building a custom Wasm runtime gives us:
 - **Cross-compile freedom**: Switch-based dispatch works on all Zig backends
 - **Full control**: Optimize for ClojureWasm's specific use cases
-- **Smaller binary**: Only include what we use (~30% of zware)
+- **Smaller binary**: Only include what we use (~55% of zware)
 - **Better integration**: Direct access to internals, no API boundary
+- **Spec initiative**: Add SIMD, multi-module, etc. on our own schedule
+
+## Design Principles
+
+### External API compatible, internal affinity
+
+**External API (zware-compatible)** — types.zig changes minimal:
+```
+Store.init / exposeHostFunction
+Module.init / decode
+Instance.instantiate / invoke / getMemory
+```
+
+**Internal design (ClojureWasm affinity from day 1)**:
+
+1. **Host function calls**: zware requires VirtualMachine pointer + stack ops.
+   Our runtime passes Env/allocator context directly to host functions,
+   reducing the trampoline overhead in types.zig `hostTrampoline`.
+
+2. **Error propagation**: zware uses `WasmError` which types.zig manually
+   maps to ClojureWasm errors. Our runtime can return `anyerror` directly,
+   simplifying the error path.
+
+3. **Memory integration**: Wasm linear memory can be registered as a GC root
+   naturally (today WasmModule struct is tracked as a whole).
+
+4. **u64 stack compatibility**: Both ClojureWasm VM and Wasm VM use u64
+   operand stacks. Future optimization: zero-copy value passing between
+   the two VMs when calling Wasm from ClojureWasm bytecode.
+
+5. **SIMD extensibility**: opcode.zig enum reserves v128 slots from day 1.
+   VM has a clear extension point for SIMD opcodes (Phase 36, F118).
+
+### Phase 36 evolution path
+
+After 35W establishes the runtime, Phase 36 deepens FFI:
+- Drop zware-compatible API, expose ClojureWasm-native Wasm API
+- SIMD (v128) — ~100 opcodes, Zig `@Vector` mapping
+- Multi-module linking
+- Real-world samples (simdjson, stb_image, ML inference)
 
 ## Scope
 
 ### In scope (Wasm MVP + ClojureWasm needs)
-- Wasm binary decoder (module sections 0-11)
+- Wasm binary decoder (module sections 0-12)
 - Stack-based VM with switch dispatch (~200 opcodes)
 - Linear memory (grow, read, write, bounds checking)
 - Function calls (local + host functions)
@@ -27,8 +68,8 @@ Building a custom Wasm runtime gives us:
 - Host function injection (Clojure fns callable from Wasm)
 - All existing ClojureWasm Wasm tests must pass
 
-### Out of scope
-- SIMD (v128) — not used by any ClojureWasm test module
+### Out of scope (Phase 36)
+- SIMD (v128) — deferred to Phase 36 (F118). Opcode enum reservations only.
 - Multi-memory proposal
 - Reference types beyond funcref (externref deferred)
 - Component Model / WASI Preview 2
@@ -82,7 +123,7 @@ Acceptable — Wasm FFI is not the hot path in ClojureWasm.
 
 zware converts Wasm bytecode to an intermediate "Refined Representation" (Rr).
 We skip this step and execute Wasm bytecode directly with a pre-pass for:
-- Block/loop branch target resolution
+- Block/loop branch target resolution (side table indexed by bytecode offset)
 - Function local counts
 - Constant expression evaluation
 
@@ -96,7 +137,9 @@ All Wasm values stored as `u64` on the operand stack, same as zware:
 - f32 → bit-cast u32 → zero-extended u64
 - f64 → bit-cast u64
 
-#### 4. Public API matches zware
+Same representation as ClojureWasm VM stack → future zero-copy bridge.
+
+#### 4. Public API matches zware (Phase 35W only)
 
 Keep the same API surface so `types.zig` changes are minimal:
 
@@ -124,12 +167,16 @@ pub fn Memory.write(T, offset, address, value) !void
 pub const ValType = enum(u8) { I32, I64, F32, F64, FuncRef, ExternRef };
 ```
 
+Phase 36 may evolve this API to be more ClojureWasm-native.
+
 ## Task breakdown
 
 ### 35W.1: Foundation — opcode.zig + leb128.zig (~150 LOC)
 
 Opcode enum (Wasm spec opcodes), LEB128 decoder (u32, i32, u64, i64, s33).
 Pure data definitions, no dependencies. Test with known byte sequences.
+
+Reserve v128/SIMD opcode ranges in enum (0xFD prefix) for Phase 36.
 
 ### 35W.2: Memory — memory.zig (~200 LOC)
 
@@ -291,13 +338,45 @@ Decision entry: D84 (Custom Wasm Runtime).
 5. Cross-compile check: `zig build -Dtarget=x86_64-linux-gnu` succeeds
    in both Debug and ReleaseSafe (the original blocker)
 
-## Relationship to Phase 35 (cross-platform)
+## Subsequent phases
 
-The saved cross-platform plan is at `.claude/plans/phase35-cross-platform-saved.md`.
-After this custom Wasm runtime is complete:
-- The `.always_tail` cross-compile blocker is eliminated
-- Phase 35 cross-platform tasks (Linux verification, CI, LICENSE) can proceed
-- The two phases can be numbered 35W (Wasm) and 35X (cross-platform)
+### Phase 35X: Cross-Platform Build & Verification
+
+**Saved plan**: `.claude/plans/phase35-cross-platform-saved.md`
+
+After 35W, the `.always_tail` blocker is eliminated. Phase 35X covers:
+- Linux x86_64/aarch64 cross-compile + Docker verification
+- macOS x86_64 cross-compile + Rosetta verification
+- `cljw build` output verification on Linux
+- LICENSE file (EPL-1.0)
+- GitHub Actions CI
+- Windows explicitly excluded
+
+### Phase 36: Wasm FFI Deep + SIMD (F118)
+
+After 35X, deepen Wasm FFI with ClojureWasm-native optimizations:
+- **SIMD (v128)**: ~100 opcodes, Zig `@Vector` mapping. Enables near-native
+  speed for C/Rust SIMD-compiled .wasm modules (simdjson, stb_image, ML).
+- **Multi-module linking**: Import/export across .wasm modules
+- **Native API evolution**: Drop zware-compat API, expose ClojureWasm-native interface
+- **Real-world samples**: JSON parsing, image processing, ML inference benchmarks
+
+**Value proposition**: "Clojure dynamism + C/Rust compute performance"
+— unique to ClojureWasm (Babashka has no Wasm FFI path).
+
+## Reference
+
+| Item                        | Location                                         |
+|-----------------------------|--------------------------------------------------|
+| Decision                    | `.dev/notes/decisions.md` D84                    |
+| Cross-platform plan (saved) | `.claude/plans/phase35-cross-platform-saved.md`  |
+| zware source (reference)    | add-dir: `/Users/shota.508/Documents/OSS/zware/` |
+| Current Wasm types          | `src/wasm/types.zig` (820 LOC)                   |
+| Current Wasm builtins       | `src/wasm/builtins.zig` (504 LOC)                |
+| Current Wasm tests          | `src/wasm/testdata/` (12 .wasm files)            |
+| WIT parser (no zware dep)   | `src/wasm/wit_parser.zig` (443 LOC)              |
+| Roadmap                     | `.dev/plan/roadmap.md` Phase 35W/35X/36          |
+| Checklist                   | `.dev/checklist.md` F117, F118                   |
 
 ## Risk assessment
 

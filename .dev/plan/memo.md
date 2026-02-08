@@ -8,9 +8,9 @@ Session handover document. Read at session start.
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Phase 32 COMPLETE** — Build System & Startup Optimization (D81)
-- **Phase 33 COMPLETE** — Namespace & Portability Design (F115, D82)
-- **Phase 34 COMPLETE** — Server Mode & Networking (F116, D83)
-- **Phase 35W NEXT** — Custom Wasm Runtime (replace zware dependency)
+- **Phase 33 COMPLETE** — Namespace & Portability Design (D82)
+- **Phase 34 COMPLETE** — Server Mode & Networking (D83)
+- **Phase 35W NEXT** — Custom Wasm Runtime (D84)
 
 ## Strategic Direction
 
@@ -20,7 +20,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> **35W (custom wasm)** -> 35X (cross-platform) -> 36 (FFI deep) -> 37 (GC/JIT)
+Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~~ -> **35W (custom wasm)** -> 35X (cross-platform) -> 36 (SIMD + FFI deep) -> 37 (GC/JIT)
 
 ## Task Queue
 
@@ -34,71 +34,78 @@ Phase 35W — Custom Wasm Runtime (D84)
 - 35W.6 VM: vm.zig — switch-based dispatch, ~200 opcodes (~1500 LOC)
 - 35W.7 WASI: wasi.zig — 19 WASI Preview 1 functions (~500 LOC)
 - 35W.8 Integration: update types.zig + build.zig, remove zware dep (~200 LOC change)
-- 35W.9 Cleanup: verify all tests, D84 decision entry, update docs
+- 35W.9 Cleanup: verify all tests, update docs
 
 ## Current Task
 
-(Awaiting approval — Phase 35W plan at `.dev/plan/phase35-custom-wasm.md`)
+(Phase 35W plan approved — start from 35W.1)
 
 ## Previous Task
 
 34.6 — Fix run-server :background option and add set-handler! for live reload.
-- Parse :background from opts map (was module-level only)
-- Add set-handler! builtin for live handler replacement
-- Per-request handler resolution from __handler Var
-- README.md comprehensive rewrite (Phase 34 features)
 
 ## Known Issues
 
 - F113 OPEN: nREPL lacks GC — transient Values accumulate via GPA. Bounded
   for typical REPL sessions. Not a correctness issue.
 
+## Reference Chain
+
+Session resume procedure: read this file → follow references below.
+
+### Phase 35W (current)
+
+| Item                         | Location                                          |
+|------------------------------|---------------------------------------------------|
+| **Detailed plan + tasks**    | `.dev/plan/phase35-custom-wasm.md`                |
+| **Decision**                 | `.dev/notes/decisions.md` D84                     |
+| **Design principles**        | phase35-custom-wasm.md "Design Principles" section|
+| **zware source (reference)** | add-dir: `Documents/OSS/zware/`                   |
+| **Current Wasm types**       | `src/wasm/types.zig` (820 LOC, zware wrapper)     |
+| **Current Wasm builtins**    | `src/wasm/builtins.zig` (504 LOC, Clojure API)    |
+| **Wasm test corpus**         | `src/wasm/testdata/` (12 .wasm files)             |
+| **WIT parser (no zware)**    | `src/wasm/wit_parser.zig` (443 LOC)               |
+
+### Upcoming phases
+
+| Phase | Plan                                              | Key reference                       |
+|-------|---------------------------------------------------|-------------------------------------|
+| 35X   | Cross-platform (Linux/Mac)                        | `.claude/plans/phase35-cross-platform-saved.md` |
+| 36    | SIMD + FFI deep + multi-module                    | phase35-custom-wasm.md "Phase 36" + F118 |
+| 37    | GC + JIT research                                 | `.dev/plan/roadmap.md`              |
+
+### Key design decisions for 35W
+
+1. **Switch-based dispatch** (not `.always_tail`) — cross-compile friendly
+2. **External API zware-compatible** — minimal types.zig changes
+3. **Internal ClojureWasm affinity** — host call optimization, error propagation,
+   u64 stack compat, SIMD enum reservations
+4. **Direct bytecode execution** (no IR) — simpler than zware's Rr
+5. **SIMD deferred to Phase 36** — opcode enum reservations only in 35W
+
+### Global references
+
+| Topic              | Location                                 |
+|--------------------|------------------------------------------|
+| Roadmap            | `.dev/plan/roadmap.md`                   |
+| Deferred items     | `.dev/checklist.md` (F113, F117, F118)   |
+| Decisions          | `.dev/notes/decisions.md` (D1-D84)       |
+| Optimization       | `.dev/notes/optimization-catalog.md`     |
+| Benchmarks         | `bench/history.yaml`                     |
+| Zig tips           | `.claude/references/zig-tips.md`         |
+
 ## Handover Notes
 
-- **Phase 32 architecture**: D81 in decisions.md
-- **Phase 32 results**: 32.1 removed cljw compile, 32.2 build-time cache gen,
-  32.3 startup ~3-4ms (was ~12ms), 32.4 multi-file require robustness,
-  32.5 source bundling build with require resolution
-- **Phase 33 COMPLETE** (D82): Namespace naming convention + portability
-  - clojure.* for JVM compat, cljw.* for extensions
-  - wasm → cljw.wasm rename, clojure.repl extracted to separate ns
-  - clojure.java.io compat layer (7 builtins: file, delete-file, make-parents, etc.)
-  - System/getProperty with 9 native property mappings
-  - Portability test suite: 2/2 PASS (0 diff with JVM Clojure 1.12)
-  - vars.yaml audit: 659 vars done (was 535+8, fixed clojure.math/edn staleness)
 - **Phase 34 COMPLETE** (D83): Server mode & networking
   - 34.1: --nrepl flag passthrough in built binaries
   - 34.2+34.3: HTTP server (cljw.http/run-server, Ring-compatible)
-    - Blocking/background/build modes, thread per connection
-    - Live reload via nREPL: HTTP + nREPL simultaneous operation
   - 34.4: HTTP client (get/post/put/delete) using Zig std.http.Client
   - 34.5: Lifecycle management (SIGINT/SIGTERM, shutdown hooks, graceful exit)
   - 34.6: Fix :background opt parsing + set-handler! for live reload
-- **Phase 35W plan**: `.dev/plan/phase35-custom-wasm.md`
-  - Replace zware with custom Wasm runtime (~3900 LOC)
-  - Switch-based dispatch (no .always_tail — cross-compile friendly)
-  - Wasm MVP + WASI Preview 1 (19 functions)
-  - Same public API as zware (minimal types.zig changes)
-- **Cross-platform plan (saved)**: `.claude/plans/phase35-cross-platform-saved.md`
-  - After 35W: Linux verification, CI, LICENSE as Phase 35X
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
   clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user
-- **Benchmark (Phase 32)**: bench/history.yaml entry "32". Startup ~3-4ms
-  (C/Zig level). Cross-lang comparison in optimization-catalog.md Section 7.5.
-- **Phase 31 (AOT)**: serialize.zig (bytecode format), bootstrap.zig
-  (generateBootstrapCache/restoreFromBootstrapCache/compileToModule/runBytecodeModule)
-- **Roadmap**: .dev/plan/roadmap.md
-- **Optimization catalog**: .dev/notes/optimization-catalog.md
-- **Benchmark history**: bench/history.yaml
-- **NaN boxing (D72)**: COMPLETE. Value 48B->8B. 17 commits (27.1-27.4).
-- **Single binary**: Binary trailer approach (Deno-style). No Zig needed on user machine.
-  Format: [cljw binary] + [bundled source] + [u64 size] + "CLJW" magic.
-  Multi-file: deps concatenated in depth-first load order + entry file.
-- **nREPL/CIDER**: Phase 30.2 complete. 14 ops. Start: `cljw --nrepl-server --port=0`
-- **Bootstrap cache**: cache_gen.zig generates cache at Zig build time,
-  embedded via build.zig WriteFile+addAnonymousImport pattern.
-  Startup: registerBuiltins (~<1ms) + restoreFromBootstrapCache (~2-3ms).
-- **Future design items** (F117):
-  - F117: Cross-platform — Zig cross-compile, CI matrix, ELF/PE trailer verify.
-    Includes cljw build output binaries on other platforms.
+- **NaN boxing (D72)**: COMPLETE. Value 48B->8B.
+- **Single binary**: Binary trailer `[cljw binary][source][u64 size]["CLJW"]`
+- **nREPL/CIDER**: 14 ops. Start: `cljw --nrepl-server --port=0`
+- **Bootstrap cache**: cache_gen.zig at build time, ~3ms startup.
