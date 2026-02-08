@@ -24,25 +24,21 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~29 (skipped)~~ -> ~~30~~ -> ~~31~~ -> ~~32 
 
 Phase 33 — Namespace & Portability Design (F115)
 
-- 33.5 Portability test suite (code that runs on both JVM Clojure and cljw)
+  (Task Queue empty — Phase 33 complete)
 
 ## Current Task
 
-33.5 — Portability test suite (code that runs on both JVM Clojure and cljw).
-
-Scope: Write a set of .clj test files that exercise cross-platform features
-and verify they produce identical output on JVM Clojure and ClojureWasm.
-Focus areas: clojure.java.io, System/ interop, clojure.repl, namespaces.
+Phase 33 complete. Ready for Phase 34 (server/networking).
 
 ## Previous Task
 
-33.4 — System interop routing. Changes:
-- Added System/getProperty builtin (maps user.dir, user.home, os.name, etc.)
-- Analyzer routing: System/getProperty → __get-property
-- 9 Java system properties mapped to native equivalents
-- System/getenv, System/exit, System/nanoTime, System/currentTimeMillis
-  already existed from earlier phase
-- Both backends verified
+33.5 — Portability test suite. Created test/portability/ with:
+- core_compat.clj: 80+ assertions covering arithmetic, collections,
+  sequences, predicates, control flow, destructuring, atoms, strings, sets, walk
+- io_compat.clj: I/O, System interop, env vars, time functions
+- run_compat.sh: automated diff between CW and JVM Clojure output
+- Result: 2/2 PASS (zero diff with JVM Clojure 1.12)
+- Known limitation: F3 (Ratio) causes / to return float instead of Ratio
 
 ## Known Issues
 
