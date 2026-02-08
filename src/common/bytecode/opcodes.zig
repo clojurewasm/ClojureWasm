@@ -172,6 +172,33 @@ pub const OpCode = enum(u8) {
     /// (not= a b) — inequality check
     neq = 0xBB,
 
+    // === [S] Superinstructions (0xC0-0xCF) ===
+    // Fused 3-instruction sequences for common patterns (37.2).
+    // Operand packs two u8 indices: (first << 8) | second.
+    // For *_locals: first = slot_a (deeper stack), second = slot_b (top).
+    // For *_local_const: first = local slot, second = constant pool index.
+
+    /// local_load a + local_load b + add → push locals[a] + locals[b]
+    add_locals = 0xC0,
+    /// local_load a + local_load b + sub → push locals[a] - locals[b]
+    sub_locals = 0xC1,
+    /// local_load a + local_load b + eq → push locals[a] == locals[b]
+    eq_locals = 0xC2,
+    /// local_load a + local_load b + lt → push locals[a] < locals[b]
+    lt_locals = 0xC3,
+    /// local_load a + local_load b + le → push locals[a] <= locals[b]
+    le_locals = 0xC4,
+    /// local_load + const_load + add → push locals[slot] + constants[idx]
+    add_local_const = 0xC5,
+    /// local_load + const_load + sub → push locals[slot] - constants[idx]
+    sub_local_const = 0xC6,
+    /// local_load + const_load + eq → push locals[slot] == constants[idx]
+    eq_local_const = 0xC7,
+    /// local_load + const_load + lt → push locals[slot] < constants[idx]
+    lt_local_const = 0xC8,
+    /// local_load + const_load + le → push locals[slot] <= constants[idx]
+    le_local_const = 0xC9,
+
     // === [Z] Reserved/debug (0xF0-0xFF) ===
 
     /// No operation
@@ -208,7 +235,7 @@ pub const OpCode = enum(u8) {
             .nop,
             .debug_print,
             => false,
-            // All others use the operand
+            // All others use the operand (includes superinstructions)
             else => true,
         };
     }

@@ -21,7 +21,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 37: VM Optimization + JIT (A→B incremental)
 1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
-2. [ ] 37.2: Superinstructions (fuse common opcode sequences)
+2. [x] 37.2: Superinstructions (fuse common opcode sequences)
 3. [ ] 37.3: Specializing adaptive interpreter (runtime quickening)
 4. [ ] 37.4: JIT PoC — hot loop native code generation
 5. [ ] 37.5: Slab GC + bitmap marking (if GC bottleneck remains)
@@ -29,21 +29,17 @@ Phase 37: VM Optimization + JIT (A→B incremental)
 
 ## Current Task
 
-37.2: Superinstructions.
-Based on profiling data from 37.1, fuse common opcode sequences
-to reduce VM dispatch overhead. Top candidates from arith_loop:
-- local_load + local_load + add (41.7% + 16.7%)
-- local_load + const_load + eq + jump_if_false (comparison pattern)
+37.3: Specializing adaptive interpreter (runtime quickening).
+CPython 3.12 QUICKEN model: after warmup, replace generic opcodes with
+type-specialized versions. Guard + deopt on type mismatch.
 
 ## Previous Task
 
-37.1: Profiling infrastructure — DONE.
-- Opcode frequency profiling: `-Dprofile-opcodes=true` build flag
-- Allocation histogram: `-Dprofile-alloc=true` build flag
-- New GC benchmarks: gc_alloc_rate (53ms), gc_large_heap (29ms)
-- Baseline recorded (37.1 in history.yaml, 27 benchmarks)
-- Key insight: arith_loop dominated by local_load (41.7%), add (16.7%),
-  eq/const_load/jump_if_false each ~8.3%
+37.2: Superinstructions — DONE.
+- 10 fused opcodes (0xC0-0xC9): *_locals and *_local_const variants
+- Peephole pass in compiler.zig: pattern match, compact, fix jump offsets
+- arith_loop: 56ms → 40ms (1.4x), fib_recursive: 19ms → 16ms (1.2x)
+- Error location preserved (lines/columns from operator instruction)
 
 ## Known Issues
 
@@ -79,6 +75,10 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 37.2 COMPLETE**: Superinstructions
+  - 10 fused opcodes: add/sub/eq/lt/le_locals, add/sub/eq/lt/le_local_const
+  - Peephole optimizer in compiler.zig with jump offset fixup
+  - arith_loop 56→40ms (1.4x), fib_recursive 19→16ms (1.2x)
 - **Phase 37.1 COMPLETE**: Profiling infrastructure
   - Opcode frequency: `-Dprofile-opcodes` → VM dispatch loop counter + sorted dump
   - Allocation histogram: `-Dprofile-alloc` → per-size bucket counting in MarkSweepGc

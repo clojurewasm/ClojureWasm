@@ -875,6 +875,18 @@ pub const VM = struct {
                 try self.push(Value.initBoolean(!a.eqlAlloc(b, self.allocator)));
             },
 
+            // [S] Superinstructions (37.2) — fused 3-instruction sequences
+            .add_locals => try self.vmSuperArithLocals(frame, instr.operand, .add),
+            .sub_locals => try self.vmSuperArithLocals(frame, instr.operand, .sub),
+            .eq_locals => try self.vmSuperEqLocals(frame, instr.operand),
+            .lt_locals => try self.vmSuperCompareLocals(frame, instr.operand, .lt),
+            .le_locals => try self.vmSuperCompareLocals(frame, instr.operand, .le),
+            .add_local_const => try self.vmSuperArithLocalConst(frame, instr.operand, .add),
+            .sub_local_const => try self.vmSuperArithLocalConst(frame, instr.operand, .sub),
+            .eq_local_const => try self.vmSuperEqLocalConst(frame, instr.operand),
+            .lt_local_const => try self.vmSuperCompareLocalConst(frame, instr.operand, .lt),
+            .le_local_const => try self.vmSuperCompareLocalConst(frame, instr.operand, .le),
+
             // [Z] Debug
             .nop => {},
             .debug_print => _ = self.pop(),
@@ -1490,7 +1502,129 @@ pub const VM = struct {
         try self.push(Value.initBoolean(arith.compareFn(a, b, op) catch return error.TypeError));
     }
 
-    /// Save arg sources from VM debug info for the current binary op instruction.
+    // --- Superinstruction helpers (37.2) ---
+    //
+    // Fused instructions that combine local_load + local_load + op (or local_load +
+    // const_load + op) into a single dispatch. Eliminates intermediate pushes/pops
+    // and reduces dispatch count by 3x for fused patterns.
+
+    /// Unpack superinstruction operand: (first << 8) | second → (first, second).
+    inline fn unpackSuper(operand: u16) struct { u8, u8 } {
+        return .{ @intCast(operand >> 8), @truncate(operand) };
+    }
+
+    /// Fused local_load a + local_load b + add/sub.
+    fn vmSuperArithLocals(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.ArithOp) VMError!void {
+        const slots = unpackSuper(operand);
+        const a = self.stack[frame.base + slots[0]];
+        const b = self.stack[frame.base + slots[1]];
+        if (a.tag() == .integer and b.tag() == .integer) {
+            const ai = a.asInteger();
+            const bi = b.asInteger();
+            const result = switch (op) {
+                .add => @addWithOverflow(ai, bi),
+                .sub => @subWithOverflow(ai, bi),
+                .mul => @mulWithOverflow(ai, bi),
+            };
+            if (result[1] != 0) {
+                @branchHint(.unlikely);
+                self.saveVmArgSources();
+                try self.push(Value.initFloat(switch (op) {
+                    .add => @as(f64, @floatFromInt(ai)) + @as(f64, @floatFromInt(bi)),
+                    .sub => @as(f64, @floatFromInt(ai)) - @as(f64, @floatFromInt(bi)),
+                    .mul => @as(f64, @floatFromInt(ai)) * @as(f64, @floatFromInt(bi)),
+                }));
+                return;
+            }
+            try self.push(Value.initInteger(result[0]));
+            return;
+        }
+        self.saveVmArgSources();
+        try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
+    }
+
+    /// Fused local_load a + local_load b + eq.
+    fn vmSuperEqLocals(self: *VM, frame: *CallFrame, operand: u16) VMError!void {
+        const slots = unpackSuper(operand);
+        const a = self.stack[frame.base + slots[0]];
+        const b = self.stack[frame.base + slots[1]];
+        try self.push(Value.initBoolean(a.eqlAlloc(b, self.allocator)));
+    }
+
+    /// Fused local_load a + local_load b + lt/le.
+    fn vmSuperCompareLocals(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.CompareOp) VMError!void {
+        const slots = unpackSuper(operand);
+        const a = self.stack[frame.base + slots[0]];
+        const b = self.stack[frame.base + slots[1]];
+        if (a.tag() == .integer and b.tag() == .integer) {
+            try self.push(Value.initBoolean(switch (op) {
+                .lt => a.asInteger() < b.asInteger(),
+                .le => a.asInteger() <= b.asInteger(),
+                .gt => a.asInteger() > b.asInteger(),
+                .ge => a.asInteger() >= b.asInteger(),
+            }));
+            return;
+        }
+        self.saveVmArgSources();
+        try self.push(Value.initBoolean(arith.compareFn(a, b, op) catch return error.TypeError));
+    }
+
+    /// Fused local_load slot + const_load idx + add/sub.
+    fn vmSuperArithLocalConst(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.ArithOp) VMError!void {
+        const parts = unpackSuper(operand);
+        const a = self.stack[frame.base + parts[0]];
+        const b = frame.constants[parts[1]];
+        if (a.tag() == .integer and b.tag() == .integer) {
+            const ai = a.asInteger();
+            const bi = b.asInteger();
+            const result = switch (op) {
+                .add => @addWithOverflow(ai, bi),
+                .sub => @subWithOverflow(ai, bi),
+                .mul => @mulWithOverflow(ai, bi),
+            };
+            if (result[1] != 0) {
+                @branchHint(.unlikely);
+                self.saveVmArgSources();
+                try self.push(Value.initFloat(switch (op) {
+                    .add => @as(f64, @floatFromInt(ai)) + @as(f64, @floatFromInt(bi)),
+                    .sub => @as(f64, @floatFromInt(ai)) - @as(f64, @floatFromInt(bi)),
+                    .mul => @as(f64, @floatFromInt(ai)) * @as(f64, @floatFromInt(bi)),
+                }));
+                return;
+            }
+            try self.push(Value.initInteger(result[0]));
+            return;
+        }
+        self.saveVmArgSources();
+        try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
+    }
+
+    /// Fused local_load slot + const_load idx + eq.
+    fn vmSuperEqLocalConst(self: *VM, frame: *CallFrame, operand: u16) VMError!void {
+        const parts = unpackSuper(operand);
+        const a = self.stack[frame.base + parts[0]];
+        const b = frame.constants[parts[1]];
+        try self.push(Value.initBoolean(a.eqlAlloc(b, self.allocator)));
+    }
+
+    /// Fused local_load slot + const_load idx + lt/le.
+    fn vmSuperCompareLocalConst(self: *VM, frame: *CallFrame, operand: u16, comptime op: arith.CompareOp) VMError!void {
+        const parts = unpackSuper(operand);
+        const a = self.stack[frame.base + parts[0]];
+        const b = frame.constants[parts[1]];
+        if (a.tag() == .integer and b.tag() == .integer) {
+            try self.push(Value.initBoolean(switch (op) {
+                .lt => a.asInteger() < b.asInteger(),
+                .le => a.asInteger() <= b.asInteger(),
+                .gt => a.asInteger() > b.asInteger(),
+                .ge => a.asInteger() >= b.asInteger(),
+            }));
+            return;
+        }
+        self.saveVmArgSources();
+        try self.push(Value.initBoolean(arith.compareFn(a, b, op) catch return error.TypeError));
+    }
+
     /// Save arg sources from VM debug info for the current binary op instruction.
     /// ip-1 = binary op. Its column is the second operand's (arg1) compile position.
     /// Scan backward to find a different column for the first operand (arg0).

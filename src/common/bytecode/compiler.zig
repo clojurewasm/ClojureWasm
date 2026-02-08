@@ -459,6 +459,9 @@ pub const Compiler = struct {
         const columns_copy = self.allocator.dupe(u32, fn_compiler.chunk.columns.items) catch
             return error.OutOfMemory;
 
+        // Peephole optimization (37.2): fuse common instruction sequences
+        const optimized = peepholeOptimize(self.allocator, code_copy, lines_copy, columns_copy);
+
         const proto = self.allocator.create(FnProto) catch return error.OutOfMemory;
         proto.* = .{
             .name = node.name,
@@ -467,10 +470,10 @@ pub const Compiler = struct {
             .local_count = @intCast(fn_compiler.locals.items.len),
             .capture_count = capture_count,
             .has_self_ref = has_self_ref,
-            .code = code_copy,
+            .code = optimized.code,
             .constants = const_copy,
-            .lines = lines_copy,
-            .columns = columns_copy,
+            .lines = optimized.lines,
+            .columns = optimized.columns,
         };
 
         self.fn_protos.append(self.allocator, proto) catch return error.OutOfMemory;
@@ -1215,6 +1218,165 @@ test "compile fn_node emits closure" {
     // The constant should be a fn_val
     const fn_const = compiler.chunk.constants.items[code[0].operand];
     try std.testing.expect(fn_const.tag() == .fn_val);
+}
+
+// --- Peephole optimizer (37.2) ---
+//
+// Post-compile pass that fuses common instruction sequences into single
+// superinstructions. Scans for patterns like local_load+local_load+add and
+// replaces them with add_locals. Removes dead instructions and fixes jump
+// offsets. Applied to each FnProto before it's finalized.
+
+/// Peephole-optimize a bytecode sequence in-place. Returns compacted arrays.
+/// The allocator must match the one used for the original slices.
+fn peepholeOptimize(
+    allocator: std.mem.Allocator,
+    code: []Instruction,
+    lines: []u32,
+    columns: []u32,
+) struct { code: []Instruction, lines: []u32, columns: []u32 } {
+    const n = code.len;
+    if (n < 3) return .{ .code = code, .lines = lines, .columns = columns };
+
+    // Pass 1: Collect jump targets (absolute IPs that are branched to).
+    var jump_targets = std.StaticBitSet(65536).initEmpty();
+    for (code, 0..) |instr, ip| {
+        switch (instr.op) {
+            .jump, .jump_if_false => {
+                const signed: i32 = @as(i32, @intCast(ip)) + 1 + @as(i32, instr.signedOperand());
+                if (signed >= 0 and signed < @as(i32, @intCast(n))) {
+                    jump_targets.set(@intCast(signed));
+                }
+            },
+            .jump_back => {
+                const target = ip + 1 -| instr.operand;
+                if (target < n) jump_targets.set(target);
+            },
+            else => {},
+        }
+    }
+
+    // Pass 2: Mark fuseable patterns. A pattern is fuseable only if no jump
+    // targets land on the 2nd or 3rd instruction of the sequence.
+    // removed[i] = true means instruction i will be dropped.
+    var removed: [65536]bool = .{false} ** 65536;
+    var i: usize = 0;
+    while (i + 2 < n) : (i += 1) {
+        // Skip if any of the 3 positions would be a jump target (except first)
+        if (jump_targets.isSet(i + 1) or jump_targets.isSet(i + 2)) continue;
+
+        const a = code[i];
+        const b = code[i + 1];
+        const c = code[i + 2];
+
+        // Pattern: local_load + local_load + arith/cmp
+        if (a.op == .local_load and b.op == .local_load and a.operand <= 255 and b.operand <= 255) {
+            const fused_operand: u16 = (@as(u16, @intCast(a.operand & 0xFF)) << 8) | @as(u16, @intCast(b.operand & 0xFF));
+            const fused_op: ?OpCode = switch (c.op) {
+                .add => .add_locals,
+                .sub => .sub_locals,
+                .eq => .eq_locals,
+                .lt => .lt_locals,
+                .le => .le_locals,
+                else => null,
+            };
+            if (fused_op) |op| {
+                code[i] = .{ .op = op, .operand = fused_operand };
+                // Use line/column from the operator (last instruction) for error reporting
+                lines[i] = lines[i + 2];
+                columns[i] = columns[i + 2];
+                removed[i + 1] = true;
+                removed[i + 2] = true;
+                i += 2; // skip fused instructions
+                continue;
+            }
+        }
+
+        // Pattern: local_load + const_load + arith/cmp
+        if (a.op == .local_load and b.op == .const_load and a.operand <= 255 and b.operand <= 255) {
+            const fused_operand: u16 = (@as(u16, @intCast(a.operand & 0xFF)) << 8) | @as(u16, @intCast(b.operand & 0xFF));
+            const fused_op: ?OpCode = switch (c.op) {
+                .add => .add_local_const,
+                .sub => .sub_local_const,
+                .eq => .eq_local_const,
+                .lt => .lt_local_const,
+                .le => .le_local_const,
+                else => null,
+            };
+            if (fused_op) |op| {
+                code[i] = .{ .op = op, .operand = fused_operand };
+                lines[i] = lines[i + 2];
+                columns[i] = columns[i + 2];
+                removed[i + 1] = true;
+                removed[i + 2] = true;
+                i += 2;
+                continue;
+            }
+        }
+    }
+
+    // Pass 3: Build old→new IP mapping and compact arrays.
+    var ip_map: [65536]u16 = undefined;
+    var new_ip: u16 = 0;
+    for (0..n) |old_ip| {
+        ip_map[old_ip] = new_ip;
+        if (!removed[old_ip]) {
+            code[new_ip] = code[old_ip];
+            lines[new_ip] = lines[old_ip];
+            columns[new_ip] = columns[old_ip];
+            new_ip += 1;
+        }
+    }
+    // Map for IP = n (one past end, for forward jumps that land at end)
+    if (n < 65536) ip_map[n] = new_ip;
+
+    const new_len: usize = new_ip;
+
+    // Pass 4: Build reverse mapping (new_ip → old_ip) and fix jump offsets.
+    var old_ip_for_new: [65536]u16 = undefined;
+    new_ip = 0;
+    for (0..n) |old_ip| {
+        if (!removed[old_ip]) {
+            old_ip_for_new[new_ip] = @intCast(old_ip);
+            new_ip += 1;
+        }
+    }
+
+    // Now fix jumps.
+    for (code[0..new_len], 0..) |*instr, nip| {
+        switch (instr.op) {
+            .jump, .jump_if_false => {
+                const old_ip2: usize = old_ip_for_new[nip];
+                const old_target_signed: i32 = @as(i32, @intCast(old_ip2)) + 1 + @as(i32, instr.signedOperand());
+                const old_target: usize = @intCast(@max(0, @min(old_target_signed, @as(i32, @intCast(n)))));
+                const new_target = ip_map[old_target];
+                const new_offset: i16 = @intCast(@as(i32, new_target) - @as(i32, @intCast(nip)) - 1);
+                instr.operand = @bitCast(new_offset);
+            },
+            .jump_back => {
+                const old_ip2: usize = old_ip_for_new[nip];
+                const old_target = old_ip2 + 1 -| instr.operand;
+                const new_target = ip_map[old_target];
+                instr.operand = @intCast(@as(i32, @intCast(nip)) + 1 - @as(i32, new_target));
+            },
+            else => {},
+        }
+    }
+
+    // If nothing was removed, return originals unchanged.
+    if (new_len == n) return .{ .code = code, .lines = lines, .columns = columns };
+
+    // Allocate correctly-sized copies and free originals.
+    const new_code = allocator.dupe(Instruction, code[0..new_len]) catch
+        return .{ .code = code, .lines = lines, .columns = columns };
+    const new_lines = allocator.dupe(u32, lines[0..new_len]) catch
+        return .{ .code = code, .lines = lines, .columns = columns };
+    const new_columns = allocator.dupe(u32, columns[0..new_len]) catch
+        return .{ .code = code, .lines = lines, .columns = columns };
+    allocator.free(code);
+    allocator.free(lines);
+    allocator.free(columns);
+    return .{ .code = new_code, .lines = new_lines, .columns = new_columns };
 }
 
 test "compile var_ref" {
