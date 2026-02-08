@@ -110,7 +110,7 @@ for bench_dir in "${BENCH_DIRS[@]}"; do
     --runs "$RUNS" \
     --export-json "$json_file" \
     "$CLJW $bench_dir/bench.clj" \
-    2>/dev/null
+    >/dev/null 2>&1
 
   # Parse results
   result=$(python3 -c "

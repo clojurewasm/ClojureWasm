@@ -17,11 +17,8 @@ Check at session start for items that become actionable.
 | F3   | Ratio type (`1/3`)                           | SCI tests fail on float precision loss                             |
 | F4   | Persistent data structures (HAMT, RRB-Tree)  | Collection benchmarks show bottleneck                              |
 | F6   | Multi-thread dynamic bindings                | Native multi-thread target                                         |
-| F21  | 3-layer separation (Memory/Exec/Opt)         | Introduction of fused reduce or optimization pass                  |
-| F24  | vars.yaml status refinement                  | When stub functions appear                                         |
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
-| F98  | fib_recursive ReleaseFast anomaly            | 487ms Release > 205ms Debug — investigate Zig optimizer interaction |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimization-roadmap.md` |
 | F101 | into() transient optimization                | into uses reduce+conj, could use transient. See `optimization-roadmap.md` |
 | F102 | map/filter chunked processing                | chunk.zig infra exists, map/filter don't use it. See `optimization-roadmap.md` |
@@ -30,6 +27,6 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimization-roadmap.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
 | F113 | nREPL GC integration                         | Without GC, transient Values accumulate in GPA. Add MarkSweepGc to nREPL. |
-| F118 | Wasm SIMD + FFI deep (Phase 36)              | SIMD done (236 opcodes). Remaining: multi-module, F119 fix, docs.  |
+| F118 | Wasm FFI deep (Phase 36)                     | SIMD + optimization done. Remaining: 36.8 multi-module, 36.9 F119, 36.10 docs |
 | F119 | WIT string return marshalling                | `wasm/fn` with WIT returns accumulated memory. Fix: slice by (ptr, len). |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
