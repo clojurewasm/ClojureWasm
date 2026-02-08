@@ -21,23 +21,28 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 
 ## Task Queue
 
-Phase 35X (cross-platform). Plan: `.dev/plan/phase35X-cross-platform.md`
+Phase 36 (SIMD + FFI deep). Plan: TBD — create during planning task.
 
-1. ~~**35X.1** Linux x86_64 cross-compile + Docker verification~~ DONE
-2. ~~**35X.2** Linux aarch64 cross-compile + Docker verification~~ DONE
-3. ~~**35X.3** macOS x86_64 cross-compile + Rosetta verification~~ DONE
-4. ~~**35X.4** LICENSE file (EPL-1.0)~~ DONE
-5. ~~**35X.5** GitHub Actions CI~~ DONE
+1. **36.0** Plan Phase 36: read `.dev/plan/phase35-custom-wasm.md` Phase 36 section,
+   F118 in checklist.md, `bench/simd/results.md` baseline, `.dev/plan/roadmap.md`.
+   Create `.dev/plan/phase36-simd-ffi.md` with task breakdown.
 
 ## Current Task
 
-Phase 35X complete. All 5 tasks done.
-Next: Phase 36 (SIMD + FFI deep) or address deferred items.
+36.0: Plan Phase 36 (SIMD + FFI deep).
+Read references, design task breakdown, create phase plan file.
+
+Key references:
+- `.dev/plan/phase35-custom-wasm.md` "Phase 36" section (SIMD opcode reservations)
+- `.dev/checklist.md` F118 (scope definition)
+- `bench/simd/results.md` (baseline: interpreter 14x-289x vs native)
+- `.dev/plan/roadmap.md` Phase 36 notes
+- `.dev/future.md` for broader context
 
 ## Previous Task
 
-35X.5: GitHub Actions CI. Added `.github/workflows/ci.yml` with test-macos,
-test-linux, cross-compile (4 targets) jobs.
+Phase 35X complete (5 tasks). NaN boxing 4-tag redesign (D85), Linux/macOS
+cross-compile verified, EPL-1.0 license, GitHub Actions CI.
 
 ## Known Issues
 
