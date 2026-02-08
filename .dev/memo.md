@@ -19,22 +19,20 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 36 (SIMD + FFI deep). Plan: `.dev/archive/phase36-simd-ffi.md`.
-
-1. ~~**36.1-36.6** SIMD implementation + benchmarks (236 opcodes)~~
-2. ~~**36.7** Wasm interpreter optimization (D86: VM reuse + sidetable)~~
-3. **36.8** Multi-module linking
-4. **36.9** F119 fix — WIT string return marshalling
-5. **36.10** Documentation + cleanup
+1. **F121** Benchmark equivalence fixes (see `.dev/bench-equivalence.md`)
+2. **36.8** Multi-module linking
+3. **36.9** F119 fix — WIT string return marshalling
+4. **36.10** Documentation + cleanup
 
 ## Current Task
 
-36.8: Multi-module linking.
+F121: Cross-language benchmark equivalence fixes.
+7 benchmarks with unfair comparisons. Details: `.dev/bench-equivalence.md`
 
 ## Previous Task
 
-36.7D: Benchmark measurement + recording.
-D86 decision recorded. Final results: wasm_call 7.9x, wasm_fib 1.44x, wasm_memory 7.4x.
+Cleanup sprint (Tasks 1-10) + .claude/ refactoring.
+Directory reorganization, document pruning, path reference fixes, .claude/ consolidation.
 
 ## Known Issues
 

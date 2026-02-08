@@ -70,6 +70,70 @@ to internal `__` names automatically. Until then, `__` names work directly.
 - `clojure.lang.MapEntry.` — use `(vector k v)`
 - `lock`, `unlock` — non-standard / JVM-dependent
 
+## Test Porting Conversion Table
+
+### Type Checks
+
+| Java Pattern              | ClojureWasm          | Notes                   |
+|---------------------------|----------------------|-------------------------|
+| `(instance? Long x)`     | `(integer? x)`       | CW has unified integers |
+| `(instance? Double x)`   | `(float? x)`         | CW has unified floats   |
+| `(instance? String x)`   | `(string? x)`        |                         |
+| `(instance? Boolean x)`  | `(boolean? x)`       |                         |
+| `(class x)`              | `(type x)`           |                         |
+
+### Collections
+
+| Java Pattern              | ClojureWasm          | Notes                     |
+|---------------------------|----------------------|---------------------------|
+| `(into-array xs)`         | `xs` or `(vec xs)`  | No Java arrays            |
+| `(to-array xs)`           | `(vec xs)`           |                           |
+| `(aset arr i v)`          | `;; CLJW-SKIP`      | No mutable arrays         |
+| `(aget arr i)`            | `;; CLJW-SKIP`      | No mutable arrays         |
+
+### Numeric Casts
+
+| Java Pattern              | ClojureWasm          | Notes                     |
+|---------------------------|----------------------|---------------------------|
+| `(byte x)` / `(short x)` | `(int x)`           | CW has unified integers   |
+| `(long x)`                | `(int x)`           |                           |
+| `(float x)` / `(double x)`| `(float x)`        | CW has unified floats     |
+
+### Exception Mapping
+
+| Java Pattern                             | ClojureWasm                    |
+|------------------------------------------|--------------------------------|
+| `(thrown? ArithmeticException ...)`      | `(thrown? Exception ...)`      |
+| `(thrown? ClassCastException ...)`       | `(thrown? Exception ...)`      |
+| `(thrown? IllegalArgumentException ...)` | `(thrown? Exception ...)`      |
+| `(thrown? NullPointerException ...)`     | `(thrown? Exception ...)`      |
+| `(thrown? UnsupportedOperationException ...)`| `(thrown? Exception ...)`  |
+| `(Exception. "msg")`                    | `(Exception. "msg")` (same)   |
+
+## Method Call Conversions
+
+| Java Pattern              | ClojureWasm          | Notes                     |
+|---------------------------|----------------------|---------------------------|
+| `(.hashCode x)`           | `(hash x)`          |                           |
+| `(.equals x y)`           | `(= x y)`           |                           |
+| `(.toString x)`           | `(str x)`           |                           |
+| `(.length s)`             | `(count s)`         |                           |
+| `(.contains coll x)`      | `(contains? coll x)`| Or `(some #{x} coll)`    |
+| `(.getMessage e)`         | `(ex-message e)`    | builtin                   |
+| `(.getCause e)`           | `(ex-cause e)`      | builtin                   |
+
+## Test Porting Skip Patterns
+
+| Java Pattern                     | Action                             |
+|----------------------------------|------------------------------------|
+| `(bigint x)` / `(bigdec x)`     | `;; CLJW-SKIP: no bigint/bigdec`  |
+| `2/3` (ratio literal)           | `;; CLJW-SKIP: F3 no Ratio`       |
+| `(new java.util.Date)`          | `;; CLJW-SKIP: JVM interop`       |
+| `(java.util.ArrayList. [...])`  | `;; CLJW-SKIP: JVM interop`       |
+| `(binding [*out* w] ...)`       | `;; CLJW-SKIP: F85 binding`       |
+| `(import ...)`                   | `;; CLJW-SKIP: JVM interop`       |
+| `proxy` / `reify` / `gen-class` | `;; CLJW-SKIP: JVM interop`       |
+
 ## Development Principle
 
 - **Implement properly** — add the builtin or .clj function. Never use

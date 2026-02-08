@@ -35,10 +35,14 @@ After session resume, continue automatically from where you left off.
 
 ```bash
 git log --oneline -3 && git status --short
-yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
 ```
 
 Read: `.dev/memo.md` (current state, task queue, handover notes)
+
+If implementing functions, check coverage:
+```bash
+yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
+```
 
 **2. Plan**
 
@@ -76,16 +80,14 @@ Key points: implement don't skip, no assertion reduction, both backends, CLJW ma
 ### When to Stop
 
 See `.dev/memo.md` for task queue and current state.
+See `.dev/roadmap.md` for phase order and future plans.
 Do NOT stop between tasks within a phase.
-
-**Phase order**: ... → 22c(test gaps) → **24(optimize)** → 24.5(cleanup) → 25(wasm) → 26(wasm_rt) → 27(refactor)
 
 Stop **only** when:
 
 - User explicitly requests stop
 - Ambiguous requirements with multiple valid directions (rare)
-- **Current phase's Task Queue is empty AND next phase requires user input** (e.g., Phase 25 research decisions)
-- Phase 27 is complete (all planned phases done)
+- **Current phase's Task Queue is empty AND next phase requires user input**
 
 Do NOT stop for:
 
@@ -101,13 +103,13 @@ Run before every commit:
 
 1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 2. **checklist.md**: Remove resolved F##, add new F##
-3. **vars.yaml**: Mark implemented vars `done`
-4. **e2e tests**: `bash test/e2e/run_e2e.sh` passes (VM + TreeWalk)
+3. **vars.yaml**: Mark implemented vars `done` (when implementing vars)
+4. **e2e tests**: `bash test/e2e/run_e2e.sh` passes (when changing execution code)
 5. **memo.md**: Advance to next task
    - Update `## Current Task` with next task details
    - Remove completed task from Task Queue
    - Update Handover Notes if status changed (done/architecture/new info)
-5. **test-porting.md**: When changing test/upstream/ files:
+6. **test-porting.md**: When changing test/upstream/ files:
    - All changes have CLJW markers
    - No assertion deletions — implement missing features instead
    - File header statistics updated
@@ -209,15 +211,15 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 
 ## References
 
-| Topic              | Location                                     | When to read                               |
-| ------------------ | -------------------------------------------- | ------------------------------------------ |
-| Zig tips           | `.claude/references/zig-tips.md`             | Before writing Zig code, on compile errors |
-| Impl tiers         | `.claude/references/impl-tiers.md`           | When implementing a new function           |
-| Java interop       | `.claude/rules/java-interop.md`              | Auto-loads on .clj/analyzer/builtin edits  |
-| Test porting       | `.claude/rules/test-porting.md`              | Auto-loads on test file edits              |
-| Roadmap            | `.dev/roadmap.md`                            | Phase planning, future phase notes         |
-| Deferred items     | `.dev/checklist.md`                          | F## items — blockers to resolve            |
-| Design document    | `.dev/future.md`                             | When planning new phases or major features |
-| Optimizations      | `.dev/optimizations.md`                      | Completed + future optimization catalog    |
-| Bench history      | `bench/history.yaml`                         | Benchmark progression across optimizations |
-| Bytecode debug     | `./zig-out/bin/cljw --dump-bytecode`         | When VM tests fail or bytecode looks wrong |
+| Topic           | Location                             | When to read                               |
+| --------------- | ------------------------------------ | ------------------------------------------ |
+| Zig tips        | `.claude/references/zig-tips.md`     | Before writing Zig code, on compile errors |
+| Impl tiers      | `.claude/references/impl-tiers.md`   | When implementing a new function           |
+| Java interop    | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
+| Test porting    | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
+| Roadmap         | `.dev/roadmap.md`                    | Phase planning, future phase notes         |
+| Deferred items  | `.dev/checklist.md`                  | F## items — blockers to resolve            |
+| Design document | `.dev/future.md`                     | When planning new phases or major features |
+| Optimizations   | `.dev/optimizations.md`              | Completed + future optimization catalog    |
+| Bench history   | `bench/history.yaml`                 | Benchmark progression across optimizations |
+| Bytecode debug  | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

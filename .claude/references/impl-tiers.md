@@ -8,7 +8,7 @@ When to implement in Zig builtin vs Clojure (.clj files).
 | ---- | ----------- | -------------------------------------- | -------------------------------------- |
 | 1    | Zig builtin | Low-level ops, hot path, perf-critical | `+`, `first`, `seq`, `reduce`, `assoc` |
 | 2    | .clj files  | Pure Clojure, existing fn combinations | `when`, `->`, `walk`, `union`, `split` |
-| 3    | N/A (skip)  | JVM-specific, no equivalent            | `compile`, `import`, `agent`, `future` |
+| 3    | N/A (skip)  | JVM-specific, no equivalent            | `compile`, `gen-class`, `proxy`        |
 | 4    | Zig stub    | Dynamic vars, config                   | `*warn-on-reflection*`                 |
 
 ## Decision Flow
@@ -39,14 +39,20 @@ Check `.claude/rules/java-interop.md` (auto-loads on .clj/analyzer/builtin edits
 
 ## Namespace → File Mapping
 
-| Namespace        | File                           |
-| ---------------- | ------------------------------ |
-| clojure.core     | `src/clj/clojure/core.clj`     |
-| clojure.string   | (Zig builtin)                  |
-| clojure.walk     | `src/clj/clojure/walk.clj`     |
-| clojure.template | `src/clj/clojure/template.clj` |
-| clojure.set      | `src/clj/clojure/set.clj`      |
-| clojure.test     | `src/clj/clojure/test.clj`     |
+| Namespace        | Tier | File / Mechanism                |
+| ---------------- | ---- | ------------------------------- |
+| clojure.core     | 1+2  | `src/clj/clojure/core.clj` + Zig builtins |
+| clojure.string   | 1    | Zig builtin                     |
+| clojure.set      | 2    | `src/clj/clojure/set.clj`      |
+| clojure.walk     | 2    | `src/clj/clojure/walk.clj`     |
+| clojure.template | 2    | `src/clj/clojure/template.clj` |
+| clojure.test     | 2    | `src/clj/clojure/test.clj`     |
+| clojure.data     | 2    | `src/clj/clojure/data.clj`     |
+| clojure.repl     | 2    | `src/clj/clojure/repl.clj`     |
+| clojure.math     | 1    | Zig builtin (`std.math`)        |
+| clojure.java.io  | 1    | Zig builtin (`std.fs`)          |
+| cljw.wasm        | 1    | Zig builtin (Wasm FFI)          |
+| cljw.http        | 1    | Zig builtin (HTTP server)       |
 
 ## IO/System: Zig Equivalents
 
