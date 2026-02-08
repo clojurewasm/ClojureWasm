@@ -22,7 +22,7 @@ Phase order: ~~27~~ -> ~~28.1~~ -> ~~30~~ -> ~~31~~ -> ~~32~~ -> ~~33~~ -> ~~34~
 ## Task Queue
 
 Next phase: 35X (cross-platform)
-Plan: `.claude/plans/phase35-cross-platform-saved.md`
+Plan: `.dev/plan/phase35X-cross-platform.md`
 
 ## Current Task
 
@@ -60,7 +60,7 @@ Session resume procedure: read this file → follow references below.
 
 | Item                         | Location                                          |
 |------------------------------|---------------------------------------------------|
-| **Saved plan**               | `.claude/plans/phase35-cross-platform-saved.md`   |
+| **Phase plan**               | `.dev/plan/phase35X-cross-platform.md`            |
 | **Checklist entry**          | `.dev/checklist.md` F117                          |
 | **Roadmap section**          | `.dev/plan/roadmap.md` Phase 35X                  |
 
@@ -80,7 +80,7 @@ Session resume procedure: read this file → follow references below.
 
 | Phase | Plan                                              | Key reference                       |
 |-------|---------------------------------------------------|-------------------------------------|
-| 35X   | Cross-platform (Linux/Mac)                        | `.claude/plans/phase35-cross-platform-saved.md` |
+| 35X   | Cross-platform (Linux/Mac)                        | `.dev/plan/phase35X-cross-platform.md`          |
 | 36    | SIMD + FFI deep + multi-module                    | phase35-custom-wasm.md "Phase 36" + F118 |
 | 37    | GC + JIT research                                 | `.dev/plan/roadmap.md`              |
 

@@ -342,7 +342,7 @@ Still significantly smaller than zware overall.
 
 ### Phase 35X: Cross-Platform Build & Verification
 
-**Saved plan**: `.claude/plans/phase35-cross-platform-saved.md`
+**Plan**: `.dev/plan/phase35X-cross-platform.md`
 
 After 35W, the `.always_tail` blocker is eliminated. Phase 35X covers:
 - Linux x86_64/aarch64 cross-compile + Docker verification
@@ -375,7 +375,7 @@ After 35X, deepen Wasm FFI with ClojureWasm-native optimizations:
 | Item                        | Location                                         |
 |-----------------------------|--------------------------------------------------|
 | Decision                    | `.dev/notes/decisions.md` D84                    |
-| Cross-platform plan (saved) | `.claude/plans/phase35-cross-platform-saved.md`  |
+| Cross-platform plan         | `.dev/plan/phase35X-cross-platform.md`           |
 | zware source (reference)    | add-dir: `/Users/shota.508/Documents/OSS/zware/` |
 | Current Wasm types          | `src/wasm/types.zig` (820 LOC)                   |
 | Current Wasm builtins       | `src/wasm/builtins.zig` (504 LOC)                |

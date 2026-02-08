@@ -6,6 +6,8 @@ zig-out/
 # Benchmark build artifacts
 bench/benchmarks/**/*.class
 bench/benchmarks/**/a.out
+bench/simd/*_native
+bench/simd/*.wasm
 
 # Clojure
 .clj-kondo/.cache/

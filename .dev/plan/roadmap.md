@@ -542,7 +542,7 @@ platforms, establish CI pipeline.
 **Explicitly out of scope**: Windows (all of it)
 
 **Prerequisite**: Phase 35W (zware blocker eliminated)
-**Saved plan**: `.claude/plans/phase35-cross-platform-saved.md`
+**Plan**: `.dev/plan/phase35X-cross-platform.md`
 **Reference**: F117 in checklist.md
 
 ### Phase 36: Wasm FFI Deep + SIMD (F118)
