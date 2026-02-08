@@ -34,6 +34,7 @@ const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
 const math_mod = @import("math.zig");
 const java_io_mod = @import("java_io.zig");
+const http_server_mod = @import("http_server.zig");
 const wasm_builtins_mod = @import("../../wasm/builtins.zig");
 
 // ============================================================
@@ -209,6 +210,18 @@ pub fn registerBuiltins(env: *Env) !void {
             v.bindRoot(Value.initBuiltinFn(f));
         }
     }
+
+    // Register cljw.http namespace builtins (Phase 34.2)
+    const http_ns = try env.findOrCreateNamespace("cljw.http");
+    for (http_server_mod.builtins) |b| {
+        const v = try http_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // Hidden var for GC rooting of handler function
+    _ = try http_ns.intern("__handler");
 
     env.current_ns = user_ns;
 }

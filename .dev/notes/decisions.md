@@ -1984,3 +1984,30 @@ work without modification.
 **Consequence**: `wasm` namespace renamed to `cljw.wasm`. All existing code using
 `(require '[wasm :as w])` must change to `(require '[cljw.wasm :as w])`.
 `clojure.repl` becomes a real separate namespace.
+
+## D83: HTTP Server Architecture — Blocking + Background Mode
+
+**Context**: Phase 34 adds server/networking. Need an HTTP server that works in two modes:
+(1) standalone scripts where `run-server` blocks, (2) `--nrepl` combined mode where
+HTTP and nREPL run simultaneously.
+
+**Decision**: `cljw.http` namespace with Ring-compatible handler model.
+
+1. **Blocking mode** (default): `run-server` runs the accept loop in the calling thread.
+   Simple for standalone server scripts.
+
+2. **Background mode** (with `--nrepl`): `run-server` spawns accept loop in a background
+   thread and returns immediately, so nREPL can start after eval. Module-level
+   `background_mode` flag set by `evalEmbeddedWithNrepl`.
+
+3. **Build mode**: `run-server` returns nil immediately during `cljw build` to prevent
+   blocking the require-resolution eval pass.
+
+4. **Threading**: Thread per connection with mutex on handler call (same pattern as nREPL).
+   `macro_eval_env` and `predicates.current_env` set before each handler call.
+
+5. **Ring compatibility**: Handler receives `{:request-method :get, :uri "/path",
+   :headers {...}, :body "..."}` and returns `{:status 200, :headers {...}, :body "..."}`.
+
+**Consequence**: Built binaries can serve HTTP and be debugged via nREPL simultaneously.
+Live code reload via nREPL changes are reflected in HTTP responses immediately.

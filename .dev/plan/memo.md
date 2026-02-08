@@ -32,22 +32,23 @@ Phase 33 — Namespace & Portability Design (F115)
 Phase 34 — Server Mode & Networking (F116)
 
 - ~~34.1 nREPL flag passthrough in built binaries (./myapp --nrepl 7888)~~
-- 34.2 TCP server foundation (Zig std.net, accept loop)
-- 34.3 HTTP server (basic request/response, ring-compatible handler model)
+- ~~34.2+34.3 HTTP server with Ring-compatible handler model (D83)~~
 - 34.4 HTTP client (cljw.http/get, cljw.http/post)
 - 34.5 Stateful long-running process lifecycle (signal handling, graceful shutdown)
 
 ## Current Task
 
-34.2 — TCP server foundation (Zig std.net, accept loop).
+34.4 — HTTP client (cljw.http/get, cljw.http/post).
 
 ## Previous Task
 
-34.1 — nREPL flag passthrough in built binaries.
-- Built binaries accept `--nrepl [port]` flag
-- Refactored nrepl.zig: startServer + startServerWithEnv + shared runServerLoop
-- main.zig: parse --nrepl, filter from *command-line-args*, evalEmbeddedWithNrepl
-- Verified: user namespaces accessible via nREPL, args filtered correctly
+34.2+34.3 — HTTP server with Ring-compatible handler model (D83).
+- Created src/common/builtin/http_server.zig with TCP accept loop
+- Ring request map: {:request-method, :uri, :headers, :body, :server-port, :remote-addr, :query-string}
+- Ring response map: {:status, :headers, :body}
+- Three modes: blocking (default), background (--nrepl), build (cljw build)
+- Thread per connection, mutex on handler call, macro_eval_env set per thread
+- Verified: standalone, built binary, --nrepl combined (live update via nREPL)
 
 ## Known Issues
 
@@ -67,9 +68,14 @@ Phase 34 — Server Mode & Networking (F116)
   - System/getProperty with 9 native property mappings
   - Portability test suite: 2/2 PASS (0 diff with JVM Clojure 1.12)
   - vars.yaml audit: 659 vars done (was 535+8, fixed clojure.math/edn staleness)
+- **Phase 34 IN PROGRESS** (D83): Server mode & networking
+  - 34.1: --nrepl flag passthrough in built binaries
+  - 34.2+34.3: HTTP server (cljw.http/run-server, Ring-compatible)
+    - Blocking/background/build modes, thread per connection
+    - Live reload via nREPL: HTTP + nREPL simultaneous operation
 - **Current namespaces**: clojure.core, clojure.string, clojure.edn,
   clojure.math, clojure.walk, clojure.template, clojure.test, clojure.set,
-  clojure.data, clojure.repl, clojure.java.io, cljw.wasm, user
+  clojure.data, clojure.repl, clojure.java.io, cljw.wasm, cljw.http, user
 - **Benchmark (Phase 32)**: bench/history.yaml entry "32". Startup ~3-4ms
   (C/Zig level). Cross-lang comparison in optimization-catalog.md Section 7.5.
 - **Phase 31 (AOT)**: serialize.zig (bytecode format), bootstrap.zig

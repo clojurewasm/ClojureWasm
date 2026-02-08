@@ -830,6 +830,8 @@ vars:
     "add-local-javadoc": {type: function, status: todo}
     "add-remote-javadoc": {type: function, status: todo}
     javadoc: {type: function, status: todo}
+  cljw_http:
+    "run-server": {type: function, status: done, notes: "builtin (Zig), Ring-compatible HTTP server"}
   clojure_java_shell:
     "*sh-dir*": {type: dynamic-var, status: todo}
     "*sh-env*": {type: dynamic-var, status: todo}

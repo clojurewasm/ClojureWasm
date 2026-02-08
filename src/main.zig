@@ -20,6 +20,7 @@ const err = @import("common/error.zig");
 const gc_mod = @import("common/gc.zig");
 const keyword_intern = @import("common/keyword_intern.zig");
 const ns_ops = @import("common/builtin/ns_ops.zig");
+const http_server = @import("common/builtin/http_server.zig");
 const Reader = @import("common/reader/reader.zig").Reader;
 const FormData = @import("common/reader/form.zig").FormData;
 
@@ -964,6 +965,9 @@ fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mo
     gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
     env.gc = @ptrCast(gc);
 
+    // HTTP servers should run in background so nREPL can start after eval.
+    http_server.background_mode = true;
+
     // Evaluate embedded source (defines user namespaces/defs)
     _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
         reportError(e);
@@ -1048,6 +1052,7 @@ fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.M
     // Enable file tracking, then evaluate entry file to resolve all requires.
     // Each file loaded by require is recorded in load order.
     ns_ops.enableFileTracking();
+    http_server.build_mode = true;
     _ = bootstrap.evalStringVM(gc_alloc, &env, user_source) catch |e| {
         reportError(e);
         std.process.exit(1);
