@@ -716,6 +716,210 @@ pub fn random_get(ctx: *anyopaque, _: usize) anyerror!void {
     try pushErrno(vm, .SUCCESS);
 }
 
+/// clock_res_get(clock_id: i32, resolution_ptr: i32) -> errno
+pub fn clock_res_get(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const resolution_ptr = vm.popOperandU32();
+    const clock_id = vm.popOperandU32();
+
+    const memory = try vm.getMemory(0);
+
+    // Return nanosecond resolution for all clocks
+    const resolution: u64 = switch (@as(ClockId, @enumFromInt(clock_id))) {
+        .REALTIME => 1_000, // microsecond resolution
+        .MONOTONIC => 1, // nanosecond resolution
+        .PROCESS_CPUTIME, .THREAD_CPUTIME => 1_000, // microsecond resolution
+    };
+    try memory.write(u64, resolution_ptr, 0, resolution);
+
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// fd_datasync(fd: i32) -> errno
+pub fn fd_datasync(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const fd = vm.popOperandI32();
+
+    if (fd <= 2) {
+        try pushErrno(vm, .INVAL);
+        return;
+    }
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    if (wasi.getHostFd(fd)) |host_fd| {
+        posix.fdatasync(host_fd) catch |err| {
+            try pushErrno(vm, toWasiErrno(err));
+            return;
+        };
+        try pushErrno(vm, .SUCCESS);
+    } else {
+        try pushErrno(vm, .BADF);
+    }
+}
+
+/// fd_sync(fd: i32) -> errno
+pub fn fd_sync(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const fd = vm.popOperandI32();
+
+    if (fd <= 2) {
+        try pushErrno(vm, .INVAL);
+        return;
+    }
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    if (wasi.getHostFd(fd)) |host_fd| {
+        posix.fsync(host_fd) catch |err| {
+            try pushErrno(vm, toWasiErrno(err));
+            return;
+        };
+        try pushErrno(vm, .SUCCESS);
+    } else {
+        try pushErrno(vm, .BADF);
+    }
+}
+
+/// path_create_directory(fd: i32, path_ptr: i32, path_len: i32) -> errno
+pub fn path_create_directory(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const path_len = vm.popOperandU32();
+    const path_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    const host_fd = wasi.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+    if (path_ptr + path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    const path = data[path_ptr .. path_ptr + path_len];
+
+    posix.mkdirat(host_fd, path, 0o777) catch |err| {
+        try pushErrno(vm, toWasiErrno(err));
+        return;
+    };
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// path_remove_directory(fd: i32, path_ptr: i32, path_len: i32) -> errno
+pub fn path_remove_directory(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const path_len = vm.popOperandU32();
+    const path_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    const host_fd = wasi.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+    if (path_ptr + path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    const path = data[path_ptr .. path_ptr + path_len];
+
+    posix.unlinkat(host_fd, path, posix.AT.REMOVEDIR) catch |err| {
+        try pushErrno(vm, toWasiErrno(err));
+        return;
+    };
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// path_unlink_file(fd: i32, path_ptr: i32, path_len: i32) -> errno
+pub fn path_unlink_file(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const path_len = vm.popOperandU32();
+    const path_ptr = vm.popOperandU32();
+    const fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    const host_fd = wasi.getHostFd(fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+    if (path_ptr + path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    const path = data[path_ptr .. path_ptr + path_len];
+
+    posix.unlinkat(host_fd, path, 0) catch |err| {
+        try pushErrno(vm, toWasiErrno(err));
+        return;
+    };
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// path_rename(fd: i32, old_path_ptr: i32, old_path_len: i32, new_fd: i32, new_path_ptr: i32, new_path_len: i32) -> errno
+pub fn path_rename(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    const new_path_len = vm.popOperandU32();
+    const new_path_ptr = vm.popOperandU32();
+    const new_fd = vm.popOperandI32();
+    const old_path_len = vm.popOperandU32();
+    const old_path_ptr = vm.popOperandU32();
+    const old_fd = vm.popOperandI32();
+
+    const wasi = getWasi(vm) orelse {
+        try pushErrno(vm, .NOSYS);
+        return;
+    };
+
+    const old_host_fd = wasi.getHostFd(old_fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+    const new_host_fd = wasi.getHostFd(new_fd) orelse {
+        try pushErrno(vm, .BADF);
+        return;
+    };
+
+    const memory = try vm.getMemory(0);
+    const data = memory.memory();
+    if (old_path_ptr + old_path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    if (new_path_ptr + new_path_len > data.len) return error.OutOfBoundsMemoryAccess;
+    const old_path = data[old_path_ptr .. old_path_ptr + old_path_len];
+    const new_path = data[new_path_ptr .. new_path_ptr + new_path_len];
+
+    posix.renameat(old_host_fd, old_path, new_host_fd, new_path) catch |err| {
+        try pushErrno(vm, toWasiErrno(err));
+        return;
+    };
+    try pushErrno(vm, .SUCCESS);
+}
+
+/// sched_yield() -> errno
+pub fn sched_yield(ctx: *anyopaque, _: usize) anyerror!void {
+    const vm = getVm(ctx);
+    // Trivial yield — just return success
+    // On most platforms, a simple yield is a no-op for single-threaded Wasm
+    try pushErrno(vm, .SUCCESS);
+}
+
 // ============================================================
 // Error mapping
 // ============================================================
@@ -732,6 +936,15 @@ fn toWasiErrno(err: anyerror) Errno {
         error.Unseekable => .SPIPE,
         error.NotOpenForReading => .BADF,
         error.NotOpenForWriting => .BADF,
+        error.FileNotFound => .NOENT,
+        error.PathAlreadyExists => .EXIST,
+        error.NotDir => .NOTDIR,
+        error.DirNotEmpty => .NOTEMPTY,
+        error.NameTooLong => .NAMETOOLONG,
+        error.FileBusy => .BUSY,
+        error.DiskQuota => .DQUOT,
+        error.SymLinkLoop => .LOOP,
+        error.ReadOnlyFileSystem => .ROFS,
         else => .IO,
     };
 }
@@ -748,23 +961,31 @@ const WasiEntry = struct {
 const wasi_table = [_]WasiEntry{
     .{ .name = "args_get", .func = &args_get },
     .{ .name = "args_sizes_get", .func = &args_sizes_get },
+    .{ .name = "clock_res_get", .func = &clock_res_get },
+    .{ .name = "clock_time_get", .func = &clock_time_get },
     .{ .name = "environ_get", .func = &environ_get },
     .{ .name = "environ_sizes_get", .func = &environ_sizes_get },
-    .{ .name = "clock_time_get", .func = &clock_time_get },
     .{ .name = "fd_close", .func = &fd_close },
+    .{ .name = "fd_datasync", .func = &fd_datasync },
     .{ .name = "fd_fdstat_get", .func = &fd_fdstat_get },
     .{ .name = "fd_filestat_get", .func = &fd_filestat_get },
     .{ .name = "fd_prestat_get", .func = &fd_prestat_get },
     .{ .name = "fd_prestat_dir_name", .func = &fd_prestat_dir_name },
     .{ .name = "fd_read", .func = &fd_read },
+    .{ .name = "fd_readdir", .func = &fd_readdir },
     .{ .name = "fd_seek", .func = &fd_seek },
+    .{ .name = "fd_sync", .func = &fd_sync },
     .{ .name = "fd_tell", .func = &fd_tell },
     .{ .name = "fd_write", .func = &fd_write },
-    .{ .name = "fd_readdir", .func = &fd_readdir },
+    .{ .name = "path_create_directory", .func = &path_create_directory },
     .{ .name = "path_filestat_get", .func = &path_filestat_get },
     .{ .name = "path_open", .func = &path_open },
+    .{ .name = "path_remove_directory", .func = &path_remove_directory },
+    .{ .name = "path_rename", .func = &path_rename },
+    .{ .name = "path_unlink_file", .func = &path_unlink_file },
     .{ .name = "proc_exit", .func = &proc_exit },
     .{ .name = "random_get", .func = &random_get },
+    .{ .name = "sched_yield", .func = &sched_yield },
 };
 
 fn lookupWasiFunc(name: []const u8) ?store_mod.HostFn {
