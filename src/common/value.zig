@@ -556,6 +556,7 @@ const NanHeapTag = enum(u8) {
     transient_vector = 20, transient_map = 21, transient_set = 22,
     chunked_cons = 23, chunk_buffer = 24, array_chunk = 25,
     wasm_module = 26, wasm_fn = 27, matcher = 28,
+    big_int = 29, ratio = 30, array = 31,
 };
 
 /// Runtime value — NaN-boxed 8-byte representation.
@@ -588,6 +589,7 @@ pub const Value = enum(u64) {
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
+        big_int, ratio, array,
     };
 
     // --- Encoding helpers ---
@@ -637,6 +639,9 @@ pub const Value = enum(u64) {
             .wasm_module => .wasm_module,
             .wasm_fn => .wasm_fn,
             .matcher => .matcher,
+            .big_int => .big_int,
+            .ratio => .ratio,
+            .array => .array,
         };
     }
 
@@ -969,6 +974,30 @@ pub const Value = enum(u64) {
 
     pub fn asMatcher(self: Value) *MatcherState {
         return decodePtr(self, *MatcherState);
+    }
+
+    pub fn initArray(a: *collections.ZigArray) Value {
+        return encodeHeapPtr(.array, a);
+    }
+
+    pub fn asArray(self: Value) *collections.ZigArray {
+        return decodePtr(self, *collections.ZigArray);
+    }
+
+    pub fn initBigInt(bi: *collections.BigInt) Value {
+        return encodeHeapPtr(.big_int, bi);
+    }
+
+    pub fn asBigInt(self: Value) *collections.BigInt {
+        return decodePtr(self, *collections.BigInt);
+    }
+
+    pub fn initRatio(r: *collections.Ratio) Value {
+        return encodeHeapPtr(.ratio, r);
+    }
+
+    pub fn asRatio(self: Value) *collections.Ratio {
+        return decodePtr(self, *collections.Ratio);
     }
 
     /// Clojure pr-str semantics: format value for printing.
@@ -1315,6 +1344,32 @@ pub const Value = enum(u64) {
                 try w.print("#<WasmFn {s}>", .{wf.name});
             },
             .matcher => try w.writeAll("#<Matcher>"),
+            .array => {
+                const arr = self.asArray();
+                try w.print("#<{s}[{d}]>", .{ @tagName(arr.element_type), arr.items.len });
+            },
+            .big_int => {
+                const bi = self.asBigInt();
+                const c = bi.managed.toConst();
+                var limbs_buf: [128]std.math.big.Limb = undefined;
+                var str_buf: [512]u8 = undefined;
+                const len = c.toString(&str_buf, 10, .lower, &limbs_buf);
+                try w.writeAll(str_buf[0..len]);
+                try w.writeAll("N");
+            },
+            .ratio => {
+                const r = self.asRatio();
+                const nc = r.numerator.managed.toConst();
+                const dc = r.denominator.managed.toConst();
+                var limbs_buf: [128]std.math.big.Limb = undefined;
+                var nbuf: [512]u8 = undefined;
+                var dbuf: [512]u8 = undefined;
+                const nlen = nc.toString(&nbuf, 10, .lower, &limbs_buf);
+                const dlen = dc.toString(&dbuf, 10, .lower, &limbs_buf);
+                try w.writeAll(nbuf[0..nlen]);
+                try w.writeAll("/");
+                try w.writeAll(dbuf[0..dlen]);
+            },
             .cons => {
                 const c = self.asCons();
                 if (try checkPrintLevel(w)) return;
@@ -1458,6 +1513,14 @@ pub const Value = enum(u64) {
             .wasm_module => self.asWasmModule() == other.asWasmModule(), // identity equality
             .wasm_fn => self.asWasmFn() == other.asWasmFn(), // identity equality
             .matcher => self.asMatcher() == other.asMatcher(), // identity equality
+            .array => self.asArray() == other.asArray(), // identity equality (mutable)
+            .big_int => self.asBigInt().managed.toConst().eql(other.asBigInt().managed.toConst()),
+            .ratio => blk: {
+                const a = self.asRatio();
+                const b = other.asRatio();
+                break :blk a.numerator.managed.toConst().eql(b.numerator.managed.toConst()) and
+                    a.denominator.managed.toConst().eql(b.denominator.managed.toConst());
+            },
         };
     }
 

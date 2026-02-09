@@ -1214,6 +1214,12 @@ fn writeValue(w: anytype, val: Value) void {
         .wasm_module => w.print("#<WasmModule>", .{}) catch {},
         .wasm_fn => w.print("#<WasmFn {s}>", .{val.asWasmFn().name}) catch {},
         .matcher => w.print("#<Matcher>", .{}) catch {},
+        .array => {
+            const arr = val.asArray();
+            w.print("#<{s}[{d}]>", .{ @tagName(arr.element_type), arr.items.len }) catch {};
+        },
+        .big_int => w.print("#<BigInt>", .{}) catch {},
+        .ratio => w.print("#<Ratio>", .{}) catch {},
     }
 }
 

@@ -405,3 +405,24 @@ during `readFnProtoTable` (vars don't exist yet). Deferred fixup list resolves t
 `restoreEnvState`.
 
 **Files**: `src/native/vm/jit.zig` (new, ~700 lines), `src/native/vm/vm.zig` (JitState integration).
+
+## D89: Three New Value Types — Array, BigInt, Ratio (Phase 43)
+
+**Decision**: Reserve NanHeapTag slots 29 (big_int), 30 (ratio), 31 (array) in Group D
+for three new Value types needed by Phase 43 (Numeric Types + Arrays).
+
+**Types**:
+
+- **ZigArray**: Mutable typed container (`items: []Value`, `element_type: ElementType`).
+  ElementType enum: object, int, long, float, double, boolean, byte, short, char.
+  Equivalent to JVM's `Object[]` / `int[]` etc. Identity equality (mutable).
+- **BigInt**: Arbitrary precision integer backed by `std.math.big.int.Managed`.
+  Structural equality via `Const.eql()`. Printed as `<digits>N`.
+- **Ratio**: Exact rational as numerator/denominator BigInt pair.
+  Structural equality. Printed as `<num>/<den>`.
+
+**GC**: Array traces all items. BigInt marks struct only (limbs managed by allocator).
+Ratio marks struct + numerator/denominator BigInt pointers.
+
+**Files**: `src/common/value.zig`, `src/common/collections.zig`, `src/common/gc.zig`,
+`src/common/builtin/array.zig` (new).

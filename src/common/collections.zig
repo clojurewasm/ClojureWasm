@@ -74,6 +74,48 @@ pub const PersistentVector = struct {
     }
 };
 
+/// Mutable array — Java array equivalent for ClojureWasm.
+/// Single-dimensional, typed (element_type for compatibility, all stored as Value).
+pub const ZigArray = struct {
+    items: []Value,
+    element_type: ElementType = .object,
+
+    pub const ElementType = enum {
+        object, int, long, float, double, boolean, byte, short, char,
+    };
+
+    pub fn count(self: ZigArray) usize {
+        return self.items.len;
+    }
+};
+
+/// BigInt — arbitrary precision integer backed by Zig's std.math.big.int.
+/// Immutable value semantics: arithmetic returns new BigInt.
+pub const BigInt = struct {
+    managed: std.math.big.int.Managed,
+
+    pub fn initFromI64(allocator: std.mem.Allocator, val: i64) !*BigInt {
+        const bi = try allocator.create(BigInt);
+        bi.managed = try std.math.big.int.Managed.initSet(allocator, val);
+        return bi;
+    }
+
+    pub fn toI64(self: *const BigInt) ?i64 {
+        return self.managed.to(i64) catch null;
+    }
+
+    pub fn toF64(self: *const BigInt) f64 {
+        return self.managed.toFloat(f64);
+    }
+};
+
+/// Ratio — exact rational number as numerator/denominator BigInt pair.
+/// Always stored in reduced form (GCD=1, denominator positive).
+pub const Ratio = struct {
+    numerator: *BigInt,
+    denominator: *BigInt,
+};
+
 /// Persistent array map — flat key-value pairs [k1,v1,k2,v2,...].
 /// Insertion-order preserving. Linear scan for lookup.
 pub const PersistentArrayMap = struct {

@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 37 COMPLETE**
-- Coverage: 754 vars done across all namespaces (552/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- **All phases through 42 COMPLETE**
+- Coverage: 762 vars done across all namespaces (560/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -20,18 +20,31 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 42: Quick Wins + Protocol Extension
-1. [x] 42.1: Quick wins (uri?, uuid?, destructure, seq-to-map-for-destructuring)
-2. [x] 42.2: Protocol extension API (extend, extenders, extends?, find-protocol-impl, find-protocol-method)
-3. [x] 42.3: Remaining implementable core vars (bound-fn, bound-fn*, get-thread-bindings)
+Phase 43: Numeric Types + Arrays
+1. [x] 43.1: Array Value type + core ops (make-array, object-array, aget, aset, alength, aclone, to-array, into-array)
+2. [ ] 43.2: Typed array constructors (int-array..boolean-array, to-array-2d)
+3. [ ] 43.3: Typed setters + coercion (aset-int..aset-boolean, ints, longs, bytes, shorts, chars, floats, doubles, bytes?)
+4. [ ] 43.4: Array macros (amap, areduce)
+5. [ ] 43.5: BigInt Value type + bigint/biginteger fns
+6. [ ] 43.6: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
+7. [ ] 43.7: Ratio Value type + numerator/denominator/rationalize
 
 ## Current Task
 
-Phase 42 COMPLETE. All 12 vars implemented. Planning next phase.
+Phase 43.2: Typed array constructors.
+
+Design:
+- int-array, long-array, float-array, double-array, boolean-array, byte-array, short-array, char-array
+- Each takes size or collection, sets ElementType appropriately
+- to-array-2d: 2D array from seq of seqs
 
 ## Previous Task
 
-Phase 42.3 complete: 3 vars (get-thread-bindings Zig builtin, bound-fn*/bound-fn pure Clojure).
+Phase 43.1 COMPLETE: Array Value type + 8 core ops (make-array, object-array, aget, aset, alength, aclone, to-array, into-array).
+- NanHeapTag 29=big_int, 30=ratio, 31=array
+- ZigArray, BigInt, Ratio structs in collections.zig
+- GC tracing for all 3 new types
+- All switches across codebase updated (gc, macro, tree_walk, vm, nrepl, main, predicates)
 
 ## Known Issues
 

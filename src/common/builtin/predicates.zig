@@ -242,6 +242,9 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .wasm_module => "wasm-module",
         .wasm_fn => "wasm-fn",
         .matcher => "matcher",
+        .array => "array",
+        .big_int => "big-int",
+        .ratio => "ratio",
     };
     return Value.initKeyword(allocator, .{ .ns = null, .name = name });
 }
@@ -351,6 +354,9 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
         .wasm_module => "wasm_module",
         .wasm_fn => "wasm_fn",
         .matcher => "matcher",
+        .array => "array",
+        .big_int => "big_int",
+        .ratio => "ratio",
     });
     return Value.initBoolean(protocol.impls.get(type_key) != null);
 }
@@ -410,6 +416,9 @@ fn valueTypeKey(val: Value) []const u8 {
         .wasm_module => "wasm_module",
         .wasm_fn => "wasm_fn",
         .matcher => "matcher",
+        .array => "array",
+        .big_int => "big_int",
+        .ratio => "ratio",
     };
 }
 

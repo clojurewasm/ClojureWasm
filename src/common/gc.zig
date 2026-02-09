@@ -945,6 +945,30 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                 traceValue(gc, m.last_result);
             }
         },
+
+        // Array — mark struct + items slice + trace each element
+        .array => {
+            const arr = val.asArray();
+            if (gc.markAndCheck(arr)) {
+                gc.markSlice(arr.items);
+                for (arr.items) |item| traceValue(gc, item);
+            }
+        },
+
+        // BigInt — mark struct (limbs owned by Managed allocator)
+        .big_int => {
+            const bi = val.asBigInt();
+            gc.markPtr(bi);
+        },
+
+        // Ratio — mark struct + trace numerator/denominator BigInts
+        .ratio => {
+            const r = val.asRatio();
+            if (gc.markAndCheck(r)) {
+                gc.markPtr(r.numerator);
+                gc.markPtr(r.denominator);
+            }
+        },
     }
 }
 

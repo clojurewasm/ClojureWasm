@@ -2004,6 +2004,9 @@ fn valueTypeKey(val: Value) []const u8 {
         .wasm_module => "wasm_module",
         .wasm_fn => "wasm_fn",
         .matcher => "matcher",
+        .array => "array",
+        .big_int => "big_int",
+        .ratio => "ratio",
     };
 }
 

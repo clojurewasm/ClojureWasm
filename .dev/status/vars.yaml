@@ -102,7 +102,7 @@ vars:
     "Throwable->map": {type: function, status: done, note: "builtin (Zig equivalent)"}
     abs: {type: function, status: done, note: "Zig builtin"}
     accessor: {type: function, status: skip, note: deprecated struct system}
-    aclone: {type: function, status: skip, note: Phase 43 — Zig array type}
+    aclone: {type: function, status: done, note: Phase 43 — Zig array type}
     "add-classpath": {type: function, status: skip, note: JVM interop}
     "add-shutdown-hook!": {type: function, status: done, note: "cljw extension"}
     "add-tap": {type: function, status: done}
@@ -110,8 +110,8 @@ vars:
     agent: {type: function, status: skip, note: DEFERRED — multi-thread future}
     "agent-error": {type: function, status: skip, note: DEFERRED — multi-thread future}
     "agent-errors": {type: function, status: skip, note: DEFERRED — multi-thread future}
-    aget: {type: function, status: skip, note: Phase 43 — Zig array type}
-    alength: {type: function, status: skip, note: Phase 43 — Zig array type}
+    aget: {type: function, status: done, note: Phase 43 — Zig array type}
+    alength: {type: function, status: done, note: Phase 43 — Zig array type}
     alias: {type: function, status: done, note: builtin (upstream is pure clj)}
     "all-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     alter: {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
@@ -125,7 +125,7 @@ vars:
     areduce: {type: macro, status: skip, note: Phase 43 — Zig array type}
     "array-map": {type: function, status: done, note: "Zig builtin"}
     "as->": {type: macro, status: done, note: "macro in core.clj"}
-    aset: {type: function, status: skip, note: Phase 43 — Zig array type}
+    aset: {type: function, status: done, note: Phase 43 — Zig array type}
     "aset-boolean": {type: function, status: skip, note: Phase 43 — Zig array type}
     "aset-byte": {type: function, status: skip, note: Phase 43 — Zig array type}
     "aset-char": {type: function, status: skip, note: Phase 43 — Zig array type}
@@ -361,7 +361,7 @@ vars:
     intern: {type: function, status: done}
     interpose: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     into: {type: function, status: done, note: "portable to clj"}
-    "into-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "into-array": {type: function, status: done, note: Phase 43 — Zig array type}
     ints: {type: function, status: skip, note: Phase 43 — Zig array type}
     "io!": {type: macro, status: skip, note: "JVM interop"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
@@ -396,7 +396,7 @@ vars:
     loop: {type: special-form, status: done, note: special form (analyzes as loop*)}
     macroexpand: {type: function, status: done, note: "Zig builtin"}
     "macroexpand-1": {type: function, status: done, note: "Zig builtin"}
-    "make-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "make-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "make-hierarchy": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     map: {type: function, status: done, note: "eager (no lazy seq)"}
     "map-entry?": {type: function, status: done}
@@ -451,7 +451,7 @@ vars:
     num: {type: function, status: done, note: builtin (upstream is pure clj)}
     "number?": {type: function, status: done, note: "Zig builtin"}
     numerator: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
-    "object-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "object-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     or: {type: macro, status: done, note: "macro in core.clj"}
     parents: {type: function, status: done, note: core.clj hierarchy-aware}
@@ -640,7 +640,7 @@ vars:
     "the-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "thread-bound?": {type: function, status: done}
     time: {type: macro, status: done, note: macro using __nano-time}
-    "to-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "to-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "to-array-2d": {type: function, status: skip, note: Phase 43 — Zig array type}
     trampoline: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     transduce: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
