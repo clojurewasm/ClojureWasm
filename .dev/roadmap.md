@@ -81,8 +81,11 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 39.2  | clojure.pprint                                | pprint (Zig), print-table, format width specifiers   |
 | 39.3  | line-seq                                      | File line-by-line reading (UPSTREAM-DIFF: takes path) |
 | 39.4  | clojure.stacktrace                            | root-cause, print-stack-trace, etc. (6 vars)         |
+| 40.1  | clojure.zip (28 vars)                          | Upstream near-verbatim, fix & rest destructuring     |
+| 40.3  | clojure.test expansion (18 vars)               | Dynamic vars, macros, runner functions               |
+| 40.4  | Walk/math/repl remaining (6 vars)              | postwalk-demo, random, demunge, root-cause           |
 
-**Stats**: 683 vars done (539 clojure.core, 14+ namespaces total)
+**Stats**: 742 vars done (540 clojure.core, 14+ namespaces total)
 
 **Note**: Phase 27 (NaN Boxing) and Phase 28 (Single Binary Builder) from the
 original plan were completed as part of Phases 35X (D85) and 31-32 (D81)
@@ -142,16 +145,25 @@ Critical scripting and development features for real-world usage.
 | 39.4  | clojure.stacktrace               | COMPLETE    |
 | 39.5  | read / read-string               | COMPLETE (read-string done, read skipped: needs PushbackReader) |
 
-### Phase 40: Library Expansion
-
-Additional namespace implementations for broader compatibility.
+### Phase 40: Library Expansion — COMPLETE
 
 | Sub   | Content                              | Status      |
 |-------|--------------------------------------|-------------|
-| 40.1  | clojure.zip (28 vars)                | TODO        |
-| 40.2  | clojure.data (diff)                  | TODO        |
-| 40.3  | clojure.test expansion               | TODO        |
-| 40.4  | clojure.walk/math/repl remaining     | TODO        |
+| 40.1  | clojure.zip (28 vars)                | COMPLETE    |
+| 40.2  | clojure.data (skip: protocols only)  | COMPLETE    |
+| 40.3  | clojure.test expansion (18 vars)     | COMPLETE    |
+| 40.4  | clojure.walk/math/repl remaining     | COMPLETE    |
+
+### Phase 41: Polish & Hardening
+
+Bug fixes, edge cases, and remaining easy vars.
+
+| Sub   | Content                              | Status      |
+|-------|--------------------------------------|-------------|
+| 41.1  | ex-cause fix + pprint dynamic vars   | COMPLETE    |
+| 41.2  | clojure.edn/read                     | TODO        |
+| 41.3  | clojure.core.reducers (sequential)   | TODO        |
+| 41.4  | Upstream test porting                | TODO        |
 
 ### Phase 29: Codebase Restructuring (deferred)
 

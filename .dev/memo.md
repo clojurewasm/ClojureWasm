@@ -29,23 +29,30 @@ Phase 38: Core Library Completeness
 
 ## Task Queue
 
-Phase 40: Library Expansion
+Phase 40: Library Expansion — COMPLETE
 1. [x] 40.1: clojure.zip — zipper library (28 vars, upstream near-verbatim)
 2. [x] 40.2: clojure.data — diff (skipped, protocols only)
 3. [x] 40.3: clojure.test expansion — 18 vars added
 4. [x] 40.4: clojure.walk/math/repl remaining vars (6 vars)
 
+## Task Queue
+
+Phase 41: Polish & Hardening
+1. [x] 41.1: ex-cause fix + pprint dynamic vars (7 vars)
+2. [ ] 41.2: clojure.edn/read
+3. [ ] 41.3: clojure.core.reducers (sequential impl)
+4. [ ] 41.4: Upstream test porting
+
 ## Current Task
 
-Phase 40 complete. Plan next phase.
+41.2: clojure.edn/read.
 
 ## Previous Task
 
-40.4: clojure.walk/math/repl remaining vars (6 vars).
-- Walk: postwalk-demo, prewalk-demo
-- Repl: demunge (identity), root-cause (ex-cause chain), stack-element-str (map format)
-- Math: random (reuses rand builtin)
-- Skipped: set-break-handler! (sun.misc.Signal), thread-stopper (Thread API)
+41.1: ex-cause fix + pprint dynamic vars.
+- Fixed ex-cause to read :cause key from ex-info map (was always nil)
+- Added 7 pprint dynamic vars (*print-right-margin*, *print-miser-width*, etc.)
+- Coverage: 742 vars
 - Both VM + TreeWalk verified
 
 ## Known Issues
