@@ -58,7 +58,7 @@ A7. .claude/ + private/ Cleanup
 A8. Documentation
 23. [x] 44.23: README.md (overview, features, build, usage, benchmarks, future)
 24. [x] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
-25. [ ] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
+25. [x] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
 
 A9. Release Preparation
 26. [ ] 44.26: GitHub repo settings (description, topics, About)
@@ -69,19 +69,14 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.25: DIFFERENCES.md (A8 Documentation block).
+Phase 44.26: GitHub repo settings (A9 Release Preparation block).
 
 ## Previous Task
 
-Phase 44.24 COMPLETE: ARCHITECTURE.md.
-- Pipeline overview (Reader → Analyzer → Compiler/VM + TreeWalk)
-- Value representation: NaN boxing scheme with 4 heap tag groups
-- Compiler: 75 opcodes, superinstructions, peephole optimizer
-- VM: stack-based, 4096 slots, GC safe points, exception handling
-- JIT: ARM64 hot integer loop PoC
-- GC: mark-sweep with free-pool recycling
-- Bootstrap: two-phase (TreeWalk eval + VM recompile), cache
-- Wasm runtime, regex engine, nREPL server
+Phase 44.23-44.25 COMPLETE: A8 Documentation block.
+- README.md: overview, features, build, usage, benchmarks, future plans
+- ARCHITECTURE.md: pipeline, Value repr, backends, GC, JIT, bootstrap
+- DIFFERENCES.md: 112 skip vars, behavioral diffs, exception model, platform
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
