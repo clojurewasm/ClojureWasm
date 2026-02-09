@@ -37,6 +37,7 @@ const java_io_mod = @import("java_io.zig");
 const http_server_mod = @import("http_server.zig");
 const lifecycle_mod = @import("../lifecycle.zig");
 const wasm_builtins_mod = @import("../../wasm/builtins.zig");
+const shell_mod = @import("shell.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -223,6 +224,16 @@ pub fn registerBuiltins(env: *Env) !void {
     }
     // Hidden var for GC rooting of handler function
     _ = try http_ns.intern("__handler");
+
+    // Register clojure.java.shell namespace builtins (Phase 39.1)
+    const shell_ns = try env.findOrCreateNamespace("clojure.java.shell");
+    for (shell_mod.builtins) |b| {
+        const v = try shell_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
 
     env.current_ns = user_ns;
 }

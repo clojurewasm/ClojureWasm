@@ -40,6 +40,7 @@ pub const wasm_types = @import("wasm/types.zig");
 pub const lifecycle = @import("common/lifecycle.zig");
 pub const wasm_builtins = @import("wasm/builtins.zig");
 pub const wit_parser = @import("wasm/wit_parser.zig");
+pub const builtin_shell = @import("common/builtin/shell.zig");
 
 test {
     _ = value;
@@ -81,4 +82,5 @@ test {
     _ = wasm_types;
     _ = wasm_builtins;
     _ = wit_parser;
+    _ = builtin_shell;
 }

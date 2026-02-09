@@ -840,11 +840,11 @@ vars:
     delete: {type: function, status: done, notes: "builtin (Zig), HTTP DELETE client"}
     "set-handler!": {type: function, status: done, notes: "builtin (Zig), cljw extension — live reload handler"}
   clojure_java_shell:
-    "*sh-dir*": {type: dynamic-var, status: todo}
-    "*sh-env*": {type: dynamic-var, status: todo}
-    sh: {type: function, status: todo}
-    "with-sh-dir": {type: macro, status: todo}
-    "with-sh-env": {type: macro, status: todo}
+    "*sh-dir*": {type: dynamic-var, status: done}
+    "*sh-env*": {type: dynamic-var, status: done}
+    sh: {type: function, status: done}
+    "with-sh-dir": {type: macro, status: done}
+    "with-sh-env": {type: macro, status: done}
   clojure_main:
     demunge: {type: function, status: todo}
     "err->msg": {type: function, status: todo}

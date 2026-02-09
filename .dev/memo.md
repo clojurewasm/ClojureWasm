@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 663 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, etc.)
+- Coverage: 668 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -30,7 +30,7 @@ Phase 38: Core Library Completeness
 ## Task Queue
 
 Phase 39: Real-World Usability
-1. [ ] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
+1. [x] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
 2. [ ] 39.2: clojure.pprint — pprint, print-table, cl-format (core subset)
 3. [ ] 39.3: line-seq — lazy line-by-line file processing
 4. [ ] 39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
@@ -38,19 +38,18 @@ Phase 39: Real-World Usability
 
 ## Current Task
 
-39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env.
-Implement shell execution via Zig std.process.Child. Babashka provides
-this as critical scripting functionality. Maps to clojure.java.shell/sh:
-(sh "ls" "-la"), (sh "echo" "hello" :dir "/tmp").
+39.2: clojure.pprint — pprint, print-table, cl-format (core subset).
+Implement pretty-printing for Clojure data structures. pprint is the most
+commonly used function. print-table for tabular output. cl-format for
+formatted strings.
 
 ## Previous Task
 
-38.5: ns macro enhancement — :import support, docstring.
-- Added docstring support to ns macro (parses string arg, stores via set-ns-doc)
-- Added attr-map support ({:doc "..."} form)
-- Added :import clause as no-op (CW has no Java class imports)
-- Added Namespace.doc field (namespace.zig)
-- Added set-ns-doc builtin (ns_ops.zig)
+39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars).
+- New file: shell.zig — sh builtin via std.process.Child
+- New file: clojure/java/shell.clj — *sh-dir*, *sh-env*, with-sh-dir, with-sh-env
+- Returns {:exit N :out "..." :err "..."}, supports :dir, :in options
+- Fully-qualified var names in macros (syntax-quote ns resolution workaround)
 - Both VM + TreeWalk verified
 
 ## Known Issues

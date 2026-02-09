@@ -53,6 +53,9 @@ const data_clj_source = @embedFile("../clj/clojure/data.clj");
 /// Embedded clojure/repl.clj source (compiled into binary).
 const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
 
+/// Embedded clojure/java/shell.clj source (compiled into binary).
+const shell_clj_source = @embedFile("../clj/clojure/java/shell.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -386,6 +389,26 @@ pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
     }
+}
+
+/// Load and evaluate clojure/java/shell.clj in the given Env.
+/// Creates dynamic vars *sh-dir*, *sh-env* and macros with-sh-dir, with-sh-env.
+pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
+    const shell_ns = env.findOrCreateNamespace("clojure.java.shell") catch return error.EvalError;
+
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        shell_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = shell_ns;
+
+    _ = try evalString(allocator, env, shell_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
 }
 
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.
@@ -855,6 +878,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadSet(allocator, env);
     try loadData(allocator, env);
     try loadRepl(allocator, env);
+    try loadShell(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -909,6 +933,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.repl")) |repl_ns| {
         env.current_ns = repl_ns;
         _ = try evalStringVMBootstrap(allocator, env, repl_clj_source);
+    }
+
+    // Re-compile shell.clj
+    if (env.findNamespace("clojure.java.shell")) |shell_ns| {
+        env.current_ns = shell_ns;
+        _ = try evalStringVMBootstrap(allocator, env, shell_clj_source);
     }
 
     // Restore namespace
