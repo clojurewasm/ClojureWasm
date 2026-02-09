@@ -183,6 +183,33 @@
   [n]
   `(println (or (source-fn '~n) (str "Source not found"))))
 
+;; CLJW: identity fn — CW doesn't munge names like JVM Clojure
+(defn demunge
+  "Given a string representation of a fn class,
+  as in a stack trace element, returns a readable version."
+  {:added "1.3"}
+  [fn-name]
+  (str fn-name))
+
+;; CLJW: simplified root-cause — walks ex-cause chain
+(defn root-cause
+  "Returns the initial cause of an exception or error by peeling off all of
+  its wrappers"
+  {:added "1.3"}
+  [t]
+  (if-let [cause (ex-cause t)]
+    (recur cause)
+    t))
+
+;; CLJW: uses Throwable->map trace format instead of StackTraceElement
+(defn stack-element-str
+  "Returns a string representation of a stack trace element"
+  {:added "1.3"}
+  [el]
+  (if (map? el)
+    (str (:fn el) " (" (:file el) ":" (:line el) ")")
+    (str el)))
+
 ;; CLJW: pst using Zig error stack, number? check instead of (instance? Throwable)
 (defn pst
   "Prints a stack trace of the most recent exception (*e)."

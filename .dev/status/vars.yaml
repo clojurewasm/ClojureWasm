@@ -898,7 +898,7 @@ vars:
     "next-down": {type: function, status: done, notes: builtin (Zig)}
     "next-up": {type: function, status: done, notes: builtin (Zig)}
     pow: {type: function, status: done, notes: builtin (Zig)}
-    random: {type: function, status: todo}
+    random: {type: function, status: done, notes: builtin (Zig)}
     rint: {type: function, status: done, notes: builtin (Zig)}
     round: {type: function, status: done, notes: builtin (Zig)}
     scalb: {type: function, status: done, notes: builtin (Zig)}
@@ -959,18 +959,18 @@ vars:
     typename: {type: function, status: todo}
   clojure_repl:
     apropos: {type: function, status: done, notes: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
-    demunge: {type: function, status: todo}
+    demunge: {type: function, status: done, notes: "UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
     dir: {type: macro, status: done}
     "dir-fn": {type: function, status: done}
     doc: {type: macro, status: done}
     "find-doc": {type: function, status: done}
     pst: {type: function, status: done, notes: "UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
-    "root-cause": {type: function, status: todo}
-    "set-break-handler!": {type: function, status: todo}
+    "root-cause": {type: function, status: done, notes: "UPSTREAM-DIFF: walks ex-cause chain"}
+    "set-break-handler!": {type: function, status: skip, notes: "JVM interop (sun.misc.Signal)"}
     source: {type: macro, status: done}
     "source-fn": {type: function, status: done, notes: "UPSTREAM-DIFF: paren-counting instead of reader-based"}
-    "stack-element-str": {type: function, status: todo}
-    "thread-stopper": {type: function, status: todo}
+    "stack-element-str": {type: function, status: done, notes: "UPSTREAM-DIFF: uses map format instead of StackTraceElement"}
+    "thread-stopper": {type: function, status: skip, notes: "JVM interop (Thread/currentThread)"}
   clojure_set:
     difference: {type: function, status: done}
     index: {type: function, status: done}
@@ -1204,10 +1204,10 @@ vars:
     "keywordize-keys": {type: function, status: done}
     "macroexpand-all": {type: function, status: done}
     postwalk: {type: function, status: done}
-    "postwalk-demo": {type: function, status: todo}
+    "postwalk-demo": {type: function, status: done}
     "postwalk-replace": {type: function, status: done}
     prewalk: {type: function, status: done}
-    "prewalk-demo": {type: function, status: todo}
+    "prewalk-demo": {type: function, status: done}
     "prewalk-replace": {type: function, status: done}
     "stringify-keys": {type: function, status: done}
     walk: {type: function, status: done}

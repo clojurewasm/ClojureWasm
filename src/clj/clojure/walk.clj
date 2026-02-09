@@ -29,6 +29,20 @@
   [f form]
   (walk (partial prewalk f) identity (f form)))
 
+(defn postwalk-demo
+  "Demonstrates the behavior of postwalk by printing each form as it is
+  walked. Returns form."
+  {:added "1.1"}
+  [form]
+  (postwalk (fn [x] (print "Walked: ") (prn x) x) form))
+
+(defn prewalk-demo
+  "Demonstrates the behavior of prewalk by printing each form as it is
+  walked. Returns form."
+  {:added "1.1"}
+  [form]
+  (prewalk (fn [x] (print "Walked: ") (prn x) x) form))
+
 (defn postwalk-replace
   "Recursively transforms form by replacing keys in smap with their
   values. Does replacement at the leaves of the tree first."

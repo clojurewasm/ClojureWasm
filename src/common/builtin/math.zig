@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 const Value = @import("../value.zig").Value;
 const err = @import("../error.zig");
 const BuiltinDef = @import("../var.zig").BuiltinDef;
+const numeric = @import("numeric.zig");
 
 // --- Helpers ---
 
@@ -419,6 +420,8 @@ pub const builtins = [_]BuiltinDef{
     // Conversion
     .{ .name = "to-radians", .func = &toRadiansFn, .doc = "Converts an angle measured in degrees to radians.", .arglists = "([deg])", .added = "1.11" },
     .{ .name = "to-degrees", .func = &toDegreesFn, .doc = "Converts an angle measured in radians to degrees.", .arglists = "([rad])", .added = "1.11" },
+    // Random
+    .{ .name = "random", .func = &numeric.randFn, .doc = "Returns a positive double between 0.0 and 1.0, chosen pseudorandomly.", .arglists = "([])", .added = "1.11" },
 };
 
 // --- Constants (registered separately in registry.zig) ---
