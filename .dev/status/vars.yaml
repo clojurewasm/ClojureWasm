@@ -281,11 +281,11 @@ vars:
     "ex-data": {type: function, status: done, note: "Zig builtin"}
     "ex-info": {type: function, status: done, note: "Zig builtin"}
     "ex-message": {type: function, status: done, note: "Zig builtin"}
-    extend: {type: function, status: skip, note: Phase 42 — protocol extension API}
+    extend: {type: function, status: done, note: 'Zig builtin, accepts quoted symbol or string type'}
     "extend-protocol": {type: macro, status: done, notes: macro expanding to extend-type forms}
     "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
-    extenders: {type: function, status: skip, note: Phase 42 — protocol extension API}
-    "extends?": {type: function, status: skip, note: Phase 42 — protocol extension API}
+    extenders: {type: function, status: done, note: Phase 42 — protocol extension API}
+    "extends?": {type: function, status: done, note: Phase 42 — protocol extension API}
     "false?": {type: function, status: done, note: "core.clj (= x false)"}
     ffirst: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "file-seq": {type: function, status: done}
@@ -294,8 +294,8 @@ vars:
     find: {type: function, status: done, note: "Zig builtin"}
     "find-keyword": {type: function, status: done, note: 'F80: needs keyword intern table'}
     "find-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "find-protocol-impl": {type: function, status: skip, note: Phase 42 — protocol extension API}
-    "find-protocol-method": {type: function, status: skip, note: Phase 42 — protocol extension API}
+    "find-protocol-impl": {type: function, status: done, note: Phase 42 — protocol extension API}
+    "find-protocol-method": {type: function, status: done, note: Phase 42 — protocol extension API}
     "find-var": {type: function, status: done}
     first: {type: function, status: done, note: "Zig builtin"}
     flatten: {type: function, status: done, note: "core.clj (upstream is pure clj)"}

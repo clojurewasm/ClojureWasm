@@ -355,6 +355,219 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initBoolean(protocol.impls.get(type_key) != null);
 }
 
+/// Map a symbol name (e.g. "String", "Integer") to its protocol type key.
+fn mapSymbolToTypeKey(name: []const u8) []const u8 {
+    if (std.mem.eql(u8, name, "String")) return "string";
+    if (std.mem.eql(u8, name, "Integer") or std.mem.eql(u8, name, "Long")) return "integer";
+    if (std.mem.eql(u8, name, "Double") or std.mem.eql(u8, name, "Float")) return "float";
+    if (std.mem.eql(u8, name, "Boolean")) return "boolean";
+    if (std.mem.eql(u8, name, "nil")) return "nil";
+    if (std.mem.eql(u8, name, "Keyword")) return "keyword";
+    if (std.mem.eql(u8, name, "Symbol")) return "symbol";
+    if (std.mem.eql(u8, name, "PersistentList") or std.mem.eql(u8, name, "List")) return "list";
+    if (std.mem.eql(u8, name, "PersistentVector") or std.mem.eql(u8, name, "Vector")) return "vector";
+    if (std.mem.eql(u8, name, "PersistentArrayMap") or std.mem.eql(u8, name, "Map")) return "map";
+    if (std.mem.eql(u8, name, "PersistentHashSet") or std.mem.eql(u8, name, "Set")) return "set";
+    if (std.mem.eql(u8, name, "Atom")) return "atom";
+    if (std.mem.eql(u8, name, "Volatile")) return "volatile";
+    if (std.mem.eql(u8, name, "Pattern")) return "regex";
+    return name;
+}
+
+/// Map a Value's runtime type to its protocol type key string.
+fn valueTypeKey(val: Value) []const u8 {
+    return switch (val.tag()) {
+        .nil => "nil",
+        .boolean => "boolean",
+        .integer => "integer",
+        .float => "float",
+        .char => "char",
+        .string => "string",
+        .symbol => "symbol",
+        .keyword => "keyword",
+        .list => "list",
+        .vector => "vector",
+        .map, .hash_map => "map",
+        .set => "set",
+        .fn_val, .builtin_fn => "function",
+        .atom => "atom",
+        .volatile_ref => "volatile",
+        .regex => "regex",
+        .protocol => "protocol",
+        .protocol_fn => "protocol_fn",
+        .multi_fn => "multi_fn",
+        .lazy_seq => "lazy_seq",
+        .cons => "cons",
+        .var_ref => "var",
+        .delay => "delay",
+        .reduced => "reduced",
+        .transient_vector => "transient_vector",
+        .transient_map => "transient_map",
+        .transient_set => "transient_set",
+        .chunked_cons => "chunked_cons",
+        .chunk_buffer => "chunk_buffer",
+        .array_chunk => "array_chunk",
+        .wasm_module => "wasm_module",
+        .wasm_fn => "wasm_fn",
+        .matcher => "matcher",
+    };
+}
+
+/// (extenders protocol) — Returns a collection of types explicitly extended to protocol.
+fn extendersFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to extenders", .{args.len});
+    if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "extenders expects a protocol, got {s}", .{@tagName(args[0].tag())});
+    const protocol = args[0].asProtocol();
+    const impls = protocol.impls;
+    if (impls.entries.len == 0) return Value.nil_val;
+    // Return list of type keys (even indices)
+    const count = impls.entries.len / 2;
+    const vec = try allocator.create(value_mod.PersistentVector);
+    const items = try allocator.alloc(Value, count);
+    for (0..count) |i| {
+        items[i] = impls.entries[i * 2];
+    }
+    vec.* = .{ .items = items };
+    return Value.initVector(vec);
+}
+
+/// (extends? protocol atype) — Returns true if atype has been extended to protocol.
+fn extendsPred(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to extends?", .{args.len});
+    if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "extends? expects a protocol as first arg, got {s}", .{@tagName(args[0].tag())});
+    const protocol = args[0].asProtocol();
+    // atype can be a symbol (e.g. String) or string (type key)
+    const type_key = if (args[1].tag() == .symbol)
+        mapSymbolToTypeKey(args[1].asSymbol().name)
+    else if (args[1].tag() == .string)
+        mapSymbolToTypeKey(args[1].asString())
+    else
+        return err.setErrorFmt(.eval, .type_error, .{}, "extends? expects a type (symbol or string), got {s}", .{@tagName(args[1].tag())});
+    return Value.initBoolean(protocol.impls.get(Value.initString(allocator, type_key)) != null);
+}
+
+/// (find-protocol-impl protocol x) — Returns the method map for x's type, or nil.
+fn findProtocolImplFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-protocol-impl", .{args.len});
+    if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-impl expects a protocol, got {s}", .{@tagName(args[0].tag())});
+    const protocol = args[0].asProtocol();
+    const type_key = valueTypeKey(args[1]);
+    return protocol.impls.get(Value.initString(allocator, type_key)) orelse Value.nil_val;
+}
+
+/// (find-protocol-method protocol method-keyword x) — Returns the method fn for x's type, or nil.
+fn findProtocolMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-protocol-method", .{args.len});
+    if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-method expects a protocol, got {s}", .{@tagName(args[0].tag())});
+    const protocol = args[0].asProtocol();
+    const type_key = valueTypeKey(args[2]);
+    const method_map_val = protocol.impls.get(Value.initString(allocator, type_key)) orelse return Value.nil_val;
+    if (method_map_val.tag() != .map) return Value.nil_val;
+    // Method key can be keyword or string
+    const method_name = if (args[1].tag() == .keyword)
+        args[1].asKeyword().name
+    else if (args[1].tag() == .string)
+        args[1].asString()
+    else
+        return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-method expects a keyword or string method name, got {s}", .{@tagName(args[1].tag())});
+    return method_map_val.asMap().get(Value.initString(allocator, method_name)) orelse Value.nil_val;
+}
+
+/// (extend atype & proto+mmaps) — Extends protocol with implementations for atype.
+/// Usage: (extend String IGreet {:greet (fn [s] (str "hi " s))} IFoo {:bar (fn [s] ...)})
+fn extendFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to extend", .{args.len});
+    if ((args.len - 1) % 2 != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "extend expects type followed by protocol/method-map pairs", .{});
+    // First arg: type name (symbol or string)
+    const type_key = if (args[0].tag() == .symbol)
+        mapSymbolToTypeKey(args[0].asSymbol().name)
+    else if (args[0].tag() == .string)
+        mapSymbolToTypeKey(args[0].asString())
+    else
+        return err.setErrorFmt(.eval, .type_error, .{}, "extend expects a type name (symbol), got {s}", .{@tagName(args[0].tag())});
+
+    // Process protocol/method-map pairs
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        const proto_val = args[i];
+        const mmap_val = args[i + 1];
+        if (proto_val.tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "extend expects a protocol, got {s}", .{@tagName(proto_val.tag())});
+        if (mmap_val.tag() != .map and mmap_val.tag() != .hash_map)
+            return err.setErrorFmt(.eval, .type_error, .{}, "extend expects a method map, got {s}", .{@tagName(mmap_val.tag())});
+
+        const protocol = proto_val.asProtocol();
+
+        // Convert keyword keys to string keys (protocol dispatch uses string method names)
+        const src_entries = if (mmap_val.tag() == .map) mmap_val.asMap().entries else blk: {
+            break :blk try mmap_val.asHashMap().toEntries(allocator);
+        };
+        const method_count = src_entries.len / 2;
+        const new_entries = try allocator.alloc(Value, method_count * 2);
+        for (0..method_count) |j| {
+            const key = src_entries[j * 2];
+            // Convert keyword :foo to string "foo"
+            new_entries[j * 2] = if (key.tag() == .keyword)
+                Value.initString(allocator, key.asKeyword().name)
+            else if (key.tag() == .string)
+                key
+            else
+                return err.setErrorFmt(.eval, .type_error, .{}, "extend method-map keys must be keywords or strings, got {s}", .{@tagName(key.tag())});
+            new_entries[j * 2 + 1] = src_entries[j * 2 + 1];
+        }
+        const method_map = try allocator.create(value_mod.PersistentArrayMap);
+        method_map.* = .{ .entries = new_entries };
+
+        // Add method_map to protocol.impls for this type_key
+        const type_key_val = Value.initString(allocator, type_key);
+        const existing = protocol.impls.get(type_key_val);
+        if (existing) |ex_val| {
+            // Merge into existing method map
+            const old_entries = if (ex_val.tag() == .map) ex_val.asMap().entries else &[_]Value{};
+            // Build merged entries: old entries + new entries (new overrides old)
+            var merged = std.ArrayList(Value).empty;
+            // Add old entries not overridden by new
+            var k: usize = 0;
+            while (k < old_entries.len) : (k += 2) {
+                var overridden = false;
+                for (0..method_count) |j| {
+                    if (old_entries[k].eql(new_entries[j * 2])) {
+                        overridden = true;
+                        break;
+                    }
+                }
+                if (!overridden) {
+                    try merged.append(allocator, old_entries[k]);
+                    try merged.append(allocator, old_entries[k + 1]);
+                }
+            }
+            // Add all new entries
+            try merged.appendSlice(allocator, new_entries);
+            const merged_map = try allocator.create(value_mod.PersistentArrayMap);
+            merged_map.* = .{ .entries = merged.items };
+            // Update in-place
+            const impls = protocol.impls;
+            k = 0;
+            while (k < impls.entries.len) : (k += 2) {
+                if (impls.entries[k].eql(type_key_val)) {
+                    @constCast(impls.entries)[k + 1] = Value.initMap(merged_map);
+                    break;
+                }
+            }
+        } else {
+            // New type — add to impls
+            const old_impls = protocol.impls;
+            const new_impls_entries = try allocator.alloc(Value, old_impls.entries.len + 2);
+            @memcpy(new_impls_entries[0..old_impls.entries.len], old_impls.entries);
+            new_impls_entries[old_impls.entries.len] = type_key_val;
+            new_impls_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
+            const new_impls = try allocator.create(value_mod.PersistentArrayMap);
+            new_impls.* = .{ .entries = new_impls_entries };
+            protocol.impls = new_impls;
+        }
+    }
+    return Value.nil_val;
+}
+
 // ============================================================
 // Hash & identity functions
 // ============================================================
@@ -676,6 +889,11 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "odd?", .func = &oddPred, .doc = "Returns true if n is odd, throws an exception if n is not an integer.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "not", .func = &notFn, .doc = "Returns true if x is logical false, false otherwise.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "satisfies?", .func = &satisfiesPred, .doc = "Returns true if x satisfies the protocol.", .arglists = "([protocol x])", .added = "1.2" },
+    .{ .name = "extends?", .func = &extendsPred, .doc = "Returns true if atype has been extended to protocol.", .arglists = "([protocol atype])", .added = "1.2" },
+    .{ .name = "extenders", .func = &extendersFn, .doc = "Returns a collection of the types explicitly extending protocol.", .arglists = "([protocol])", .added = "1.2" },
+    .{ .name = "extend", .func = &extendFn, .doc = "Implementations of protocol methods can be provided using the extend construct.", .arglists = "([atype & proto+mmaps])", .added = "1.2" },
+    .{ .name = "find-protocol-impl", .func = &findProtocolImplFn, .doc = "Returns the method map for value's type, or nil.", .arglists = "([protocol x])", .added = "1.2" },
+    .{ .name = "find-protocol-method", .func = &findProtocolMethodFn, .doc = "Returns the method fn for value's type and method keyword, or nil.", .arglists = "([protocol methodk x])", .added = "1.2" },
     .{ .name = "type", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "class", .func = &typeFn, .doc = "Returns the type of x as a keyword.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "bound?", .func = &boundPred, .doc = "Returns true if all of the vars provided as arguments have any bound value, root or thread-local.", .arglists = "([& vars])", .added = "1.2" },
@@ -955,9 +1173,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 56 entries" {
-    // 54 + 2 (uri?, uuid?)
-    try testing.expectEqual(56, builtins.len);
+test "builtins table has 61 entries" {
+    // 56 + 5 (extend, extends?, extenders, find-protocol-impl, find-protocol-method)
+    try testing.expectEqual(61, builtins.len);
 }
 
 test "builtins all have func" {
