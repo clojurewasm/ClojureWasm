@@ -146,7 +146,100 @@ pub const Ratio = extern struct {
     kind: NumericExtKind = .ratio, // MUST be at offset 0 (tag discriminator)
     numerator: *BigInt,
     denominator: *BigInt,
+
+    /// Create a reduced ratio from two BigInt values.
+    /// Normalizes: GCD=1, denominator > 0.
+    /// If denominator divides numerator evenly, returns null (caller should use integer).
+    pub fn initReduced(allocator: std.mem.Allocator, num: *BigInt, den: *BigInt) !?*Ratio {
+        // Compute GCD
+        const gcd_bi = try allocator.create(BigInt);
+        gcd_bi.managed = try std.math.big.int.Managed.init(allocator);
+
+        // Use Zig's big int GCD: gcd(|num|, |den|)
+        var abs_num = try allocator.create(BigInt);
+        abs_num.managed = try std.math.big.int.Managed.init(allocator);
+        try abs_num.managed.copy(num.managed.toConst());
+        abs_num.managed.setSign(true); // make positive
+
+        var abs_den = try allocator.create(BigInt);
+        abs_den.managed = try std.math.big.int.Managed.init(allocator);
+        try abs_den.managed.copy(den.managed.toConst());
+        abs_den.managed.setSign(true); // make positive
+
+        // GCD computation using Euclidean algorithm
+        try bigIntGcd(&gcd_bi.managed, &abs_num.managed, &abs_den.managed);
+
+        // Reduce: num/gcd, den/gcd
+        const r_num = try allocator.create(BigInt);
+        r_num.managed = try std.math.big.int.Managed.init(allocator);
+        var r_num_rem = try std.math.big.int.Managed.init(allocator);
+        r_num.managed.divTrunc(&r_num_rem, &num.managed, &gcd_bi.managed) catch return error.OutOfMemory;
+
+        const r_den = try allocator.create(BigInt);
+        r_den.managed = try std.math.big.int.Managed.init(allocator);
+        var r_den_rem = try std.math.big.int.Managed.init(allocator);
+        r_den.managed.divTrunc(&r_den_rem, &den.managed, &gcd_bi.managed) catch return error.OutOfMemory;
+
+        // Normalize sign: denominator always positive
+        if (!r_den.managed.isPositive()) {
+            r_num.managed.negate();
+            r_den.managed.negate();
+        }
+
+        // If denominator is 1, return null (caller should use integer)
+        if (r_den.managed.toConst().orderAgainstScalar(1) == .eq) {
+            return null;
+        }
+
+        const ratio = try allocator.create(Ratio);
+        ratio.kind = .ratio;
+        ratio.numerator = r_num;
+        ratio.denominator = r_den;
+        return ratio;
+    }
+
+    /// Create a Ratio from two i64 values. Returns null if result is integer.
+    pub fn initFromI64(allocator: std.mem.Allocator, num: i64, den: i64) !?*Ratio {
+        const n = try BigInt.initFromI64(allocator, num);
+        const d = try BigInt.initFromI64(allocator, den);
+        return initReduced(allocator, n, d);
+    }
+
+    /// Create from string numerator/denominator (e.g. "22", "7").
+    pub fn initFromStrings(allocator: std.mem.Allocator, num_str: []const u8, den_str: []const u8) !?*Ratio {
+        const n = try BigInt.initFromString(allocator, num_str);
+        const d = try BigInt.initFromString(allocator, den_str);
+        return initReduced(allocator, n, d);
+    }
+
+    pub fn toF64(self: *const Ratio) f64 {
+        return self.numerator.toF64() / self.denominator.toF64();
+    }
 };
+
+/// Euclidean GCD for big integers. result = gcd(a, b).
+fn bigIntGcd(result: *std.math.big.int.Managed, a: *std.math.big.int.Managed, b: *std.math.big.int.Managed) !void {
+    // Simple Euclidean: gcd(a, 0) = a, gcd(a, b) = gcd(b, a mod b)
+    var x = try std.math.big.int.Managed.init(a.allocator);
+    try x.copy(a.toConst());
+    x.setSign(true);
+
+    var y = try std.math.big.int.Managed.init(a.allocator);
+    try y.copy(b.toConst());
+    y.setSign(true);
+
+    var temp = try std.math.big.int.Managed.init(a.allocator);
+    var quotient = try std.math.big.int.Managed.init(a.allocator);
+
+    while (!y.toConst().eqlZero()) {
+        try temp.copy(y.toConst());
+        quotient.divTrunc(&y, &x, &temp) catch return error.OutOfMemory;
+        // Now y = x mod temp, we need: x = temp (old y), y = remainder
+        // divTrunc puts quotient in quotient, remainder in y
+        try x.copy(temp.toConst());
+    }
+    try result.copy(x.toConst());
+}
 
 /// BigDecimal — arbitrary-precision decimal (unscaled BigInt + i32 scale).
 /// Value = unscaled_value × 10^(-scale).

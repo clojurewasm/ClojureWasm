@@ -11,6 +11,9 @@ const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Env = @import("../env.zig").Env;
 const err = @import("../error.zig");
+const collections = @import("../collections.zig");
+const BigInt = collections.BigInt;
+const Ratio = collections.Ratio;
 
 /// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
 /// Module-level (D3 known exception, single-thread only).
@@ -32,7 +35,7 @@ fn isBoolean(v: Value) bool {
     return v.tag() == .boolean;
 }
 fn isNumber(v: Value) bool {
-    return v.tag() == .integer or v.tag() == .float or v.tag() == .big_int or v.tag() == .big_decimal;
+    return v.tag() == .integer or v.tag() == .float or v.tag() == .big_int or v.tag() == .big_decimal or v.tag() == .ratio;
 }
 fn isInteger(v: Value) bool {
     return v.tag() == .integer or v.tag() == .big_int;
@@ -154,6 +157,7 @@ fn isZero(v: Value) bool {
         .float => v.asFloat() == 0.0,
         .big_int => v.asBigInt().managed.toConst().eqlZero(),
         .big_decimal => v.asBigDecimal().toF64() == 0.0,
+        .ratio => v.asRatio().numerator.managed.toConst().eqlZero(),
         else => false,
     };
 }
@@ -163,6 +167,7 @@ fn isPos(v: Value) bool {
         .float => v.asFloat() > 0.0,
         .big_int => v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
         .big_decimal => v.asBigDecimal().toF64() > 0.0,
+        .ratio => v.asRatio().numerator.managed.isPositive() and !v.asRatio().numerator.managed.toConst().eqlZero(),
         else => false,
     };
 }
@@ -172,6 +177,7 @@ fn isNeg(v: Value) bool {
         .float => v.asFloat() < 0.0,
         .big_int => !v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
         .big_decimal => v.asBigDecimal().toF64() < 0.0,
+        .ratio => !v.asRatio().numerator.managed.isPositive() and !v.asRatio().numerator.managed.toConst().eqlZero(),
         else => false,
     };
 }
@@ -799,14 +805,66 @@ fn recordPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (ratio? x) — Returns true if x is a Ratio.
 fn ratioPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ratio?", .{args.len});
-    // No ratio type in ClojureWasm
-    return Value.false_val;
+    return Value.initBoolean(args[0].tag() == .ratio);
 }
 
 /// (rational? x) — Returns true if x is a rational number.
 fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rational?", .{args.len});
     return Value.initBoolean(args[0].tag() == .integer or args[0].tag() == .big_int or args[0].tag() == .ratio);
+}
+
+/// (numerator r) — Returns the numerator part of a Ratio.
+fn numeratorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to numerator", .{args.len});
+    if (args[0].tag() != .ratio) return err.setErrorFmt(.eval, .type_error, .{}, "numerator requires a Ratio, got {s}", .{@tagName(args[0].tag())});
+    const ratio = args[0].asRatio();
+    if (ratio.numerator.toI64()) |i| return Value.initInteger(i);
+    return Value.initBigInt(ratio.numerator);
+}
+
+/// (denominator r) — Returns the denominator part of a Ratio.
+fn denominatorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to denominator", .{args.len});
+    if (args[0].tag() != .ratio) return err.setErrorFmt(.eval, .type_error, .{}, "denominator requires a Ratio, got {s}", .{@tagName(args[0].tag())});
+    const ratio = args[0].asRatio();
+    if (ratio.denominator.toI64()) |i| return Value.initInteger(i);
+    return Value.initBigInt(ratio.denominator);
+}
+
+/// (rationalize num) — Returns the rational value of num.
+fn rationalizeFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rationalize", .{args.len});
+    return switch (args[0].tag()) {
+        .integer, .big_int, .ratio => args[0],
+        .float => blk: {
+            const f = args[0].asFloat();
+            if (std.math.isNan(f) or std.math.isInf(f))
+                return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Cannot rationalize NaN or Infinity", .{});
+            // Simple approach: if it's an exact integer, return integer
+            const truncated = @trunc(f);
+            if (f == truncated) {
+                const i: i48 = @intFromFloat(truncated);
+                break :blk Value.initInteger(i);
+            }
+            // For non-integer floats, return as-is (Java uses continued fractions
+            // but Clojure's rationalize on a double returns the exact rational
+            // representation — we simplify to return the float unchanged)
+            break :blk args[0];
+        },
+        .big_decimal => blk: {
+            // BigDecimal → exact rational: unscaled * 10^(-scale)
+            const bd = args[0].asBigDecimal();
+            if (bd.scale == 0) {
+                if (bd.unscaled.toI64()) |i| break :blk Value.initInteger(i);
+                break :blk Value.initBigInt(bd.unscaled);
+            }
+            // Return as BigDecimal for now (proper Ratio conversion would need
+            // to compute unscaled / 10^scale as a Ratio)
+            break :blk args[0];
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot rationalize {s}", .{@tagName(args[0].tag())}),
+    };
 }
 
 /// (decimal? x) — Returns true if x is a BigDecimal.
@@ -947,6 +1005,9 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "record?", .func = &recordPred, .doc = "Returns true if x is a record.", .arglists = "([x])", .added = "1.6" },
     .{ .name = "ratio?", .func = &ratioPred, .doc = "Returns true if n is a Ratio.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "rational?", .func = &rationalPred, .doc = "Returns true if n is a rational number.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "numerator", .func = &numeratorFn, .doc = "Returns the numerator part of a Ratio.", .arglists = "([r])", .added = "1.2" },
+    .{ .name = "denominator", .func = &denominatorFn, .doc = "Returns the denominator part of a Ratio.", .arglists = "([r])", .added = "1.2" },
+    .{ .name = "rationalize", .func = &rationalizeFn, .doc = "Returns the rational value of num.", .arglists = "([num])", .added = "1.0" },
     .{ .name = "decimal?", .func = &decimalPred, .doc = "Returns true if n is a BigDecimal.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "uri?", .func = &uriPred, .doc = "Return true if x is a java.net.URI.", .arglists = "([x])", .added = "1.9" },
     .{ .name = "uuid?", .func = &uuidPred, .doc = "Return true if x is a java.util.UUID.", .arglists = "([x])", .added = "1.9" },
@@ -1205,9 +1266,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 61 entries" {
-    // 56 + 5 (extend, extends?, extenders, find-protocol-impl, find-protocol-method)
-    try testing.expectEqual(61, builtins.len);
+test "builtins table has 64 entries" {
+    // 56 + 5 (extend, extends?, extenders, find-protocol-impl, find-protocol-method) + 3 (numerator, denominator, rationalize)
+    try testing.expectEqual(64, builtins.len);
 }
 
 test "builtins all have func" {

@@ -36,6 +36,9 @@ pub const FormData = union(enum) {
     // BigDecimal literal (M suffix)
     big_decimal: []const u8,
 
+    // Ratio literal (e.g. 1/3, 22/7)
+    ratio: RatioLiteral,
+
     // Regex literal
     regex: []const u8,
 
@@ -48,6 +51,12 @@ pub const SymbolRef = struct {
     ns: ?[]const u8,
     name: []const u8,
     auto_resolve: bool = false, // true for ::foo auto-resolved keywords
+};
+
+/// Ratio literal numerator/denominator text (e.g. "22" / "7").
+pub const RatioLiteral = struct {
+    numerator: []const u8,
+    denominator: []const u8,
 };
 
 /// Tagged literal: #tag form
@@ -79,6 +88,7 @@ pub const Form = struct {
             .set => "set",
             .big_int => "big_int",
             .big_decimal => "big_decimal",
+            .ratio => "ratio",
             .regex => "regex",
             .tag => "tag",
         };
@@ -138,6 +148,11 @@ pub const Form = struct {
             .big_decimal => |s| {
                 try w.writeAll(s);
                 try w.writeByte('M');
+            },
+            .ratio => |r| {
+                try w.writeAll(r.numerator);
+                try w.writeByte('/');
+                try w.writeAll(r.denominator);
             },
             .regex => |pattern| {
                 try w.writeAll("#\"");

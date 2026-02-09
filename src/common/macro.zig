@@ -33,6 +33,22 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
         .float => |n| Value.initFloat(n),
         .big_int => |s| Value.initBigInt(collections.BigInt.initFromString(allocator, s) catch return error.OutOfMemory),
         .big_decimal => |s| Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch return error.OutOfMemory),
+        .ratio => |r| blk: {
+            const maybe_ratio = collections.Ratio.initFromStrings(allocator, r.numerator, r.denominator) catch return error.OutOfMemory;
+            if (maybe_ratio) |ratio| {
+                break :blk Value.initRatio(ratio);
+            } else {
+                // Simplifies to integer
+                const n = collections.BigInt.initFromString(allocator, r.numerator) catch return error.OutOfMemory;
+                const d = collections.BigInt.initFromString(allocator, r.denominator) catch return error.OutOfMemory;
+                const q = allocator.create(collections.BigInt) catch return error.OutOfMemory;
+                q.managed = std.math.big.int.Managed.init(allocator) catch return error.OutOfMemory;
+                var rem_val = std.math.big.int.Managed.init(allocator) catch return error.OutOfMemory;
+                q.managed.divTrunc(&rem_val, &n.managed, &d.managed) catch return error.OutOfMemory;
+                if (q.toI64()) |i| break :blk Value.initInteger(i);
+                break :blk Value.initBigInt(q);
+            }
+        },
         .char => |c| Value.initChar(c),
         .string => |s| Value.initString(allocator, s),
         .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
@@ -232,8 +248,14 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const s = bd.toStringAlloc(allocator) catch return Form{ .data = .nil };
             break :blk Form{ .data = .{ .big_decimal = s } };
         },
+        .ratio => blk: {
+            const r = val.asRatio();
+            const num_s = r.numerator.managed.toConst().toStringAlloc(allocator, 10, .lower) catch return Form{ .data = .nil };
+            const den_s = r.denominator.managed.toConst().toStringAlloc(allocator, 10, .lower) catch return Form{ .data = .nil };
+            break :blk Form{ .data = .{ .ratio = .{ .numerator = num_s, .denominator = den_s } } };
+        },
         // Non-data values become nil (shouldn't appear in macro output)
-        .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .chunked_cons, .chunk_buffer, .array_chunk, .wasm_module, .wasm_fn, .matcher, .array, .ratio => Form{ .data = .nil },
+        .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .chunked_cons, .chunk_buffer, .array_chunk, .wasm_module, .wasm_fn, .matcher, .array => Form{ .data = .nil },
     };
 }
 

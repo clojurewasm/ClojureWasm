@@ -14,7 +14,7 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                         | Trigger                                                            |
 | ---- | -------------------------------------------- | ------------------------------------------------------------------ |
-| F3   | Ratio type (`1/3`)                           | → subsumed by F132, Phase 43                                       |
+| F3   | ~~Ratio type (`1/3`)~~                       | DONE: Phase 43.8 (subsumed by F132)                                |
 | F4   | Persistent data structures (HAMT, RRB-Tree)  | Collection benchmarks show bottleneck                              |
 | F6   | Multi-thread dynamic bindings                | Prerequisite for F133 (Future), native multi-thread target         |
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
@@ -28,7 +28,7 @@ Check at session start for items that become actionable.
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
 | F130 | ~~Array Value type + ops (35 vars)~~         | DONE: Phase 43.1-43.4                                             |
 | F131 | ~~BigInt + BigDecimal (pure Zig)~~            | DONE: Phase 43.5-43.6                                             |
-| F132 | Ratio type + numerator/denominator           | Extends F3, ties into F131. Phase 43                               |
+| F132 | ~~Ratio type + numerator/denominator~~       | DONE: Phase 43.8                                                   |
 | F133 | Future + thread pool                         | Zig std.Thread, GC safety, deref timeout. Phase 44                 |
-| F134 | Protocol extension API                       | extend, extenders, extends? etc. (5 vars). Phase 42                |
+| F134 | ~~Protocol extension API~~                   | DONE: Phase 42.2                                                   |
 | F135 | import → wasm mapping design                 | Explore ClojureDart-like :import for .wasm. Phase 45               |

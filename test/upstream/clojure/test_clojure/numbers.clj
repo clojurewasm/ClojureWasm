@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 65
+;; CLJW markers: 69
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -61,6 +61,10 @@
     42M 42
     42M 42.0
     3.14M 3.14)
+
+  ;; Ratio equality
+  (are [x y] (= x y)
+    (/ 1 2) (/ 2 4))
 
   ;; hash consistency for BigInt = integer
   (are [x y] (= (hash x) (hash y))
@@ -176,18 +180,24 @@
     (* -1 (bigint I48-MIN))
     (* (bigint I48-MIN) -1)))
 
-;; CLJW: test-ratios-simplify-to-ints-where-appropriate skipped — ratio
+;; CLJW: adapted — uses integer? predicate
+(deftest test-ratios-simplify-to-ints-where-appropriate
+  (testing "negative denominator (assembla #275)"
+    (is (integer? (/ 1 -1/2)))
+    (is (integer? (/ 0 -1/2)))))
 
 (deftest test-divide
   (are [x y] (= x y)
     (/ 1) 1
-      ;; CLJW: ratio results removed (/ 2) etc.
+    (/ 2) 1/2
+    (/ 3 2) 3/2
     (/ 4 2) 2
     (/ 24 3 2) 4
     (/ 24 3 2 -1) -4
 
     (/ -1) -1
-      ;; CLJW: ratio results removed
+    (/ -2) -1/2
+    (/ -3 -2) 3/2
     (/ -4 -2) 2
     (/ -4 2) -2)
 
@@ -222,7 +232,8 @@
     (mod 6 4) 2
     (mod 0 5) 0
 
-    ;; CLJW: ratio mod tests removed
+    ;; CLJW: ratio mod returns float (upstream returns exact Ratio)
+    (mod 2 1/2) 0
 
     (mod 4.0 2.0) 0.0
     (mod 4.5 2.0) 0.5
@@ -265,7 +276,8 @@
     (rem 6 4) 2
     (rem 0 5) 0
 
-    ;; CLJW: ratio rem tests removed
+    ;; CLJW: ratio rem returns float (upstream returns exact Ratio)
+    (rem 2 1/2) 0
 
     (rem 4.0 2.0) 0.0
     (rem 4.5 2.0) 0.5
@@ -303,7 +315,9 @@
     (quot 6 4) 1
     (quot 0 5) 0
 
-    ;; CLJW: ratio quot tests removed
+    (quot 2 1/2) 4
+    (quot 2/3 1/2) 1
+    (quot 1 2/3) 1
 
     (quot 4.0 2.0) 2.0
     (quot 4.5 2.0) 2.0
@@ -349,7 +363,7 @@
 
 ;; *** Predicates ***
 
-;; CLJW: test-pos?-zero?-neg? — no byte/short/ratio/Float (added bigdec)
+;; CLJW: test-pos?-zero?-neg? — no byte/short/Float (added ratio, bigdec)
 (deftest test-pos?-zero?-neg?
   (are [x] (true? x)
     (pos? 5)
@@ -389,7 +403,12 @@
     ;; CLJW: BigDecimal neg?
     (neg? (bigdec -9))
     (not (neg? (bigdec 0)))
-    (not (neg? (bigdec 9)))))
+    (not (neg? (bigdec 9)))
+    ;; Ratio predicates
+    (pos? 2/3)
+    (not (pos? -2/3))
+    (neg? -2/3)
+    (not (neg? 2/3))))
 
 ;; even? odd?
 
@@ -479,9 +498,26 @@
   (is (false? (bit-test 2r1101 1))))
 
 ;; CLJW: test-array-types skipped — Java arrays
-;; CLJW: test-ratios skipped — ratio type
+
+;; CLJW: adapted from upstream — removed Long/MIN_VALUE tests (i48), added basic ratio tests
+(deftest test-ratios
+  (is (== (denominator 1/2) 2))
+  (is (== (numerator 1/2) 1))
+  (is (= (/ 1 3) 1/3))
+  (is (= (/ 2 4) 1/2))
+  (is (= (+ 1/3 2/3) 1))
+  (is (ratio? 1/3))
+  (is (not (ratio? 2)))
+  (is (rational? 1/3))
+  (is (rational? 2))
+  (is (not (rational? 1.5)))
+  (is (= (abs -1/3) 1/3))
+  (is (= (abs 1/3) 1/3))
+  (is (< 1/3 1/2))
+  (is (> 2/3 1/2)))
+
 ;; CLJW: test-arbitrary-precision-subtract skipped — BigInt class
-;; CLJW: test-min-max skipped — Float. constructor, class checks, ratio
+;; CLJW: test-min-max skipped — Float. constructor, class checks
 
 (deftest test-abs
   (are [in ex] (= ex (abs in))
@@ -494,8 +530,11 @@
     123N 123N
     ;; CLJW: BigDecimal abs (returns float)
     -123.456M 123.456
-    123.456M 123.456))
-;; CLJW: ratio/##Inf/##NaN abs tests removed
+    123.456M 123.456
+    ;; Ratio abs
+    -1/3 1/3
+    1/3 1/3
+    -22/7 22/7))
 
 ;; CLJW: clj-868 (NaN contagious min/max) skipped — Float/Double class constructors
 
@@ -543,7 +582,7 @@
 
 ;; CLJW: unchecked-inc/dec/negate/add/subtract/multiply overflow tests skipped — Long/MIN_VALUE, Long/MAX_VALUE, Long/valueOf
 ;; CLJW: warn-on-boxed skipped — *unchecked-math*, eval-in-temp-ns
-;; CLJW: comparisons — adapted (removed Integer/Float constructors, ratio; added BigDecimal)
+;; CLJW: comparisons — adapted (removed Integer/Float constructors; added ratio, BigDecimal)
 (deftest comparisons
   ;; BigInt comparisons with integers
   (are [x y] (= x y)
@@ -573,7 +612,18 @@
     (< 1M 10) true
     (> 10M 1) true
     (< 1M 10.0) true
-    (> 10M 1.0) true))
+    (> 10M 1.0) true)
+  ;; Ratio comparisons
+  (are [x y] (= x y)
+    (< 1/3 1/2) true
+    (< 1/2 1/3) false
+    (<= 1/3 1/3) true
+    (> 2/3 1/3) true
+    (>= 2/3 2/3) true
+    (< 1/3 1) true
+    (> 1 1/3) true
+    (< 1/3 0.5) true
+    (> 0.5 1/3) true))
 
 ;; CLJW-ADD: BigDecimal arithmetic tests
 (deftest test-bigdec-arithmetic

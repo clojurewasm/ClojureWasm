@@ -33,6 +33,19 @@ pub fn absFn(_: Allocator, args: []const Value) anyerror!Value {
             break :blk Value.initBigInt(result);
         },
         .big_decimal => Value.initFloat(@abs(args[0].asBigDecimal().toF64())),
+        .ratio => blk: {
+            const r = args[0].asRatio();
+            if (r.numerator.managed.isPositive() or r.numerator.managed.toConst().eqlZero()) break :blk args[0];
+            // Negate numerator to get absolute value
+            const alloc = std.heap.page_allocator;
+            const new_ratio = alloc.create(collections.Ratio) catch return error.OutOfMemory;
+            const neg_num = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+            neg_num.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+            neg_num.managed.copy(r.numerator.managed.toConst()) catch return error.OutOfMemory;
+            neg_num.managed.negate();
+            new_ratio.* = .{ .kind = .ratio, .numerator = neg_num, .denominator = r.denominator };
+            break :blk Value.initRatio(new_ratio);
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0].tag())}),
     };
 }
@@ -66,6 +79,15 @@ pub fn quotFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to quot", .{args.len});
     const a = args[0];
     const b = args[1];
+    // Ratio quot → convert to float, truncate
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        const fa = arithmetic.toFloat(a) catch unreachable;
+        const fb = arithmetic.toFloat(b) catch unreachable;
+        if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+        const result = @trunc(fa / fb);
+        const i: i48 = @intFromFloat(result);
+        return Value.initInteger(i);
+    }
     // BigDecimal quot → float
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         const fa = arithmetic.toFloat(a) catch unreachable;
@@ -150,6 +172,14 @@ pub fn randIntFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn compareNum(a: Value, b: Value) !i2 {
+    // Ratio comparison → convert to float
+    if (a.tag() == .ratio or b.tag() == .ratio) {
+        const fa = arithmetic.toFloat(a) catch unreachable;
+        const fb = arithmetic.toFloat(b) catch unreachable;
+        if (fa < fb) return -1;
+        if (fa > fb) return 1;
+        return 0;
+    }
     // BigDecimal comparison → convert to float
     if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
         const fa = arithmetic.toFloat(a) catch unreachable;

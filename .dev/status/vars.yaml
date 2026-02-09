@@ -241,7 +241,7 @@ vars:
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
     deliver: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
-    denominator: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
+    denominator: {type: function, status: done, note: "builtin (Ratio)"}
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
     descendants: {type: function, status: done, note: core.clj hierarchy-aware}
@@ -450,7 +450,7 @@ vars:
     nthrest: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     num: {type: function, status: done, note: builtin (upstream is pure clj)}
     "number?": {type: function, status: done, note: "Zig builtin"}
-    numerator: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
+    numerator: {type: function, status: done, note: "builtin (Ratio)"}
     "object-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "odd?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     or: {type: macro, status: done, note: "macro in core.clj"}
@@ -511,7 +511,7 @@ vars:
     range: {type: function, status: done, note: "Zig builtin"}
     "ratio?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
-    rationalize: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
+    rationalize: {type: function, status: done, note: "builtin"}
     "re-find": {type: function, status: done, note: "Zig builtin"}
     "re-groups": {type: function, status: done, note: Zig builtin}
     "re-matcher": {type: function, status: done, note: Zig builtin}

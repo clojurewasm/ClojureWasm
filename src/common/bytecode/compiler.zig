@@ -580,8 +580,8 @@ pub const Compiler = struct {
                     try self.chunk.emitOp(op);
                     self.stack_depth -= 1; // binary: 2 → 1
                 } else if (std.mem.eql(u8, name, "/")) {
-                    // (/ x) => (1.0 / x)
-                    const idx = self.chunk.addConstant(Value.initFloat(1.0)) catch return error.TooManyConstants;
+                    // (/ x) => (1 / x) — returns Ratio for non-divisible (e.g. (/ 4) => 1/4)
+                    const idx = self.chunk.addConstant(Value.initInteger(1)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                     try self.compile(args[0]); // +1

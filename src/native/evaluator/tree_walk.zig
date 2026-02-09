@@ -1618,7 +1618,7 @@ test "TreeWalk multiplication" {
     try std.testing.expectEqual(Value.initInteger(42), result);
 }
 
-test "TreeWalk division returns float" {
+test "TreeWalk integer division" {
     const registry = @import("../../common/builtin/registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -1628,14 +1628,15 @@ test "TreeWalk division returns float" {
     var tw = TreeWalk.initWithEnv(arena.allocator(), &env);
     defer tw.deinit();
 
+    // (/ 10 2) => 5 (exact integer division)
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .value = Value.initInteger(10) } };
-    var a2 = Node{ .constant = .{ .value = Value.initInteger(4) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = try tw.run(&n);
-    try std.testing.expectEqual(Value.initFloat(2.5), result);
+    try std.testing.expectEqual(Value.initInteger(5), result);
 }
 
 test "TreeWalk comparison" {

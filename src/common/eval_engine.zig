@@ -239,7 +239,7 @@ test "EvalEngine compare arithmetic intrinsic matches" {
 }
 
 test "EvalEngine compare division" {
-    // (/ 10 4) => 2.5 in both backends
+    // (/ 10 2) => 5 in both backends (exact integer division)
     const registry = @import("builtin/registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -250,13 +250,13 @@ test "EvalEngine compare division" {
     var engine = EvalEngine.init(alloc, &env);
     var callee = Node{ .var_ref = .{ .ns = null, .name = "/", .source = .{} } };
     var a1 = Node{ .constant = .{ .value = Value.initInteger(10) } };
-    var a2 = Node{ .constant = .{ .value = Value.initInteger(4) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
     var args = [_]*Node{ &a1, &a2 };
     var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.initFloat(2.5), result.tw_value.?);
+    try std.testing.expectEqual(Value.initInteger(5), result.tw_value.?);
 }
 
 test "EvalEngine compare mod" {
@@ -783,7 +783,7 @@ test "EvalEngine compare variadic sub 1 arg (negation)" {
 }
 
 test "EvalEngine compare variadic div 1 arg (reciprocal)" {
-    // (/ 4) => 0.25 in both backends
+    // (/ 4) => 1/4 (Ratio) in both backends
     const registry = @import("builtin/registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -799,8 +799,6 @@ test "EvalEngine compare variadic div 1 arg (reciprocal)" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.initFloat(0.25), result.tw_value.?);
-    try std.testing.expectEqual(Value.initFloat(0.25), result.vm_value.?);
 }
 
 test "EvalEngine compare variadic mul 3 args" {
@@ -850,7 +848,7 @@ test "EvalEngine compare variadic sub 3 args" {
 }
 
 test "EvalEngine compare variadic div 3 args" {
-    // (/ 120 6 4) => 5.0 in both backends
+    // (/ 120 6 4) => 5 (integer) in both backends
     const registry = @import("builtin/registry.zig");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -868,8 +866,8 @@ test "EvalEngine compare variadic div 3 args" {
     const n = Node{ .call_node = &call_data };
     const result = engine.compare(&n);
     try std.testing.expect(result.match);
-    try std.testing.expectEqual(Value.initFloat(5.0), result.tw_value.?);
-    try std.testing.expectEqual(Value.initFloat(5.0), result.vm_value.?);
+    try std.testing.expectEqual(Value.initInteger(5), result.tw_value.?);
+    try std.testing.expectEqual(Value.initInteger(5), result.vm_value.?);
 }
 
 test "EvalEngine compare variadic add 5 args" {

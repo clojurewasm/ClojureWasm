@@ -1580,10 +1580,18 @@ pub const Value = enum(u64) {
 };
 
 fn isNumericTag(t: Value.Tag) bool {
-    return t == .integer or t == .float or t == .big_int or t == .big_decimal;
+    return t == .integer or t == .float or t == .big_int or t == .big_decimal or t == .ratio;
 }
 
 fn numericEql(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag) bool {
+    // Ratio cross-type: Ratios are always reduced, so Ratio vs integer/BigInt
+    // can only be equal if Ratio is an integer (which can't happen since
+    // initReduced returns integer in that case). Compare via float for Ratio vs float.
+    if (self_tag == .ratio or other_tag == .ratio) {
+        const a = numericToF64(self, self_tag);
+        const b = numericToF64(other, other_tag);
+        return a == b;
+    }
     // BigDecimal: compare as f64 with other numeric types
     if (self_tag == .big_decimal or other_tag == .big_decimal) {
         const a = numericToF64(self, self_tag);
@@ -1616,6 +1624,7 @@ fn numericToF64(v: Value, t: Value.Tag) f64 {
         .float => v.asFloat(),
         .big_int => v.asBigInt().toF64(),
         .big_decimal => v.asBigDecimal().toF64(),
+        .ratio => v.asRatio().toF64(),
         else => 0.0,
     };
 }

@@ -221,6 +221,25 @@ pub const Analyzer = struct {
             .float => |n| self.makeConstantFrom(Value.initFloat(n), form),
             .big_int => |s| self.makeConstantFrom(Value.initBigInt(collections.BigInt.initFromString(self.allocator, s) catch return error.OutOfMemory), form),
             .big_decimal => |s| self.makeConstantFrom(Value.initBigDecimal(collections.BigDecimal.initFromString(self.allocator, s) catch return error.OutOfMemory), form),
+            .ratio => |r| blk: {
+                const maybe_ratio = collections.Ratio.initFromStrings(self.allocator, r.numerator, r.denominator) catch return error.OutOfMemory;
+                if (maybe_ratio) |ratio| {
+                    break :blk self.makeConstantFrom(Value.initRatio(ratio), form);
+                } else {
+                    // Denominator divides numerator: simplifies to integer
+                    const n = collections.BigInt.initFromString(self.allocator, r.numerator) catch return error.OutOfMemory;
+                    const d = collections.BigInt.initFromString(self.allocator, r.denominator) catch return error.OutOfMemory;
+                    const q = self.allocator.create(collections.BigInt) catch return error.OutOfMemory;
+                    q.managed = std.math.big.int.Managed.init(self.allocator) catch return error.OutOfMemory;
+                    var rem_val = std.math.big.int.Managed.init(self.allocator) catch return error.OutOfMemory;
+                    q.managed.divTrunc(&rem_val, &n.managed, &d.managed) catch return error.OutOfMemory;
+                    // Try to fit in i64/i48
+                    if (q.toI64()) |i| {
+                        break :blk self.makeConstantFrom(Value.initInteger(i), form);
+                    }
+                    break :blk self.makeConstantFrom(Value.initBigInt(q), form);
+                }
+            },
             .char => |c| self.makeConstantFrom(Value.initChar(c), form),
             .string => |s| self.makeConstantFrom(Value.initString(self.allocator, s), form),
             .keyword => |sym| blk: {
@@ -2275,6 +2294,21 @@ pub fn formToValue(allocator: Allocator, form: Form) Value {
         .float => |n| Value.initFloat(n),
         .big_int => |s| Value.initBigInt(collections.BigInt.initFromString(allocator, s) catch return Value.nil_val),
         .big_decimal => |s| Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch return Value.nil_val),
+        .ratio => |r| blk: {
+            const maybe_ratio = collections.Ratio.initFromStrings(allocator, r.numerator, r.denominator) catch break :blk Value.nil_val;
+            if (maybe_ratio) |ratio| {
+                break :blk Value.initRatio(ratio);
+            } else {
+                const n = collections.BigInt.initFromString(allocator, r.numerator) catch break :blk Value.nil_val;
+                const d = collections.BigInt.initFromString(allocator, r.denominator) catch break :blk Value.nil_val;
+                const q = allocator.create(collections.BigInt) catch break :blk Value.nil_val;
+                q.managed = std.math.big.int.Managed.init(allocator) catch break :blk Value.nil_val;
+                var rem_val = std.math.big.int.Managed.init(allocator) catch break :blk Value.nil_val;
+                q.managed.divTrunc(&rem_val, &n.managed, &d.managed) catch break :blk Value.nil_val;
+                if (q.toI64()) |i| break :blk Value.initInteger(i);
+                break :blk Value.initBigInt(q);
+            }
+        },
         .char => |c| Value.initChar(c),
         .string => |s| Value.initString(allocator, s),
         .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),

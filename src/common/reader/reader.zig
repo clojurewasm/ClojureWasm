@@ -244,17 +244,19 @@ pub const Reader = struct {
         const slash_idx = std.mem.indexOfScalar(u8, text, '/') orelse {
             return self.makeError(.number_error, "Invalid ratio literal", token);
         };
-        const num = std.fmt.parseInt(i64, text[0..slash_idx], 10) catch {
+        const num_text = text[0..slash_idx];
+        const den_text = text[slash_idx + 1 ..];
+        // Validate numerator and denominator are valid integers
+        _ = std.fmt.parseInt(i64, num_text, 10) catch {
             return self.makeError(.number_error, "Invalid ratio literal", token);
         };
-        const den = std.fmt.parseInt(i64, text[slash_idx + 1 ..], 10) catch {
+        const den = std.fmt.parseInt(i64, den_text, 10) catch {
             return self.makeError(.number_error, "Invalid ratio literal", token);
         };
         if (den == 0) {
             return self.makeError(.number_error, "Division by zero in ratio", token);
         }
-        const value: f64 = @as(f64, @floatFromInt(num)) / @as(f64, @floatFromInt(den));
-        return Form{ .data = .{ .float = value }, .line = token.line, .column = token.column };
+        return Form{ .data = .{ .ratio = .{ .numerator = num_text, .denominator = den_text } }, .line = token.line, .column = token.column };
     }
 
     fn readString(self: *Reader, token: Token) ReadError!Form {
@@ -691,7 +693,7 @@ pub const Reader = struct {
 
     fn expandSyntaxQuote(self: *Reader, form: Form, gensym_map: *std.StringHashMapUnmanaged([]const u8)) ReadError!Form {
         return switch (form.data) {
-            .nil, .boolean, .integer, .float, .big_int, .big_decimal, .string, .regex, .char => form,
+            .nil, .boolean, .integer, .float, .big_int, .big_decimal, .ratio, .string, .regex, .char => form,
             .keyword => form,
             .symbol => |sym| {
                 // Auto-gensym: foo# → foo__N__auto
@@ -935,8 +937,12 @@ test "Reader - floats" {
 }
 
 test "Reader - ratio" {
-    try testing.expectApproxEqAbs(@as(f64, 3.142857), (try readOneForm("22/7")).data.float, 0.001);
-    try testing.expectApproxEqAbs(@as(f64, 0.5), (try readOneForm("1/2")).data.float, 0.001);
+    const r1 = (try readOneForm("22/7")).data.ratio;
+    try testing.expectEqualStrings("22", r1.numerator);
+    try testing.expectEqualStrings("7", r1.denominator);
+    const r2 = (try readOneForm("1/2")).data.ratio;
+    try testing.expectEqualStrings("1", r2.numerator);
+    try testing.expectEqualStrings("2", r2.denominator);
 }
 
 test "Reader - string" {

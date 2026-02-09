@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **Phase 43.1-43.6 COMPLETE** (Array + BigInt + BigDecimal done), 43.7-43.8 remaining
-- Coverage: 792+ vars done across all namespaces (590/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- **Phase 43 COMPLETE** (Array + BigInt + BigDecimal + auto-promotion + Ratio)
+- Coverage: 795+ vars done across all namespaces (593/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -29,7 +29,7 @@ Phase 43: Numeric Types + Arrays
 5. [x] 43.5: BigInt Value type + bigint/biginteger fns + reader N literal
 6. [x] 43.6: BigDecimal Value type + bigdec fn + reader M literal
 7. [x] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
-8. [ ] 43.8: Ratio Value type + numerator/denominator/rationalize
+8. [x] 43.8: Ratio Value type + numerator/denominator/rationalize
 
 Phase 44: OSS Release Prep (starts after Phase 43)
 -> Read `private/20260208/02_oss_plan.md` and expand into Task Queue
@@ -37,30 +37,24 @@ Phase 44: OSS Release Prep (starts after Phase 43)
 
 ## Current Task
 
-Phase 43.8: Ratio Value type + numerator/denominator/rationalize.
-
-Design:
-- Ratio: numerator/denominator BigInt pair, auto-simplifying GCD
-- Shares NanHeapTag slot 30 with BigDecimal via NumericExtKind enum
-- Read `.dev/future.md` and upstream Ratio/Numbers.java for reference
-- Builtins: ratio?, numerator, denominator, rationalize
-- Arithmetic: +/-/*// with Ratio, cross-type with int/float/BigInt/BigDecimal
-- Division of integers that doesn't divide evenly → Ratio (e.g. (/ 1 3) → 1/3)
-- Reader: already parses ratio literals (1/3) — needs form→Value conversion
-- Test: upstream numbers.clj ratio tests (currently skipped)
+Phase 44 Planning: Read `private/20260208/02_oss_plan.md` and expand into Task Queue.
 
 ## Previous Task
 
-Phase 43.7 COMPLETE: Arithmetic auto-promotion (+', *', -', inc', dec').
-- New opcodes: add_p (0xBC), sub_p (0xBD), mul_p (0xBE) — auto-promoting
-- binaryArithPromote: overflow → BigInt instead of float (both i64 and i48 overflow)
-- Builtin functions: +', -', *' registered as VM intrinsics
-- Compiler: variadicArithOp maps +'/'-'/*' to new opcodes
-- core.clj: inc'/dec' use +'/'-' (pure Clojure functions)
-- Both backends verified (VM + TreeWalk)
-- Upstream tests: test-multiply-longs-at-edge, test-divide-bigint-at-edge enabled
-- CLJW-ADD: test-auto-promoting-arithmetic (24 assertions)
-- numbers.clj: 29 tests, 360 assertions (was 26/323)
+Phase 43.8 COMPLETE: Ratio Value type + numerator/denominator/rationalize.
+- Ratio: numerator/denominator BigInt pair, GCD-reduced, shares slot 30 via NumericExtKind
+- Reader: ratio literal (1/3) → Form.ratio → Value.ratio conversion
+- Arithmetic: +/-/*// with Ratio, cross-type with int/float/BigInt/BigDecimal
+- Integer division that doesn't divide evenly → Ratio (e.g. (/ 1 3) → 1/3)
+- Comparison: cross-multiply (a/b vs c/d → compare a*d vs c*b)
+- Predicates: ratio?, number?, zero?, pos?, neg? handle Ratio
+- Builtins: numerator, denominator, rationalize
+- Cross-type equality: numericEql in value.zig (Ratio vs int/float/BigInt)
+- macro.zig: valueToForm Ratio→Form round-trip (critical for `are` macro)
+- compiler.zig: (/ x) uses integer 1 not float 1.0 for correct Ratio result
+- Upstream tests: numbers.clj 31 tests, 402 assertions (was 29/360)
+  - test-ratios-simplify-to-ints, test-ratios (15 assertions), ratio comparisons
+  - Restored ratio results in test-divide, test-quot, equality, predicates
 
 ## Known Issues
 
@@ -99,11 +93,13 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
-- **Phase 43.7 COMPLETE**: Auto-promoting arithmetic
-  - +', -', *': VM intrinsic opcodes (add_p, sub_p, mul_p)
-  - Integer overflow (i64 and i48 range) → BigInt instead of float
-  - inc'/dec': pure Clojure using +'/'-'
-  - numbers.clj: 29 tests, 360 assertions
+- **Phase 43 COMPLETE**: All 8 sub-tasks done
+  - 43.1-43.4: Array subsystem (34 builtins, ZigArray Value type)
+  - 43.5-43.6: BigInt + BigDecimal (pure Zig, reader N/M literals)
+  - 43.7: Auto-promoting arithmetic (+', -', *', inc', dec')
+  - 43.8: Ratio (GCD-reduced, cross-type arithmetic/comparison/equality)
+  - numbers.clj: 31 tests, 402 assertions
+- **Next**: Phase 44 (OSS Release Prep) — read `private/20260208/02_oss_plan.md`
 - **Phase 43.5-43.6 COMPLETE**: BigInt + BigDecimal
   - D89 updated: Four Value types (array, big_int, ratio+big_decimal) in NaN boxing
   - BigDecimal shares slot 30 with Ratio via NumericExtKind discriminator (extern struct)
