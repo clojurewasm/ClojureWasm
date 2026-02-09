@@ -6,9 +6,9 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Keyword intern table — tracks all keywords created during execution.
-// Used by find-keyword to check if a keyword has been interned.
-// Single-threaded; global mutable state (known exception to D3).
+//! Keyword intern table — tracks all keywords created during execution.
+//! Used by find-keyword to check if a keyword has been interned.
+//! Single-threaded; global mutable state (known exception to D3).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

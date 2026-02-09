@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// GcStrategy — vtable-based GC abstraction (SS5).
-//
-// Provides a trait interface for garbage collection strategies.
-// Initial implementation: ArenaGc (arena allocator, no-op collect).
+//! GcStrategy — vtable-based GC abstraction.
+//!
+//! Provides a trait interface for garbage collection strategies.
+//! Current implementation: MarkSweepGc (mark-and-sweep collector).
 
 const std = @import("std");
 const Alignment = std.mem.Alignment;

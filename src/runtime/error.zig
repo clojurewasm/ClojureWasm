@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Error types for ClojureWasm.
-//
-// Zig error unions carry no payload, so detailed error info is stored
-// in threadlocal state and retrieved after catching the error.
-//
-// Kind uses Python-style categories (12 values). Each Kind maps 1:1 to
-// an Error tag — no lossy collapse.
+//! Error types for ClojureWasm.
+//!
+//! Zig error unions carry no payload, so detailed error info is stored
+//! in threadlocal state and retrieved after catching the error.
+//!
+//! Kind uses Python-style categories (12 values). Each Kind maps 1:1 to
+//! an Error tag — no lossy collapse.
 
 const std = @import("std");
 

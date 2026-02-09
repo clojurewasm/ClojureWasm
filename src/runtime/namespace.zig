@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Namespace — Symbol -> Var mapping.
-//
-// Each Namespace manages its own Vars (intern), references to other
-// namespaces' Vars (refer), and aliases to other namespaces.
-// Owned by Env (runtime environment).
+//! Namespace — Symbol -> Var mapping.
+//!
+//! Each Namespace manages its own Vars (intern), references to other
+//! namespaces' Vars (refer), and aliases to other namespaces.
+//! Owned by Env (runtime environment).
 
 const std = @import("std");
 const value = @import("value.zig");

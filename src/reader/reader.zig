@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Reader — Converts token stream into Form syntax tree.
-//
-// Three-phase architecture:
-//   Source text -> Tokenizer -> Reader -> Form (syntax tree)
-//
-// Reader macros (quote, deref, meta, etc.) are expanded at read time
-// into standard list forms: 'x -> (quote x), @x -> (deref x), etc.
+//! Reader — Converts token stream into Form syntax tree.
+//!
+//! Three-phase architecture:
+//!   Source text -> Tokenizer -> Reader -> Form (syntax tree)
+//!
+//! Reader macros (quote, deref, meta, etc.) are expanded at read time
+//! into standard list forms: 'x -> (quote x), @x -> (deref x), etc.
 
 const std = @import("std");
 const Tokenizer = @import("tokenizer.zig").Tokenizer;

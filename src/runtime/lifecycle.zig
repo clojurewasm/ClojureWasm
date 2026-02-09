@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Process lifecycle management — signal handling and shutdown hooks.
-//
-// Provides graceful shutdown for long-running processes:
-//   - SIGINT/SIGTERM handler sets atomic shutdown flag
-//   - Accept loops poll with timeout and check the flag
-//   - Shutdown hooks (Clojure fns) run before process exit
-//   - SIGPIPE ignored (broken pipe on closed sockets)
+//! Process lifecycle management — signal handling and shutdown hooks.
+//!
+//! Provides graceful shutdown for long-running processes:
+//!   - SIGINT/SIGTERM handler sets atomic shutdown flag
+//!   - Accept loops poll with timeout and check the flag
+//!   - Shutdown hooks (Clojure fns) run before process exit
+//!   - SIGPIPE ignored (broken pipe on closed sockets)
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

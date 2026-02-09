@@ -6,14 +6,14 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Tokenizer — Converts Clojure source text into a stream of tokens.
-//
-// Design:
-//   - Stateful iterator: call next() repeatedly to get tokens
-//   - Token stores offset + length into original source (no copies)
-//   - Tracks line/column for error reporting
-//   - Comma is whitespace (Clojure convention)
-//   - Escape processing deferred to Reader stage
+//! Tokenizer — Converts Clojure source text into a stream of tokens.
+//!
+//! Design:
+//!   - Stateful iterator: call next() repeatedly to get tokens
+//!   - Token stores offset + length into original source (no copies)
+//!   - Tracks line/column for error reporting
+//!   - Comma is whitespace (Clojure convention)
+//!   - Escape processing deferred to Reader stage
 
 const std = @import("std");
 

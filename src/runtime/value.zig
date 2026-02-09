@@ -6,12 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Value type — Runtime value representation for ClojureWasm.
-//
-// Three-phase architecture:
-//   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
-//
-// Started as tagged union (ADR-0001). NaN boxing deferred to Phase 4.
+//! Value type — Runtime value representation for ClojureWasm.
+//!
+//! Three-phase architecture:
+//!   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
+//!
+//! Uses NaN boxing (D85) for compact 8-byte representation with 4-tag 48-bit scheme.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

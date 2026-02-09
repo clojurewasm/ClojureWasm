@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Bootstrap — loads and evaluates core.clj to register macros and core functions.
-//
-// Pipeline: source string -> Reader -> Forms -> Analyzer -> Nodes -> TreeWalk eval
-// Each top-level form is analyzed and evaluated sequentially.
-// defmacro forms register macros in the Env for use by subsequent forms.
+//! Bootstrap — loads and evaluates core.clj to register macros and core functions.
+//!
+//! Pipeline: source string -> Reader -> Forms -> Analyzer -> Nodes -> TreeWalk eval
+//! Each top-level form is analyzed and evaluated sequentially.
+//! defmacro forms register macros in the Env for use by subsequent forms.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

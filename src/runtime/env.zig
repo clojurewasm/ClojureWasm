@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Env — runtime environment.
-//
-// Owns the Namespace registry (Task 2.2).
-// Each VM instance holds its own Env.
+//! Env — runtime environment.
+//!
+//! Owns the Namespace registry.
+//! Each VM instance holds its own Env.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

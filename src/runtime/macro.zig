@@ -6,12 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Macro expansion utilities — Form <-> Value conversion and macro execution.
-//
-// Enables the Analyzer to call macro functions during analysis:
-//   1. Convert Form arguments to Values (data as code)
-//   2. Execute macro function (Value -> Value transformation)
-//   3. Convert result Value back to Form for re-analysis
+//! Macro expansion utilities — Form <-> Value conversion and macro execution.
+//!
+//! Enables the Analyzer to call macro functions during analysis:
+//!   1. Convert Form arguments to Values (data as code)
+//!   2. Execute macro function (Value -> Value transformation)
+//!   3. Convert result Value back to Form for re-analysis
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

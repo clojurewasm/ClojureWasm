@@ -6,13 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Analyzer — transforms Form (Reader output) into Node (executable AST).
-//
-// Three-phase architecture:
-//   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
-//
-// Special forms are dispatched via comptime StaticStringMap (not if-else chain).
-// Phase 1c: no Env/Namespace/Var (name-based var_ref only).
+//! Analyzer — transforms Form (Reader output) into Node (executable AST).
+//!
+//! Three-phase architecture:
+//!   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
+//!
+//! Special forms are dispatched via comptime StaticStringMap (not if-else chain).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

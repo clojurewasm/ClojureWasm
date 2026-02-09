@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Node type — Analyzer output: executable AST nodes.
-//
-// Three-phase architecture:
-//   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
-//
-// Each Node variant represents a special form, function call, or literal.
-// The Analyzer transforms Form into Node; the VM/TreeWalk evaluates Node to Value.
+//! Node type — Analyzer output: executable AST nodes.
+//!
+//! Three-phase architecture:
+//!   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
+//!
+//! Each Node variant represents a special form, function call, or literal.
+//! The Analyzer transforms Form into Node; the VM/TreeWalk evaluates Node to Value.
 
 const std = @import("std");
 const Value = @import("../runtime/value.zig").Value;

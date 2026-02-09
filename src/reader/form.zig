@@ -6,14 +6,14 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Form — Reader output representing syntactic Clojure data.
-//
-// Three-phase architecture:
-//   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
-//
-// Form wraps syntactic data with source location info.
-// Unlike Value (runtime), Form preserves reader-level details
-// (e.g., quote syntax, metadata annotation) for the Analyzer.
+//! Form — Reader output representing syntactic Clojure data.
+//!
+//! Three-phase architecture:
+//!   Form (Reader) -> Node (Analyzer) -> Value (Runtime)
+//!
+//! Form wraps syntactic data with source location info.
+//! Unlike Value (runtime), Form preserves reader-level details
+//! (e.g., quote syntax, metadata annotation) for the Analyzer.
 
 const std = @import("std");
 const Writer = std.Io.Writer;
