@@ -77,8 +77,12 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 38.2  | Matcher Value type + re-matcher/re-groups   | NanHeapTag 28, re-find 1-arg, regex group extraction |
 | 38.3  | Upstream alignment (defn/defn-)              | defn/defn- metadata propagation fixed                |
 | 38.5  | ns macro enhancement                         | docstring, attr-map, :import no-op, set-ns-doc       |
+| 39.1  | clojure.java.shell                            | sh, with-sh-dir, with-sh-env                         |
+| 39.2  | clojure.pprint                                | pprint (Zig), print-table, format width specifiers   |
+| 39.3  | line-seq                                      | File line-by-line reading (UPSTREAM-DIFF: takes path) |
+| 39.4  | clojure.stacktrace                            | root-cause, print-stack-trace, etc. (6 vars)         |
 
-**Stats**: 663 vars done (539 clojure.core, 14 namespaces total)
+**Stats**: 683 vars done (539 clojure.core, 14+ namespaces total)
 
 **Note**: Phase 27 (NaN Boxing) and Phase 28 (Single Binary Builder) from the
 original plan were completed as part of Phases 35X (D85) and 31-32 (D81)
@@ -126,17 +130,28 @@ Interpreter-level optimizations with JIT PoC for hot integer loops.
 | 38.4  | case* compiler special form                | DEFERRED    |
 | 38.5  | ns macro enhancement (:import, docstring)  | COMPLETE    |
 
-### Phase 39: Real-World Usability
+### Phase 39: Real-World Usability — COMPLETE
 
 Critical scripting and development features for real-world usage.
 
 | Sub   | Content                          | Status      |
 |-------|----------------------------------|-------------|
-| 39.1  | clojure.java.shell (sh)          | TODO        |
-| 39.2  | clojure.pprint (pprint, print-table) | TODO    |
-| 39.3  | line-seq                         | TODO        |
-| 39.4  | clojure.stacktrace               | TODO        |
-| 39.5  | read / read-string               | TODO        |
+| 39.1  | clojure.java.shell (sh)          | COMPLETE    |
+| 39.2  | clojure.pprint (pprint, print-table) | COMPLETE |
+| 39.3  | line-seq                         | COMPLETE    |
+| 39.4  | clojure.stacktrace               | COMPLETE    |
+| 39.5  | read / read-string               | COMPLETE (read-string done, read skipped: needs PushbackReader) |
+
+### Phase 40: Library Expansion
+
+Additional namespace implementations for broader compatibility.
+
+| Sub   | Content                              | Status      |
+|-------|--------------------------------------|-------------|
+| 40.1  | clojure.zip (28 vars)                | TODO        |
+| 40.2  | clojure.data (diff)                  | TODO        |
+| 40.3  | clojure.test expansion               | TODO        |
+| 40.4  | clojure.walk/math/repl remaining     | TODO        |
 
 ### Phase 29: Codebase Restructuring (deferred)
 

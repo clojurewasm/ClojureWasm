@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 676 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, 2/26 pprint, etc.)
+- Coverage: 683 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, 2/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -29,24 +29,22 @@ Phase 38: Core Library Completeness
 
 ## Task Queue
 
-Phase 39: Real-World Usability
-1. [x] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
-2. [x] 39.2: clojure.pprint — pprint, print-table (2 vars)
-3. [x] 39.3: line-seq — lazy line-by-line file processing
-4. [x] 39.4: clojure.stacktrace — print-cause-trace, print-stack-trace, etc. (6 vars)
-5. [ ] 39.5: read / read-string — expose reader as Clojure function
+Phase 40: Library Expansion
+1. [ ] 40.1: clojure.zip — zipper library (28 vars, upstream verbatim)
+2. [ ] 40.2: clojure.data — diff (2 vars)
+3. [ ] 40.3: clojure.test expansion — successful?, run-all-tests, etc.
+4. [ ] 40.4: clojure.walk/math/repl remaining vars
 
 ## Current Task
 
-39.5: read / read-string — expose reader as Clojure function.
-Implement read-string and read as Zig builtins wrapping the Reader.
+40.1: clojure.zip — zipper library (28 vars).
+Port upstream clojure.zip verbatim (pure Clojure, no Java interop).
 
 ## Previous Task
 
 39.4: clojure.stacktrace — print-cause-trace, print-stack-trace, etc. (6 vars).
 - New file: clojure/stacktrace.clj — all 6 vars implemented in Clojure
 - UPSTREAM-DIFF: uses Throwable->map instead of Java Throwable API
-- Registered in bootstrap.zig (loadStacktrace, vmRecompileAll)
 - Both VM + TreeWalk verified
 
 ## Known Issues
