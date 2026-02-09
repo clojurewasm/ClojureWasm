@@ -26,14 +26,12 @@ Master plan: `private/20260208/02_oss_plan.md`
 
 A2. Lazy Range + Chunked Sequences
 1. [x] 44.1+44.2: Lazy range + infinite range (Meta.range, O(1) count/nth)
-3. [ ] 44.3: Chunked sequence producer (range → ChunkedCons)
-4. [ ] 44.4: F102: map/filter chunked processing
+3. [~] 44.3: Chunked sequence producer — deferred (fused reduce covers perf case)
+4. [~] 44.4: F102: map/filter chunked processing — deferred
 
-A3. Wasm Execution Speed
-5. [ ] 44.5: Research wasmtime/wasm3 dispatch techniques + decide approach
-6. [ ] 44.6: Computed goto or threaded dispatch (Zig comptime)
-7. [ ] 44.7: Wasm function JIT (hot wasm → ARM64) — SKIP if ROI low
-8. [ ] 44.8: Benchmark measurement (wasm_fib, wasm_sieve)
+A3. Wasm Execution Speed — deferred to post-alpha (D90)
+5. [x] 44.5: Research complete — predecoded IR + tail-call dispatch recommended
+6. [~] 44.6-44.8: Implementation deferred (HIGH effort, alpha priorities elsewhere)
 
 A5. Code Refactoring (largest block)
 9. [ ] 44.12: Full file visual review (70 Zig files, ~65K LOC)
@@ -71,10 +69,7 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.2: `(range)` infinite range support — already done in 44.1.
-Merging 44.2 into 44.1 and moving to 44.3.
-
-Phase 44.3: Chunked sequence producer (range → ChunkedCons).
+Phase 44.9: Remove wasm_rt/ directory (A4 first, before A5 refactoring).
 
 ## Previous Task
 

@@ -430,3 +430,24 @@ BigDecimal marks struct + unscaled BigInt pointer.
 
 **Files**: `src/common/value.zig`, `src/common/collections.zig`, `src/common/gc.zig`,
 `src/common/builtin/array.zig` (new).
+
+## D90: Wasm Interpreter Optimization Strategy (Phase 44.5 Research)
+
+**Decision**: Defer full Wasm interpreter optimization to post-alpha. The recommended
+approach for future work is predecoded IR + tail-call threaded dispatch.
+
+**Research findings** (Phase 44.5):
+- Current: switch-based dispatch, inline LEB128 decode, lazy HashMap branch table
+- Baseline: wasm_fib 7539ms, wasm_sieve 782ms, wasm_call 121ms
+- Zig 0.15.2 supports `@call(.always_tail, handler, ...)` — verified working
+- Recommended approach: predecode bytecode → fixed-width IR (8 bytes/instr),
+  then threaded dispatch via function pointer table + tail calls
+- Expected impact: 40-60% improvement (2-3x for fib)
+- Effort: HIGH (3177-line vm.zig, 200+ opcodes, control flow complexity)
+
+**Why defer**: Alpha release priorities are correctness and documentation.
+The Clojure execution speed is already competitive (19/20 wins vs Babashka).
+Wasm speed is aspirational — users care about Clojure code speed first.
+
+**Post-alpha plan**: Predecoded IR (eliminates LEB128 + bounds checks) → tail-call
+dispatch (eliminates branch misprediction) → superinstructions (fuse common patterns).
