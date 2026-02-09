@@ -451,3 +451,33 @@ Wasm speed is aspirational — users care about Clojure code speed first.
 
 **Post-alpha plan**: Predecoded IR (eliminates LEB128 + bounds checks) → tail-call
 dispatch (eliminates branch misprediction) → superinstructions (fuse common patterns).
+
+## D91: Directory Restructure — Pipeline-Based Layout
+
+**Decision**: Restructure src/ from legacy common/native/ two-tier layout to
+pipeline-oriented structure where each compilation stage is a top-level directory.
+
+**Before**: `src/common/` (Reader, Analyzer, Compiler, Builtins, Value all mixed),
+`src/native/` (just VM + TreeWalk). Pipeline structure invisible from outside.
+
+**After**:
+```
+src/
+  reader/      → Stage 1: Source → Form
+  analyzer/    → Stage 2: Form → Node
+  compiler/    → Stage 3: Node → Bytecode (was bytecode/)
+  vm/          → Stage 4a: Bytecode → Value
+  evaluator/   → Stage 4b: Node → Value (TreeWalk)
+  runtime/     → Core types + lifecycle (was common/ loose files)
+  builtins/    → Built-in functions (was common/builtin/)
+  regex/       → Regex engine
+  repl/        → nREPL + REPL (unchanged)
+  wasm/        → WebAssembly runtime (flattened from wasm/runtime/)
+```
+
+**Merges**: strings+clj_string → strings, io+file_io+java_io → io,
+arithmetic+numeric → arithmetic. 70 → 66 files.
+
+**Rationale**: OSS release visibility. New contributors can see the compilation
+pipeline from the directory listing. The common/native split was a wasm_rt-era
+artifact with no current meaning.

@@ -34,18 +34,18 @@ A3. Wasm Execution Speed — deferred to post-alpha (D90)
 6. [~] 44.6-44.8: Implementation deferred (HIGH effort, alpha priorities elsewhere)
 
 A5. Code Refactoring (largest block)
-9. [ ] 44.12: Full file visual review (70 Zig files, ~65K LOC)
+9. [ ] 44.12: Full file visual review (66 Zig files, ~65K LOC)
 10. [ ] 44.13: Dead code removal, naming unification, comment quality
 11. [ ] 44.14: TODO/FIXME/HACK triage → fix or checklist.md
 12. [ ] 44.15: Test code quality review (38 upstream test files)
 
 A4. Directory Restructure
 13. [x] 44.9: Removed wasm_rt/ directory
-14. [~] 44.10: Merge common/native/ — deferred (70+ files, high risk for alpha)
-15. [~] 44.11: Import path bulk fix — deferred (depends on 44.10)
+14. [x] 44.10: Directory restructure — pipeline-based layout (D91)
+15. [x] 44.11: Import path bulk fix + builtin file merges (66 files)
 
 A6. License
-16. [x] 44.16: EPL-1.0 header insertion to all .zig files (70 files, chaploud)
+16. [x] 44.16: EPL-1.0 header insertion to all .zig files (66 files)
 17. [x] 44.17: LICENSE file + test/upstream/ copyright verification
 18. [x] 44.18: Third-party code attribution check (NOTICE file)
 
@@ -73,7 +73,11 @@ Phase 44.23: README.md (A8 Documentation block).
 
 ## Previous Task
 
-Phase 44.21+44.22 COMPLETE: CONTRIBUTING.md + .dev/ handling.
+Phase 44.10+44.11 COMPLETE: Directory restructure + builtin merges (D91).
+- Pipeline-based layout: reader/ → analyzer/ → compiler/ → vm/ | evaluator/
+- Shared: runtime/, builtins/, regex/
+- 3 builtin merges: strings+clj_string, io+file_io+java_io, arithmetic+numeric
+- 70 → 66 .zig files, all tests green
 - CONTRIBUTING.md: build instructions, code style, test porting rules, PR process
 - .dev/: stays public — development docs, decisions, roadmap (no secrets)
 
