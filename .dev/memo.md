@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 661 vars done across all namespaces (539/704 core, 44/45 math, 7/19 java.io, etc.)
+- Coverage: 663 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -27,9 +27,21 @@ Phase 38: Core Library Completeness
 4. [-] 38.4: case* compiler special form — DEFERRED (case works, O(1) is optimization)
 5. [x] 38.5: ns macro enhancement — :import support, docstring
 
+## Task Queue
+
+Phase 39: Real-World Usability
+1. [ ] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
+2. [ ] 39.2: clojure.pprint — pprint, print-table, cl-format (core subset)
+3. [ ] 39.3: line-seq — lazy line-by-line file processing
+4. [ ] 39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
+5. [ ] 39.5: read / read-string — expose reader as Clojure function
+
 ## Current Task
 
-Phase 38 complete. Plan next phase.
+39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env.
+Implement shell execution via Zig std.process.Child. Babashka provides
+this as critical scripting functionality. Maps to clojure.java.shell/sh:
+(sh "ls" "-la"), (sh "echo" "hello" :dir "/tmp").
 
 ## Previous Task
 

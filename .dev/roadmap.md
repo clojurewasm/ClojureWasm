@@ -73,7 +73,12 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 37.3  | Branch+loop fusion               | 7 fused branch ops, arith_loop 40→31ms (1.29x)            |
 | 37.4  | JIT PoC — ARM64 hot loops (D87)  | ARM64 native code gen, arith_loop 31→3ms (10.3x)          |
 
-**Stats**: 659/704 core vars done (535 clojure.core, 14 namespaces total)
+| 38.1  | thrown-with-msg? + exception handling (D88) | Infrastructure fixes, var_ref fixup, stack isolation |
+| 38.2  | Matcher Value type + re-matcher/re-groups   | NanHeapTag 28, re-find 1-arg, regex group extraction |
+| 38.3  | Upstream alignment (defn/defn-)              | defn/defn- metadata propagation fixed                |
+| 38.5  | ns macro enhancement                         | docstring, attr-map, :import no-op, set-ns-doc       |
+
+**Stats**: 663 vars done (539 clojure.core, 14 namespaces total)
 
 **Note**: Phase 27 (NaN Boxing) and Phase 28 (Single Binary Builder) from the
 original plan were completed as part of Phases 35X (D85) and 31-32 (D81)
@@ -111,20 +116,27 @@ Interpreter-level optimizations with JIT PoC for hot integer loops.
 
 **Decisions**: D87 (JIT PoC architecture)
 
-### Phase 38: Core Library Completeness
+### Phase 38: Core Library Completeness — COMPLETE
 
-Fill highest-impact implementation gaps for real-world Clojure usage.
+| Sub   | Content                                   | Status      |
+|-------|-------------------------------------------|-------------|
+| 38.1  | thrown-with-msg? + exception handling (D88)| COMPLETE    |
+| 38.2  | Matcher Value type + re-matcher/re-groups  | COMPLETE    |
+| 38.3  | Upstream alignment (defn/defn- metadata)   | COMPLETE    |
+| 38.4  | case* compiler special form                | DEFERRED    |
+| 38.5  | ns macro enhancement (:import, docstring)  | COMPLETE    |
+
+### Phase 39: Real-World Usability
+
+Critical scripting and development features for real-world usage.
 
 | Sub   | Content                          | Status      |
 |-------|----------------------------------|-------------|
-| 38.1  | case* compiler special form      | TODO        |
-| 38.2  | thrown-with-msg? test assertion   | TODO        |
-| 38.3  | Matcher Value type + re-matcher/re-groups | TODO |
-| 38.4  | Upstream alignment (UPSTREAM-DIFF)| TODO        |
-| 38.5  | ns macro enhancement (:import)   | TODO        |
-
-**Priority**: case* (most-used macro perf) > thrown-with-msg? (test quality) >
-re-groups (regex completeness) > upstream alignment > ns
+| 39.1  | clojure.java.shell (sh)          | TODO        |
+| 39.2  | clojure.pprint (pprint, print-table) | TODO    |
+| 39.3  | line-seq                         | TODO        |
+| 39.4  | clojure.stacktrace               | TODO        |
+| 39.5  | read / read-string               | TODO        |
 
 ### Phase 29: Codebase Restructuring (deferred)
 
