@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm runtime store — function registry, memories, tables, globals.
-//
-// The store holds all runtime state shared across module instances.
-// Functions can be Wasm bytecode or host (native) callbacks.
+//! Wasm runtime store — function registry, memories, tables, globals.
+//!
+//! The store holds all runtime state shared across module instances.
+//! Functions can be Wasm bytecode or host (native) callbacks.
 
 const std = @import("std");
 const mem = std.mem;

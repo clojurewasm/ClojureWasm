@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// ClojureWasm CLI entry point.
-//
-// Usage:
-//   cljw -e "expr"           Evaluate expression and print result
-//   cljw file.clj            Evaluate file and print last result
-//   cljw                     Start interactive REPL
-//   cljw build file.clj -o app  Build single binary with embedded code
+//! ClojureWasm CLI entry point.
+//!
+//! Usage:
+//!   cljw -e "expr"           Evaluate expression and print result
+//!   cljw file.clj            Evaluate file and print last result
+//!   cljw                     Start interactive REPL
+//!   cljw build file.clj -o app  Build single binary with embedded code
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

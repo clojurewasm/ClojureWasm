@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// WASI Preview 1 implementation for custom Wasm runtime.
-//
-// Provides 19 WASI snapshot_preview1 functions for basic I/O, args, environ,
-// clock, random, and filesystem operations. Host functions pop args from the
-// Wasm operand stack, perform the operation, and push errno result.
+//! WASI Preview 1 implementation for custom Wasm runtime.
+//!
+//! Provides 19 WASI snapshot_preview1 functions for basic I/O, args, environ,
+//! clock, random, and filesystem operations. Host functions pop args from the
+//! Wasm operand stack, perform the operation, and push errno result.
 
 const std = @import("std");
 const posix = std.posix;

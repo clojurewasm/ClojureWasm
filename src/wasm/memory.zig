@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm linear memory — page-based allocation with typed read/write.
-//
-// Each page is 64 KiB. Memory grows in page increments with optional max limit.
-// All reads/writes are bounds-checked. Little-endian byte order per Wasm spec.
+//! Wasm linear memory — page-based allocation with typed read/write.
+//!
+//! Each page is 64 KiB. Memory grows in page increments with optional max limit.
+//! All reads/writes are bounds-checked. Little-endian byte order per Wasm spec.
 
 const std = @import("std");
 const mem = std.mem;

@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// WIT (WebAssembly Interface Types) parser — Phase 25.5c.
-//
-// Parses a subset of WIT sufficient for function signatures:
-//   interface name { func-name: func(params...) -> result; }
-//
-// Supported types: u8-u64, s8-s64, f32, f64, bool, char, string.
-// list<T>, option<T>, result<T,E> are recognized but stored as opaque names.
+//! WIT (WebAssembly Interface Types) parser.
+//!
+//! Parses a subset of WIT sufficient for function signatures:
+//!   interface name { func-name: func(params...) -> result; }
+//!
+//! Supported types: u8-u64, s8-s64, f32, f64, bool, char, string.
+//! list<T>, option<T>, result<T,E> are recognized but stored as opaque names.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

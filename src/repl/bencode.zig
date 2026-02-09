@@ -6,13 +6,13 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Bencode encoder/decoder for nREPL wire protocol.
-//
-// Format:
-// - String:  <len>:<data>  (e.g. "5:hello")
-// - Integer: i<num>e       (e.g. "i42e")
-// - List:    l<items>e
-// - Dict:    d<key><val>...e  (keys are strings)
+//! Bencode encoder/decoder for nREPL wire protocol.
+//!
+//! Format:
+//! - String:  <len>:<data>  (e.g. "5:hello")
+//! - Integer: i<num>e       (e.g. "i42e")
+//! - List:    l<items>e
+//! - Dict:    d<key><val>...e  (keys are strings)
 
 const std = @import("std");
 

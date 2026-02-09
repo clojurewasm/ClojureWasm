@@ -6,19 +6,19 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Regex parser — parses regex pattern strings into RegexNode AST.
-// Java regex compatible syntax (ASCII based).
-//
-// Grammar:
-//   regex      := alternation
-//   alternation := sequence ('|' sequence)*
-//   sequence   := quantified*
-//   quantified := atom quantifier?
-//   atom       := literal | '.' | char_class | group | escape | anchor
-//   quantifier := ('*'|'+'|'?'|'{n}'|'{n,}'|'{n,m}') '?'?
-//   char_class := '[' '^'? (range | char)+ ']'
-//   group      := '(' ('?:' | '?=' | '?!' | '?i' | '?m' | '?s')? regex ')'
-//   escape     := '\' (d|D|w|W|s|S|b|B|digit|metachar)
+//! Regex parser — parses regex pattern strings into RegexNode AST.
+//! Java regex compatible syntax (ASCII based).
+//!
+//! Grammar:
+//!   regex      := alternation
+//!   alternation := sequence ('|' sequence)*
+//!   sequence   := quantified*
+//!   quantified := atom quantifier?
+//!   atom       := literal | '.' | char_class | group | escape | anchor
+//!   quantifier := ('*'|'+'|'?'|'{n}'|'{n,}'|'{n,m}') '?'?
+//!   char_class := '[' '^'? (range | char)+ ']'
+//!   group      := '(' ('?:' | '?=' | '?!' | '?i' | '?m' | '?s')? regex ')'
+//!   escape     := '\' (d|D|w|W|s|S|b|B|digit|metachar)
 
 const std = @import("std");
 

@@ -6,14 +6,14 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Build-time bootstrap cache generator.
-//
-// Runs during `zig build` to pre-compile bootstrap .clj sources into a
-// serialized env snapshot. The main cljw binary embeds this cache and
-// restores from it at startup, skipping parse/analyze/compile entirely.
-//
-// Usage (via build.zig, not intended for direct invocation):
-//   cache_gen <output_file>
+//! Build-time bootstrap cache generator.
+//!
+//! Runs during `zig build` to pre-compile bootstrap .clj sources into a
+//! serialized env snapshot. The main cljw binary embeds this cache and
+//! restores from it at startup, skipping parse/analyze/compile entirely.
+//!
+//! Usage (via build.zig, not intended for direct invocation):
+//!   cache_gen <output_file>
 
 const std = @import("std");
 const Env = @import("runtime/env.zig").Env;

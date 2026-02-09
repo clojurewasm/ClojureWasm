@@ -6,8 +6,8 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// ClojureWasm - Clojure implementation in Zig
-// This is the library root module.
+//! ClojureWasm - Clojure implementation in Zig
+//! This is the library root module.
 
 pub const value = @import("runtime/value.zig");
 pub const collections = @import("runtime/collections.zig");

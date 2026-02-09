@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm binary module decoder — parses sections 0-12.
-//
-// Design: no intermediate representation (no Rr). Code bodies and init
-// expressions are stored as raw bytecode slices that the VM interprets
-// directly. This saves ~500 LOC vs zware's Rr approach.
+//! Wasm binary module decoder — parses sections 0-12.
+//!
+//! Design: no intermediate representation (no Rr). Code bodies and init
+//! expressions are stored as raw bytecode slices that the VM interprets
+//! directly. This saves ~500 LOC vs zware's Rr approach.
 
 const std = @import("std");
 const mem = std.mem;

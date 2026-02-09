@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm InterOp types — Value wrappers for Wasm module interaction (Phase 25).
-//
-// Provides WasmModule and WasmFunction types that wrap the custom Wasm runtime's
-// Store/Module/Instance into ClojureWasm's Value system. These become first-class
-// Clojure values accessible via (wasm/load ...) and (wasm/fn ...).
+//! Wasm InterOp types — Value wrappers for Wasm module interaction.
+//!
+//! Provides WasmModule and WasmFunction types that wrap the custom Wasm runtime's
+//! Store/Module/Instance into ClojureWasm's Value system. These become first-class
+//! Clojure values accessible via (wasm/load ...) and (wasm/fn ...).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

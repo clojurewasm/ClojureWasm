@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm opcode definitions.
-//
-// Single-byte opcodes (0x00-0xd2), 0xFC-prefixed misc opcodes,
-// and 0xFD-prefixed SIMD opcodes (Phase 36).
+//! Wasm opcode definitions.
+//!
+//! Single-byte opcodes (0x00-0xd2), 0xFC-prefixed misc opcodes,
+//! and 0xFD-prefixed SIMD opcodes.
 
 const std = @import("std");
 

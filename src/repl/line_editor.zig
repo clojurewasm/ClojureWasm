@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Line editor for the interactive REPL.
-//
-// Pure Zig implementation (no external dependencies).
-// Features: emacs keybindings, history, multi-line, tab completion,
-// paren matching flash.
+//! Line editor for the interactive REPL.
+//!
+//! Pure Zig implementation (no external dependencies).
+//! Features: emacs keybindings, history, multi-line, tab completion,
+//! paren matching flash.
 
 const std = @import("std");
 const builtin = @import("builtin");

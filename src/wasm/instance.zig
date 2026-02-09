@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm module instance — instantiation, import resolution, and invoke API.
-//
-// Links a decoded Module with a Store, resolving imports, allocating memories/
-// tables/globals, applying data/element initializers, and running start fn.
+//! Wasm module instance — instantiation, import resolution, and invoke API.
+//!
+//! Links a decoded Module with a Store, resolving imports, allocating memories/
+//! tables/globals, applying data/element initializers, and running start fn.
 
 const std = @import("std");
 const mem = std.mem;

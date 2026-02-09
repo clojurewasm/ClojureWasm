@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm stack-based VM — switch-based dispatch for all MVP opcodes.
-//
-// Design: direct bytecode execution (no IR). LEB128 immediates decoded inline.
-// Branch targets pre-computed on function entry via side table.
-// Cross-compile friendly: no .always_tail, pure switch dispatch.
+//! Wasm stack-based VM — switch-based dispatch for all MVP opcodes.
+//!
+//! Design: direct bytecode execution (no IR). LEB128 immediates decoded inline.
+//! Branch targets pre-computed on function entry via side table.
+//! Cross-compile friendly: no .always_tail, pure switch dispatch.
 
 const std = @import("std");
 const mem = std.mem;

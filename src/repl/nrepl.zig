@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// nREPL server — TCP-based nREPL protocol implementation.
-//
-// CIDER/Calva/Conjure compatible minimum ops:
-// clone, close, describe, eval, load-file,
-// completions, info, lookup, eldoc, ls-sessions, ns-list
+//! nREPL server — TCP-based nREPL protocol implementation.
+//!
+//! CIDER/Calva/Conjure compatible minimum ops:
+//! clone, close, describe, eval, load-file,
+//! completions, info, lookup, eldoc, ls-sessions, ns-list
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

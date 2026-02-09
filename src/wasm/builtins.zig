@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Wasm namespace builtins — wasm/load, wasm/fn (Phase 25.1).
-//
-// (wasm/load "path.wasm")  => WasmModule value
-// (wasm/fn mod "add" {:params [:i32 :i32] :results [:i32]}) => WasmFn value
-// The returned WasmFn is callable as a first-class Clojure function.
+//! Wasm namespace builtins — wasm/load, wasm/fn.
+//!
+//! (wasm/load "path.wasm")  => WasmModule value
+//! (wasm/fn mod "add" {:params [:i32 :i32] :results [:i32]}) => WasmFn value
+//! The returned WasmFn is callable as a first-class Clojure function.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
