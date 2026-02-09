@@ -1,9 +1,17 @@
-;; clojure/test_clojure/predicates.clj — Equivalent tests for ClojureWasm
-;;
-;; Based on clojure/test_clojure/predicates.clj from Clojure JVM.
-;; Java-dependent tests excluded (byte/short/int/long casts, into-array,
+;; Upstream: clojure/test/clojure/test_clojure/predicates.clj
+;; Upstream lines: 221
+;; CLJW markers: 2
+
+;   Copyright (c) Rich Hickey. All rights reserved.
+;   The use and distribution terms for this software are covered by the
+;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;   which can be found in the file epl-v10.html at the root of this distribution.
+;   By using this software in any fashion, you are agreeing to be bound by
+;   the terms of this license.
+;   You must not remove this notice, or any other, from this software.
+
+;; CLJW: Java-dependent tests excluded (byte/short/int/long casts, into-array,
 ;; java.util.Date, bigint, bigdec, Ratio, regex).
-;;
 ;; Uses clojure.test (auto-referred from bootstrap).
 
 (println "[clojure/test_clojure/predicates] running...")
