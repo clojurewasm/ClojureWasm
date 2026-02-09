@@ -769,8 +769,8 @@ vars:
   clojure_core_specs_alpha:
     "even-number-of-forms?": {type: function, status: todo}
   clojure_data:
-    Diff: {type: var, status: todo}
-    EqualityPartition: {type: var, status: todo}
+    Diff: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
+    EqualityPartition: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
     diff: {type: function, status: done, notes: 'UPSTREAM-DIFF: type checks instead of protocols'}
     "diff-similar": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
     "equality-partition": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
@@ -1160,45 +1160,45 @@ vars:
     "apply-template": {type: function, status: done}
     "do-template": {type: macro, status: done}
   clojure_test:
-    "*initial-report-counters*": {type: dynamic-var, status: todo}
-    "*load-tests*": {type: dynamic-var, status: todo}
-    "*report-counters*": {type: dynamic-var, status: todo}
-    "*stack-trace-depth*": {type: dynamic-var, status: todo}
-    "*test-out*": {type: dynamic-var, status: todo}
+    "*initial-report-counters*": {type: dynamic-var, status: done}
+    "*load-tests*": {type: dynamic-var, status: done}
+    "*report-counters*": {type: dynamic-var, status: done}
+    "*stack-trace-depth*": {type: dynamic-var, status: done}
+    "*test-out*": {type: dynamic-var, status: done}
     "*testing-contexts*": {type: dynamic-var, status: done}
-    "*testing-vars*": {type: dynamic-var, status: todo}
+    "*testing-vars*": {type: dynamic-var, status: done}
     are: {type: macro, status: done}
-    "assert-any": {type: function, status: todo}
-    "assert-expr": {type: var, status: todo}
-    "assert-predicate": {type: function, status: todo}
+    "assert-any": {type: function, status: skip, notes: "UPSTREAM-DIFF: CW uses direct pattern match in is macro"}
+    "assert-expr": {type: var, status: skip, notes: "UPSTREAM-DIFF: CW uses direct pattern match in is macro"}
+    "assert-predicate": {type: function, status: skip, notes: "UPSTREAM-DIFF: CW uses direct pattern match in is macro"}
     "compose-fixtures": {type: function, status: done}
     deftest: {type: macro, status: done}
-    "deftest-": {type: macro, status: todo}
-    "do-report": {type: function, status: todo}
-    "file-position": {type: function, status: todo}
-    "function?": {type: function, status: todo}
-    "get-possibly-unbound-var": {type: function, status: todo}
-    "inc-report-counter": {type: function, status: todo}
+    "deftest-": {type: macro, status: done}
+    "do-report": {type: function, status: done}
+    "file-position": {type: function, status: skip, notes: "deprecated 1.2, needs Java StackTraceElement"}
+    "function?": {type: function, status: done}
+    "get-possibly-unbound-var": {type: function, status: skip, notes: "internal helper for function?"}
+    "inc-report-counter": {type: function, status: done}
     is: {type: macro, status: done}
     "join-fixtures": {type: function, status: done}
     report: {type: dynamic-var, status: done}
-    "run-all-tests": {type: function, status: todo}
-    "run-test": {type: macro, status: todo}
-    "run-test-var": {type: function, status: todo}
+    "run-all-tests": {type: function, status: done}
+    "run-test": {type: macro, status: done}
+    "run-test-var": {type: function, status: done}
     "run-tests": {type: function, status: done}
-    "set-test": {type: macro, status: todo}
-    "successful?": {type: function, status: todo}
+    "set-test": {type: macro, status: done}
+    "successful?": {type: function, status: done}
     "test-all-vars": {type: function, status: done}
-    "test-ns": {type: function, status: todo}
+    "test-ns": {type: function, status: skip, notes: "UPSTREAM-DIFF: CW uses atom registry not ns-based"}
     "test-var": {type: function, status: done}
     "test-vars": {type: function, status: done}
     testing: {type: macro, status: done}
     "testing-contexts-str": {type: function, status: done}
-    "testing-vars-str": {type: function, status: todo}
-    "try-expr": {type: macro, status: todo}
+    "testing-vars-str": {type: function, status: done}
+    "try-expr": {type: macro, status: skip, notes: "UPSTREAM-DIFF: CW uses direct pattern match in is macro"}
     "use-fixtures": {type: var, status: done}
-    "with-test": {type: macro, status: todo}
-    "with-test-out": {type: macro, status: todo}
+    "with-test": {type: macro, status: done}
+    "with-test-out": {type: macro, status: done}
   clojure_uuid:
   clojure_walk:
     "keywordize-keys": {type: function, status: done}

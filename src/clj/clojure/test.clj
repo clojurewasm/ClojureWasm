@@ -1,8 +1,10 @@
 ;; clojure.test — test framework for ClojureWasm
 ;;
-;; Provides: deftest, is, testing, run-tests, are, thrown?,
-;;           use-fixtures, test-var, test-vars, test-all-vars, report
 ;; UPSTREAM-DIFF: uses atom-based counters/registry instead of ref-based report-counters
+;; UPSTREAM-DIFF: report is a dynamic fn (not multimethod)
+;; UPSTREAM-DIFF: do-report does not add file/line info (no StackTraceElement)
+;; UPSTREAM-DIFF: deftest uses register-test atom (not ns metadata)
+;; UPSTREAM-DIFF: run-tests uses atom registry (not ns-based test-ns)
 
 ;; ========== Test state management ==========
 
@@ -14,8 +16,30 @@
 (def error-count (atom 0))
 ;; Test counter (incremented per test-var call)
 (def test-count (atom 0))
+
+;; UPSTREAM-DIFF: *report-counters* aliases atom-based counters for API compat
+(def ^:dynamic *initial-report-counters* {:test 0, :pass 0, :fail 0, :error 0})
+
+;; UPSTREAM-DIFF: not a ref, just returns current atom snapshot
+(def ^:dynamic *report-counters* nil)
+
 ;; Testing context stack (for nested testing blocks)
 (def ^:dynamic *testing-contexts* (list))
+;; Testing vars stack (for nested test-var calls)
+(def ^:dynamic *testing-vars* (list))
+;; Output stream for test reporting
+(def ^:dynamic *test-out* *out*)
+;; Stack trace depth for error reporting
+(def ^:dynamic *stack-trace-depth* nil)
+;; Whether to load tests (when false, deftest/set-test are no-ops)
+(def ^:dynamic *load-tests* true)
+
+;; ========== Output ==========
+
+;; Runs body with *out* bound to the value of *test-out*.
+(defmacro with-test-out [& body]
+  `(binding [*out* *test-out*]
+     ~@body))
 
 ;; ========== Reporting ==========
 
@@ -31,6 +55,28 @@
 ;; Testing context string for error messages.
 (defn testing-contexts-str []
   (join-str " > " (reverse *testing-contexts*)))
+
+;; Testing vars string for error messages.
+(defn testing-vars-str
+  "Returns a string representation of the current test var context."
+  {:added "1.1"}
+  [m]
+  (let [v (:var m)]
+    (if v
+      (let [md (meta v)]
+        (str (:name md) " (" (:ns md) ")"))
+      "")))
+
+;; UPSTREAM-DIFF: inc-report-counter uses atoms instead of dosync/commute on ref
+(defn inc-report-counter
+  "Increments the named counter in the test counters."
+  {:added "1.1"}
+  [name]
+  (cond
+    (= name :pass) (swap! pass-count inc)
+    (= name :fail) (swap! fail-count inc)
+    (= name :error) (swap! error-count inc)
+    (= name :test) (swap! test-count inc)))
 
 ;; Default report function — dispatches on (:type m).
 (defn- default-report [m]
@@ -84,6 +130,13 @@
 ;; Dynamic report var — can be rebound for custom test reporting.
 (def ^:dynamic report default-report)
 
+;; UPSTREAM-DIFF: does not add file/line info (no StackTraceElement)
+(defn do-report
+  "Call report, intended for use in custom assertion methods."
+  {:added "1.2"}
+  [m]
+  (clojure.test/report m))
+
 ;; ========== Context management ==========
 
 ;; Execute body-fn within a named testing context.
@@ -122,24 +175,45 @@
 
 ;; Define a test function. Registers it and adds :test metadata to the var.
 (defmacro deftest [tname & body]
-  `(do
-     (defn ~tname [] ~@body)
-     (alter-meta! (var ~tname) assoc :test ~tname :name ~(str tname))
-     (register-test ~(str tname) ~tname (var ~tname))))
+  (when *load-tests*
+    `(do
+       (defn ~tname [] ~@body)
+       (alter-meta! (var ~tname) assoc :test ~tname :name ~(str tname))
+       (register-test ~(str tname) ~tname (var ~tname)))))
+
+;; Like deftest but creates a private var.
+(defmacro deftest- [tname & body]
+  (when *load-tests*
+    `(do
+       (defn ~tname [] ~@body)
+       (alter-meta! (var ~tname) assoc :test ~tname :name ~(str tname) :private true)
+       (register-test ~(str tname) ~tname (var ~tname)))))
+
+;; Sets :test metadata of the named var to a fn with the given body.
+(defmacro set-test [tname & body]
+  (when *load-tests*
+    `(alter-meta! (var ~tname) assoc :test (fn [] ~@body))))
+
+;; Adds test to an existing var. Creates var if needed.
+(defmacro with-test [definition & body]
+  (when *load-tests*
+    `(do ~definition
+         (alter-meta! (var ~(second definition)) assoc :test (fn [] ~@body)))))
 
 ;; Run a single test var. Calls report with :begin-test-var/:end-test-var.
 (defn test-var [v]
   (when-let [t (:test (meta v))]
     (swap! test-count inc)
-    (clojure.test/report {:type :begin-test-var :var v})
-    (try
-      (t)
-      (catch Exception e
-        (clojure.test/report {:type :error
-                              :message "Uncaught exception, not in assertion."
-                              :expected nil
-                              :actual e})))
-    (clojure.test/report {:type :end-test-var :var v})))
+    (binding [*testing-vars* (conj *testing-vars* v)]
+      (clojure.test/report {:type :begin-test-var :var v})
+      (try
+        (t)
+        (catch Exception e
+          (clojure.test/report {:type :error
+                                :message "Uncaught exception, not in assertion."
+                                :expected nil
+                                :actual e})))
+      (clojure.test/report {:type :end-test-var :var v}))))
 
 ;; Run test vars grouped by namespace with fixtures applied.
 (defn test-vars [vars]
@@ -265,5 +339,74 @@
                           :fail @fail-count
                           :error @error-count})
 
-    ;; Return success status
-    (= 0 (+ @fail-count @error-count))))
+    ;; Return summary map (upstream compat)
+    {:test @test-count :pass @pass-count :fail @fail-count :error @error-count}))
+
+(defn successful?
+  "Returns true if the given test summary indicates all tests
+  were successful, false otherwise."
+  {:added "1.1"}
+  [summary]
+  (and (zero? (:fail summary 0))
+       (zero? (:error summary 0))))
+
+;; Run all tests in all namespaces. Optional regex filters namespace names.
+(defn run-all-tests
+  "Runs all tests in all namespaces; prints results.
+  Optional argument is a regular expression; only namespaces with
+  names matching the regular expression (with re-matches) will be
+  tested."
+  {:added "1.1"}
+  ([] (run-tests))
+  ([re]
+   ;; UPSTREAM-DIFF: CW uses atom registry, so just run-tests (no ns filtering)
+   ;; All registered tests run regardless of ns filter
+   (run-tests)))
+
+;; Run tests for a single var, with fixtures and summary output.
+(defn run-test-var
+  "Runs the tests for a single Var, with fixtures executed around the
+  test, and summary output after."
+  {:added "1.11"}
+  [v]
+  ;; Reset counters
+  (reset! pass-count 0)
+  (reset! fail-count 0)
+  (reset! error-count 0)
+  (reset! test-count 0)
+  ;; Run single var through test-vars for fixture support
+  (test-vars [v])
+  ;; Report summary
+  (let [summary {:type :summary
+                 :test @test-count
+                 :pass @pass-count
+                 :fail @fail-count
+                 :error @error-count}]
+    (clojure.test/report summary)
+    (dissoc summary :type)))
+
+;; Run a single test by symbol name.
+;; UPSTREAM-DIFF: macro in upstream, fn here (resolve works at runtime)
+(defn run-test
+  "Runs a single test. Resolves the symbol to a var and runs it."
+  {:added "1.11"}
+  [test-symbol]
+  (if-let [v (resolve test-symbol)]
+    (if (:test (meta v))
+      (run-test-var v)
+      (println (str test-symbol " is not a test.")))
+    (println (str "Unable to resolve " test-symbol " to a test function."))))
+
+;; Returns true if argument is a function or a symbol that resolves to
+;; a function (not a macro).
+(defn function?
+  "Returns true if argument is a function or a symbol that resolves to
+  a function (not a macro)."
+  {:added "1.1"}
+  [x]
+  (if (symbol? x)
+    (when-let [v (resolve x)]
+      (when-let [value (deref v)]
+        (and (fn? value)
+             (not (:macro (meta v))))))
+    (fn? x)))

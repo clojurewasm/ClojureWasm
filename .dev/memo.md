@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 711 vars done across all namespaces (540/706 core, 44/45 math, 28/28 zip, 6/6 stacktrace, etc.)
+- Coverage: 729 vars done across all namespaces (540/706 core, 44/45 math, 28/28 zip, 32/39 test, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -31,22 +31,23 @@ Phase 38: Core Library Completeness
 
 Phase 40: Library Expansion
 1. [x] 40.1: clojure.zip — zipper library (28 vars, upstream near-verbatim)
-2. [ ] 40.2: clojure.data — diff (2 vars)
-3. [ ] 40.3: clojure.test expansion — successful?, run-all-tests, etc.
+2. [x] 40.2: clojure.data — diff (skipped, protocols only)
+3. [x] 40.3: clojure.test expansion — 18 vars added
 4. [ ] 40.4: clojure.walk/math/repl remaining vars
 
 ## Current Task
 
-40.2: clojure.data — diff.
+40.4: clojure.walk/math/repl remaining vars.
 
 ## Previous Task
 
-40.1: clojure.zip — zipper library (28 vars).
-- Port from upstream, 4 CLJW markers (new Exception → ex-info)
-- Fixed `& rest` destructuring: empty rest now returns nil (was ())
-  - Analyzer wraps makeNthRest result with seq call
-- Fixed `(nth nil n)`: returns nil instead of error (JVM compat)
-- Registered in bootstrap (loadZip, vmRecompileAll, markLibLoaded)
+40.3: clojure.test expansion (18 vars).
+- Added dynamic vars: *initial-report-counters*, *report-counters*, *testing-vars*, *test-out*, *stack-trace-depth*, *load-tests*
+- Added macros: deftest-, set-test, with-test, with-test-out
+- Added functions: successful?, run-all-tests, run-test-var, run-test, function?, testing-vars-str, inc-report-counter, do-report
+- Changed run-tests to return summary map (upstream compat)
+- Updated test-var to bind *testing-vars*
+- Skipped 7 vars: assert-any/expr/predicate/try-expr (CW uses direct pattern match), file-position (deprecated), get-possibly-unbound-var, test-ns (atom registry)
 - Both VM + TreeWalk verified
 
 ## Known Issues
