@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/string.clj
 ;; Upstream lines: 197
-;; CLJW markers: 6
+;; CLJW markers: 5
 
 ;; CLJW: ns form simplified — removed *warn-on-reflection*
 (ns clojure.test-clojure.string

@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/edn.clj
 ;; Upstream lines: 39
-;; CLJW markers: 6
+;; CLJW markers: 5
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

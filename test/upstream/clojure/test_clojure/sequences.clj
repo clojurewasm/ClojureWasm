@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/sequences.clj
 ;; Upstream lines: 1654
-;; CLJW markers: 39
+;; CLJW markers: 38
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

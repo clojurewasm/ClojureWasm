@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/control.clj
 ;; Upstream lines: 446
-;; CLJW markers: 21
+;; CLJW markers: 20
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

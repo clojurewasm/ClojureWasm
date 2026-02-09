@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/test_fixtures.clj
 ;; Upstream lines: 73
-;; CLJW markers: 3
+;; CLJW markers: 1
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

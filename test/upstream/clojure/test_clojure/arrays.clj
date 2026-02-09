@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/java_interop.clj (array sections)
 ;; Upstream lines: ~250 (array-related subset)
-;; CLJW markers: 12
+;; CLJW markers: 14
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

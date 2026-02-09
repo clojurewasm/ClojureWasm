@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/predicates.clj
 ;; Upstream lines: 221
-;; CLJW markers: 2
+;; CLJW markers: 1
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

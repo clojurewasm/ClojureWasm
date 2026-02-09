@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/transducers.clj
 ;; Upstream lines: 410
-;; CLJW markers: 11
+;; CLJW markers: 10
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

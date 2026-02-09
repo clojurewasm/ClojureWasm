@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/math.clj
 ;; Upstream lines: 327
-;; CLJW markers: 13
+;; CLJW markers: 12
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

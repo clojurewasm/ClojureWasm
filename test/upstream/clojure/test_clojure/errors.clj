@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/errors.clj
 ;; Upstream lines: 119
-;; CLJW markers: 10
+;; CLJW markers: 12
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/ns_libs.clj
 ;; Upstream lines: 145
-;; CLJW markers: 6
+;; CLJW markers: 7
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/logic.clj
 ;; Upstream lines: 212
-;; CLJW markers: 7
+;; CLJW markers: 6
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

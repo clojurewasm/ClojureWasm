@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/parse.clj
 ;; Upstream lines: 102
-;; CLJW markers: 12
+;; CLJW markers: 11
 
 ;; CLJW: removed (:require clojure.test.check ...) and (:import java.util.UUID) — not available
 (ns clojure.test-clojure.parse

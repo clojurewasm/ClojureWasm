@@ -34,10 +34,10 @@ A3. Wasm Execution Speed — deferred to post-alpha (D90)
 6. [~] 44.6-44.8: Implementation deferred (HIGH effort, alpha priorities elsewhere)
 
 A5. Code Refactoring (largest block)
-9. [ ] 44.12: Full file visual review (66 Zig files, ~65K LOC)
-10. [ ] 44.13: Dead code removal, naming unification, comment quality
-11. [ ] 44.14: TODO/FIXME/HACK triage → fix or checklist.md
-12. [ ] 44.15: Test code quality review (38 upstream test files)
+9. [x] 44.12: //! module doc comments (all 66 files) + stale content fixes
+10. [x] 44.13: Remove stale internal phase IDs from inline comments
+11. [x] 44.14: TODO triage → F136, F137 in checklist.md
+12. [x] 44.15: Test file header CLJW marker count verification (23 fixes)
 
 A4. Directory Restructure
 13. [x] 44.9: Removed wasm_rt/ directory
@@ -69,14 +69,16 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.12: Full file visual review (A5 Code Refactoring block).
+Phase 44 A5 Code Refactoring COMPLETE (44.12-44.15).
+All Phase 44 sub-tasks done. Ready for v0.1.0-alpha tag/release.
 
 ## Previous Task
 
-Phase 44.26-44.30 COMPLETE: A9 Release Preparation block.
-- GitHub repo topics: clojure, zig, wasm, compiler, interpreter, nrepl, etc.
-- README badges: pre-alpha status, license, Zig version
-- Platform verification notice (macOS Apple Silicon, Linux CI)
+Phase 44.12-44.15 COMPLETE: A5 Code Refactoring block.
+- 44.12a-c: //! module doc comments added to all 66 Zig files
+- 44.13: Stale phase IDs removed from ~30 inline comments across 11 files
+- 44.14: 2 TODOs triaged to F136/F137, zero TODO/FIXME/HACK remaining
+- 44.15: CLJW marker header counts verified and fixed in 23 test files
 - FUNDING.yml + Support section (GitHub Sponsors)
 - Acknowledgments expanded: Rich Hickey, Clojure community, Zig community
 

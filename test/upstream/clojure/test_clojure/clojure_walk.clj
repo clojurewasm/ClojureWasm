@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/clojure_walk.clj
 ;; Upstream lines: 76
-;; CLJW markers: 4
+;; CLJW markers: 2
 
 ;; CLJW: ns form simplified — (:require) moved to top-level require call
 (ns clojure.test-clojure.clojure-walk

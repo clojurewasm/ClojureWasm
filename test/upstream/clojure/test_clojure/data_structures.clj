@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
 ;; Upstream lines: 1363
-;; CLJW markers: 35
+;; CLJW markers: 34
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

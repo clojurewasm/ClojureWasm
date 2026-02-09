@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/clojure_zip.clj
 ;; Upstream lines: 49
-;; CLJW markers: 1
+;; CLJW markers: 0
 ;; CLJW-ADD: upstream file has no tests, these are CW-original
 
 ;   Copyright (c) Rich Hickey. All rights reserved.

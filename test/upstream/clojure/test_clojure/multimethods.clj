@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/multimethods.clj
 ;; Upstream lines: 272
-;; CLJW markers: 11
+;; CLJW markers: 10
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the

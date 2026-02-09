@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/try_catch.clj
 ;; Upstream lines: 40
-;; CLJW markers: 5
+;; CLJW markers: 6
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
