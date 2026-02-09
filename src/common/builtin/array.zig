@@ -284,6 +284,81 @@ fn intoArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Typed array constructors (Phase 43.2)
+// ============================================================
+
+/// Generic typed array constructor: (X-array size) or (X-array coll)
+fn typedArrayFn(allocator: Allocator, args: []const Value, elem_type: ZigArray.ElementType, comptime name: []const u8) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to " ++ name, .{args.len});
+    const arg = args[0];
+    if (arg.tag() == .integer) {
+        const size_i = arg.asInteger();
+        if (size_i < 0) return err.setErrorFmt(.eval, .type_error, .{}, name ++ " size must be non-negative, got {d}", .{size_i});
+        return createArray(allocator, @intCast(size_i), elem_type);
+    }
+    // Collection: convert to typed array
+    const obj_arr = try collToArray(allocator, arg);
+    obj_arr.asArray().element_type = elem_type;
+    return obj_arr;
+}
+
+fn intArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .int, "int-array");
+}
+fn longArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .long, "long-array");
+}
+fn floatArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .float, "float-array");
+}
+fn doubleArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .double, "double-array");
+}
+fn booleanArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .boolean, "boolean-array");
+}
+fn byteArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .byte, "byte-array");
+}
+fn shortArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .short, "short-array");
+}
+fn charArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return typedArrayFn(allocator, args, .char, "char-array");
+}
+
+/// (to-array-2d coll) — convert seq of seqs to 2D Object array
+fn toArray2dFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to to-array-2d", .{args.len});
+    // First convert outer to array of collections
+    const outer = try collToArray(allocator, args[0]);
+    const outer_arr = outer.asArray();
+    // Convert each inner element to an array
+    for (outer_arr.items) |*item| {
+        if (item.tag() != .array) {
+            item.* = try collToArray(allocator, item.*);
+        }
+    }
+    return outer;
+}
+
+// ============================================================
+// Type coercion functions (Phase 43.2)
+// ============================================================
+
+/// Generic coercion: assert array has expected element type, return identity.
+fn coerceFn(comptime expected: ZigArray.ElementType, comptime name: []const u8) fn (Allocator, []const Value) anyerror!Value {
+    return struct {
+        fn f(_: Allocator, args: []const Value) anyerror!Value {
+            if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to " ++ name, .{args.len});
+            if (args[0].tag() != .array) return err.setErrorFmt(.eval, .type_error, .{}, name ++ " expects array, got {s}", .{@tagName(args[0].tag())});
+            _ = expected; // CW does not enforce element types strictly, just returns identity
+            return args[0];
+        }
+    }.f;
+}
+
+// ============================================================
 // Builtin table
 // ============================================================
 
@@ -344,6 +419,23 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([aseq] [type aseq])",
         .added = "1.0",
     },
+    .{ .name = "int-array", .func = intArrayFn, .doc = "Creates an array of ints.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "long-array", .func = longArrayFn, .doc = "Creates an array of longs.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "float-array", .func = floatArrayFn, .doc = "Creates an array of floats.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "double-array", .func = doubleArrayFn, .doc = "Creates an array of doubles.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "boolean-array", .func = booleanArrayFn, .doc = "Creates an array of booleans.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "byte-array", .func = byteArrayFn, .doc = "Creates an array of bytes.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "short-array", .func = shortArrayFn, .doc = "Creates an array of shorts.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "char-array", .func = charArrayFn, .doc = "Creates an array of chars.", .arglists = "([size-or-seq])", .added = "1.0" },
+    .{ .name = "to-array-2d", .func = toArray2dFn, .doc = "Returns a (potentially-ragged) 2-dimensional array of Objects.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "ints", .func = coerceFn(.int, "ints"), .doc = "Casts to int[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "longs", .func = coerceFn(.long, "longs"), .doc = "Casts to long[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "floats", .func = coerceFn(.float, "floats"), .doc = "Casts to float[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "doubles", .func = coerceFn(.double, "doubles"), .doc = "Casts to double[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "booleans", .func = coerceFn(.boolean, "booleans"), .doc = "Casts to boolean[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "bytes", .func = coerceFn(.byte, "bytes"), .doc = "Casts to byte[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "shorts", .func = coerceFn(.short, "shorts"), .doc = "Casts to short[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "chars", .func = coerceFn(.char, "chars"), .doc = "Casts to char[].", .arglists = "([xs])", .added = "1.0" },
 };
 
 // ============================================================

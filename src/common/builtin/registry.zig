@@ -268,8 +268,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 303 + 8 array builtins
-    try std.testing.expectEqual(311, builtin_count);
+    // 311 + 17 (typed arrays + coercion + to-array-2d)
+    try std.testing.expectEqual(328, builtin_count);
 }
 
 test "comptime lookup finds +" {

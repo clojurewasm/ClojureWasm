@@ -161,7 +161,7 @@ vars:
     "bit-test": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "bit-xor": {type: function, status: done, note: "Zig builtin"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
-    "boolean-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "boolean-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "boolean?": {type: function, status: done, note: "Zig builtin"}
     booleans: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "bound-fn": {type: macro, status: done, note: 'macro wrapper for bound-fn*'}
@@ -170,18 +170,18 @@ vars:
     "bounded-count": {type: function, status: done, note: builtin (upstream is pure clj)}
     butlast: {type: function, status: done, note: "core.clj loop"}
     byte: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "byte-array": {type: function, status: skip, note: Phase 43 — Zig array type}
-    bytes: {type: function, status: skip, note: Phase 43 — Zig array type}
+    "byte-array": {type: function, status: done, note: Phase 43 — Zig array type}
+    bytes: {type: function, status: done, note: Phase 43 — Zig array type}
     "bytes?": {type: function, status: skip, note: "Phase 42 — quick win"}
     case: {type: macro, status: done, note: "Zig builtin compiler support"}
     cast: {type: function, status: done, note: identity (no JVM type system)}
     cat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     char: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "char-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "char-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "char-escape-string": {type: var, status: done, note: core.clj (from core_print.clj)}
     "char-name-string": {type: var, status: done, note: core.clj (from core_print.clj)}
     "char?": {type: function, status: done, note: "Zig builtin"}
-    chars: {type: function, status: skip, note: Phase 43 — Zig array type}
+    chars: {type: function, status: done, note: Phase 43 — Zig array type}
     chunk: {type: function, status: done, note: builtin}
     "chunk-append": {type: function, status: done, note: builtin}
     "chunk-buffer": {type: function, status: done, note: builtin}
@@ -259,9 +259,9 @@ vars:
     dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF (minor): inline validation instead of assert-args (bootstrap order)'}
     doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "double-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "double-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "double?": {type: function, status: done, note: "Zig builtin"}
-    doubles: {type: function, status: skip, note: "Phase 43 — Zig array type"}
+    doubles: {type: function, status: done, note: "Phase 43 — Zig array type"}
     drop: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
@@ -300,9 +300,9 @@ vars:
     first: {type: function, status: done, note: "Zig builtin"}
     flatten: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     float: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "float-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "float-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "float?": {type: function, status: done, note: "Zig builtin"}
-    floats: {type: function, status: skip, note: Phase 43 — Zig array type}
+    floats: {type: function, status: done, note: Phase 43 — Zig array type}
     flush: {type: function, status: done, note: "Zig builtin"}
     fn: {type: special-form, status: done, note: special form (analyzes as fn*)}
     "fn?": {type: function, status: done, note: special form}
@@ -354,7 +354,7 @@ vars:
     "inst?": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "instance?": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     int: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "int-array": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "int-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "int?": {type: function, status: done, note: "Zig builtin"}
     "integer?": {type: function, status: done, note: "Zig builtin"}
     interleave: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -362,7 +362,7 @@ vars:
     interpose: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     into: {type: function, status: done, note: "portable to clj"}
     "into-array": {type: function, status: done, note: Phase 43 — Zig array type}
-    ints: {type: function, status: skip, note: Phase 43 — Zig array type}
+    ints: {type: function, status: done, note: Phase 43 — Zig array type}
     "io!": {type: macro, status: skip, note: "JVM interop"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -391,8 +391,8 @@ vars:
     "loaded-libs": {type: function, status: done}
     locking: {type: macro, status: done, note: "UPSTREAM-DIFF (permanent): single-threaded no-op (no Java monitors)"}
     long: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "long-array": {type: function, status: skip, note: Phase 43 — Zig array type}
-    longs: {type: function, status: skip, note: Phase 43 — Zig array type}
+    "long-array": {type: function, status: done, note: Phase 43 — Zig array type}
+    longs: {type: function, status: done, note: Phase 43 — Zig array type}
     loop: {type: special-form, status: done, note: special form (analyzes as loop*)}
     macroexpand: {type: function, status: done, note: "Zig builtin"}
     "macroexpand-1": {type: function, status: done, note: "Zig builtin"}
@@ -587,8 +587,8 @@ vars:
     "set-validator!": {type: function, status: done}
     "set?": {type: function, status: done, note: "Zig builtin"}
     short: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "short-array": {type: function, status: skip, note: Phase 43 — Zig array type}
-    shorts: {type: function, status: skip, note: Phase 43 — Zig array type}
+    "short-array": {type: function, status: done, note: Phase 43 — Zig array type}
+    shorts: {type: function, status: done, note: Phase 43 — Zig array type}
     shuffle: {type: function, status: done, note: builtin (upstream is pure clj)}
     "shutdown-agents": {type: function, status: skip, note: DEFERRED — multi-thread future}
     "simple-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -641,7 +641,7 @@ vars:
     "thread-bound?": {type: function, status: done}
     time: {type: macro, status: done, note: macro using __nano-time}
     "to-array": {type: function, status: done, note: Phase 43 — Zig array type}
-    "to-array-2d": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "to-array-2d": {type: function, status: done, note: Phase 43 — Zig array type}
     trampoline: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     transduce: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     transient: {type: function, status: done}
