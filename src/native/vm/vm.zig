@@ -2003,6 +2003,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .array_chunk => "array_chunk",
         .wasm_module => "wasm_module",
         .wasm_fn => "wasm_fn",
+        .matcher => "matcher",
     };
 }
 

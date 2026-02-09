@@ -513,8 +513,8 @@ vars:
     "rational?": {type: function, status: done, note: builtin (upstream is pure clj)}
     rationalize: {type: function, status: skip, note: no Ratio type}
     "re-find": {type: function, status: done, note: "Zig builtin"}
-    "re-groups": {type: function, status: skip, note: needs Matcher Value type}
-    "re-matcher": {type: function, status: skip, note: needs Matcher Value type}
+    "re-groups": {type: function, status: done, note: Zig builtin}
+    "re-matcher": {type: function, status: done, note: Zig builtin}
     "re-matches": {type: function, status: done, note: "Zig builtin"}
     "re-pattern": {type: function, status: done, note: "Zig builtin"}
     "re-seq": {type: function, status: done, note: "Zig builtin"}

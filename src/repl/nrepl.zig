@@ -1213,6 +1213,7 @@ fn writeValue(w: anytype, val: Value) void {
         .array_chunk => w.print("#<ArrayChunk>", .{}) catch {},
         .wasm_module => w.print("#<WasmModule>", .{}) catch {},
         .wasm_fn => w.print("#<WasmFn {s}>", .{val.asWasmFn().name}) catch {},
+        .matcher => w.print("#<Matcher>", .{}) catch {},
     }
 }
 

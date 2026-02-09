@@ -241,6 +241,7 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .array_chunk => "array-chunk",
         .wasm_module => "wasm-module",
         .wasm_fn => "wasm-fn",
+        .matcher => "matcher",
     };
     return Value.initKeyword(allocator, .{ .ns = null, .name = name });
 }
@@ -349,6 +350,7 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
         .array_chunk => "array_chunk",
         .wasm_module => "wasm_module",
         .wasm_fn => "wasm_fn",
+        .matcher => "matcher",
     });
     return Value.initBoolean(protocol.impls.get(type_key) != null);
 }

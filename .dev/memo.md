@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
+- Coverage: 661 vars done across all namespaces (539/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -22,16 +22,16 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 38: Core Library Completeness
 1. [x] 38.1: thrown-with-msg? test assertion — enable skipped multimethod tests
-2. [ ] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
+2. [x] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
 3. [ ] 38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
 4. [ ] 38.4: case* compiler special form — O(1) hash dispatch (if time permits)
 5. [ ] 38.5: ns macro enhancement — :import support, docstring
 
 ## Current Task
 
-38.2: Implement Matcher Value type + re-matcher, re-groups — regex group extraction.
-Clojure's `re-matcher` returns a java.util.regex.Matcher object; `re-groups` extracts
-groups from it. Needed for upstream tests and idiomatic regex use.
+38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items.
+Review UPSTREAM-DIFF markers across src/clj/ and fix implementations that diverge
+from upstream Clojure without good reason.
 
 ## Previous Task
 

@@ -975,6 +975,7 @@ pub const TreeWalk = struct {
             .array_chunk => "array_chunk",
             .wasm_module => "wasm_module",
             .wasm_fn => "wasm_fn",
+            .matcher => "matcher",
         };
     }
 

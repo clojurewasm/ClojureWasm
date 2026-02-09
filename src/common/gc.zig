@@ -935,6 +935,16 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         // Wasm InterOp — opaque native objects, not GC-traced
         .wasm_module => gc.markPtr(val.asWasmModule()),
         .wasm_fn => gc.markPtr(val.asWasmFn()),
+
+        .matcher => {
+            const m = val.asMatcher();
+            if (gc.markAndCheck(m)) {
+                gc.markPtr(m.pattern);
+                gc.markPtr(m.pattern.compiled);
+                gc.markSlice(m.input);
+                traceValue(gc, m.last_result);
+            }
+        },
     }
 }
 

@@ -221,6 +221,15 @@ pub const Pattern = struct {
     group_count: u16,
 };
 
+/// Mutable regex matcher state — wraps a compiled pattern + input string.
+/// Used by re-matcher, re-find (1-arg), and re-groups.
+pub const MatcherState = struct {
+    pattern: *Pattern, // the regex pattern
+    input: []const u8, // the string being matched against
+    pos: usize, // current search position for incremental find()
+    last_result: Value, // result of last find (nil if none)
+};
+
 /// Discriminator for Fn.proto — bytecode (VM) vs treewalk (Node-based).
 pub const FnKind = enum {
     bytecode, // proto points to FnProto (bytecode/chunk.zig)
@@ -539,7 +548,7 @@ const NanHeapTag = enum(u8) {
     delay = 18, reduced = 19,
     transient_vector = 20, transient_map = 21, transient_set = 22,
     chunked_cons = 23, chunk_buffer = 24, array_chunk = 25,
-    wasm_module = 26, wasm_fn = 27,
+    wasm_module = 26, wasm_fn = 27, matcher = 28,
 };
 
 /// Runtime value — NaN-boxed 8-byte representation.
@@ -571,7 +580,7 @@ pub const Value = enum(u64) {
         lazy_seq, cons, var_ref, delay, reduced,
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
-        wasm_module, wasm_fn,
+        wasm_module, wasm_fn, matcher,
     };
 
     // --- Encoding helpers ---
@@ -620,6 +629,7 @@ pub const Value = enum(u64) {
             .array_chunk => .array_chunk,
             .wasm_module => .wasm_module,
             .wasm_fn => .wasm_fn,
+            .matcher => .matcher,
         };
     }
 
@@ -944,6 +954,14 @@ pub const Value = enum(u64) {
 
     pub fn asWasmFn(self: Value) *const @import("../wasm/types.zig").WasmFn {
         return decodePtr(self, *const @import("../wasm/types.zig").WasmFn);
+    }
+
+    pub fn initMatcher(m: *MatcherState) Value {
+        return encodeHeapPtr(.matcher, m);
+    }
+
+    pub fn asMatcher(self: Value) *MatcherState {
+        return decodePtr(self, *MatcherState);
     }
 
     /// Clojure pr-str semantics: format value for printing.
@@ -1289,6 +1307,7 @@ pub const Value = enum(u64) {
                 const wf = self.asWasmFn();
                 try w.print("#<WasmFn {s}>", .{wf.name});
             },
+            .matcher => try w.writeAll("#<Matcher>"),
             .cons => {
                 const c = self.asCons();
                 if (try checkPrintLevel(w)) return;
@@ -1431,6 +1450,7 @@ pub const Value = enum(u64) {
             .array_chunk => self.asArrayChunk() == other.asArrayChunk(), // identity equality
             .wasm_module => self.asWasmModule() == other.asWasmModule(), // identity equality
             .wasm_fn => self.asWasmFn() == other.asWasmFn(), // identity equality
+            .matcher => self.asMatcher() == other.asMatcher(), // identity equality
         };
     }
 

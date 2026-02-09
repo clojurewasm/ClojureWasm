@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const Pattern = value_mod.Pattern;
+const MatcherState = value_mod.MatcherState;
 const PersistentList = @import("../collections.zig").PersistentList;
 const PersistentVector = @import("../collections.zig").PersistentVector;
 const var_mod = @import("../var.zig");
@@ -73,8 +74,61 @@ pub fn rePatternFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
-/// (re-find pattern s) — find first match in string
+/// (re-matcher re s) — create a Matcher from a pattern and string
+pub fn reMatcherFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-matcher", .{args.len});
+
+    const pattern = switch (args[0].tag()) {
+        .regex => args[0].asRegex(),
+        .string => blk: {
+            const compiled = try allocator.create(CompiledRegex);
+            compiled.* = matcher_mod.compile(allocator, args[0].asString()) catch return error.ValueError;
+            const pat = try allocator.create(Pattern);
+            pat.* = .{ .source = args[0].asString(), .compiled = @ptrCast(compiled), .group_count = compiled.group_count };
+            break :blk pat;
+        },
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-matcher expects a regex or string, got {s}", .{@tagName(args[0].tag())}),
+    };
+    const input = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "re-matcher expects a string as second argument, got {s}", .{@tagName(args[1].tag())}),
+    };
+
+    const ms = try allocator.create(MatcherState);
+    ms.* = .{ .pattern = pattern, .input = input, .pos = 0, .last_result = Value.nil_val };
+    return Value.initMatcher(ms);
+}
+
+/// (re-groups m) — return groups from the last match
+pub fn reGroupsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-groups", .{args.len});
+    if (args[0].tag() != .matcher) return err.setErrorFmt(.eval, .type_error, .{}, "re-groups expects a matcher, got {s}", .{@tagName(args[0].tag())});
+    return args[0].asMatcher().last_result;
+}
+
+/// (re-find m) or (re-find re s) — find next/first match
 pub fn reFindFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        // 1-arg: advance matcher to next match
+        if (args[0].tag() != .matcher) return err.setErrorFmt(.eval, .type_error, .{}, "re-find expects a matcher, got {s}", .{@tagName(args[0].tag())});
+        const ms = args[0].asMatcher();
+        const compiled: *const CompiledRegex = @ptrCast(@alignCast(ms.pattern.compiled));
+
+        var m = try Matcher.init(allocator, compiled, ms.input);
+        defer m.deinit();
+
+        const result = try m.find(ms.pos) orelse {
+            ms.last_result = Value.nil_val;
+            return Value.nil_val;
+        };
+        // Advance position
+        ms.pos = if (result.end > result.start) result.end else result.end + 1;
+        const val = try matchResultToValue(allocator, result, ms.input);
+        ms.last_result = val;
+        return val;
+    }
+
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to re-find", .{args.len});
 
     const compiled = try getCompiledPattern(allocator, args[0]);
@@ -164,6 +218,20 @@ pub const builtins = [_]BuiltinDef{
         .func = &reSeqFn,
         .doc = "Returns a lazy sequence of successive matches of pattern in string.",
         .arglists = "([re s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "re-matcher",
+        .func = &reMatcherFn,
+        .doc = "Returns an instance of java.util.regex.Matcher, for use, e.g. in re-find.",
+        .arglists = "([re s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "re-groups",
+        .func = &reGroupsFn,
+        .doc = "Returns the groups from the most recent match/find. If there are no nested groups, returns a string of the entire match. If there are nested groups, returns a vector of the groups, the first element being the entire match.",
+        .arglists = "([m])",
         .added = "1.0",
     },
 };
@@ -284,4 +352,71 @@ test "re-seq - all matches" {
     try testing.expectEqualStrings("1", result.asList().items[0].asString());
     try testing.expectEqualStrings("22", result.asList().items[1].asString());
     try testing.expectEqualStrings("333", result.asList().items[2].asString());
+}
+
+test "re-matcher - creates matcher" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
+    const pat = try rePatternFn(allocator, &pat_args);
+
+    const args = [_]Value{ pat, Value.initString(allocator, "abc123def456") };
+    const result = try reMatcherFn(allocator, &args);
+    try testing.expect(result.tag() == .matcher);
+}
+
+test "re-find 1-arg - iterates matches" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const pat_args = [_]Value{Value.initString(allocator, "\\d+")};
+    const pat = try rePatternFn(allocator, &pat_args);
+
+    const matcher_args = [_]Value{ pat, Value.initString(allocator, "a1b22c333") };
+    const m = try reMatcherFn(allocator, &matcher_args);
+
+    // First find
+    const r1 = try reFindFn(allocator, &[_]Value{m});
+    try testing.expect(r1.tag() == .string);
+    try testing.expectEqualStrings("1", r1.asString());
+
+    // Second find
+    const r2 = try reFindFn(allocator, &[_]Value{m});
+    try testing.expect(r2.tag() == .string);
+    try testing.expectEqualStrings("22", r2.asString());
+
+    // Third find
+    const r3 = try reFindFn(allocator, &[_]Value{m});
+    try testing.expect(r3.tag() == .string);
+    try testing.expectEqualStrings("333", r3.asString());
+
+    // No more matches
+    const r4 = try reFindFn(allocator, &[_]Value{m});
+    try testing.expect(r4.isNil());
+}
+
+test "re-groups - returns last match groups" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const pat_args = [_]Value{Value.initString(allocator, "(\\d+)-(\\w+)")};
+    const pat = try rePatternFn(allocator, &pat_args);
+
+    const matcher_args = [_]Value{ pat, Value.initString(allocator, "x12-abc y34-def") };
+    const m = try reMatcherFn(allocator, &matcher_args);
+
+    // Find first match
+    _ = try reFindFn(allocator, &[_]Value{m});
+
+    // re-groups returns the groups from the last find
+    const groups = try reGroupsFn(allocator, &[_]Value{m});
+    try testing.expect(groups.tag() == .vector);
+    try testing.expectEqual(@as(usize, 3), groups.asVector().items.len);
+    try testing.expectEqualStrings("12-abc", groups.asVector().items[0].asString());
+    try testing.expectEqualStrings("12", groups.asVector().items[1].asString());
+    try testing.expectEqualStrings("abc", groups.asVector().items[2].asString());
 }
