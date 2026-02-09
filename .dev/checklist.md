@@ -14,9 +14,9 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                         | Trigger                                                            |
 | ---- | -------------------------------------------- | ------------------------------------------------------------------ |
-| F3   | Ratio type (`1/3`)                           | SCI tests fail on float precision loss                             |
+| F3   | Ratio type (`1/3`)                           | → subsumed by F132, Phase 43                                       |
 | F4   | Persistent data structures (HAMT, RRB-Tree)  | Collection benchmarks show bottleneck                              |
-| F6   | Multi-thread dynamic bindings                | Native multi-thread target                                         |
+| F6   | Multi-thread dynamic bindings                | Prerequisite for F133 (Future), native multi-thread target         |
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
@@ -26,3 +26,9 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
+| F130 | Array Value type + ops (35 vars)             | New NanHeapTag, aget/aset/make-array etc. Phase 43                 |
+| F131 | BigInt + BigDecimal (pure Zig)               | Arbitrary precision, no external deps. Phase 43                    |
+| F132 | Ratio type + numerator/denominator           | Extends F3, ties into F131. Phase 43                               |
+| F133 | Future + thread pool                         | Zig std.Thread, GC safety, deref timeout. Phase 44                 |
+| F134 | Protocol extension API                       | extend, extenders, extends? etc. (5 vars). Phase 42                |
+| F135 | import → wasm mapping design                 | Explore ClojureDart-like :import for .wasm. Phase 45               |

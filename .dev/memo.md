@@ -20,50 +20,22 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 38: Core Library Completeness
-1. [x] 38.1: thrown-with-msg? test assertion — enable skipped multimethod tests
-2. [x] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
-3. [x] 38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
-4. [-] 38.4: case* compiler special form — DEFERRED (case works, O(1) is optimization)
-5. [x] 38.5: ns macro enhancement — :import support, docstring
-
-## Task Queue
-
-Phase 40: Library Expansion — COMPLETE
-1. [x] 40.1: clojure.zip — zipper library (28 vars, upstream near-verbatim)
-2. [x] 40.2: clojure.data — diff (skipped, protocols only)
-3. [x] 40.3: clojure.test expansion — 18 vars added
-4. [x] 40.4: clojure.walk/math/repl remaining vars (6 vars)
-
-## Task Queue
-
-Phase 41: Polish & Hardening
-1. [x] 41.1: ex-cause fix + pprint dynamic vars (7 vars)
-2. [x] 41.2: clojure.edn/read — SKIPPED (needs PushbackReader)
-3. [x] 41.3: clojure.core.reducers — SKIPPED (needs reify, protocols, ForkJoin)
-4. [x] 41.4: Upstream test porting
-5. [x] 41.5: Additional bug fixes and edge cases
+Phase 42: Quick Wins + Protocol Extension
+1. [ ] 42.1: Quick wins (with-in-str, uri?, uuid?, destructure, bytes?)
+2. [ ] 42.2: Protocol extension API (extend, extenders, extends?, satisfies?, find-protocol-impl)
+3. [ ] 42.3: Remaining implementable core vars (bound-fn, get-thread-bindings, seq-to-map-for-destructuring)
 
 ## Current Task
 
-Phase 41 complete. Plan next phase.
+Phase 42.1: Quick wins — implement straightforward SKIP vars that need no new Value types.
+
+Target vars: `with-in-str`, `uri?`, `uuid?`, `destructure`, `seq-to-map-for-destructuring`, `bytes?`
+
+Reference: `.dev/skip-recovery.md` Category 8 for full context.
 
 ## Previous Task
 
-41.5: Bug fixes and edge cases (round 3).
-- Fixed peephole optimizer not updating try_begin jump offset (compiler.zig)
-  - Root cause: when superinstructions removed instructions, try_begin operand wasn't remapped
-  - Caused try/catch to silently bypass catch handler in specific patterns
-  - Fix: add .try_begin to jump fixup pass alongside .jump/.jump_if_false/.jump_back
-- Fixed sorted collection support:
-  - TransientHashSet: preserve comparator through transient/persistent cycle
-  - with-meta for sets/maps: preserve comparator field
-  - sorted? predicate: check comparator != null (was always false)
-  - into: bypass transient path for sorted collections, use reduce conj
-  - into 3-arity: match JVM (persistent! in rf completion, not outside transduce)
-- Fixed take 0 returning nil instead of empty list (= (take 0 x) () now true)
-- Fixed case macro throwing plain string instead of ex-info
-- Result: control 157/157, sequences 593/593, transducers 100/100 (all 0 errors)
+Phase 41 complete. SKIP recovery plan created (`.dev/skip-recovery.md`).
 
 ## Known Issues
 
@@ -95,10 +67,25 @@ Session resume procedure: read this file → follow references below.
 | Optimizations        | `.dev/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |
+| Skip recovery        | `.dev/skip-recovery.md`               |
 | Archived plans       | `.dev/archive/` (Phase 24-30, CX, A) |
 
 ## Handover Notes
 
+- **Phase 41 COMPLETE**: Polish & Hardening
+  - 41.1: ex-cause fix + pprint dynamic vars (7 vars)
+  - 41.4: Upstream test porting (control, sequences, transducers)
+  - 41.5: Bug fixes (try/catch peephole, sorted collections, take 0)
+- **SKIP Recovery Plan**: 165 skip vars analyzed, 8 categories decided:
+  - Cat 1 (Array 35 vars): IMPLEMENT Phase 43 — new Array Value type
+  - Cat 2 (Agent 17 vars): DEFER — needs multi-thread GC
+  - Cat 3 (STM 9 vars): OUT OF SCOPE — atom sufficient
+  - Cat 4 (Proxy/Reify ~20 vars): PARTIAL — 5 protocol extension vars in Phase 42
+  - Cat 5 (Future 9 vars): IMPLEMENT Phase 44 — Zig thread pool
+  - Cat 6 (import 2 vars): DESIGN EXPLORE Phase 45
+  - Cat 7 (BigNum 7 vars): IMPLEMENT Phase 43 — pure Zig BigInt/BigDecimal
+  - Cat 8 (Quick wins ~10 vars): IMPLEMENT Phase 42
+  - Full details: `.dev/skip-recovery.md`
 - **Phase 37 COMPLETE**: VM Optimization + JIT PoC
   - 37.1: Profiling (-Dprofile-opcodes, -Dprofile-alloc), GC benchmarks 26/27
   - 37.2: 10 superinstructions (0xC0-0xC9), arith_loop 53→40ms (1.33x)

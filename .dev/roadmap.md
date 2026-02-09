@@ -84,6 +84,9 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 40.1  | clojure.zip (28 vars)                          | Upstream near-verbatim, fix & rest destructuring     |
 | 40.3  | clojure.test expansion (18 vars)               | Dynamic vars, macros, runner functions               |
 | 40.4  | Walk/math/repl remaining (6 vars)              | postwalk-demo, random, demunge, root-cause           |
+| 41.1  | ex-cause fix + pprint dynamic vars (7 vars)    | ex-cause, *print-right-margin*, etc.                 |
+| 41.4  | Upstream test porting                          | control, sequences, transducers tests                |
+| 41.5  | Bug fixes and edge cases                       | try/catch peephole, sorted collections, take 0       |
 
 **Stats**: 742 vars done (540 clojure.core, 14+ namespaces total)
 
@@ -165,6 +168,49 @@ Bug fixes, edge cases, upstream test porting.
 | 41.3  | clojure.core.reducers                | SKIPPED (needs reify, ForkJoin) |
 | 41.4  | Upstream test porting                | COMPLETE    |
 | 41.5  | Bug fixes and edge cases             | COMPLETE    |
+
+### Phase 42: Quick Wins + Protocol Extension — PLANNED
+
+SKIP recovery Phase 1. See `.dev/skip-recovery.md` for full context.
+
+| Sub   | Content                                            | Status  |
+|-------|----------------------------------------------------|---------|
+| 42.1  | Quick wins (with-in-str, uri?, uuid?, destructure) | TODO    |
+| 42.2  | Protocol extension API (extend, extenders, extends?)| TODO   |
+| 42.3  | Remaining implementable core vars (bytes?, bound-fn)| TODO   |
+
+### Phase 43: Numeric Types + Arrays — PLANNED
+
+New Value types: BigInt, BigDecimal, Ratio, Array.
+
+| Sub   | Content                                   | Status  |
+|-------|-------------------------------------------|---------|
+| 43.1  | BigInt (pure Zig arbitrary precision)     | TODO    |
+| 43.2  | BigDecimal                                | TODO    |
+| 43.3  | Ratio type (F3/F132)                      | TODO    |
+| 43.4  | Array Value type + core ops               | TODO    |
+| 43.5  | Typed array constructors + utilities      | TODO    |
+
+### Phase 44: Concurrency Primitives — PLANNED
+
+Thread pool and future-based concurrency.
+
+| Sub   | Content                                   | Status  |
+|-------|-------------------------------------------|---------|
+| 44.1  | Thread pool infrastructure (Zig)          | TODO    |
+| 44.2  | future, future-call, deref timeout        | TODO    |
+| 44.3  | pmap, pcalls, pvalues                     | TODO    |
+| 44.4  | bound-fn, get-thread-bindings             | TODO    |
+
+### Phase 45: import Design Research — PLANNED
+
+Research mapping Java-style import to wasm module loading.
+
+| Sub   | Content                                         | Status  |
+|-------|-------------------------------------------------|---------|
+| 45.1  | Research: ClojureDart :import model              | TODO    |
+| 45.2  | Design: map Java import to wasm module loading   | TODO    |
+| 45.3  | Implementation (if design viable)                | TODO    |
 
 ### Phase 29: Codebase Restructuring (deferred)
 
