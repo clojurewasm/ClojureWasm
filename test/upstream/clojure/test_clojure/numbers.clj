@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 60
+;; CLJW markers: 65
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -162,7 +162,20 @@
     (* 2.0 1.2) 2.4
     (* 3.5 2.0 1.2) 8.4))
 
-;; CLJW: test-multiply-longs-at-edge deferred — needs *' (auto-promotion, Phase 43.7)
+;; CLJW: adapted to i48 integer range (NaN-boxing), upstream uses Long/MIN_VALUE
+(def ^:private I48-MIN -140737488355328)  ;; CLJW-ADD: i48 min for NaN-boxed integers
+(def ^:private I48-MAX 140737488355327)   ;; CLJW-ADD: i48 max for NaN-boxed integers
+
+(deftest test-multiply-longs-at-edge
+  ;; CLJW: adapted to i48 range; upstream uses Long/MIN_VALUE = -9223372036854775808
+  (are [x] (= x 140737488355328N)
+    (*' -1 I48-MIN)
+    (*' I48-MIN -1)
+    (* -1N I48-MIN)
+    (* I48-MIN -1N)
+    (* -1 (bigint I48-MIN))
+    (* (bigint I48-MIN) -1)))
+
 ;; CLJW: test-ratios-simplify-to-ints-where-appropriate skipped — ratio
 
 (deftest test-divide
@@ -185,7 +198,15 @@
   (is (thrown? ArithmeticException (/ 0)))
   (is (thrown? ArithmeticException (/ 2 0))))
 
-;; CLJW: test-divide-bigint-at-edge skipped — BigInt
+;; CLJW: adapted to i48 range; upstream uses Long/MIN_VALUE
+(deftest test-divide-bigint-at-edge
+  (are [x] (= x (-' I48-MIN))
+    (/ I48-MIN -1N)
+    (/ (bigint I48-MIN) -1)
+    (/ (bigint I48-MIN) -1N)
+    (quot I48-MIN -1N)
+    (quot (bigint I48-MIN) -1)
+    (quot (bigint I48-MIN) -1N)))
 
 ;; mod
 ;; http://en.wikipedia.org/wiki/Modulo_operation
@@ -396,9 +417,9 @@
     (not (odd? 42N))))
 ;; CLJW: thrown? tests for ratio/double odd? — not supported
 
-;; CLJW: defn- expt uses *' (auto-promoting multiply) — replaced with simple version
+;; CLJW: upstream uses *' for auto-promoting multiply
 (defn- expt
-  [x n] (reduce * 1 (repeat n x)))
+  [x n] (reduce *' 1 (repeat n x)))
 
 (deftest test-bit-shift-left
   (are [x y] (= x y)
@@ -576,6 +597,40 @@
   (is (= (min 1M 5M 3M) 1M)))
 
 ;; CLJW: defspec generative tests skipped — clojure.test.generative
+
+;; CLJW-ADD: auto-promoting arithmetic tests (Phase 43.7)
+;; CLJW: instance? BigInt replaced with (= :big-int (type ...))
+(deftest test-auto-promoting-arithmetic
+  (testing "basic operations (no overflow)"
+    (is (= 3 (+' 1 2)))
+    (is (= 7 (-' 10 3)))
+    (is (= 20 (*' 4 5)))
+    (is (= 0 (+')))
+    (is (= 1 (*')))
+    (is (= -5 (-' 5))))
+  (testing "i48 overflow promotes to BigInt"
+    (is (= 140737488355328N (+' I48-MAX 1)))
+    (is (= :big-int (type (+' I48-MAX 1))))
+    (is (= -140737488355329N (-' I48-MIN 1)))
+    (is (= :big-int (type (-' I48-MIN 1))))
+    (is (= 281474976710654N (*' I48-MAX 2)))
+    (is (= :big-int (type (*' I48-MAX 2)))))
+  (testing "inc'/dec' promote on overflow"
+    (is (= 140737488355328N (inc' I48-MAX)))
+    (is (= :big-int (type (inc' I48-MAX))))
+    (is (= -140737488355329N (dec' I48-MIN)))
+    (is (= :big-int (type (dec' I48-MIN)))))
+  (testing "BigInt inputs remain BigInt"
+    (is (= 3N (+' 1N 2)))
+    (is (= :big-int (type (+' 1N 2))))
+    (is (= 7N (-' 10N 3)))
+    (is (= :big-int (type (-' 10N 3))))
+    (is (= 6N (*' 2N 3)))
+    (is (= :big-int (type (*' 2N 3)))))
+  (testing "variadic"
+    (is (= 15 (+' 1 2 3 4 5)))
+    (is (= 120 (*' 1 2 3 4 5)))
+    (is (= -5 (-' 10 5 3 7)))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)

@@ -929,6 +929,9 @@ pub const VM = struct {
             .add => try self.vmBinaryArith(.add),
             .sub => try self.vmBinaryArith(.sub),
             .mul => try self.vmBinaryArith(.mul),
+            .add_p => try self.vmBinaryArithPromote(.add),
+            .sub_p => try self.vmBinaryArithPromote(.sub),
+            .mul_p => try self.vmBinaryArithPromote(.mul),
             .div => try self.vmBinaryDivLike(arith.binaryDiv),
             .lt => try self.vmBinaryCompare(.lt),
             .le => try self.vmBinaryCompare(.le),
@@ -1559,6 +1562,43 @@ pub const VM = struct {
         }
         self.saveVmArgSources();
         try self.push(arith.binaryArith(a, b, op) catch return error.TypeError);
+    }
+
+    /// Auto-promoting binary arithmetic: overflow → BigInt instead of float.
+    fn vmBinaryArithPromote(self: *VM, comptime op: arith.ArithOp) VMError!void {
+        const b = self.pop();
+        const a = self.pop();
+        // Fast path: both operands are integers
+        if (a.tag() == .integer and b.tag() == .integer) {
+            const ai = a.asInteger();
+            const bi = b.asInteger();
+            const result = switch (op) {
+                .add => @addWithOverflow(ai, bi),
+                .sub => @subWithOverflow(ai, bi),
+                .mul => @mulWithOverflow(ai, bi),
+            };
+            if (result[1] != 0) {
+                @branchHint(.unlikely);
+                // i64 overflow: promote to BigInt
+                self.saveVmArgSources();
+                const bi_result = arith.bigIntArith(self.allocator, a, b, op) catch return error.OutOfMemory;
+                try self.push(bi_result);
+                return;
+            }
+            const r = result[0];
+            if (r < arith.I48_MIN or r > arith.I48_MAX) {
+                @branchHint(.unlikely);
+                // Exceeds i48 range: promote to BigInt
+                self.saveVmArgSources();
+                const big = collections.BigInt.initFromI64(self.allocator, r) catch return error.OutOfMemory;
+                try self.push(Value.initBigInt(big));
+                return;
+            }
+            try self.push(Value.initInteger(r));
+            return;
+        }
+        self.saveVmArgSources();
+        try self.push(arith.binaryArithPromote(a, b, op) catch return error.TypeError);
     }
 
     /// Binary op that may produce ArithmeticError (div, mod, rem).

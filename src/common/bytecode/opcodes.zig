@@ -171,6 +171,12 @@ pub const OpCode = enum(u8) {
     eq = 0xBA,
     /// (not= a b) — inequality check
     neq = 0xBB,
+    /// (+' a b) — auto-promoting add (overflow → BigInt)
+    add_p = 0xBC,
+    /// (-' a b) — auto-promoting sub (overflow → BigInt)
+    sub_p = 0xBD,
+    /// (*' a b) — auto-promoting mul (overflow → BigInt)
+    mul_p = 0xBE,
 
     // === [S] Superinstructions (0xC0-0xCF) ===
     // Fused 3-instruction sequences for common patterns (37.2).

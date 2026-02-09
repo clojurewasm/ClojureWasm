@@ -1584,12 +1584,9 @@
 (defn unchecked-float [x] (double x))
 (defn unchecked-double [x] (double x))
 
-;; Auto-promoting arithmetic (no BigInt, so identical to checked)
-(def inc' inc)
-(def dec' dec)
-(defn +' ([] 0) ([x] x) ([x y] (+ x y)) ([x y & more] (apply + x y more)))
-(defn -' ([x] (- x)) ([x y] (- x y)) ([x y & more] (apply - x y more)))
-(defn *' ([] 1) ([x] x) ([x y] (* x y)) ([x y & more] (apply * x y more)))
+;; Auto-promoting arithmetic — +', -', *' are builtins (overflow → BigInt)
+(defn inc' [x] (+' x 1))
+(defn dec' [x] (-' x 1))
 
 ;; === IO macros ===
 

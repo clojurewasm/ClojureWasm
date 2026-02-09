@@ -15,6 +15,10 @@ const BigInt = collections.BigInt;
 const BigDecimal = collections.BigDecimal;
 const err = @import("../error.zig");
 
+// i48 range constants for NaN-boxed integers
+pub const I48_MIN: i64 = -(1 << 47);
+pub const I48_MAX: i64 = (1 << 47) - 1;
+
 /// Arithmetic and comparison intrinsics registered in clojure.core.
 pub const builtins = [_]BuiltinDef{
     .{
@@ -101,6 +105,27 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x] [x y] [x y & more])",
         .added = "1.0",
     },
+    .{
+        .name = "+'",
+        .func = &addPFn,
+        .doc = "Returns the sum of nums. (+') returns 0. Supports arbitrary precision. See also: +",
+        .arglists = "([] [x] [x y] [x y & more])",
+        .added = "1.0",
+    },
+    .{
+        .name = "-'",
+        .func = &subPFn,
+        .doc = "If no ys are supplied, returns the negation of x, else subtracts the ys from x and returns the result. Supports arbitrary precision. See also: -",
+        .arglists = "([x] [x y] [x y & more])",
+        .added = "1.0",
+    },
+    .{
+        .name = "*'",
+        .func = &mulPFn,
+        .doc = "Returns the product of nums. (*') returns 1. Supports arbitrary precision. See also: *",
+        .arglists = "([] [x] [x y] [x y & more])",
+        .added = "1.0",
+    },
 };
 
 // --- Runtime fallback functions for first-class usage ---
@@ -180,7 +205,7 @@ pub fn binaryArithAlloc(allocator: ?Allocator, a: Value, b: Value, comptime op: 
 
 /// BigInt arithmetic: promotes both sides to BigInt, returns BigInt result.
 /// If result fits in i64, still returns BigInt (sticky promotion).
-fn bigIntArith(allocator: Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+pub fn bigIntArith(allocator: Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
     const ba = try valueToBigInt(allocator, a);
     const bb = try valueToBigInt(allocator, b);
 
@@ -273,6 +298,97 @@ pub fn valueToBigInt(allocator: std.mem.Allocator, v: Value) !*BigInt {
         .integer => BigInt.initFromI64(allocator, v.asInteger()),
         else => unreachable,
     };
+}
+
+// --- Auto-promoting arithmetic: overflow → BigInt instead of float ---
+
+pub fn binaryArithPromote(a: Value, b: Value, comptime op: ArithOp) !Value {
+    return binaryArithPromoteAlloc(null, a, b, op);
+}
+
+pub fn binaryArithPromoteAlloc(allocator: ?Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+    // BigDecimal promotion: same as regular arithmetic
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            return Value.initFloat(switch (op) {
+                .add => fa + fb,
+                .sub => fa - fb,
+                .mul => fa * fb,
+            });
+        }
+        const alloc = allocator orelse std.heap.page_allocator;
+        return bigDecArith(alloc, a, b, op) catch return error.OutOfMemory;
+    }
+    // BigInt promotion: same as regular arithmetic
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            return Value.initFloat(switch (op) {
+                .add => fa + fb,
+                .sub => fa - fb,
+                .mul => fa * fb,
+            });
+        }
+        const alloc = allocator orelse std.heap.page_allocator;
+        return bigIntArith(alloc, a, b, op) catch return error.OutOfMemory;
+    }
+    if (a.tag() == .integer and b.tag() == .integer) {
+        const ai = a.asInteger();
+        const bi = b.asInteger();
+        const result = switch (op) {
+            .add => @addWithOverflow(ai, bi),
+            .sub => @subWithOverflow(ai, bi),
+            .mul => @mulWithOverflow(ai, bi),
+        };
+        if (result[1] != 0) {
+            // i64 overflow: promote to BigInt
+            const alloc = allocator orelse std.heap.page_allocator;
+            return bigIntArith(alloc, a, b, op) catch return error.OutOfMemory;
+        }
+        const r = result[0];
+        if (r >= I48_MIN and r <= I48_MAX) return Value.initInteger(r);
+        // Exceeds i48 range: promote to BigInt
+        const alloc = allocator orelse std.heap.page_allocator;
+        const bi_result = BigInt.initFromI64(alloc, r) catch return error.OutOfMemory;
+        return Value.initBigInt(bi_result);
+    }
+    // Mixed float: same as regular (floats don't auto-promote)
+    const fa = toFloat(a) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
+    };
+    const fb = toFloat(b) catch {
+        return err.setErrorFmt(.eval, .type_error, err.getArgSource(1), "Cannot cast {s} to number", .{@tagName(b.tag())});
+    };
+    return Value.initFloat(switch (op) {
+        .add => fa + fb,
+        .sub => fa - fb,
+        .mul => fa * fb,
+    });
+}
+
+fn addPFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return Value.initInteger(0);
+    var result = args[0];
+    for (args[1..]) |arg| result = try binaryArithPromote(result, arg, .add);
+    return result;
+}
+
+fn subPFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to -'", .{args.len});
+    if (args.len == 1) return binaryArithPromote(Value.initInteger(0), args[0], .sub);
+    var result = args[0];
+    for (args[1..]) |arg| result = try binaryArithPromote(result, arg, .sub);
+    return result;
+}
+
+fn mulPFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return Value.initInteger(1);
+    var result = args[0];
+    for (args[1..]) |arg| result = try binaryArithPromote(result, arg, .mul);
+    return result;
 }
 
 fn addFn(_: Allocator, args: []const Value) anyerror!Value {
@@ -536,8 +652,8 @@ const geFn = makeCompareFn(.ge);
 
 // === Tests ===
 
-test "arithmetic builtins table has 12 entries" {
-    try std.testing.expectEqual(12, builtins.len);
+test "arithmetic builtins table has 15 entries" {
+    try std.testing.expectEqual(15, builtins.len);
 }
 
 test "arithmetic builtins all have func" {

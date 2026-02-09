@@ -28,7 +28,7 @@ Phase 43: Numeric Types + Arrays
 4. [x] 43.4: Array macros (amap, areduce)
 5. [x] 43.5: BigInt Value type + bigint/biginteger fns + reader N literal
 6. [x] 43.6: BigDecimal Value type + bigdec fn + reader M literal
-7. [ ] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
+7. [x] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
 8. [ ] 43.8: Ratio Value type + numerator/denominator/rationalize
 
 Phase 44: OSS Release Prep (starts after Phase 43)
@@ -37,31 +37,30 @@ Phase 44: OSS Release Prep (starts after Phase 43)
 
 ## Current Task
 
-Phase 43.7: Arithmetic auto-promotion (+', *', -', inc', dec').
+Phase 43.8: Ratio Value type + numerator/denominator/rationalize.
 
 Design:
-- +', *', -': same as +, *, - but on integer overflow, promote to BigInt (not float)
-- inc', dec': same as inc/dec but promote to BigInt on overflow
-- These are builtins + VM intrinsics (like +/-/*)
-- Implementation: same logic as binaryArithAlloc but overflow → BigInt instead of float
-- Reader/analyzer: no changes needed (these are just function names)
-- Test: upstream numbers.clj has unchecked-inc/dec overflow tests
+- Ratio: numerator/denominator BigInt pair, auto-simplifying GCD
+- Shares NanHeapTag slot 30 with BigDecimal via NumericExtKind enum
+- Read `.dev/future.md` and upstream Ratio/Numbers.java for reference
+- Builtins: ratio?, numerator, denominator, rationalize
+- Arithmetic: +/-/*// with Ratio, cross-type with int/float/BigInt/BigDecimal
+- Division of integers that doesn't divide evenly → Ratio (e.g. (/ 1 3) → 1/3)
+- Reader: already parses ratio literals (1/3) — needs form→Value conversion
+- Test: upstream numbers.clj ratio tests (currently skipped)
 
 ## Previous Task
 
-Phase 43.6 COMPLETE: BigDecimal Value type + bigdec fn + reader M literal.
-- BigDecimal: scaled BigInt (unscaled × 10^(-scale)), extern struct with NumericExtKind discriminator
-- Shares NanHeapTag slot 30 with Ratio via NumericExtKind enum(u8) at offset 0
-- Reader: M suffix → big_decimal form (integer: 42M, float: 3.14M, scientific: 1e10M)
-- Analyzer/macro: big_decimal form → BigDecimal Value, bidirectional form↔value
-- Builtins: bigdec (coerce int/float/string/BigInt to BigDecimal)
-- Arithmetic: +/-/* with BigDecimal (BigDecimal result), div/mod/rem/quot → float
-- Predicates: decimal?/number?/zero?/pos?/neg? include big_decimal
-- Equality: cross-type BigDecimal==int/float, same-scale + different-scale comparison
-- Comparison: </<=/>/>=, abs, max, min with BigDecimal
-- BigInt→BigDecimal and BigDecimal→BigInt coercion
-- Upstream test port: numbers.clj 26 tests, 323 assertions (was 24/276)
-- vars.yaml: bigdec → done (791 → 792 vars)
+Phase 43.7 COMPLETE: Arithmetic auto-promotion (+', *', -', inc', dec').
+- New opcodes: add_p (0xBC), sub_p (0xBD), mul_p (0xBE) — auto-promoting
+- binaryArithPromote: overflow → BigInt instead of float (both i64 and i48 overflow)
+- Builtin functions: +', -', *' registered as VM intrinsics
+- Compiler: variadicArithOp maps +'/'-'/*' to new opcodes
+- core.clj: inc'/dec' use +'/'-' (pure Clojure functions)
+- Both backends verified (VM + TreeWalk)
+- Upstream tests: test-multiply-longs-at-edge, test-divide-bigint-at-edge enabled
+- CLJW-ADD: test-auto-promoting-arithmetic (24 assertions)
+- numbers.clj: 29 tests, 360 assertions (was 26/323)
 
 ## Known Issues
 
@@ -100,6 +99,11 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 43.7 COMPLETE**: Auto-promoting arithmetic
+  - +', -', *': VM intrinsic opcodes (add_p, sub_p, mul_p)
+  - Integer overflow (i64 and i48 range) → BigInt instead of float
+  - inc'/dec': pure Clojure using +'/'-'
+  - numbers.clj: 29 tests, 360 assertions
 - **Phase 43.5-43.6 COMPLETE**: BigInt + BigDecimal
   - D89 updated: Four Value types (array, big_int, ratio+big_decimal) in NaN boxing
   - BigDecimal shares slot 30 with Ratio via NumericExtKind discriminator (extern struct)

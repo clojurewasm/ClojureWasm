@@ -35,7 +35,7 @@ vars:
     try: {type: special-form, status: done, note: special form}
     var: {type: special-form, status: done, note: special form}
     "*": {type: function, status: done, note: "VM intrinsic opcode"}
-    "*'": {type: function, status: done, note: "Zig builtin (upstream uses Math.multiplyExact)"}
+    "*'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
     "*1": {type: dynamic-var, status: done, note: "REPL history var"}
     "*2": {type: dynamic-var, status: done, note: "REPL history var"}
     "*3": {type: dynamic-var, status: done, note: "REPL history var"}
@@ -74,9 +74,9 @@ vars:
     "*verbose-defrecords*": {type: dynamic-var, status: done}
     "*warn-on-reflection*": {type: var, status: done, note: "stub dynamic var (no reflection in Zig)"}
     "+": {type: function, status: done, note: "VM intrinsic opcode"}
-    "+'": {type: function, status: done, note: "Zig builtin (upstream uses Math.addExact)"}
+    "+'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
     "-": {type: function, status: done, note: "VM intrinsic opcode"}
-    "-'": {type: function, status: done, note: "Zig builtin (upstream uses Math.subtractExact)"}
+    "-'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
     "->": {type: macro, status: done, note: "macro in core.clj"}
     "->>": {type: macro, status: done, note: "macro in core.clj"}
     "->ArrayChunk": {type: function, status: skip, note: "JVM interop"}
@@ -221,7 +221,7 @@ vars:
     "create-struct": {type: function, status: skip, note: deprecated struct system}
     cycle: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "dec'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "dec'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
     "decimal?": {type: function, status: done, note: builtin (upstream is pure clj)}
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: done}
@@ -345,7 +345,7 @@ vars:
     import: {type: macro, status: skip, note: Phase 45 — wasm mapping design}
     "in-ns": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     inc: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    "inc'": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
+    "inc'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
     "indexed?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "infinite?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "init-proxy": {type: function, status: skip, note: JVM interop}

@@ -551,9 +551,9 @@ pub const Compiler = struct {
     /// Handles Clojure's special cases: (+) => 0, (*) => 1, (- x) => (0-x),
     /// (/ x) => (1.0/x), and 2+ args are left-folded: (+ a b c) => ((a+b)+c).
     fn emitVariadicArith(self: *Compiler, op: chunk_mod.OpCode, name: []const u8, args: []const *Node) CompileError!void {
-        const is_add = std.mem.eql(u8, name, "+");
-        const is_mul = std.mem.eql(u8, name, "*");
-        const is_sub = std.mem.eql(u8, name, "-");
+        const is_add = std.mem.eql(u8, name, "+") or std.mem.eql(u8, name, "+'");
+        const is_mul = std.mem.eql(u8, name, "*") or std.mem.eql(u8, name, "*'");
+        const is_sub = std.mem.eql(u8, name, "-") or std.mem.eql(u8, name, "-'");
 
         switch (args.len) {
             0 => {
@@ -572,12 +572,12 @@ pub const Compiler = struct {
             },
             1 => {
                 if (is_sub) {
-                    // (- x) => (0 - x)
+                    // (- x) => (0 - x), (-' x) => (0 -' x)
                     const idx = self.chunk.addConstant(Value.initInteger(0)) catch return error.TooManyConstants;
                     try self.chunk.emit(.const_load, idx);
                     self.stack_depth += 1;
                     try self.compile(args[0]); // +1
-                    try self.chunk.emitOp(.sub);
+                    try self.chunk.emitOp(op);
                     self.stack_depth -= 1; // binary: 2 → 1
                 } else if (std.mem.eql(u8, name, "/")) {
                     // (/ x) => (1.0 / x)
@@ -614,6 +614,9 @@ pub const Compiler = struct {
             .{ "-", .sub },
             .{ "*", .mul },
             .{ "/", .div },
+            .{ "+'", .add_p },
+            .{ "-'", .sub_p },
+            .{ "*'", .mul_p },
         };
         inline for (map) |entry| {
             if (std.mem.eql(u8, name, entry[0])) return entry[1];
