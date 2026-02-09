@@ -876,7 +876,7 @@ pub const Vm = struct {
                 const n = @as(u32, @bitCast(self.popI32()));
                 _ = self.popI32(); // src
                 _ = self.popI32(); // dst
-                _ = n; // TODO: implement cross-table copy
+                _ = n; // F136: implement cross-table copy
             },
             .table_init => {
                 _ = try reader.readU32(); // elem idx
@@ -884,7 +884,7 @@ pub const Vm = struct {
                 const n = @as(u32, @bitCast(self.popI32()));
                 _ = self.popI32(); // src
                 _ = self.popI32(); // dst
-                _ = n; // TODO: implement table.init
+                _ = n; // F137: implement table.init
             },
             .elem_drop => {
                 const elem_idx = try reader.readU32();

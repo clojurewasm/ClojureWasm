@@ -32,3 +32,5 @@ Check at session start for items that become actionable.
 | F133 | Future + thread pool                         | Zig std.Thread, GC safety, deref timeout. Phase 44                 |
 | F134 | ~~Protocol extension API~~                   | DONE: Phase 42.2                                                   |
 | F135 | import → wasm mapping design                 | Explore ClojureDart-like :import for .wasm. Phase 45               |
+| F136 | Wasm table.copy cross-table support          | Currently stub; needed for full bulk memory ops spec               |
+| F137 | Wasm table.init implementation               | Currently stub; needed for element segment initialization          |
