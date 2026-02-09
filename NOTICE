@@ -1,0 +1,20 @@
+ClojureWasm
+Copyright (c) 2026 chaploud
+
+This product includes software developed by Rich Hickey and contributors
+to the Clojure programming language (https://clojure.org/).
+
+Clojure
+  Copyright (c) Rich Hickey. All rights reserved.
+  Eclipse Public License 1.0 (https://opensource.org/license/epl-1-0)
+
+  The following components are derived from upstream Clojure:
+  - src/clj/ — Clojure standard library (core, set, walk, test, etc.)
+    with UPSTREAM-DIFF modifications for the Zig runtime
+  - test/upstream/clojure/ — Ported test suite (38 files)
+
+SCI (Small Clojure Interpreter)
+  Copyright (c) Michiel Borkent. All rights reserved.
+  Eclipse Public License 1.0 (https://opensource.org/license/epl-1-0)
+
+  - test/upstream/sci/core_test.clj — Ported test file

@@ -47,7 +47,7 @@ A4. Directory Restructure
 A6. License
 16. [x] 44.16: EPL-1.0 header insertion to all .zig files (70 files, chaploud)
 17. [x] 44.17: LICENSE file + test/upstream/ copyright verification
-18. [ ] 44.18: Third-party code attribution check
+18. [x] 44.18: Third-party code attribution check (NOTICE file)
 
 A7. .claude/ + private/ Cleanup
 19. [ ] 44.19: Add .claude/ to .gitignore
@@ -69,16 +69,15 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.18: Third-party code attribution check.
+Phase 44.19: Add .claude/ to .gitignore.
 
 ## Previous Task
 
-Phase 44.17 COMPLETE: LICENSE file + test/upstream/ copyright verification.
-- LICENSE: EPL-1.0 full text present and correct
-- Restored Rich Hickey copyright notice in 5 upstream test files
-  (clojure_zip, edn, predicates, try_catch, arrays)
-- 4 files have no copyright in upstream either (string, delays, parse, clojure_walk)
-- SCI core_test: no copyright in upstream
+Phase 44.18 COMPLETE: Third-party code attribution check.
+- Created NOTICE file with Clojure + SCI attribution
+- All third-party code is EPL-1.0 compatible
+- src/clj/: 11 files from upstream Clojure, all marked with UPSTREAM-DIFF
+- No vendored libraries, no license conflicts
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
