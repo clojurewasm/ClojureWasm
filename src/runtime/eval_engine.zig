@@ -66,6 +66,7 @@ pub const EvalEngine = struct {
         defer compiler.deinit();
         if (self.env) |env| if (env.current_ns) |ns| {
             compiler.current_ns_name = ns.name;
+            compiler.current_ns = ns;
         };
         try compiler.compile(n);
         try compiler.chunk.emitOp(.ret);

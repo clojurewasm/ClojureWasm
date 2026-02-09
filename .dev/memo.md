@@ -21,28 +21,23 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 45: Wasm Runtime Optimization
-Plan: `.dev/wasm-opt-plan.md`
+Phase 46: Correctness & Cleanup
 
-1. [x] 45.1: Benchmark infrastructure — TinyGo native + wasm benchmarks
-2. [x] 45.2: Predecoded IR (fixed-width instruction encoding)
-3. [x] 45.3: SKIPPED — tail-call/iterative dispatch (0% improvement on Apple M4)
-4. [x] 45.4: Superinstructions (fuse common patterns)
-5. [x] 45.5: Memory access optimization (cached memory pointer, marginal ~3%)
+1. [x] 46.1: Fix F95 — VM compiler intrinsic ns awareness
+2. [ ] 46.2: Checklist cleanup — mark F110 DONE, clean resolved items
 
 ## Current Task
 
-F138 DONE. Plan next phase.
+46.2: Checklist cleanup — mark F110 DONE, clean resolved items.
 
 ## Previous Task
 
-F138 FIX: Wasm label stack leak on function return.
-- Root cause: `return` opcode (0x0F) exits executeIR without popping labels.
-  `doCallDirectIR`/`doCallDirect` pop the frame but didn't reset label_ptr.
-- Fix: Reset `self.label_ptr = frame.label_stack_base` after popFrame in both paths.
-- Also increased FRAME_STACK_SIZE 256→1024 and LABEL_STACK_SIZE 256→4096.
-- Added nqueens WAT regression test (25_nqueens.wasm in E2E test 01).
-- All wasm tests pass: nqueens(8)=92, nested recursion, depth(500).
+46.1 DONE: Fix F95 — VM compiler intrinsic ns awareness.
+- Added `current_ns: ?*const Namespace` to Compiler struct
+- Added `isCoreFn()` helper: resolves name in current namespace, checks ns_name == "clojure.core"
+- `emitCall` now gates all intrinsic emission on `isCoreFn()` (F95)
+- Both unit tests (excluded + normal intrinsic) and e2e tests pass
+- No performance regression (all benchmarks within normal variance)
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

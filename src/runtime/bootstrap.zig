@@ -646,7 +646,10 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+        if (env.current_ns) |ns| {
+            compiler.current_ns_name = ns.name;
+            compiler.current_ns = ns;
+        }
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
@@ -688,7 +691,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             const node = try analyzeForm(node_alloc, env, form);
 
             var compiler = Compiler.init(allocator);
-            if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+            if (env.current_ns) |ns| {
+                compiler.current_ns_name = ns.name;
+                compiler.current_ns = ns;
+            }
             compiler.compile(node) catch return error.CompileError;
             compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
@@ -726,7 +732,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
-        if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+        if (env.current_ns) |ns| {
+            compiler.current_ns_name = ns.name;
+            compiler.current_ns = ns;
+        }
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
@@ -786,7 +795,10 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
         // Note: compiler is intentionally NOT deinit'd — closures created during
         // evaluation may be def'd into Vars and must outlive this scope.
         var compiler = Compiler.init(allocator);
-        if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+        if (env.current_ns) |ns| {
+            compiler.current_ns_name = ns.name;
+            compiler.current_ns = ns;
+        }
         compiler.compile(node) catch return error.CompileError;
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
@@ -979,7 +991,10 @@ pub fn compileToModule(allocator: Allocator, env: *Env, source: []const u8) Boot
     // Compile all forms into a single Chunk.
     // Intermediate form results are popped; final form result is returned by .ret.
     var compiler = Compiler.init(allocator);
-    if (env.current_ns) |ns| compiler.current_ns_name = ns.name;
+    if (env.current_ns) |ns| {
+        compiler.current_ns_name = ns.name;
+        compiler.current_ns = ns;
+    }
     for (forms, 0..) |form, i| {
         const node = try analyzeForm(node_alloc, env, form);
         compiler.compile(node) catch return error.CompileError;

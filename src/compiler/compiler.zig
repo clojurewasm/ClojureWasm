@@ -22,6 +22,7 @@ const value_mod = @import("../runtime/value.zig");
 const Fn = value_mod.Fn;
 const node_mod = @import("../analyzer/node.zig");
 const Node = node_mod.Node;
+const Namespace = @import("../runtime/namespace.zig").Namespace;
 
 /// Compilation errors.
 pub const CompileError = error{
@@ -59,6 +60,9 @@ pub const Compiler = struct {
     /// references so that functions resolve vars in their defining namespace
     /// rather than the caller's namespace at runtime (D68).
     current_ns_name: ?[]const u8,
+    /// Namespace object at compile time. Used to verify that intrinsic names
+    /// (e.g. +, -, *) resolve to clojure.core vars, respecting :exclude (F95).
+    current_ns: ?*const Namespace,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{
@@ -73,6 +77,7 @@ pub const Compiler = struct {
             .fn_protos = .empty,
             .fn_objects = .empty,
             .current_ns_name = null,
+            .current_ns = null,
         };
     }
 
@@ -413,6 +418,7 @@ pub const Compiler = struct {
         var fn_compiler = Compiler.init(self.allocator);
         defer fn_compiler.deinit();
         fn_compiler.current_ns_name = self.current_ns_name;
+        fn_compiler.current_ns = self.current_ns;
 
         // Reserve slots for captured variables (they appear before params).
         // The VM places these on the stack before fn body runs,
@@ -504,44 +510,50 @@ pub const Compiler = struct {
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
         if (node.callee.* == .var_ref) {
             const name = node.callee.var_ref.name;
+            const ns_qualifier = node.callee.var_ref.ns;
 
-            // Variadic arithmetic: +, -, *, /
-            if (variadicArithOp(name)) |op| {
-                try self.emitVariadicArith(op, name, node.args);
-                return;
-            }
-
-            // 2-arg intrinsics: mod, rem, comparison ops
-            if (node.args.len == 2) {
-                if (binaryOnlyIntrinsic(name)) |op| {
-                    try self.compile(node.args[0]); // +1
-                    try self.compile(node.args[1]); // +1
-                    try self.chunk.emitOp(op);
-                    self.stack_depth -= 1; // binary op: 2 → 1
+            // Only emit intrinsics when the name resolves to clojure.core (F95).
+            // If :refer-clojure :exclude removes the name, or a user-defined
+            // var shadows it, fall through to the general call path.
+            if (self.isCoreFn(name, ns_qualifier)) {
+                // Variadic arithmetic: +, -, *, /
+                if (variadicArithOp(name)) |op| {
+                    try self.emitVariadicArith(op, name, node.args);
                     return;
                 }
-            }
 
-            // Collection constructor intrinsics: hash-map, vector, hash-set, list
-            // Emit direct opcodes instead of var_load + call to avoid namespace lookup overhead
-            if (collectionConstructorOp(name)) |info| {
-                const n_args = node.args.len;
-                for (node.args) |arg| {
-                    try self.compile(arg); // +1 each
+                // 2-arg intrinsics: mod, rem, comparison ops
+                if (node.args.len == 2) {
+                    if (binaryOnlyIntrinsic(name)) |op| {
+                        try self.compile(node.args[0]); // +1
+                        try self.compile(node.args[1]); // +1
+                        try self.chunk.emitOp(op);
+                        self.stack_depth -= 1; // binary op: 2 → 1
+                        return;
+                    }
                 }
-                const operand: u16 = if (info.is_map)
-                    @intCast(n_args / 2) // map_new operand = pair count
-                else
-                    @intCast(n_args);
-                try self.chunk.emit(info.op, operand);
-                // All collection ops: pop elements, push 1 result
-                // map_new(N) pops 2N push 1; vec/list/set_new(N) pop N push 1
-                if (n_args > 0) {
-                    self.stack_depth -= @as(u16, @intCast(n_args)) - 1;
-                } else {
-                    self.stack_depth += 1; // empty collection: push 1
+
+                // Collection constructor intrinsics: hash-map, vector, hash-set, list
+                // Emit direct opcodes instead of var_load + call to avoid namespace lookup overhead
+                if (collectionConstructorOp(name)) |info| {
+                    const n_args = node.args.len;
+                    for (node.args) |arg| {
+                        try self.compile(arg); // +1 each
+                    }
+                    const operand: u16 = if (info.is_map)
+                        @intCast(n_args / 2) // map_new operand = pair count
+                    else
+                        @intCast(n_args);
+                    try self.chunk.emit(info.op, operand);
+                    // All collection ops: pop elements, push 1 result
+                    // map_new(N) pops 2N push 1; vec/list/set_new(N) pop N push 1
+                    if (n_args > 0) {
+                        self.stack_depth -= @as(u16, @intCast(n_args)) - 1;
+                    } else {
+                        self.stack_depth += 1; // empty collection: push 1
+                    }
+                    return;
                 }
-                return;
             }
         }
 
@@ -670,6 +682,21 @@ pub const Compiler = struct {
             if (std.mem.eql(u8, name, entry[0])) return .{ .op = entry[1], .is_map = entry[2] };
         }
         return null;
+    }
+
+    /// Check if an unqualified name resolves to a clojure.core var in the
+    /// current namespace. Used to gate intrinsic emission — if the name has
+    /// been :exclude'd or shadowed, the compiler must fall through to the
+    /// general call path (F95).
+    fn isCoreFn(self: *const Compiler, name: []const u8, ns_qualifier: ?[]const u8) bool {
+        if (ns_qualifier) |ns| {
+            // Explicitly qualified: intrinsic only if qualified to clojure.core
+            return std.mem.eql(u8, ns, "clojure.core");
+        }
+        // Unqualified: check if the name resolves to a clojure.core var
+        const ns = self.current_ns orelse return true; // no ns info → assume core
+        const resolved = ns.resolve(name) orelse return false; // not resolvable → not core
+        return std.mem.eql(u8, resolved.ns_name, "clojure.core");
     }
 
     fn emitDef(self: *Compiler, node: *const node_mod.DefNode) CompileError!void {
@@ -1477,4 +1504,73 @@ test "compile var_ref" {
     try std.testing.expectEqual(@as(usize, 1), code.len);
     // Constant pool should have the symbol
     try std.testing.expectEqual(@as(usize, 1), compiler.chunk.constants.items.len);
+}
+
+test "F95: excluded intrinsic emits call instead of add" {
+    // When + is excluded from the namespace, (+ 1 2) should compile as
+    // var_load + call, not as the add intrinsic.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Create a namespace that does NOT have + referred from clojure.core.
+    // This simulates (:refer-clojure :exclude [+]).
+    var ns = Namespace.init(allocator, "test-f95");
+    // Intern a custom + var owned by this namespace (not clojure.core).
+    _ = try ns.intern("+");
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+    compiler.current_ns = &ns;
+    compiler.current_ns_name = "test-f95";
+
+    // Compile (+ 1 2)
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const node = Node{ .call_node = &call_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    // Should be var_load + args + call, NOT add intrinsic
+    try std.testing.expectEqual(OpCode.var_load, code[0].op);
+    try std.testing.expectEqual(OpCode.const_load, code[1].op);
+    try std.testing.expectEqual(OpCode.const_load, code[2].op);
+    try std.testing.expectEqual(OpCode.call, code[3].op);
+}
+
+test "F95: core intrinsic still emits add when not excluded" {
+    // When + resolves to clojure.core/+, the intrinsic should fire.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Create a namespace with + referred from clojure.core.
+    var core_ns = Namespace.init(allocator, "clojure.core");
+    const plus_var = try core_ns.intern("+");
+
+    var user_ns = Namespace.init(allocator, "user");
+    try user_ns.refer("+", plus_var);
+
+    var compiler = Compiler.init(allocator);
+    defer compiler.deinit();
+    compiler.current_ns = &user_ns;
+    compiler.current_ns_name = "user";
+
+    // Compile (+ 1 2)
+    var callee = Node{ .var_ref = .{ .ns = null, .name = "+", .source = .{} } };
+    var a1 = Node{ .constant = .{ .value = Value.initInteger(1) } };
+    var a2 = Node{ .constant = .{ .value = Value.initInteger(2) } };
+    var args = [_]*Node{ &a1, &a2 };
+    var call_data = node_mod.CallNode{ .callee = &callee, .args = &args, .source = .{} };
+    const node = Node{ .call_node = &call_data };
+    try compiler.compile(&node);
+
+    const code = compiler.chunk.code.items;
+    // Should be add intrinsic (const_load, const_load, add)
+    try std.testing.expectEqual(OpCode.const_load, code[0].op);
+    try std.testing.expectEqual(OpCode.const_load, code[1].op);
+    try std.testing.expectEqual(OpCode.add, code[2].op);
 }
