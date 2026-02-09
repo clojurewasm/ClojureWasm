@@ -109,6 +109,6 @@ Key files with high assertion counts:
 | Sub-task | Features                               | Upstream Test File        | Status |
 |----------|----------------------------------------|---------------------------|--------|
 | 43.1-4   | Array ops, typed arrays, macros        | arrays.clj (ported)       | DONE   |
-| 43.5     | BigInt, bigint, biginteger             | numbers.clj               | TODO   |
+| 43.5     | BigInt, bigint, biginteger             | numbers.clj (24t/276a)    | DONE   |
 | 43.6     | +', *', -', inc', dec'                 | numbers.clj               | TODO   |
 | 43.7     | Ratio, numerator, denominator          | numbers.clj               | TODO   |

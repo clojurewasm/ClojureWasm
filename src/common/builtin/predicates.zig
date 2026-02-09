@@ -32,10 +32,10 @@ fn isBoolean(v: Value) bool {
     return v.tag() == .boolean;
 }
 fn isNumber(v: Value) bool {
-    return v.tag() == .integer or v.tag() == .float;
+    return v.tag() == .integer or v.tag() == .float or v.tag() == .big_int;
 }
 fn isInteger(v: Value) bool {
-    return v.tag() == .integer;
+    return v.tag() == .integer or v.tag() == .big_int;
 }
 fn isFloat(v: Value) bool {
     return v.tag() == .float;
@@ -152,6 +152,7 @@ fn isZero(v: Value) bool {
     return switch (v.tag()) {
         .integer => v.asInteger() == 0,
         .float => v.asFloat() == 0.0,
+        .big_int => v.asBigInt().managed.toConst().eqlZero(),
         else => false,
     };
 }
@@ -159,6 +160,7 @@ fn isPos(v: Value) bool {
     return switch (v.tag()) {
         .integer => v.asInteger() > 0,
         .float => v.asFloat() > 0.0,
+        .big_int => v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
         else => false,
     };
 }
@@ -166,18 +168,21 @@ fn isNeg(v: Value) bool {
     return switch (v.tag()) {
         .integer => v.asInteger() < 0,
         .float => v.asFloat() < 0.0,
+        .big_int => !v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
         else => false,
     };
 }
 fn isEven(v: Value) bool {
     return switch (v.tag()) {
         .integer => @mod(v.asInteger(), 2) == 0,
+        .big_int => v.asBigInt().managed.toConst().isEven(),
         else => false,
     };
 }
 fn isOdd(v: Value) bool {
     return switch (v.tag()) {
         .integer => @mod(v.asInteger(), 2) != 0,
+        .big_int => v.asBigInt().managed.toConst().isOdd(),
         else => false,
     };
 }
@@ -593,6 +598,19 @@ pub fn computeHash(v: Value) i64 {
         .boolean => if (v.asBoolean()) @as(i64, 1231) else @as(i64, 1237),
         .integer => v.asInteger(),
         .float => @as(i64, @intFromFloat(v.asFloat() * 1000003)),
+        .big_int => blk: {
+            const bi = v.asBigInt();
+            // If fits in i64, use same hash as integer for consistency
+            if (bi.toI64()) |i| break :blk i;
+            // Otherwise hash the limbs
+            var h: i64 = 0x9e3779b9;
+            const c = bi.managed.toConst();
+            for (c.limbs[0..c.limbs.len]) |limb| {
+                h = h *% 31 +% @as(i64, @bitCast(limb));
+            }
+            if (!c.positive) h = ~h;
+            break :blk h;
+        },
         .char => @as(i64, @intCast(v.asChar())),
         .string => stringHash(v.asString()),
         .keyword => blk: {
@@ -781,8 +799,7 @@ fn ratioPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (rational? x) — Returns true if x is a rational number.
 fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rational?", .{args.len});
-    // integer is rational; no ratio type so only integer qualifies
-    return Value.initBoolean(args[0].tag() == .integer);
+    return Value.initBoolean(args[0].tag() == .integer or args[0].tag() == .big_int or args[0].tag() == .ratio);
 }
 
 /// (decimal? x) — Returns true if x is a BigDecimal.

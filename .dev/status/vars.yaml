@@ -146,8 +146,8 @@ vars:
     bases: {type: function, status: skip, note: JVM interop}
     bean: {type: function, status: skip, note: JVM interop}
     bigdec: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
-    bigint: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
-    biginteger: {type: function, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
+    bigint: {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    biginteger: {type: function, status: done, note: "builtin (upstream is pure clj)"}
     binding: {type: macro, status: done}
     "bit-and": {type: function, status: done, note: "Zig builtin"}
     "bit-and-not": {type: function, status: done, note: builtin (upstream is pure clj)}

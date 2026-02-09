@@ -1408,6 +1408,15 @@ pub const Value = enum(u64) {
                 try w.writeAll(buf[0..len]);
             },
             .string => try w.writeAll(self.asString()),
+            .big_int => {
+                // str on BigInt: no N suffix (unlike pr-str)
+                const bi = self.asBigInt();
+                const c = bi.managed.toConst();
+                var limbs_buf: [128]std.math.big.Limb = undefined;
+                var str_buf: [512]u8 = undefined;
+                const len = c.toString(&str_buf, 10, .lower, &limbs_buf);
+                try w.writeAll(str_buf[0..len]);
+            },
             else => try self.formatPrStr(w),
         }
     }
@@ -1428,13 +1437,9 @@ pub const Value = enum(u64) {
         const self_tag = self.tag();
         const other_tag = other.tag();
 
-        // Cross-type numeric equality: (= 1 1.0) => true
-        if ((self_tag == .integer and other_tag == .float) or
-            (self_tag == .float and other_tag == .integer))
-        {
-            const a: f64 = if (self_tag == .integer) @floatFromInt(self.asInteger()) else self.asFloat();
-            const b: f64 = if (other_tag == .integer) @floatFromInt(other.asInteger()) else other.asFloat();
-            return a == b;
+        // Cross-type numeric equality: (= 1 1.0) => true, (= 42N 42) => true
+        if (isNumericTag(self_tag) and isNumericTag(other_tag) and self_tag != other_tag) {
+            return numericEql(self, self_tag, other, other_tag);
         }
 
         // Lazy seqs: realize and compare using JVM LazySeq.equiv() semantics.
@@ -1534,6 +1539,33 @@ pub const Value = enum(u64) {
         return self != Value.nil_val and self != Value.false_val;
     }
 };
+
+fn isNumericTag(t: Value.Tag) bool {
+    return t == .integer or t == .float or t == .big_int;
+}
+
+fn numericEql(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag) bool {
+    // BigInt == BigInt handled in main switch, so at least one side is int or float
+    if (self_tag == .big_int or other_tag == .big_int) {
+        const bi = if (self_tag == .big_int) self.asBigInt() else other.asBigInt();
+        const non_bi = if (self_tag == .big_int) other else self;
+        const non_bi_tag = if (self_tag == .big_int) other_tag else self_tag;
+        if (non_bi_tag == .integer) {
+            // Compare BigInt with i64: try to convert BigInt to i64
+            if (bi.toI64()) |bi_i64| {
+                return bi_i64 == non_bi.asInteger();
+            }
+            return false; // BigInt too large for i64
+        } else {
+            // float: compare as f64
+            return bi.toF64() == non_bi.asFloat();
+        }
+    }
+    // integer vs float
+    const a: f64 = if (self_tag == .integer) @floatFromInt(self.asInteger()) else self.asFloat();
+    const b: f64 = if (other_tag == .integer) @floatFromInt(other.asInteger()) else other.asFloat();
+    return a == b;
+}
 
 fn isSequential(t: Value.Tag) bool {
     return t == .list or t == .vector;

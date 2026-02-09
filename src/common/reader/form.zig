@@ -30,6 +30,9 @@ pub const FormData = union(enum) {
     map: []const Form, // [k1, v1, k2, v2, ...] flat pairs
     set: []const Form,
 
+    // BigInt literal (N suffix or overflow)
+    big_int: []const u8,
+
     // Regex literal
     regex: []const u8,
 
@@ -71,6 +74,7 @@ pub const Form = struct {
             .vector => "vector",
             .map => "map",
             .set => "set",
+            .big_int => "big_int",
             .regex => "regex",
             .tag => "tag",
         };
@@ -123,6 +127,10 @@ pub const Form = struct {
                 try w.writeByte('}');
             },
             .set => |items| try writeSeq(w, "#{", "}", items),
+            .big_int => |s| {
+                try w.writeAll(s);
+                try w.writeByte('N');
+            },
             .regex => |pattern| {
                 try w.writeAll("#\"");
                 try w.writeAll(pattern);

@@ -26,28 +26,36 @@ Phase 43: Numeric Types + Arrays
 2. [x] 43.2: Typed array constructors (int-array..char-array, to-array-2d, ints..chars coercion)
 3. [x] 43.3: Typed setters + bytes? (aset-int..aset-char, bytes?)
 4. [x] 43.4: Array macros (amap, areduce)
-5. [ ] 43.5: BigInt Value type + bigint/biginteger fns
-6. [ ] 43.6: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
-7. [ ] 43.7: Ratio Value type + numerator/denominator/rationalize
+5. [x] 43.5: BigInt Value type + bigint/biginteger fns + reader N literal
+6. [ ] 43.6: BigDecimal Value type + bigdec/with-precision + reader M literal
+7. [ ] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
+8. [ ] 43.8: Ratio Value type + numerator/denominator/rationalize
 
 ## Current Task
 
-Phase 43.5: BigInt Value type + bigint/biginteger fns.
+Phase 43.6: BigDecimal Value type + bigdec fn + reader M literal.
 
 Design:
-- BigInt already has struct in collections.zig and Value type in value.zig
-- Need: bigint, biginteger builtins (constructors from i64 or string)
-- Reader support: 123N literal → BigInt value
-- Arithmetic: BigInt + BigInt, BigInt + int, comparison
+- BigDecimal: scaled integer representation (BigInt value + i32 scale)
+- Reader: 42.0M → big_decimal form; parse "digits.digitsM"
+- Analyzer: big_decimal form → Value.initBigDecimal()
+- Builtins: bigdec (convert int/float/string/BigInt to BigDecimal)
+- Predicates: decimal?, number? include big_decimal
+- Arithmetic: BigDecimal mixed ops (promote to float for now)
+- with-precision: macro/dynamic var for precision context
 
 ## Previous Task
 
-Phase 43.4 COMPLETE: Array subsystem fully done.
-- 43.1-43.4: 34 array builtins, amap/areduce macros, seq integration
-- EvalError bare return fix (~50 call sites, ensureInfoSet helper)
-- Test porting plan created (.dev/test-porting-plan.md)
-- Phase 42 test porting: protocols.clj + vars.clj + arrays.clj
-- All 38 upstream test files pass (both VM + TreeWalk)
+Phase 43.5 COMPLETE: BigInt Value type + full numeric integration.
+- Reader: N suffix → big_int form; i64 overflow → big_int form
+- Analyzer/macro: big_int form → BigInt Value
+- Builtins: bigint, biginteger (coerce int/float/string to BigInt)
+- Arithmetic: +/-/*/quot/rem/mod with BigInt + cross-type (int/float)
+- Predicates: integer?/number?/rational?/even?/odd?/zero?/pos?/neg? + BigInt
+- Equality: cross-type BigInt==int, BigInt==float, hash consistency
+- Comparison: </<=/>/>=, abs, max, min with BigInt
+- Upstream test port: numbers.clj 24 tests, 276 assertions (was 19/207)
+- vars.yaml: bigint, biginteger → done (789 → 791 vars)
 
 ## Known Issues
 

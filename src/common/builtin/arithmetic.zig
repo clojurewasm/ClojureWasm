@@ -10,6 +10,8 @@ const Allocator = std.mem.Allocator;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
+const collections = @import("../collections.zig");
+const BigInt = collections.BigInt;
 const err = @import("../error.zig");
 
 /// Arithmetic and comparison intrinsics registered in clojure.core.
@@ -106,6 +108,7 @@ pub fn toFloat(v: Value) !f64 {
     return switch (v.tag()) {
         .integer => @floatFromInt(v.asInteger()),
         .float => v.asFloat(),
+        .big_int => v.asBigInt().toF64(),
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v.tag())}),
     };
 }
@@ -113,6 +116,25 @@ pub fn toFloat(v: Value) !f64 {
 pub const ArithOp = enum { add, sub, mul };
 
 pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
+    return binaryArithAlloc(null, a, b, op);
+}
+
+pub fn binaryArithAlloc(allocator: ?Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+    // BigInt promotion: if either side is BigInt, do BigInt arithmetic
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        // If one side is float, convert to float arithmetic
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            return Value.initFloat(switch (op) {
+                .add => fa + fb,
+                .sub => fa - fb,
+                .mul => fa * fb,
+            });
+        }
+        const alloc = allocator orelse std.heap.page_allocator;
+        return bigIntArith(alloc, a, b, op) catch return error.OutOfMemory;
+    }
     if (a.tag() == .integer and b.tag() == .integer) {
         const result = switch (op) {
             .add => @addWithOverflow(a.asInteger(), b.asInteger()),
@@ -138,6 +160,30 @@ pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
         .sub => fa - fb,
         .mul => fa * fb,
     });
+}
+
+/// BigInt arithmetic: promotes both sides to BigInt, returns BigInt result.
+/// If result fits in i64, still returns BigInt (sticky promotion).
+fn bigIntArith(allocator: Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+    const ba = try valueToBigInt(allocator, a);
+    const bb = try valueToBigInt(allocator, b);
+
+    const result = try allocator.create(BigInt);
+    result.managed = try std.math.big.int.Managed.init(allocator);
+    switch (op) {
+        .add => try result.managed.add(&ba.managed, &bb.managed),
+        .sub => try result.managed.sub(&ba.managed, &bb.managed),
+        .mul => try result.managed.mul(&ba.managed, &bb.managed),
+    }
+    return Value.initBigInt(result);
+}
+
+pub fn valueToBigInt(allocator: std.mem.Allocator, v: Value) !*BigInt {
+    return switch (v.tag()) {
+        .big_int => v.asBigInt(),
+        .integer => BigInt.initFromI64(allocator, v.asInteger()),
+        else => unreachable,
+    };
 }
 
 fn addFn(_: Allocator, args: []const Value) anyerror!Value {
@@ -197,6 +243,26 @@ fn neqFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {
+    // BigInt / BigInt → truncated BigInt division
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            // Mixed with float → float division
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+            return Value.initFloat(fa / fb);
+        }
+        // Integer division: BigInt / BigInt → truncated
+        const alloc = std.heap.page_allocator;
+        const ba = valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        if (bb.managed.toConst().eqlZero()) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        const result = alloc.create(BigInt) catch return error.OutOfMemory;
+        result.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        var remainder = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        result.managed.divTrunc(&remainder, &ba.managed, &bb.managed) catch return error.OutOfMemory;
+        return Value.initBigInt(result);
+    }
     const fa = toFloat(a) catch {
         return err.setErrorFmt(.eval, .type_error, err.getArgSource(0), "Cannot cast {s} to number", .{@tagName(a.tag())});
     };
@@ -209,6 +275,24 @@ pub fn binaryDiv(a: Value, b: Value) !Value {
 }
 
 pub fn binaryMod(a: Value, b: Value) !Value {
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+            return Value.initFloat(@mod(fa, fb));
+        }
+        const alloc = std.heap.page_allocator;
+        const ba = valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        if (bb.managed.toConst().eqlZero()) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        const quotient = alloc.create(BigInt) catch return error.OutOfMemory;
+        quotient.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        const result = alloc.create(BigInt) catch return error.OutOfMemory;
+        result.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        quotient.managed.divFloor(&result.managed, &ba.managed, &bb.managed) catch return error.OutOfMemory;
+        return Value.initBigInt(result);
+    }
     if (a.tag() == .integer and b.tag() == .integer) {
         if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
         return Value.initInteger(@mod(a.asInteger(), b.asInteger()));
@@ -224,6 +308,24 @@ pub fn binaryMod(a: Value, b: Value) !Value {
 }
 
 pub fn binaryRem(a: Value, b: Value) !Value {
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+            return Value.initFloat(@rem(fa, fb));
+        }
+        const alloc = std.heap.page_allocator;
+        const ba = valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        if (bb.managed.toConst().eqlZero()) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        const quotient = alloc.create(BigInt) catch return error.OutOfMemory;
+        quotient.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        const result = alloc.create(BigInt) catch return error.OutOfMemory;
+        result.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        quotient.managed.divTrunc(&result.managed, &ba.managed, &bb.managed) catch return error.OutOfMemory;
+        return Value.initBigInt(result);
+    }
     if (a.tag() == .integer and b.tag() == .integer) {
         if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
         return Value.initInteger(@rem(a.asInteger(), b.asInteger()));
@@ -247,6 +349,32 @@ pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
             .le => a.asInteger() <= b.asInteger(),
             .gt => a.asInteger() > b.asInteger(),
             .ge => a.asInteger() >= b.asInteger(),
+        };
+    }
+    // BigInt comparison
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        // If one side is float, compare as floats
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            return switch (op) {
+                .lt => fa < fb,
+                .le => fa <= fb,
+                .gt => fa > fb,
+                .ge => fa >= fb,
+            };
+        }
+        const alloc = std.heap.page_allocator;
+        const ba = valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        const ca = ba.managed.toConst();
+        const cb = bb.managed.toConst();
+        const order = ca.order(cb);
+        return switch (op) {
+            .lt => order == .lt,
+            .le => order != .gt,
+            .gt => order == .gt,
+            .ge => order != .lt,
         };
     }
     const fa = toFloat(a) catch {

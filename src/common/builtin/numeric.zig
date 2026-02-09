@@ -9,6 +9,8 @@ const value_mod = @import("../value.zig");
 const Value = value_mod.Value;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
+const collections = @import("../collections.zig");
+const arithmetic = @import("arithmetic.zig");
 const err = @import("../error.zig");
 
 // ============================================================
@@ -21,6 +23,15 @@ pub fn absFn(_: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0].tag()) {
         .integer => Value.initInteger(if (args[0].asInteger() < 0) -args[0].asInteger() else args[0].asInteger()),
         .float => Value.initFloat(@abs(args[0].asFloat())),
+        .big_int => blk: {
+            const bi = args[0].asBigInt();
+            if (bi.managed.isPositive() or bi.managed.toConst().eqlZero()) break :blk args[0];
+            const alloc = std.heap.page_allocator;
+            const result = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+            result.managed = bi.managed; // copy
+            result.managed.negate();
+            break :blk Value.initBigInt(result);
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0].tag())}),
     };
 }
@@ -52,32 +63,53 @@ pub fn minFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (quot num div) — returns the quotient of dividing num by div (truncated).
 pub fn quotFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to quot", .{args.len});
-    return switch (args[0].tag()) {
-        .integer => switch (args[1].tag()) {
+    const a = args[0];
+    const b = args[1];
+    // BigInt quot
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = arithmetic.toFloat(a) catch unreachable;
+            const fb = arithmetic.toFloat(b) catch unreachable;
+            if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+            return Value.initFloat(@trunc(fa / fb));
+        }
+        const alloc = std.heap.page_allocator;
+        const ba = arithmetic.valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = arithmetic.valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        if (bb.managed.toConst().eqlZero()) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+        const quotient = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+        quotient.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        const remainder = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+        remainder.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+        quotient.managed.divTrunc(&remainder.managed, &ba.managed, &bb.managed) catch return error.OutOfMemory;
+        return Value.initBigInt(quotient);
+    }
+    return switch (a.tag()) {
+        .integer => switch (b.tag()) {
             .integer => blk: {
-                if (args[1].asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
-                break :blk Value.initInteger(@divTrunc(args[0].asInteger(), args[1].asInteger()));
+                if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+                break :blk Value.initInteger(@divTrunc(a.asInteger(), b.asInteger()));
             },
             .float => blk: {
-                if (args[1].asFloat() == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
-                const fa: f64 = @floatFromInt(args[0].asInteger());
-                break :blk Value.initFloat(@trunc(fa / args[1].asFloat()));
+                if (b.asFloat() == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+                const fa: f64 = @floatFromInt(a.asInteger());
+                break :blk Value.initFloat(@trunc(fa / b.asFloat()));
             },
-            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[1].tag())}),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(b.tag())}),
         },
-        .float => switch (args[1].tag()) {
+        .float => switch (b.tag()) {
             .integer => blk: {
-                if (args[1].asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
-                const fb: f64 = @floatFromInt(args[1].asInteger());
-                break :blk Value.initFloat(@trunc(args[0].asFloat() / fb));
+                if (b.asInteger() == 0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+                const fb: f64 = @floatFromInt(b.asInteger());
+                break :blk Value.initFloat(@trunc(a.asFloat() / fb));
             },
             .float => blk: {
-                if (args[1].asFloat() == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
-                break :blk Value.initFloat(@trunc(args[0].asFloat() / args[1].asFloat()));
+                if (b.asFloat() == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+                break :blk Value.initFloat(@trunc(a.asFloat() / b.asFloat()));
             },
-            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[1].tag())}),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(b.tag())}),
         },
-        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0].tag())}),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(a.tag())}),
     };
 }
 
@@ -110,6 +142,26 @@ pub fn randIntFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn compareNum(a: Value, b: Value) !i2 {
+    // BigInt comparison
+    if (a.tag() == .big_int or b.tag() == .big_int) {
+        if (a.tag() == .float or b.tag() == .float) {
+            // Mixed BigInt/float: compare as f64
+            const fa = arithmetic.toFloat(a) catch unreachable;
+            const fb = arithmetic.toFloat(b) catch unreachable;
+            if (fa < fb) return -1;
+            if (fa > fb) return 1;
+            return 0;
+        }
+        // Both integer-like: compare as BigInt
+        const alloc = std.heap.page_allocator;
+        const ba = arithmetic.valueToBigInt(alloc, a) catch return error.OutOfMemory;
+        const bb = arithmetic.valueToBigInt(alloc, b) catch return error.OutOfMemory;
+        return switch (ba.managed.toConst().order(bb.managed.toConst())) {
+            .lt => @as(i2, -1),
+            .gt => @as(i2, 1),
+            .eq => @as(i2, 0),
+        };
+    }
     const fa = switch (a.tag()) {
         .integer => @as(f64, @floatFromInt(a.asInteger())),
         .float => a.asFloat(),
@@ -416,6 +468,48 @@ pub fn floorFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// BigInt constructors
+// ============================================================
+
+/// (bigint x) — Coerce to arbitrary-precision integer.
+fn bigintFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bigint", .{args.len});
+    return toBigInt(allocator, args[0]);
+}
+
+/// (biginteger x) — Coerce to arbitrary-precision integer (same as bigint).
+fn bigintegerFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to biginteger", .{args.len});
+    return toBigInt(allocator, args[0]);
+}
+
+fn toBigInt(allocator: Allocator, v: Value) anyerror!Value {
+    return switch (v.tag()) {
+        .big_int => v,
+        .integer => Value.initBigInt(collections.BigInt.initFromI64(allocator, v.asInteger()) catch return error.OutOfMemory),
+        .float => blk: {
+            const f = v.asFloat();
+            if (std.math.isNan(f) or std.math.isInf(f))
+                return err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert {s} to BigInt", .{if (std.math.isNan(f)) "NaN" else "Infinity"});
+            const i: i64 = @intFromFloat(f);
+            break :blk Value.initBigInt(collections.BigInt.initFromI64(allocator, i) catch return error.OutOfMemory);
+        },
+        .string => blk: {
+            const s = v.asString();
+            // Try integer parse first
+            if (std.fmt.parseInt(i64, s, 10)) |i| {
+                break :blk Value.initBigInt(collections.BigInt.initFromI64(allocator, i) catch return error.OutOfMemory);
+            } else |_| {
+                // Try BigInt parse for large numbers
+                break :blk Value.initBigInt(collections.BigInt.initFromString(allocator, s) catch
+                    return err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert string to BigInt: {s}", .{s}));
+            }
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert {s} to BigInt", .{@tagName(v.tag())}),
+    };
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -622,6 +716,20 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Parses the string argument as a UUID. Returns the UUID if valid, nil if not.",
         .arglists = "([s])",
         .added = "1.11",
+    },
+    .{
+        .name = "bigint",
+        .func = &bigintFn,
+        .doc = "Coerce to BigInt.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "biginteger",
+        .func = &bigintegerFn,
+        .doc = "Coerce to BigInteger.",
+        .arglists = "([x])",
+        .added = "1.0",
     },
     .{
         .name = "__pow",

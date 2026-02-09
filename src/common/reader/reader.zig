@@ -111,10 +111,75 @@ pub const Reader = struct {
 
     fn readInteger(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
+
+        // Check for N suffix (explicit BigInt literal)
+        const has_n_suffix = text.len > 0 and text[text.len - 1] == 'N';
+        if (has_n_suffix) {
+            // Always create big_int form for N suffix
+            const digits = self.normalizeBigIntText(text[0 .. text.len - 1]) catch {
+                return self.makeError(.number_error, "Invalid number literal", token);
+            };
+            return Form{ .data = .{ .big_int = digits }, .line = token.line, .column = token.column };
+        }
+
+        // Try parsing as i64 first
         const value = parseInteger(text) catch {
-            return self.makeError(.number_error, "Invalid number literal", token);
+            // Overflow or invalid — try as BigInt for decimal-only
+            const digits = self.normalizeBigIntText(text) catch {
+                return self.makeError(.number_error, "Invalid number literal", token);
+            };
+            return Form{ .data = .{ .big_int = digits }, .line = token.line, .column = token.column };
         };
         return Form{ .data = .{ .integer = value }, .line = token.line, .column = token.column };
+    }
+
+    /// Normalize integer text to a canonical decimal digit string for BigInt.
+    /// Handles sign, hex, octal, radix prefixes. Returns owned string like "-42".
+    fn normalizeBigIntText(self: *Reader, text: []const u8) ![]const u8 {
+        var s = text;
+        var negative = false;
+
+        if (s.len > 0 and s[0] == '-') {
+            negative = true;
+            s = s[1..];
+        } else if (s.len > 0 and s[0] == '+') {
+            s = s[1..];
+        }
+
+        if (s.len == 0) return error.InvalidNumber;
+
+        // Hex, radix, octal: convert to decimal string via i64 parse
+        // (BigInt overflow from these is extremely rare in practice)
+        if (s.len > 2 and s[0] == '0' and (s[1] == 'x' or s[1] == 'X')) {
+            // Hex — try i64 parse for base conversion
+            const val = std.fmt.parseInt(i64, s[2..], 16) catch return error.InvalidNumber;
+            return self.intToString(if (negative) -val else val);
+        }
+        if (std.mem.indexOfScalar(u8, s, 'r') orelse std.mem.indexOfScalar(u8, s, 'R')) |idx| {
+            const radix = std.fmt.parseInt(u8, s[0..idx], 10) catch return error.InvalidNumber;
+            if (radix < 2 or radix > 36) return error.InvalidNumber;
+            const val = std.fmt.parseInt(i64, s[idx + 1 ..], radix) catch return error.InvalidNumber;
+            return self.intToString(if (negative) -val else val);
+        }
+        if (s.len > 1 and s[0] == '0' and s[1] >= '0' and s[1] <= '7') {
+            const val = std.fmt.parseInt(i64, s, 8) catch return error.InvalidNumber;
+            return self.intToString(if (negative) -val else val);
+        }
+
+        // Decimal: return text as-is (with sign if negative)
+        if (negative) {
+            const buf = self.allocator.alloc(u8, s.len + 1) catch return error.OutOfMemory;
+            buf[0] = '-';
+            @memcpy(buf[1..], s);
+            return buf;
+        }
+        return s;
+    }
+
+    fn intToString(self: *Reader, val: i64) ![]const u8 {
+        var buf: [32]u8 = undefined;
+        const s = std.fmt.bufPrint(&buf, "{d}", .{val}) catch return error.InvalidNumber;
+        return self.allocator.dupe(u8, s) catch return error.OutOfMemory;
     }
 
     fn parseInteger(text: []const u8) !i64 {
@@ -126,11 +191,6 @@ pub const Reader = struct {
             s = s[1..];
         } else if (s.len > 0 and s[0] == '+') {
             s = s[1..];
-        }
-
-        // N suffix (BigInt → truncated to i64)
-        if (s.len > 0 and s[s.len - 1] == 'N') {
-            s = s[0 .. s.len - 1];
         }
 
         // Hex 0x
@@ -622,7 +682,7 @@ pub const Reader = struct {
 
     fn expandSyntaxQuote(self: *Reader, form: Form, gensym_map: *std.StringHashMapUnmanaged([]const u8)) ReadError!Form {
         return switch (form.data) {
-            .nil, .boolean, .integer, .float, .string, .regex, .char => form,
+            .nil, .boolean, .integer, .float, .big_int, .string, .regex, .char => form,
             .keyword => form,
             .symbol => |sym| {
                 // Auto-gensym: foo# → foo__N__auto
@@ -852,7 +912,8 @@ test "Reader - integers" {
     try testing.expectEqual(@as(i64, 42), (try readOneForm("0x2A")).data.integer);
     try testing.expectEqual(@as(i64, 42), (try readOneForm("2r101010")).data.integer);
     try testing.expectEqual(@as(i64, 493), (try readOneForm("0755")).data.integer);
-    try testing.expectEqual(@as(i64, 42), (try readOneForm("42N")).data.integer);
+    // 42N is now a big_int form (not truncated to i64)
+    try testing.expectEqualStrings("42", (try readOneForm("42N")).data.big_int);
 }
 
 test "Reader - floats" {

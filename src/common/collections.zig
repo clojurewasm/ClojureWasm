@@ -100,12 +100,30 @@ pub const BigInt = struct {
         return bi;
     }
 
+    /// Parse BigInt from decimal digit string (e.g. "42", "-99999999999999999999").
+    /// String may have leading '-' for negative.
+    pub fn initFromString(allocator: std.mem.Allocator, text: []const u8) !*BigInt {
+        const bi = try allocator.create(BigInt);
+        bi.managed = try std.math.big.int.Managed.init(allocator);
+        var s = text;
+        var negative = false;
+        if (s.len > 0 and s[0] == '-') {
+            negative = true;
+            s = s[1..];
+        } else if (s.len > 0 and s[0] == '+') {
+            s = s[1..];
+        }
+        bi.managed.setString(10, s) catch return error.InvalidCharacter;
+        if (negative) bi.managed.negate();
+        return bi;
+    }
+
     pub fn toI64(self: *const BigInt) ?i64 {
-        return self.managed.to(i64) catch null;
+        return self.managed.toInt(i64) catch null;
     }
 
     pub fn toF64(self: *const BigInt) f64 {
-        return self.managed.toFloat(f64);
+        return self.managed.toFloat(f64, .nearest_even)[0];
     }
 };
 

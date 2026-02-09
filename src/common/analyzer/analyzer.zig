@@ -219,6 +219,7 @@ pub const Analyzer = struct {
             .boolean => |b| self.makeConstantFrom(Value.initBoolean(b), form),
             .integer => |n| self.makeConstantFrom(Value.initInteger(n), form),
             .float => |n| self.makeConstantFrom(Value.initFloat(n), form),
+            .big_int => |s| self.makeConstantFrom(Value.initBigInt(collections.BigInt.initFromString(self.allocator, s) catch return error.OutOfMemory), form),
             .char => |c| self.makeConstantFrom(Value.initChar(c), form),
             .string => |s| self.makeConstantFrom(Value.initString(self.allocator, s), form),
             .keyword => |sym| blk: {
@@ -2271,6 +2272,7 @@ pub fn formToValue(allocator: Allocator, form: Form) Value {
         .boolean => |b| Value.initBoolean(b),
         .integer => |n| Value.initInteger(n),
         .float => |n| Value.initFloat(n),
+        .big_int => |s| Value.initBigInt(collections.BigInt.initFromString(allocator, s) catch return Value.nil_val),
         .char => |c| Value.initChar(c),
         .string => |s| Value.initString(allocator, s),
         .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),

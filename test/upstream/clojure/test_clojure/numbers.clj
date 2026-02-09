@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 41
+;; CLJW markers: 54
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -20,8 +20,37 @@
   (:use clojure.test))
 
 ;; CLJW: Coerced-BigDecimal skipped — BigDecimal
-;; CLJW: BigInteger-conversions skipped — BigInteger/BigDecimal
-;; CLJW: equality-tests skipped — BigDecimal/BigInteger/ratio
+;; CLJW: BigInteger-conversions — adapted from upstream (removed BigDecimal/Float/Double/Long class refs)
+(deftest BigInteger-conversions
+  (doseq [coerce-fn [bigint biginteger]]
+    (doseq [v (map coerce-fn [42
+                              13178456923875639284562345789N])]
+      (are [x] (true? x)
+        (integer? v)
+        (number? v)))))
+
+;; CLJW: equality-tests — adapted (removed BigDecimal/ratio, Java class constructors)
+(deftest equality-tests
+  ;; = returns true for numbers in the same category
+  ;; CLJW: simplified — only integer and BigInt categories
+  (are [x y] (= x y)
+    2 (bigint 2)
+    (bigint 2) (biginteger 2)
+    2 (biginteger 2))
+
+  ;; cross-type BigInt equality
+  (are [x y] (= x y)
+    42N 42
+    42 42N
+    0N 0
+    -1N -1)
+
+  ;; hash consistency for BigInt = integer
+  (are [x y] (= (hash x) (hash y))
+    42N 42
+    0N 0
+    -1N -1))
+
 ;; CLJW: unchecked-cast-num-obj/prim skipped — Java arrays
 ;; CLJW: expected-casts skipped — Java arrays/Float/Double classes
 ;; CLJW: test-prim-with-matching-hint skipped — Math/round type hints
@@ -47,6 +76,13 @@
       ;; CLJW: ratio literals (2/3 etc.) removed — not supported
     )
 
+  ;; CLJW: BigInt addition tests
+  (are [x y] (= x y)
+    (+ 1N 2N) 3N
+    (+ 1N 2) 3N
+    (+ 1 2N) 3N
+    (+ 42N 0) 42N)
+
   (are [x y] (< (- x y) DELTA)
     (+ 1.2) 1.2
     (+ 1.1 2.4) 3.5
@@ -71,6 +107,12 @@
       ;; CLJW: ratio literals removed
     )
 
+  ;; CLJW: BigInt subtraction tests
+  (are [x y] (= x y)
+    (- 10N 3N) 7N
+    (- 10N 3) 7N
+    (- 10 3N) 7N)
+
   (are [x y] (< (- x y) DELTA)
     (- 1.2) -1.2
     (- 2.2 1.1) 1.1
@@ -92,12 +134,18 @@
       ;; CLJW: ratio literals removed
     )
 
+  ;; CLJW: BigInt multiplication tests
+  (are [x y] (= x y)
+    (* 6N 7N) 42N
+    (* 6N 7) 42N
+    (* 6 7N) 42N)
+
   (are [x y] (< (- x y) DELTA)
     (* 1.2) 1.2
     (* 2.0 1.2) 2.4
     (* 3.5 2.0 1.2) 8.4))
 
-;; CLJW: test-multiply-longs-at-edge skipped — BigInt
+;; CLJW: test-multiply-longs-at-edge deferred — needs *' (auto-promotion, Phase 43.7)
 ;; CLJW: test-ratios-simplify-to-ints-where-appropriate skipped — ratio
 
 (deftest test-divide
@@ -242,11 +290,28 @@
 
     ; num = 0, div != 0
     (quot 0 3) 0
-    (quot 0 -3) 0))
+    (quot 0 -3) 0
+
+    ;; CLJW: BigInt quot tests
+    (quot 10N 3N) 3N
+    (quot 10N 3) 3N
+    (quot 10 3N) 3N
+    (quot -42N 5N) -8N))
+
+;; CLJW-ADD: BigInt-specific rem/mod tests
+(deftest test-bigint-rem-mod
+  (are [x y] (= x y)
+    (rem 10N 3N) 1N
+    (rem 10N 3) 1N
+    (rem 10 3N) 1N
+    (rem -42N 5N) -2N
+    (mod 10N 3N) 1N
+    (mod 10N 3) 1N
+    (mod -42N 5N) 3N))
 
 ;; *** Predicates ***
 
-;; CLJW: test-pos?-zero?-neg? simplified — no byte/short/bigint/bigdec/ratio/Float
+;; CLJW: test-pos?-zero?-neg? simplified — no byte/short/bigdec/ratio/Float
 (deftest test-pos?-zero?-neg?
   (are [x] (true? x)
     (pos? 5)
@@ -255,16 +320,27 @@
     (pos? 7.0)
     (not (pos? 0.0))
     (not (pos? -7.0))
+    ;; CLJW: restored BigInt predicates
+    (pos? (bigint 6))
+    (not (pos? (bigint 0)))
+    (not (pos? (bigint -6)))
     (zero? 0)
     (zero? 0.0)
     (not (zero? 1))
     (not (zero? -1))
+    ;; CLJW: restored BigInt zero?
+    (zero? (bigint 0))
+    (not (zero? (bigint 1)))
     (neg? -5)
     (not (neg? 0))
     (not (neg? 5))
     (neg? -7.0)
     (not (neg? 0.0))
-    (not (neg? 7.0))))
+    (not (neg? 7.0))
+    ;; CLJW: restored BigInt neg?
+    (neg? (bigint -6))
+    (not (neg? (bigint 0)))
+    (not (neg? (bigint 6)))))
 
 ;; even? odd?
 
@@ -274,7 +350,10 @@
     (not (even? -3))
     (even? 0)
     (not (even? 5))
-    (even? 8)))
+    (even? 8)
+    ;; CLJW: restored BigInt even?
+    (even? 42N)
+    (not (even? 43N))))
 ;; CLJW: thrown? tests for ratio/double even? — not supported
 
 (deftest test-odd?
@@ -283,7 +362,10 @@
     (odd? -3)
     (not (odd? 0))
     (odd? 5)
-    (not (odd? 8))))
+    (not (odd? 8))
+    ;; CLJW: restored BigInt odd?
+    (odd? 43N)
+    (not (odd? 42N))))
 ;; CLJW: thrown? tests for ratio/double odd? — not supported
 
 ;; CLJW: defn- expt uses *' (auto-promoting multiply) — replaced with simple version
@@ -357,8 +439,11 @@
     -1 1
     1 1
     -1.0 1.0
-    -0.0 0.0))
-;; CLJW: BigDecimal/BigInt/ratio/##Inf/##NaN abs tests removed
+    -0.0 0.0
+    ;; CLJW: restored BigInt abs tests
+    -123N 123N
+    123N 123N))
+;; CLJW: BigDecimal/ratio/##Inf/##NaN abs tests removed
 
 ;; CLJW: clj-868 (NaN contagious min/max) skipped — Float/Double class constructors
 
@@ -406,7 +491,27 @@
 
 ;; CLJW: unchecked-inc/dec/negate/add/subtract/multiply overflow tests skipped — Long/MIN_VALUE, Long/MAX_VALUE, Long/valueOf
 ;; CLJW: warn-on-boxed skipped — *unchecked-math*, eval-in-temp-ns
-;; CLJW: comparisons skipped — Integer/Float constructors, ratio, BigDecimal
+;; CLJW: comparisons — adapted (removed Integer/Float constructors, ratio, BigDecimal)
+(deftest comparisons
+  ;; BigInt comparisons with integers
+  (are [x y] (= x y)
+    (< 1N 10) true
+    (< 10 1N) false
+    (< 1N 10N) true
+    (<= 1N 1) true
+    (<= 1 1N) true
+    (> 10N 1) true
+    (> 1 10N) false
+    (>= 10N 10) true
+    (>= 10 10N) true)
+  ;; BigInt comparisons with floats
+  (are [x y] (= x y)
+    (< 1N 10.0) true
+    (< 10.0 1N) false
+    (<= 1N 1.0) true
+    (> 10N 1.0) true
+    (>= 10N 10.0) true))
+
 ;; CLJW: defspec generative tests skipped — clojure.test.generative
 
 ;; CLJW-ADD: test runner invocation
