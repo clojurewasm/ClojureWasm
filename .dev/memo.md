@@ -41,19 +41,21 @@ Phase 41: Polish & Hardening
 1. [x] 41.1: ex-cause fix + pprint dynamic vars (7 vars)
 2. [x] 41.2: clojure.edn/read — SKIPPED (needs PushbackReader)
 3. [x] 41.3: clojure.core.reducers — SKIPPED (needs reify, protocols, ForkJoin)
-4. [ ] 41.4: Upstream test porting
+4. [x] 41.4: Upstream test porting
 5. [ ] 41.5: Additional bug fixes and edge cases
 
 ## Current Task
 
-41.4: Upstream test porting.
+41.5: Additional bug fixes and edge cases.
 
 ## Previous Task
 
-41.1: ex-cause fix + pprint dynamic vars.
-- Fixed ex-cause to read :cause key from ex-info map (was always nil)
-- Added 7 pprint dynamic vars (*print-right-margin*, *print-miser-width*, etc.)
-- Coverage: 742 vars
+41.4: Upstream test porting.
+- Added zip test suite (17 tests, 39 assertions) — already committed
+- Ported 4 sequence tests: test-sort-retains-meta, test-empty?, test-nthnext+rest-on-0, test-nthnext+rest-on-pos
+- Ported test-regex-matcher to other_functions.clj
+- Fixed empty? to support lazy_seq, cons, hash_map, transients
+- Fixed sort/sort-by to preserve metadata from input collection
 - Both VM + TreeWalk verified
 
 ## Known Issues

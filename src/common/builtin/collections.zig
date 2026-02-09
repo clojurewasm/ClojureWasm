@@ -1249,8 +1249,15 @@ pub fn sortFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .type_error, .{}, "sort with custom comparator not yet supported", .{});
     }
 
+    // Preserve metadata from input collection
+    const input_meta: ?*const Value = switch (coll.tag()) {
+        .list => coll.asList().meta,
+        .vector => coll.asVector().meta,
+        .set => coll.asSet().meta,
+        else => null,
+    };
     const lst = try allocator.create(PersistentList);
-    lst.* = .{ .items = sorted };
+    lst.* = .{ .items = sorted, .meta = input_meta };
     return Value.initList(lst);
 }
 
@@ -1301,8 +1308,14 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const sorted = try allocator.alloc(Value, items.len);
     for (indices, 0..) |idx, i| sorted[i] = items[idx];
 
+    // Preserve metadata from input collection
+    const input_meta: ?*const Value = switch (coll.tag()) {
+        .list => coll.asList().meta,
+        .vector => coll.asVector().meta,
+        else => null,
+    };
     const lst = try allocator.create(PersistentList);
-    lst.* = .{ .items = sorted };
+    lst.* = .{ .items = sorted, .meta = input_meta };
     return Value.initList(lst);
 }
 

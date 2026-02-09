@@ -21,15 +21,27 @@ const err = @import("../error.zig");
 // ============================================================
 
 /// (empty? coll) — returns true if coll has no items, or coll is nil.
-pub fn emptyFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to empty?", .{args.len});
     return switch (args[0].tag()) {
         .nil => Value.true_val,
         .list => Value.initBoolean(args[0].asList().count() == 0),
         .vector => Value.initBoolean(args[0].asVector().count() == 0),
         .map => Value.initBoolean(args[0].asMap().count() == 0),
+        .hash_map => Value.initBoolean(args[0].asHashMap().count == 0),
         .set => Value.initBoolean(args[0].asSet().count() == 0),
         .string => Value.initBoolean(args[0].asString().len == 0),
+        .transient_vector => Value.initBoolean(args[0].asTransientVector().count() == 0),
+        .transient_map => Value.initBoolean(args[0].asTransientMap().count() == 0),
+        .transient_set => Value.initBoolean(args[0].asTransientSet().count() == 0),
+        .cons, .chunked_cons => Value.false_val, // cons/chunked_cons are always non-empty
+        .lazy_seq => {
+            // Realize the lazy seq and check if result is nil/empty
+            const ls = args[0].asLazySeq();
+            const realized = try ls.realize(allocator);
+            return Value.initBoolean(realized.tag() == .nil or
+                (realized.tag() == .list and realized.asList().count() == 0));
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "empty? not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }

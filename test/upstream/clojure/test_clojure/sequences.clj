@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/sequences.clj
 ;; Upstream lines: 1654
-;; CLJW markers: 36
+;; CLJW markers: 39
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -771,6 +771,79 @@
            (vec (iteration api
                            :kf #(some-> % :k #{0 1 2})
                            :vf :item))))))
+
+;; ========== sort-retains-meta ==========
+
+(deftest test-sort-retains-meta
+  (is (= {:a true} (meta (sort (with-meta (range 10) {:a true})))))
+  (is (= {:a true} (meta (sort-by :a (with-meta (seq [{:a 5} {:a 2} {:a 3}]) {:a true}))))))
+
+;; ========== empty? ==========
+
+;; CLJW: adapted — removed string, into-array (JVM interop)
+(deftest test-empty?
+  (are [x] (empty? x)
+    nil
+    ()
+    (lazy-seq nil)    ; => ()
+    []
+    {}
+    #{}
+    (transient [])
+    (transient #{})
+    (transient {}))
+
+  (are [x] (not (empty? x))
+    '(1 2)
+    (lazy-seq [1 2])
+    [1 2]
+    {:a 1 :b 2}
+    #{1 2}
+    (transient [1])
+    (transient #{1})
+    (transient {1 2})))
+
+;; ========== nthnext+rest edge cases ==========
+
+(deftest test-nthnext+rest-on-0
+  ;; CLJW: adapted — removed "" (string seq not supported)
+  (are [coll]
+       (and (= (seq coll) (nthnext coll 0))
+            (= coll       (nthrest coll 0)))
+    nil
+    ()
+    '(0)
+    []
+    [0]
+    #{}
+    {}
+    {:a 1}
+    (range 5)))
+
+;; CLJW: adapted — removed "abc" (string seq), into-array (JVM interop)
+(deftest test-nthnext+rest-on-pos
+  (are [coll n nthnext-expected nthrest-expected]
+       (and (= nthnext-expected (nthnext coll n))
+            (= nthrest-expected (nthrest coll n)))
+
+    ;coll  n  nthnext  nthrest
+    nil    1  nil      ()
+    ()     1  nil      ()
+    '(1)   1  nil      ()
+    '(1)   2  nil      ()
+    '(())  1  nil      ()
+    #{}    1  nil      ()
+    {:a 1} 1  nil      ()
+    []     1  nil      ()
+    [0]    1  nil      ()
+    [0]    2  nil      ()
+    [[] 2 nil] 1 '(2 nil) '(2 nil)
+    [[] 2 nil] 2 '(nil) '(nil)
+    [[] 2 nil] 3 nil ()
+    (sorted-set 1 2 3)     2 '(3)      '(3)
+    (sorted-map :a 1 :b 2) 1 '([:b 2]) '([:b 2])
+    (range 5)              3 '(3 4)    '(3 4)
+    (range 5)              5 nil       ()))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)

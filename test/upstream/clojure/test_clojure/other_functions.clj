@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/other_functions.clj
 ;; Upstream lines: 401
-;; CLJW markers: 3
+;; CLJW markers: 5
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -389,6 +389,14 @@
       {1 1 3 3}     (update-keys (hash-map 0 1 2 3) inc)
       {1 1 3 3}     (update-keys (array-map 0 1 2 3) inc)
       {1 1 3 3}     (update-keys (sorted-map 2 3 0 1) inc))))
+
+;; ========== regex matcher ==========
+
+;; CLJW: adapted — removed nth-on-matcher and thrown? tests (nth not supported on Matcher)
+(deftest test-regex-matcher
+  (let [matcher (re-matcher #"(\d{2})/(\d{2})/(\d{4})" "12/02/1975")]
+    (is (= ["12/02/1975" "12" "02" "1975"] (re-find matcher)))
+    (is (= ["12/02/1975" "12" "02" "1975"] (re-groups matcher)))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)
