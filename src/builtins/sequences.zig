@@ -6,10 +6,9 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Sequence utility functions — range, repeat, iterate, empty?, contains?, keys, vals.
-//
-// Runtime functions (kind = .runtime_fn) dispatched via BuiltinFn.
-// Phase 6a additions to the standard library.
+//! Sequence utility functions — range, repeat, iterate, empty?, contains?, keys, vals.
+//!
+//! Runtime functions (kind = .runtime_fn) dispatched via BuiltinFn.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

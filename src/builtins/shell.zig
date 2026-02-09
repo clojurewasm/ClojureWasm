@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// clojure.java.shell — Shell execution via subprocess.
-//
-// Implements: sh, *sh-dir*, *sh-env*, with-sh-dir, with-sh-env.
-// sh spawns a subprocess via std.process.Child, captures stdout/stderr,
-// and returns {:exit N :out "..." :err "..."}.
+//! clojure.java.shell — Shell execution via subprocess.
+//!
+//! Implements: sh, *sh-dir*, *sh-env*, with-sh-dir, with-sh-env.
+//! sh spawns a subprocess via std.process.Child, captures stdout/stderr,
+//! and returns {:exit N :out "..." :err "..."}.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

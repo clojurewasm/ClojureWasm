@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// System builtins — nano-time, current-time-millis, getenv, exit
-//
-// These map to Java's System/ methods via internal names (__nano-time etc.).
-// The Analyzer rewrite (System/nanoTime → __nano-time) is a separate task.
+//! System builtins — nano-time, current-time-millis, getenv, exit
+//!
+//! These map to Java's System/ methods via internal names (__nano-time etc.).
+//! The Analyzer rewrites System/nanoTime → __nano-time at analysis time.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

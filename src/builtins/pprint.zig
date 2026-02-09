@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// pprint builtins — pretty-printing for Clojure data structures.
-//
-// Simplified implementation of clojure.pprint/pprint.
-// Formats nested data structures with indentation when they exceed
-// the right margin (default 72 columns).
+//! pprint builtins — pretty-printing for Clojure data structures.
+//!
+//! Simplified implementation of clojure.pprint/pprint.
+//! Formats nested data structures with indentation when they exceed
+//! the right margin (default 72 columns).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

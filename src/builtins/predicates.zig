@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Type predicate functions — nil?, number?, string?, etc.
-//
-// Simple type checks on Value tag. All take exactly 1 argument
-// and return a boolean.
+//! Type predicate functions — nil?, number?, string?, etc.
+//!
+//! Simple type checks on Value tag. All take exactly 1 argument
+//! and return a boolean.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

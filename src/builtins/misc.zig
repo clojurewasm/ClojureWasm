@@ -6,9 +6,9 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Misc builtins — gensym, compare-and-set!, format.
-//
-// Small standalone utilities that don't fit neatly into other domain files.
+//! Misc builtins — gensym, compare-and-set!, format.
+//!
+//! Small standalone utilities that don't fit neatly into other domain files.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

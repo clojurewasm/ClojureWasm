@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Transient collection builtins — transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
-//
-// Transient collections are mutable builders for persistent collections.
-// Created via (transient coll), mutated in place, finalized via (persistent! t).
-// After persistent!, the transient is consumed and further mutation throws.
+//! Transient collection builtins — transient, persistent!, conj!, assoc!, dissoc!, disj!, pop!
+//!
+//! Transient collections are mutable builders for persistent collections.
+//! Created via (transient coll), mutated in place, finalized via (persistent! t).
+//! After persistent!, the transient is consumed and further mutation throws.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

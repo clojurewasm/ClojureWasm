@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// eval builtins — read-string, eval, macroexpand-1, macroexpand.
-//
-// Provides runtime eval pipeline and macro expansion introspection.
-// These builtins bridge the reader/analyzer/evaluator pipeline into
-// callable Clojure functions.
+//! eval builtins — read-string, eval, macroexpand-1, macroexpand.
+//!
+//! Provides runtime eval pipeline and macro expansion introspection.
+//! These builtins bridge the reader/analyzer/evaluator pipeline into
+//! callable Clojure functions.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

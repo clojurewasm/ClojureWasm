@@ -6,12 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Arithmetic builtin definitions — BuiltinDef metadata for +, -, *, /, etc.
-//
-// Comptime table of BuiltinDef entries for arithmetic and comparison
-// operations. These are vm_intrinsic kind — the Compiler emits direct
-// opcodes for them. Each also has a runtime fallback function (func) so
-// they can be used as first-class values (e.g., (reduce + ...)).
+//! Arithmetic builtin definitions — BuiltinDef metadata for +, -, *, /, etc.
+//!
+//! Comptime table of BuiltinDef entries for arithmetic and comparison
+//! operations. These are vm_intrinsic kind — the Compiler emits direct
+//! opcodes for them. Each also has a runtime fallback function (func) so
+//! they can be used as first-class values (e.g., (reduce + ...)).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

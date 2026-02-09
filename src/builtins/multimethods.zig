@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Multimethod operation builtins — methods, get-method, remove-method,
-// remove-all-methods, prefers, prefer-method.
-//
-// These operate on MultiFn values created by defmulti/defmethod.
+//! Multimethod operation builtins — methods, get-method, remove-method,
+//! remove-all-methods, prefers, prefer-method.
+//!
+//! These operate on MultiFn values created by defmulti/defmethod.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

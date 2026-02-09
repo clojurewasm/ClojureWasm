@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Chunked sequence builtins — chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?
-//
-// Chunked sequences are an optimization for lazy seq processing.
-// A ChunkBuffer is a mutable builder, finalized via (chunk buf) into an ArrayChunk.
-// ChunkedCons is the seq type: first-chunk + rest-seq.
+//! Chunked sequence builtins — chunk-buffer, chunk-append, chunk, chunk-first, chunk-next, chunk-rest, chunked-seq?
+//!
+//! Chunked sequences are an optimization for lazy seq processing.
+//! A ChunkBuffer is a mutable builder, finalized via (chunk buf) into an ArrayChunk.
+//! ChunkedCons is the seq type: first-chunk + rest-seq.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

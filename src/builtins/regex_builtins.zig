@@ -6,7 +6,7 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Regex builtins — re-pattern, re-find, re-matches, re-seq
+//! Regex builtins — re-pattern, re-find, re-matches, re-seq
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// clojure.math namespace builtins.
-//
-// Wraps Zig std.math / @builtins to provide the clojure.math API.
-// All functions accept numeric args (int or float), coerce to f64.
+//! clojure.math namespace builtins.
+//!
+//! Wraps Zig std.math / @builtins to provide the clojure.math API.
+//! All functions accept numeric args (int or float), coerce to f64.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

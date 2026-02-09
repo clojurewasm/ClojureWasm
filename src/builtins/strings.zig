@@ -6,12 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// String builtins — str, pr-str
-//
-// str: Non-readable string conversion. Concatenates arguments without separator.
-//      nil produces empty string, strings are unquoted.
-// pr-str: Readable string representation. Arguments separated by space.
-//         Strings are quoted, chars use backslash notation.
+//! String builtins — str, pr-str
+//!
+//! str: Non-readable string conversion. Concatenates arguments without separator.
+//!      nil produces empty string, strings are unquoted.
+//! pr-str: Readable string representation. Arguments separated by space.
+//!         Strings are quoted, chars use backslash notation.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

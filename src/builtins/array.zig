@@ -6,10 +6,9 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Array builtins — make-array, object-array, aget, aset, alength, aclone, to-array, into-array
-//
-// Mutable typed arrays, equivalent to JVM's Object[] / int[] etc.
-// Phase 43.1: core ops only (object arrays).
+//! Array builtins — make-array, object-array, aget, aset, alength, aclone, to-array, into-array
+//!
+//! Mutable typed arrays, equivalent to JVM's Object[] / int[] etc.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

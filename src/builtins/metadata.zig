@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Metadata builtins — meta, with-meta, vary-meta, alter-meta!, reset-meta!
-//
-// Clojure metadata system: immutable maps attached to values that support
-// the IMeta protocol (collections, symbols, fns). Mutable metadata on
-// reference types (Var, Atom) via alter-meta! / reset-meta!.
+//! Metadata builtins — meta, with-meta, vary-meta, alter-meta!, reset-meta!
+//!
+//! Clojure metadata system: immutable maps attached to values that support
+//! the IMeta protocol (collections, symbols, fns). Mutable metadata on
+//! reference types (Var, Atom) via alter-meta! / reset-meta!.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

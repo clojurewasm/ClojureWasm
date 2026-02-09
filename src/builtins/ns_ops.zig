@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Namespace operations — all-ns, find-ns, ns-name, create-ns, the-ns.
-//
-// Namespaces are represented as symbols (their name) in the Value system.
-// This avoids adding a new Value variant while providing functional API (D47).
+//! Namespace operations — all-ns, find-ns, ns-name, create-ns, the-ns.
+//!
+//! Namespaces are represented as symbols (their name) in the Value system.
+//! This avoids adding a new Value variant while providing functional API (D47).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

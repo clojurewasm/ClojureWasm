@@ -6,12 +6,12 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// I/O builtins — print, println, pr, prn, newline, flush
-//
-// println: Print args space-separated, non-readable, with trailing newline. Returns nil.
-// prn: Print args space-separated, readable, with trailing newline. Returns nil.
-//
-// Output goes to stdout by default. Tests can redirect via setOutputCapture().
+//! I/O builtins — print, println, pr, prn, newline, flush
+//!
+//! println: Print args space-separated, non-readable, with trailing newline. Returns nil.
+//! prn: Print args space-separated, readable, with trailing newline. Returns nil.
+//!
+//! Output goes to stdout by default. Tests can redirect via setOutputCapture().
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

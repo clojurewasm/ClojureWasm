@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Builtin registry — comptime table aggregation and Env registration.
-//
-// Aggregates per-domain BuiltinDef tables, validates no duplicates at
-// comptime, and provides registerBuiltins() to intern Vars with metadata
-// into the clojure.core namespace.
+//! Builtin registry — comptime table aggregation and Env registration.
+//!
+//! Aggregates per-domain BuiltinDef tables, validates no duplicates at
+//! comptime, and provides registerBuiltins() to intern Vars with metadata
+//! into the clojure.core namespace.
 
 const std = @import("std");
 const var_mod = @import("../runtime/var.zig");

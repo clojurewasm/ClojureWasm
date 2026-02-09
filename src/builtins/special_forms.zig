@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Special form definitions — BuiltinDef metadata for compiler-handled forms.
-//
-// Special forms are handled directly by the Compiler/Analyzer and have
-// no runtime function implementation. They are registered as Vars in
-// clojure.core so that (doc if), (meta #'if) etc. work correctly.
+//! Special form definitions — BuiltinDef metadata for compiler-handled forms.
+//!
+//! Special forms are handled directly by the Compiler/Analyzer and have
+//! no runtime function implementation. They are registered as Vars in
+//! clojure.core so that (doc if), (meta #'if) etc. work correctly.
 
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;

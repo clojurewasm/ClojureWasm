@@ -6,10 +6,10 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Collection intrinsic functions — first, rest, cons, conj, assoc, get, nth, count.
-//
-// Runtime functions (kind = .runtime_fn) dispatched via BuiltinFn.
-// These operate on the persistent collection types defined in collections.zig.
+//! Collection intrinsic functions — first, rest, cons, conj, assoc, get, nth, count.
+//!
+//! Runtime functions (kind = .runtime_fn) dispatched via BuiltinFn.
+//! These operate on the persistent collection types defined in collections.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

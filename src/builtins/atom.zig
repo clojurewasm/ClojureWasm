@@ -6,11 +6,11 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// Atom and Volatile builtins — atom, deref, swap!, reset!, volatile!, vreset!, volatile?
-//
-// Atoms provide mutable reference semantics in Clojure.
-// Volatiles provide non-atomic mutable references (thread-local mutation).
-// Watchers and validators supported via add-watch, remove-watch, set-validator!, get-validator.
+//! Atom and Volatile builtins — atom, deref, swap!, reset!, volatile!, vreset!, volatile?
+//!
+//! Atoms provide mutable reference semantics in Clojure.
+//! Volatiles provide non-atomic mutable references (thread-local mutation).
+//! Watchers and validators supported via add-watch, remove-watch, set-validator!, get-validator.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

@@ -6,16 +6,16 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-// cljw.http — HTTP server with Ring-compatible handler model.
-//
-// Provides a basic HTTP/1.1 server that calls a Clojure handler function
-// for each request. The handler receives a Ring-style request map and
-// returns a Ring-style response map.
-//
-// Usage from Clojure:
-//   (require '[cljw.http :as http])
-//   (defn handler [req] {:status 200 :body "Hello"})
-//   (http/run-server handler {:port 8080})
+//! cljw.http — HTTP server with Ring-compatible handler model.
+//!
+//! Provides a basic HTTP/1.1 server that calls a Clojure handler function
+//! for each request. The handler receives a Ring-style request map and
+//! returns a Ring-style response map.
+//!
+//! Usage from Clojure:
+//!   (require '[cljw.http :as http])
+//!   (defn handler [req] {:status 200 :body "Hello"})
+//!   (http/run-server handler {:port 8080})
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
