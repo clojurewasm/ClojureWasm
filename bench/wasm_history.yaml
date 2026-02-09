@@ -1,0 +1,39 @@
+# Wasm Runtime Benchmark History
+# Tracks ClojureWasm interpreter vs wasmtime JIT performance over time.
+# All times in milliseconds, "warm" = total - startup overhead.
+# Measured via bench/wasm_bench.sh (hyperfine, startup subtracted).
+env:
+  cpu: Apple M4 Pro
+  ram: 48 GB
+  os: Darwin 25.2.0
+  tool: hyperfine
+  wasm_source: TinyGo 0.40.1
+entries:
+  - id: "45.1-baseline"
+    date: "2026-02-10"
+    reason: "Phase 45.1 baseline — CW interpreter vs wasmtime JIT"
+    commit: "fa46fd6"
+    build: ReleaseSafe
+    cw_startup_ms: 3.3
+    wt_startup_ms: 5.0
+    results:
+      fib:
+        desc: "fib(20) x 10000"
+        cw_warm_ms: 10054
+        wt_warm_ms: 205
+        ratio: 49.0
+      tak:
+        desc: "tak(18,12,6) x 10000"
+        cw_warm_ms: 27301
+        wt_warm_ms: 1148
+        ratio: 24.0
+      arith:
+        desc: "arith(1M) x 10"
+        cw_warm_ms: 1
+        wt_warm_ms: 1
+        ratio: 1.0
+      sieve:
+        desc: "sieve(64K) x 100"
+        cw_warm_ms: 545
+        wt_warm_ms: 6
+        ratio: 99.0

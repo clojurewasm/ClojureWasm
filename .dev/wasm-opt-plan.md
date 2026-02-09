@@ -8,27 +8,24 @@ This is a multi-session iterative effort. Each session picks up from the latest 
 Every session follows this cycle:
 
 ```
-1. Orient    — read this file, check baseline numbers, git log
+1. Orient    — read this file + memo.md, check baseline numbers, git log
 2. Benchmark — run full wasm benchmark suite, compare CW vs wasmtime
 3. Profile   — identify the current top bottleneck
 4. Optimize  — implement one focused optimization
-5. Measure   — re-run benchmarks, record improvement
-6. Commit    — one commit per optimization, update baseline
-7. Loop      — go to step 2 (or stop if session ending)
+5. Measure   — re-run wasm benchmarks, record in wasm_history.yaml
+6. Regress   — run non-wasm benchmarks (run_bench.sh --quick) to check no regression
+7. Commit    — one commit per optimization, update baseline in this file
+8. Loop      — go to step 2 (or stop if session ending)
 ```
 
 ## Benchmark Suite
 
 ### Cross-language benchmarks (native execution)
 
-TinyGo programs added as `bench.go` in existing benchmark directories.
+TinyGo programs added as `bench.go` in all 20 existing benchmark directories (01-20).
 compare_langs.sh supports `tgo` (TinyGo native) language.
 
-Benchmarks with TinyGo implementations:
-- 01_fib_recursive — recursive fib(25)
-- 03_tak — Takeuchi function tak(18,12,6)
-- 04_arith_loop — arithmetic loop 10M iterations
-- 09_sieve — filter-based sieve to 1000
+These serve dual purpose: native performance comparison AND .wasm source for wasm benchmarks.
 
 ### Wasm FFI benchmarks (via ClojureWasm + wasmtime)
 
@@ -110,4 +107,13 @@ Priority order:
 After each session, update:
 1. Baseline numbers in this file
 2. `.dev/memo.md` Current Task / Previous Task
-3. `bench/history.yaml` via record.sh
+3. `bench/wasm_history.yaml` with wasm benchmark results
+4. `bench/history.yaml` via record.sh (if non-wasm benchmarks affected)
+
+## Regression Guard
+
+Wasm optimizations may touch core runtime code (`src/wasm/vm.zig`, `src/wasm/instance.zig`).
+Always verify non-wasm benchmarks don't regress:
+```bash
+bash bench/run_bench.sh --quick   # Should match or beat previous baseline
+```

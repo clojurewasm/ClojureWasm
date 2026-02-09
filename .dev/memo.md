@@ -94,16 +94,30 @@ Session resume procedure: read this file → follow references below.
 | **E2E tests**                | `test/e2e/wasm/*.clj`, `test/e2e/run_e2e.sh`     |
 | **Multi-module tests**       | `src/wasm/testdata/20-24_*.wasm`                  |
 
+### Phase 45 (ACTIVE — Wasm Runtime Optimization)
+
+| Item                         | Location                                          |
+|------------------------------|---------------------------------------------------|
+| **Optimization plan**        | `.dev/wasm-opt-plan.md`                           |
+| **Optimization decision**    | `.dev/decisions.md` D90                           |
+| **Wasm bench script**        | `bench/wasm_bench.sh` (CW vs wasmtime)            |
+| **Wasm bench history**       | `bench/wasm_history.yaml`                         |
+| **TinyGo wasm sources**      | `bench/wasm/*.go` (8 files: 4 single + 4 bench)  |
+| **TinyGo native benchmarks** | `bench/benchmarks/01-20_*/bench.go` (20 files)   |
+| **CW wasm benchmarks**       | `bench/benchmarks/28-31_wasm_tgo_*/`              |
+
 ### Global references
 
 | Topic               | Location                                  |
 |----------------------|-------------------------------------------|
 | Roadmap              | `.dev/roadmap.md`                         |
 | OSS release plan     | `private/20260208/02_oss_plan.md`         |
-| Deferred items       | `.dev/checklist.md` (F3-F135)             |
-| Decisions            | `.dev/decisions.md` (D1-D89)              |
+| Deferred items       | `.dev/checklist.md` (F3-F137)             |
+| Decisions            | `.dev/decisions.md` (D3-D91)              |
 | Optimizations        | `.dev/optimizations.md`                   |
 | Benchmarks           | `bench/history.yaml`                      |
+| Wasm opt plan        | `.dev/wasm-opt-plan.md`                   |
+| Wasm bench history   | `bench/wasm_history.yaml`                 |
 | Zig tips             | `.claude/references/zig-tips.md`          |
 | Skip recovery        | `.dev/skip-recovery.md`                   |
 | Test porting plan    | `.dev/test-porting-plan.md`               |
