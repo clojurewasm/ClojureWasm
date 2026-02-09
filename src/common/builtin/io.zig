@@ -28,7 +28,7 @@ pub fn setOutputCapture(alloc: ?Allocator, buf: ?*std.ArrayList(u8)) void {
     capture_alloc = alloc;
 }
 
-fn writeOutput(data: []const u8) void {
+pub fn writeOutput(data: []const u8) void {
     if (capture_buf) |buf| {
         buf.appendSlice(capture_alloc.?, data) catch {};
     } else {
@@ -40,7 +40,7 @@ fn writeOutput(data: []const u8) void {
     }
 }
 
-fn writeOutputByte(byte: u8) void {
+pub fn writeOutputByte(byte: u8) void {
     writeOutput(&[_]u8{byte});
 }
 

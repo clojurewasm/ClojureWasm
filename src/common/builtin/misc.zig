@@ -69,6 +69,51 @@ pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (format fmt & args)
 /// Formats a string using java.lang.String/format-style placeholders.
 /// Supported: %s (string), %d (integer), %f (float), %% (literal %).
+fn writePadded(w: anytype, s: []const u8, width: ?usize, left_align: bool) !void {
+    const min_width = width orelse 0;
+    if (s.len >= min_width) {
+        try w.writeAll(s);
+        return;
+    }
+    const pad = min_width - s.len;
+    if (left_align) {
+        try w.writeAll(s);
+        for (0..pad) |_| try w.writeByte(' ');
+    } else {
+        for (0..pad) |_| try w.writeByte(' ');
+        try w.writeAll(s);
+    }
+}
+
+fn formatFloat(w: anytype, val: f64, precision: usize) !void {
+    // Format float with specified precision using Zig's fmt
+    // We can't use runtime precision with std.fmt directly, so we manual-round
+    const is_neg = val < 0;
+    const abs_val = @abs(val);
+    const multiplier = std.math.pow(f64, 10.0, @floatFromInt(precision));
+    const rounded = @round(abs_val * multiplier);
+    const int_part: u64 = @intFromFloat(@floor(abs_val));
+    const frac_part: u64 = @intFromFloat(rounded - @floor(abs_val) * multiplier);
+
+    if (is_neg) try w.writeByte('-');
+    try w.print("{d}", .{int_part});
+    if (precision > 0) {
+        try w.writeByte('.');
+        // Zero-pad fractional part to `precision` digits
+        var frac_digits: usize = 0;
+        var tmp = frac_part;
+        if (tmp == 0) {
+            frac_digits = 1;
+        } else {
+            while (tmp > 0) : (tmp /= 10) frac_digits += 1;
+        }
+        if (frac_digits < precision) {
+            for (0..precision - frac_digits) |_| try w.writeByte('0');
+        }
+        try w.print("{d}", .{frac_part});
+    }
+}
+
 pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to format", .{args.len});
     const fmt_str = switch (args[0].tag()) {
@@ -88,31 +133,73 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
             i += 1;
             if (i >= fmt_str.len) return error.FormatError;
 
+            // %% — literal percent
+            if (fmt_str[i] == '%') {
+                try w.writeByte('%');
+                i += 1;
+                continue;
+            }
+
+            // Parse optional flags, width, precision
+            var left_align = false;
+            if (i < fmt_str.len and fmt_str[i] == '-') {
+                left_align = true;
+                i += 1;
+            }
+
+            var width: ?usize = null;
+            while (i < fmt_str.len and fmt_str[i] >= '0' and fmt_str[i] <= '9') {
+                width = (width orelse 0) * 10 + @as(usize, fmt_str[i] - '0');
+                i += 1;
+            }
+
+            var precision: ?usize = null;
+            if (i < fmt_str.len and fmt_str[i] == '.') {
+                i += 1;
+                precision = 0;
+                while (i < fmt_str.len and fmt_str[i] >= '0' and fmt_str[i] <= '9') {
+                    precision = precision.? * 10 + @as(usize, fmt_str[i] - '0');
+                    i += 1;
+                }
+            }
+
+            if (i >= fmt_str.len) return error.FormatError;
+
             switch (fmt_str[i]) {
-                '%' => {
-                    try w.writeByte('%');
-                },
                 's' => {
                     if (arg_idx >= fmt_args.len) return error.FormatError;
-                    try fmt_args[arg_idx].formatStr(w);
+                    // Format value to temporary buffer
+                    var tmp = std.Io.Writer.Allocating.init(allocator);
+                    defer tmp.deinit();
+                    try fmt_args[arg_idx].formatStr(&tmp.writer);
+                    const s = tmp.writer.buffered();
+                    try writePadded(w, s, width, left_align);
                     arg_idx += 1;
                 },
                 'd' => {
                     if (arg_idx >= fmt_args.len) return error.FormatError;
+                    var tmp = std.Io.Writer.Allocating.init(allocator);
+                    defer tmp.deinit();
                     switch (fmt_args[arg_idx].tag()) {
-                        .integer => try w.print("{d}", .{fmt_args[arg_idx].asInteger()}),
-                        .float => try w.print("{d}", .{@as(i64, @intFromFloat(fmt_args[arg_idx].asFloat()))}),
+                        .integer => try tmp.writer.print("{d}", .{fmt_args[arg_idx].asInteger()}),
+                        .float => try tmp.writer.print("{d}", .{@as(i64, @intFromFloat(fmt_args[arg_idx].asFloat()))}),
                         else => return error.FormatError,
                     }
+                    try writePadded(w, tmp.writer.buffered(), width, left_align);
                     arg_idx += 1;
                 },
                 'f' => {
                     if (arg_idx >= fmt_args.len) return error.FormatError;
-                    switch (fmt_args[arg_idx].tag()) {
-                        .float => try w.print("{d:.6}", .{fmt_args[arg_idx].asFloat()}),
-                        .integer => try w.print("{d:.6}", .{@as(f64, @floatFromInt(fmt_args[arg_idx].asInteger()))},),
+                    var tmp = std.Io.Writer.Allocating.init(allocator);
+                    defer tmp.deinit();
+                    const prec = precision orelse 6;
+                    const fval: f64 = switch (fmt_args[arg_idx].tag()) {
+                        .float => fmt_args[arg_idx].asFloat(),
+                        .integer => @as(f64, @floatFromInt(fmt_args[arg_idx].asInteger())),
                         else => return error.FormatError,
-                    }
+                    };
+                    try formatFloat(&tmp.writer, fval, prec);
+                    try writePadded(w, tmp.writer.buffered(), width, left_align);
                     arg_idx += 1;
                 },
                 else => {
@@ -969,6 +1056,54 @@ test "random-uuid - format" {
     try testing.expectEqual(@as(u8, '4'), uuid[14]);
     // Variant: y must be 8, 9, a, or b
     try testing.expect(uuid[19] == '8' or uuid[19] == '9' or uuid[19] == 'a' or uuid[19] == 'b');
+}
+
+test "format - width specifier %5s" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%5s"),
+        Value.initString(alloc, "hi"),
+    });
+    try testing.expectEqualStrings("   hi", result.asString());
+}
+
+test "format - left-align %-5s" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%-5s"),
+        Value.initString(alloc, "hi"),
+    });
+    try testing.expectEqualStrings("hi   ", result.asString());
+}
+
+test "format - width %3d" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%3d"),
+        Value.initInteger(1),
+    });
+    try testing.expectEqualStrings("  1", result.asString());
+}
+
+test "format - precision %.2f" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%.2f"),
+        Value.initFloat(3.14159),
+    });
+    try testing.expectEqualStrings("3.14", result.asString());
 }
 
 test "random-uuid - uniqueness" {

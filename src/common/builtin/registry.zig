@@ -38,6 +38,7 @@ const http_server_mod = @import("http_server.zig");
 const lifecycle_mod = @import("../lifecycle.zig");
 const wasm_builtins_mod = @import("../../wasm/builtins.zig");
 const shell_mod = @import("shell.zig");
+const pprint_mod = @import("pprint.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -229,6 +230,16 @@ pub fn registerBuiltins(env: *Env) !void {
     const shell_ns = try env.findOrCreateNamespace("clojure.java.shell");
     for (shell_mod.builtins) |b| {
         const v = try shell_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.pprint namespace builtins (Phase 39.2)
+    const pprint_ns = try env.findOrCreateNamespace("clojure.pprint");
+    for (pprint_mod.builtins) |b| {
+        const v = try pprint_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

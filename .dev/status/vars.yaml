@@ -927,13 +927,13 @@ vars:
     "fresh-line": {type: function, status: todo}
     "get-pretty-writer": {type: function, status: todo}
     pp: {type: macro, status: todo}
-    pprint: {type: function, status: todo}
+    pprint: {type: function, status: done, notes: builtin (upstream is pure clj)}
     "pprint-indent": {type: function, status: todo}
     "pprint-logical-block": {type: macro, status: todo}
     "pprint-newline": {type: function, status: todo}
     "pprint-tab": {type: function, status: todo}
     "print-length-loop": {type: macro, status: todo}
-    "print-table": {type: function, status: todo}
+    "print-table": {type: function, status: done}
     "set-pprint-dispatch": {type: function, status: todo}
     "simple-dispatch": {type: var, status: todo}
     "with-pprint-dispatch": {type: macro, status: todo}

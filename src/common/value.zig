@@ -40,6 +40,11 @@ pub fn initPrintVars(length_v: *const Var, level_v: *const Var) void {
     print_level_var = level_v;
 }
 
+pub fn resetPrintVars() void {
+    print_length_var = null;
+    print_level_var = null;
+}
+
 /// Set the allocator used for realizing lazy-seqs during printing.
 /// Call before print operations, clear with null after.
 pub fn setPrintAllocator(alloc: ?Allocator) void {

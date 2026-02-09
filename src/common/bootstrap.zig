@@ -56,6 +56,9 @@ const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
 /// Embedded clojure/java/shell.clj source (compiled into binary).
 const shell_clj_source = @embedFile("../clj/clojure/java/shell.clj");
 
+/// Embedded clojure/pprint.clj source (compiled into binary).
+const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -178,13 +181,10 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
         }
     }
 
-    // Initialize print Var caches for *print-length* and *print-level*
-    const val = @import("value.zig");
-    if (core_ns.resolve("*print-length*")) |pl_var| {
-        if (core_ns.resolve("*print-level*")) |pv_var| {
-            val.initPrintVars(pl_var, pv_var);
-        }
-    }
+    // Note: print Var caches (*print-length*, *print-level*) are initialized
+    // by restoreFromBootstrapCache() in the production path, not here.
+    // loadCore is also used in tests with local arenas, so setting globals
+    // here would create dangling pointers after the arena is freed.
 }
 
 /// Load and evaluate clojure/walk.clj in the given Env.
@@ -406,6 +406,26 @@ pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = shell_ns;
 
     _ = try evalString(allocator, env, shell_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load and evaluate clojure/pprint.clj in the given Env.
+/// Defines print-table (pprint is a Zig builtin registered in registry.zig).
+pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
+    const pprint_ns = env.findOrCreateNamespace("clojure.pprint") catch return error.EvalError;
+
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        pprint_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = pprint_ns;
+
+    _ = try evalString(allocator, env, pprint_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -879,6 +899,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadData(allocator, env);
     try loadRepl(allocator, env);
     try loadShell(allocator, env);
+    try loadPprint(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -939,6 +960,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.java.shell")) |shell_ns| {
         env.current_ns = shell_ns;
         _ = try evalStringVMBootstrap(allocator, env, shell_clj_source);
+    }
+
+    // Re-compile pprint.clj
+    if (env.findNamespace("clojure.pprint")) |pprint_ns| {
+        env.current_ns = pprint_ns;
+        _ = try evalStringVMBootstrap(allocator, env, pprint_clj_source);
     }
 
     // Restore namespace
@@ -3633,6 +3660,7 @@ test "macroexpand fully expands nested macros" {
 test "bootstrap cache - round-trip: generate and restore" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+    defer value_mod.resetPrintVars(); // Clean up global state after arena freed
     const alloc = arena.allocator();
 
     // Phase 1: Full bootstrap + generate cache

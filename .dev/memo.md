@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 668 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, etc.)
+- Coverage: 676 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, 2/26 pprint, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -31,25 +31,24 @@ Phase 38: Core Library Completeness
 
 Phase 39: Real-World Usability
 1. [x] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
-2. [ ] 39.2: clojure.pprint — pprint, print-table, cl-format (core subset)
+2. [x] 39.2: clojure.pprint — pprint, print-table (2 vars)
 3. [ ] 39.3: line-seq — lazy line-by-line file processing
 4. [ ] 39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
 5. [ ] 39.5: read / read-string — expose reader as Clojure function
 
 ## Current Task
 
-39.2: clojure.pprint — pprint, print-table, cl-format (core subset).
-Implement pretty-printing for Clojure data structures. pprint is the most
-commonly used function. print-table for tabular output. cl-format for
-formatted strings.
+39.3: line-seq — lazy line-by-line file processing.
+Implement line-seq to return lazy seq of lines from a BufferedReader (file).
 
 ## Previous Task
 
-39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars).
-- New file: shell.zig — sh builtin via std.process.Child
-- New file: clojure/java/shell.clj — *sh-dir*, *sh-env*, with-sh-dir, with-sh-env
-- Returns {:exit N :out "..." :err "..."}, supports :dir, :in options
-- Fully-qualified var names in macros (syntax-quote ns resolution workaround)
+39.2: clojure.pprint — pprint, print-table (2 vars).
+- New file: pprint.zig — Zig builtin for recursive pretty-printing
+- New file: clojure/pprint.clj — print-table from upstream
+- Format width specifiers added to formatFn (%5s, %-5s, %3d, %.2f)
+- Algorithm: single-line first, multi-line with indentation if > 72 cols
+- Fixed dangling print var pointers (resetPrintVars, removed initPrintVars from loadCore)
 - Both VM + TreeWalk verified
 
 ## Known Issues

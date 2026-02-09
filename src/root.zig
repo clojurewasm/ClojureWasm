@@ -41,6 +41,7 @@ pub const lifecycle = @import("common/lifecycle.zig");
 pub const wasm_builtins = @import("wasm/builtins.zig");
 pub const wit_parser = @import("wasm/wit_parser.zig");
 pub const builtin_shell = @import("common/builtin/shell.zig");
+pub const builtin_pprint = @import("common/builtin/pprint.zig");
 
 test {
     _ = value;
@@ -83,4 +84,5 @@ test {
     _ = wasm_builtins;
     _ = wit_parser;
     _ = builtin_shell;
+    _ = builtin_pprint;
 }
