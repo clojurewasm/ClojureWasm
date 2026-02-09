@@ -33,20 +33,20 @@ Phase 39: Real-World Usability
 1. [x] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
 2. [x] 39.2: clojure.pprint — pprint, print-table (2 vars)
 3. [x] 39.3: line-seq — lazy line-by-line file processing
-4. [ ] 39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
+4. [x] 39.4: clojure.stacktrace — print-cause-trace, print-stack-trace, etc. (6 vars)
 5. [ ] 39.5: read / read-string — expose reader as Clojure function
 
 ## Current Task
 
-39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
-Simplified stack trace printing for CW's error model.
+39.5: read / read-string — expose reader as Clojure function.
+Implement read-string and read as Zig builtins wrapping the Reader.
 
 ## Previous Task
 
-39.3: line-seq — lazy line-by-line file processing.
-- Added lineSeqFn to file_io.zig — reads file, splits by \n, returns PersistentList
-- UPSTREAM-DIFF: takes filename string instead of BufferedReader
-- Handles trailing \r, empty files, no trailing newline
+39.4: clojure.stacktrace — print-cause-trace, print-stack-trace, etc. (6 vars).
+- New file: clojure/stacktrace.clj — all 6 vars implemented in Clojure
+- UPSTREAM-DIFF: uses Throwable->map instead of Java Throwable API
+- Registered in bootstrap.zig (loadStacktrace, vmRecompileAll)
 - Both VM + TreeWalk verified
 
 ## Known Issues

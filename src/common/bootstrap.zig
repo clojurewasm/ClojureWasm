@@ -59,6 +59,9 @@ const shell_clj_source = @embedFile("../clj/clojure/java/shell.clj");
 /// Embedded clojure/pprint.clj source (compiled into binary).
 const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 
+/// Embedded clojure/stacktrace.clj source (compiled into binary).
+const stacktrace_clj_source = @embedFile("../clj/clojure/stacktrace.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -426,6 +429,24 @@ pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = pprint_ns;
 
     _ = try evalString(allocator, env, pprint_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+pub fn loadStacktrace(allocator: Allocator, env: *Env) BootstrapError!void {
+    const st_ns = env.findOrCreateNamespace("clojure.stacktrace") catch return error.EvalError;
+
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        st_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = st_ns;
+
+    _ = try evalString(allocator, env, stacktrace_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -900,6 +921,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadRepl(allocator, env);
     try loadShell(allocator, env);
     try loadPprint(allocator, env);
+    try loadStacktrace(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -966,6 +988,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.pprint")) |pprint_ns| {
         env.current_ns = pprint_ns;
         _ = try evalStringVMBootstrap(allocator, env, pprint_clj_source);
+    }
+
+    // Re-compile stacktrace.clj
+    if (env.findNamespace("clojure.stacktrace")) |st_ns| {
+        env.current_ns = st_ns;
+        _ = try evalStringVMBootstrap(allocator, env, stacktrace_clj_source);
     }
 
     // Restore namespace
