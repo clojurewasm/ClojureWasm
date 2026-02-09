@@ -11,13 +11,13 @@ where JVM-specific features have no meaningful equivalent.
 ClojureWasm runs in a single thread. Concurrency primitives that require
 threading are not yet implemented:
 
-| Feature         | Status          | Notes                               |
-|-----------------|-----------------|-------------------------------------|
-| atom, volatile  | Implemented     | Work as expected (single-threaded)  |
-| future, promise | Not implemented | Planned for a future release        |
-| pmap, pcalls    | Not implemented | Planned with future                 |
-| agent, send     | Not implemented | Requires multi-thread GC safety     |
-| ref, dosync     | Not implemented | STM out of scope (atom suffices)    |
+| Feature         | Status          | Notes                              |
+|-----------------|-----------------|------------------------------------|
+| atom, volatile  | Implemented     | Work as expected (single-threaded) |
+| future, promise | Not implemented | Planned for a future release       |
+| pmap, pcalls    | Not implemented | Planned with future                |
+| agent, send     | Not implemented | Requires multi-thread GC safety    |
+| ref, dosync     | Not implemented | STM out of scope (atom suffices)   |
 
 ### No Java Interop
 
@@ -31,45 +31,45 @@ permanently excluded:
 
 Java standard library functionality is replaced with Zig equivalents:
 
-| Java Pattern              | ClojureWasm Equivalent     |
-|---------------------------|----------------------------|
-| `(System/nanoTime)`       | `(__nano-time)`            |
+| Java Pattern                 | ClojureWasm Equivalent    |
+|------------------------------|---------------------------|
+| `(System/nanoTime)`          | `(__nano-time)`           |
 | `(System/currentTimeMillis)` | `(__current-time-millis)` |
-| `(System/getenv "KEY")`  | `(__getenv "KEY")`         |
-| `(System/exit 0)`        | `(__exit 0)`               |
-| `(Math/sqrt x)`          | `(__sqrt x)`               |
-| `(Thread/sleep ms)`      | `(__sleep ms)`             |
-| `(.getMessage e)`        | `(ex-message e)`           |
+| `(System/getenv "KEY")`      | `(__getenv "KEY")`        |
+| `(System/exit 0)`            | `(__exit 0)`              |
+| `(Math/sqrt x)`              | `(__sqrt x)`              |
+| `(Thread/sleep ms)`          | `(__sleep ms)`            |
+| `(.getMessage e)`            | `(ex-message e)`          |
 
 ## Namespaces
 
 ### Not Implemented
 
-| Namespace                 | Reason                                   |
-|---------------------------|------------------------------------------|
-| clojure.spec.alpha        | Complexity; out of scope for alpha       |
-| clojure.spec.gen.alpha    | Depends on spec                          |
-| clojure.core.specs.alpha  | Depends on spec                          |
-| clojure.core.reducers     | Requires reify + ForkJoin                |
-| clojure.core.server       | Socket REPL (nREPL used instead)         |
-| clojure.reflect           | JVM reflection                           |
-| clojure.inspector         | JVM Swing UI                             |
-| clojure.java.browse       | JVM Desktop class                        |
-| clojure.java.javadoc      | JVM-specific                             |
-| clojure.main              | JVM entry point                          |
-| clojure.instant           | JVM Date/Timestamp                       |
-| clojure.datafy            | Requires protocols not yet available     |
+| Namespace                | Reason                               |
+|--------------------------|--------------------------------------|
+| clojure.spec.alpha       | Complexity; out of scope for alpha   |
+| clojure.spec.gen.alpha   | Depends on spec                      |
+| clojure.core.specs.alpha | Depends on spec                      |
+| clojure.core.reducers    | Requires reify + ForkJoin            |
+| clojure.core.server      | Socket REPL (nREPL used instead)     |
+| clojure.reflect          | JVM reflection                       |
+| clojure.inspector        | JVM Swing UI                         |
+| clojure.java.browse      | JVM Desktop class                    |
+| clojure.java.javadoc     | JVM-specific                         |
+| clojure.main             | JVM entry point                      |
+| clojure.instant          | JVM Date/Timestamp                   |
+| clojure.datafy           | Requires protocols not yet available |
 
 ### Partially Implemented
 
-| Namespace      | Done | Total | Notes                           |
-|----------------|------|-------|---------------------------------|
-| clojure.core   | 593  | 706   | 84% — see skip list below       |
-| clojure.test   | 32   | 39    | No spec integration             |
-| clojure.pprint | 9    | 26    | Core pprint + print-table       |
-| clojure.repl   | 11   | 13    | No spec, no Java reflection     |
-| clojure.edn    | 1    | 2     | read-string only (no read)      |
-| clojure.data   | 3    | 5     | No protocol-based dispatch      |
+| Namespace      | Done | Total | Notes                       |
+|----------------|------|-------|-----------------------------|
+| clojure.core   | 593  | 706   | 84% — see skip list below   |
+| clojure.test   | 32   | 39    | No spec integration         |
+| clojure.pprint | 9    | 26    | Core pprint + print-table   |
+| clojure.repl   | 11   | 13    | No spec, no Java reflection |
+| clojure.edn    | 1    | 2     | read-string only (no read)  |
+| clojure.data   | 3    | 5     | No protocol-based dispatch  |
 
 ### Fully Implemented
 

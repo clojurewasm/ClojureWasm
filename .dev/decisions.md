@@ -42,7 +42,7 @@ When adding any new feature (builtin, special form, operator), implement it
 in **both** backends and add an `EvalEngine.compare()` test.
 
 | Component  | Path                                 |
-| ---------- | ------------------------------------ |
+|------------|--------------------------------------|
 | VM         | `src/native/vm/vm.zig`               |
 | TreeWalk   | `src/native/evaluator/tree_walk.zig` |
 | EvalEngine | `src/common/eval_engine.zig`         |
@@ -370,11 +370,11 @@ runtime. Interpreter-integrated, single-loop cache, automatic deopt.
 
 **Results** (hyperfine, ReleaseSafe, Apple M4 Pro):
 
-| Benchmark      | Before (37.3) | After (37.4) | Speedup |
-|----------------|---------------|--------------|---------|
-| arith_loop     | 31ms          | 3ms          | 10.3x   |
-| fib_recursive  | 16ms          | 16ms         | 1.0x    |
-| (cumulative)   | 53ms (base)   | 3ms          | 17.7x   |
+| Benchmark     | Before (37.3) | After (37.4) | Speedup |
+|---------------|---------------|--------------|---------|
+| arith_loop    | 31ms          | 3ms          | 10.3x   |
+| fib_recursive | 16ms          | 16ms         | 1.0x    |
+| (cumulative)  | 53ms (base)   | 3ms          | 17.7x   |
 
 **Scope limitation**: PoC targets simple integer loops only. Not compiled: function calls,
 heap allocation, string ops, collection ops. fib_recursive uses recursion (not loop),

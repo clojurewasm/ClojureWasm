@@ -71,44 +71,44 @@ Session resume procedure: read this file → follow references below.
 
 ### Phase 36 (COMPLETE)
 
-| Item                         | Location                                          |
-|------------------------------|---------------------------------------------------|
-| **Phase plan**               | `.dev/archive/phase36-simd-ffi.md`                   |
-| **Optimization decision**    | `.dev/decisions.md` D86                     |
-| **SIMD benchmarks**          | `bench/simd/` (4 programs + results.md)           |
-| **Wasm benchmarks**          | `bench/benchmarks/21-25_wasm_*/`                  |
-| **Conformance tests**        | `src/wasm/testdata/conformance/` (9 WAT+WASM)     |
-| **E2E tests**                | `test/e2e/wasm/*.clj`, `test/e2e/run_e2e.sh`     |
-| **Multi-module tests**       | `src/wasm/testdata/20-24_*.wasm`                  |
+| Item                      | Location                                      |
+|---------------------------|-----------------------------------------------|
+| **Phase plan**            | `.dev/archive/phase36-simd-ffi.md`            |
+| **Optimization decision** | `.dev/decisions.md` D86                       |
+| **SIMD benchmarks**       | `bench/simd/` (4 programs + results.md)       |
+| **Wasm benchmarks**       | `bench/benchmarks/21-25_wasm_*/`              |
+| **Conformance tests**     | `src/wasm/testdata/conformance/` (9 WAT+WASM) |
+| **E2E tests**             | `test/e2e/wasm/*.clj`, `test/e2e/run_e2e.sh`  |
+| **Multi-module tests**    | `src/wasm/testdata/20-24_*.wasm`              |
 
 ### Phase 45 (ACTIVE — Wasm Runtime Optimization)
 
-| Item                         | Location                                          |
-|------------------------------|---------------------------------------------------|
-| **Optimization plan**        | `.dev/wasm-opt-plan.md`                           |
-| **Optimization decision**    | `.dev/decisions.md` D90                           |
-| **Wasm bench script**        | `bench/wasm_bench.sh` (CW vs wasmtime)            |
-| **Wasm bench history**       | `bench/wasm_history.yaml`                         |
+| Item                         | Location                                         |
+|------------------------------|--------------------------------------------------|
+| **Optimization plan**        | `.dev/wasm-opt-plan.md`                          |
+| **Optimization decision**    | `.dev/decisions.md` D90                          |
+| **Wasm bench script**        | `bench/wasm_bench.sh` (CW vs wasmtime)           |
+| **Wasm bench history**       | `bench/wasm_history.yaml`                        |
 | **TinyGo wasm sources**      | `bench/wasm/*.go` (12 files: 6 single + 6 bench) |
 | **TinyGo native benchmarks** | `bench/benchmarks/01-20_*/bench.go` (20 files)   |
-| **CW wasm benchmarks**       | `bench/benchmarks/28-31_wasm_tgo_*/`              |
+| **CW wasm benchmarks**       | `bench/benchmarks/28-31_wasm_tgo_*/`             |
 
 ### Global references
 
-| Topic               | Location                                  |
-|----------------------|-------------------------------------------|
-| Roadmap              | `.dev/roadmap.md`                         |
-| OSS release plan     | `private/20260208/02_oss_plan.md`         |
-| Deferred items       | `.dev/checklist.md` (F3-F137)             |
-| Decisions            | `.dev/decisions.md` (D3-D91)              |
-| Optimizations        | `.dev/optimizations.md`                   |
-| Benchmarks           | `bench/history.yaml`                      |
-| Wasm opt plan        | `.dev/wasm-opt-plan.md`                   |
-| Wasm bench history   | `bench/wasm_history.yaml`                 |
-| Zig tips             | `.claude/references/zig-tips.md`          |
-| Skip recovery        | `.dev/skip-recovery.md`                   |
-| Test porting plan    | `.dev/test-porting-plan.md`               |
-| Archived plans       | `.dev/archive/` (Phase 24-30, CX, A)     |
+| Topic              | Location                             |
+|--------------------|--------------------------------------|
+| Roadmap            | `.dev/roadmap.md`                    |
+| OSS release plan   | `private/20260208/02_oss_plan.md`    |
+| Deferred items     | `.dev/checklist.md` (F3-F137)        |
+| Decisions          | `.dev/decisions.md` (D3-D91)         |
+| Optimizations      | `.dev/optimizations.md`              |
+| Benchmarks         | `bench/history.yaml`                 |
+| Wasm opt plan      | `.dev/wasm-opt-plan.md`              |
+| Wasm bench history | `bench/wasm_history.yaml`            |
+| Zig tips           | `.claude/references/zig-tips.md`     |
+| Skip recovery      | `.dev/skip-recovery.md`              |
+| Test porting plan  | `.dev/test-porting-plan.md`          |
+| Archived plans     | `.dev/archive/` (Phase 24-30, CX, A) |
 
 ## Handover Notes
 

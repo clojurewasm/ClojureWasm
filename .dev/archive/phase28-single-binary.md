@@ -10,13 +10,13 @@ iterate on AOT and multi-file later.
 
 ## Prior Art
 
-| Tool            | Approach                       | User needs toolchain? |
-| --------------- | ------------------------------ | --------------------- |
-| Deno compile    | Binary trailer (Sui section)   | No                    |
-| Node.js SEA     | postject resource injection    | No                    |
-| Babashka        | GraalVM native-image           | Yes (GraalVM)         |
-| Go embed        | @embedFile at compile-time     | Yes (Go)              |
-| ClojureWasm     | Binary trailer (Phase 28.1)    | No                    |
+| Tool         | Approach                     | User needs toolchain? |
+|--------------|------------------------------|-----------------------|
+| Deno compile | Binary trailer (Sui section) | No                    |
+| Node.js SEA  | postject resource injection  | No                    |
+| Babashka     | GraalVM native-image         | Yes (GraalVM)         |
+| Go embed     | @embedFile at compile-time   | Yes (Go)              |
+| ClojureWasm  | Binary trailer (Phase 28.1)  | No                    |
 
 **Chosen approach**: Binary trailer (Deno-style). No Zig toolchain required
 on the user's machine. Fast build (just file copy + append).
@@ -72,12 +72,12 @@ Single .clj file baked into binary. No Zig toolchain needed.
 
 **Tasks:**
 
-| Task   | Description                                          | Est. |
-| ------ | ---------------------------------------------------- | ---- |
-| 28.1a  | Embedded source detection at startup                 | S    |
-| 28.1b  | `build` subcommand implementation                    | M    |
-| 28.1c  | Built binary CLI args as `*command-line-args*`       | S    |
-| 28.1d  | Integration test (build + run + verify)              | S    |
+| Task  | Description                                    | Est. |
+|-------|------------------------------------------------|------|
+| 28.1a | Embedded source detection at startup           | S    |
+| 28.1b | `build` subcommand implementation              | M    |
+| 28.1c | Built binary CLI args as `*command-line-args*` | S    |
+| 28.1d | Integration test (build + run + verify)        | S    |
 
 **28.1a: Embedded source detection**
 
@@ -184,11 +184,11 @@ Embed .wasm modules alongside .clj source. v2 trailer format.
 
 **Tasks:**
 
-| Task   | Description                                          |
-| ------ | ---------------------------------------------------- |
-| 28.2a  | v2 trailer format: multi-section support             |
-| 28.2b  | `build --wasm math.wasm` flag                        |
-| 28.2c  | Runtime: load embedded .wasm instead of file          |
+| Task  | Description                                  |
+|-------|----------------------------------------------|
+| 28.2a | v2 trailer format: multi-section support     |
+| 28.2b | `build --wasm math.wasm` flag                |
+| 28.2c | Runtime: load embedded .wasm instead of file |
 
 **Scope**: User specifies .wasm files at build time. At runtime, `wasm/load`
 checks embedded modules before filesystem. Pre-linking avoids file I/O.
@@ -203,12 +203,12 @@ TreeWalk closures that capture Env state — not serializable.
 
 **Tasks (when F7 resolved):**
 
-| Task   | Description                                          |
-| ------ | ---------------------------------------------------- |
-| 28.3a  | Bytecode serialization format                        |
-| 28.3b  | Compiler: .clj -> bytecode chunk file (.cljc)        |
-| 28.3c  | `build --aot` flag: compile then embed bytecode      |
-| 28.3d  | Runtime: deserialize + execute bytecode directly     |
+| Task  | Description                                      |
+|-------|--------------------------------------------------|
+| 28.3a | Bytecode serialization format                    |
+| 28.3b | Compiler: .clj -> bytecode chunk file (.cljc)    |
+| 28.3c | `build --aot` flag: compile then embed bytecode  |
+| 28.3d | Runtime: deserialize + execute bytecode directly |
 
 **Expected benefit**: Skip Reader + Analyzer at startup. Instant execution.
 
@@ -216,13 +216,13 @@ TreeWalk closures that capture Env state — not serializable.
 
 ### Why binary trailer, not Zig @embedFile rebuild?
 
-| Factor            | Trailer          | @embedFile rebuild    |
-| ----------------- | ---------------- | --------------------- |
-| User needs Zig?   | No               | Yes                   |
-| Build speed       | ~instant         | ~seconds              |
-| Cross-compile     | No               | Yes (Zig strength)    |
-| AOT possible      | No (source only) | Yes                   |
-| Binary size       | Same + source    | Potentially smaller   |
+| Factor          | Trailer          | @embedFile rebuild  |
+|-----------------|------------------|---------------------|
+| User needs Zig? | No               | Yes                 |
+| Build speed     | ~instant         | ~seconds            |
+| Cross-compile   | No               | Yes (Zig strength)  |
+| AOT possible    | No (source only) | Yes                 |
+| Binary size     | Same + source    | Potentially smaller |
 
 Phase 28.1 uses trailer for zero-dependency UX. Phase 28.3 (AOT) may
 introduce optional @embedFile rebuild for optimized binaries.

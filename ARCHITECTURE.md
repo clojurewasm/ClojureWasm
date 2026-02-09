@@ -11,28 +11,28 @@ Source text
     │
     ▼
 ┌──────────┐
-│  Reader   │  Tokenizer → Reader → Form (syntax tree)
+│  Reader  │  Tokenizer → Reader → Form (syntax tree)
 └────┬─────┘
      │ Form
      ▼
 ┌──────────┐
-│ Analyzer  │  Form → Node (executable AST)
+│ Analyzer │  Form → Node (executable AST)
 └────┬─────┘
      │ Node
      ▼
 ┌──────────────────────────────────┐
 │         Dual Backend             │
 │                                  │
-│  ┌───────────┐  ┌─────────────┐ │
+│  ┌────────────┐  ┌─────────────┐ │
 │  │ Compiler   │  │  TreeWalk   │ │
 │  │ Node→Chunk │  │  Node→Value │ │
-│  └─────┬─────┘  └─────────────┘ │
+│  └─────┬──────┘  └─────────────┘ │
 │        │ Bytecode                │
 │        ▼                         │
-│  ┌───────────┐                   │
+│  ┌────────────┐                  │
 │  │    VM      │                  │
 │  │ Chunk→Value│                  │
-│  └───────────┘                   │
+│  └────────────┘                  │
 └──────────────────────────────────┘
 ```
 
@@ -81,18 +81,18 @@ instruction is a fixed 3-byte format: u8 opcode + u16 operand.
 
 75 opcodes across 10 categories:
 
-| Range       | Category            | Examples                               |
-|-------------|---------------------|----------------------------------------|
-| 0x00-0x0F   | Constants/Literals  | const_load, nil, true_val, false_val   |
-| 0x10-0x1F   | Stack               | pop, dup, pop_under                    |
-| 0x20-0x2F   | Local variables     | local_load, local_store                |
-| 0x40-0x4F   | Var operations      | var_load, def, defmulti, lazy_seq      |
-| 0x50-0x5F   | Control flow        | jump, jump_if_false, jump_back         |
-| 0x60-0x6F   | Functions           | call, tail_call, ret, closure          |
-| 0x80-0x8F   | Collections         | list_new, vec_new, map_new, set_new    |
-| 0xA0-0xAF   | Exceptions          | try_begin, catch_begin, throw_ex       |
-| 0xB0-0xBF   | Arithmetic          | add, sub, mul, div, eq, lt, gt         |
-| 0xC0-0xDF   | Superinstructions   | add_locals, branch_ne_locals, recur_loop |
+| Range     | Category           | Examples                                 |
+|-----------|--------------------|------------------------------------------|
+| 0x00-0x0F | Constants/Literals | const_load, nil, true_val, false_val     |
+| 0x10-0x1F | Stack              | pop, dup, pop_under                      |
+| 0x20-0x2F | Local variables    | local_load, local_store                  |
+| 0x40-0x4F | Var operations     | var_load, def, defmulti, lazy_seq        |
+| 0x50-0x5F | Control flow       | jump, jump_if_false, jump_back           |
+| 0x60-0x6F | Functions          | call, tail_call, ret, closure            |
+| 0x80-0x8F | Collections        | list_new, vec_new, map_new, set_new      |
+| 0xA0-0xAF | Exceptions         | try_begin, catch_begin, throw_ex         |
+| 0xB0-0xBF | Arithmetic         | add, sub, mul, div, eq, lt, gt           |
+| 0xC0-0xDF | Superinstructions  | add_locals, branch_ne_locals, recur_loop |
 
 Superinstructions (0xC0-0xDF) fuse common multi-instruction sequences into
 single opcodes. A peephole optimizer in the compiler detects patterns like

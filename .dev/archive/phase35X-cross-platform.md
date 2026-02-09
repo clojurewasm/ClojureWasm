@@ -94,18 +94,18 @@ Workflow: `.github/workflows/ci.yml`
 
 ## File Change Summary
 
-| File                        | Change                                 |
-|-----------------------------|----------------------------------------|
-| `LICENSE`                   | EPL-1.0 text (new)                     |
-| `.github/workflows/ci.yml` | CI workflow (new)                       |
-| Platform-specific fixes     | TBD — discovered during cross-compile  |
+| File                       | Change                                |
+|----------------------------|---------------------------------------|
+| `LICENSE`                  | EPL-1.0 text (new)                    |
+| `.github/workflows/ci.yml` | CI workflow (new)                     |
+| Platform-specific fixes    | TBD — discovered during cross-compile |
 
 ## References
 
-| Item                    | Location                                     |
-|-------------------------|----------------------------------------------|
-| Checklist entry         | `.dev/checklist.md` F117                     |
-| Roadmap section         | `.dev/roadmap.md` Phase 35X                  |
-| Phase 35W (zware removed) | `.dev/archive/phase35-custom-wasm.md`       |
-| Decision D84            | `.dev/decisions.md`                          |
-| Original plan (obsolete)| `~/.claude/plans/phase35-cross-platform-saved.md` |
+| Item                      | Location                                          |
+|---------------------------|---------------------------------------------------|
+| Checklist entry           | `.dev/checklist.md` F117                          |
+| Roadmap section           | `.dev/roadmap.md` Phase 35X                       |
+| Phase 35W (zware removed) | `.dev/archive/phase35-custom-wasm.md`             |
+| Decision D84              | `.dev/decisions.md`                               |
+| Original plan (obsolete)  | `~/.claude/plans/phase35-cross-platform-saved.md` |

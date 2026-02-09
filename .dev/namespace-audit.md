@@ -5,20 +5,20 @@ Scope: Compare CW namespaces with JVM Clojure and Babashka.
 
 ## 1. Current ClojureWasm Namespaces
 
-| #  | Namespace         | Impl       | vars.yaml  | Notes                              |
-|----|-------------------|------------|------------|------------------------------------|
-| 1  | clojure.core      | Zig + .clj | 535/704    | Main language core                 |
-| 2  | clojure.string    | Zig        | 21/21      | Complete                           |
-| 3  | clojure.edn       | Zig        | 1/2*       | read-string done, read missing     |
-| 4  | clojure.math      | Zig        | 0/45*      | Builtins exist, vars.yaml unmarked |
-| 5  | clojure.walk      | .clj       | 8/10       | Near complete                      |
-| 6  | clojure.template  | .clj       | 2/2        | Complete                           |
-| 7  | clojure.test      | .clj       | 14/39      | Core test framework works          |
-| 8  | clojure.set       | .clj       | 12/12      | Complete                           |
-| 9  | clojure.data      | .clj       | 3/5        | diff works                         |
-| 10 | clojure.repl      | .clj*      | 8/8        | Functions in core.clj, NOT in separate ns |
-| 11 | wasm              | Zig        | N/A        | CW-specific: load, fn, memory-*   |
-| 12 | user              | (auto)     | N/A        | Startup ns, refers clojure.core    |
+| #  | Namespace        | Impl       | vars.yaml | Notes                                     |
+|----|------------------|------------|-----------|-------------------------------------------|
+| 1  | clojure.core     | Zig + .clj | 535/704   | Main language core                        |
+| 2  | clojure.string   | Zig        | 21/21     | Complete                                  |
+| 3  | clojure.edn      | Zig        | 1/2*      | read-string done, read missing            |
+| 4  | clojure.math     | Zig        | 0/45*     | Builtins exist, vars.yaml unmarked        |
+| 5  | clojure.walk     | .clj       | 8/10      | Near complete                             |
+| 6  | clojure.template | .clj       | 2/2       | Complete                                  |
+| 7  | clojure.test     | .clj       | 14/39     | Core test framework works                 |
+| 8  | clojure.set      | .clj       | 12/12     | Complete                                  |
+| 9  | clojure.data     | .clj       | 3/5       | diff works                                |
+| 10 | clojure.repl     | .clj*      | 8/8       | Functions in core.clj, NOT in separate ns |
+| 11 | wasm             | Zig        | N/A       | CW-specific: load, fn, memory-*           |
+| 12 | user             | (auto)     | N/A       | Startup ns, refers clojure.core           |
 
 *clojure.edn: read-string builtin exists but vars.yaml shows todo.
 *clojure.math: PI, E, sqrt, sin etc. registered as builtins, vars.yaml shows 0/45.

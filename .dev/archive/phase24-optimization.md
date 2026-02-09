@@ -34,17 +34,17 @@ Master optimization plan for ClojureWasm.
 
 ### New benchmarks (12-20)
 
-| #  | Name                 | Category    | Measures                             | Target optimization  |
-|----|----------------------|-------------|--------------------------------------|----------------------|
-| 12 | gc_stress            | GC/Memory   | Allocation-heavy loop (1M small maps)| GC, NaN boxing       |
-| 13 | lazy_chain           | Sequences   | (take N (filter (map (range))))      | Fused reduce         |
-| 14 | transduce            | Sequences   | (transduce (comp (map) (filter)) +)  | Transducer pipeline  |
-| 15 | keyword_lookup       | Collections | Keyword map access in tight loop     | Inline caching       |
-| 16 | protocol_dispatch    | Dispatch    | Protocol method call in loop         | Inline caching       |
-| 17 | nested_update        | Collections | assoc-in/update-in deep nesting      | HAMT                 |
-| 18 | string_ops           | String      | str concat, subs, string join        | String repr          |
-| 19 | multimethod_dispatch | Dispatch    | defmulti dispatch in loop            | Dispatch optimization|
-| 20 | real_workload        | Composite   | Data transform pipeline              | Overall throughput   |
+| #  | Name                 | Category    | Measures                              | Target optimization   |
+|----|----------------------|-------------|---------------------------------------|-----------------------|
+| 12 | gc_stress            | GC/Memory   | Allocation-heavy loop (1M small maps) | GC, NaN boxing        |
+| 13 | lazy_chain           | Sequences   | (take N (filter (map (range))))       | Fused reduce          |
+| 14 | transduce            | Sequences   | (transduce (comp (map) (filter)) +)   | Transducer pipeline   |
+| 15 | keyword_lookup       | Collections | Keyword map access in tight loop      | Inline caching        |
+| 16 | protocol_dispatch    | Dispatch    | Protocol method call in loop          | Inline caching        |
+| 17 | nested_update        | Collections | assoc-in/update-in deep nesting       | HAMT                  |
+| 18 | string_ops           | String      | str concat, subs, string join         | String repr           |
+| 19 | multimethod_dispatch | Dispatch    | defmulti dispatch in loop             | Dispatch optimization |
+| 20 | real_workload        | Composite   | Data transform pipeline               | Overall throughput    |
 
 ### Measurement methodology
 
@@ -238,17 +238,17 @@ Goal: Beat Babashka on ALL 20 benchmarks in both speed AND memory.
 
 ## 6. Zig-Specific Optimization Advantages
 
-| Area                  | Java/JVM                   | Zig-Native                                |
-|-----------------------|----------------------------|-------------------------------------------|
-| Value representation  | Object boxing + GC         | NaN boxing, stack values, no boxing       |
-| Dispatch              | vtable (JVM optimized)     | comptime function pointer table           |
-| Collections           | HAMT with Java objects     | HAMT with packed bits, @popCount          |
-| String                | Immutable String objects   | Slice-based, zero-copy substrings         |
-| Memory                | Generational GC            | Arena + mark-sweep, bump allocator        |
-| Hot loop              | JIT to native              | Stack-local buffers, inline, SIMD         |
-| Compile-time          | None (runtime only)        | comptime: tables, type specialization     |
-| Error handling        | Exception objects + stack  | Error union, zero-cost when no error      |
-| SIMD                  | Auto-vectorization         | Explicit @Vector, portable SIMD types     |
+| Area                 | Java/JVM                  | Zig-Native                            |
+|----------------------|---------------------------|---------------------------------------|
+| Value representation | Object boxing + GC        | NaN boxing, stack values, no boxing   |
+| Dispatch             | vtable (JVM optimized)    | comptime function pointer table       |
+| Collections          | HAMT with Java objects    | HAMT with packed bits, @popCount      |
+| String               | Immutable String objects  | Slice-based, zero-copy substrings     |
+| Memory               | Generational GC           | Arena + mark-sweep, bump allocator    |
+| Hot loop             | JIT to native             | Stack-local buffers, inline, SIMD     |
+| Compile-time         | None (runtime only)       | comptime: tables, type specialization |
+| Error handling       | Exception objects + stack | Error union, zero-cost when no error  |
+| SIMD                 | Auto-vectorization        | Explicit @Vector, portable SIMD types |
 
 ## 7. Readability Strategy
 
@@ -262,28 +262,28 @@ Goal: Beat Babashka on ALL 20 benchmarks in both speed AND memory.
 
 **Standard build mode: ReleaseSafe** (all benchmarks use this consistently).
 
-| Benchmark                | Baseline (ms) | After 24A.9 (ms) | Speedup | Category    |
-|--------------------------|---------------|-------------------|---------|-------------|
-| atom_swap                | 51            | 18                | 2.8x    | concurrency |
-| fib_loop                 | 56            | 19                | 2.9x    | computation |
-| protocol_dispatch (10K)  | 52            | 19                | 2.7x    | dispatch    |
-| tak                      | 53            | 23                | 2.3x    | computation |
-| keyword_lookup (100K)    | 59            | 24                | 2.5x    | collections |
-| map_ops                  | 62            | 26                | 2.4x    | collections |
-| fib_recursive            | 542           | 28                | 19.4x   | computation |
-| nqueens                  | 61            | 29                | 2.1x    | hof         |
-| arith_loop               | 98            | 61                | 1.6x    | computation |
-| nested_update (10K)      | 292           | 128               | 2.3x    | collections |
-| list_build               | 420           | 178               | 2.4x    | collections |
-| vector_ops               | 426           | 179               | 2.4x    | collections |
-| gc_stress (100K)         | 372           | 330               | 1.1x    | gc          |
-| string_ops (100K)        | 446           | 397               | 1.1x    | string      |
-| real_workload (10K)      | 1,286         | 496               | 2.6x    | composite   |
-| sieve                    | 2,152 (F97)   | 30 (F97)          | --      | hof         |
-| multimethod_dispatch(10K)| 2,373         | 2,127             | 1.1x    | dispatch    |
-| map_filter_reduce        | 4,013         | 1,281             | 3.1x    | collections |
-| transduce (10K)          | 8,409         | 2,893             | 2.9x    | sequences   |
-| lazy_chain (10K)         | 21,375        | 6,588             | 3.2x    | sequences   |
+| Benchmark                 | Baseline (ms) | After 24A.9 (ms) | Speedup | Category    |
+|---------------------------|---------------|------------------|---------|-------------|
+| atom_swap                 | 51            | 18               | 2.8x    | concurrency |
+| fib_loop                  | 56            | 19               | 2.9x    | computation |
+| protocol_dispatch (10K)   | 52            | 19               | 2.7x    | dispatch    |
+| tak                       | 53            | 23               | 2.3x    | computation |
+| keyword_lookup (100K)     | 59            | 24               | 2.5x    | collections |
+| map_ops                   | 62            | 26               | 2.4x    | collections |
+| fib_recursive             | 542           | 28               | 19.4x   | computation |
+| nqueens                   | 61            | 29               | 2.1x    | hof         |
+| arith_loop                | 98            | 61               | 1.6x    | computation |
+| nested_update (10K)       | 292           | 128              | 2.3x    | collections |
+| list_build                | 420           | 178              | 2.4x    | collections |
+| vector_ops                | 426           | 179              | 2.4x    | collections |
+| gc_stress (100K)          | 372           | 330              | 1.1x    | gc          |
+| string_ops (100K)         | 446           | 397              | 1.1x    | string      |
+| real_workload (10K)       | 1,286         | 496              | 2.6x    | composite   |
+| sieve                     | 2,152 (F97)   | 30 (F97)         | --      | hof         |
+| multimethod_dispatch(10K) | 2,373         | 2,127            | 1.1x    | dispatch    |
+| map_filter_reduce         | 4,013         | 1,281            | 3.1x    | collections |
+| transduce (10K)           | 8,409         | 2,893            | 2.9x    | sequences   |
+| lazy_chain (10K)          | 21,375        | 6,588            | 3.2x    | sequences   |
 
 ### Optimizations applied (24A.1-24A.9)
 
@@ -316,27 +316,27 @@ Measured with hyperfine (ReleaseSafe). Babashka measured single-run wall clock.
 
 ### Current Status (post-24B)
 
-| Benchmark             | CW ms  | BB ms | CW/BB  | CW MB     | BB MB  | Status   |
-|-----------------------|--------|-------|--------|-----------|--------|----------|
-| fib_recursive         | 24     | 34    | 0.7x   | 23.8      | 38.6   | WIN      |
-| fib_loop              | 13     | 20    | 0.7x   | 23.8      | 31.4   | WIN      |
-| tak                   | 16     | 24    | 0.7x   | 23.8      | 34.1   | WIN      |
-| arith_loop            | 57     | 80    | 0.7x   | 23.8      | 76.9   | WIN      |
-| map_ops               | 13     | 20    | 0.7x   | 25.6      | 32.4   | WIN      |
-| keyword_lookup        | 20     | 26    | 0.8x   | 23.8      | 36.2   | WIN      |
-| protocol_dispatch     | 15     | 27    | 0.6x   | 23.9      | 36.4   | WIN      |
-| nqueens               | 26     | 30    | 0.9x   | 26.1      | 37.1   | WIN      |
-| atom_swap             | 15     | 19    | 0.8x   | 23.8      | 31.9   | WIN      |
-| gc_stress             | 329    | 42    | 7.8x   | 26.0      | 77.0   | LOSE spd |
-| nested_update         | 141    | 22    | 6.4x   | 27.7      | 37.0   | LOSE spd |
-| string_ops            | 419    | 28    | 15.0x  | 31.2      | 41.5   | LOSE spd |
-| list_build            | 174    | 21    | 8.3x   | 34.1      | 32.2   | LOSE     |
-| vector_ops            | 186    | 22    | 8.5x   | 34.2      | 34.6   | LOSE     |
-| real_workload         | 511    | 23    | 22.2x  | 45.2      | 41.6   | LOSE     |
-| map_filter_reduce     | 1293   | 22    | 58.8x  | 15367     | 37.7   | LOSE     |
-| sieve                 | 1675   | 22    | 76.1x  | 2998      | 36.2   | LOSE     |
-| multimethod_dispatch  | 2094   | 22    | 95.2x  | 83.1      | 33.5   | LOSE     |
-| transduce             | 3348   | 20    | 167x   | 30657     | 32.3   | LOSE     |
-| lazy_chain            | 6655   | 23    | 289x   | 30692     | 37.6   | LOSE     |
+| Benchmark            | CW ms | BB ms | CW/BB | CW MB | BB MB | Status   |
+|----------------------|-------|-------|-------|-------|-------|----------|
+| fib_recursive        | 24    | 34    | 0.7x  | 23.8  | 38.6  | WIN      |
+| fib_loop             | 13    | 20    | 0.7x  | 23.8  | 31.4  | WIN      |
+| tak                  | 16    | 24    | 0.7x  | 23.8  | 34.1  | WIN      |
+| arith_loop           | 57    | 80    | 0.7x  | 23.8  | 76.9  | WIN      |
+| map_ops              | 13    | 20    | 0.7x  | 25.6  | 32.4  | WIN      |
+| keyword_lookup       | 20    | 26    | 0.8x  | 23.8  | 36.2  | WIN      |
+| protocol_dispatch    | 15    | 27    | 0.6x  | 23.9  | 36.4  | WIN      |
+| nqueens              | 26    | 30    | 0.9x  | 26.1  | 37.1  | WIN      |
+| atom_swap            | 15    | 19    | 0.8x  | 23.8  | 31.9  | WIN      |
+| gc_stress            | 329   | 42    | 7.8x  | 26.0  | 77.0  | LOSE spd |
+| nested_update        | 141   | 22    | 6.4x  | 27.7  | 37.0  | LOSE spd |
+| string_ops           | 419   | 28    | 15.0x | 31.2  | 41.5  | LOSE spd |
+| list_build           | 174   | 21    | 8.3x  | 34.1  | 32.2  | LOSE     |
+| vector_ops           | 186   | 22    | 8.5x  | 34.2  | 34.6  | LOSE     |
+| real_workload        | 511   | 23    | 22.2x | 45.2  | 41.6  | LOSE     |
+| map_filter_reduce    | 1293  | 22    | 58.8x | 15367 | 37.7  | LOSE     |
+| sieve                | 1675  | 22    | 76.1x | 2998  | 36.2  | LOSE     |
+| multimethod_dispatch | 2094  | 22    | 95.2x | 83.1  | 33.5  | LOSE     |
+| transduce            | 3348  | 20    | 167x  | 30657 | 32.3  | LOSE     |
+| lazy_chain           | 6655  | 23    | 289x  | 30692 | 37.6  | LOSE     |
 
 **Score**: 9 WIN / 11 LOSE. Target: 20 WIN / 0 LOSE.

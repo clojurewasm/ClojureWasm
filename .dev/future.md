@@ -18,13 +18,13 @@
 
 ### Key metrics
 
-| Metric             | Value                     |
-| ------------------ | ------------------------- |
-| Vars implemented   | 526 / 704 (74.7%)         |
-| Phases completed   | A-D, 20-25, 22b, 22c, 24.5 |
-| GC                 | MarkSweepGc (D69, D70)    |
-| Benchmark suite    | 20 benchmarks, beats bb   |
-| Backends           | VM (bytecode) + TreeWalk  |
+| Metric           | Value                      |
+|------------------|----------------------------|
+| Vars implemented | 526 / 704 (74.7%)          |
+| Phases completed | A-D, 20-25, 22b, 22c, 24.5 |
+| GC               | MarkSweepGc (D69, D70)     |
+| Benchmark suite  | 20 benchmarks, beats bb    |
+| Backends         | VM (bytecode) + TreeWalk   |
 
 ---
 
@@ -51,7 +51,7 @@ Architecture: fixed fast core + dynamic control layer.
 ### Phase Evolution Summary
 
 | Phase | Boilerplate      | Type Safety  | WIT Required |
-| ----- | ---------------- | ------------ | ------------ |
+|-------|------------------|--------------|--------------|
 | 1     | Manual signature | At call time | No           |
 | 2a    | Load only        | At load time | Yes          |
 | 2b    | ns declaration   | At load time | Yes          |
@@ -167,7 +167,7 @@ Fallback: wit-parser C FFI if implementation cost exceeds estimates
 ### WIT Type Mapping Table
 
 | WIT Type        | Clojure Repr       | Notes                |
-| --------------- | ------------------ | -------------------- |
+|-----------------|--------------------|----------------------|
 | u32/i32         | int                | NaN boxing direct    |
 | f32/f64         | float              | NaN boxing direct    |
 | string          | string             | UTF-8 marshalling    |
@@ -209,17 +209,17 @@ Fallback: wit-parser C FFI if implementation cost exceeds estimates
 
 ```
 +-----------------------------------------------------+
-| Layer 3: Optimization (OptimizationPass)             |
-|   fused reduce, constant folding, inline caching     |
-|   -> Pure transforms, independent of GC/exec         |
+| Layer 3: Optimization (OptimizationPass)            |
+|   fused reduce, constant folding, inline caching    |
+|   -> Pure transforms, independent of GC/exec        |
 +-----------------------------------------------------+
-| Layer 2: Execution (ExecutionEngine)                 |
-|   native VM / wasm_rt VM                             |
-|   -> Delegates safe points to GC layer               |
+| Layer 2: Execution (ExecutionEngine)                |
+|   native VM / wasm_rt VM                            |
+|   -> Delegates safe points to GC layer              |
 +-----------------------------------------------------+
-| Layer 1: Memory (MemoryManager)                      |
-|   GcAllocator / WasmGC bridge                        |
-|   -> Abstracted via allocator interface               |
+| Layer 1: Memory (MemoryManager)                     |
+|   GcAllocator / WasmGC bridge                       |
+|   -> Abstracted via allocator interface             |
 +-----------------------------------------------------+
 ```
 
@@ -269,7 +269,7 @@ const OpCode = enum {
 #### Route-Specific Differences
 
 | Layer        | native                    | wasm_rt                          |
-| ------------ | ------------------------- | -------------------------------- |
+|--------------|---------------------------|----------------------------------|
 | Memory       | Semi-space GC + Arena     | WasmAllocator + runtime GC       |
 | Safe point   | VM yield point, self GC   | alloc threshold, runtime manages |
 | NaN boxing   | Self-impl (f64 bit ops)   | Not used (Wasm i64/f64)          |
@@ -337,24 +337,24 @@ Two tracks that do not fully converge. GC and bytecode diverge.
 
 ### Zig Wasm Support (investigated, updated 26.R.6)
 
-| Feature         | Default (generic) | ClojureWasm Use            | Status          |
-| --------------- | ----------------- | -------------------------- | --------------- |
-| bulk_memory     | Yes               | Fast memcpy/memset         | Available       |
-| multivalue      | Yes               | Multi-return functions     | Available       |
-| reference_types | Yes               | externref for host objects | Zig Issue #10491|
+| Feature         | Default (generic) | ClojureWasm Use            | Status               |
+|-----------------|-------------------|----------------------------|----------------------|
+| bulk_memory     | Yes               | Fast memcpy/memset         | Available            |
+| multivalue      | Yes               | Multi-return functions     | Available            |
+| reference_types | Yes               | externref for host objects | Zig Issue #10491     |
 | tail_call       | No (opt-in)       | Potential optimization     | PoC works, LLVM bugs |
-| simd128         | No (opt-in)       | String/collection speedup  | Deferred        |
+| simd128         | No (opt-in)       | String/collection speedup  | Deferred             |
 
 **Modern Wasm spec assessment** (26.R.6, Wasm 3.0):
 
-| Feature            | Zig Usable? | Decision                                |
-| ------------------ | ----------- | --------------------------------------- |
-| WasmGC             | No (LLVM)   | Permanently deferred — LLVM can't emit  |
-| Tail-call          | Partial     | Defer, enable when Zig/LLVM stable      |
-| SIMD 128           | Yes         | Defer, optimization phase               |
-| Exception Handling | No          | Not needed (Zig error unions work)      |
-| Threads            | Partial     | Single-threaded MVP (WASI unstable)     |
-| WASI P2/CM         | External    | WASI P1 sufficient for MVP              |
+| Feature            | Zig Usable? | Decision                               |
+|--------------------|-------------|----------------------------------------|
+| WasmGC             | No (LLVM)   | Permanently deferred — LLVM can't emit |
+| Tail-call          | Partial     | Defer, enable when Zig/LLVM stable     |
+| SIMD 128           | Yes         | Defer, optimization phase              |
+| Exception Handling | No          | Not needed (Zig error unions work)     |
+| Threads            | Partial     | Single-threaded MVP (WASI unstable)    |
+| WASI P2/CM         | External    | WASI P1 sufficient for MVP             |
 
 **GC implications for wasm_rt** (updated 2026-02-07 per 26.R.3):
 
@@ -405,20 +405,20 @@ the wasm_rt backend selection (26.R.5) determines which is imported.
 
 ### Sharing Feasibility (updated)
 
-| Layer       | Shareability | Status (26.R.1)                        |
-| ----------- | ------------ | -------------------------------------- |
-| Reader      | **Shared**   | Pure parser, no platform deps          |
-| Analyzer    | **Shared**   | No platform deps                       |
-| Bytecode    | **Shared**   | Compiler + opcodes are platform-free   |
-| Value type  | **Shared**   | Same tagged union (wasm_module/fn = void on wasi) |
-| GC          | **Shared**   | MarkSweepGc uses GPA → WasmPageAllocator on wasi |
-| Builtins    | **Shared**   | file_io works (WASI preopened dirs)    |
-| Bootstrap   | Shared+guard | 2-3 comptime branches for backend import |
-| EvalEngine  | Native-only  | --compare mode not needed on wasm_rt   |
-| VM          | **Shared**   | VM struct works on wasm (heap-alloc)   |
-| TreeWalk    | **Shared**   | No platform deps                       |
-| nREPL       | Native-only  | std.net/Thread unavailable on WASI     |
-| Wasm InterOp| Native-only  | Can't run zware inside Wasm            |
+| Layer        | Shareability | Status (26.R.1)                                   |
+|--------------|--------------|---------------------------------------------------|
+| Reader       | **Shared**   | Pure parser, no platform deps                     |
+| Analyzer     | **Shared**   | No platform deps                                  |
+| Bytecode     | **Shared**   | Compiler + opcodes are platform-free              |
+| Value type   | **Shared**   | Same tagged union (wasm_module/fn = void on wasi) |
+| GC           | **Shared**   | MarkSweepGc uses GPA → WasmPageAllocator on wasi  |
+| Builtins     | **Shared**   | file_io works (WASI preopened dirs)               |
+| Bootstrap    | Shared+guard | 2-3 comptime branches for backend import          |
+| EvalEngine   | Native-only  | --compare mode not needed on wasm_rt              |
+| VM           | **Shared**   | VM struct works on wasm (heap-alloc)              |
+| TreeWalk     | **Shared**   | No platform deps                                  |
+| nREPL        | Native-only  | std.net/Thread unavailable on WASI                |
+| Wasm InterOp | Native-only  | Can't run zware inside Wasm                       |
 
 ---
 
@@ -497,7 +497,7 @@ Clojure's specification is the reference implementation itself. Verifying
 ### Compatibility Levels
 
 | Level | Verification                       | Priority | Method         |
-| ----- | ---------------------------------- | -------- | -------------- |
+|-------|------------------------------------|----------|----------------|
 | L0    | Function/macro exists              | Required | vars.yaml      |
 | L1    | Basic I/O matches                  | Required | Test oracle    |
 | L2    | Edge cases / error cases match     | High     | Upstream port  |
@@ -510,7 +510,7 @@ Clojure's specification is the reference implementation itself. Verifying
 ### Dual Test Strategy (SCI + Clojure Upstream)
 
 | Source         | Characteristics                 | Conversion Method                      |
-| -------------- | ------------------------------- | -------------------------------------- |
+|----------------|---------------------------------|----------------------------------------|
 | SCI            | Low Java contamination, ~4K LOC | Tier 1 auto-convert (eval\* -> direct) |
 | Clojure native | Heavy Java InterOp, ~14.3K LOC  | Read test intent, hand-port sans Java  |
 
@@ -538,7 +538,7 @@ tests:
 ClojureWasm adopts upstream Clojure metadata conventions from the start:
 
 | Key         | Example             | Status      |
-| ----------- | ------------------- | ----------- |
+|-------------|---------------------|-------------|
 | `:doc`      | "Returns a lazy..." | Implemented |
 | `:arglists` | '([f coll])         | Implemented |
 | `:added`    | "1.0"               | Implemented |
@@ -551,7 +551,7 @@ ClojureWasm adopts upstream Clojure metadata conventions from the start:
 ClojureWasm-specific:
 
 | Key         | Example | Purpose                   |
-| ----------- | ------- | ------------------------- |
+|-------------|---------|---------------------------|
 | `:since-cw` | "0.1.0" | ClojureWasm version added |
 
 **VarKind removed** (D31): The 7-value VarKind enum was only used in tests.
@@ -578,7 +578,7 @@ Current status values: `todo | wip | partial | done | skip`
 **Proposed refinement** (implement during Phase 12 planning):
 
 | Status  | Meaning                                    | Use Case                          |
-| ------- | ------------------------------------------ | --------------------------------- |
+|---------|--------------------------------------------|-----------------------------------|
 | todo    | Not implemented                            | Default                           |
 | done    | Fully implemented                          | Has tests                         |
 | partial | Basic behavior works, some cases missing   | e.g. reduce without fused         |
@@ -703,7 +703,7 @@ literals) can cause OOM or stack overflow. With nREPL publicly accessible
 (implemented in Phase 7c), this is a security-relevant concern.
 
 | Limit                    | Default | Config Flag           |
-| ------------------------ | ------- | --------------------- |
+|--------------------------|---------|-----------------------|
 | Nesting depth limit      | 1024    | `--max-depth`         |
 | String literal size      | 1MB     | `--max-string-size`   |
 | Collection literal count | 100,000 | `--max-literal-count` |
@@ -732,7 +732,7 @@ Three-tier extension architecture:
 ### 15.1 Extension Tiers
 
 | Tier        | Target Track   | Safety | Portability | Use Case             |
-| ----------- | -------------- | ------ | ----------- | -------------------- |
+|-------------|----------------|--------|-------------|----------------------|
 | Wasm module | native+wasm_rt | High   | High        | Portable plugins     |
 | Zig plugin  | native only    | Medium | Low         | High-perf native ext |
 | C ABI       | native only    | Low    | Medium      | Existing C lib integ |
@@ -793,7 +793,7 @@ const result = try vm.run("(+ 1 2 3)");
 ### 15.6 Extension Comparison
 
 | Criterion   | Wasm Module    | Zig Build-time  | Zig Dynamic | C ABI       |
-| ----------- | -------------- | --------------- | ----------- | ----------- |
+|-------------|----------------|-----------------|-------------|-------------|
 | Portability | High           | Medium          | Low         | Low         |
 | Performance | Medium         | Highest         | High        | High        |
 | Safety      | High (sandbox) | High (comptime) | Medium      | Low         |
@@ -837,7 +837,7 @@ Releases via tags from main. SemVer for breaking changes.
 ### 16.4 Release Strategy
 
 | Phase         | Version        | Meaning                 |
-| ------------- | -------------- | ----------------------- |
+|---------------|----------------|-------------------------|
 | Early dev     | v0.1.0-alpha.N | API unstable            |
 | Feature-round | v0.1.0-beta.N  | Stabilizing, feedback   |
 | RC            | v0.1.0-rc.N    | Bug fixes only          |
@@ -850,7 +850,7 @@ Releases via tags from main. SemVer for breaking changes.
 ### 17.1 Adopted from Reference Projects
 
 | Source        | Adopted                       | Not adopted (reason)             |
-| ------------- | ----------------------------- | -------------------------------- |
+|---------------|-------------------------------|----------------------------------|
 | jank          | `third-party/` vendoring      | src/include split (Zig unneeded) |
 | Babashka      | `docs/adr/` (ADR)             | feature-\* submodules (monorepo) |
 | SCI           | `api/` and `impl/` separation | --                               |
@@ -907,7 +907,7 @@ clojurewasm/
 ### 18.1 Four-Layer Structure
 
 | Layer           | Audience     | Content                    | Format    |
-| --------------- | ------------ | -------------------------- | --------- |
+|-----------------|--------------|----------------------------|-----------|
 | Getting Started | New users    | Install, Hello World, REPL | README.md |
 | Language Ref    | Clojure devs | Compat tables, differences | docs/     |
 | Developer Guide | Contributors | Build, test, PR guide      | docs/dev/ |
@@ -935,7 +935,7 @@ GitHub Pages dashboard.
 ### Completed Phases (1-10)
 
 | Phase     | Scope                      | Tasks | Status   |
-| --------- | -------------------------- | ----- | -------- |
+|-----------|----------------------------|-------|----------|
 | 1 (a-c)   | Value + Reader + Analyzer  | 12    | Complete |
 | 2 (a-b)   | Runtime + Compiler + VM    | 10    | Complete |
 | 3 (a-c)   | Builtins + core.clj + CLI  | 17    | Complete |
@@ -959,7 +959,7 @@ Metadata System + Core Library IV. 6 tasks planned.
 Remaining 488 unimplemented vars fall into 4 tiers:
 
 | Tier | Description              | Count    | Impl Language |
-| ---- | ------------------------ | -------- | ------------- |
+|------|--------------------------|----------|---------------|
 | 1    | Zig-required runtime fns | ~30-40   | Zig           |
 | 2    | Pure Clojure combinators | ~100-150 | core.clj      |
 | 3    | JVM-specific (skip/stub) | ~150-200 | N/A           |
@@ -1033,7 +1033,7 @@ stay stable, fine enough for programmatic handling (`catch SyntaxError`).
 Key decisions recorded in `.dev/decisions.md`:
 
 | ID  | Topic                           | Section |
-| --- | ------------------------------- | ------- |
+|-----|---------------------------------|---------|
 | D1  | Tagged union first, NaN later   | SS3,SS5 |
 | D2  | Arena stub GC                   | SS5     |
 | D3  | Instantiated VM, no threadlocal | SS15    |
@@ -1058,7 +1058,7 @@ Key decisions recorded in `.dev/decisions.md`:
 See `.dev/checklist.md` for the canonical list. Key items:
 
 | ID  | Item                      | Trigger                    |
-| --- | ------------------------- | -------------------------- |
+|-----|---------------------------|----------------------------|
 | F1  | NaN boxing                | fib(30) < 500ms target     |
 | F2  | Real GC                   | Long-running REPL / memory |
 | F3  | Ratio type                | SCI float precision fail   |

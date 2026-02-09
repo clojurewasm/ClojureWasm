@@ -32,12 +32,12 @@ These serve dual purpose: native performance comparison AND .wasm source for was
 TinyGo-compiled .wasm files in `bench/wasm/`. These are realistic wasm modules
 (with TinyGo runtime overhead: scheduler, allocator, WASI imports).
 
-| Benchmark      | .wasm source     | Parameters            | Expected |
-|----------------|------------------|-----------------------|----------|
-| wasm_fib       | fib.wasm         | fib(20) x 10000       | 6765     |
-| wasm_sieve     | sieve.wasm       | sieve(65536) x 100    | 6542     |
-| wasm_tak       | tak.wasm         | tak(18,12,6) x 10000  | 7        |
-| wasm_arith     | arith.wasm       | loop 10M iterations   | 10000000 |
+| Benchmark  | .wasm source | Parameters           | Expected |
+|------------|--------------|----------------------|----------|
+| wasm_fib   | fib.wasm     | fib(20) x 10000      | 6765     |
+| wasm_sieve | sieve.wasm   | sieve(65536) x 100   | 6542     |
+| wasm_tak   | tak.wasm     | tak(18,12,6) x 10000 | 7        |
+| wasm_arith | arith.wasm   | loop 10M iterations  | 10000000 |
 
 Each wasm benchmark is measured three ways:
 1. **cw** — ClojureWasm wasm/load + wasm/fn + loop
@@ -54,14 +54,14 @@ Uses hyperfine. Outputs comparison table + YAML.
 After all Phase 45 optimizations: predecoded IR + superinstructions + cached memory.
 All modules built with `-scheduler=none`. Measured via `wasm_bench.sh`, startup subtracted.
 
-| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio  | vs 45.1b |
-|------------------------|-------------|-------------------|--------|----------|
-| fib(20)x10K            | 4387        | 225               | 19.5x  | 2.30x    |
-| tak(18,12,6)x10K       | 14295       | 1217              | 11.8x  | 1.91x    |
-| arith(1M)x10           | 0.1         | 0.1               | 1.0x   | —        |
-| sieve(64K)x100         | 198         | 6.6               | 30.1x  | 3.03x    |
-| fib_loop(25)x1M        | 176         | 2.7               | 65.1x  | 2.28x    |
-| gcd(1M,700K)x1M        | 311         | 44.3              | 7.0x   | 2.04x    |
+| Benchmark        | CW warm (ms) | wasmtime warm (ms) | Ratio | vs 45.1b |
+|------------------|--------------|--------------------|-------|----------|
+| fib(20)x10K      | 4387         | 225                | 19.5x | 2.30x    |
+| tak(18,12,6)x10K | 14295        | 1217               | 11.8x | 1.91x    |
+| arith(1M)x10     | 0.1          | 0.1                | 1.0x  | —        |
+| sieve(64K)x100   | 198          | 6.6                | 30.1x | 3.03x    |
+| fib_loop(25)x1M  | 176          | 2.7                | 65.1x | 2.28x    |
+| gcd(1M,700K)x1M  | 311          | 44.3               | 7.0x  | 2.04x    |
 
 Phase 45 cumulative improvements (vs 45.1b baseline):
 - **fib 2.30x** (10070→4387ms): predecoded IR 1.77x + superinstructions 1.30x

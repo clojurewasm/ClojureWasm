@@ -7,12 +7,12 @@ Audit date: 2026-02-08. Source: automated code equivalence audit of all 25 bench
 
 ### 09_sieve — Different algorithms
 
-| Language | Algorithm                        | Complexity     |
-|----------|----------------------------------|----------------|
-| Clojure  | Functional filter-based sieve    | ~O(n^2)        |
-| C        | Standard Sieve of Eratosthenes   | O(n log log n) |
-| Python   | Standard Sieve of Eratosthenes   | O(n log log n) |
-| Ruby     | Standard Sieve of Eratosthenes   | O(n log log n) |
+| Language | Algorithm                      | Complexity     |
+|----------|--------------------------------|----------------|
+| Clojure  | Functional filter-based sieve  | ~O(n^2)        |
+| C        | Standard Sieve of Eratosthenes | O(n log log n) |
+| Python   | Standard Sieve of Eratosthenes | O(n log log n) |
+| Ruby     | Standard Sieve of Eratosthenes | O(n log log n) |
 
 **Fix options**:
 - A) Change C/Python/Ruby to functional filter-based sieve (match Clojure)
@@ -23,14 +23,14 @@ Audit date: 2026-02-08. Source: automated code equivalence audit of all 25 bench
 
 ### 07_map_ops — C uses plain array, not hash map
 
-| Language | Data structure               |
-|----------|------------------------------|
-| Clojure  | Persistent hash map (HAMT)   |
-| Zig      | AutoHashMap                  |
-| Java     | HashMap                      |
-| C        | `calloc` plain array         |
-| Python   | dict                         |
-| Ruby     | Hash                         |
+| Language | Data structure             |
+|----------|----------------------------|
+| Clojure  | Persistent hash map (HAMT) |
+| Zig      | AutoHashMap                |
+| Java     | HashMap                    |
+| C        | `calloc` plain array       |
+| Python   | dict                       |
+| Ruby     | Hash                       |
 
 C does array[i] access instead of hash lookup — orders of magnitude less work.
 
@@ -40,12 +40,12 @@ C does array[i] access instead of hash lookup — orders of magnitude less work.
 
 ### 15_keyword_lookup — struct field vs hash lookup
 
-| Language | Operation                        |
-|----------|----------------------------------|
-| Clojure  | Hash map keyword lookup          |
-| C/Zig    | Struct member access (offset)    |
-| Java     | HashMap.get("score")             |
-| Python   | dict["score"]                    |
+| Language | Operation                     |
+|----------|-------------------------------|
+| Clojure  | Hash map keyword lookup       |
+| C/Zig    | Struct member access (offset) |
+| Java     | HashMap.get("score")          |
+| Python   | dict["score"]                 |
 
 C/Zig struct access is pointer+offset, not hash computation.
 
@@ -53,12 +53,12 @@ C/Zig struct access is pointer+offset, not hash computation.
 
 ### 12_gc_stress — allocation asymmetry
 
-| Language | Allocation                           |
-|----------|--------------------------------------|
-| Clojure  | Keyword hash map (3 entries + intern)|
-| C        | malloc simple 3-field struct         |
-| Zig      | GPA create Node struct               |
-| Java     | HashMap with 3 String entries        |
+| Language | Allocation                            |
+|----------|---------------------------------------|
+| Clojure  | Keyword hash map (3 entries + intern) |
+| C        | malloc simple 3-field struct          |
+| Zig      | GPA create Node struct                |
+| Java     | HashMap with 3 String entries         |
 
 Clojure does keyword interning + hash computation per map; C does a single malloc.
 
@@ -66,10 +66,10 @@ Clojure does keyword interning + hash computation per map; C does a single mallo
 
 ### 17_nested_update — persistent vs mutable
 
-| Language | Operation                            |
-|----------|--------------------------------------|
-| Clojure  | `update-in` (n persistent map copies)|
-| C        | `m.a.b.c++` (in-place mutation)      |
+| Language | Operation                             |
+|----------|---------------------------------------|
+| Clojure  | `update-in` (n persistent map copies) |
+| C        | `m.a.b.c++` (in-place mutation)       |
 
 Clojure allocates new maps each iteration; C modifies a single struct.
 

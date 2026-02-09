@@ -46,26 +46,26 @@ Both items deferred until there's a stronger trigger (embedding mode, multi-thre
 Split 6 files over 2000 lines. Strategy: extract logical units, keep
 the existing file as the "main" module that re-exports from sub-modules.
 
-| Task   | File (lines)             | Split strategy                              |
-| ------ | ------------------------ | ------------------------------------------- |
-| 29.1a  | builtin/collections.zig (3737L) | Extract transient ops → transient.zig  |
-| 29.1b  | bootstrap.zig (3381L)    | Extract hot_core_defs + callFnVal → bootstrap_hot.zig |
-| 29.1c  | analyzer/analyzer.zig (2804L) | Extract special forms → special_forms.zig |
-| 29.1d  | eval_engine.zig (2415L)  | Extract tests → eval_engine_test.zig        |
-| 29.1e  | native/vm/vm.zig (2342L) | Extract performCall → vm_dispatch.zig       |
-| 29.1f  | value.zig (2163L)        | Extract formatPrStr → value_format.zig      |
+| Task  | File (lines)                    | Split strategy                                        |
+|-------|---------------------------------|-------------------------------------------------------|
+| 29.1a | builtin/collections.zig (3737L) | Extract transient ops → transient.zig                 |
+| 29.1b | bootstrap.zig (3381L)           | Extract hot_core_defs + callFnVal → bootstrap_hot.zig |
+| 29.1c | analyzer/analyzer.zig (2804L)   | Extract special forms → special_forms.zig             |
+| 29.1d | eval_engine.zig (2415L)         | Extract tests → eval_engine_test.zig                  |
+| 29.1e | native/vm/vm.zig (2342L)        | Extract performCall → vm_dispatch.zig                 |
+| 29.1f | value.zig (2163L)               | Extract formatPrStr → value_format.zig                |
 
 ### Phase 29.2: D3 Violation Resolution
 
 Move runtime state from module-level vars into structs. Priority:
 items that affect embedding/multi-instance scenarios.
 
-| Task   | State                    | Resolution                                  |
-| ------ | ------------------------ | ------------------------------------------- |
-| 29.2a  | io.zig capture_*         | Move into RuntimeContext                    |
-| 29.2b  | ns_ops.zig load_paths/*  | Move into Env                               |
-| 29.2c  | numeric.zig prng         | Move into Env or pass explicitly            |
-| 29.2d  | misc.zig gensym_counter  | Move into Env                               |
+| Task  | State                   | Resolution                       |
+|-------|-------------------------|----------------------------------|
+| 29.2a | io.zig capture_*        | Move into RuntimeContext         |
+| 29.2b | ns_ops.zig load_paths/* | Move into Env                    |
+| 29.2c | numeric.zig prng        | Move into Env or pass explicitly |
+| 29.2d | misc.zig gensym_counter | Move into Env                    |
 
 ## File Split Details
 

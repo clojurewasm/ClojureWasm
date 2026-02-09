@@ -12,12 +12,12 @@ error quality, project model, editor integration, var coverage.
 Current state: error.zig has Kind/Phase/SourceLocation, but no call stack
 tracking, no source context display, no structured ex-data.
 
-| Task  | Description                                              |
-|-------|----------------------------------------------------------|
-| 30.1a | Call stack tracking — capture fn name + location per frame |
+| Task  | Description                                                 |
+|-------|-------------------------------------------------------------|
+| 30.1a | Call stack tracking — capture fn name + location per frame  |
 | 30.1b | Source context display — show 3 lines around error location |
-| 30.1c | Throwable->map + ex-data — structured error data for nREPL |
-| 30.1d | REPL error formatting — Babashka-style colored output     |
+| 30.1c | Throwable->map + ex-data — structured error data for nREPL  |
+| 30.1d | REPL error formatting — Babashka-style colored output       |
 
 **Design: Call stack tracking (30.1a)**
 
@@ -71,11 +71,11 @@ Wrong number of args (3) passed to user/bar, expected 2
 
 Current: 14 ops implemented. CIDER needs stacktrace + info extension.
 
-| Task  | Description                                              |
-|-------|----------------------------------------------------------|
-| 30.2a | stacktrace op — return call stack on error (needs 30.1)  |
-| 30.2b | info extension — add :file, :line, :column to var info   |
-| 30.2c | Test with CIDER — end-to-end CIDER connection test       |
+| Task  | Description                                             |
+|-------|---------------------------------------------------------|
+| 30.2a | stacktrace op — return call stack on error (needs 30.1) |
+| 30.2b | info extension — add :file, :line, :column to var info  |
+| 30.2c | Test with CIDER — end-to-end CIDER connection test      |
 
 **stacktrace op format** (CIDER protocol):
 
@@ -96,11 +96,11 @@ Var metadata during `def`/`defn` analysis.
 
 Enable multi-file projects without build tool setup.
 
-| Task  | Description                                              |
-|-------|----------------------------------------------------------|
-| 30.3a | require file resolution — require ns -> find .clj file   |
+| Task  | Description                                                  |
+|-------|--------------------------------------------------------------|
+| 30.3a | require file resolution — require ns -> find .clj file       |
 | 30.3b | src/ path auto-detect — walk up from entry file to find src/ |
-| 30.3c | cljw.edn support — {:paths ["src"] :main my-app.core}   |
+| 30.3c | cljw.edn support — {:paths ["src"] :main my-app.core}        |
 
 **Design: require file resolution (30.3a)**
 
@@ -135,13 +135,13 @@ Research summary (from vars.yaml analysis):
 - 72 truly JVM-only (class system, arrays, STM, agents) — keep skip
 - 106 potentially recoverable — prioritize by user impact
 
-| Task  | Description                                              |
-|-------|----------------------------------------------------------|
-| 30.4a | letfn implementation — mutual recursion support          |
-| 30.4b | with-open macro — resource cleanup (try/finally)         |
-| 30.4c | tagged-literal + reader-conditional — EDN portability    |
-| 30.4d | with-local-vars + with-in-str — macro completeness       |
-| 30.4e | Remaining type predicates — bytes?, uri?, uuid?          |
+| Task  | Description                                           |
+|-------|-------------------------------------------------------|
+| 30.4a | letfn implementation — mutual recursion support       |
+| 30.4b | with-open macro — resource cleanup (try/finally)      |
+| 30.4c | tagged-literal + reader-conditional — EDN portability |
+| 30.4d | with-local-vars + with-in-str — macro completeness    |
+| 30.4e | Remaining type predicates — bytes?, uri?, uuid?       |
 
 **Priority rationale**: letfn and with-open are used in real Clojure code.
 tagged-literal/reader-conditional enable portable .cljc files.
@@ -152,14 +152,14 @@ Agent/future/pmap are Phase 31+ (need multi-threading, deferred to F6).
 Implement clojure.repl for interactive development support.
 These are NOT core vars (not in vars.yaml) but essential for REPL UX.
 
-| Task  | Description                                               |
-|-------|-----------------------------------------------------------|
-| 30.5a | doc macro — print var docstring + arglists                |
-| 30.5b | dir — list public vars in namespace                       |
-| 30.5c | apropos — search for vars matching pattern                |
-| 30.5d | find-doc — search docstrings for pattern match            |
-| 30.5e | source — print source code of a function (best-effort)    |
-| 30.5f | pst — print last stack trace                              |
+| Task  | Description                                            |
+|-------|--------------------------------------------------------|
+| 30.5a | doc macro — print var docstring + arglists             |
+| 30.5b | dir — list public vars in namespace                    |
+| 30.5c | apropos — search for vars matching pattern             |
+| 30.5d | find-doc — search docstrings for pattern match         |
+| 30.5e | source — print source code of a function (best-effort) |
+| 30.5f | pst — print last stack trace                           |
 
 **Implementation approach**: New bootstrap file `src/clj/clojure/repl.clj`,
 loaded via `bootstrap.loadRepl()`. Pure Clojure implementations using

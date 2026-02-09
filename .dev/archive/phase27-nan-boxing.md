@@ -37,14 +37,14 @@ Quiet NaN: exponent=0x7FF, mantissa MSB=1. This leaves 51 bits for payload.
 
 Top 16 bits of u64 encode the type:
 
-| Tag bits  | Type        | Payload (lower 48 bits)           |
-|-----------|-------------|-----------------------------------|
-| < 0xFFF9  | float       | Raw f64 bits (pass-through)       |
-| 0xFFF9    | integer     | i48 signed (±140 trillion)        |
-| 0xFFFA    | heap ptr    | HeapTag[47:40] + address[39:0]    |
-| 0xFFFB    | constant    | 0=nil, 1=true, 2=false            |
-| 0xFFFC    | char        | u21 codepoint                     |
-| 0xFFFD    | builtin_fn  | 48-bit function pointer           |
+| Tag bits | Type       | Payload (lower 48 bits)        |
+|----------|------------|--------------------------------|
+| < 0xFFF9 | float      | Raw f64 bits (pass-through)    |
+| 0xFFF9   | integer    | i48 signed (±140 trillion)     |
+| 0xFFFA   | heap ptr   | HeapTag[47:40] + address[39:0] |
+| 0xFFFB   | constant   | 0=nil, 1=true, 2=false         |
+| 0xFFFC   | char       | u21 codepoint                  |
+| 0xFFFD   | builtin_fn | 48-bit function pointer        |
 
 HeapTag (8 bits, 256 slots) encodes the specific heap type:
 string, symbol, keyword, list, vector, map, hash_map, set,
@@ -55,12 +55,12 @@ chunked_cons, chunk_buffer, array_chunk, wasm_module, wasm_fn.
 
 ## Impact
 
-| Metric              | Before (48B) | After (8B) | Improvement |
-|---------------------|--------------|------------|-------------|
-| Value size          | 48 bytes     | 8 bytes    | 6x smaller  |
-| VM stack (32K)      | 1.5 MB       | 256 KB     | 6x smaller  |
-| Vector element      | 48 bytes     | 8 bytes    | 6x smaller  |
-| Cache line (64B)    | 1.3 values   | 8 values   | 6x denser   |
+| Metric           | Before (48B) | After (8B) | Improvement |
+|------------------|--------------|------------|-------------|
+| Value size       | 48 bytes     | 8 bytes    | 6x smaller  |
+| VM stack (32K)   | 1.5 MB       | 256 KB     | 6x smaller  |
+| Vector element   | 48 bytes     | 8 bytes    | 6x smaller  |
+| Cache line (64B) | 1.3 values   | 8 values   | 6x denser   |
 
 ## Sub-phases
 
@@ -152,17 +152,17 @@ Migrate ALL Value access outside value.zig to use API methods.
 
 **Migration patterns**:
 
-| Before                          | After                                    |
-|---------------------------------|------------------------------------------|
-| `Value{ .integer = 42 }`       | `Value.initInteger(42)`                  |
-| `.{ .integer = 42 }`           | `Value.initInteger(42)`                  |
-| `.nil`                          | `Value.nil`                              |
-| `.{ .boolean = true }`         | `Value.true_val`                         |
+| Before                         | After                                                       |
+|--------------------------------|-------------------------------------------------------------|
+| `Value{ .integer = 42 }`       | `Value.initInteger(42)`                                     |
+| `.{ .integer = 42 }`           | `Value.initInteger(42)`                                     |
+| `.nil`                         | `Value.nil`                                                 |
+| `.{ .boolean = true }`         | `Value.true_val`                                            |
 | `switch (v) { .int => \|i\| }` | `switch (v.tag()) { .int => { const i = v.asInteger(); } }` |
-| `v == .nil`                     | `v == Value.nil`                         |
-| `v != .nil`                     | `v != Value.nil`                         |
-| `v.integer`                     | `v.asInteger()`                          |
-| `v.string`                      | `v.asString()`                           |
+| `v == .nil`                    | `v == Value.nil`                                            |
+| `v != .nil`                    | `v != Value.nil`                                            |
+| `v.integer`                    | `v.asInteger()`                                             |
+| `v.string`                     | `v.asString()`                                              |
 
 **File migration order** (4 groups, roughly by complexity):
 

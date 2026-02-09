@@ -6,24 +6,24 @@ Date: 2026-02-08
 CPU: Apple M4 Pro
 ClojureWasm: switch-based interpreter with SIMD Phase 36 (all 236 opcodes)
 
-| Benchmark    | Native(ms) | Wasmtime(ms) | CW-scalar(ms) | CW-SIMD(ms) | Scalar/N | SIMD/N | Speedup |
-|--------------|------------|--------------|----------------|-------------|----------|--------|---------|
-| mandelbrot   | 10.53      | 19.06        | 712.85         | 705.40      | 67.7x    | 67.0x  | 1.01x   |
-| vector_add   | 13.59      | 22.85        | 4438.60        | 1723.26     | 326.6x   | 126.8x | 2.58x   |
-| dot_product  | 88.70      | 101.12       | 3535.42        | 3503.87     | 39.9x    | 39.5x  | 1.01x   |
-| matrix_mul   | 39.77      | 51.95        | 530.15         | 537.21      | 13.3x    | 13.5x  | 0.99x   |
+| Benchmark   | Native(ms) | Wasmtime(ms) | CW-scalar(ms) | CW-SIMD(ms) | Scalar/N | SIMD/N | Speedup |
+|-------------|------------|--------------|---------------|-------------|----------|--------|---------|
+| mandelbrot  | 10.53      | 19.06        | 712.85        | 705.40      | 67.7x    | 67.0x  | 1.01x   |
+| vector_add  | 13.59      | 22.85        | 4438.60       | 1723.26     | 326.6x   | 126.8x | 2.58x   |
+| dot_product | 88.70      | 101.12       | 3535.42       | 3503.87     | 39.9x    | 39.5x  | 1.01x   |
+| matrix_mul  | 39.77      | 51.95        | 530.15        | 537.21      | 13.3x    | 13.5x  | 0.99x   |
 
 ## Phase 35.5 Baseline (pre-SIMD, scalar wasm only)
 
 Date: 2026-02-08
 CPU: Apple M4 Pro
 
-| Benchmark    | Native(ms) | Wasmtime(ms) | CljWasm(ms) | WT/Native | CW/Native |
-|--------------|------------|--------------|-------------|-----------|-----------|
-| mandelbrot   | 9.98       | 18.28        | 735.75      | 1.8x      | 73.7x     |
-| vector_add   | 15.59      | 51.04        | 4511.14     | 3.3x      | 289.4x    |
-| dot_product  | 54.97      | 69.15        | 3525.11     | 1.3x      | 64.1x     |
-| matrix_mul   | 39.47      | 52.17        | 531.27      | 1.3x      | 13.5x     |
+| Benchmark   | Native(ms) | Wasmtime(ms) | CljWasm(ms) | WT/Native | CW/Native |
+|-------------|------------|--------------|-------------|-----------|-----------|
+| mandelbrot  | 9.98       | 18.28        | 735.75      | 1.8x      | 73.7x     |
+| vector_add  | 15.59      | 51.04        | 4511.14     | 3.3x      | 289.4x    |
+| dot_product | 54.97      | 69.15        | 3525.11     | 1.3x      | 64.1x     |
+| matrix_mul  | 39.47      | 52.17        | 531.27      | 1.3x      | 13.5x     |
 
 ## Analysis
 

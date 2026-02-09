@@ -4,17 +4,17 @@ Session-spanning tracking document. Read at session start if cleanup incomplete.
 
 ## Status
 
-| # | Task                              | Status  | Notes                         |
-|---|-----------------------------------|---------|-------------------------------|
-| 1 | Benchmark code validity audit     | DONE    | Scripts + CW + multi-lang     |
-| 2 | Benchmark execution verification  | DONE    | Fixed hyperfine redirection   |
-| 3 | roadmap.md review/fix             | DONE    | 721→159 lines, all phases updated |
-| 4 | decisions.md review/prune         | DONE    | 86→25 entries (2126→349 lines) |
-| 5 | checklist.md review/prune         | DONE    | Removed F21, F24, F98         |
-| 6 | Merge optimization files          | DONE    | 1293+154→170 lines, refs updated |
-| 7 | plan/ directory consolidation     | DONE    | notes/+plan/ → flat .dev/     |
-| 8 | Top-level directory cleanup       | DONE    | scripts/examples/docs → .dev/, .gitkeep全削除 |
-| 10| Path reference integrity check    | DONE    | 21 refs fixed across 12 files |
+| #  | Task                             | Status | Notes                                         |
+|----|----------------------------------|--------|-----------------------------------------------|
+| 1  | Benchmark code validity audit    | DONE   | Scripts + CW + multi-lang                     |
+| 2  | Benchmark execution verification | DONE   | Fixed hyperfine redirection                   |
+| 3  | roadmap.md review/fix            | DONE   | 721→159 lines, all phases updated             |
+| 4  | decisions.md review/prune        | DONE   | 86→25 entries (2126→349 lines)                |
+| 5  | checklist.md review/prune        | DONE   | Removed F21, F24, F98                         |
+| 6  | Merge optimization files         | DONE   | 1293+154→170 lines, refs updated              |
+| 7  | plan/ directory consolidation    | DONE   | notes/+plan/ → flat .dev/                     |
+| 8  | Top-level directory cleanup      | DONE   | scripts/examples/docs → .dev/, .gitkeep全削除 |
+| 10 | Path reference integrity check   | DONE   | 21 refs fixed across 12 files                 |
 
 ## Directory Reorganization Plan
 
@@ -40,13 +40,13 @@ README.md          # (keep)
 
 ### Moves/Deletions
 
-| Item          | Action                    | Reason                          |
-|---------------|---------------------------|---------------------------------|
-| check_size.o  | DELETE                    | Empty build artifact, *.o in gitignore |
-| scripts/      | Move to .dev/scripts/     | Tooling, not user-facing        |
-| examples/     | Move to .dev/examples/    | Wasm examples, dev reference    |
-| docs/         | Move to .dev/docs/        | Internal dev docs, not user docs|
-| private/      | KEEP (gitignored)         | User workspace                  |
+| Item         | Action                 | Reason                                 |
+|--------------|------------------------|----------------------------------------|
+| check_size.o | DELETE                 | Empty build artifact, *.o in gitignore |
+| scripts/     | Move to .dev/scripts/  | Tooling, not user-facing               |
+| examples/    | Move to .dev/examples/ | Wasm examples, dev reference           |
+| docs/        | Move to .dev/docs/     | Internal dev docs, not user docs       |
+| private/     | KEEP (gitignored)      | User workspace                         |
 
 ### bench/ reorganization
 

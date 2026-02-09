@@ -15,17 +15,17 @@ appropriate notes. Currently ~269 vars have no note.
 
 **Batches** (1 batch = 1 commit):
 
-| Batch | Target                  | Est. | Method                           |
-|-------|-------------------------|------|----------------------------------|
-| A1    | Special Forms           | 16   | analyzer.zig handlers            |
-| A2    | Arithmetic & Comparison | 20   | arithmetic.zig + numeric.zig     |
-| A3    | Collection Operations   | 80   | sequences.zig + collections.zig  |
-| A4    | String Operations       | 15   | strings.zig + clj_string.zig     |
-| A5    | Predicates              | 30   | predicates.zig                   |
-| A6    | Macros (core.clj)       | 17   | core.clj vs upstream core.clj    |
-| A7    | HOF & Lazy Sequences    | 40   | core.clj + sequences.zig         |
-| A8    | State & Concurrency     | 10   | atom.zig + volatile etc          |
-| A9    | Remaining               | 50   | various builtins                 |
+| Batch | Target                  | Est. | Method                          |
+|-------|-------------------------|------|---------------------------------|
+| A1    | Special Forms           | 16   | analyzer.zig handlers           |
+| A2    | Arithmetic & Comparison | 20   | arithmetic.zig + numeric.zig    |
+| A3    | Collection Operations   | 80   | sequences.zig + collections.zig |
+| A4    | String Operations       | 15   | strings.zig + clj_string.zig    |
+| A5    | Predicates              | 30   | predicates.zig                  |
+| A6    | Macros (core.clj)       | 17   | core.clj vs upstream core.clj   |
+| A7    | HOF & Lazy Sequences    | 40   | core.clj + sequences.zig        |
+| A8    | State & Concurrency     | 10   | atom.zig + volatile etc         |
+| A9    | Remaining               | 50   | various builtins                |
 
 **Per-var procedure**:
 1. Check upstream Clojure source
@@ -61,11 +61,11 @@ Location: test.clj:5:1
 to threadlocal — same pattern as Beta. This eliminates error info loss
 when errors propagate across scope boundaries.
 
-| Task | Description                           | Files             | Sites | Est. commits |
-|------|---------------------------------------|-------------------|-------|-------------|
-| BE1  | Threadlocal infrastructure + display  | error.zig, main.zig, bootstrap.zig, analyzer.zig, reader.zig, env.zig, nrepl.zig, eval.zig | ~30 | 2-3 |
-| BE2  | Builtin error messages                | 17 builtin/*.zig  | ~314  | 4-5          |
-| BE3  | Runtime source location propagation   | vm.zig, tree_walk.zig | ~27 | 2-3        |
+| Task | Description                          | Files                                                                                      | Sites | Est. commits |
+|------|--------------------------------------|--------------------------------------------------------------------------------------------|-------|--------------|
+| BE1  | Threadlocal infrastructure + display | error.zig, main.zig, bootstrap.zig, analyzer.zig, reader.zig, env.zig, nrepl.zig, eval.zig | ~30   | 2-3          |
+| BE2  | Builtin error messages               | 17 builtin/*.zig                                                                           | ~314  | 4-5          |
+| BE3  | Runtime source location propagation  | vm.zig, tree_walk.zig                                                                      | ~27   | 2-3          |
 
 **BE1: Threadlocal infrastructure + display** (2-3 commits)
 - `error.zig`: Add threadlocal `last_error`, `source_text`, convenience
@@ -121,10 +121,10 @@ CLJW-SKIP → implement → unblock → commit.
 
 ## Reference Files
 
-| File                                    | Purpose                        |
-|-----------------------------------------|--------------------------------|
-| `.dev/memo.md`                          | Session handover               |
-| `.dev/status/audit-progress.yaml`       | Audit progress tracker         |
-| `.claude/rules/test-porting.md`         | Test porting rules (auto-load) |
-| `.claude/references/interop-patterns.md`| Java→CW pattern mapping        |
-| `.dev/checklist.md`                     | Deferred items (F##)           |
+| File                                     | Purpose                        |
+|------------------------------------------|--------------------------------|
+| `.dev/memo.md`                           | Session handover               |
+| `.dev/status/audit-progress.yaml`        | Audit progress tracker         |
+| `.claude/rules/test-porting.md`          | Test porting rules (auto-load) |
+| `.claude/references/interop-patterns.md` | Java→CW pattern mapping        |
+| `.dev/checklist.md`                      | Deferred items (F##)           |

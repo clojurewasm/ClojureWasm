@@ -16,13 +16,13 @@ Benchmark history: `bench/history.yaml`
 
 **Note conventions**:
 
-| Note                            | Meaning                                         |
-| ------------------------------- | ----------------------------------------------- |
-| `"VM intrinsic opcode"`         | Compiled to direct VM opcode for fast execution |
-| `"analyzer special form in CW"` | Macro in upstream, special form in ClojureWasm  |
-| `"builtin (upstream is pure clj)"` | Zig builtin, upstream is pure Clojure       |
-| `"UPSTREAM-DIFF: ..."`          | Simplified implementation, details in note      |
-| `"JVM interop"`                 | JVM-specific, not applicable                    |
+| Note                               | Meaning                                         |
+|------------------------------------|-------------------------------------------------|
+| `"VM intrinsic opcode"`            | Compiled to direct VM opcode for fast execution |
+| `"analyzer special form in CW"`    | Macro in upstream, special form in ClojureWasm  |
+| `"builtin (upstream is pure clj)"` | Zig builtin, upstream is pure Clojure           |
+| `"UPSTREAM-DIFF: ..."`             | Simplified implementation, details in note      |
+| `"JVM interop"`                    | JVM-specific, not applicable                    |
 
 ## yq Query Examples
 

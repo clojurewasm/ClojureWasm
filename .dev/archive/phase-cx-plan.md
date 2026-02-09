@@ -11,18 +11,18 @@ These items are already understood and implementable with current infrastructure
 
 Read these files before starting implementation:
 
-| Reference                              | Purpose                                     |
-|----------------------------------------|---------------------------------------------|
-| `.dev/checklist.md`                    | F## item definitions and triggers           |
-| `.dev/status/vars.yaml`               | Var status tracking (update after each fix) |
-| `.claude/rules/test-porting.md`       | Test change rules (CLJW markers etc.)       |
-| `.claude/references/interop-patterns.md` | Java interop translation patterns        |
-| `.claude/references/impl-tiers.md`    | Implementation tier guide                   |
-| `src/common/analyzer/analyzer.zig`    | Analyzer (F68, F70-74, F81, F87, F89)      |
-| `src/common/value.zig`                | Value types (F91 delay variant)             |
-| `src/common/builtin/predicates.zig`   | Predicate builtins (F86, F91)               |
-| `src/common/builtin/multimethods.zig` | Multimethod builtins (F82, F83)             |
-| `src/clj/clojure/core.clj`           | Core macros/fns (F82, F91, F94)             |
+| Reference                                | Purpose                                     |
+|------------------------------------------|---------------------------------------------|
+| `.dev/checklist.md`                      | F## item definitions and triggers           |
+| `.dev/status/vars.yaml`                  | Var status tracking (update after each fix) |
+| `.claude/rules/test-porting.md`          | Test change rules (CLJW markers etc.)       |
+| `.claude/references/interop-patterns.md` | Java interop translation patterns           |
+| `.claude/references/impl-tiers.md`       | Implementation tier guide                   |
+| `src/common/analyzer/analyzer.zig`       | Analyzer (F68, F70-74, F81, F87, F89)       |
+| `src/common/value.zig`                   | Value types (F91 delay variant)             |
+| `src/common/builtin/predicates.zig`      | Predicate builtins (F86, F91)               |
+| `src/common/builtin/multimethods.zig`    | Multimethod builtins (F82, F83)             |
+| `src/clj/clojure/core.clj`               | Core macros/fns (F82, F91, F94)             |
 
 Beta reference for delay type:
 - `ClojureWasmBeta/src/lib/core/concurrency.zig` (Delay struct, force, realized?)

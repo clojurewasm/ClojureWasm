@@ -16,12 +16,12 @@ Phase 36 deepens the Wasm FFI layer with three goals:
 
 ## Baseline
 
-| Benchmark    | Native(ms) | CljWasm(ms) | CW/Native |
-|--------------|------------|-------------|-----------|
-| mandelbrot   | 9.98       | 735.75      | 73.7x     |
-| vector_add   | 15.59      | 4511.14     | 289.4x    |
-| dot_product  | 54.97      | 3525.11     | 64.1x     |
-| matrix_mul   | 39.47      | 531.27      | 13.5x     |
+| Benchmark   | Native(ms) | CljWasm(ms) | CW/Native |
+|-------------|------------|-------------|-----------|
+| mandelbrot  | 9.98       | 735.75      | 73.7x     |
+| vector_add  | 15.59      | 4511.14     | 289.4x    |
+| dot_product | 54.97      | 3525.11     | 64.1x     |
+| matrix_mul  | 39.47      | 531.27      | 13.5x     |
 
 SIMD target: 4-8x improvement on memory-bound benchmarks (vector_add, dot_product).
 
@@ -270,13 +270,13 @@ Use `@memcpy` + local `@Vector` variable for safe unaligned access.
 
 ## Risk Assessment
 
-| Risk                            | Mitigation                                         |
-|---------------------------------|----------------------------------------------------|
-| Stack widening perf regression  | Benchmark non-SIMD before/after 36.1               |
-| SIMD opcode correctness         | WAT conformance tests per task                     |
-| Cross-compile @Vector issues    | Zig @Vector is portable; test in CI                |
-| Multi-module import cycles      | Detect during instantiation, return error          |
-| Binary size increase            | Comptime strip unused SIMD handlers (if needed)    |
+| Risk                           | Mitigation                                      |
+|--------------------------------|-------------------------------------------------|
+| Stack widening perf regression | Benchmark non-SIMD before/after 36.1            |
+| SIMD opcode correctness        | WAT conformance tests per task                  |
+| Cross-compile @Vector issues   | Zig @Vector is portable; test in CI             |
+| Multi-module import cycles     | Detect during instantiation, return error       |
+| Binary size increase           | Comptime strip unused SIMD handlers (if needed) |
 
 ## Success Criteria
 
@@ -299,5 +299,5 @@ Use `@memcpy` + local `@Vector` variable for safe unaligned access.
 | Benchmark baseline      | `bench/simd/results.md`                         |
 | F118 (scope)            | `.dev/checklist.md`                             |
 | F119 (WIT bug)          | `.dev/checklist.md`                             |
-| Phase 35W plan          | `.dev/archive/phase35-custom-wasm.md`              |
+| Phase 35W plan          | `.dev/archive/phase35-custom-wasm.md`           |
 | Zig @Vector docs        | Zig language reference, @Vector section         |

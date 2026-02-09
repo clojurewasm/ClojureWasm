@@ -202,21 +202,21 @@ pub const HostFn = *const fn (*Vm, usize) WasmError!void;
 
 Binary decoder for Wasm MVP sections:
 
-| Section    | ID | Content                        |
-|------------|---:|--------------------------------|
-| Custom     |  0 | Skip (name section ignored)    |
-| Type       |  1 | Function signatures            |
-| Import     |  2 | Module/name/type imports       |
-| Function   |  3 | Type indices for code section  |
-| Table      |  4 | Table types                    |
-| Memory     |  5 | Memory limits                  |
-| Global     |  6 | Global types + init exprs      |
-| Export     |  7 | Name/type/index exports        |
-| Start      |  8 | Start function index           |
-| Element    |  9 | Table initialization           |
-| Code       | 10 | Function bodies                |
-| Data       | 11 | Memory initialization          |
-| DataCount  | 12 | Data segment count (post-MVP)  |
+| Section   | ID | Content                       |
+|-----------|---:|-------------------------------|
+| Custom    |  0 | Skip (name section ignored)   |
+| Type      |  1 | Function signatures           |
+| Import    |  2 | Module/name/type imports      |
+| Function  |  3 | Type indices for code section |
+| Table     |  4 | Table types                   |
+| Memory    |  5 | Memory limits                 |
+| Global    |  6 | Global types + init exprs     |
+| Export    |  7 | Name/type/index exports       |
+| Start     |  8 | Start function index          |
+| Element   |  9 | Table initialization          |
+| Code      | 10 | Function bodies               |
+| Data      | 11 | Memory initialization         |
+| DataCount | 12 | Data segment count (post-MVP) |
 
 LEB128 throughout. Parse into structured data, keep raw code bytes
 for VM to interpret directly.
@@ -259,27 +259,27 @@ Tests: all existing testdata/*.wasm files must pass.
 
 19 WASI Preview 1 functions (same set as current zware usage):
 
-| Function           | Implementation                              |
-|--------------------|---------------------------------------------|
-| args_get           | Copy from Instance.wasi_args                |
-| args_sizes_get     | Count + total byte size                     |
-| environ_get        | Copy from Instance.wasi_env                 |
-| environ_sizes_get  | Count + total byte size                     |
-| clock_time_get     | std.time.nanoTimestamp()                     |
-| fd_close           | Close tracked fd                            |
-| fd_fdstat_get      | Return fd stat struct                       |
-| fd_filestat_get    | std.fs stat call                            |
-| fd_prestat_get     | Pre-opened directory info                   |
-| fd_prestat_dir_name| Pre-opened directory name                   |
-| fd_read            | std.fs read, scatter (iovec)                |
-| fd_seek            | std.fs seekTo/seekBy                        |
-| fd_write           | std.fs write, gather (ciovec) — stdout/err  |
-| fd_tell            | std.fs getPos                               |
-| fd_readdir         | std.fs.Dir iteration                        |
-| path_filestat_get  | std.fs statFile                             |
-| path_open          | std.fs openFile with WASI rights            |
-| proc_exit          | std.process.exit                            |
-| random_get         | std.crypto.random                           |
+| Function            | Implementation                             |
+|---------------------|--------------------------------------------|
+| args_get            | Copy from Instance.wasi_args               |
+| args_sizes_get      | Count + total byte size                    |
+| environ_get         | Copy from Instance.wasi_env                |
+| environ_sizes_get   | Count + total byte size                    |
+| clock_time_get      | std.time.nanoTimestamp()                   |
+| fd_close            | Close tracked fd                           |
+| fd_fdstat_get       | Return fd stat struct                      |
+| fd_filestat_get     | std.fs stat call                           |
+| fd_prestat_get      | Pre-opened directory info                  |
+| fd_prestat_dir_name | Pre-opened directory name                  |
+| fd_read             | std.fs read, scatter (iovec)               |
+| fd_seek             | std.fs seekTo/seekBy                       |
+| fd_write            | std.fs write, gather (ciovec) — stdout/err |
+| fd_tell             | std.fs getPos                              |
+| fd_readdir          | std.fs.Dir iteration                       |
+| path_filestat_get   | std.fs statFile                            |
+| path_open           | std.fs openFile with WASI rights           |
+| proc_exit           | std.process.exit                           |
+| random_get          | std.crypto.random                          |
 
 ### 35W.8: Integration — update types.zig + build.zig — DONE
 
@@ -301,17 +301,17 @@ Updated memo.md, roadmap.md, checklist.md, phase35-custom-wasm.md.
 
 ## LOC — estimate vs actual
 
-| File          | Estimated | Actual | zware equivalent |
-|---------------|:---------:|:------:|:----------------:|
-| opcode.zig    |    150    |   444  | 207              |
-| leb128.zig    |    100    |   274  | (inline)         |
-| memory.zig    |    200    |   310  | 187              |
-| store.zig     |    250    |   494  | 249              |
-| module.zig    |    800    |   923  | 2390             |
-| instance.zig  |    400    |   460  | 665              |
-| vm.zig        |   1500    |  1328  | 2732             |
-| wasi.zig      |    500    |  1079  | 697              |
-| **Total**     | **~3900** |**5312**| **~7127**        |
+| File         | Estimated |  Actual  | zware equivalent |
+|--------------|:---------:|:--------:|:----------------:|
+| opcode.zig   |    150    |   444    |       207        |
+| leb128.zig   |    100    |   274    |     (inline)     |
+| memory.zig   |    200    |   310    |       187        |
+| store.zig    |    250    |   494    |       249        |
+| module.zig   |    800    |   923    |       2390       |
+| instance.zig |    400    |   460    |       665        |
+| vm.zig       |   1500    |   1328   |       2732       |
+| wasi.zig     |    500    |   1079   |       697        |
+| **Total**    | **~3900** | **5312** |    **~7127**     |
 
 ~75% of zware LOC (estimated ~55%). Higher than expected due to:
 - Comprehensive WASI implementation (+579 LOC over estimate)
@@ -372,29 +372,29 @@ After 35X, deepen Wasm FFI with ClojureWasm-native optimizations:
 
 ## Reference
 
-| Item                        | Location                                         |
-|-----------------------------|--------------------------------------------------|
-| Decision                    | `.dev/decisions.md` D84                          |
-| Cross-platform plan         | `.dev/archive/phase35X-cross-platform.md`        |
-| zware source (reference)    | add-dir: `/Users/shota.508/Documents/OSS/zware/` |
-| Current Wasm types          | `src/wasm/types.zig` (820 LOC)                   |
-| Current Wasm builtins       | `src/wasm/builtins.zig` (504 LOC)                |
-| SIMD benchmark baseline     | `bench/simd/results.md`                          |
-| Wasm benchmarks (21-25)     | `bench/benchmarks/21-25_wasm_*/`                 |
-| Conformance tests           | `src/wasm/testdata/conformance/` (9 WAT+WASM)    |
-| WASI coverage doc           | `.dev/docs/wasi-support.md` (38/45, 84%)         |
-| Wasm spec coverage doc      | `.dev/docs/wasm-spec-support.md`                 |
-| Current Wasm tests          | `src/wasm/testdata/` (12 .wasm files)            |
-| WIT parser (no zware dep)   | `src/wasm/wit_parser.zig` (443 LOC)              |
-| Roadmap                     | `.dev/roadmap.md` Phase 35W/35X/36               |
-| Checklist                   | `.dev/checklist.md` F117, F118                   |
+| Item                      | Location                                         |
+|---------------------------|--------------------------------------------------|
+| Decision                  | `.dev/decisions.md` D84                          |
+| Cross-platform plan       | `.dev/archive/phase35X-cross-platform.md`        |
+| zware source (reference)  | add-dir: `/Users/shota.508/Documents/OSS/zware/` |
+| Current Wasm types        | `src/wasm/types.zig` (820 LOC)                   |
+| Current Wasm builtins     | `src/wasm/builtins.zig` (504 LOC)                |
+| SIMD benchmark baseline   | `bench/simd/results.md`                          |
+| Wasm benchmarks (21-25)   | `bench/benchmarks/21-25_wasm_*/`                 |
+| Conformance tests         | `src/wasm/testdata/conformance/` (9 WAT+WASM)    |
+| WASI coverage doc         | `.dev/docs/wasi-support.md` (38/45, 84%)         |
+| Wasm spec coverage doc    | `.dev/docs/wasm-spec-support.md`                 |
+| Current Wasm tests        | `src/wasm/testdata/` (12 .wasm files)            |
+| WIT parser (no zware dep) | `src/wasm/wit_parser.zig` (443 LOC)              |
+| Roadmap                   | `.dev/roadmap.md` Phase 35W/35X/36               |
+| Checklist                 | `.dev/checklist.md` F117, F118                   |
 
 ## Risk assessment
 
-| Risk                              | Mitigation                                    |
-|-----------------------------------|-----------------------------------------------|
-| Opcode coverage gaps              | Test all 12 existing .wasm files exhaustively |
-| Performance regression            | Benchmark wasm/fn calls before/after          |
-| WASI compatibility issues         | Test with TinyGo + Rust-compiled modules      |
-| Decoder edge cases                | Use existing .wasm test corpus, add fuzz later|
-| Module size (binary bloat)        | Comptime strip of unused opcode handlers      |
+| Risk                       | Mitigation                                     |
+|----------------------------|------------------------------------------------|
+| Opcode coverage gaps       | Test all 12 existing .wasm files exhaustively  |
+| Performance regression     | Benchmark wasm/fn calls before/after           |
+| WASI compatibility issues  | Test with TinyGo + Rust-compiled modules       |
+| Decoder edge cases         | Use existing .wasm test corpus, add fuzz later |
+| Module size (binary bloat) | Comptime strip of unused opcode handlers       |

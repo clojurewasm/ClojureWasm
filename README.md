@@ -80,24 +80,24 @@ info, stacktrace, eldoc, etc.).
 
 ### Namespaces
 
-| Namespace          | Vars  | Description                        |
-|--------------------|-------|------------------------------------|
-| clojure.core       | 593   | Core language functions            |
-| clojure.string     | 21    | String manipulation                |
-| clojure.math       | 45    | Math functions                     |
-| clojure.set        | 12    | Set operations                     |
-| clojure.walk       | 10    | Tree walking                       |
-| clojure.zip        | 28    | Zipper data structure              |
-| clojure.test       | 32    | Test framework                     |
-| clojure.repl       | 11    | doc, dir, apropos, source, pst     |
-| clojure.pprint     | 9     | Pretty printing, print-table       |
-| clojure.data       | 3     | Data diff                          |
-| clojure.edn        | 1     | EDN reader                         |
-| clojure.template   | 2     | Code templates                     |
-| clojure.stacktrace | 6     | Stack trace utilities              |
-| clojure.java.io    | 7     | File I/O (Zig-native)             |
-| clojure.java.shell | 5     | Shell commands (sh)                |
-| cljw.http          | 6     | HTTP server/client                 |
+| Namespace          | Vars | Description                    |
+|--------------------|------|--------------------------------|
+| clojure.core       | 593  | Core language functions        |
+| clojure.string     | 21   | String manipulation            |
+| clojure.math       | 45   | Math functions                 |
+| clojure.set        | 12   | Set operations                 |
+| clojure.walk       | 10   | Tree walking                   |
+| clojure.zip        | 28   | Zipper data structure          |
+| clojure.test       | 32   | Test framework                 |
+| clojure.repl       | 11   | doc, dir, apropos, source, pst |
+| clojure.pprint     | 9    | Pretty printing, print-table   |
+| clojure.data       | 3    | Data diff                      |
+| clojure.edn        | 1    | EDN reader                     |
+| clojure.template   | 2    | Code templates                 |
+| clojure.stacktrace | 6    | Stack trace utilities          |
+| clojure.java.io    | 7    | File I/O (Zig-native)          |
+| clojure.java.shell | 5    | Shell commands (sh)            |
+| cljw.http          | 6    | HTTP server/client             |
 
 ### Wasm FFI
 

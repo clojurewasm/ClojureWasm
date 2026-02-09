@@ -4,11 +4,11 @@
 
 ## Scripts
 
-| Script             | Purpose                           | Measurement      |
-|--------------------|-----------------------------------|-------------------|
-| `run_bench.sh`     | Quick CW-only run                 | hyperfine (3+1)   |
-| `record.sh`        | Record to `history.yaml`          | hyperfine (5+2)   |
-| `compare_langs.sh` | Cross-language comparison         | hyperfine (5+2)   |
+| Script             | Purpose                   | Measurement     |
+|--------------------|---------------------------|-----------------|
+| `run_bench.sh`     | Quick CW-only run         | hyperfine (3+1) |
+| `record.sh`        | Record to `history.yaml`  | hyperfine (5+2) |
+| `compare_langs.sh` | Cross-language comparison | hyperfine (5+2) |
 
 ## Quick Start
 
@@ -32,36 +32,36 @@ bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 
 ## run_bench.sh Options
 
-| Option         | Effect                              |
-|----------------|-------------------------------------|
-| `--bench=NAME` | Single benchmark                    |
-| `--runs=N`     | Hyperfine runs (default: 3)         |
-| `--warmup=N`   | Warmup runs (default: 1)            |
-| `--quick`      | 1 run, no warmup                    |
+| Option         | Effect                      |
+|----------------|-----------------------------|
+| `--bench=NAME` | Single benchmark            |
+| `--runs=N`     | Hyperfine runs (default: 3) |
+| `--warmup=N`   | Warmup runs (default: 1)    |
+| `--quick`      | 1 run, no warmup            |
 
 ## record.sh Options
 
-| Option         | Effect                              |
-|----------------|-------------------------------------|
-| `--id=ID`      | Entry identifier (required)         |
-| `--reason=TEXT` | Reason for measurement (required)  |
-| `--bench=NAME` | Single benchmark                    |
-| `--runs=N`     | Hyperfine runs (default: 5)         |
-| `--warmup=N`   | Warmup runs (default: 2)            |
-| `--overwrite`  | Replace existing entry              |
-| `--delete=ID`  | Delete entry                        |
+| Option          | Effect                            |
+|-----------------|-----------------------------------|
+| `--id=ID`       | Entry identifier (required)       |
+| `--reason=TEXT` | Reason for measurement (required) |
+| `--bench=NAME`  | Single benchmark                  |
+| `--runs=N`      | Hyperfine runs (default: 5)       |
+| `--warmup=N`    | Warmup runs (default: 2)          |
+| `--overwrite`   | Replace existing entry            |
+| `--delete=ID`   | Delete entry                      |
 
 ## compare_langs.sh Options
 
-| Option         | Effect                              |
-|----------------|-------------------------------------|
-| `--bench=NAME` | Single benchmark                    |
+| Option         | Effect                                   |
+|----------------|------------------------------------------|
+| `--bench=NAME` | Single benchmark                         |
 | `--lang=LANGS` | Comma-separated (cw,c,zig,java,py,rb,bb) |
-| `--cold`       | Wall clock only (default)           |
-| `--warm`       | Startup-subtracted                  |
-| `--both`       | Cold + Warm                         |
-| `--runs=N`     | Hyperfine runs (default: 5)         |
-| `--yaml=FILE`  | YAML output                         |
+| `--cold`       | Wall clock only (default)                |
+| `--warm`       | Startup-subtracted                       |
+| `--both`       | Cold + Warm                              |
+| `--runs=N`     | Hyperfine runs (default: 5)              |
+| `--yaml=FILE`  | YAML output                              |
 
 ## Benchmarks
 
@@ -92,13 +92,13 @@ bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 
 ### Wasm (5)
 
-| #  | Name        | Category  | Measures                  |
-|----|-------------|-----------|---------------------------|
-| 21 | wasm_load   | FFI       | Module load + instantiate |
-| 22 | wasm_call   | FFI       | 10K function calls        |
-| 23 | wasm_memory | FFI       | Linear memory read/write  |
-| 24 | wasm_fib    | Compute   | fib(40) in Wasm           |
-| 25 | wasm_sieve  | Compute   | Sieve in Wasm             |
+| #  | Name        | Category | Measures                  |
+|----|-------------|----------|---------------------------|
+| 21 | wasm_load   | FFI      | Module load + instantiate |
+| 22 | wasm_call   | FFI      | 10K function calls        |
+| 23 | wasm_memory | FFI      | Linear memory read/write  |
+| 24 | wasm_fib    | Compute  | fib(40) in Wasm           |
+| 25 | wasm_sieve  | Compute  | Sieve in Wasm             |
 
 ## Directory Structure
 

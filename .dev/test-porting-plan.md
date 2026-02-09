@@ -27,22 +27,22 @@ Each sub-task (e.g., 43.5) follows this cycle:
 
 For each implemented feature, check these upstream test locations:
 
-| Feature Area          | Upstream Test File(s)                              |
-|-----------------------|----------------------------------------------------|
-| Core functions        | `test_clojure/other_functions.clj`                 |
-| Data structures       | `test_clojure/data_structures.clj`                 |
-| Sequences             | `test_clojure/sequences.clj`                       |
+| Feature Area          | Upstream Test File(s)                               |
+|-----------------------|-----------------------------------------------------|
+| Core functions        | `test_clojure/other_functions.clj`                  |
+| Data structures       | `test_clojure/data_structures.clj`                  |
+| Sequences             | `test_clojure/sequences.clj`                        |
 | Numbers/Math          | `test_clojure/numbers.clj`, `test_clojure/math.clj` |
-| Predicates            | `test_clojure/predicates.clj`                      |
-| Control flow          | `test_clojure/control.clj`                         |
-| Strings               | `test_clojure/string.clj`                          |
-| Protocols             | `test_clojure/protocols.clj`                       |
-| Multimethods          | `test_clojure/multimethods.clj`                    |
-| Vars/Binding          | `test_clojure/vars.clj`                            |
-| Arrays (Java interop) | `test_clojure/java_interop.clj` (array sections)   |
-| Atoms                 | `test_clojure/atoms.clj`                           |
-| Transducers           | `test_clojure/transducers.clj`                     |
-| Transients            | `test_clojure/transients.clj`                      |
+| Predicates            | `test_clojure/predicates.clj`                       |
+| Control flow          | `test_clojure/control.clj`                          |
+| Strings               | `test_clojure/string.clj`                           |
+| Protocols             | `test_clojure/protocols.clj`                        |
+| Multimethods          | `test_clojure/multimethods.clj`                     |
+| Vars/Binding          | `test_clojure/vars.clj`                             |
+| Arrays (Java interop) | `test_clojure/java_interop.clj` (array sections)    |
+| Atoms                 | `test_clojure/atoms.clj`                            |
+| Transducers           | `test_clojure/transducers.clj`                      |
+| Transients            | `test_clojure/transients.clj`                       |
 
 Upstream location: `/Users/shota.508/Documents/OSS/clojure/test/clojure/test_clojure/`
 
@@ -98,18 +98,18 @@ Key files with high assertion counts:
 
 ### Phase 42: Quick Wins + Protocol Extension
 
-| Sub-task | Features                               | Upstream Test File        | Status |
-|----------|----------------------------------------|---------------------------|--------|
-| 42.1     | uri?, uuid?, destructure               | other_functions.clj       | N/A (no upstream tests) |
-| 42.2     | extend, extenders, extends?, find-*    | protocols.clj             | DONE   |
-| 42.3     | get-thread-bindings, bound-fn*, bound-fn | vars.clj                | DONE   |
+| Sub-task | Features                                 | Upstream Test File  | Status                  |
+|----------|------------------------------------------|---------------------|-------------------------|
+| 42.1     | uri?, uuid?, destructure                 | other_functions.clj | N/A (no upstream tests) |
+| 42.2     | extend, extenders, extends?, find-*      | protocols.clj       | DONE                    |
+| 42.3     | get-thread-bindings, bound-fn*, bound-fn | vars.clj            | DONE                    |
 
 ### Phase 43: Numeric Types + Arrays
 
-| Sub-task | Features                               | Upstream Test File        | Status |
-|----------|----------------------------------------|---------------------------|--------|
-| 43.1-4   | Array ops, typed arrays, macros        | arrays.clj (ported)       | DONE   |
-| 43.5     | BigInt, bigint, biginteger             | numbers.clj (24t/276a)    | DONE   |
-| 43.6     | BigDecimal, bigdec, M literal          | numbers.clj (26t/323a)    | DONE   |
-| 43.7     | +', *', -', inc', dec'                 | numbers.clj               | TODO   |
-| 43.8     | Ratio, numerator, denominator          | numbers.clj               | TODO   |
+| Sub-task | Features                        | Upstream Test File     | Status |
+|----------|---------------------------------|------------------------|--------|
+| 43.1-4   | Array ops, typed arrays, macros | arrays.clj (ported)    | DONE   |
+| 43.5     | BigInt, bigint, biginteger      | numbers.clj (24t/276a) | DONE   |
+| 43.6     | BigDecimal, bigdec, M literal   | numbers.clj (26t/323a) | DONE   |
+| 43.7     | +', *', -', inc', dec'          | numbers.clj            | TODO   |
+| 43.8     | Ratio, numerator, denominator   | numbers.clj            | TODO   |
