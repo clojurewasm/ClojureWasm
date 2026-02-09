@@ -51,6 +51,21 @@ pub const SIMD_BASE: u16 = 0xFD00;
 /// - bit 15 = 1 if value is a type_index (resolve arity at runtime)
 pub const ARITY_TYPE_INDEX_FLAG: u16 = 0x8000;
 
+// Fused superinstruction opcodes (0xE0-0xEF).
+// Peephole pass replaces common multi-instruction patterns with single dispatches.
+// Consumed instructions remain in-place (skipped by handler via pc += N).
+pub const OP_LOCAL_GET_GET: u16 = 0xE0; // local.get A + local.get B
+pub const OP_LOCAL_GET_CONST: u16 = 0xE1; // local.get A + i32.const C
+pub const OP_LOCALS_ADD: u16 = 0xE2; // local.get A + local.get B + i32.add
+pub const OP_LOCALS_SUB: u16 = 0xE3; // local.get A + local.get B + i32.sub
+pub const OP_LOCAL_CONST_ADD: u16 = 0xE4; // local.get A + i32.const C + i32.add
+pub const OP_LOCAL_CONST_SUB: u16 = 0xE5; // local.get A + i32.const C + i32.sub
+pub const OP_LOCAL_CONST_LT_S: u16 = 0xE6; // local.get A + i32.const C + i32.lt_s
+pub const OP_LOCAL_CONST_GE_S: u16 = 0xE7; // local.get A + i32.const C + i32.ge_s
+pub const OP_LOCAL_CONST_LT_U: u16 = 0xE8; // local.get A + i32.const C + i32.lt_u
+pub const OP_LOCALS_GT_S: u16 = 0xE9; // local.get A + local.get B + i32.gt_s
+pub const OP_LOCALS_LE_S: u16 = 0xEA; // local.get A + local.get B + i32.le_s
+
 pub const PredecodeError = error{
     UnsupportedSimd,
     OutOfMemory,
@@ -257,6 +272,9 @@ pub fn predecode(alloc: Allocator, bytecode: []const u8) PredecodeError!?*IrFunc
         }
     }
 
+    // Peephole: fuse common patterns before finalizing
+    fusePass(code.items);
+
     const ir = try alloc.create(IrFunc);
     ir.* = .{
         .code = try code.toOwnedSlice(alloc),
@@ -338,6 +356,89 @@ fn predecodeMisc(alloc: Allocator, code: *std.ArrayList(PreInstr), reader: *Read
         else => try emit0(alloc, code, ir_op),
     }
     return true;
+}
+
+/// Peephole fusion pass: replace common instruction sequences with single
+/// fused opcodes. Operates in-place; consumed instructions are skipped by
+/// fused handlers (pc += N). Does not change code length or branch targets.
+pub fn fusePass(code: []PreInstr) void {
+    const n = code.len;
+    if (n < 2) return;
+
+    // Pass 1: Collect branch target positions. Fusing across these is unsafe.
+    var targets: [65536]bool = .{false} ** 65536;
+    for (code) |instr| {
+        switch (instr.opcode) {
+            0x02 => if (instr.operand < 65536) { targets[instr.operand] = true; }, // block forward
+            0x03 => if (instr.operand < 65536) { targets[instr.operand] = true; }, // loop start
+            0x04 => if (instr.operand < 65536) { targets[instr.operand] = true; }, // if → else
+            OP_IF_DATA => if (instr.operand < 65536) { targets[instr.operand] = true; }, // if → end
+            0x05 => if (instr.operand < 65536) { targets[instr.operand] = true; }, // else → end
+            else => {},
+        }
+    }
+
+    // Pass 2: Scan for fuseable patterns (3-instr first, then 2-instr).
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        const a = code[i];
+
+        // 3-instruction patterns (need i+1 and i+2 not to be targets)
+        if (i + 2 < n and !targets[i + 1] and !targets[i + 2]) {
+            const b = code[i + 1];
+            const c = code[i + 2];
+
+            // local.get A + local.get B + i32.op
+            if (a.opcode == 0x20 and b.opcode == 0x20 and a.operand <= 0xFFFF and b.operand <= 0xFFFF) {
+                const fused: ?u16 = switch (c.opcode) {
+                    0x6A => OP_LOCALS_ADD,
+                    0x6B => OP_LOCALS_SUB,
+                    0x4A => OP_LOCALS_GT_S,
+                    0x4C => OP_LOCALS_LE_S,
+                    else => null,
+                };
+                if (fused) |op| {
+                    code[i] = .{ .opcode = op, .extra = @intCast(a.operand), .operand = b.operand };
+                    i += 2;
+                    continue;
+                }
+            }
+
+            // local.get A + i32.const C + i32.op
+            if (a.opcode == 0x20 and b.opcode == 0x41 and a.operand <= 0xFFFF) {
+                const fused: ?u16 = switch (c.opcode) {
+                    0x6A => OP_LOCAL_CONST_ADD,
+                    0x6B => OP_LOCAL_CONST_SUB,
+                    0x48 => OP_LOCAL_CONST_LT_S,
+                    0x4E => OP_LOCAL_CONST_GE_S,
+                    0x49 => OP_LOCAL_CONST_LT_U,
+                    else => null,
+                };
+                if (fused) |op| {
+                    code[i] = .{ .opcode = op, .extra = @intCast(a.operand), .operand = b.operand };
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // 2-instruction patterns (need i+1 not to be a target)
+        if (i + 1 < n and !targets[i + 1]) {
+            const b = code[i + 1];
+
+            if (a.opcode == 0x20 and b.opcode == 0x20 and a.operand <= 0xFFFF and b.operand <= 0xFFFF) {
+                code[i] = .{ .opcode = OP_LOCAL_GET_GET, .extra = @intCast(a.operand), .operand = b.operand };
+                i += 1;
+                continue;
+            }
+
+            if (a.opcode == 0x20 and b.opcode == 0x41 and a.operand <= 0xFFFF) {
+                code[i] = .{ .opcode = OP_LOCAL_GET_CONST, .extra = @intCast(a.operand), .operand = b.operand };
+                i += 1;
+                continue;
+            }
+        }
+    }
 }
 
 /// Resolve block arity from encoded extra field.

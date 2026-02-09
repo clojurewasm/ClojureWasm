@@ -26,29 +26,25 @@ Plan: `.dev/wasm-opt-plan.md`
 
 1. [x] 45.1: Benchmark infrastructure — TinyGo native + wasm benchmarks
 2. [x] 45.2: Predecoded IR (fixed-width instruction encoding)
-3. [ ] 45.3: Tail-call threaded dispatch
-4. [ ] 45.4: Superinstructions (fuse common patterns)
+3. [x] 45.3: SKIPPED — tail-call/iterative dispatch (0% improvement on Apple M4)
+4. [x] 45.4: Superinstructions (fuse common patterns)
 5. [ ] 45.5: Memory access optimization
 
 ## Current Task
 
-Phase 45.3: Tail-call threaded dispatch — replace switch(opcode) with function pointer
-table + @call(.always_tail, ...). Eliminates branch misprediction in the dispatch loop.
-Plan: `.dev/wasm-opt-plan.md` optimization #2.
+Phase 45.5: Memory access optimization — cache memory base pointer, avoid redundant
+bounds checks on consecutive loads/stores. Plan: `.dev/wasm-opt-plan.md` optimization #4.
 
 ## Previous Task
 
-Phase 45.2 COMPLETE: Predecoded IR — fixed-width 8-byte instructions.
-- New file: `src/wasm/predecode.zig` — PreInstr { opcode: u16, extra: u16, operand: u32 }
-- IrFunc: code slice + pool64 (i64/f64 constants)
-- Lazy predecoding: IR computed on first call, cached in WasmFunction.ir
-- executeIR dispatch loop: all non-SIMD opcodes via fixed-width reads
-- SIMD functions fall back to old Reader-based path (return null from predecoder)
-- Multi-module safety: IR pointers reset on function copy across stores
-- Benchmark improvements (1.7-2.5x across all compute-heavy benchmarks):
-  - fib: 10070→5682ms (1.77x), tak: 27320→16264ms (1.68x)
-  - sieve: 600→239ms (2.51x), fib_loop: 402→192ms (2.09x), gcd: 633→300ms (2.11x)
-- CW vs wasmtime ratios: fib 26x, tak 14x, sieve 41x, fib_loop 52x, gcd 7x
+Phase 45.4 COMPLETE: Superinstructions — fused multi-instruction patterns.
+- 11 fused opcodes (0xE0-0xEA) in predecode.zig
+- Peephole fusePass() runs after predecoding, in-place replacement
+- Patterns: local.get+local.get, local.get+i32.const, local+local+arith, local+const+arith/cmp
+- Dead instructions skipped by handler (pc += N), no branch target fixup needed
+- Benchmark improvements: fib 1.30x, tak 1.13x, sieve 1.18x, fib_loop 1.08x
+- CW vs wasmtime ratios: fib 19x, tak 12x, sieve 36x, fib_loop 59x, gcd 7x
+- Phase 45.3 (tail-call/iterative dispatch) SKIPPED: 0% improvement on Apple M4
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

@@ -2201,6 +2201,83 @@ pub const Vm = struct {
                 // ---- Misc prefix (flattened) ----
                 0xFC00...0xFCFF => try self.executeMiscIR(instr, instance),
 
+                // ---- Fused superinstructions ----
+                predecode_mod.OP_LOCAL_GET_GET => {
+                    const frame = self.peekFrame();
+                    try self.pushV128(self.op_stack[frame.locals_start + instr.extra]);
+                    try self.pushV128(self.op_stack[frame.locals_start + instr.operand]);
+                    pc += 1;
+                },
+                predecode_mod.OP_LOCAL_GET_CONST => {
+                    const frame = self.peekFrame();
+                    try self.pushV128(self.op_stack[frame.locals_start + instr.extra]);
+                    try self.pushI32(@bitCast(instr.operand));
+                    pc += 1;
+                },
+                predecode_mod.OP_LOCALS_ADD => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const b = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.operand]))));
+                    try self.pushI32(a +% b);
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCALS_SUB => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const b = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.operand]))));
+                    try self.pushI32(a -% b);
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCAL_CONST_ADD => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const c = @as(i32, @bitCast(instr.operand));
+                    try self.pushI32(a +% c);
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCAL_CONST_SUB => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const c = @as(i32, @bitCast(instr.operand));
+                    try self.pushI32(a -% c);
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCAL_CONST_LT_S => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const c = @as(i32, @bitCast(instr.operand));
+                    try self.pushI32(b2i(a < c));
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCAL_CONST_GE_S => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const c = @as(i32, @bitCast(instr.operand));
+                    try self.pushI32(b2i(a >= c));
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCAL_CONST_LT_U => {
+                    const frame = self.peekFrame();
+                    const a = @as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]));
+                    const c = instr.operand;
+                    try self.pushI32(b2i(a < c));
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCALS_GT_S => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const b = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.operand]))));
+                    try self.pushI32(b2i(a > b));
+                    pc += 2;
+                },
+                predecode_mod.OP_LOCALS_LE_S => {
+                    const frame = self.peekFrame();
+                    const a = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.extra]))));
+                    const b = @as(i32, @bitCast(@as(u32, @truncate(self.op_stack[frame.locals_start + instr.operand]))));
+                    try self.pushI32(b2i(a <= b));
+                    pc += 2;
+                },
+
                 else => return error.Trap,
             }
         }
