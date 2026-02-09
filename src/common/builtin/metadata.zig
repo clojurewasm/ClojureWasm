@@ -166,7 +166,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .map => blk: {
             const m = obj.asMap();
             const new_map = try allocator.create(PersistentArrayMap);
-            new_map.* = .{ .entries = m.entries, .meta = meta_ptr };
+            new_map.* = .{ .entries = m.entries, .meta = meta_ptr, .comparator = m.comparator };
             break :blk Value.initMap(new_map);
         },
         .hash_map => blk: {
@@ -184,7 +184,7 @@ pub fn withMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .set => blk: {
             const s = obj.asSet();
             const new_set = try allocator.create(@import("../collections.zig").PersistentHashSet);
-            new_set.* = .{ .items = s.items, .meta = meta_ptr };
+            new_set.* = .{ .items = s.items, .meta = meta_ptr, .comparator = s.comparator };
             break :blk Value.initSet(new_set);
         },
         .fn_val => blk: {

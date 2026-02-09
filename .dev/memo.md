@@ -42,26 +42,28 @@ Phase 41: Polish & Hardening
 2. [x] 41.2: clojure.edn/read — SKIPPED (needs PushbackReader)
 3. [x] 41.3: clojure.core.reducers — SKIPPED (needs reify, protocols, ForkJoin)
 4. [x] 41.4: Upstream test porting
-5. [ ] 41.5: Additional bug fixes and edge cases
+5. [x] 41.5: Additional bug fixes and edge cases
 
 ## Current Task
 
-41.5: Continue bug fixes and edge cases (round 3).
-- Remaining known issues: control.clj (case throw in VM), sequences (subseq), transducers (interpose transducer+take, halt-when)
+Phase 41 complete. Plan next phase.
 
 ## Previous Task
 
-41.5: Bug fixes and edge cases (round 2).
-- Fixed LazySeq.realize re-entrancy: clear thunk BEFORE calling it (prevents infinite recursion)
-  - Root cause: thunk evaluation could re-enter realize on same LazySeq before result was cached
-  - Fixes: repeat, cycle, interpose, repeatedly, iterate — all infinite lazy-seq patterns
-- Fixed cons to seq-ify rest argument (JVM RT.cons compatible)
-  - Only non-seq types (vector, set, map, hash_map, string) get converted
-  - Seq types (nil, list, cons, lazy_seq, chunked_cons) pass through
-  - Fixes (cons 1 #{2 3}) → (1 2 3) instead of (1 . #{2 3})
-- Fixed builtins table count test (42→43)
-- Result: sequences 393/394 pass (was crashing), transducers 97/99 (was 97/99)
-- Both VM + TreeWalk verified
+41.5: Bug fixes and edge cases (round 3).
+- Fixed peephole optimizer not updating try_begin jump offset (compiler.zig)
+  - Root cause: when superinstructions removed instructions, try_begin operand wasn't remapped
+  - Caused try/catch to silently bypass catch handler in specific patterns
+  - Fix: add .try_begin to jump fixup pass alongside .jump/.jump_if_false/.jump_back
+- Fixed sorted collection support:
+  - TransientHashSet: preserve comparator through transient/persistent cycle
+  - with-meta for sets/maps: preserve comparator field
+  - sorted? predicate: check comparator != null (was always false)
+  - into: bypass transient path for sorted collections, use reduce conj
+  - into 3-arity: match JVM (persistent! in rf completion, not outside transduce)
+- Fixed take 0 returning nil instead of empty list (= (take 0 x) () now true)
+- Fixed case macro throwing plain string instead of ex-info
+- Result: control 157/157, sequences 593/593, transducers 100/100 (all 0 errors)
 
 ## Known Issues
 

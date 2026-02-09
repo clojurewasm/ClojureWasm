@@ -1360,6 +1360,14 @@ fn peepholeOptimize(
                 const new_target = ip_map[old_target];
                 instr.operand = @intCast(@as(i32, @intCast(nip)) + 1 - @as(i32, new_target));
             },
+            .try_begin => {
+                // try_begin operand is a forward offset to catch handler (same as jump)
+                const old_ip2: usize = old_ip_for_new[nip];
+                const old_target: usize = old_ip2 + 1 + instr.operand;
+                const clamped = @min(old_target, n);
+                const new_target = ip_map[clamped];
+                instr.operand = @intCast(@as(i32, new_target) - @as(i32, @intCast(nip)) - 1);
+            },
             else => {},
         }
     }

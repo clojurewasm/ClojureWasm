@@ -1085,7 +1085,7 @@
                    pairs)
          ~@(if default
              (list true default)
-             (list true `(throw (str "No matching clause: " ~gexpr))))))))
+             (list true `(throw (ex-info (str "No matching clause: " ~gexpr) {}))))))))
 
 (defmacro condp
   "Takes a binary predicate, an expression, and a set of clauses.
@@ -1648,13 +1648,21 @@
   ([] [])
   ([to] to)
   ([to from]
-   (if (or (vector? to) (map? to) (set? to))
+   (if (and (or (vector? to) (map? to) (set? to)) (not (sorted? to)))
      (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
-     (reduce conj to from)))
+     (if (or (map? to) (set? to))
+       (with-meta (reduce conj to from) (meta to))
+       (reduce conj to from))))
   ([to xform from]
-   (if (or (vector? to) (map? to) (set? to))
-     (with-meta (persistent! (transduce xform conj! (transient to) from)) (meta to))
-     (transduce xform conj to from))))
+   (if (and (or (vector? to) (map? to) (set? to)) (not (sorted? to)))
+     (let [tm (meta to)
+           rf (fn
+                ([coll] (-> (persistent! coll) (with-meta tm)))
+                ([coll v] (conj! coll v)))]
+       (transduce xform rf (transient to) from))
+     (if (or (map? to) (set? to))
+       (with-meta (transduce xform conj to from) (meta to))
+       (transduce xform conj to from)))))
 
 (defn- preserving-reduced
   [rf]

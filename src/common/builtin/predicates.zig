@@ -535,8 +535,11 @@ fn reversiblePred(_: Allocator, args: []const Value) anyerror!Value {
 /// (sorted? x) — Returns true if coll implements Sorted.
 fn sortedPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to sorted?", .{args.len});
-    // No sorted collections in ClojureWasm yet
-    return Value.false_val;
+    return Value.initBoolean(switch (args[0].tag()) {
+        .set => args[0].asSet().comparator != null,
+        .map => args[0].asMap().comparator != null,
+        else => false,
+    });
 }
 
 /// (record? x) — Returns true if x is a record.

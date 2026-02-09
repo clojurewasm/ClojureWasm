@@ -274,10 +274,11 @@ pub const TransientArrayMap = struct {
 pub const TransientHashSet = struct {
     items: std.ArrayList(Value) = .empty,
     consumed: bool = false,
+    comparator: ?Value = null,
 
     pub fn initFrom(allocator: std.mem.Allocator, source: *const PersistentHashSet) !*TransientHashSet {
         const ts = try allocator.create(TransientHashSet);
-        ts.* = .{};
+        ts.* = .{ .comparator = source.comparator };
         try ts.items.appendSlice(allocator, source.items);
         return ts;
     }
@@ -317,7 +318,7 @@ pub const TransientHashSet = struct {
         const items = try allocator.alloc(Value, self.items.items.len);
         @memcpy(items, self.items.items);
         const s = try allocator.create(PersistentHashSet);
-        s.* = .{ .items = items };
+        s.* = .{ .items = items, .comparator = self.comparator };
         return s;
     }
 };

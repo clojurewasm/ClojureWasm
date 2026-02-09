@@ -390,7 +390,13 @@ pub fn zigLazyTakeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .float => if (n_val.asFloat() <= 0) 0 else @intFromFloat(n_val.asFloat()),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "__zig-lazy-take requires numeric n", .{}),
     };
-    if (n == 0) return Value.nil_val;
+    if (n == 0) {
+        // Return empty list (not nil) to match JVM behavior.
+        // (= (take 0 x) ()) is true in JVM Clojure.
+        const empty = try allocator.create(PersistentList);
+        empty.* = .{ .items = &.{} };
+        return Value.initList(empty);
+    }
     const meta = try allocator.create(LazySeq.Meta);
     meta.* = .{ .lazy_take = .{ .n = n, .source = args[1] } };
     const ls = try allocator.create(LazySeq);
