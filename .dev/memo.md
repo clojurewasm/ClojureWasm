@@ -69,7 +69,7 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.9: Remove wasm_rt/ directory (A4 first, before A5 refactoring).
+Phase 44.10: Merge common/native/ → evaluate if restructure is needed for alpha.
 
 ## Previous Task
 
