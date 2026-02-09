@@ -207,12 +207,18 @@ Active development areas for future releases:
 ## Acknowledgments
 
 ClojureWasm is built with deep appreciation for [Clojure](https://clojure.org/)
-and the work of Rich Hickey. Clojure's design — immutable data, functional
-programming, and a pragmatic approach to state — has been a constant source of
-inspiration. The Clojure community's passion and thoughtfulness make it a
-uniquely rewarding ecosystem to be part of.
+and the work of [Rich Hickey](https://github.com/richhickey). Clojure's design
+— immutable data, functional programming, and a pragmatic approach to state —
+has been a constant source of inspiration. Programming in Clojure is genuinely
+enjoyable, and the community's passion and thoughtfulness make it one of the
+most rewarding ecosystems to be part of. May Clojure continue to thrive for
+many years to come.
 
-This project ports test cases from the Clojure test suite (EPL-1.0) and includes
+This project also builds on the excellent work of the [Zig](https://ziglang.org/)
+community. Zig's emphasis on simplicity and explicit control made it possible
+to implement a full language runtime in a single, small binary.
+
+ClojureWasm ports test cases from the Clojure test suite (EPL-1.0) and includes
 Clojure standard library code adapted for the Zig runtime. See [NOTICE](NOTICE)
 for attribution details.
 

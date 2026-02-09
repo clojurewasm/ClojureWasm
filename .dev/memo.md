@@ -65,18 +65,20 @@ A9. Release Preparation
 27. [x] 44.27: Pre-Alpha / Experimental disclaimer (README + badge)
 28. [x] 44.28: "Verified on macOS Apple Silicon only" notice
 29. [x] 44.29: Sponsors / Funding setup (GitHub Sponsors)
-30. [ ] 44.30: Clojure community / Rich Hickey acknowledgment
+30. [x] 44.30: Clojure community / Rich Hickey acknowledgment
 
 ## Current Task
 
-Phase 44.30: Clojure community / Rich Hickey acknowledgment (A9 Release Preparation).
+Phase 44.12: Full file visual review (A5 Code Refactoring block).
 
 ## Previous Task
 
-Phase 44.23-44.25 COMPLETE: A8 Documentation block.
-- README.md: overview, features, build, usage, benchmarks, future plans
-- ARCHITECTURE.md: pipeline, Value repr, backends, GC, JIT, bootstrap
-- DIFFERENCES.md: 112 skip vars, behavioral diffs, exception model, platform
+Phase 44.26-44.30 COMPLETE: A9 Release Preparation block.
+- GitHub repo topics: clojure, zig, wasm, compiler, interpreter, nrepl, etc.
+- README badges: pre-alpha status, license, Zig version
+- Platform verification notice (macOS Apple Silicon, Linux CI)
+- FUNDING.yml + Support section (GitHub Sponsors)
+- Acknowledgments expanded: Rich Hickey, Clojure community, Zig community
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
