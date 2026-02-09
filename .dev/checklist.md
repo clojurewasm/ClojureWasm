@@ -20,11 +20,11 @@ Check at session start for items that become actionable.
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
-| F102 | map/filter chunked processing                | DEFERRED: CW range is eager (no chunked producers). Needs lazy range first. |
+| F102 | map/filter chunked processing                | Phase 44 (OSS Prep): lazy range first, then chunked map/filter             |
 | F103 | Escape analysis (local scope skip GC)        | Compiler detects local-only Values, skip GC tracking               |
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
-| F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
+| F110 | Directory restructure (core/eval/cli)        | Phase 44 (OSS Prep): remove wasm_rt, merge common/native           |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
 | F130 | ~~Array Value type + ops (35 vars)~~         | DONE: Phase 43.1-43.4                                             |
 | F131 | ~~BigInt + BigDecimal (pure Zig)~~            | DONE: Phase 43.5-43.6                                             |

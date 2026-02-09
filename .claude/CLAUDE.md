@@ -221,6 +221,7 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Java interop    | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
 | Test porting    | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
 | Roadmap         | `.dev/roadmap.md`                    | Phase planning, future phase notes         |
+| OSS release plan| `private/20260208/02_oss_plan.md`    | Phase 44 planning, task breakdown          |
 | Deferred items  | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Design document | `.dev/future.md`                     | When planning new phases or major features |
 | Optimizations   | `.dev/optimizations.md`              | Completed + future optimization catalog    |

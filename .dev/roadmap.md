@@ -179,55 +179,48 @@ SKIP recovery Phase 1. See `.dev/skip-recovery.md` for full context.
 | 42.2  | Protocol extension API (extend, extenders, extends?)| TODO   |
 | 42.3  | Remaining implementable core vars (bytes?, bound-fn)| TODO   |
 
-### Phase 43: Numeric Types + Arrays — PLANNED
+### Phase 43: Numeric Types + Arrays — IN PROGRESS
 
-New Value types: BigInt, BigDecimal, Ratio, Array.
+New Value types: Array, BigInt, BigDecimal, Ratio.
 
-| Sub   | Content                                   | Status  |
-|-------|-------------------------------------------|---------|
-| 43.1  | BigInt (pure Zig arbitrary precision)     | TODO    |
-| 43.2  | BigDecimal                                | TODO    |
-| 43.3  | Ratio type (F3/F132)                      | TODO    |
-| 43.4  | Array Value type + core ops               | TODO    |
-| 43.5  | Typed array constructors + utilities      | TODO    |
+| Sub    | Content                                          | Status   |
+|--------|--------------------------------------------------|----------|
+| 43.1-4 | Array ops, typed arrays, macros                  | COMPLETE |
+| 43.5   | BigInt + bigint/biginteger + reader N literal    | COMPLETE |
+| 43.6   | BigDecimal + bigdec + reader M literal           | COMPLETE |
+| 43.7   | Auto-promotion (+', *', -', inc', dec')          | TODO     |
+| 43.8   | Ratio + numerator/denominator/rationalize        | TODO     |
 
-### Phase 44: Concurrency Primitives — PLANNED
+### Phase 44: OSS Release Prep — PLANNED
 
-Thread pool and future-based concurrency.
+Prepare for v0.1.0-alpha public release.
+**Master plan**: `private/20260208/02_oss_plan.md`
 
-| Sub   | Content                                   | Status  |
-|-------|-------------------------------------------|---------|
-| 44.1  | Thread pool infrastructure (Zig)          | TODO    |
-| 44.2  | future, future-call, deref timeout        | TODO    |
-| 44.3  | pmap, pcalls, pvalues                     | TODO    |
-| 44.4  | bound-fn, get-thread-bindings             | TODO    |
+| Sub     | Category              | Content                                           | Status |
+|---------|-----------------------|---------------------------------------------------|--------|
+| 44.1-4  | Lazy Range            | LazyRange Value, infinite range, chunked seqs     | TODO   |
+| 44.5-8  | Wasm Speed            | Dispatch optimization, Wasm JIT, benchmarks       | TODO   |
+| 44.9-11 | Directory             | Remove wasm_rt, merge common/native, fix imports  | TODO   |
+| 44.12-15| Refactoring           | Full file review, dead code, naming, comments     | TODO   |
+| 44.16-18| License               | EPL-1.0 headers, copyright verification           | TODO   |
+| 44.19-22| Repo Cleanup          | .claude/.gitignore, CONTRIBUTING.md               | TODO   |
+| 44.23-25| Documentation         | README, ARCHITECTURE, DIFFERENCES                 | TODO   |
+| 44.26-30| Release Prep          | GitHub config, Pre-Alpha badge, acknowledgments   | TODO   |
 
-### Phase 45: import Design Research — PLANNED
+### Phase 50+: Post-Release (deferred)
 
-Research mapping Java-style import to wasm module loading.
-
-| Sub   | Content                                         | Status  |
-|-------|-------------------------------------------------|---------|
-| 45.1  | Research: ClojureDart :import model              | TODO    |
-| 45.2  | Design: map Java import to wasm module loading   | TODO    |
-| 45.3  | Implementation (if design viable)                | TODO    |
-
-### Phase 29: Codebase Restructuring (deferred)
-
-Directory reorganization: common/native/ → core/eval/cli/.
-
-**Scope**:
-- Directory restructuring: core/ (platform-free), eval/ (VM+TW+bootstrap), cli/
-- File splitting (collections.zig, bootstrap.zig, vm.zig)
-- D3 violation resolution (move module-level state into structs)
-- Import path cleanup, naming normalization
-
-**Status**: Deferred (F110). Will be scheduled when needed.
+| Phase | Content                                   | Notes                                    |
+|-------|-------------------------------------------|------------------------------------------|
+| 50    | Concurrency (future, pmap, agent)         | Zig std.Thread, GC safety. Was Phase 44  |
+| 51    | import → wasm mapping                     | ClojureDart-like :import. Was Phase 45   |
+| 52    | Generational GC                           | Nursery/tenured, profile-driven          |
+| 53    | JIT expansion                             | Float, fn call, broader loop patterns    |
+| 54    | Persistent data structures (HAMT/RRB)     | F4, profile when collections bottleneck  |
 
 ### Future: wasm_rt Revival
 
-When ecosystem conditions are met (see `src/wasm_rt/README.md`),
-revive Phase 26 using archived research in `.dev/archive/phase26-wasm-rt.md`.
+When ecosystem conditions are met, revive Phase 26 using archived research
+in `.dev/archive/phase26-wasm-rt.md`. Mentioned in README.md Future Plans.
 
 ---
 

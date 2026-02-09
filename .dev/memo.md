@@ -31,6 +31,10 @@ Phase 43: Numeric Types + Arrays
 7. [ ] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
 8. [ ] 43.8: Ratio Value type + numerator/denominator/rationalize
 
+Phase 44: OSS Release Prep (starts after Phase 43)
+-> Read `private/20260208/02_oss_plan.md` and expand into Task Queue
+-> Scope: Lazy Range, Wasm speed, directory restructure, refactoring, license, docs, release prep
+
 ## Current Task
 
 Phase 43.7: Arithmetic auto-promotion (+', *', -', inc', dec').
@@ -83,15 +87,16 @@ Session resume procedure: read this file → follow references below.
 
 | Topic               | Location                                  |
 |----------------------|-------------------------------------------|
-| Roadmap              | `.dev/roadmap.md`                    |
-| Deferred items       | `.dev/checklist.md` (F3-F120)             |
-| Decisions            | `.dev/decisions.md` (D1-D89)        |
-| Optimizations        | `.dev/optimizations.md`             |
+| Roadmap              | `.dev/roadmap.md`                         |
+| OSS release plan     | `private/20260208/02_oss_plan.md`         |
+| Deferred items       | `.dev/checklist.md` (F3-F135)             |
+| Decisions            | `.dev/decisions.md` (D1-D89)              |
+| Optimizations        | `.dev/optimizations.md`                   |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |
-| Skip recovery        | `.dev/skip-recovery.md`               |
-| Test porting plan    | `.dev/test-porting-plan.md`           |
-| Archived plans       | `.dev/archive/` (Phase 24-30, CX, A) |
+| Skip recovery        | `.dev/skip-recovery.md`                   |
+| Test porting plan    | `.dev/test-porting-plan.md`               |
+| Archived plans       | `.dev/archive/` (Phase 24-30, CX, A)     |
 
 ## Handover Notes
 
