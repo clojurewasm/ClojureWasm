@@ -380,7 +380,7 @@ vars:
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done, note: special form (analyzes as let*)}
     letfn: {type: macro, status: done, note: "macro -> letfn* special form"}
-    "line-seq": {type: function, status: skip, note: needs BufferedReader type}
+    "line-seq": {type: function, status: done, note: needs BufferedReader type, notes: 'UPSTREAM-DIFF: takes filename string instead of BufferedReader'}
     list: {type: function, status: done, note: "Zig builtin"}
     "list*": {type: function, status: done, note: "Zig builtin"}
     "list?": {type: function, status: done, note: "Zig builtin"}

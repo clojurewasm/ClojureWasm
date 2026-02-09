@@ -5,7 +5,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Value = @import("../value.zig").Value;
+const value_mod = @import("../value.zig");
+const Value = value_mod.Value;
+const PersistentList = value_mod.PersistentList;
 const var_mod = @import("../var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../error.zig");
@@ -150,6 +152,52 @@ pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return bootstrap.evalString(allocator, env, content) catch return error.EvalError;
 }
 
+/// (line-seq filename) => list of strings
+/// UPSTREAM-DIFF: Takes a filename string instead of BufferedReader.
+/// Reads file, splits by newlines, returns list of line strings.
+pub fn lineSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to line-seq", .{args.len});
+    const path = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "line-seq expects a string filename, got {s}", .{@tagName(args[0].tag())}),
+    };
+
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(path, .{}) catch return error.FileNotFound;
+    defer file.close();
+
+    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.IOError;
+    if (content.len == 0) return Value.nil_val;
+
+    // Split by newlines
+    var lines = std.ArrayList(Value).empty;
+    var start: usize = 0;
+    for (content, 0..) |c, i| {
+        if (c == '\n') {
+            var end = i;
+            // Strip \r before \n
+            if (end > start and content[end - 1] == '\r') end -= 1;
+            const line = try allocator.dupe(u8, content[start..end]);
+            try lines.append(allocator, Value.initString(allocator, line));
+            start = i + 1;
+        }
+    }
+    // Handle last line without trailing newline
+    if (start < content.len) {
+        var end = content.len;
+        if (end > start and content[end - 1] == '\r') end -= 1;
+        const line = try allocator.dupe(u8, content[start..end]);
+        try lines.append(allocator, Value.initString(allocator, line));
+    }
+
+    if (lines.items.len == 0) return Value.nil_val;
+
+    const items = try allocator.dupe(Value, lines.items);
+    const list = try allocator.create(PersistentList);
+    list.* = .{ .items = items };
+    return Value.initList(list);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "slurp",
@@ -177,6 +225,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &loadFileFn,
         .doc = "Sequentially read and evaluate the set of forms contained in the file.",
         .arglists = "([name])",
+        .added = "1.0",
+    },
+    .{
+        .name = "line-seq",
+        .func = &lineSeqFn,
+        .doc = "Returns the lines of text from rdr as a lazy sequence of strings. rdr must implement java.io.BufferedReader.",
+        .arglists = "([rdr])",
         .added = "1.0",
     },
 };
@@ -308,5 +363,71 @@ test "spit - arity error" {
 test "read-line - arity error" {
     const args = [_]Value{Value.initInteger(1)};
     const result = readLineFn(testing.allocator, &args);
+    try testing.expectError(error.ArityError, result);
+}
+
+test "line-seq - read file as list of lines" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a temp file with multiple lines
+    const cwd = std.fs.cwd();
+    const tmp_path = "/tmp/cljw_test_line_seq.txt";
+    const file = try cwd.createFile(tmp_path, .{});
+    try file.writeAll("line1\nline2\nline3\n");
+    file.close();
+
+    const args = [_]Value{Value.initString(alloc, tmp_path)};
+    const result = try lineSeqFn(alloc, &args);
+
+    // Should return a list
+    try testing.expect(result.tag() == .list);
+    const list = result.asList();
+    try testing.expectEqual(@as(usize, 3), list.items.len);
+    try testing.expectEqualStrings("line1", list.items[0].asString());
+    try testing.expectEqualStrings("line2", list.items[1].asString());
+    try testing.expectEqualStrings("line3", list.items[2].asString());
+}
+
+test "line-seq - no trailing newline" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const cwd = std.fs.cwd();
+    const tmp_path = "/tmp/cljw_test_line_seq2.txt";
+    const file = try cwd.createFile(tmp_path, .{});
+    try file.writeAll("line1\nline2");
+    file.close();
+
+    const args = [_]Value{Value.initString(alloc, tmp_path)};
+    const result = try lineSeqFn(alloc, &args);
+
+    const list = result.asList();
+    try testing.expectEqual(@as(usize, 2), list.items.len);
+    try testing.expectEqualStrings("line1", list.items[0].asString());
+    try testing.expectEqualStrings("line2", list.items[1].asString());
+}
+
+test "line-seq - empty file" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const cwd = std.fs.cwd();
+    const tmp_path = "/tmp/cljw_test_line_seq3.txt";
+    const file = try cwd.createFile(tmp_path, .{});
+    file.close();
+
+    const args = [_]Value{Value.initString(alloc, tmp_path)};
+    const result = try lineSeqFn(alloc, &args);
+
+    // Empty file should return nil (empty seq)
+    try testing.expect(result.isNil());
+}
+
+test "line-seq - arity error" {
+    const result = lineSeqFn(testing.allocator, &.{});
     try testing.expectError(error.ArityError, result);
 }

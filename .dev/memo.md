@@ -32,23 +32,21 @@ Phase 38: Core Library Completeness
 Phase 39: Real-World Usability
 1. [x] 39.1: clojure.java.shell — sh, with-sh-dir, with-sh-env (5 vars)
 2. [x] 39.2: clojure.pprint — pprint, print-table (2 vars)
-3. [ ] 39.3: line-seq — lazy line-by-line file processing
+3. [x] 39.3: line-seq — lazy line-by-line file processing
 4. [ ] 39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
 5. [ ] 39.5: read / read-string — expose reader as Clojure function
 
 ## Current Task
 
-39.3: line-seq — lazy line-by-line file processing.
-Implement line-seq to return lazy seq of lines from a BufferedReader (file).
+39.4: clojure.stacktrace — print-cause-chain, print-stack-trace, etc.
+Simplified stack trace printing for CW's error model.
 
 ## Previous Task
 
-39.2: clojure.pprint — pprint, print-table (2 vars).
-- New file: pprint.zig — Zig builtin for recursive pretty-printing
-- New file: clojure/pprint.clj — print-table from upstream
-- Format width specifiers added to formatFn (%5s, %-5s, %3d, %.2f)
-- Algorithm: single-line first, multi-line with indentation if > 72 cols
-- Fixed dangling print var pointers (resetPrintVars, removed initPrintVars from loadCore)
+39.3: line-seq — lazy line-by-line file processing.
+- Added lineSeqFn to file_io.zig — reads file, splits by \n, returns PersistentList
+- UPSTREAM-DIFF: takes filename string instead of BufferedReader
+- Handles trailing \r, empty files, no trailing newline
 - Both VM + TreeWalk verified
 
 ## Known Issues
