@@ -56,7 +56,7 @@ A7. .claude/ + private/ Cleanup
 22. [x] 44.22: .dev/ stays public (development documentation, no secrets)
 
 A8. Documentation
-23. [ ] 44.23: README.md (overview, features, build, usage, benchmarks, future)
+23. [x] 44.23: README.md (overview, features, build, usage, benchmarks, future)
 24. [ ] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
 25. [ ] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
 
@@ -69,17 +69,18 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.23: README.md (A8 Documentation block).
+Phase 44.24: ARCHITECTURE.md (A8 Documentation block).
 
 ## Previous Task
 
-Phase 44.10+44.11 COMPLETE: Directory restructure + builtin merges (D91).
-- Pipeline-based layout: reader/ → analyzer/ → compiler/ → vm/ | evaluator/
-- Shared: runtime/, builtins/, regex/
-- 3 builtin merges: strings+clj_string, io+file_io+java_io, arithmetic+numeric
-- 70 → 66 .zig files, all tests green
-- CONTRIBUTING.md: build instructions, code style, test porting rules, PR process
-- .dev/: stays public — development docs, decisions, roadmap (no secrets)
+Phase 44.23 COMPLETE: README.md rewrite for OSS release.
+- Pre-Alpha / Experimental disclaimer at top
+- Updated all stats: 795 vars, 593/706 core, 66 Zig files, 62 test files
+- Wasm FFI section with code example
+- Server & Networking section with code example
+- Pipeline-based project structure (post-44.10 layout)
+- Benchmarks section with links to bench/benchmarks/
+- Future Plans, Acknowledgments, Contributing sections
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

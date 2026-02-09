@@ -1,188 +1,225 @@
 # ClojureWasm
 
-Clojure runtime written from scratch in Zig 0.15.2. Behavioral compatibility with Clojure JVM.
+> **Status: Pre-Alpha / Experimental**
+>
+> ClojureWasm is under active development. APIs may change, and there are
+> behavioral differences from reference Clojure. Primarily verified on
+> macOS Apple Silicon (aarch64-macos). Linux builds pass CI but are not
+> extensively tested.
+
+A Clojure runtime written from scratch in Zig. No JVM, no transpilation —
+a native implementation targeting behavioral compatibility with Clojure.
 
 ## Highlights
 
-- **Ultra-fast startup**: ~3-4ms (vs Babashka 8ms, Python 11ms, Java 21ms)
-- **Tiny binary**: ~2.8MB (ReleaseSafe)
-- **Single binary distribution**: `cljw build app.clj -o app` — no runtime needed
-- **Beats Babashka** on 19/20 benchmarks (speed), 20/20 (memory)
-- **NaN-boxed Value**: 8 bytes per value (33% faster, 53% less memory vs tagged union)
+- **Fast startup** — ~4ms to evaluate an expression (ReleaseSafe)
+- **Small binary** — ~3MB single executable (ReleaseSafe)
+- **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
+- **Wasm FFI** — call WebAssembly modules from Clojure (461 opcodes including SIMD)
+- **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
+- **795 vars** across 15+ namespaces (593/706 clojure.core)
+
+## Getting Started
+
+### Prerequisites
+
+- [Zig 0.15.2](https://ziglang.org/download/) (or `nix develop` for a pinned environment)
+
+### Build
+
+```bash
+zig build                     # Debug build
+zig build -Doptimize=ReleaseSafe  # Optimized build
+```
+
+### Run
+
+```bash
+./zig-out/bin/cljw -e '(println "Hello, world!")'   # Evaluate expression
+./zig-out/bin/cljw script.clj                        # Run a file
+./zig-out/bin/cljw                                   # Interactive REPL
+```
+
+### Build a Standalone Binary
+
+```bash
+./zig-out/bin/cljw build app.clj -o myapp
+./myapp                         # Runs without cljw
+```
+
+### nREPL / CIDER
+
+```bash
+./zig-out/bin/cljw --nrepl-server --port=7888 app.clj
+```
+
+Connect from Emacs CIDER or any nREPL client. 14 ops supported (eval, complete,
+info, stacktrace, eldoc, etc.).
 
 ## Features
 
 ### Language
 
 - Full Clojure reader (EDN, reader macros, syntax-quote, regex, tagged literals)
-- Dual backend: TreeWalk (reference) + bytecode VM (default, 9x faster)
-- 660+ vars implemented across 14 namespaces (537/706 clojure.core)
-- Persistent collections: list, vector, map, set (sorted variants included)
-- Transient collections, chunked sequences
+- Persistent collections: list, vector, hash-map, hash-set, sorted variants
+- Transient collections for efficient batch operations
 - Lazy sequences with GC-safe realization
 - Protocols, defrecord, deftype, multimethods
 - Destructuring (sequential, associative, nested)
+- Transducers (map, filter, take, drop, partition, etc.)
+- Numeric types: integers, floats, BigInt, BigDecimal, Ratio
 - try/catch/throw, loop/recur, letfn, with-open
 - Metadata system (with-meta, alter-meta!, vary-meta)
-- Transducers (map, filter, take, drop, etc.)
-- MarkSweep GC with free-pool recycling
+- Regex via built-in engine (re-find, re-matches, re-seq, re-groups)
 
 ### Namespaces
 
-| Namespace        | Vars | Description                      |
-| ---------------- | ---- | -------------------------------- |
-| clojure.core     | 537  | Core language                    |
-| clojure.string   | 21   | String manipulation              |
-| clojure.math     | 44   | Math functions (java.lang.Math)  |
-| clojure.set      | 12   | Set operations                   |
-| clojure.walk     | 8    | Tree walking                     |
-| clojure.test     | -    | Test framework                   |
-| clojure.template | -    | Code templates                   |
-| clojure.data     | -    | Data diff                        |
-| clojure.edn      | 1    | EDN reader                       |
-| clojure.repl     | 8    | doc, dir, apropos, source, pst   |
-| clojure.java.io  | 7    | File I/O (Zig-native compat)     |
-| cljw.http        | 6    | HTTP server/client               |
-| cljw.wasm        | -    | Wasm FFI (Phase 25)              |
+| Namespace          | Vars  | Description                        |
+|--------------------|-------|------------------------------------|
+| clojure.core       | 593   | Core language functions            |
+| clojure.string     | 21    | String manipulation                |
+| clojure.math       | 45    | Math functions                     |
+| clojure.set        | 12    | Set operations                     |
+| clojure.walk       | 10    | Tree walking                       |
+| clojure.zip        | 28    | Zipper data structure              |
+| clojure.test       | 32    | Test framework                     |
+| clojure.repl       | 11    | doc, dir, apropos, source, pst     |
+| clojure.pprint     | 9     | Pretty printing, print-table       |
+| clojure.data       | 3     | Data diff                          |
+| clojure.edn        | 1     | EDN reader                         |
+| clojure.template   | 2     | Code templates                     |
+| clojure.stacktrace | 6     | Stack trace utilities              |
+| clojure.java.io    | 7     | File I/O (Zig-native)             |
+| clojure.java.shell | 5     | Shell commands (sh)                |
+| cljw.http          | 6     | HTTP server/client                 |
 
-### Build & Distribution
+### Wasm FFI
 
-- `cljw build app.clj -o app` — single binary with source bundled
-- Multi-file project support with `require` resolution (depth-first)
-- Zero-config project model (auto-detect `src/`, `cljw.edn` optional)
-- Binary trailer format: `[cljw binary][bundled source][u64 size]["CLJW"]`
-- Build-time bootstrap cache (instant startup, no runtime parsing)
+Call WebAssembly modules directly from Clojure:
+
+```clojure
+(require '[cljw.wasm :as wasm])
+
+(def mod (wasm/load "add.wasm"))
+(def add (wasm/fn mod "add" [:i32 :i32] :i32))
+(add 1 2)  ;=> 3
+```
+
+- 461 opcodes (225 core + 236 SIMD)
+- WASI support (file I/O, clock, random, args, environ)
+- Multi-module linking with cross-module imports
+- v128 SIMD operations
 
 ### Server & Networking
 
-- **HTTP server**: Ring-compatible handler model (`cljw.http/run-server`)
-  - Thread-per-connection, background mode, live reload via nREPL
-- **HTTP client**: `cljw.http/get`, `post`, `put`, `delete`
-- **nREPL server**: CIDER-compatible (14 ops), `--nrepl-server --port=N`
-  - Built binaries also support `--nrepl` flag for live development
-- **Signal handling**: SIGINT/SIGTERM graceful shutdown with hooks
-- **Shutdown hooks**: `(add-shutdown-hook! :key f)` for cleanup
-
-### Developer Experience
-
-- Interactive REPL with multi-line input
-- nREPL + CIDER integration (eval, complete, info, stacktrace, eldoc)
-- Live reload: redefine handler via nREPL, apply with `set-handler!`
-- `--tree-walk` flag for reference backend comparison
-- `--dump-bytecode` for VM debugging
-- Error messages with source location and phase/kind classification
-
-### Testing
-
-- 1,175 Zig test blocks
-- 54 Clojure test files (SCI + upstream ports), 218 deftests
-- Dual-backend verification (VM + TreeWalk)
-- 21 benchmarks across computation, collections, HOF, GC, state
-
-## Usage
-
-```bash
-nix develop                       # dev shell (Zig 0.15.2)
-zig build
-
-# Run
-./zig-out/bin/cljw -e '(+ 1 2)'            # evaluate expression
-./zig-out/bin/cljw script.clj               # run file
-./zig-out/bin/cljw                           # interactive REPL
-
-# Build single binary
-./zig-out/bin/cljw build app.clj -o myapp
-./myapp                                      # runs without cljw
-
-# Server mode
-./zig-out/bin/cljw --nrepl-server --port=7888 app.clj
-
-# Test & Benchmark
-zig build test                               # run all tests
-bash bench/run_bench.sh --release-safe       # benchmarks
-```
-
-## Quick Start: HTTP API Server
-
 ```clojure
-;; app.clj
 (require '[cljw.http :as http])
 
 (defn handler [req]
   (case (:uri req)
-    "/hello" {:status 200 :body "{\"msg\": \"Hello!\"}"}
-    "/time"  {:status 200 :body (str (System/nanoTime))}
+    "/hello" {:status 200 :body "Hello!"}
     {:status 404 :body "Not Found"}))
 
 (http/run-server handler {:port 8080})
 ```
 
-```bash
-# Run directly
-./zig-out/bin/cljw app.clj
+- Ring-compatible handler model
+- HTTP client: `http/get`, `http/post`, `http/put`, `http/delete`
+- nREPL in built binaries (`./myapp --nrepl 7888`)
+- SIGINT/SIGTERM graceful shutdown with hooks
 
-# Or build a standalone binary
-./zig-out/bin/cljw build app.clj -o myapp
-./myapp                    # serves on :8080
-./myapp --nrepl 7888       # serves on :8080 + nREPL on :7888
-```
+### Internals
 
-## Architecture
-
-- **NaN-boxed Value** (D72) — `enum(u64)`: float pass-through, i48 integer, 40-bit heap pointer
-- **MarkSweep GC** (D69) — tracks allocations in HashMap, free-pool recycling, safe points
-- **Dual backend** (D6) — VM (bytecode, 50+ opcodes) + TreeWalk (AST), `EvalEngine.compare()`
-- **Instantiated VM** (D3) — no threadlocal/global mutable state (Env is passed)
-- **Bootstrap cache** — core.clj pre-compiled at Zig build time, restored in ~2-3ms
-- **Hybrid bootstrap** (D18) — core.clj via TreeWalk, hot paths recompiled to VM bytecode
+- **NaN-boxed Value** — 8-byte tagged representation (float pass-through, i48 integer, 40-bit heap pointer)
+- **MarkSweep GC** — allocation tracking, free-pool recycling, safe points
+- **Bytecode VM** — 50+ opcodes, superinstructions, fused branch ops
+- **ARM64 JIT** — hot integer loop detection with native code generation
+- **Bootstrap cache** — core.clj pre-compiled at build time (~4ms restore)
+- **Zero-config projects** — auto-detect `src/`, `cljw.edn` optional
 
 ## Project Structure
 
 ```
 src/
-├── main.zig                        CLI entry point
-├── root.zig                        Library root
-├── clj/clojure/                    Clojure source files
-│   ├── core.clj                    Core library (2242 lines)
-│   ├── string.clj, set.clj, ...   Standard library namespaces
+├── main.zig                    CLI entry point
+├── root.zig                    Library root
+├── clj/clojure/                Clojure source files
+│   ├── core.clj                Core library (~2400 lines)
+│   └── string.clj, set.clj... Standard library namespaces
 │
-├── common/                         Shared foundation
-│   ├── value.zig                   NaN-boxed Value type
-│   ├── env.zig                     Environment
-│   ├── gc.zig                      MarkSweep garbage collector
-│   ├── lifecycle.zig               Signal handling, shutdown hooks
-│   ├── bootstrap.zig               Bootstrap + eval pipelines
-│   ├── serialize.zig               Bytecode serialization (AOT)
-│   ├── reader/                     Tokenizer, Reader, Form
-│   ├── analyzer/                   Form -> Node AST analysis
-│   ├── bytecode/                   OpCode, Chunk, Compiler (50+ opcodes)
-│   └── builtin/                    290 builtins across 20+ modules
+├── reader/                     Stage 1: Source → Form
+├── analyzer/                   Stage 2: Form → Node
+├── compiler/                   Stage 3: Node → Bytecode
+├── vm/                         Stage 4a: Bytecode execution (+ JIT)
+├── evaluator/                  Stage 4b: TreeWalk interpreter
 │
-├── native/                         Native execution track
-│   ├── vm/vm.zig                   Stack-based bytecode VM
-│   └── evaluator/tree_walk.zig     Direct AST interpreter
-│
-├── repl/                           REPL + nREPL subsystem
-│   ├── nrepl.zig                   nREPL server (14 ops, CIDER-compatible)
-│   └── bencode.zig                 Bencode encoder/decoder
-│
-├── wasm/                           Wasm FFI (Phase 25)
-└── api/                            Embedding API
+├── runtime/                    Core types, GC, environment
+├── builtins/                   Built-in functions (27 modules)
+├── regex/                      Regex engine
+├── repl/                       nREPL server, line editor
+└── wasm/                       WebAssembly runtime (461 opcodes)
 
-bench/                              21 benchmarks, 8 languages
-test/                               54 Clojure test files
+bench/                          27 benchmarks, multi-language
+test/                           62 Clojure test files (38 upstream ports)
 ```
 
-## Roadmap
+## Benchmarks
 
-Completed: Phases 1-34 (reader, VM, builtins, GC, optimization, NaN boxing, single binary, nREPL, build system, namespaces, HTTP server)
+The benchmark suite is in [`bench/benchmarks/`](bench/benchmarks/) with 27 programs
+covering computation, collections, higher-order functions, GC pressure, and Wasm.
 
-| Phase | Focus                        | Status      |
-| ----- | ---------------------------- | ----------- |
-| 35    | Cross-platform distribution  | Next        |
-| 36    | Wasm FFI deep                | Planned     |
-| 37    | Advanced GC + JIT research   | Planned     |
+Run them yourself:
+
+```bash
+# Requires hyperfine
+bash bench/run_bench.sh                  # All benchmarks (ReleaseSafe)
+bash bench/run_bench.sh --quick          # Quick check (1 run)
+bash bench/run_bench.sh --bench=fib_recursive  # Single benchmark
+```
+
+## Testing
+
+```bash
+zig build test                  # 1,300+ Zig test blocks
+bash test/e2e/run_e2e.sh       # End-to-end tests
+```
+
+62 Clojure test files including 38 upstream test ports with 729 deftests.
+All tests verified on both VM and TreeWalk backends.
+
+## Future Plans
+
+Active development areas for future releases:
+
+- **Concurrency** — future, pmap, agent via Zig thread pool
+- **JIT expansion** — float operations, function calls, broader loop patterns
+- **Generational GC** — nursery/tenured generations for throughput
+- **Dependency management** — deps.edn compatible (git/sha deps)
+- **Persistent data structures** — HAMT/RRB-Tree implementations
+- **wasm_rt** — compile Clojure to run *inside* WebAssembly
+
+## Acknowledgments
+
+ClojureWasm is built with deep appreciation for [Clojure](https://clojure.org/)
+and the work of Rich Hickey. Clojure's design — immutable data, functional
+programming, and a pragmatic approach to state — has been a constant source of
+inspiration. The Clojure community's passion and thoughtfulness make it a
+uniquely rewarding ecosystem to be part of.
+
+This project ports test cases from the Clojure test suite (EPL-1.0) and includes
+Clojure standard library code adapted for the Zig runtime. See [NOTICE](NOTICE)
+for attribution details.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, code style, and
+development workflow.
+
+Issues are welcome. For larger changes, please open an issue first to discuss
+the approach.
 
 ## License
 
-EPL-1.0 (Eclipse Public License)
+[Eclipse Public License 1.0](LICENSE) (EPL-1.0)
+
+Copyright (c) 2026 chaploud
