@@ -202,10 +202,18 @@ namespace.
 Key components:
 - **Module parser**: Decodes Wasm binary format (types, functions, tables,
   memory, globals, imports, exports)
-- **VM**: Stack-based interpreter with switch dispatch
+- **Predecoder**: Converts variable-width Wasm bytecode to fixed-width 8-byte
+  instructions (`PreInstr`) at load time, with superinstruction fusion
+- **VM**: Stack-based interpreter with switch dispatch over predecoded IR
 - **WASI**: File I/O, clock, random, args, environ
 - **Multi-module linking**: Cross-module function imports
 - **SIMD**: v128 type with 236 SIMD opcodes
+
+Performance: The interpreter is ~10-30x slower than wasmtime (JIT compiler)
+for compute-heavy modules. This is the fundamental interpreter-vs-JIT gap —
+wasmtime compiles Wasm to native machine code via Cranelift, while ClojureWasm
+dispatches predecoded instructions one at a time. Module load time is faster
+(~4ms vs ~5ms) since no compilation step is needed.
 
 ## Regex Engine
 

@@ -115,6 +115,13 @@ Call WebAssembly modules directly from Clojure:
 - WASI support (file I/O, clock, random, args, environ)
 - Multi-module linking with cross-module imports
 - v128 SIMD operations
+- Predecoded IR with superinstructions for optimized dispatch
+
+> **Performance note**: The Wasm runtime is a pure interpreter (no JIT).
+> It is approximately 10-30x slower than wasmtime for compute-heavy modules,
+> though module load time is faster (~4ms vs ~5ms). For applications where
+> Wasm execution speed is critical, JIT compilation or wasmtime integration
+> are planned as future optimization paths.
 
 ### Server & Networking
 
@@ -197,8 +204,11 @@ All tests verified on both VM and TreeWalk backends.
 
 Active development areas for future releases:
 
-- **Concurrency** — future, pmap, agent via Zig thread pool
+- **Wasm FFI acceleration** — the built-in Wasm interpreter is ~10-30x slower
+  than wasmtime (JIT) for compute-heavy workloads. Planned approaches include
+  Wasm JIT compilation and optional wasmtime integration via its C API
 - **JIT expansion** — float operations, function calls, broader loop patterns
+- **Concurrency** — future, pmap, agent via Zig thread pool
 - **Generational GC** — nursery/tenured generations for throughput
 - **Dependency management** — deps.edn compatible (git/sha deps)
 - **Persistent data structures** — HAMT/RRB-Tree implementations
