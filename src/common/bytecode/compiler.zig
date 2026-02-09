@@ -709,8 +709,7 @@ pub const Compiler = struct {
 
         // Compile optional hierarchy var reference (must be on stack BEFORE dispatch fn)
         if (node.hierarchy_node) |h_node| {
-            try self.compile(h_node); // +1
-            self.stack_depth += 1;
+            try self.compile(h_node); // +1 (tracked by compile)
         }
 
         // Compile dispatch function
@@ -812,7 +811,9 @@ pub const Compiler = struct {
     fn emitThrow(self: *Compiler, node: *const node_mod.ThrowNode) CompileError!void {
         try self.compile(node.expr); // +1
         try self.chunk.emitOp(.throw_ex);
-        self.stack_depth -= 1; // throw pops (control transfers)
+        // throw transfers control, so the pop never executes at runtime.
+        // Keep stack_depth as +1 so enclosing do/try won't underflow when
+        // popping intermediate results.
     }
 
     fn emitTry(self: *Compiler, node: *const node_mod.TryNode) CompileError!void {

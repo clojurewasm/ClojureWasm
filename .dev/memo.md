@@ -21,27 +21,28 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 ## Task Queue
 
 Phase 38: Core Library Completeness
-1. [ ] 38.1: case* compiler special form — O(1) hash dispatch replacing O(n) cond
-2. [ ] 38.2: thrown-with-msg? test assertion — enable skipped multimethod tests
-3. [ ] 38.3: Matcher Value type + re-matcher, re-groups — regex group extraction
-4. [ ] 38.4: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
+1. [x] 38.1: thrown-with-msg? test assertion — enable skipped multimethod tests
+2. [ ] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
+3. [ ] 38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
+4. [ ] 38.4: case* compiler special form — O(1) hash dispatch (if time permits)
 5. [ ] 38.5: ns macro enhancement — :import support, docstring
 
 ## Current Task
 
-38.1: Implement case* compiler special form for O(1) constant dispatch.
-Upstream case macro compiles to case* which uses hashCode-based O(1) lookup.
-Current CW case is pure cond (O(n) linear scan). Need:
-- case* special form in analyzer/compiler
-- Hash-based jump table in VM
-- Update case macro in core.clj to use case*
+38.2: Implement Matcher Value type + re-matcher, re-groups — regex group extraction.
+Clojure's `re-matcher` returns a java.util.regex.Matcher object; `re-groups` extracts
+groups from it. Needed for upstream tests and idiomatic regex use.
 
 ## Previous Task
 
-Phase 37 complete — post-JIT profiling evaluation.
-- gc_stress 24ms < Java 31ms → Slab GC not needed (37.5 SKIP)
-- fib_recursive 17ms → call/ret overhead, not IC/escape (37.6 SKIP)
-- Cumulative: arith_loop 53→3ms (17.7x)
+38.1: Infrastructure fixes enabling thrown-with-msg? in multimethod tests (D88).
+- var_ref bootstrap serialization + deferred fixup (serialize.zig)
+- test.clj report ns-qualification for bootstrap cache (test.clj)
+- compiler emitDefmulti stack_depth double-increment fix (compiler.zig)
+- Cross-boundary exception handling: call_target_frame scope isolation (vm.zig, D88)
+- callFunction errdefer state restoration on error propagation (vm.zig)
+- Namespace restoration in bytecodeCallBridge (bootstrap.zig)
+- Result: 9 tests / 123 assertions pass on both VM + TreeWalk
 
 ## Known Issues
 
@@ -69,7 +70,7 @@ Session resume procedure: read this file → follow references below.
 |----------------------|-------------------------------------------|
 | Roadmap              | `.dev/roadmap.md`                    |
 | Deferred items       | `.dev/checklist.md` (F3-F120)             |
-| Decisions            | `.dev/decisions.md` (D1-D87)        |
+| Decisions            | `.dev/decisions.md` (D1-D88)        |
 | Optimizations        | `.dev/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |

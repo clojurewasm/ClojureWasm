@@ -187,6 +187,10 @@ pub const VM = struct {
     handler_count: usize,
     /// Runtime environment (Namespace/Var resolution).
     env: ?*Env,
+    /// Minimum frame scope for handler dispatch. Set by callFunction to
+    /// prevent inner exceptions from being caught by outer scope handlers
+    /// when execution crosses VM/TreeWalk boundaries.
+    call_target_frame: usize = 0,
     /// GC instance for automatic collection at safe points.
     gc: ?*gc_mod.MarkSweepGc = null,
     /// JIT compilation state (ARM64 only).
@@ -304,8 +308,14 @@ pub const VM = struct {
                     }
                 }
                 if (self.handler_count > 0 and isUserError(e)) {
-                    self.dispatchErrorToHandler(e) catch |e2| return e2;
-                    continue;
+                    // Only dispatch to handler if it belongs to this call scope.
+                    // Handlers with saved_frame_count > call_target_frame were
+                    // established during the current callFunction execution.
+                    const handler = self.handlers[self.handler_count - 1];
+                    if (handler.saved_frame_count > self.call_target_frame) {
+                        self.dispatchErrorToHandler(e) catch |e2| return e2;
+                        continue;
+                    }
                 }
                 return e;
             }
@@ -329,6 +339,23 @@ pub const VM = struct {
     pub fn callFunction(self: *VM, fn_val: Value, args: []const Value) VMError!Value {
         const saved_sp = self.sp;
         const target_frame = self.frame_count;
+        // Scope handler dispatch to this call (prevents exceptions from leaking
+        // to handlers established by outer callFunction scopes across bridges).
+        const saved_call_target = self.call_target_frame;
+        self.call_target_frame = target_frame;
+        defer self.call_target_frame = saved_call_target;
+        // Restore stack and frame state on error, so the caller VM is in a
+        // clean state for subsequent calls (e.g., TW catch clause calling report).
+        errdefer {
+            self.sp = saved_sp;
+            self.frame_count = target_frame;
+        }
+        // Save namespace — performCall switches it (D68), but if the callee
+        // throws and no handler catches it, ret never runs.
+        const saved_ns = if (self.env) |env| env.current_ns else null;
+        errdefer if (self.env) |env| {
+            env.current_ns = saved_ns;
+        };
         try self.push(fn_val);
         for (args) |arg| {
             try self.push(arg);
@@ -863,18 +890,34 @@ pub const VM = struct {
             },
             .throw_ex => {
                 const thrown = self.pop();
+                // Only dispatch to handlers within the current call scope.
+                // Handlers at or below call_target_frame belong to an outer
+                // callFunction scope and must not intercept our exception.
                 if (self.handler_count > 0) {
-                    self.handler_count -= 1;
-                    const handler = self.handlers[self.handler_count];
-                    // Restore state
-                    self.sp = handler.saved_sp;
-                    self.frame_count = handler.saved_frame_count;
-                    // Push exception value (becomes the catch binding)
-                    try self.push(thrown);
-                    // Jump to catch handler
-                    self.frames[handler.frame_idx].ip = handler.catch_ip;
-                    err_mod.saveCallStack();
-                    err_mod.clearCallStack();
+                    const handler = self.handlers[self.handler_count - 1];
+                    if (handler.saved_frame_count > self.call_target_frame) {
+                        self.handler_count -= 1;
+                        // Restore namespace from unwound call frames (D68).
+                        if (self.env) |env| {
+                            if (self.frame_count > handler.saved_frame_count) {
+                                const ns_ptr = self.frames[handler.saved_frame_count].saved_ns;
+                                env.current_ns = if (ns_ptr) |p| @ptrCast(@alignCast(p)) else null;
+                            }
+                        }
+                        // Restore state
+                        self.sp = handler.saved_sp;
+                        self.frame_count = handler.saved_frame_count;
+                        // Push exception value (becomes the catch binding)
+                        try self.push(thrown);
+                        // Jump to catch handler
+                        self.frames[handler.frame_idx].ip = handler.catch_ip;
+                        err_mod.saveCallStack();
+                        err_mod.clearCallStack();
+                    } else {
+                        // Handler out of scope — propagate to bridge
+                        bootstrap.last_thrown_exception = thrown;
+                        return error.UserException;
+                    }
                 } else {
                     // No handler — save value for cross-backend propagation
                     bootstrap.last_thrown_exception = thrown;
@@ -1013,6 +1056,13 @@ pub const VM = struct {
     fn dispatchErrorToHandler(self: *VM, err: VMError) VMError!void {
         self.handler_count -= 1;
         const handler = self.handlers[self.handler_count];
+        // Restore namespace from unwound call frames (D68).
+        if (self.env) |env| {
+            if (self.frame_count > handler.saved_frame_count) {
+                const ns_ptr = self.frames[handler.saved_frame_count].saved_ns;
+                env.current_ns = if (ns_ptr) |p| @ptrCast(@alignCast(p)) else null;
+            }
+        }
         self.sp = handler.saved_sp;
         self.frame_count = handler.saved_frame_count;
 

@@ -756,6 +756,11 @@ pub var last_thrown_exception: ?Value = null;
 /// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
     const env = macro_eval_env orelse return error.EvalError;
+    // Save namespace before VM call — performCall switches to the function's
+    // defining namespace (D68), but if the function throws, the ret opcode
+    // never executes and the namespace stays corrupted.
+    const saved_ns = env.current_ns;
+    errdefer env.current_ns = saved_ns;
     // Note: VM is NOT deinit'd here — closures created during execution
     // (e.g., fn values returned from calls) must outlive this scope.
     // Memory is owned by the arena allocator, which handles bulk deallocation.

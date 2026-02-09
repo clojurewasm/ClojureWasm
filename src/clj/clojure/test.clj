@@ -131,15 +131,15 @@
 (defn test-var [v]
   (when-let [t (:test (meta v))]
     (swap! test-count inc)
-    (report {:type :begin-test-var :var v})
+    (clojure.test/report {:type :begin-test-var :var v})
     (try
       (t)
       (catch Exception e
-        (report {:type :error
-                 :message "Uncaught exception, not in assertion."
-                 :expected nil
-                 :actual e})))
-    (report {:type :end-test-var :var v})))
+        (clojure.test/report {:type :error
+                              :message "Uncaught exception, not in assertion."
+                              :expected nil
+                              :actual e})))
+    (clojure.test/report {:type :end-test-var :var v})))
 
 ;; Run test vars grouped by namespace with fixtures applied.
 (defn test-vars [vars]
@@ -175,12 +175,12 @@
             body (rest (rest expr))]
         `(try
            (do ~@body)
-           (report {:type :fail :message ~msg
-                    :expected '~expr :actual nil})
+           (clojure.test/report {:type :fail :message ~msg
+                                 :expected '~expr :actual nil})
            nil
            (catch ~klass e#
-             (report {:type :pass :message ~msg
-                      :expected '~expr :actual e#})
+             (clojure.test/report {:type :pass :message ~msg
+                                   :expected '~expr :actual e#})
              e#)))
 
       (and (seq? expr) (= (first expr) 'thrown-with-msg?))
@@ -190,27 +190,27 @@
             body (rest (rest (rest expr)))]
         `(try
            (do ~@body)
-           (report {:type :fail :message ~msg
-                    :expected '~expr :actual nil})
+           (clojure.test/report {:type :fail :message ~msg
+                                 :expected '~expr :actual nil})
            nil
            (catch ~klass e#
              (if (re-find ~re (str e#))
-               (do (report {:type :pass :message ~msg
-                            :expected '~expr :actual e#})
+               (do (clojure.test/report {:type :pass :message ~msg
+                                         :expected '~expr :actual e#})
                    e#)
-               (do (report {:type :fail :message ~msg
-                            :expected '~expr :actual e#})
+               (do (clojure.test/report {:type :fail :message ~msg
+                                         :expected '~expr :actual e#})
                    e#)))))
 
       :else
       ;; default: evaluate and check truthiness
       `(let [result# ~expr]
          (if result#
-           (do (report {:type :pass :message ~msg
-                        :expected '~expr :actual result#})
+           (do (clojure.test/report {:type :pass :message ~msg
+                                     :expected '~expr :actual result#})
                true)
-           (do (report {:type :fail :message ~msg
-                        :expected '~expr :actual result#})
+           (do (clojure.test/report {:type :fail :message ~msg
+                                     :expected '~expr :actual result#})
                false))))))
 
 ;; Group assertions under a descriptive string.
@@ -259,11 +259,11 @@
               (println (str "  ERROR in " (:name t) ": " e)))))))
 
     ;; Print summary via report
-    (report {:type :summary
-             :test @test-count
-             :pass @pass-count
-             :fail @fail-count
-             :error @error-count})
+    (clojure.test/report {:type :summary
+                          :test @test-count
+                          :pass @pass-count
+                          :fail @fail-count
+                          :error @error-count})
 
     ;; Return success status
     (= 0 (+ @fail-count @error-count))))

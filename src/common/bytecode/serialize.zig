@@ -72,6 +72,8 @@ pub const ValueTag = enum(u8) {
     map = 0x0B,
     set = 0x0C,
     var_ref = 0x0D,
+    atom = 0x0E,
+    volatile_ref = 0x0F,
 };
 
 // --- Byte encoding helpers (little-endian) ---
@@ -256,6 +258,22 @@ pub const Serializer = struct {
                 for (items) |item| {
                     try self.serializeValue(allocator, item);
                 }
+            },
+            .var_ref => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.var_ref));
+                const v = val.asVarRef();
+                const ns_idx = try self.internString(allocator, v.ns_name);
+                try self.writeBytes(allocator, &encodeU32(ns_idx));
+                const name_idx = try self.internString(allocator, v.sym.name);
+                try self.writeBytes(allocator, &encodeU32(name_idx));
+            },
+            .atom => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.atom));
+                try self.serializeValue(allocator, val.asAtom().value);
+            },
+            .volatile_ref => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.volatile_ref));
+                try self.serializeValue(allocator, val.asVolatile().value);
             },
             else => {
                 // Unsupported type — serialize as nil
@@ -584,6 +602,15 @@ pub const Serializer = struct {
 };
 
 /// Deserialization context.
+/// Deferred var_ref fixup entry: var wasn't available yet during FnProto
+/// constant deserialization. Resolved after all vars are created.
+const DeferredVarRef = struct {
+    constants: []Value, // mutable constants array of the FnProto/Chunk
+    index: usize, // which constant slot to fix up
+    ns_name: []const u8,
+    var_name: []const u8,
+};
+
 pub const Deserializer = struct {
     data: []const u8,
     pos: usize = 0,
@@ -591,6 +618,10 @@ pub const Deserializer = struct {
     strings: []const []const u8 = &.{},
     /// Reconstructed FnProto pointers for fn_val resolution.
     fn_protos: []const *const anyopaque = &.{},
+    /// Environment for var_ref resolution during deserialization.
+    env: ?*Env = null,
+    /// Deferred var_ref fixups.
+    deferred_var_refs: std.ArrayListUnmanaged(DeferredVarRef) = .empty,
 
     pub fn readU8(self: *Deserializer) !u8 {
         if (self.pos >= self.data.len) return error.UnexpectedEof;
@@ -772,9 +803,41 @@ pub const Deserializer = struct {
                 break :blk Value.initSet(set);
             },
             .var_ref => blk: {
-                _ = try self.readU32(); // ns name index
-                _ = try self.readU32(); // var name index
-                break :blk Value.nil_val; // placeholder — resolved during loading
+                const ns_idx = try self.readU32();
+                const name_idx = try self.readU32();
+                if (ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                if (name_idx >= self.strings.len) return error.InvalidStringIndex;
+                const ns_name = self.strings[ns_idx];
+                const var_name = self.strings[name_idx];
+                // Try to resolve var from env if available.
+                if (self.env) |env| {
+                    if (env.findNamespace(ns_name)) |ns| {
+                        if (ns.resolve(var_name)) |v| {
+                            break :blk Value.initVarRef(v);
+                        }
+                    }
+                }
+                // Var not yet available — record for deferred fixup.
+                // Constants/index filled in by deserializeChunk after append.
+                try self.deferred_var_refs.append(allocator, .{
+                    .constants = &.{},
+                    .index = 0,
+                    .ns_name = ns_name,
+                    .var_name = var_name,
+                });
+                break :blk Value.nil_val;
+            },
+            .atom => blk: {
+                const inner = try self.deserializeValue(allocator);
+                const a = try allocator.create(value_mod.Atom);
+                a.* = .{ .value = inner };
+                break :blk Value.initAtom(a);
+            },
+            .volatile_ref => blk: {
+                const inner = try self.deserializeValue(allocator);
+                const v = try allocator.create(value_mod.Volatile);
+                v.* = .{ .value = inner };
+                break :blk Value.initVolatile(v);
             },
         };
     }
@@ -815,7 +878,13 @@ pub const Deserializer = struct {
         const const_len = try self.readU32();
         const constants = try allocator.alloc(Value, const_len);
         for (0..const_len) |i| {
+            const deferred_before = self.deferred_var_refs.items.len;
             constants[i] = try self.deserializeValue(allocator);
+            // Wire up deferred var_ref entry with this constants array and index.
+            if (self.deferred_var_refs.items.len > deferred_before) {
+                self.deferred_var_refs.items[self.deferred_var_refs.items.len - 1].constants = constants;
+                self.deferred_var_refs.items[self.deferred_var_refs.items.len - 1].index = i;
+            }
         }
 
         // Debug info
@@ -969,6 +1038,8 @@ pub const Deserializer = struct {
     /// Restore env state from snapshot. Expects registerBuiltins already called.
     /// Creates/updates namespaces and vars, then connects refers and aliases.
     pub fn restoreEnvState(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        // Make env available for var_ref resolution during deserialization.
+        self.env = env;
         const ns_count = try self.readU32();
 
         // Temporary storage for deferred refer/alias setup
@@ -1043,6 +1114,18 @@ pub const Deserializer = struct {
         try self.readStringTable(allocator);
         try self.readFnProtoTable(allocator);
         try self.restoreEnvState(allocator, env);
+        // Resolve deferred var_refs now that all vars exist.
+        try self.resolveDeferredVarRefs(env);
+    }
+
+    /// Resolve var_refs that were deferred during FnProto deserialization.
+    /// Called after restoreEnvState when all namespaces and vars are available.
+    fn resolveDeferredVarRefs(self: *Deserializer, env: *Env) !void {
+        for (self.deferred_var_refs.items) |entry| {
+            const ns = env.findNamespace(entry.ns_name) orelse return error.InvalidVarRef;
+            const v = ns.resolve(entry.var_name) orelse return error.InvalidVarRef;
+            entry.constants[entry.index] = Value.initVarRef(v);
+        }
     }
 };
 

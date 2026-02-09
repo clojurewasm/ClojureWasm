@@ -121,13 +121,13 @@
 
 (deftest cycles-are-forbidden
   (testing "a tag cannot be its own parent"
-    ;; CLJW: thrown-with-msg? not supported; use thrown?
-    (is (thrown? Exception
-                 (derive family ::child ::child))))
+    ;; CLJW: Throwable → Exception
+    (is (thrown-with-msg? Exception #"Assert failed"
+                          (derive family ::child ::child))))
   (testing "a tag cannot be its own ancestor"
-    ;; CLJW: thrown-with-msg? not supported; use thrown?
-    (is (thrown? Exception
-                 (derive family ::ancestor-1 ::child)))))
+    ;; CLJW: Throwable → Exception, message differs (CW uses (throw (str ...)) not Java exception)
+    (is (thrown-with-msg? Exception #"Cyclic derivation"
+                          (derive family ::ancestor-1 ::child)))))
 
 (deftest using-diamond-inheritance
   (let [diamond (reduce #(apply derive (cons %1 %2)) (make-hierarchy)

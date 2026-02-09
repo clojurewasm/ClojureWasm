@@ -380,4 +380,28 @@ runtime. Interpreter-integrated, single-loop cache, automatic deopt.
 heap allocation, string ops, collection ops. fib_recursive uses recursion (not loop),
 so JIT does not apply.
 
+## D88: Cross-Boundary Exception Handling — call_target_frame Scope Isolation
+
+**Decision**: Add `call_target_frame` field to VM to prevent exception handlers from
+dispatching across VM/TreeWalk bridge boundaries.
+
+**Problem**: When execution crosses VM→TW→VM boundaries (e.g. `run-tests` → `do-testing`
+→ TW closure → `derive` throws), `throw_ex` dispatches to the nearest handler regardless
+of call boundary. This causes an outer scope's `try/finally` handler (from `binding` in
+`do-testing`) to intercept exceptions meant for inner scope's `try/catch` (from TW's
+`thrown?`).
+
+**Architecture**:
+
+- `call_target_frame: usize` on VM — set by `callFunction` to current `frame_count`
+- `throw_ex`: only dispatch to handler if `handler.saved_frame_count > call_target_frame`
+- `executeUntil`: same scope check before error handler dispatch
+- `callFunction`: `errdefer` restores `sp`, `frame_count`, and `current_ns` on error
+  propagation, preventing stale frames from corrupting subsequent calls
+
+**Companion fix**: Deferred var_ref resolution in bootstrap cache. `var_ref` constants
+(e.g. `(var *testing-contexts*)`) are serialized with ns/var names but cannot be resolved
+during `readFnProtoTable` (vars don't exist yet). Deferred fixup list resolves them after
+`restoreEnvState`.
+
 **Files**: `src/native/vm/jit.zig` (new, ~700 lines), `src/native/vm/vm.zig` (JitState integration).

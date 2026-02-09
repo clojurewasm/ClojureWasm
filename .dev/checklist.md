@@ -20,14 +20,9 @@ Check at session start for items that become actionable.
 | F94  | Upstream Alignment pass                      | Replace UPSTREAM-DIFF implementations with upstream verbatim       |
 | F95  | VM intrinsic ns awareness                    | :exclude of +,-,*,/ in refer-clojure ineffective on VM backend     |
 | F99  | Iterative lazy-seq realization engine        | D74 fixes sieve. General recursion remains. See `optimizations.md` |
-| ~~F101~~ | ~~into() transient optimization~~        | **DONE**: into uses transient for vector/map/set targets. |
 | F102 | map/filter chunked processing                | DEFERRED: CW range is eager (no chunked producers). Needs lazy range first. |
 | F103 | Escape analysis (local scope skip GC)        | Compiler detects local-only Values, skip GC tracking               |
 | F104 | Profile-guided optimization (extend IC)      | Extend inline caching beyond monomorphic                           |
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
-| ~~F113~~ | ~~nREPL GC integration~~                 | **DONE**: MarkSweepGc added to nREPL ServerState. GC collectIfNeeded after each eval. |
-| ~~F118~~ | ~~Wasm FFI deep (Phase 36)~~              | **DONE**: SIMD 236 opcodes, optimization D86, multi-module, F119 fix, docs. |
-| ~~F119~~ | ~~WIT string return marshalling~~        | **DONE**: Swapped ptr/len order in callWithWitMarshalling. |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
-| ~~F121~~ | ~~Cross-language benchmark equivalence fixes~~ | **DONE**: 6/7 fixed. Only 05_map_filter_reduce deferred (minor). |
