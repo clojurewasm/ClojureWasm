@@ -358,6 +358,13 @@ fn coerceFn(comptime expected: ZigArray.ElementType, comptime name: []const u8) 
     }.f;
 }
 
+/// (bytes? x) — true if x is a byte array
+fn bytesPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bytes?", .{args.len});
+    if (args[0].tag() != .array) return Value.false_val;
+    return Value.initBoolean(args[0].asArray().element_type == .byte);
+}
+
 // ============================================================
 // Builtin table
 // ============================================================
@@ -436,6 +443,15 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "bytes", .func = coerceFn(.byte, "bytes"), .doc = "Casts to byte[].", .arglists = "([xs])", .added = "1.0" },
     .{ .name = "shorts", .func = coerceFn(.short, "shorts"), .doc = "Casts to short[].", .arglists = "([xs])", .added = "1.0" },
     .{ .name = "chars", .func = coerceFn(.char, "chars"), .doc = "Casts to char[].", .arglists = "([xs])", .added = "1.0" },
+    .{ .name = "aset-int", .func = asetFn, .doc = "Sets the value at the index of an int array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-long", .func = asetFn, .doc = "Sets the value at the index of a long array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-float", .func = asetFn, .doc = "Sets the value at the index of a float array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-double", .func = asetFn, .doc = "Sets the value at the index of a double array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-boolean", .func = asetFn, .doc = "Sets the value at the index of a boolean array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-byte", .func = asetFn, .doc = "Sets the value at the index of a byte array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-short", .func = asetFn, .doc = "Sets the value at the index of a short array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "aset-char", .func = asetFn, .doc = "Sets the value at the index of a char array.", .arglists = "([array idx val])", .added = "1.0" },
+    .{ .name = "bytes?", .func = bytesPredFn, .doc = "Return true if x is a byte array.", .arglists = "([x])", .added = "1.9" },
 };
 
 // ============================================================

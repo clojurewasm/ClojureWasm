@@ -126,14 +126,14 @@ vars:
     "array-map": {type: function, status: done, note: "Zig builtin"}
     "as->": {type: macro, status: done, note: "macro in core.clj"}
     aset: {type: function, status: done, note: Phase 43 — Zig array type}
-    "aset-boolean": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-byte": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-char": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-double": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-float": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-int": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-long": {type: function, status: skip, note: Phase 43 — Zig array type}
-    "aset-short": {type: function, status: skip, note: Phase 43 — Zig array type}
+    "aset-boolean": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-byte": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-char": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-double": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-float": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-int": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-long": {type: function, status: done, note: Phase 43 — Zig array type}
+    "aset-short": {type: function, status: done, note: Phase 43 — Zig array type}
     assert: {type: macro, status: done, note: 'CLJW: str throw instead of AssertionError (JVM class)'}
     assoc: {type: function, status: done, note: "Zig builtin"}
     "assoc!": {type: function, status: done}
@@ -172,7 +172,7 @@ vars:
     byte: {type: function, status: done, note: builtin (upstream is pure clj)}
     "byte-array": {type: function, status: done, note: Phase 43 — Zig array type}
     bytes: {type: function, status: done, note: Phase 43 — Zig array type}
-    "bytes?": {type: function, status: skip, note: "Phase 42 — quick win"}
+    "bytes?": {type: function, status: done, note: "Phase 42 — quick win"}
     case: {type: macro, status: done, note: "Zig builtin compiler support"}
     cast: {type: function, status: done, note: identity (no JVM type system)}
     cat: {type: function, status: done, note: "core.clj (upstream is pure clj)"}

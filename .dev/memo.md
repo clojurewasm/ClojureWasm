@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 42 COMPLETE**
-- Coverage: 778 vars done across all namespaces (576/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- Coverage: 787 vars done across all namespaces (585/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -23,7 +23,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 43: Numeric Types + Arrays
 1. [x] 43.1: Array Value type + core ops (make-array, object-array, aget, aset, alength, aclone, to-array, into-array)
 2. [x] 43.2: Typed array constructors (int-array..char-array, to-array-2d, ints..chars coercion)
-3. [ ] 43.3: Typed setters + coercion (aset-int..aset-boolean, ints, longs, bytes, shorts, chars, floats, doubles, bytes?)
+3. [x] 43.3: Typed setters + bytes? (aset-int..aset-char, bytes?)
 4. [ ] 43.4: Array macros (amap, areduce)
 5. [ ] 43.5: BigInt Value type + bigint/biginteger fns
 6. [ ] 43.6: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
@@ -31,15 +31,16 @@ Phase 43: Numeric Types + Arrays
 
 ## Current Task
 
-Phase 43.3: Typed setters + coercion.
+Phase 43.4: Array macros (amap, areduce).
 
 Design:
-- aset-int, aset-long, aset-float, aset-double, aset-boolean, aset-byte, aset-short, aset-char
-- bytes? predicate (bytes? x → true if x is byte-array)
+- `amap`: macro that creates new array by mapping over indices
+- `areduce`: macro that reduces over array indices
+- Both are macros (upstream Clojure), not functions
 
 ## Previous Task
 
-Phase 43.2 COMPLETE: 17 typed array builtins (8 constructors + to-array-2d + 8 coercion).
+Phase 43.3 COMPLETE: 9 typed setter builtins (aset-int..aset-char, bytes?).
 
 ## Known Issues
 
