@@ -24,15 +24,15 @@ Phase 38: Core Library Completeness
 1. [x] 38.1: thrown-with-msg? test assertion — enable skipped multimethod tests
 2. [x] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
 3. [x] 38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
-4. [ ] 38.4: case* compiler special form — O(1) hash dispatch (if time permits)
+4. [-] 38.4: case* compiler special form — DEFERRED (case works, O(1) is optimization)
 5. [ ] 38.5: ns macro enhancement — :import support, docstring
 
 ## Current Task
 
-38.4: case* compiler special form — O(1) hash dispatch.
-Add case* special form to the compiler for constant-time case dispatch using
-hash tables instead of linear cond chains. Currently `case` macro compiles to
-nested `cond` which is O(n).
+38.5: ns macro enhancement — :import support, docstring.
+Add :import clause and docstring support to the ns macro. Currently ns only
+supports :require and :use. :import for Java-like class aliasing and docstring
+for namespace documentation.
 
 ## Previous Task
 

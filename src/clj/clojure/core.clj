@@ -1052,7 +1052,7 @@
 
 ;; Control flow macros
 
-;; UPSTREAM-DIFF: cond-based, no case* optimization, no multi-value test (F27), no symbol match (F28)
+;; UPSTREAM-DIFF: cond-based O(n), no case* O(1) hash dispatch
 (defmacro case [expr & clauses]
   (let [pairs (partition 2 clauses)
         default (if (= (* 2 (count pairs)) (count clauses))
