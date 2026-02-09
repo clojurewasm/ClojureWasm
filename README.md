@@ -1,11 +1,17 @@
 # ClojureWasm
 
+![Status: Pre-Alpha](https://img.shields.io/badge/status-pre--alpha-orange)
+![License: EPL-1.0](https://img.shields.io/badge/license-EPL--1.0-blue)
+![Zig 0.15.2](https://img.shields.io/badge/zig-0.15.2-f7a41d)
+
 > **Status: Pre-Alpha / Experimental**
 >
 > ClojureWasm is under active development. APIs may change, and there are
-> behavioral differences from reference Clojure. Primarily verified on
-> macOS Apple Silicon (aarch64-macos). Linux builds pass CI but are not
-> extensively tested.
+> behavioral differences from reference Clojure. See [DIFFERENCES.md](DIFFERENCES.md)
+> for details.
+>
+> **Verified on**: macOS (Apple Silicon / aarch64). Linux x86_64 and
+> aarch64 builds pass CI but have not been extensively tested.
 
 A Clojure runtime written from scratch in Zig. No JVM, no transpilation —
 a native implementation targeting behavioral compatibility with Clojure.
