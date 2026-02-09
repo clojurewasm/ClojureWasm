@@ -543,6 +543,30 @@ pub fn nthFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// Walk seq to find nth element.
 fn nthSeq(allocator: Allocator, coll: Value, idx: usize, not_found: ?Value) anyerror!Value {
+    // O(1) nth for Meta.range (unrealized lazy ranges)
+    if (coll.tag() == .lazy_seq and coll.asLazySeq().realized == null) {
+        if (coll.asLazySeq().meta) |m| {
+            switch (m.*) {
+                .range => |r| {
+                    const i_idx: i64 = @intCast(idx);
+                    const target = r.current + i_idx * r.step;
+                    if ((r.step > 0 and target < r.end) or (r.step < 0 and target > r.end)) {
+                        return Value.initInteger(target);
+                    }
+                    return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
+                },
+                .float_range => |r| {
+                    const f_idx: f64 = @floatFromInt(idx);
+                    const target = r.current + f_idx * r.step;
+                    if ((r.step > 0 and target < r.end) or (r.step < 0 and target > r.end)) {
+                        return Value.initFloat(target);
+                    }
+                    return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds", .{idx});
+                },
+                else => {},
+            }
+        }
+    }
     var current = coll;
     var i: usize = 0;
     while (i <= idx) {
@@ -576,7 +600,34 @@ fn nthString(s: []const u8, idx: usize, not_found: ?Value) anyerror!Value {
 pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to count", .{args.len});
     if (args[0].tag() == .lazy_seq) {
-        const realized = try args[0].asLazySeq().realize(allocator);
+        const ls = args[0].asLazySeq();
+        // O(1) count for Meta.range (unrealized lazy ranges)
+        if (ls.realized == null) {
+            if (ls.meta) |m| {
+                switch (m.*) {
+                    .range => |r| {
+                        if (r.step > 0) {
+                            if (r.current >= r.end) return Value.initInteger(0);
+                            return Value.initInteger(@divTrunc(r.end - r.current + r.step - 1, r.step));
+                        } else {
+                            if (r.current <= r.end) return Value.initInteger(0);
+                            return Value.initInteger(@divTrunc(r.current - r.end - r.step - 1, -r.step));
+                        }
+                    },
+                    .float_range => |r| {
+                        if (r.step > 0) {
+                            if (r.current >= r.end) return Value.initInteger(0);
+                            return Value.initInteger(@intFromFloat(@ceil((r.end - r.current) / r.step)));
+                        } else {
+                            if (r.current <= r.end) return Value.initInteger(0);
+                            return Value.initInteger(@intFromFloat(@ceil((r.current - r.end) / (-r.step))));
+                        }
+                    },
+                    else => {},
+                }
+            }
+        }
+        const realized = try ls.realize(allocator);
         const realized_args = [1]Value{realized};
         return countFn(allocator, &realized_args);
     }

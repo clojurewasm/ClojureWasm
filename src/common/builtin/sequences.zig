@@ -46,12 +46,22 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
-/// (range n), (range start end), (range start end step) — returns a list of numbers.
-/// Eager implementation (not lazy). All-integer args produce integer results.
+/// (range), (range n), (range start end), (range start end step)
+/// Returns a lazy sequence of numbers.
+/// (range) returns an infinite lazy sequence starting at 0.
 pub fn rangeFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len == 0 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to range", .{args.len});
+    if (args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to range", .{args.len});
 
-    // Extract numeric values as f64 for uniform handling
+    // (range) — infinite range from 0
+    if (args.len == 0) {
+        const meta = try allocator.create(LazySeq.Meta);
+        meta.* = .{ .range = .{ .current = 0, .end = std.math.maxInt(i64), .step = 1 } };
+        const ls = try allocator.create(LazySeq);
+        ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+        return Value.initLazySeq(ls);
+    }
+
+    // Extract numeric values
     const start_val: f64 = if (args.len == 1) 0.0 else try toFloat(args[0]);
     const end_val: f64 = if (args.len == 1) try toFloat(args[0]) else try toFloat(args[1]);
     const step_val: f64 = if (args.len == 3) try toFloat(args[2]) else 1.0;
@@ -61,37 +71,36 @@ pub fn rangeFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Determine if all inputs are integers (for integer output)
     const all_int = allIntegers(args);
 
-    // Calculate count
-    var count: usize = 0;
-    if (step_val > 0) {
-        var v = start_val;
-        while (v < end_val) : (v += step_val) {
-            count += 1;
-            if (count > 1_000_000) return error.OutOfMemory; // safety limit
-        }
+    // Empty range check
+    if ((step_val > 0 and start_val >= end_val) or (step_val < 0 and start_val <= end_val)) {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        return Value.initList(lst);
+    }
+
+    if (all_int) {
+        // Integer range — use Meta.range for lazy evaluation + fused reduce
+        const meta = try allocator.create(LazySeq.Meta);
+        meta.* = .{ .range = .{
+            .current = @intFromFloat(start_val),
+            .end = @intFromFloat(end_val),
+            .step = @intFromFloat(step_val),
+        } };
+        const ls = try allocator.create(LazySeq);
+        ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+        return Value.initLazySeq(ls);
     } else {
-        var v = start_val;
-        while (v > end_val) : (v += step_val) {
-            count += 1;
-            if (count > 1_000_000) return error.OutOfMemory;
-        }
+        // Float range — use Meta.float_range for lazy evaluation
+        const meta = try allocator.create(LazySeq.Meta);
+        meta.* = .{ .float_range = .{
+            .current = start_val,
+            .end = end_val,
+            .step = step_val,
+        } };
+        const ls = try allocator.create(LazySeq);
+        ls.* = .{ .thunk = null, .realized = null, .meta = meta };
+        return Value.initLazySeq(ls);
     }
-
-    // Build list
-    const items = try allocator.alloc(Value, count);
-    var v = start_val;
-    for (items) |*item| {
-        if (all_int) {
-            item.* = Value.initInteger(@intFromFloat(v));
-        } else {
-            item.* = Value.initFloat(v);
-        }
-        v += step_val;
-    }
-
-    const lst = try allocator.create(PersistentList);
-    lst.* = .{ .items = items };
-    return Value.initList(lst);
 }
 
 /// (repeat n x) — returns a list of x repeated n times.
@@ -517,7 +526,7 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
                 take_n = lt.n;
                 current = lt.source;
             },
-            .range, .iterate => break, // base source found
+            .range, .float_range, .iterate => break, // base source found
         }
     }
 
@@ -569,6 +578,42 @@ fn fusedReduce(allocator: Allocator, f: Value, init: Value, coll: Value) anyerro
                         call_buf[0] = acc;
                         call_buf[1] = elem;
                         acc = try callFn(allocator,f, &call_buf);
+                        if (acc.tag() == .reduced) return acc.asReduced().value;
+                        remaining -= 1;
+                    }
+                    return acc;
+                },
+                .float_range => |r| {
+                    // Direct float range iteration (no lazy-seq allocation)
+                    var cur = r.current;
+                    while (remaining > 0) {
+                        if ((r.step > 0 and cur >= r.end) or (r.step < 0 and cur <= r.end)) break;
+                        var elem: Value = Value.initFloat(cur);
+                        var skip = false;
+
+                        var ti: usize = transform_count;
+                        while (ti > 0) {
+                            ti -= 1;
+                            switch (transforms[ti].kind) {
+                                .filter => {
+                                    const pred_result = try callFn(allocator, transforms[ti].fn_val, &[1]Value{elem});
+                                    if (!pred_result.isTruthy()) {
+                                        skip = true;
+                                        break;
+                                    }
+                                },
+                                .map => {
+                                    elem = try callFn(allocator, transforms[ti].fn_val, &[1]Value{elem});
+                                },
+                            }
+                        }
+
+                        cur += r.step;
+                        if (skip) continue;
+
+                        call_buf[0] = acc;
+                        call_buf[1] = elem;
+                        acc = try callFn(allocator, f, &call_buf);
                         if (acc.tag() == .reduced) return acc.asReduced().value;
                         remaining -= 1;
                     }
@@ -695,6 +740,19 @@ fn reduceGeneric(allocator: Allocator, f: Value, init: Value, coll: Value) anyer
                             if ((r.step > 0 and cur >= r.end) or (r.step < 0 and cur <= r.end)) break;
                             call_buf[0] = acc;
                             call_buf[1] = Value.initInteger(cur);
+                            acc = try callFn(allocator, f, &call_buf);
+                            if (acc.tag() == .reduced) return acc.asReduced().value;
+                            cur += r.step;
+                        }
+                        return acc;
+                    },
+                    .float_range => |r| {
+                        // Direct float range iteration (no lazy-seq allocation)
+                        var cur = r.current;
+                        while (true) {
+                            if ((r.step > 0 and cur >= r.end) or (r.step < 0 and cur <= r.end)) break;
+                            call_buf[0] = acc;
+                            call_buf[1] = Value.initFloat(cur);
                             acc = try callFn(allocator, f, &call_buf);
                             if (acc.tag() == .reduced) return acc.asReduced().value;
                             cur += r.step;
@@ -902,25 +960,47 @@ test "empty? arity check" {
 
 // --- range tests ---
 
-test "range with single arg (range 5)" {
+test "range returns lazy_seq" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try rangeFn(arena.allocator(), &.{Value.initInteger(5)});
-    try testing.expect(result.tag() == .list);
-    try testing.expectEqual(@as(usize, 5), result.asList().count());
-    // Should be 0, 1, 2, 3, 4
-    try testing.expectEqual(Value.initInteger(0), result.asList().items[0]);
-    try testing.expectEqual(Value.initInteger(4), result.asList().items[4]);
+    try testing.expect(result.tag() == .lazy_seq);
+    // Realize and check first element
+    const realized = try result.asLazySeq().realize(arena.allocator());
+    try testing.expect(realized.tag() == .cons);
+    try testing.expectEqual(Value.initInteger(0), realized.asCons().first);
+}
+
+test "range (range 5) realizes to 0..4" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const result = try rangeFn(arena.allocator(), &.{Value.initInteger(5)});
+    // Walk the lazy sequence and collect values
+    var vals: [5]Value = undefined;
+    var current = result;
+    for (0..5) |i| {
+        const realized = try current.asLazySeq().realize(arena.allocator());
+        try testing.expect(realized.tag() == .cons);
+        vals[i] = realized.asCons().first;
+        current = realized.asCons().rest;
+    }
+    try testing.expectEqual(Value.initInteger(0), vals[0]);
+    try testing.expectEqual(Value.initInteger(1), vals[1]);
+    try testing.expectEqual(Value.initInteger(4), vals[4]);
+    // 6th element should be nil (end of range)
+    const end = try current.asLazySeq().realize(arena.allocator());
+    try testing.expect(end == Value.nil_val);
 }
 
 test "range with two args (range 2 6)" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try rangeFn(arena.allocator(), &.{ Value.initInteger(2), Value.initInteger(6) });
-    try testing.expect(result.tag() == .list);
-    try testing.expectEqual(@as(usize, 4), result.asList().count());
-    try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
-    try testing.expectEqual(Value.initInteger(5), result.asList().items[3]);
+    try testing.expect(result.tag() == .lazy_seq);
+    // Check first element
+    const realized = try result.asLazySeq().realize(arena.allocator());
+    try testing.expect(realized.tag() == .cons);
+    try testing.expectEqual(Value.initInteger(2), realized.asCons().first);
 }
 
 test "range with three args (range 0 10 3)" {
@@ -931,11 +1011,18 @@ test "range with three args (range 0 10 3)" {
         Value.initInteger(10),
         Value.initInteger(3),
     });
-    try testing.expect(result.tag() == .list);
-    try testing.expectEqual(@as(usize, 4), result.asList().count());
-    // 0, 3, 6, 9
-    try testing.expectEqual(Value.initInteger(0), result.asList().items[0]);
-    try testing.expectEqual(Value.initInteger(9), result.asList().items[3]);
+    try testing.expect(result.tag() == .lazy_seq);
+    // Realize: 0, 3, 6, 9
+    var current = result;
+    var vals: [4]Value = undefined;
+    for (0..4) |i| {
+        const realized = try current.asLazySeq().realize(arena.allocator());
+        vals[i] = realized.asCons().first;
+        current = realized.asCons().rest;
+    }
+    try testing.expectEqual(Value.initInteger(0), vals[0]);
+    try testing.expectEqual(Value.initInteger(3), vals[1]);
+    try testing.expectEqual(Value.initInteger(9), vals[3]);
 }
 
 test "range with negative step" {
@@ -946,13 +1033,12 @@ test "range with negative step" {
         Value.initInteger(0),
         Value.initInteger(-1),
     });
-    try testing.expect(result.tag() == .list);
-    try testing.expectEqual(@as(usize, 5), result.asList().count());
-    try testing.expectEqual(Value.initInteger(5), result.asList().items[0]);
-    try testing.expectEqual(Value.initInteger(1), result.asList().items[4]);
+    try testing.expect(result.tag() == .lazy_seq);
+    const realized = try result.asLazySeq().realize(arena.allocator());
+    try testing.expectEqual(Value.initInteger(5), realized.asCons().first);
 }
 
-test "range with float produces floats" {
+test "range with float produces lazy floats" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const result = try rangeFn(arena.allocator(), &.{
@@ -960,10 +1046,10 @@ test "range with float produces floats" {
         Value.initFloat(1.0),
         Value.initFloat(0.5),
     });
-    try testing.expect(result.tag() == .list);
-    try testing.expectEqual(@as(usize, 2), result.asList().count());
-    try testing.expectEqual(Value.initFloat(0.0), result.asList().items[0]);
-    try testing.expectEqual(Value.initFloat(0.5), result.asList().items[1]);
+    try testing.expect(result.tag() == .lazy_seq);
+    const realized = try result.asLazySeq().realize(arena.allocator());
+    try testing.expect(realized.tag() == .cons);
+    try testing.expectEqual(Value.initFloat(0.0), realized.asCons().first);
 }
 
 test "range empty when start >= end" {
@@ -973,6 +1059,7 @@ test "range empty when start >= end" {
         Value.initInteger(5),
         Value.initInteger(3),
     });
+    // Empty range returns empty list
     try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 0), result.asList().count());
 }
@@ -987,8 +1074,19 @@ test "range zero step is error" {
     }));
 }
 
-test "range arity check" {
-    try testing.expectError(error.ArityError, rangeFn(test_alloc, &.{}));
+test "range 0-arg returns infinite lazy seq" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const result = try rangeFn(arena.allocator(), &.{});
+    try testing.expect(result.tag() == .lazy_seq);
+    // First element is 0
+    const realized = try result.asLazySeq().realize(arena.allocator());
+    try testing.expect(realized.tag() == .cons);
+    try testing.expectEqual(Value.initInteger(0), realized.asCons().first);
+    // Second element is 1
+    const rest = realized.asCons().rest;
+    const realized2 = try rest.asLazySeq().realize(arena.allocator());
+    try testing.expectEqual(Value.initInteger(1), realized2.asCons().first);
 }
 
 // --- repeat tests ---

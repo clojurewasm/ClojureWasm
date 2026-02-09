@@ -376,6 +376,7 @@ pub const LazySeq = struct {
         lazy_filter_chain: struct { preds: []const Value, source: Value },
         lazy_take: struct { n: usize, source: Value },
         range: struct { current: i64, end: i64, step: i64 },
+        float_range: struct { current: f64, end: f64, step: f64 },
         iterate: struct { f: Value, current: Value },
     };
 
@@ -489,6 +490,18 @@ pub const LazySeq = struct {
                 rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
                 const cons_cell = try allocator.create(Cons);
                 cons_cell.* = .{ .first = Value.initInteger(r.current), .rest = Value.initLazySeq(rest_ls) };
+                return Value.initCons(cons_cell);
+            },
+            .float_range => |r| {
+                if ((r.step > 0 and r.current >= r.end) or
+                    (r.step < 0 and r.current <= r.end) or
+                    (r.step == 0)) return Value.nil_val;
+                const rest_meta = try allocator.create(Meta);
+                rest_meta.* = .{ .float_range = .{ .current = r.current + r.step, .end = r.end, .step = r.step } };
+                const rest_ls = try allocator.create(LazySeq);
+                rest_ls.* = .{ .thunk = null, .realized = null, .meta = rest_meta };
+                const cons_cell = try allocator.create(Cons);
+                cons_cell.* = .{ .first = Value.initFloat(r.current), .rest = Value.initLazySeq(rest_ls) };
                 return Value.initCons(cons_cell);
             },
             .iterate => |it| {

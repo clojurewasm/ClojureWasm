@@ -25,8 +25,7 @@ Phase 44: OSS Release Prep (v0.1.0-alpha)
 Master plan: `private/20260208/02_oss_plan.md`
 
 A2. Lazy Range + Chunked Sequences
-1. [ ] 44.1: LazyRange Value type (start/end/step), ISeq integration
-2. [ ] 44.2: `(range)` infinite range support
+1. [x] 44.1+44.2: Lazy range + infinite range (Meta.range, O(1) count/nth)
 3. [ ] 44.3: Chunked sequence producer (range → ChunkedCons)
 4. [ ] 44.4: F102: map/filter chunked processing
 
@@ -72,20 +71,21 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.1: LazyRange Value type (start/end/step), ISeq integration.
+Phase 44.2: `(range)` infinite range support — already done in 44.1.
+Merging 44.2 into 44.1 and moving to 44.3.
 
-Design:
-- New LazyRange Value type: start/end/step fields (Number values)
-- Implements ISeq protocol: first/rest/next/seq/count
-- `(range n)` and `(range start end)` and `(range start end step)` return LazyRange
-- LazyRange is lazy: no materialization until consumed
-- `(range)` infinite range → LazyRange with no end bound (44.2)
-- Need to decide NanHeapTag slot for LazyRange
-- Read `.dev/future.md` for lazy sequence design context
+Phase 44.3: Chunked sequence producer (range → ChunkedCons).
 
 ## Previous Task
 
-Phase 43.8 COMPLETE: Ratio Value type + numerator/denominator/rationalize.
+Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
+- rangeFn returns lazy_seq with Meta.range (no new Value type needed)
+- `(range)` 0-arg → infinite lazy sequence (maxInt(i64) sentinel)
+- Meta.float_range added for float ranges
+- O(1) count for Meta.range/float_range in countFn
+- O(1) nth for Meta.range/float_range in nthFn
+- Fused reduce handles float_range for zero-alloc iteration
+- Both backends verified, all 38 upstream test files pass
 - Ratio: numerator/denominator BigInt pair, GCD-reduced, shares slot 30 via NumericExtKind
 - Reader: ratio literal (1/3) → Form.ratio → Value.ratio conversion
 - Arithmetic: +/-/*// with Ratio, cross-type with int/float/BigInt/BigDecimal

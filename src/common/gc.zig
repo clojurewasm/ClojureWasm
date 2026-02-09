@@ -825,6 +825,7 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                             traceValue(gc, it.current);
                         },
                         .range => {},
+                        .float_range => {},
                     }
                 }
             }
