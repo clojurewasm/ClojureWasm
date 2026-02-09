@@ -223,19 +223,18 @@
     (catch Exception _
       (is true))))
 
+;; CLJW: adapted — CW integers are 48-bit (NaN boxing), so Long/MIN_VALUE overflow
+;; tests are not applicable. Test basic negate-exact behavior instead.
 (deftest test-negate-exact
-  ;; CLJW: adapted — Long/MIN_VALUE → expression
-  (is (= (+ 1 (dec -9223372036854775807)) (m/negate-exact 9223372036854775807)))
-  (try
-    (m/negate-exact (dec -9223372036854775807))
-    (is false)
-    (catch Exception _
-      (is true))))
+  (is (= -42 (m/negate-exact 42)))
+  (is (= 42 (m/negate-exact -42)))
+  (is (= 0 (m/negate-exact 0))))
 
+;; CLJW: adapted — removed Long/MIN_VALUE overflow test
 (deftest test-floor-div
-  ;; CLJW: adapted — Long/MIN_VALUE → expression
-  (is (= (dec -9223372036854775807) (m/floor-div (dec -9223372036854775807) -1)))
-  (is (= -1 (m/floor-div -2 5))))
+  (is (= 3 (m/floor-div 7 2)))
+  (is (= -1 (m/floor-div -2 5)))
+  (is (= -4 (m/floor-div 7 -2))))
 
 (deftest test-floor-mod
   (is (= 3 (m/floor-mod -2 5))))

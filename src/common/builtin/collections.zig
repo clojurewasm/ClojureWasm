@@ -366,6 +366,16 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
         new_entries[base_entries.len + 1] = val;
         if (new_entries.len / 2 > HASH_MAP_THRESHOLD) {
             const hm = try PersistentHashMap.fromEntries(allocator, new_entries);
+            // Preserve metadata from input map during ArrayMap→HashMap transition
+            if (base.tag() == .map) {
+                const base_meta = base.asMap().meta;
+                if (base_meta != null) {
+                    const hm_with_meta = try allocator.create(PersistentHashMap);
+                    hm_with_meta.* = hm.*;
+                    hm_with_meta.meta = base_meta;
+                    return Value.initHashMap(hm_with_meta);
+                }
+            }
             return Value.initHashMap(hm);
         }
         const new_map = try allocator.create(PersistentArrayMap);
@@ -404,6 +414,16 @@ pub fn assocFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     if (base_comp == null and entries.items.len / 2 > HASH_MAP_THRESHOLD) {
         const hm = try PersistentHashMap.fromEntries(allocator, entries.items);
+        // Preserve metadata during ArrayMap→HashMap transition
+        if (base.tag() == .map) {
+            const base_meta = base.asMap().meta;
+            if (base_meta != null) {
+                const hm_with_meta = try allocator.create(PersistentHashMap);
+                hm_with_meta.* = hm.*;
+                hm_with_meta.meta = base_meta;
+                return Value.initHashMap(hm_with_meta);
+            }
+        }
         return Value.initHashMap(hm);
     }
 

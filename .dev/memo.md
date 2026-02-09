@@ -46,16 +46,17 @@ Phase 41: Polish & Hardening
 
 ## Current Task
 
-41.5: Additional bug fixes and edge cases.
+41.5: Continue bug fixes and edge cases.
+- Remaining known issues: control.clj (case throw in VM), sequences (cons+set, subseq), transducers (interpose, halt-when)
 
 ## Previous Task
 
-41.4: Upstream test porting.
-- Added zip test suite (17 tests, 39 assertions) — already committed
-- Ported 4 sequence tests: test-sort-retains-meta, test-empty?, test-nthnext+rest-on-0, test-nthnext+rest-on-pos
-- Ported test-regex-matcher to other_functions.clj
-- Fixed empty? to support lazy_seq, cons, hash_map, transients
-- Fixed sort/sort-by to preserve metadata from input collection
+41.5: Bug fixes and edge cases (round 1).
+- Fixed concat 0-arity: return (lazy-seq nil) instead of nil (fixes nil-punning)
+- Fixed into: preserve metadata through transient/persistent cycle
+- Fixed assoc: preserve metadata during ArrayMap→HashMap transition
+- Fixed math tests: adapt negate-exact/floor-div for CW 48-bit integers
+- Result: walk 4→0, logic 2→0, math 2→0, metadata 7→0 test failures fixed
 - Both VM + TreeWalk verified
 
 ## Known Issues

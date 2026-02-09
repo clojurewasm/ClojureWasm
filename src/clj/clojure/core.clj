@@ -727,7 +727,7 @@
 
 ;; Shadow eager concat builtin with lazy version
 (defn concat
-  ([] nil)
+  ([] (lazy-seq nil))
   ([x] (lazy-seq x))
   ([x y]
    (lazy-seq
@@ -1649,11 +1649,11 @@
   ([to] to)
   ([to from]
    (if (or (vector? to) (map? to) (set? to))
-     (persistent! (reduce conj! (transient to) from))
+     (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
      (reduce conj to from)))
   ([to xform from]
    (if (or (vector? to) (map? to) (set? to))
-     (persistent! (transduce xform conj! (transient to) from))
+     (with-meta (persistent! (transduce xform conj! (transient to) from)) (meta to))
      (transduce xform conj to from))))
 
 (defn- preserving-reduced
