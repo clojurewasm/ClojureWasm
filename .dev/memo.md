@@ -61,7 +61,7 @@ A8. Documentation
 25. [x] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
 
 A9. Release Preparation
-26. [ ] 44.26: GitHub repo settings (description, topics, About)
+26. [x] 44.26: GitHub repo settings (description, topics, About)
 27. [ ] 44.27: Pre-Alpha / Experimental disclaimer (README + badge)
 28. [ ] 44.28: "Verified on macOS Apple Silicon only" notice
 29. [ ] 44.29: Sponsors / Funding setup (GitHub Sponsors)
@@ -69,7 +69,7 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.26: GitHub repo settings (A9 Release Preparation block).
+Phase 44.27: Pre-Alpha / Experimental disclaimer (A9 Release Preparation).
 
 ## Previous Task
 
