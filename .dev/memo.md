@@ -20,27 +20,28 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 37: VM Optimization + JIT (A→B incremental) — **COMPLETE**
-1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
-2. [x] 37.2: Superinstructions (fuse common opcode sequences)
-3. [x] 37.3: Fused branch + loop superinstructions
-4. [x] 37.4: JIT PoC — hot loop native code generation
-5. [x] 37.5: SKIP — gc_stress 24ms < Java 31ms, GC is not bottleneck
-6. [x] 37.6: SKIP — remaining bottleneck is call/ret overhead, not IC/escape
+Phase 38: Core Library Completeness
+1. [ ] 38.1: case* compiler special form — O(1) hash dispatch replacing O(n) cond
+2. [ ] 38.2: thrown-with-msg? test assertion — enable skipped multimethod tests
+3. [ ] 38.3: Matcher Value type + re-matcher, re-groups — regex group extraction
+4. [ ] 38.4: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
+5. [ ] 38.5: ns macro enhancement — :import support, docstring
 
 ## Current Task
 
-Plan Phase 38. Phase 37 complete, need to determine next phase.
+38.1: Implement case* compiler special form for O(1) constant dispatch.
+Upstream case macro compiles to case* which uses hashCode-based O(1) lookup.
+Current CW case is pure cond (O(n) linear scan). Need:
+- case* special form in analyzer/compiler
+- Hash-based jump table in VM
+- Update case macro in core.clj to use case*
 
 ## Previous Task
 
-37.5 evaluation — DONE (no implementation needed).
-Post-JIT profiling results:
-- gc_stress 24ms (209K alloc, 10MB): map_new × 100K, already < Java 31ms → Slab GC not needed
-- fib_recursive 17ms: call/ret 30% — function call frame management is bottleneck
-- nqueens 14ms: call/var_load/jump_if_false — mixed workload
-- string_ops 24ms: call + var_load + string allocation
-- Remaining bottleneck = function call overhead, not GC or IC → 37.5/37.6 skipped
+Phase 37 complete — post-JIT profiling evaluation.
+- gc_stress 24ms < Java 31ms → Slab GC not needed (37.5 SKIP)
+- fib_recursive 17ms → call/ret overhead, not IC/escape (37.6 SKIP)
+- Cumulative: arith_loop 53→3ms (17.7x)
 
 ## Known Issues
 
@@ -76,6 +77,12 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 37 COMPLETE**: VM Optimization + JIT PoC
+  - 37.1: Profiling (-Dprofile-opcodes, -Dprofile-alloc), GC benchmarks 26/27
+  - 37.2: 10 superinstructions (0xC0-0xC9), arith_loop 53→40ms (1.33x)
+  - 37.3: 7 fused branch/loop ops (0xD0-0xD6), arith_loop 40→31ms (1.29x)
+  - 37.4: ARM64 JIT hot loops (D87), arith_loop 31→3ms (10.3x), cumulative 17.7x
+  - 37.5/37.6: SKIPPED (GC not bottleneck, remaining gap is call/ret overhead)
 - **Phase 37.4 COMPLETE**: JIT PoC — ARM64 hot loop native code generation
   - New file: `src/native/vm/jit.zig` — ARM64 JIT compiler (~700 lines)
   - Hot loop detection in vmRecurLoop: 64-iteration warmup threshold

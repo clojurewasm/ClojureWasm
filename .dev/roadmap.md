@@ -111,14 +111,20 @@ Interpreter-level optimizations with JIT PoC for hot integer loops.
 
 **Decisions**: D87 (JIT PoC architecture)
 
-### Phase 38: TBD
+### Phase 38: Core Library Completeness
 
-Next phase to be planned. Potential directions:
-- Extended JIT (recursive functions, collection ops)
-- Function call optimization (inline caching for hot call sites)
-- Var coverage expansion (535/704 core → 600+)
-- Wasm interpreter JIT (wasm_fib 7.7s target ~0.5s)
-- Codebase restructuring (F110)
+Fill highest-impact implementation gaps for real-world Clojure usage.
+
+| Sub   | Content                          | Status      |
+|-------|----------------------------------|-------------|
+| 38.1  | case* compiler special form      | TODO        |
+| 38.2  | thrown-with-msg? test assertion   | TODO        |
+| 38.3  | Matcher Value type + re-matcher/re-groups | TODO |
+| 38.4  | Upstream alignment (UPSTREAM-DIFF)| TODO        |
+| 38.5  | ns macro enhancement (:import)   | TODO        |
+
+**Priority**: case* (most-used macro perf) > thrown-with-msg? (test quality) >
+re-groups (regex completeness) > upstream alignment > ns
 
 ### Phase 29: Codebase Restructuring (deferred)
 
