@@ -154,16 +154,17 @@ Critical scripting and development features for real-world usage.
 | 40.3  | clojure.test expansion (18 vars)     | COMPLETE    |
 | 40.4  | clojure.walk/math/repl remaining     | COMPLETE    |
 
-### Phase 41: Polish & Hardening
+### Phase 41: Polish & Hardening — COMPLETE
 
-Bug fixes, edge cases, and remaining easy vars.
+Bug fixes, edge cases, upstream test porting.
 
 | Sub   | Content                              | Status      |
 |-------|--------------------------------------|-------------|
 | 41.1  | ex-cause fix + pprint dynamic vars   | COMPLETE    |
-| 41.2  | clojure.edn/read                     | TODO        |
-| 41.3  | clojure.core.reducers (sequential)   | TODO        |
-| 41.4  | Upstream test porting                | TODO        |
+| 41.2  | clojure.edn/read                     | SKIPPED (needs PushbackReader) |
+| 41.3  | clojure.core.reducers                | SKIPPED (needs reify, ForkJoin) |
+| 41.4  | Upstream test porting                | COMPLETE    |
+| 41.5  | Bug fixes and edge cases             | COMPLETE    |
 
 ### Phase 29: Codebase Restructuring (deferred)
 
