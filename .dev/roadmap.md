@@ -230,6 +230,13 @@ Interpreter-level optimizations for wasm execution.
 **Results**: 2-3x cumulative improvement (fib 2.3x, sieve 3.0x, gcd 2.0x).
 Remaining 7-65x gap to wasmtime is interpreter vs JIT fundamental limit.
 
+### Phase 46: Correctness & Cleanup — COMPLETE
+
+| Sub   | Content                                      | Status   |
+|-------|----------------------------------------------|----------|
+| 46.1  | Fix F95 — VM intrinsic ns awareness          | COMPLETE |
+| 46.2  | Checklist cleanup — remove resolved items    | COMPLETE |
+
 ### Phase 50+: Post-Release (deferred)
 
 | Phase | Content                                   | Notes                                    |
