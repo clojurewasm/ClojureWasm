@@ -57,7 +57,7 @@ A7. .claude/ + private/ Cleanup
 
 A8. Documentation
 23. [x] 44.23: README.md (overview, features, build, usage, benchmarks, future)
-24. [ ] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
+24. [x] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
 25. [ ] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
 
 A9. Release Preparation
@@ -69,18 +69,19 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.24: ARCHITECTURE.md (A8 Documentation block).
+Phase 44.25: DIFFERENCES.md (A8 Documentation block).
 
 ## Previous Task
 
-Phase 44.23 COMPLETE: README.md rewrite for OSS release.
-- Pre-Alpha / Experimental disclaimer at top
-- Updated all stats: 795 vars, 593/706 core, 66 Zig files, 62 test files
-- Wasm FFI section with code example
-- Server & Networking section with code example
-- Pipeline-based project structure (post-44.10 layout)
-- Benchmarks section with links to bench/benchmarks/
-- Future Plans, Acknowledgments, Contributing sections
+Phase 44.24 COMPLETE: ARCHITECTURE.md.
+- Pipeline overview (Reader → Analyzer → Compiler/VM + TreeWalk)
+- Value representation: NaN boxing scheme with 4 heap tag groups
+- Compiler: 75 opcodes, superinstructions, peephole optimizer
+- VM: stack-based, 4096 slots, GC safe points, exception handling
+- JIT: ARM64 hot integer loop PoC
+- GC: mark-sweep with free-pool recycling
+- Bootstrap: two-phase (TreeWalk eval + VM recompile), cache
+- Wasm runtime, regex engine, nREPL server
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
