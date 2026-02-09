@@ -224,6 +224,14 @@ development workflow.
 Issues are welcome. For larger changes, please open an issue first to discuss
 the approach.
 
+## Support
+
+ClojureWasm is developed and maintained by a single developer. If you find
+this project useful, your support would be greatly appreciated and helps
+keep development going.
+
+[![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa)](https://github.com/sponsors/chaploud)
+
 ## License
 
 [Eclipse Public License 1.0](LICENSE) (EPL-1.0)

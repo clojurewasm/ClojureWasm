@@ -64,12 +64,12 @@ A9. Release Preparation
 26. [x] 44.26: GitHub repo settings (description, topics, About)
 27. [x] 44.27: Pre-Alpha / Experimental disclaimer (README + badge)
 28. [x] 44.28: "Verified on macOS Apple Silicon only" notice
-29. [ ] 44.29: Sponsors / Funding setup (GitHub Sponsors)
+29. [x] 44.29: Sponsors / Funding setup (GitHub Sponsors)
 30. [ ] 44.30: Clojure community / Rich Hickey acknowledgment
 
 ## Current Task
 
-Phase 44.29: Sponsors / Funding setup (A9 Release Preparation).
+Phase 44.30: Clojure community / Rich Hickey acknowledgment (A9 Release Preparation).
 
 ## Previous Task
 
