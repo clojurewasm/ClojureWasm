@@ -913,13 +913,13 @@ vars:
     "to-radians": {type: function, status: done, notes: builtin (Zig)}
     ulp: {type: function, status: done, notes: builtin (Zig)}
   clojure_pprint:
-    "*print-base*": {type: dynamic-var, status: todo}
-    "*print-miser-width*": {type: dynamic-var, status: todo}
-    "*print-pprint-dispatch*": {type: dynamic-var, status: todo}
-    "*print-pretty*": {type: dynamic-var, status: todo}
-    "*print-radix*": {type: dynamic-var, status: todo}
-    "*print-right-margin*": {type: dynamic-var, status: todo}
-    "*print-suppress-namespaces*": {type: dynamic-var, status: todo}
+    "*print-base*": {type: dynamic-var, status: done}
+    "*print-miser-width*": {type: dynamic-var, status: done}
+    "*print-pprint-dispatch*": {type: dynamic-var, status: done}
+    "*print-pretty*": {type: dynamic-var, status: done}
+    "*print-radix*": {type: dynamic-var, status: done}
+    "*print-right-margin*": {type: dynamic-var, status: done}
+    "*print-suppress-namespaces*": {type: dynamic-var, status: done}
     "cl-format": {type: function, status: todo}
     "code-dispatch": {type: var, status: todo}
     formatter: {type: macro, status: todo}

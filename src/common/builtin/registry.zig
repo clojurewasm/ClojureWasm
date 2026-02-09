@@ -245,6 +245,21 @@ pub fn registerBuiltins(env: *Env) !void {
             v.bindRoot(Value.initBuiltinFn(f));
         }
     }
+    // pprint dynamic vars
+    const pprint_dvars = [_]struct { name: []const u8, val: Value }{
+        .{ .name = "*print-right-margin*", .val = Value.initInteger(72) },
+        .{ .name = "*print-miser-width*", .val = Value.initInteger(40) },
+        .{ .name = "*print-pretty*", .val = Value.true_val },
+        .{ .name = "*print-suppress-namespaces*", .val = Value.false_val },
+        .{ .name = "*print-radix*", .val = Value.false_val },
+        .{ .name = "*print-base*", .val = Value.initInteger(10) },
+        .{ .name = "*print-pprint-dispatch*", .val = Value.nil_val },
+    };
+    for (pprint_dvars) |dv| {
+        const v = try pprint_ns.intern(dv.name);
+        v.dynamic = true;
+        v.bindRoot(dv.val);
+    }
 
     env.current_ns = user_ns;
 }

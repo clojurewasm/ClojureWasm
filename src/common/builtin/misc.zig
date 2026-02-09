@@ -349,9 +349,22 @@ pub fn alterVarRootFn(allocator: Allocator, args: []const Value) anyerror!Value 
 
 /// (ex-cause ex)
 /// Returns the cause of an exception (currently always nil — no nested cause chain).
-pub fn exCauseFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn exCauseFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-cause", .{args.len});
-    // Our exceptions don't have a cause chain — return nil
+    // Check for :cause key in ex-info map
+    if (args[0].tag() == .map) {
+        const m = args[0].asMap();
+        const cause_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
+        if (m.get(cause_kw)) |cause_val| {
+            return cause_val;
+        }
+    } else if (args[0].tag() == .hash_map) {
+        const hm = args[0].asHashMap();
+        const cause_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
+        if (hm.get(cause_kw)) |cause_val| {
+            return cause_val;
+        }
+    }
     return Value.nil_val;
 }
 

@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 735 vars done across all namespaces (540/706 core, 45/45 math, 28/28 zip, 32/39 test, 6/6 stacktrace, etc.)
+- Coverage: 742 vars done across all namespaces (540/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
