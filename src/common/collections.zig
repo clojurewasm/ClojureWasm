@@ -125,13 +125,119 @@ pub const BigInt = struct {
     pub fn toF64(self: *const BigInt) f64 {
         return self.managed.toFloat(f64, .nearest_even)[0];
     }
+
+    /// Convert to owned decimal string (e.g. "42", "-123").
+    pub fn toStringAlloc(self: *const BigInt, allocator: std.mem.Allocator) ![]const u8 {
+        const c = self.managed.toConst();
+        var limbs_buf: [128]std.math.big.Limb = undefined;
+        var str_buf: [512]u8 = undefined;
+        const len = c.toString(&str_buf, 10, .lower, &limbs_buf);
+        return allocator.dupe(u8, str_buf[0..len]);
+    }
 };
+
+/// Discriminator for NanHeapTag slot 30 (shared by Ratio and BigDecimal).
+/// MUST be the first field in both Ratio and BigDecimal structs.
+pub const NumericExtKind = enum(u8) { ratio, big_decimal };
 
 /// Ratio — exact rational number as numerator/denominator BigInt pair.
 /// Always stored in reduced form (GCD=1, denominator positive).
-pub const Ratio = struct {
+pub const Ratio = extern struct {
+    kind: NumericExtKind = .ratio, // MUST be at offset 0 (tag discriminator)
     numerator: *BigInt,
     denominator: *BigInt,
+};
+
+/// BigDecimal — arbitrary-precision decimal (unscaled BigInt + i32 scale).
+/// Value = unscaled_value × 10^(-scale).
+/// Example: 42.5 → unscaled=425, scale=1.
+pub const BigDecimal = extern struct {
+    kind: NumericExtKind = .big_decimal, // MUST be at offset 0 (tag discriminator)
+    unscaled: *BigInt,
+    scale: i32,
+
+    /// Create from integer value (scale=0).
+    pub fn initFromI64(allocator: std.mem.Allocator, val: i64) !*BigDecimal {
+        const bd = try allocator.create(BigDecimal);
+        bd.kind = .big_decimal;
+        bd.unscaled = try BigInt.initFromI64(allocator, val);
+        bd.scale = 0;
+        return bd;
+    }
+
+    /// Create from string like "42.5", "123", "-3.14".
+    pub fn initFromString(allocator: std.mem.Allocator, text: []const u8) !*BigDecimal {
+        const bd = try allocator.create(BigDecimal);
+        bd.kind = .big_decimal;
+
+        // Find decimal point
+        if (std.mem.indexOfScalar(u8, text, '.')) |dot_pos| {
+            // Has decimal point: "42.5" → unscaled=425, scale=1
+            const frac_len = text.len - dot_pos - 1;
+            // Build string without the dot
+            const buf = try allocator.alloc(u8, text.len - 1);
+            @memcpy(buf[0..dot_pos], text[0..dot_pos]);
+            @memcpy(buf[dot_pos..], text[dot_pos + 1 ..]);
+            bd.unscaled = try BigInt.initFromString(allocator, buf);
+            bd.scale = @intCast(frac_len);
+        } else {
+            // No decimal point: "42" → unscaled=42, scale=0
+            bd.unscaled = try BigInt.initFromString(allocator, text);
+            bd.scale = 0;
+        }
+        return bd;
+    }
+
+    /// Convert to f64.
+    pub fn toF64(self: *const BigDecimal) f64 {
+        const mantissa = self.unscaled.toF64();
+        if (self.scale == 0) return mantissa;
+        const divisor = std.math.pow(f64, 10.0, @floatFromInt(self.scale));
+        return mantissa / divisor;
+    }
+
+    /// Convert to string (e.g., "42.5", "123", "0.001").
+    pub fn toStringAlloc(self: *const BigDecimal, allocator: std.mem.Allocator) ![]const u8 {
+        const digits = self.unscaled.toStringAlloc(allocator) catch return error.OutOfMemory;
+        if (self.scale <= 0) {
+            if (self.scale == 0) return digits;
+            // Negative scale: append zeros
+            const zeros: usize = @intCast(-self.scale);
+            const buf = try allocator.alloc(u8, digits.len + zeros);
+            @memcpy(buf[0..digits.len], digits);
+            @memset(buf[digits.len..], '0');
+            return buf;
+        }
+        // Positive scale: insert decimal point
+        const scale_u: usize = @intCast(self.scale);
+        const negative = digits.len > 0 and digits[0] == '-';
+        const abs_digits = if (negative) digits[1..] else digits;
+        if (scale_u >= abs_digits.len) {
+            // Need leading zeros: "5" with scale=3 → "0.005"
+            const prefix = if (negative) "-0." else "0.";
+            const leading_zeros = scale_u - abs_digits.len;
+            const buf = try allocator.alloc(u8, prefix.len + leading_zeros + abs_digits.len);
+            @memcpy(buf[0..prefix.len], prefix);
+            @memset(buf[prefix.len .. prefix.len + leading_zeros], '0');
+            @memcpy(buf[prefix.len + leading_zeros ..], abs_digits);
+            return buf;
+        }
+        // Normal case: "425" with scale=1 → "42.5"
+        const int_len = abs_digits.len - scale_u;
+        const prefix_len: usize = if (negative) 1 else 0;
+        const buf = try allocator.alloc(u8, prefix_len + int_len + 1 + scale_u);
+        var pos: usize = 0;
+        if (negative) {
+            buf[0] = '-';
+            pos = 1;
+        }
+        @memcpy(buf[pos .. pos + int_len], abs_digits[0..int_len]);
+        pos += int_len;
+        buf[pos] = '.';
+        pos += 1;
+        @memcpy(buf[pos..], abs_digits[int_len..]);
+        return buf;
+    }
 };
 
 /// Persistent array map — flat key-value pairs [k1,v1,k2,v2,...].

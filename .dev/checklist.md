@@ -26,8 +26,8 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                              | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F110 | Directory restructure (core/eval/cli)        | Phase 29 — common/native/ -> core/eval/cli/                        |
 | F120 | Native SIMD optimization (CW internals)      | Investigate Zig `@Vector` for CW hot paths. Profile first.         |
-| F130 | Array Value type + ops (35 vars)             | New NanHeapTag, aget/aset/make-array etc. Phase 43                 |
-| F131 | BigInt + BigDecimal (pure Zig)               | Arbitrary precision, no external deps. Phase 43                    |
+| F130 | ~~Array Value type + ops (35 vars)~~         | DONE: Phase 43.1-43.4                                             |
+| F131 | ~~BigInt + BigDecimal (pure Zig)~~            | DONE: Phase 43.5-43.6                                             |
 | F132 | Ratio type + numerator/denominator           | Extends F3, ties into F131. Phase 43                               |
 | F133 | Future + thread pool                         | Zig std.Thread, GC safety, deref timeout. Phase 44                 |
 | F134 | Protocol extension API                       | extend, extenders, extends? etc. (5 vars). Phase 42                |

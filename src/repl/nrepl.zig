@@ -1220,6 +1220,7 @@ fn writeValue(w: anytype, val: Value) void {
         },
         .big_int => w.print("#<BigInt>", .{}) catch {},
         .ratio => w.print("#<Ratio>", .{}) catch {},
+        .big_decimal => w.print("#<BigDecimal>", .{}) catch {},
     }
 }
 

@@ -32,7 +32,7 @@ fn isBoolean(v: Value) bool {
     return v.tag() == .boolean;
 }
 fn isNumber(v: Value) bool {
-    return v.tag() == .integer or v.tag() == .float or v.tag() == .big_int;
+    return v.tag() == .integer or v.tag() == .float or v.tag() == .big_int or v.tag() == .big_decimal;
 }
 fn isInteger(v: Value) bool {
     return v.tag() == .integer or v.tag() == .big_int;
@@ -153,6 +153,7 @@ fn isZero(v: Value) bool {
         .integer => v.asInteger() == 0,
         .float => v.asFloat() == 0.0,
         .big_int => v.asBigInt().managed.toConst().eqlZero(),
+        .big_decimal => v.asBigDecimal().toF64() == 0.0,
         else => false,
     };
 }
@@ -161,6 +162,7 @@ fn isPos(v: Value) bool {
         .integer => v.asInteger() > 0,
         .float => v.asFloat() > 0.0,
         .big_int => v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
+        .big_decimal => v.asBigDecimal().toF64() > 0.0,
         else => false,
     };
 }
@@ -169,6 +171,7 @@ fn isNeg(v: Value) bool {
         .integer => v.asInteger() < 0,
         .float => v.asFloat() < 0.0,
         .big_int => !v.asBigInt().managed.isPositive() and !v.asBigInt().managed.toConst().eqlZero(),
+        .big_decimal => v.asBigDecimal().toF64() < 0.0,
         else => false,
     };
 }
@@ -250,6 +253,7 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .array => "array",
         .big_int => "big-int",
         .ratio => "ratio",
+        .big_decimal => "big-decimal",
     };
     return Value.initKeyword(allocator, .{ .ns = null, .name = name });
 }
@@ -362,6 +366,7 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
         .array => "array",
         .big_int => "big_int",
         .ratio => "ratio",
+        .big_decimal => "big_decimal",
     });
     return Value.initBoolean(protocol.impls.get(type_key) != null);
 }
@@ -424,6 +429,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .array => "array",
         .big_int => "big_int",
         .ratio => "ratio",
+        .big_decimal => "big_decimal",
     };
 }
 
@@ -611,6 +617,7 @@ pub fn computeHash(v: Value) i64 {
             if (!c.positive) h = ~h;
             break :blk h;
         },
+        .big_decimal => @as(i64, @intFromFloat(v.asBigDecimal().toF64() * 1000003)),
         .char => @as(i64, @intCast(v.asChar())),
         .string => stringHash(v.asString()),
         .keyword => blk: {
@@ -805,8 +812,7 @@ fn rationalPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (decimal? x) — Returns true if x is a BigDecimal.
 fn decimalPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to decimal?", .{args.len});
-    // No BigDecimal in ClojureWasm
-    return Value.false_val;
+    return Value.initBoolean(args[0].tag() == .big_decimal);
 }
 
 /// (uri? x) — Returns true if x is a java.net.URI.

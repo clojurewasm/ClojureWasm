@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **Phase 43.1-43.4 COMPLETE** (Array subsystem done), 43.5-43.7 remaining
-- Coverage: 789+ vars done across all namespaces (587/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- **Phase 43.1-43.6 COMPLETE** (Array + BigInt + BigDecimal done), 43.7-43.8 remaining
+- Coverage: 792+ vars done across all namespaces (590/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -27,35 +27,37 @@ Phase 43: Numeric Types + Arrays
 3. [x] 43.3: Typed setters + bytes? (aset-int..aset-char, bytes?)
 4. [x] 43.4: Array macros (amap, areduce)
 5. [x] 43.5: BigInt Value type + bigint/biginteger fns + reader N literal
-6. [ ] 43.6: BigDecimal Value type + bigdec/with-precision + reader M literal
+6. [x] 43.6: BigDecimal Value type + bigdec fn + reader M literal
 7. [ ] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
 8. [ ] 43.8: Ratio Value type + numerator/denominator/rationalize
 
 ## Current Task
 
-Phase 43.6: BigDecimal Value type + bigdec fn + reader M literal.
+Phase 43.7: Arithmetic auto-promotion (+', *', -', inc', dec').
 
 Design:
-- BigDecimal: scaled integer representation (BigInt value + i32 scale)
-- Reader: 42.0M → big_decimal form; parse "digits.digitsM"
-- Analyzer: big_decimal form → Value.initBigDecimal()
-- Builtins: bigdec (convert int/float/string/BigInt to BigDecimal)
-- Predicates: decimal?, number? include big_decimal
-- Arithmetic: BigDecimal mixed ops (promote to float for now)
-- with-precision: macro/dynamic var for precision context
+- +', *', -': same as +, *, - but on integer overflow, promote to BigInt (not float)
+- inc', dec': same as inc/dec but promote to BigInt on overflow
+- These are builtins + VM intrinsics (like +/-/*)
+- Implementation: same logic as binaryArithAlloc but overflow → BigInt instead of float
+- Reader/analyzer: no changes needed (these are just function names)
+- Test: upstream numbers.clj has unchecked-inc/dec overflow tests
 
 ## Previous Task
 
-Phase 43.5 COMPLETE: BigInt Value type + full numeric integration.
-- Reader: N suffix → big_int form; i64 overflow → big_int form
-- Analyzer/macro: big_int form → BigInt Value
-- Builtins: bigint, biginteger (coerce int/float/string to BigInt)
-- Arithmetic: +/-/*/quot/rem/mod with BigInt + cross-type (int/float)
-- Predicates: integer?/number?/rational?/even?/odd?/zero?/pos?/neg? + BigInt
-- Equality: cross-type BigInt==int, BigInt==float, hash consistency
-- Comparison: </<=/>/>=, abs, max, min with BigInt
-- Upstream test port: numbers.clj 24 tests, 276 assertions (was 19/207)
-- vars.yaml: bigint, biginteger → done (789 → 791 vars)
+Phase 43.6 COMPLETE: BigDecimal Value type + bigdec fn + reader M literal.
+- BigDecimal: scaled BigInt (unscaled × 10^(-scale)), extern struct with NumericExtKind discriminator
+- Shares NanHeapTag slot 30 with Ratio via NumericExtKind enum(u8) at offset 0
+- Reader: M suffix → big_decimal form (integer: 42M, float: 3.14M, scientific: 1e10M)
+- Analyzer/macro: big_decimal form → BigDecimal Value, bidirectional form↔value
+- Builtins: bigdec (coerce int/float/string/BigInt to BigDecimal)
+- Arithmetic: +/-/* with BigDecimal (BigDecimal result), div/mod/rem/quot → float
+- Predicates: decimal?/number?/zero?/pos?/neg? include big_decimal
+- Equality: cross-type BigDecimal==int/float, same-scale + different-scale comparison
+- Comparison: </<=/>/>=, abs, max, min with BigDecimal
+- BigInt→BigDecimal and BigDecimal→BigInt coercion
+- Upstream test port: numbers.clj 26 tests, 323 assertions (was 24/276)
+- vars.yaml: bigdec → done (791 → 792 vars)
 
 ## Known Issues
 
@@ -93,8 +95,13 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 43.5-43.6 COMPLETE**: BigInt + BigDecimal
+  - D89 updated: Four Value types (array, big_int, ratio+big_decimal) in NaN boxing
+  - BigDecimal shares slot 30 with Ratio via NumericExtKind discriminator (extern struct)
+  - Full arithmetic, predicates, equality, coercion for both types
+  - numbers.clj: 26 tests, 323 assertions
 - **Phase 43.1-43.4 COMPLETE**: Array subsystem
-  - D89: Three new Value types (array, big_int, ratio) in NaN boxing
+  - D89: Array, BigInt, Ratio NanHeapTag slots in Group D
   - 34 array builtins: constructors, typed arrays, setters, coercion, macros
   - Array seq integration (seq/first/rest/nth/count/vec on arrays)
   - Upstream test port: arrays.clj (14 tests, 144 assertions)

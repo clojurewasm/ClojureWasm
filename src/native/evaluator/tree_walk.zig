@@ -979,6 +979,7 @@ pub const TreeWalk = struct {
             .array => "array",
             .big_int => "big_int",
             .ratio => "ratio",
+            .big_decimal => "big_decimal",
         };
     }
 

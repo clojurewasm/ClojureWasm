@@ -2007,6 +2007,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .array => "array",
         .big_int => "big_int",
         .ratio => "ratio",
+        .big_decimal => "big_decimal",
     };
 }
 

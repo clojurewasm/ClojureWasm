@@ -32,6 +32,7 @@ pub fn absFn(_: Allocator, args: []const Value) anyerror!Value {
             result.managed.negate();
             break :blk Value.initBigInt(result);
         },
+        .big_decimal => Value.initFloat(@abs(args[0].asBigDecimal().toF64())),
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0].tag())}),
     };
 }
@@ -65,6 +66,13 @@ pub fn quotFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to quot", .{args.len});
     const a = args[0];
     const b = args[1];
+    // BigDecimal quot → float
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = arithmetic.toFloat(a) catch unreachable;
+        const fb = arithmetic.toFloat(b) catch unreachable;
+        if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Divide by zero", .{});
+        return Value.initFloat(@trunc(fa / fb));
+    }
     // BigInt quot
     if (a.tag() == .big_int or b.tag() == .big_int) {
         if (a.tag() == .float or b.tag() == .float) {
@@ -142,6 +150,14 @@ pub fn randIntFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn compareNum(a: Value, b: Value) !i2 {
+    // BigDecimal comparison → convert to float
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = arithmetic.toFloat(a) catch unreachable;
+        const fb = arithmetic.toFloat(b) catch unreachable;
+        if (fa < fb) return -1;
+        if (fa > fb) return 1;
+        return 0;
+    }
     // BigInt comparison
     if (a.tag() == .big_int or b.tag() == .big_int) {
         if (a.tag() == .float or b.tag() == .float) {
@@ -494,6 +510,28 @@ fn toBigInt(allocator: Allocator, v: Value) anyerror!Value {
             const i: i64 = @intFromFloat(f);
             break :blk Value.initBigInt(collections.BigInt.initFromI64(allocator, i) catch return error.OutOfMemory);
         },
+        .big_decimal => blk: {
+            // Convert BigDecimal to BigInt by truncating (scale=0 → use unscaled directly)
+            const bd = v.asBigDecimal();
+            if (bd.scale == 0) break :blk Value.initBigInt(bd.unscaled);
+            // Non-zero scale: divide unscaled by 10^scale to get integer part
+            const alloc = allocator;
+            const ten_pow = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+            ten_pow.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+            try ten_pow.managed.set(1);
+            var i: i32 = 0;
+            while (i < bd.scale) : (i += 1) {
+                const ten = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+                ten.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+                try ten.managed.set(10);
+                try ten_pow.managed.mul(&ten_pow.managed, &ten.managed);
+            }
+            const result = alloc.create(collections.BigInt) catch return error.OutOfMemory;
+            result.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+            var remainder = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
+            result.managed.divTrunc(&remainder, &bd.unscaled.managed, &ten_pow.managed) catch return error.OutOfMemory;
+            break :blk Value.initBigInt(result);
+        },
         .string => blk: {
             const s = v.asString();
             // Try integer parse first
@@ -506,6 +544,39 @@ fn toBigInt(allocator: Allocator, v: Value) anyerror!Value {
             }
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert {s} to BigInt", .{@tagName(v.tag())}),
+    };
+}
+
+/// (bigdec x) — Coerce to BigDecimal.
+fn bigdecFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bigdec", .{args.len});
+    return toBigDec(allocator, args[0]);
+}
+
+fn toBigDec(allocator: Allocator, v: Value) anyerror!Value {
+    return switch (v.tag()) {
+        .big_decimal => v,
+        .integer => Value.initBigDecimal(collections.BigDecimal.initFromI64(allocator, v.asInteger()) catch return error.OutOfMemory),
+        .float => blk: {
+            const f = v.asFloat();
+            if (std.math.isNan(f) or std.math.isInf(f))
+                return err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert {s} to BigDecimal", .{if (std.math.isNan(f)) "NaN" else "Infinity"});
+            // Format float to string, then parse as BigDecimal
+            var buf: [64]u8 = undefined;
+            const s = std.fmt.bufPrint(&buf, "{d}", .{f}) catch return error.OutOfMemory;
+            break :blk Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch return error.OutOfMemory);
+        },
+        .big_int => blk: {
+            const bi = v.asBigInt();
+            const s = bi.toStringAlloc(allocator) catch return error.OutOfMemory;
+            break :blk Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch return error.OutOfMemory);
+        },
+        .string => blk: {
+            const s = v.asString();
+            break :blk Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch
+                return err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert string to BigDecimal: {s}", .{s}));
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot convert {s} to BigDecimal", .{@tagName(v.tag())}),
     };
 }
 
@@ -728,6 +799,13 @@ pub const builtins = [_]BuiltinDef{
         .name = "biginteger",
         .func = &bigintegerFn,
         .doc = "Coerce to BigInteger.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "bigdec",
+        .func = &bigdecFn,
+        .doc = "Coerce to BigDecimal.",
         .arglists = "([x])",
         .added = "1.0",
     },

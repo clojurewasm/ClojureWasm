@@ -950,6 +950,7 @@ fn writeValue(w: anytype, val: Value) void {
             w.print("#<{s}[{d}]>", .{ @tagName(arr.element_type), arr.items.len }) catch {};
         },
         .big_int => w.print("#<BigInt>", .{}) catch {},
+        .big_decimal => w.print("#<BigDecimal>", .{}) catch {},
         .ratio => w.print("#<Ratio>", .{}) catch {},
     }
 }

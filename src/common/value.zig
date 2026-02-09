@@ -589,7 +589,7 @@ pub const Value = enum(u64) {
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
-        big_int, ratio, array,
+        big_int, ratio, big_decimal, array,
     };
 
     // --- Encoding helpers ---
@@ -619,7 +619,7 @@ pub const Value = enum(u64) {
         return @ptrFromInt(@as(usize, shifted) << NB_ADDR_ALIGN_SHIFT);
     }
 
-    fn heapTagToTag(ht_raw: u8) Tag {
+    fn heapTagToTag(self: Value, ht_raw: u8) Tag {
         return switch (@as(NanHeapTag, @enumFromInt(ht_raw))) {
             .string => .string, .symbol => .symbol, .keyword => .keyword,
             .list => .list, .vector => .vector, .map => .map,
@@ -640,7 +640,12 @@ pub const Value = enum(u64) {
             .wasm_fn => .wasm_fn,
             .matcher => .matcher,
             .big_int => .big_int,
-            .ratio => .ratio,
+            .ratio => {
+                // Ratio and BigDecimal share NanHeapTag slot 30.
+                // Discriminate via first byte (NumericExtKind) at the pointed struct.
+                const kind_ptr = self.decodePtr(*const collections.NumericExtKind);
+                return if (kind_ptr.* == .big_decimal) .big_decimal else .ratio;
+            },
             .array => .array,
         };
     }
@@ -652,9 +657,9 @@ pub const Value = enum(u64) {
         const top16: u16 = @truncate(bits >> NB_TAG_SHIFT);
         if (top16 < 0xFFF8) return .float;
         return switch (top16) {
-            0xFFF8 => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
+            0xFFF8 => self.heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 16),
             0xFFF9 => .integer,
-            0xFFFA => heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
+            0xFFFA => self.heapTagToTag(@truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)),
             0xFFFB => switch (bits & NB_PAYLOAD_MASK) {
                 0 => .nil,
                 1, 2 => .boolean,
@@ -662,8 +667,8 @@ pub const Value = enum(u64) {
             },
             0xFFFC => .char,
             0xFFFD => .builtin_fn,
-            0xFFFE => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
-            0xFFFF => heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
+            0xFFFE => self.heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 8),
+            0xFFFF => self.heapTagToTag(@as(u8, @truncate((bits >> NB_HEAP_SUBTYPE_SHIFT) & 0x7)) + 24),
             else => unreachable,
         };
     }
@@ -998,6 +1003,16 @@ pub const Value = enum(u64) {
 
     pub fn asRatio(self: Value) *collections.Ratio {
         return decodePtr(self, *collections.Ratio);
+    }
+
+    pub fn initBigDecimal(bd: *collections.BigDecimal) Value {
+        // BigDecimal shares NanHeapTag slot 30 (.ratio) with Ratio.
+        // Discriminated at runtime via kind field.
+        return encodeHeapPtr(.ratio, bd);
+    }
+
+    pub fn asBigDecimal(self: Value) *collections.BigDecimal {
+        return decodePtr(self, *collections.BigDecimal);
     }
 
     /// Clojure pr-str semantics: format value for printing.
@@ -1370,6 +1385,12 @@ pub const Value = enum(u64) {
                 try w.writeAll("/");
                 try w.writeAll(dbuf[0..dlen]);
             },
+            .big_decimal => {
+                const bd = self.asBigDecimal();
+                const s = bd.toStringAlloc(std.heap.page_allocator) catch unreachable;
+                try w.writeAll(s);
+                try w.writeAll("M");
+            },
             .cons => {
                 const c = self.asCons();
                 if (try checkPrintLevel(w)) return;
@@ -1416,6 +1437,12 @@ pub const Value = enum(u64) {
                 var str_buf: [512]u8 = undefined;
                 const len = c.toString(&str_buf, 10, .lower, &limbs_buf);
                 try w.writeAll(str_buf[0..len]);
+            },
+            .big_decimal => {
+                // str on BigDecimal: no M suffix (unlike pr-str)
+                const bd = self.asBigDecimal();
+                const s = bd.toStringAlloc(std.heap.page_allocator) catch unreachable;
+                try w.writeAll(s);
             },
             else => try self.formatPrStr(w),
         }
@@ -1526,6 +1553,18 @@ pub const Value = enum(u64) {
                 break :blk a.numerator.managed.toConst().eql(b.numerator.managed.toConst()) and
                     a.denominator.managed.toConst().eql(b.denominator.managed.toConst());
             },
+            .big_decimal => blk: {
+                const a = self.asBigDecimal();
+                const b = other.asBigDecimal();
+                // Compare by mathematical value (like Java's compareTo):
+                // Normalize to the same scale by multiplying the one with
+                // smaller scale by 10^diff.
+                if (a.scale == b.scale) {
+                    break :blk a.unscaled.managed.toConst().eql(b.unscaled.managed.toConst());
+                }
+                // Use float comparison for different scales
+                break :blk a.toF64() == b.toF64();
+            },
         };
     }
 
@@ -1541,23 +1580,27 @@ pub const Value = enum(u64) {
 };
 
 fn isNumericTag(t: Value.Tag) bool {
-    return t == .integer or t == .float or t == .big_int;
+    return t == .integer or t == .float or t == .big_int or t == .big_decimal;
 }
 
 fn numericEql(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.Tag) bool {
-    // BigInt == BigInt handled in main switch, so at least one side is int or float
+    // BigDecimal: compare as f64 with other numeric types
+    if (self_tag == .big_decimal or other_tag == .big_decimal) {
+        const a = numericToF64(self, self_tag);
+        const b = numericToF64(other, other_tag);
+        return a == b;
+    }
+    // BigInt cross-type
     if (self_tag == .big_int or other_tag == .big_int) {
         const bi = if (self_tag == .big_int) self.asBigInt() else other.asBigInt();
         const non_bi = if (self_tag == .big_int) other else self;
         const non_bi_tag = if (self_tag == .big_int) other_tag else self_tag;
         if (non_bi_tag == .integer) {
-            // Compare BigInt with i64: try to convert BigInt to i64
             if (bi.toI64()) |bi_i64| {
                 return bi_i64 == non_bi.asInteger();
             }
-            return false; // BigInt too large for i64
+            return false;
         } else {
-            // float: compare as f64
             return bi.toF64() == non_bi.asFloat();
         }
     }
@@ -1565,6 +1608,16 @@ fn numericEql(self: Value, self_tag: Value.Tag, other: Value, other_tag: Value.T
     const a: f64 = if (self_tag == .integer) @floatFromInt(self.asInteger()) else self.asFloat();
     const b: f64 = if (other_tag == .integer) @floatFromInt(other.asInteger()) else other.asFloat();
     return a == b;
+}
+
+fn numericToF64(v: Value, t: Value.Tag) f64 {
+    return switch (t) {
+        .integer => @floatFromInt(v.asInteger()),
+        .float => v.asFloat(),
+        .big_int => v.asBigInt().toF64(),
+        .big_decimal => v.asBigDecimal().toF64(),
+        else => 0.0,
+    };
 }
 
 fn isSequential(t: Value.Tag) bool {

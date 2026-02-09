@@ -112,6 +112,12 @@ pub const Reader = struct {
     fn readInteger(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
 
+        // Check for M suffix (explicit BigDecimal literal)
+        if (text.len > 0 and text[text.len - 1] == 'M') {
+            // 42M → BigDecimal with scale=0
+            return Form{ .data = .{ .big_decimal = text[0 .. text.len - 1] }, .line = token.line, .column = token.column };
+        }
+
         // Check for N suffix (explicit BigInt literal)
         const has_n_suffix = text.len > 0 and text[text.len - 1] == 'N';
         if (has_n_suffix) {
@@ -221,8 +227,11 @@ pub const Reader = struct {
     fn readFloat(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
         var s = text;
-        if (s.len > 0 and s[s.len - 1] == 'M') {
+        const has_m_suffix = s.len > 0 and s[s.len - 1] == 'M';
+        if (has_m_suffix) {
             s = s[0 .. s.len - 1];
+            // M suffix → BigDecimal form (preserve exact text)
+            return Form{ .data = .{ .big_decimal = s }, .line = token.line, .column = token.column };
         }
         const value = std.fmt.parseFloat(f64, s) catch {
             return self.makeError(.number_error, "Invalid float literal", token);
@@ -682,7 +691,7 @@ pub const Reader = struct {
 
     fn expandSyntaxQuote(self: *Reader, form: Form, gensym_map: *std.StringHashMapUnmanaged([]const u8)) ReadError!Form {
         return switch (form.data) {
-            .nil, .boolean, .integer, .float, .big_int, .string, .regex, .char => form,
+            .nil, .boolean, .integer, .float, .big_int, .big_decimal, .string, .regex, .char => form,
             .keyword => form,
             .symbol => |sym| {
                 // Auto-gensym: foo# → foo__N__auto
@@ -920,7 +929,9 @@ test "Reader - floats" {
     try testing.expectApproxEqAbs(@as(f64, 3.14), (try readOneForm("3.14")).data.float, 0.001);
     try testing.expectApproxEqAbs(@as(f64, 1e10), (try readOneForm("1e10")).data.float, 1e5);
     try testing.expectApproxEqAbs(@as(f64, 0.0025), (try readOneForm("2.5e-3")).data.float, 0.0001);
-    try testing.expectApproxEqAbs(@as(f64, 3.14), (try readOneForm("3.14M")).data.float, 0.001);
+    try testing.expectEqualStrings("3.14", (try readOneForm("3.14M")).data.big_decimal);
+    try testing.expectEqualStrings("42", (try readOneForm("42M")).data.big_decimal);
+    try testing.expectEqualStrings("1e10", (try readOneForm("1e10M")).data.big_decimal);
 }
 
 test "Reader - ratio" {

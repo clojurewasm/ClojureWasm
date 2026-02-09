@@ -406,10 +406,10 @@ during `readFnProtoTable` (vars don't exist yet). Deferred fixup list resolves t
 
 **Files**: `src/native/vm/jit.zig` (new, ~700 lines), `src/native/vm/vm.zig` (JitState integration).
 
-## D89: Three New Value Types — Array, BigInt, Ratio (Phase 43)
+## D89: Four New Value Types — Array, BigInt, Ratio, BigDecimal (Phase 43)
 
-**Decision**: Reserve NanHeapTag slots 29 (big_int), 30 (ratio), 31 (array) in Group D
-for three new Value types needed by Phase 43 (Numeric Types + Arrays).
+**Decision**: Reserve NanHeapTag slots 29 (big_int), 30 (ratio+big_decimal), 31 (array)
+in Group D for four Value types needed by Phase 43 (Numeric Types + Arrays).
 
 **Types**:
 
@@ -420,9 +420,13 @@ for three new Value types needed by Phase 43 (Numeric Types + Arrays).
   Structural equality via `Const.eql()`. Printed as `<digits>N`.
 - **Ratio**: Exact rational as numerator/denominator BigInt pair.
   Structural equality. Printed as `<num>/<den>`.
+- **BigDecimal**: Scaled BigInt (unscaled × 10^(-scale)). Shares NanHeapTag slot 30
+  with Ratio via `NumericExtKind` discriminator enum(u8) as first field of both
+  `extern struct`s. Printed as `<digits>M`.
 
 **GC**: Array traces all items. BigInt marks struct only (limbs managed by allocator).
 Ratio marks struct + numerator/denominator BigInt pointers.
+BigDecimal marks struct + unscaled BigInt pointer.
 
 **Files**: `src/common/value.zig`, `src/common/collections.zig`, `src/common/gc.zig`,
 `src/common/builtin/array.zig` (new).

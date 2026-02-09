@@ -12,6 +12,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const Value = @import("../value.zig").Value;
 const collections = @import("../collections.zig");
 const BigInt = collections.BigInt;
+const BigDecimal = collections.BigDecimal;
 const err = @import("../error.zig");
 
 /// Arithmetic and comparison intrinsics registered in clojure.core.
@@ -109,6 +110,7 @@ pub fn toFloat(v: Value) !f64 {
         .integer => @floatFromInt(v.asInteger()),
         .float => v.asFloat(),
         .big_int => v.asBigInt().toF64(),
+        .big_decimal => v.asBigDecimal().toF64(),
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(v.tag())}),
     };
 }
@@ -120,6 +122,20 @@ pub fn binaryArith(a: Value, b: Value, comptime op: ArithOp) !Value {
 }
 
 pub fn binaryArithAlloc(allocator: ?Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+    // BigDecimal promotion: if either side is BigDecimal, do BigDecimal arithmetic
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        if (a.tag() == .float or b.tag() == .float) {
+            const fa = toFloat(a) catch unreachable;
+            const fb = toFloat(b) catch unreachable;
+            return Value.initFloat(switch (op) {
+                .add => fa + fb,
+                .sub => fa - fb,
+                .mul => fa * fb,
+            });
+        }
+        const alloc = allocator orelse std.heap.page_allocator;
+        return bigDecArith(alloc, a, b, op) catch return error.OutOfMemory;
+    }
     // BigInt promotion: if either side is BigInt, do BigInt arithmetic
     if (a.tag() == .big_int or b.tag() == .big_int) {
         // If one side is float, convert to float arithmetic
@@ -176,6 +192,79 @@ fn bigIntArith(allocator: Allocator, a: Value, b: Value, comptime op: ArithOp) !
         .mul => try result.managed.mul(&ba.managed, &bb.managed),
     }
     return Value.initBigInt(result);
+}
+
+/// BigDecimal arithmetic: promotes both sides to BigDecimal, returns BigDecimal result.
+fn bigDecArith(allocator: Allocator, a: Value, b: Value, comptime op: ArithOp) !Value {
+    const da = try valueToBigDec(allocator, a);
+    const db = try valueToBigDec(allocator, b);
+
+    // Align scales: use the larger scale for add/sub, sum for mul
+    const result = try allocator.create(BigDecimal);
+    result.kind = .big_decimal;
+
+    switch (op) {
+        .add, .sub => {
+            // Align to max scale
+            const max_scale = @max(da.scale, db.scale);
+            const ua = try scaleUnscaled(allocator, da, max_scale);
+            const ub = try scaleUnscaled(allocator, db, max_scale);
+            result.unscaled = try allocator.create(BigInt);
+            result.unscaled.managed = try std.math.big.int.Managed.init(allocator);
+            switch (op) {
+                .add => try result.unscaled.managed.add(&ua.managed, &ub.managed),
+                .sub => try result.unscaled.managed.sub(&ua.managed, &ub.managed),
+                else => unreachable,
+            }
+            result.scale = max_scale;
+        },
+        .mul => {
+            result.unscaled = try allocator.create(BigInt);
+            result.unscaled.managed = try std.math.big.int.Managed.init(allocator);
+            try result.unscaled.managed.mul(&da.unscaled.managed, &db.unscaled.managed);
+            result.scale = da.scale + db.scale;
+        },
+    }
+    return Value.initBigDecimal(result);
+}
+
+/// Scale a BigDecimal's unscaled value to a target scale by multiplying by 10^(target - current).
+fn scaleUnscaled(allocator: Allocator, bd: *const BigDecimal, target_scale: i32) !*BigInt {
+    const diff = target_scale - bd.scale;
+    if (diff == 0) return bd.unscaled;
+    if (diff < 0) return bd.unscaled; // should not happen in add/sub
+    // Multiply unscaled by 10^diff
+    const factor = try allocator.create(BigInt);
+    factor.managed = try std.math.big.int.Managed.init(allocator);
+    // Set factor to 10^diff
+    try factor.managed.set(1);
+    var i: i32 = 0;
+    while (i < diff) : (i += 1) {
+        const ten = try allocator.create(BigInt);
+        ten.managed = try std.math.big.int.Managed.init(allocator);
+        try ten.managed.set(10);
+        try factor.managed.mul(&factor.managed, &ten.managed);
+    }
+    const scaled = try allocator.create(BigInt);
+    scaled.managed = try std.math.big.int.Managed.init(allocator);
+    try scaled.managed.mul(&bd.unscaled.managed, &factor.managed);
+    return scaled;
+}
+
+fn valueToBigDec(allocator: Allocator, v: Value) !*BigDecimal {
+    return switch (v.tag()) {
+        .big_decimal => v.asBigDecimal(),
+        .integer => BigDecimal.initFromI64(allocator, v.asInteger()),
+        .big_int => blk: {
+            const bi = v.asBigInt();
+            const bd = try allocator.create(BigDecimal);
+            bd.kind = .big_decimal;
+            bd.unscaled = bi;
+            bd.scale = 0;
+            break :blk bd;
+        },
+        else => unreachable,
+    };
 }
 
 pub fn valueToBigInt(allocator: std.mem.Allocator, v: Value) !*BigInt {
@@ -243,6 +332,13 @@ fn neqFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 pub fn binaryDiv(a: Value, b: Value) !Value {
+    // BigDecimal division → convert to float (avoids Non-terminating decimal issues)
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = toFloat(a) catch unreachable;
+        const fb = toFloat(b) catch unreachable;
+        if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        return Value.initFloat(fa / fb);
+    }
     // BigInt / BigInt → truncated BigInt division
     if (a.tag() == .big_int or b.tag() == .big_int) {
         if (a.tag() == .float or b.tag() == .float) {
@@ -275,6 +371,12 @@ pub fn binaryDiv(a: Value, b: Value) !Value {
 }
 
 pub fn binaryMod(a: Value, b: Value) !Value {
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = toFloat(a) catch unreachable;
+        const fb = toFloat(b) catch unreachable;
+        if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        return Value.initFloat(@mod(fa, fb));
+    }
     if (a.tag() == .big_int or b.tag() == .big_int) {
         if (a.tag() == .float or b.tag() == .float) {
             const fa = toFloat(a) catch unreachable;
@@ -308,6 +410,12 @@ pub fn binaryMod(a: Value, b: Value) !Value {
 }
 
 pub fn binaryRem(a: Value, b: Value) !Value {
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = toFloat(a) catch unreachable;
+        const fb = toFloat(b) catch unreachable;
+        if (fb == 0.0) return err.setErrorFmt(.eval, .arithmetic_error, err.getArgSource(1), "Divide by zero", .{});
+        return Value.initFloat(@rem(fa, fb));
+    }
     if (a.tag() == .big_int or b.tag() == .big_int) {
         if (a.tag() == .float or b.tag() == .float) {
             const fa = toFloat(a) catch unreachable;
@@ -349,6 +457,17 @@ pub fn compareFn(a: Value, b: Value, comptime op: CompareOp) !bool {
             .le => a.asInteger() <= b.asInteger(),
             .gt => a.asInteger() > b.asInteger(),
             .ge => a.asInteger() >= b.asInteger(),
+        };
+    }
+    // BigDecimal comparison → convert to float
+    if (a.tag() == .big_decimal or b.tag() == .big_decimal) {
+        const fa = toFloat(a) catch unreachable;
+        const fb = toFloat(b) catch unreachable;
+        return switch (op) {
+            .lt => fa < fb,
+            .le => fa <= fb,
+            .gt => fa > fb,
+            .ge => fa >= fb,
         };
     }
     // BigInt comparison

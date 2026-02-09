@@ -32,6 +32,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
         .integer => |n| Value.initInteger(n),
         .float => |n| Value.initFloat(n),
         .big_int => |s| Value.initBigInt(collections.BigInt.initFromString(allocator, s) catch return error.OutOfMemory),
+        .big_decimal => |s| Value.initBigDecimal(collections.BigDecimal.initFromString(allocator, s) catch return error.OutOfMemory),
         .char => |c| Value.initChar(c),
         .string => |s| Value.initString(allocator, s),
         .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
@@ -225,6 +226,11 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const bi = val.asBigInt();
             const s = bi.managed.toConst().toStringAlloc(allocator, 10, .lower) catch return Form{ .data = .nil };
             break :blk Form{ .data = .{ .big_int = s } };
+        },
+        .big_decimal => blk: {
+            const bd = val.asBigDecimal();
+            const s = bd.toStringAlloc(allocator) catch return Form{ .data = .nil };
+            break :blk Form{ .data = .{ .big_decimal = s } };
         },
         // Non-data values become nil (shouldn't appear in macro output)
         .fn_val, .builtin_fn, .atom, .volatile_ref, .protocol, .protocol_fn, .multi_fn, .delay, .reduced, .transient_vector, .transient_map, .transient_set, .chunked_cons, .chunk_buffer, .array_chunk, .wasm_module, .wasm_fn, .matcher, .array, .ratio => Form{ .data = .nil },

@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 54
+;; CLJW markers: 60
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -19,20 +19,28 @@
 (ns clojure.test-clojure.numbers
   (:use clojure.test))
 
-;; CLJW: Coerced-BigDecimal skipped — BigDecimal
-;; CLJW: BigInteger-conversions — adapted from upstream (removed BigDecimal/Float/Double/Long class refs)
+;; CLJW: Coerced-BigDecimal — adapted (removed instance? BigDecimal, used decimal? instead)
+(deftest Coerced-BigDecimal
+  (doseq [v [(bigdec 3) (bigdec 42N)]]
+    (are [x] (true? x)
+      (number? v)
+      (decimal? v)
+      (not (float? v)))))
+
+;; CLJW: BigInteger-conversions — adapted from upstream (removed Float/Double/Long class refs, added M literal)
 (deftest BigInteger-conversions
   (doseq [coerce-fn [bigint biginteger]]
     (doseq [v (map coerce-fn [42
+                              13178456923875639284562345789M
                               13178456923875639284562345789N])]
       (are [x] (true? x)
         (integer? v)
         (number? v)))))
 
-;; CLJW: equality-tests — adapted (removed BigDecimal/ratio, Java class constructors)
+;; CLJW: equality-tests — adapted (removed ratio, Java class constructors, added BigDecimal)
 (deftest equality-tests
   ;; = returns true for numbers in the same category
-  ;; CLJW: simplified — only integer and BigInt categories
+  ;; CLJW: integer, BigInt and BigDecimal categories
   (are [x y] (= x y)
     2 (bigint 2)
     (bigint 2) (biginteger 2)
@@ -44,6 +52,15 @@
     42 42N
     0N 0
     -1N -1)
+
+  ;; BigDecimal equality
+  (are [x y] (= x y)
+    2.0M 2.00M
+    1.50M 1.500M
+    0.0M 0.00M
+    42M 42
+    42M 42.0
+    3.14M 3.14)
 
   ;; hash consistency for BigInt = integer
   (are [x y] (= (hash x) (hash y))
@@ -311,7 +328,7 @@
 
 ;; *** Predicates ***
 
-;; CLJW: test-pos?-zero?-neg? simplified — no byte/short/bigdec/ratio/Float
+;; CLJW: test-pos?-zero?-neg? — no byte/short/ratio/Float (added bigdec)
 (deftest test-pos?-zero?-neg?
   (are [x] (true? x)
     (pos? 5)
@@ -324,6 +341,10 @@
     (pos? (bigint 6))
     (not (pos? (bigint 0)))
     (not (pos? (bigint -6)))
+    ;; CLJW: BigDecimal predicates
+    (pos? (bigdec 9))
+    (not (pos? (bigdec 0)))
+    (not (pos? (bigdec -9)))
     (zero? 0)
     (zero? 0.0)
     (not (zero? 1))
@@ -331,6 +352,9 @@
     ;; CLJW: restored BigInt zero?
     (zero? (bigint 0))
     (not (zero? (bigint 1)))
+    ;; CLJW: BigDecimal zero?
+    (zero? (bigdec 0))
+    (not (zero? (bigdec 1)))
     (neg? -5)
     (not (neg? 0))
     (not (neg? 5))
@@ -340,7 +364,11 @@
     ;; CLJW: restored BigInt neg?
     (neg? (bigint -6))
     (not (neg? (bigint 0)))
-    (not (neg? (bigint 6)))))
+    (not (neg? (bigint 6)))
+    ;; CLJW: BigDecimal neg?
+    (neg? (bigdec -9))
+    (not (neg? (bigdec 0)))
+    (not (neg? (bigdec 9)))))
 
 ;; even? odd?
 
@@ -442,8 +470,11 @@
     -0.0 0.0
     ;; CLJW: restored BigInt abs tests
     -123N 123N
-    123N 123N))
-;; CLJW: BigDecimal/ratio/##Inf/##NaN abs tests removed
+    123N 123N
+    ;; CLJW: BigDecimal abs (returns float)
+    -123.456M 123.456
+    123.456M 123.456))
+;; CLJW: ratio/##Inf/##NaN abs tests removed
 
 ;; CLJW: clj-868 (NaN contagious min/max) skipped — Float/Double class constructors
 
@@ -491,7 +522,7 @@
 
 ;; CLJW: unchecked-inc/dec/negate/add/subtract/multiply overflow tests skipped — Long/MIN_VALUE, Long/MAX_VALUE, Long/valueOf
 ;; CLJW: warn-on-boxed skipped — *unchecked-math*, eval-in-temp-ns
-;; CLJW: comparisons — adapted (removed Integer/Float constructors, ratio, BigDecimal)
+;; CLJW: comparisons — adapted (removed Integer/Float constructors, ratio; added BigDecimal)
 (deftest comparisons
   ;; BigInt comparisons with integers
   (are [x y] (= x y)
@@ -510,7 +541,39 @@
     (< 10.0 1N) false
     (<= 1N 1.0) true
     (> 10N 1.0) true
-    (>= 10N 10.0) true))
+    (>= 10N 10.0) true)
+  ;; CLJW: BigDecimal comparisons
+  (are [x y] (= x y)
+    (< 1M 10M) true
+    (< 10M 1M) false
+    (<= 1M 1M) true
+    (> 10M 1M) true
+    (>= 10M 10M) true
+    (< 1M 10) true
+    (> 10M 1) true
+    (< 1M 10.0) true
+    (> 10M 1.0) true))
+
+;; CLJW-ADD: BigDecimal arithmetic tests
+(deftest test-bigdec-arithmetic
+  ;; basic ops
+  (are [x y] (= x y)
+    (+ 1M 2M) 3M
+    (- 10M 3M) 7M
+    (* 3M 4M) 12M)
+  ;; cross-type with integer
+  (are [x y] (= x y)
+    (+ 1M 2) 3M
+    (- 10M 3) 7M
+    (* 2M 3) 6M)
+  ;; bigdec coercion
+  (is (decimal? (bigdec 42)))
+  (is (decimal? (bigdec 3.14)))
+  (is (decimal? (bigdec "99.9")))
+  (is (= (bigdec 42) 42M))
+  ;; max / min with BigDecimal
+  (is (= (max 1M 5M 3M) 5M))
+  (is (= (min 1M 5M 3M) 1M)))
 
 ;; CLJW: defspec generative tests skipped — clojure.test.generative
 

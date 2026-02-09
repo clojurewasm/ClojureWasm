@@ -33,6 +33,9 @@ pub const FormData = union(enum) {
     // BigInt literal (N suffix or overflow)
     big_int: []const u8,
 
+    // BigDecimal literal (M suffix)
+    big_decimal: []const u8,
+
     // Regex literal
     regex: []const u8,
 
@@ -75,6 +78,7 @@ pub const Form = struct {
             .map => "map",
             .set => "set",
             .big_int => "big_int",
+            .big_decimal => "big_decimal",
             .regex => "regex",
             .tag => "tag",
         };
@@ -130,6 +134,10 @@ pub const Form = struct {
             .big_int => |s| {
                 try w.writeAll(s);
                 try w.writeByte('N');
+            },
+            .big_decimal => |s| {
+                try w.writeAll(s);
+                try w.writeByte('M');
             },
             .regex => |pattern| {
                 try w.writeAll("#\"");

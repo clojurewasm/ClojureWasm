@@ -90,7 +90,7 @@ See `test/upstream/clojure/test_clojure/` for the full list.
 Key files with high assertion counts:
 - sequences.clj (1654 upstream lines, 39 CLJW markers)
 - data_structures.clj (1363 upstream lines, 35 CLJW markers)
-- numbers.clj (959 upstream lines, 41 CLJW markers)
+- numbers.clj (959 upstream lines, 60 CLJW markers)
 - control.clj (446 upstream lines, 21 CLJW markers)
 - math.clj (327 upstream lines, 13 CLJW markers)
 
@@ -110,5 +110,6 @@ Key files with high assertion counts:
 |----------|----------------------------------------|---------------------------|--------|
 | 43.1-4   | Array ops, typed arrays, macros        | arrays.clj (ported)       | DONE   |
 | 43.5     | BigInt, bigint, biginteger             | numbers.clj (24t/276a)    | DONE   |
-| 43.6     | +', *', -', inc', dec'                 | numbers.clj               | TODO   |
-| 43.7     | Ratio, numerator, denominator          | numbers.clj               | TODO   |
+| 43.6     | BigDecimal, bigdec, M literal          | numbers.clj (26t/323a)    | DONE   |
+| 43.7     | +', *', -', inc', dec'                 | numbers.clj               | TODO   |
+| 43.8     | Ratio, numerator, denominator          | numbers.clj               | TODO   |

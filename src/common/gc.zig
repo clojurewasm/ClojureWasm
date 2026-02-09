@@ -969,6 +969,14 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                 gc.markPtr(r.denominator);
             }
         },
+
+        // BigDecimal — mark struct + unscaled BigInt
+        .big_decimal => {
+            const bd = val.asBigDecimal();
+            if (gc.markAndCheck(bd)) {
+                gc.markPtr(bd.unscaled);
+            }
+        },
     }
 }
 
