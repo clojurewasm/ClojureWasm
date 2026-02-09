@@ -135,3 +135,46 @@ entries:
         wt_warm_ms: 44.5
         ratio: 6.9
         speedup_vs_prev: 0.97
+  - id: "45.5-cached-memory"
+    date: "2026-02-10"
+    reason: "Cached memory pointer — avoid triple-indirection per load/store"
+    commit: pending
+    build: ReleaseSafe
+    cw_startup_ms: 3.7
+    wt_startup_ms: 5.2
+    results:
+      fib:
+        desc: "fib(20) x 10000"
+        cw_warm_ms: 4387
+        wt_warm_ms: 225
+        ratio: 19.5
+        speedup_vs_prev: 1.00
+      tak:
+        desc: "tak(18,12,6) x 10000"
+        cw_warm_ms: 14295
+        wt_warm_ms: 1217
+        ratio: 11.8
+        speedup_vs_prev: 1.01
+      arith:
+        desc: "arith(1M) x 10"
+        cw_warm_ms: 0.1
+        wt_warm_ms: 0.1
+        ratio: 1.0
+      sieve:
+        desc: "sieve(64K) x 100"
+        cw_warm_ms: 198
+        wt_warm_ms: 6.6
+        ratio: 30.1
+        speedup_vs_prev: 1.03
+      fib_loop:
+        desc: "fib_loop(25) x 1000000"
+        cw_warm_ms: 176
+        wt_warm_ms: 2.7
+        ratio: 65.1
+        speedup_vs_prev: 1.01
+      gcd:
+        desc: "gcd(1M,700K) x 1000000"
+        cw_warm_ms: 311
+        wt_warm_ms: 44.3
+        ratio: 7.0
+        speedup_vs_prev: 1.00

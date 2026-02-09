@@ -49,28 +49,29 @@ Each wasm benchmark is measured three ways:
 `bench/wasm_bench.sh` — dedicated wasm benchmark runner.
 Uses hyperfine. Outputs comparison table + YAML.
 
-## Baseline (Phase 45.4, 2026-02-10)
+## Baseline (Phase 45.5, 2026-02-10)
 
-After superinstructions optimization. Predecoded IR + fused multi-instruction patterns.
+After all Phase 45 optimizations: predecoded IR + superinstructions + cached memory.
 All modules built with `-scheduler=none`. Measured via `wasm_bench.sh`, startup subtracted.
 
-| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio  | vs 45.2  |
+| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio  | vs 45.1b |
 |------------------------|-------------|-------------------|--------|----------|
-| fib(20)x10K            | 4366        | 225               | 19.4x  | 1.30x    |
-| tak(18,12,6)x10K       | 14450       | 1212              | 11.9x  | 1.13x    |
+| fib(20)x10K            | 4387        | 225               | 19.5x  | 2.30x    |
+| tak(18,12,6)x10K       | 14295       | 1217              | 11.8x  | 1.91x    |
 | arith(1M)x10           | 0.1         | 0.1               | 1.0x   | —        |
-| sieve(64K)x100         | 203         | 5.6               | 36.2x  | 1.18x    |
-| fib_loop(25)x1M        | 178         | 3.0               | 59.3x  | 1.08x    |
-| gcd(1M,700K)x1M        | 309         | 44.5              | 6.9x   | ~1.0x    |
+| sieve(64K)x100         | 198         | 6.6               | 30.1x  | 3.03x    |
+| fib_loop(25)x1M        | 176         | 2.7               | 65.1x  | 2.28x    |
+| gcd(1M,700K)x1M        | 311         | 44.3              | 7.0x   | 2.04x    |
 
-Key insights after superinstructions:
-- **fib 1.30x**: local.get+i32.const+i32.sub/lt_u fusions (6 dispatches saved per loop iter)
-- **tak 1.13x**: local.get+local.get+i32.gt_s, local.get+i32.const+i32.sub fusions
-- **sieve 1.18x**: local.get+i32.const+i32.add (address calc), local.get+local.get+i32.add
-- **gcd neutral**: hot loop uses i32.rem_s which isn't fused
-- **45.3 (tail-call/iterative dispatch) SKIPPED**: tested, 0% improvement on Apple M4
-- Remaining bottleneck: function call overhead (fib/tak), switch dispatch cost
-- CW startup+load (3.5ms) still faster than wasmtime (4.7ms)
+Phase 45 cumulative improvements (vs 45.1b baseline):
+- **fib 2.30x** (10070→4387ms): predecoded IR 1.77x + superinstructions 1.30x
+- **tak 1.91x** (27320→14295ms): predecoded IR 1.68x + superinstructions 1.13x
+- **sieve 3.03x** (600→198ms): predecoded IR 2.51x + superinstructions 1.18x + cached memory ~3%
+- **gcd 2.04x** (633→311ms): predecoded IR 2.11x (superinstructions neutral for rem_s)
+- **45.3 (tail-call dispatch) SKIPPED**: 0% improvement on Apple M4
+- **45.5 (cached memory)**: marginal (~3% on sieve), kept for code quality
+- Remaining gap to wasmtime: 7-65x (interpreter vs JIT fundamental limit)
+- CW startup+load (3.7ms) still faster than wasmtime (5.2ms)
 
 ## Optimization Roadmap (from D90)
 
@@ -87,10 +88,10 @@ Priority order:
    Peephole pass in predecode.zig fuses local.get+const/local+arith/cmp patterns.
    Results: fib 1.30x, tak 1.13x, sieve 1.18x.
 
-4. **Memory access optimization** — cache memory base pointer, avoid bounds
-   check on every load/store where provably safe.
+4. **Memory access optimization** — DONE (45.5). Cached memory pointer in
+   executeIR eliminates triple-indirection. Marginal improvement (~3% on sieve).
 
-5. **Constant folding / dead code elimination** — at predecode time.
+5. **Constant folding / dead code elimination** — deferred (low ROI for current benchmarks).
 
 ## Files
 

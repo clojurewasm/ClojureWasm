@@ -28,23 +28,22 @@ Plan: `.dev/wasm-opt-plan.md`
 2. [x] 45.2: Predecoded IR (fixed-width instruction encoding)
 3. [x] 45.3: SKIPPED — tail-call/iterative dispatch (0% improvement on Apple M4)
 4. [x] 45.4: Superinstructions (fuse common patterns)
-5. [ ] 45.5: Memory access optimization
+5. [x] 45.5: Memory access optimization (cached memory pointer, marginal ~3%)
 
 ## Current Task
 
-Phase 45.5: Memory access optimization — cache memory base pointer, avoid redundant
-bounds checks on consecutive loads/stores. Plan: `.dev/wasm-opt-plan.md` optimization #4.
+Phase 45 COMPLETE. Plan next phase.
 
 ## Previous Task
 
-Phase 45.4 COMPLETE: Superinstructions — fused multi-instruction patterns.
-- 11 fused opcodes (0xE0-0xEA) in predecode.zig
-- Peephole fusePass() runs after predecoding, in-place replacement
-- Patterns: local.get+local.get, local.get+i32.const, local+local+arith, local+const+arith/cmp
-- Dead instructions skipped by handler (pc += N), no branch target fixup needed
-- Benchmark improvements: fib 1.30x, tak 1.13x, sieve 1.18x, fib_loop 1.08x
-- CW vs wasmtime ratios: fib 19x, tak 12x, sieve 36x, fib_loop 59x, gcd 7x
-- Phase 45.3 (tail-call/iterative dispatch) SKIPPED: 0% improvement on Apple M4
+Phase 45 COMPLETE: Wasm Runtime Optimization — 2-3x cumulative improvement.
+- 45.1: TinyGo benchmark infrastructure (6 wasm benchmarks, native + wasm)
+- 45.2: Predecoded IR (1.7-2.5x, fixed-width 8-byte instructions)
+- 45.3: SKIPPED — tail-call dispatch (0% on Apple M4)
+- 45.4: Superinstructions (1.08-1.30x, 11 fused opcodes)
+- 45.5: Cached memory pointer (marginal ~3% on sieve)
+- Cumulative: fib 2.3x, tak 1.9x, sieve 3.0x, gcd 2.0x
+- Remaining gap to wasmtime: 7-65x (interpreter vs JIT fundamental limit)
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

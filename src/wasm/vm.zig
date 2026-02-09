@@ -1826,6 +1826,8 @@ pub const Vm = struct {
     fn executeIR(self: *Vm, code: []const PreInstr, pool64: []const u64, instance: *Instance) WasmError!void {
         var pc: u32 = 0;
         const code_len: u32 = @intCast(code.len);
+        // Cache memory pointer to avoid triple-indirection per load/store
+        const cached_mem: ?*WasmMemory = instance.getMemory(0) catch null;
         while (pc < code_len) {
             const instr = code[pc];
             pc += 1;
@@ -1963,41 +1965,41 @@ pub const Vm = struct {
                     t.set(elem_idx, @intCast(val)) catch return error.OutOfBoundsMemoryAccess;
                 },
 
-                // ---- Memory load (offset pre-decoded in operand) ----
-                0x28 => try self.memLoadIR(i32, u32, instr.operand, instance),
-                0x29 => try self.memLoadIR(i64, u64, instr.operand, instance),
-                0x2A => try self.memLoadFloatIR(f32, instr.operand, instance),
-                0x2B => try self.memLoadFloatIR(f64, instr.operand, instance),
-                0x2C => try self.memLoadIR(i8, i32, instr.operand, instance),
-                0x2D => try self.memLoadIR(u8, u32, instr.operand, instance),
-                0x2E => try self.memLoadIR(i16, i32, instr.operand, instance),
-                0x2F => try self.memLoadIR(u16, u32, instr.operand, instance),
-                0x30 => try self.memLoadIR(i8, i64, instr.operand, instance),
-                0x31 => try self.memLoadIR(u8, u64, instr.operand, instance),
-                0x32 => try self.memLoadIR(i16, i64, instr.operand, instance),
-                0x33 => try self.memLoadIR(u16, u64, instr.operand, instance),
-                0x34 => try self.memLoadIR(i32, i64, instr.operand, instance),
-                0x35 => try self.memLoadIR(u32, u64, instr.operand, instance),
+                // ---- Memory load (offset pre-decoded in operand, cached memory) ----
+                0x28 => try self.memLoadCached(i32, u32, instr.operand, cached_mem),
+                0x29 => try self.memLoadCached(i64, u64, instr.operand, cached_mem),
+                0x2A => try self.memLoadFloatCached(f32, instr.operand, cached_mem),
+                0x2B => try self.memLoadFloatCached(f64, instr.operand, cached_mem),
+                0x2C => try self.memLoadCached(i8, i32, instr.operand, cached_mem),
+                0x2D => try self.memLoadCached(u8, u32, instr.operand, cached_mem),
+                0x2E => try self.memLoadCached(i16, i32, instr.operand, cached_mem),
+                0x2F => try self.memLoadCached(u16, u32, instr.operand, cached_mem),
+                0x30 => try self.memLoadCached(i8, i64, instr.operand, cached_mem),
+                0x31 => try self.memLoadCached(u8, u64, instr.operand, cached_mem),
+                0x32 => try self.memLoadCached(i16, i64, instr.operand, cached_mem),
+                0x33 => try self.memLoadCached(u16, u64, instr.operand, cached_mem),
+                0x34 => try self.memLoadCached(i32, i64, instr.operand, cached_mem),
+                0x35 => try self.memLoadCached(u32, u64, instr.operand, cached_mem),
 
-                // ---- Memory store ----
-                0x36 => try self.memStoreIR(u32, instr.operand, instance),
-                0x37 => try self.memStoreIR(u64, instr.operand, instance),
-                0x38 => try self.memStoreFloatIR(f32, instr.operand, instance),
-                0x39 => try self.memStoreFloatIR(f64, instr.operand, instance),
-                0x3A => try self.memStoreIR(u8, instr.operand, instance),
-                0x3B => try self.memStoreIR(u16, instr.operand, instance),
-                0x3C => try self.memStoreTruncIR(u8, instr.operand, instance),
-                0x3D => try self.memStoreTruncIR(u16, instr.operand, instance),
-                0x3E => try self.memStoreTruncIR(u32, instr.operand, instance),
+                // ---- Memory store (cached memory) ----
+                0x36 => try self.memStoreCached(u32, instr.operand, cached_mem),
+                0x37 => try self.memStoreCached(u64, instr.operand, cached_mem),
+                0x38 => try self.memStoreFloatCached(f32, instr.operand, cached_mem),
+                0x39 => try self.memStoreFloatCached(f64, instr.operand, cached_mem),
+                0x3A => try self.memStoreCached(u8, instr.operand, cached_mem),
+                0x3B => try self.memStoreCached(u16, instr.operand, cached_mem),
+                0x3C => try self.memStoreTruncCached(u8, instr.operand, cached_mem),
+                0x3D => try self.memStoreTruncCached(u16, instr.operand, cached_mem),
+                0x3E => try self.memStoreTruncCached(u32, instr.operand, cached_mem),
 
-                // ---- Memory misc ----
+                // ---- Memory misc (cached memory) ----
                 0x3F => { // memory_size
-                    const m = try instance.getMemory(0);
+                    const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
                     try self.pushI32(@bitCast(m.size()));
                 },
                 0x40 => { // memory_grow
                     const pages = @as(u32, @bitCast(self.popI32()));
-                    const m = try instance.getMemory(0);
+                    const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
                     const old = m.grow(pages) catch {
                         try self.pushI32(-1);
                         continue;
@@ -2486,6 +2488,57 @@ pub const Vm = struct {
         const val: StoreT = @truncate(self.pop());
         const base = @as(u32, @bitCast(self.popI32()));
         const m = try instance.getMemory(0);
+        m.write(StoreT, offset, base, val) catch return error.OutOfBoundsMemoryAccess;
+    }
+
+    // ================================================================
+    // Cached-memory IR helpers (avoid triple-indirection per load/store)
+    // ================================================================
+
+    fn memLoadCached(self: *Vm, comptime LoadT: type, comptime ResultT: type, offset: u32, cached_mem: ?*WasmMemory) WasmError!void {
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
+        const val = m.read(LoadT, offset, base) catch return error.OutOfBoundsMemoryAccess;
+        const result: ResultT = if (@bitSizeOf(LoadT) == @bitSizeOf(ResultT))
+            @bitCast(val)
+        else
+            @intCast(val);
+        try self.push(asU64(ResultT, result));
+    }
+
+    fn memLoadFloatCached(self: *Vm, comptime T: type, offset: u32, cached_mem: ?*WasmMemory) WasmError!void {
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
+        const val = m.read(T, offset, base) catch return error.OutOfBoundsMemoryAccess;
+        switch (T) {
+            f32 => try self.pushF32(val),
+            f64 => try self.pushF64(val),
+            else => unreachable,
+        }
+    }
+
+    fn memStoreCached(self: *Vm, comptime T: type, offset: u32, cached_mem: ?*WasmMemory) WasmError!void {
+        const val: T = @truncate(self.pop());
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
+        m.write(T, offset, base, val) catch return error.OutOfBoundsMemoryAccess;
+    }
+
+    fn memStoreFloatCached(self: *Vm, comptime T: type, offset: u32, cached_mem: ?*WasmMemory) WasmError!void {
+        const val = switch (T) {
+            f32 => self.popF32(),
+            f64 => self.popF64(),
+            else => unreachable,
+        };
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
+        m.write(T, offset, base, val) catch return error.OutOfBoundsMemoryAccess;
+    }
+
+    fn memStoreTruncCached(self: *Vm, comptime StoreT: type, offset: u32, cached_mem: ?*WasmMemory) WasmError!void {
+        const val: StoreT = @truncate(self.pop());
+        const base = @as(u32, @bitCast(self.popI32()));
+        const m = cached_mem orelse return error.OutOfBoundsMemoryAccess;
         m.write(StoreT, offset, base, val) catch return error.OutOfBoundsMemoryAccess;
     }
 
