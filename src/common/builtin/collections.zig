@@ -504,7 +504,7 @@ pub fn nthFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .vector => args[0].asVector().nth(uidx) orelse not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for vector of size {d}", .{ uidx, args[0].asVector().items.len }),
         .list => if (uidx < args[0].asList().items.len) args[0].asList().items[uidx] else not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for list of size {d}", .{ uidx, args[0].asList().items.len }),
         .array_chunk => args[0].asArrayChunk().nth(uidx) orelse not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for chunk of size {d}", .{ uidx, args[0].asArrayChunk().count() }),
-        .nil => not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth on nil", .{}),
+        .nil => not_found orelse Value.nil_val,
         .lazy_seq, .cons => nthSeq(allocator, args[0], uidx, not_found),
         .string => nthString(args[0].asString(), uidx, not_found),
         else => err.setErrorFmt(.eval, .type_error, .{}, "nth not supported on {s}", .{@tagName(args[0].tag())}),

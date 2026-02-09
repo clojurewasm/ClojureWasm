@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 683 vars done across all namespaces (539/706 core, 44/45 math, 7/19 java.io, 5/5 java.shell, 2/26 pprint, 6/6 stacktrace, etc.)
+- Coverage: 711 vars done across all namespaces (540/706 core, 44/45 math, 28/28 zip, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -30,21 +30,23 @@ Phase 38: Core Library Completeness
 ## Task Queue
 
 Phase 40: Library Expansion
-1. [ ] 40.1: clojure.zip — zipper library (28 vars, upstream verbatim)
+1. [x] 40.1: clojure.zip — zipper library (28 vars, upstream near-verbatim)
 2. [ ] 40.2: clojure.data — diff (2 vars)
 3. [ ] 40.3: clojure.test expansion — successful?, run-all-tests, etc.
 4. [ ] 40.4: clojure.walk/math/repl remaining vars
 
 ## Current Task
 
-40.1: clojure.zip — zipper library (28 vars).
-Port upstream clojure.zip verbatim (pure Clojure, no Java interop).
+40.2: clojure.data — diff.
 
 ## Previous Task
 
-39.4: clojure.stacktrace — print-cause-trace, print-stack-trace, etc. (6 vars).
-- New file: clojure/stacktrace.clj — all 6 vars implemented in Clojure
-- UPSTREAM-DIFF: uses Throwable->map instead of Java Throwable API
+40.1: clojure.zip — zipper library (28 vars).
+- Port from upstream, 4 CLJW markers (new Exception → ex-info)
+- Fixed `& rest` destructuring: empty rest now returns nil (was ())
+  - Analyzer wraps makeNthRest result with seq call
+- Fixed `(nth nil n)`: returns nil instead of error (JVM compat)
+- Registered in bootstrap (loadZip, vmRecompileAll, markLibLoaded)
 - Both VM + TreeWalk verified
 
 ## Known Issues

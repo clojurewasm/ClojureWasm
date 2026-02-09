@@ -456,7 +456,11 @@ fn markBootstrapLibs() void {
         "clojure.data",
         "clojure.string",
         "clojure.edn",
+        "clojure.repl",
+        "clojure.java.shell",
+        "clojure.pprint",
         "clojure.stacktrace",
+        "clojure.zip",
     };
     for (libs) |name| {
         ns_ops.markLibLoaded(name) catch {};

@@ -1899,8 +1899,11 @@ pub const Analyzer = struct {
                 }
                 const rest_pattern = elems[i + 1];
 
-                // rest = chained rest calls (pos times)
-                const rest_init = try self.makeNthRest(temp_ref, pos);
+                // rest = (seq (rest (rest ... coll))) — seq ensures nil on empty
+                const rest_raw = try self.makeNthRest(temp_ref, pos);
+                const seq_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+                seq_args[0] = rest_raw;
+                const rest_init = try self.makeBuiltinCall("seq", seq_args);
                 try self.expandBindingPattern(rest_pattern, rest_init, bindings, form);
 
                 i += 1; // skip rest pattern

@@ -62,6 +62,9 @@ const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 /// Embedded clojure/stacktrace.clj source (compiled into binary).
 const stacktrace_clj_source = @embedFile("../clj/clojure/stacktrace.clj");
 
+/// Embedded clojure/zip.clj source (compiled into binary).
+const zip_clj_source = @embedFile("../clj/clojure/zip.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -447,6 +450,24 @@ pub fn loadStacktrace(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = st_ns;
 
     _ = try evalString(allocator, env, stacktrace_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+pub fn loadZip(allocator: Allocator, env: *Env) BootstrapError!void {
+    const zip_ns = env.findOrCreateNamespace("clojure.zip") catch return error.EvalError;
+
+    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        zip_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = zip_ns;
+
+    _ = try evalString(allocator, env, zip_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -922,6 +943,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadShell(allocator, env);
     try loadPprint(allocator, env);
     try loadStacktrace(allocator, env);
+    try loadZip(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -994,6 +1016,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.stacktrace")) |st_ns| {
         env.current_ns = st_ns;
         _ = try evalStringVMBootstrap(allocator, env, stacktrace_clj_source);
+    }
+
+    // Re-compile zip.clj
+    if (env.findNamespace("clojure.zip")) |zip_ns| {
+        env.current_ns = zip_ns;
+        _ = try evalStringVMBootstrap(allocator, env, zip_clj_source);
     }
 
     // Restore namespace
