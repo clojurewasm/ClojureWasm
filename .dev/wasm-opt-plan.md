@@ -49,23 +49,29 @@ Each wasm benchmark is measured three ways:
 `bench/wasm_bench.sh` — dedicated wasm benchmark runner.
 Uses hyperfine. Outputs comparison table + YAML.
 
-## Baseline (Phase 45.1, 2026-02-10)
+## Baseline (Phase 45.1b, 2026-02-10)
 
 TinyGo-compiled .wasm with built-in iteration loops (`result & 1` anti-optimization).
+All modules built with `-scheduler=none` (8KB vs 18KB, no asyncify overhead).
 Measured via `wasm_bench.sh`, startup subtracted ("warm" values).
 
-| Benchmark | CW warm (ms) | wasmtime warm (ms) | Ratio |
-|-----------|-------------|-------------------|-------|
-| fib(20)x10K | 10054 | 205 | 49x |
-| tak(18,12,6)x10K | 27301 | 1148 | 24x |
-| arith(1M)x10 | ~1 | ~1 | 1x |
-| sieve(64K)x100 | 545 | 6 | 99x |
+| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio    |
+|------------------------|-------------|-------------------|----------|
+| fib(20)x10K            | 10070       | 203               | 49.7x    |
+| tak(18,12,6)x10K       | 27320       | 1153              | 23.7x    |
+| arith(1M)x10           | 0.4         | 0.7               | 0.6x     |
+| sieve(64K)x100         | 600         | 3.5               | 171x     |
+| fib_loop(25)x1M        | 402         | 0.1               | 4022x    |
+| gcd(1M,700K)x1M        | 633         | 35.5              | 17.8x    |
 
 Key insights:
-- **arith (tight integer loop)**: CW at parity — loop dispatch is already optimized
-- **fib/tak (recursive calls)**: 24-49x — wasm function call overhead is the bottleneck
-- **sieve (memory-heavy)**: 99x — memory load/store instructions are slow
-- CW startup+load (3.3ms) is faster than wasmtime startup (5.0ms)
+- **arith (tight integer loop)**: CW faster than wasmtime — loop dispatch already optimized
+- **fib/tak (recursive calls)**: 24-50x — wasm function call overhead is the bottleneck
+- **gcd (loop + integer div)**: 18x — moderate, i32.rem_s is not the issue, loop overhead is
+- **sieve (memory-heavy)**: 171x — memory load/store instructions are very slow
+- **fib_loop (local-heavy loop)**: 4022x — worst ratio; wasmtime JITs this to near-zero
+  while CW pays full dispatch cost per local.get/set/add/br_if cycle
+- CW startup+load (4.6ms) is faster than wasmtime startup (8.3ms)
 
 ## Optimization Roadmap (from D90)
 

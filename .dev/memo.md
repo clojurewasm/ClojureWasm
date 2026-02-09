@@ -102,7 +102,7 @@ Session resume procedure: read this file → follow references below.
 | **Optimization decision**    | `.dev/decisions.md` D90                           |
 | **Wasm bench script**        | `bench/wasm_bench.sh` (CW vs wasmtime)            |
 | **Wasm bench history**       | `bench/wasm_history.yaml`                         |
-| **TinyGo wasm sources**      | `bench/wasm/*.go` (8 files: 4 single + 4 bench)  |
+| **TinyGo wasm sources**      | `bench/wasm/*.go` (12 files: 6 single + 6 bench) |
 | **TinyGo native benchmarks** | `bench/benchmarks/01-20_*/bench.go` (20 files)   |
 | **CW wasm benchmarks**       | `bench/benchmarks/28-31_wasm_tgo_*/`              |
 

@@ -2,38 +2,50 @@
 # Tracks ClojureWasm interpreter vs wasmtime JIT performance over time.
 # All times in milliseconds, "warm" = total - startup overhead.
 # Measured via bench/wasm_bench.sh (hyperfine, startup subtracted).
+# NOTE: wasm modules rebuilt with -scheduler=none since 45.1b (8KB vs 18KB).
 env:
   cpu: Apple M4 Pro
   ram: 48 GB
   os: Darwin 25.2.0
   tool: hyperfine
   wasm_source: TinyGo 0.40.1
+  wasm_build_flags: "-target=wasm -no-debug -gc=leaking -scheduler=none -opt=2"
 entries:
-  - id: "45.1-baseline"
+  - id: "45.1b-baseline"
     date: "2026-02-10"
-    reason: "Phase 45.1 baseline — CW interpreter vs wasmtime JIT"
-    commit: "fa46fd6"
+    reason: "Expanded baseline — 6 benchmarks, -scheduler=none rebuild"
+    commit: pending
     build: ReleaseSafe
-    cw_startup_ms: 3.3
-    wt_startup_ms: 5.0
+    cw_startup_ms: 4.6
+    wt_startup_ms: 8.3
     results:
       fib:
         desc: "fib(20) x 10000"
-        cw_warm_ms: 10054
-        wt_warm_ms: 205
-        ratio: 49.0
+        cw_warm_ms: 10070
+        wt_warm_ms: 203
+        ratio: 49.7
       tak:
         desc: "tak(18,12,6) x 10000"
-        cw_warm_ms: 27301
-        wt_warm_ms: 1148
-        ratio: 24.0
+        cw_warm_ms: 27320
+        wt_warm_ms: 1153
+        ratio: 23.7
       arith:
         desc: "arith(1M) x 10"
-        cw_warm_ms: 1
-        wt_warm_ms: 1
-        ratio: 1.0
+        cw_warm_ms: 0.4
+        wt_warm_ms: 0.7
+        ratio: 0.6
       sieve:
         desc: "sieve(64K) x 100"
-        cw_warm_ms: 545
-        wt_warm_ms: 6
-        ratio: 99.0
+        cw_warm_ms: 600
+        wt_warm_ms: 3.5
+        ratio: 171.4
+      fib_loop:
+        desc: "fib_loop(25) x 1000000"
+        cw_warm_ms: 402
+        wt_warm_ms: 0.1
+        ratio: 4022.0
+      gcd:
+        desc: "gcd(1M,700K) x 1000000"
+        cw_warm_ms: 633
+        wt_warm_ms: 35.5
+        ratio: 17.8

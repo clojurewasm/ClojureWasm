@@ -71,6 +71,8 @@ BENCHMARKS=(
   "tak:tak_bench.wasm:tak_bench:18 12 6 10000:12"
   "arith:arith_bench.wasm:arith_bench:1000000 10:499999500000"
   "sieve:sieve_bench.wasm:sieve_bench:65536 100:6542"
+  "fib_loop:fib_loop_bench.wasm:fib_loop_bench:25 1000000:121393"
+  "gcd:gcd_bench.wasm:gcd_bench:1000000 700000 1000000:29152780"
 )
 
 # --- Rebuild wasm if requested ---
