@@ -10,7 +10,7 @@
 
 ;; Upstream: clojure/test/clojure/test_clojure/protocols.clj
 ;; Upstream lines: 721
-;; CLJW markers: 20
+;; CLJW markers: 23
 
 ;; CLJW: simplified ns — upstream uses external protocol example namespaces,
 ;; deftype, defrecord, reify, Java imports, and proxy which are not available.
@@ -36,7 +36,8 @@
          (eval '(defprotocol badprotdef (m [this arg]) (m [this arg1 arg2])))))))
 
 ;; CLJW: skipped marker-tests — requires defrecord, MarkerProtocol (JVM interop)
-;; CLJW: skipped extend-test — requires extend function, deftype (JVM interop)
+;; CLJW: skipped upstream extend-test — requires deftype (JVM interop)
+;; CLJW-ADD: extend, extends?, extenders tests using CW type system
 ;; CLJW: skipped record-marker-interfaces — requires defrecord (JVM interop)
 ;; CLJW: skipped illegal-extending — requires deftype, interface checks (JVM interop)
 ;; CLJW: skipped defrecord-* tests — requires defrecord (JVM interop)
@@ -107,5 +108,33 @@
     (is (true? (satisfies? DirectProto "x")))
     (is (true? (satisfies? DirectProto :y)))
     (is (false? (satisfies? DirectProto 42)))))
+
+;; CLJW-ADD: extends? and extenders tests (Phase 42.2)
+;; CLJW: uses quoted symbols for type args (CW has no class objects)
+(deftest test-extends?
+  (testing "extends? returns true for extended type"
+    (is (true? (extends? DirectProto 'String)))
+    (is (true? (extends? DirectProto 'Keyword))))
+  (testing "extends? returns false for non-extended type"
+    (is (false? (extends? DirectProto 'Integer)))
+    (is (false? (extends? DirectProto 'Boolean)))))
+
+(deftest test-extenders
+  (testing "extenders returns collection of extended types"
+    (let [ext (extenders DirectProto)]
+      (is (not (nil? ext)))
+      (is (= 2 (count ext)))))
+  (testing "fresh protocol has no extenders"
+    (eval '(defprotocol FreshProtoForExtenders (fp-method [this])))
+    (is (nil? (eval '(extenders FreshProtoForExtenders))))))
+
+;; CLJW-ADD: extend function test (Phase 42.2)
+(deftest test-extend-fn
+  (testing "extend with map of method implementations"
+    (eval '(do
+             (defprotocol ExtendFnProto (efp-greet [this]))
+             (extend 'String ExtendFnProto {:efp-greet (fn [this] (str "extended:" this))})))
+    (is (= "extended:hi" (eval '(efp-greet "hi"))))
+    (is (true? (eval '(extends? ExtendFnProto 'String))))))
 
 (run-tests)

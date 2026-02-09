@@ -272,3 +272,5 @@
     (aset clone 0 99)
     (is (= (aget arr 0) 10))
     (is (= (aget clone 0) 99))))
+
+(run-tests)

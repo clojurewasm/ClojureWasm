@@ -100,9 +100,9 @@ Key files with high assertion counts:
 
 | Sub-task | Features                               | Upstream Test File        | Status |
 |----------|----------------------------------------|---------------------------|--------|
-| 42.1     | uri?, uuid?, destructure               | other_functions.clj       | TODO   |
-| 42.2     | extend, extenders, extends?, find-*    | protocols.clj             | TODO   |
-| 42.3     | get-thread-bindings, bound-fn*, bound-fn | vars.clj                | TODO   |
+| 42.1     | uri?, uuid?, destructure               | other_functions.clj       | N/A (no upstream tests) |
+| 42.2     | extend, extenders, extends?, find-*    | protocols.clj             | DONE   |
+| 42.3     | get-thread-bindings, bound-fn*, bound-fn | vars.clj                | DONE   |
 
 ### Phase 43: Numeric Types + Arrays
 

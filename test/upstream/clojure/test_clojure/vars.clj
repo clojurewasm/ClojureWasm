@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/vars.clj
 ;; Upstream lines: 109
-;; CLJW markers: 7
+;; CLJW markers: 9
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -71,6 +71,35 @@
   (is (= 1 dynamic-var)))
 
 ;; CLJW: JVM interop — test-vars-apply-lazily requires future, deref-with-timeout
+
+;; CLJW-ADD: get-thread-bindings tests (Phase 42.3)
+;; CLJW: clojure.test binds *testing-vars* inside deftest, so test-internal
+;; bindings are never truly empty; we test relative changes instead
+(deftest test-get-thread-bindings
+  (testing "get-thread-bindings returns a map"
+    (is (map? (get-thread-bindings))))
+  (testing "get-thread-bindings includes user binding inside binding form"
+    (binding [dynamic-var 42]
+      (let [bindings (get-thread-bindings)]
+        (is (map? bindings))
+        (is (= 42 (get bindings #'dynamic-var))))))
+  (testing "nested bindings are visible"
+    (binding [dynamic-var 10]
+      (binding [a 20]
+        (let [bindings (get-thread-bindings)]
+          (is (= 10 (get bindings #'dynamic-var)))
+          (is (= 20 (get bindings #'a))))))))
+
+;; CLJW-ADD: bound-fn tests (Phase 42.3)
+(deftest test-bound-fn
+  (testing "bound-fn captures current bindings"
+    (binding [dynamic-var 99]
+      (let [f (bound-fn [] dynamic-var)]
+        (is (= 99 (f))))))
+  (testing "bound-fn* captures and restores bindings"
+    (binding [dynamic-var 77]
+      (let [f (bound-fn* (fn [] dynamic-var))]
+        (is (= 77 (f)))))))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)
