@@ -52,8 +52,8 @@ A6. License
 A7. .claude/ + private/ Cleanup
 19. [x] 44.19: Add .claude/ to .gitignore (backup → git rm → .gitignore → restore)
 20. [x] 44.20: Add private/ to .gitignore
-21. [ ] 44.21: CONTRIBUTING.md from useful parts of CLAUDE.md
-22. [ ] 44.22: Decide .dev/ handling (public or .gitignore)
+21. [x] 44.21: CONTRIBUTING.md (build, code style, test rules, PR process)
+22. [x] 44.22: .dev/ stays public (development documentation, no secrets)
 
 A8. Documentation
 23. [ ] 44.23: README.md (overview, features, build, usage, benchmarks, future)
@@ -69,13 +69,13 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.21: CONTRIBUTING.md from useful parts of CLAUDE.md.
+Phase 44.23: README.md (A8 Documentation block).
 
 ## Previous Task
 
-Phase 44.19+44.20 COMPLETE: .claude/ and private/ gitignore.
-- .claude/: backup → git rm → .gitignore → restore
-- private/: added to .gitignore (was never tracked)
+Phase 44.21+44.22 COMPLETE: CONTRIBUTING.md + .dev/ handling.
+- CONTRIBUTING.md: build instructions, code style, test porting rules, PR process
+- .dev/: stays public — development docs, decisions, roadmap (no secrets)
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
