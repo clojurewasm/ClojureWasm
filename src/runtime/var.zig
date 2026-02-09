@@ -20,7 +20,7 @@ const err_mod = @import("error.zig");
 /// Builtin function signature: re-exported from value.zig to avoid circular dependency.
 pub const BuiltinFn = value.BuiltinFn;
 
-/// Metadata definition for builtin functions/macros (SS10).
+/// Metadata definition for builtin functions/macros.
 pub const BuiltinDef = struct {
     /// Function/macro name (e.g. "+", "map", "if").
     name: []const u8,

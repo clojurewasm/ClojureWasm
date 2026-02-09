@@ -810,7 +810,7 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
 ///   vm.zig, tree_walk.zig, atom.zig, value.zig, analyzer.zig
 /// all import bootstrap.callFnVal directly (no more callback wiring, ~180 lines saved).
 ///
-/// Active VM bridge (24C.7): When a bytecode closure is called and an active
+/// Active VM bridge: When a bytecode closure is called and an active
 /// VM exists (set via vm.zig's execute()), we reuse that VM's stack via
 /// callFunction() instead of creating a new VM instance (~500KB heap alloc).
 /// This is the critical path for fused reduce callbacks and makes deep
@@ -2498,7 +2498,7 @@ test "defrecord - basic constructor" {
 }
 
 // =========================================================================
-// Phase 6b: core.clj expansion tests (T6.6-T6.10)
+// core.clj expansion tests
 // =========================================================================
 
 test "core.clj - get-in" {

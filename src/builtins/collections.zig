@@ -209,7 +209,7 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
         },
         .vector => {
             const vec = coll.asVector();
-            // Vector conj with geometric COW (Copy-on-Write) optimization (24C.4).
+            // Vector conj with geometric COW (Copy-on-Write) optimization.
             //
             // Problem: Naive persistent vector conj copies the entire backing
             // array on every append — O(n) per conj, O(n^2) for n conj's.
@@ -2260,7 +2260,7 @@ pub fn emptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // ============================================================
 
 // ============================================================
-// Zig builtins for nested map operations (24C.9)
+// Zig builtins for nested map operations
 // ============================================================
 //
 // get-in, assoc-in, update-in are implemented as Zig builtins that traverse

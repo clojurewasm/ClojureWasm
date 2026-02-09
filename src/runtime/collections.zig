@@ -16,7 +16,7 @@ const Value = @import("value.zig").Value;
 
 const testing = std.testing;
 
-/// Global generation counter for vector COW (Copy-on-Write) optimization (24C.4).
+/// Global generation counter for vector COW (Copy-on-Write) optimization.
 ///
 /// Each vector conj increments this counter and stores it in the backing array's
 /// hidden gen slot. When a subsequent conj checks the slot, matching generation
@@ -678,7 +678,7 @@ pub const ChunkedCons = struct {
 };
 
 // ============================================================
-// PersistentHashMap — Hash Array Mapped Trie (HAMT) (24B.2)
+// PersistentHashMap — Hash Array Mapped Trie (HAMT)
 // ============================================================
 //
 // Maps with <= 8 entries use PersistentArrayMap (flat key-value array, O(n)

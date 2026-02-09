@@ -498,9 +498,9 @@ pub const Compiler = struct {
     ///   Intrinsic:     push args → binary_op  (saves ~5 opcode dispatches)
     ///
     /// Three categories of intrinsics are recognized:
-    ///   1. Variadic arithmetic (+, -, *, /) — left-folded binary ops (Phase 3)
-    ///   2. Binary-only intrinsics (mod, rem, <, <=, >, >=, =, not=) (Phase 3)
-    ///   3. Collection constructors (hash-map, vector, hash-set, list) (24C.10)
+    ///   1. Variadic arithmetic (+, -, *, /) — left-folded binary ops
+    ///   2. Binary-only intrinsics (mod, rem, <, <=, >, >=, =, not=)
+    ///   3. Collection constructors (hash-map, vector, hash-set, list)
     fn emitCall(self: *Compiler, node: *const node_mod.CallNode) CompileError!void {
         if (node.callee.* == .var_ref) {
             const name = node.callee.var_ref.name;
@@ -657,7 +657,7 @@ pub const Compiler = struct {
     };
 
     /// Detect calls to collection constructor functions and map to direct opcodes.
-    /// (24C.10) — gc_stress creates 100K maps via (hash-map :a i :b ...); emitting
+    /// gc_stress creates 100K maps via (hash-map :a i :b ...); emitting
     /// map_new directly saves a var_load + call frame per construction.
     fn collectionConstructorOp(name: []const u8) ?CollectionOpInfo {
         const map = .{

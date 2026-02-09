@@ -289,7 +289,7 @@ pub const VM = struct {
     /// Optimization: The main dispatch loop uses a Zig `switch` on the opcode
     /// (compiled to a jump table by LLVM), which is ~1.5x faster than an if-else
     /// chain. GC safepoints are batched every 256 instructions via a wrapping u8
-    /// counter, reducing per-instruction overhead to a single add+compare. (24A.1)
+    /// counter, reducing per-instruction overhead to a single add+compare.
     fn executeUntil(self: *VM, target_frame: usize) VMError!Value {
         var gc_counter: u8 = 0;
         while (true) {
@@ -338,7 +338,7 @@ pub const VM = struct {
 
     /// Call a function value on the current VM, reusing its stack and frames.
     ///
-    /// This is a critical optimization (24C.7): without it, every callback from
+    /// This is a critical optimization: without it, every callback from
     /// a builtin (e.g. reduce calling the step function) would create a new VM
     /// instance (~500KB heap allocation each). With active_vm reuse, callbacks
     /// run on the existing VM stack at near-zero overhead. This is what makes
@@ -1169,8 +1169,8 @@ pub const VM = struct {
         //  - fn_val: push new call frame for bytecode/treewalk closures
         //  - builtin_fn: direct Zig function pointer call (no frame overhead)
         //  - keyword/map/vector/set: collection-as-function lookups (inline)
-        //  - protocol_fn: type-based dispatch with monomorphic inline cache (24A.5)
-        //  - multi_fn: value-based dispatch with 2-level cache (24C.2)
+        //  - protocol_fn: type-based dispatch with monomorphic inline cache
+        //  - multi_fn: value-based dispatch with 2-level cache
         //  - var_ref: deref and re-dispatch
         switch (callee.tag()) {
             .fn_val => return self.callFnVal(fn_idx, callee.asFn(), callee, arg_count),
@@ -1279,7 +1279,7 @@ pub const VM = struct {
             },
             .protocol_fn => {
                 const pf = callee.asProtocolFn();
-                // Protocol dispatch with monomorphic inline cache (24A.5).
+                // Protocol dispatch with monomorphic inline cache.
                 //
                 // Full dispatch requires: type_key lookup -> impls map scan ->
                 // method_name lookup -> fn resolution. The inline cache stores
@@ -1317,7 +1317,7 @@ pub const VM = struct {
             },
             .multi_fn => {
                 const mf = callee.asMultiFn();
-                // Multimethod dispatch with 2-level monomorphic cache (24C.2).
+                // Multimethod dispatch with 2-level monomorphic cache.
                 //
                 // Without caching, each multimethod call requires:
                 //   1. Call the dispatch function (e.g. :type keyword lookup)
@@ -1532,7 +1532,7 @@ pub const VM = struct {
 
     // --- Arithmetic helpers ---
     //
-    // Optimization (24A.4): The int+int fast path is inlined directly in the
+    // Optimization: The int+int fast path is inlined directly in the
     // VM instead of calling through the shared arithmetic.zig module. This
     // eliminates a cross-file function call per arithmetic op, which compounds
     // dramatically in recursive benchmarks (fib_recursive: 502ms -> 41ms, 12x).

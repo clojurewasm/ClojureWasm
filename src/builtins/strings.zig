@@ -53,7 +53,7 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// Convert a single value to its string representation.
 ///
-/// Type-specific fast paths (24C.3): The generic path uses Writer.Allocating
+/// Type-specific fast paths: The generic path uses Writer.Allocating
 /// which involves dynamic buffer management (multiple alloc/realloc/free cycles).
 /// For common types (nil, string, boolean, integer, keyword), we bypass the
 /// writer entirely and use stack buffers or direct construction with a single

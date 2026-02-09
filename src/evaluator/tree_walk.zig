@@ -49,7 +49,7 @@ pub const TreeWalkError = error{
 };
 
 const MAX_LOCALS: usize = 256;
-/// Stack buffer size for call arguments (24A.2). Function calls with <= 8 args
+/// Stack buffer size for call arguments. Function calls with <= 8 args
 /// (covers 99%+ of Clojure calls) use a stack-local buffer instead of heap
 /// allocation, eliminating an alloc/free pair per call. Calls with > 8 args
 /// fall back to heap allocation. Applied at 4 call sites in the TreeWalk.

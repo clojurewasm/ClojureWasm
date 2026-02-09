@@ -340,7 +340,7 @@ pub fn zigLazyMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (__zig-lazy-filter pred coll) — creates a meta-annotated lazy-seq for filter.
 ///
-/// Filter chain collapsing (24C.7): When the source is already a filter or
+/// Filter chain collapsing: When the source is already a filter or
 /// filter_chain lazy-seq, this function flattens the nesting into a single
 /// lazy_filter_chain with an array of predicates. This is critical for the
 /// sieve of Eratosthenes, which creates 168 nested filter layers — without
@@ -863,7 +863,7 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([map])",
         .added = "1.0",
     },
-    // Fused reduce builtins (24A.3) — internal, called by core.clj
+    // Fused reduce builtins — internal, called by core.clj
     .{
         .name = "__zig-lazy-map",
         .func = &zigLazyMapFn,

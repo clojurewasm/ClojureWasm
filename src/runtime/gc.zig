@@ -142,7 +142,7 @@ pub const ArenaGc = struct {
 ///   1. Mark: VM/TreeWalk provides a RootSet; traceRoots walks all reachable
 ///      Values and calls markPtr() on each heap pointer.
 ///   2. Sweep: all unmarked allocations are either recycled into free pools
-///      (24C.5) or freed through the backing allocator. Marked allocations
+///      or freed through the backing allocator. Marked allocations
 ///      have their mark bit reset for the next cycle.
 ///
 /// Collection is triggered when bytes_allocated >= threshold. The threshold
@@ -189,7 +189,7 @@ pub const MarkSweepGc = struct {
     collect_count: u64 = 0,
     threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
 
-    // --- Free-pool recycling (24C.5) ---
+    // --- Free-pool recycling ---
     //
     // Dead allocations from sweep are not immediately freed back to the OS.
     // Instead, they are cached in per-(size, alignment) free pools. On the

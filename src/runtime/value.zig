@@ -265,7 +265,7 @@ pub const Protocol = struct {
 
 /// Protocol method reference — dispatches on first arg's type key.
 ///
-/// Monomorphic inline cache (24A.5): stores the last dispatched (type_key ->
+/// Monomorphic inline cache: stores the last dispatched (type_key ->
 /// method) pair. When the same type is dispatched again (common in loops
 /// processing homogeneous collections), the full protocol resolution
 /// (impls map lookup + method_name lookup) is bypassed entirely.
@@ -282,7 +282,7 @@ pub const ProtocolFn = struct {
 /// Clojure multimethods dispatch by calling a dispatch function on the args,
 /// then looking up the result in the method table (with isa? hierarchy search).
 ///
-/// Two-level monomorphic cache (24C.2):
+/// Two-level monomorphic cache:
 ///   L1 (arg identity): If the first argument is the same object (pointer
 ///       equality for heap types, value equality for primitives), the dispatch
 ///       value hasn't changed — skip both dispatch fn call AND method lookup.
@@ -338,7 +338,7 @@ pub const MultiFn = struct {
     }
 };
 
-/// Cons cell — a pair of (first, rest) forming a linked sequence (24C.4).
+/// Cons cell — a pair of (first, rest) forming a linked sequence.
 ///
 /// Before this optimization, (cons x seq) copied the entire source sequence
 /// into a new PersistentList (ArrayList-backed, O(n) copy). With true cons
@@ -374,7 +374,7 @@ pub const LazySeq = struct {
     /// fusedReduce (sequences.zig) walks the chain from outermost to innermost,
     /// extracts transforms, and iterates the base source (range/iterate) directly.
     ///
-    /// lazy_filter_chain (24C.7): Flattened representation of nested filters.
+    /// lazy_filter_chain: Flattened representation of nested filters.
     /// Instead of filter(p3, filter(p2, filter(p1, src))) creating 3 nested
     /// lazy_filter nodes, the chain is collapsed into a single node with
     /// preds=[p1,p2,p3]. Critical for sieve (168 nested filters → flat array).
