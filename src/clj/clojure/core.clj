@@ -43,17 +43,17 @@
 (defmacro defn [name & fdecl]
   (let [doc (when (string? (first fdecl)) (first fdecl))
         fdecl (if doc (next fdecl) fdecl)
-        fdecl (if (map? (first fdecl))
-                (next fdecl)
-                fdecl)
+        attr-map (when (map? (first fdecl)) (first fdecl))
+        fdecl (if attr-map (next fdecl) fdecl)
         fdecl (if (vector? (first fdecl))
                 (list fdecl)
                 fdecl)
         fdecl (if (map? (last fdecl))
                 (butlast fdecl)
                 fdecl)
-        def-name (if doc
-                   (list 'with-meta name {:doc doc})
+        m (merge (meta name) attr-map (when doc {:doc doc}))
+        def-name (if (seq m)
+                   (list 'with-meta name m)
                    name)]
     `(def ~def-name (fn ~name ~@fdecl))))
 
@@ -182,9 +182,21 @@
   (fn [& args]
     (not (apply f args))))
 
-;; UPSTREAM-DIFF: No :private metadata (F78 needed for symbol meta)
-(defmacro defn- [name & fdecl]
-  `(defn ~name ~@fdecl))
+(defmacro defn-
+  "same as defn, yielding non-public def"
+  [name & fdecl]
+  (let [doc (when (string? (first fdecl)) (first fdecl))
+        fdecl (if doc (next fdecl) fdecl)
+        attr-map (when (map? (first fdecl)) (first fdecl))
+        fdecl (if attr-map (next fdecl) fdecl)
+        fdecl (if (vector? (first fdecl))
+                (list fdecl)
+                fdecl)
+        fdecl (if (map? (last fdecl))
+                (butlast fdecl)
+                fdecl)
+        m (merge {:private true} attr-map (when doc {:doc doc}))]
+    `(def ~(list 'with-meta name m) (fn ~name ~@fdecl))))
 
 ;; Namespace declaration
 ;; UPSTREAM-DIFF: Simplified ns macro; no :import, no docstring, no :gen-class
