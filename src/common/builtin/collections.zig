@@ -56,6 +56,7 @@ pub fn firstFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const cp = std.unicode.utf8Decode(s[0..cp_len]) catch s[0];
             return Value.initChar(cp);
         },
+        .array => if (args[0].asArray().items.len > 0) args[0].asArray().items[0] else Value.nil_val,
         else => err.setErrorFmt(.eval, .type_error, .{}, "first not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
@@ -137,6 +138,12 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const lst = try allocator.create(PersistentList);
             lst.* = .{ .items = try chars.toOwnedSlice(allocator) };
             break :blk Value.initList(lst);
+        },
+        .array => blk: {
+            const arr = args[0].asArray();
+            const new_list = try allocator.create(PersistentList);
+            new_list.* = .{ .items = if (arr.items.len > 0) arr.items[1..] else &.{} };
+            break :blk Value.initList(new_list);
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "rest not supported on {s}", .{@tagName(args[0].tag())}),
     };
@@ -529,6 +536,7 @@ pub fn nthFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .nil => not_found orelse Value.nil_val,
         .lazy_seq, .cons => nthSeq(allocator, args[0], uidx, not_found),
         .string => nthString(args[0].asString(), uidx, not_found),
+        .array => if (uidx < args[0].asArray().items.len) args[0].asArray().items[uidx] else not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for array of size {d}", .{ uidx, args[0].asArray().items.len }),
         else => err.setErrorFmt(.eval, .type_error, .{}, "nth not supported on {s}", .{@tagName(args[0].tag())}),
     };
 }
@@ -609,6 +617,7 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .transient_map => args[0].asTransientMap().count(),
         .transient_set => args[0].asTransientSet().count(),
         .array_chunk => args[0].asArrayChunk().count(),
+        .array => args[0].asArray().count(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "count not supported on {s}", .{@tagName(args[0].tag())}),
     }));
 }
@@ -704,6 +713,13 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             }
             const lst = try allocator.create(PersistentList);
             lst.* = .{ .items = try chars.toOwnedSlice(allocator) };
+            return Value.initList(lst);
+        },
+        .array => {
+            const arr = args[0].asArray();
+            if (arr.items.len == 0) return Value.nil_val;
+            const lst = try allocator.create(PersistentList);
+            lst.* = .{ .items = arr.items };
             return Value.initList(lst);
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "seq not supported on {s}", .{@tagName(args[0].tag())}),
@@ -1433,6 +1449,11 @@ pub fn collectSeqItems(allocator: Allocator, val: Value) anyerror![]const Value 
                     try items.append(allocator, Value.initChar(cp));
                     i += cl;
                 }
+                break;
+            },
+            .array => {
+                const arr = current.asArray();
+                for (arr.items) |item| try items.append(allocator, item);
                 break;
             },
             .nil => break,

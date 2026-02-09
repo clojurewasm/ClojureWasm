@@ -94,6 +94,14 @@ fn collToArray(allocator: Allocator, coll: Value) anyerror!Value {
             arr.* = .{ .items = items, .element_type = .object };
             return Value.initArray(arr);
         },
+        .array => {
+            const src = coll.asArray();
+            const items = try allocator.alloc(Value, src.items.len);
+            @memcpy(items, src.items);
+            const arr = try allocator.create(ZigArray);
+            arr.* = .{ .items = items, .element_type = src.element_type };
+            return Value.initArray(arr);
+        },
         .nil => {
             return createArray(allocator, 0, .object);
         },
