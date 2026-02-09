@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 42 COMPLETE**
-- Coverage: 787 vars done across all namespaces (585/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- Coverage: 789 vars done across all namespaces (587/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -24,23 +24,24 @@ Phase 43: Numeric Types + Arrays
 1. [x] 43.1: Array Value type + core ops (make-array, object-array, aget, aset, alength, aclone, to-array, into-array)
 2. [x] 43.2: Typed array constructors (int-array..char-array, to-array-2d, ints..chars coercion)
 3. [x] 43.3: Typed setters + bytes? (aset-int..aset-char, bytes?)
-4. [ ] 43.4: Array macros (amap, areduce)
+4. [x] 43.4: Array macros (amap, areduce)
 5. [ ] 43.5: BigInt Value type + bigint/biginteger fns
 6. [ ] 43.6: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
 7. [ ] 43.7: Ratio Value type + numerator/denominator/rationalize
 
 ## Current Task
 
-Phase 43.4: Array macros (amap, areduce).
+Phase 43.5: BigInt Value type + bigint/biginteger fns.
 
 Design:
-- `amap`: macro that creates new array by mapping over indices
-- `areduce`: macro that reduces over array indices
-- Both are macros (upstream Clojure), not functions
+- BigInt already has struct in collections.zig and Value type in value.zig
+- Need: bigint, biginteger builtins (constructors from i64 or string)
+- Reader support: 123N literal → BigInt value
+- Arithmetic: BigInt + BigInt, BigInt + int, comparison
 
 ## Previous Task
 
-Phase 43.3 COMPLETE: 9 typed setter builtins (aset-int..aset-char, bytes?).
+Phase 43.4 COMPLETE: amap, areduce macros in core.clj.
 
 ## Known Issues
 

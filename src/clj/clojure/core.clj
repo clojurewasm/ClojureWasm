@@ -2382,6 +2382,33 @@
       bindings
       (reduce process-entry [] bents))))
 
+;; Array macros
+(defmacro amap
+  "Maps an expression across an array a, using an index named idx, and
+  return value named ret, initialized to a clone of a, then setting
+  each element of ret to the evaluation of expr, returning the new
+  array ret."
+  [a idx ret expr]
+  `(let [a# ~a l# (alength a#)
+         ~ret (aclone a#)]
+     (loop [~idx 0]
+       (if (< ~idx l#)
+         (do
+           (aset ~ret ~idx ~expr)
+           (recur (inc ~idx)))
+         ~ret))))
+
+(defmacro areduce
+  "Reduces an expression across an array a, using an index named idx,
+  and return value named ret, initialized to init, setting ret to the
+  evaluation of expr at each step, returning ret."
+  [a idx ret init expr]
+  `(let [a# ~a l# (alength a#)]
+     (loop [~idx 0 ~ret ~init]
+       (if (< ~idx l#)
+         (recur (inc ~idx) ~expr)
+         ~ret))))
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)

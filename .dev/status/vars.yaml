@@ -117,12 +117,12 @@ vars:
     alter: {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
     "alter-meta!": {type: function, status: done, note: "Zig builtin: mutates atom metadata"}
     "alter-var-root": {type: function, status: done, note: builtin (upstream is pure clj)}
-    amap: {type: macro, status: skip, note: Phase 43 — Zig array type}
+    amap: {type: macro, status: done, note: Phase 43 — Zig array type}
     ancestors: {type: function, status: done, note: core.clj hierarchy-aware}
     and: {type: macro, status: done, note: "macro in core.clj"}
     "any?": {type: function, status: done, note: "core.clj always true"}
     apply: {type: function, status: done, note: "Zig builtin"}
-    areduce: {type: macro, status: skip, note: Phase 43 — Zig array type}
+    areduce: {type: macro, status: done, note: Phase 43 — Zig array type}
     "array-map": {type: function, status: done, note: "Zig builtin"}
     "as->": {type: macro, status: done, note: "macro in core.clj"}
     aset: {type: function, status: done, note: Phase 43 — Zig array type}
