@@ -147,14 +147,16 @@ pub fn restFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn consFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to cons", .{args.len});
     const x = args[0];
-    const rest = args[1];
+    const rest_arg = args[1];
 
-    // JVM Clojure: cons always returns a Cons cell (ISeq).
-    // Validate rest is seq-able, then wrap in Cons.
-    switch (rest.tag()) {
-        .nil, .list, .vector, .set, .cons, .lazy_seq, .map, .hash_map, .chunked_cons, .string => {},
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq, got {s}", .{@tagName(rest.tag())}),
-    }
+    // JVM RT.cons: if rest is already ISeq (list/cons/lazy_seq/chunked_cons) or nil,
+    // use directly. Otherwise call RT.seq() to convert (vector/set/map/string/etc).
+    const rest = switch (rest_arg.tag()) {
+        .nil, .list, .cons, .lazy_seq, .chunked_cons => rest_arg,
+        .vector, .set, .map, .hash_map, .string => try seqFn(allocator, &.{rest_arg}),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "cons expects a seq-able rest, got {s}", .{@tagName(rest_arg.tag())}),
+    };
+
     const cell = try allocator.create(value_mod.Cons);
     cell.* = .{ .first = x, .rest = rest };
     return Value.initCons(cell);

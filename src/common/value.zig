@@ -391,9 +391,11 @@ pub const LazySeq = struct {
         }
 
         const thunk = self.thunk orelse return Value.nil_val;
+        // Clear thunk BEFORE calling it to prevent re-entrancy issues.
+        // JVM Clojure's LazySeq.sval() also clears fn before invoking.
+        self.thunk = null;
         const result = try bootstrap.callFnVal(allocator, thunk, &.{});
         self.realized = result;
-        self.thunk = null;
         return result;
     }
 

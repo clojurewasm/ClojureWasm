@@ -474,6 +474,6 @@ test "floor-mod" {
     try testing.expectEqual(@as(i64, 3), r.asInteger());
 }
 
-test "builtins table has 42 entries" {
-    try testing.expectEqual(42, builtins.len);
+test "builtins table has 43 entries" {
+    try testing.expectEqual(43, builtins.len);
 }

@@ -46,17 +46,21 @@ Phase 41: Polish & Hardening
 
 ## Current Task
 
-41.5: Continue bug fixes and edge cases.
-- Remaining known issues: control.clj (case throw in VM), sequences (cons+set, subseq), transducers (interpose, halt-when)
+41.5: Continue bug fixes and edge cases (round 3).
+- Remaining known issues: control.clj (case throw in VM), sequences (subseq), transducers (interpose transducer+take, halt-when)
 
 ## Previous Task
 
-41.5: Bug fixes and edge cases (round 1).
-- Fixed concat 0-arity: return (lazy-seq nil) instead of nil (fixes nil-punning)
-- Fixed into: preserve metadata through transient/persistent cycle
-- Fixed assoc: preserve metadata during ArrayMap→HashMap transition
-- Fixed math tests: adapt negate-exact/floor-div for CW 48-bit integers
-- Result: walk 4→0, logic 2→0, math 2→0, metadata 7→0 test failures fixed
+41.5: Bug fixes and edge cases (round 2).
+- Fixed LazySeq.realize re-entrancy: clear thunk BEFORE calling it (prevents infinite recursion)
+  - Root cause: thunk evaluation could re-enter realize on same LazySeq before result was cached
+  - Fixes: repeat, cycle, interpose, repeatedly, iterate — all infinite lazy-seq patterns
+- Fixed cons to seq-ify rest argument (JVM RT.cons compatible)
+  - Only non-seq types (vector, set, map, hash_map, string) get converted
+  - Seq types (nil, list, cons, lazy_seq, chunked_cons) pass through
+  - Fixes (cons 1 #{2 3}) → (1 2 3) instead of (1 . #{2 3})
+- Fixed builtins table count test (42→43)
+- Result: sequences 393/394 pass (was crashing), transducers 97/99 (was 97/99)
 - Both VM + TreeWalk verified
 
 ## Known Issues
