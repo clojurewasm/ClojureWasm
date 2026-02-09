@@ -164,8 +164,8 @@ vars:
     "boolean-array": {type: function, status: skip, note: Phase 43 — Zig array type}
     "boolean?": {type: function, status: done, note: "Zig builtin"}
     booleans: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "bound-fn": {type: macro, status: skip, note: Phase 42 — quick win}
-    "bound-fn*": {type: function, status: skip, note: Phase 42 — quick win}
+    "bound-fn": {type: macro, status: done, note: 'macro wrapper for bound-fn*'}
+    "bound-fn*": {type: function, status: done, note: 'pure Clojure, captures bindings via get-thread-bindings'}
     "bound?": {type: function, status: done, note: 'Takes var_ref or symbol (variadic)'}
     "bounded-count": {type: function, status: done, note: builtin (upstream is pure clj)}
     butlast: {type: function, status: done, note: "core.clj loop"}
@@ -325,7 +325,7 @@ vars:
     "get-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "get-method": {type: function, status: done, note: builtin (upstream is pure clj)}
     "get-proxy-class": {type: function, status: skip, note: JVM interop}
-    "get-thread-bindings": {type: function, status: skip, note: Phase 42 — quick win}
+    "get-thread-bindings": {type: function, status: done, note: 'Zig builtin, walks binding frame stack'}
     "get-validator": {type: function, status: done}
     "group-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "halt-when": {type: function, status: done}

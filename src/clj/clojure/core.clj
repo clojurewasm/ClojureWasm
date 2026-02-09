@@ -2045,6 +2045,23 @@
   [binding-map & body]
   `(with-bindings* ~binding-map (fn [] ~@body)))
 
+(defn bound-fn*
+  "Returns a function, which will install the same bindings in effect as in
+  the thread at the time bound-fn* was called and then call f with any given
+  arguments."
+  {:added "1.1"}
+  [f]
+  (let [bindings (get-thread-bindings)]
+    (fn [& args]
+      (apply with-bindings* bindings f args))))
+
+(defmacro bound-fn
+  "Returns a function defined by the given fntail, which will install the
+  same bindings in effect as in the thread at the time bound-fn was called."
+  {:added "1.1"}
+  [& fntail]
+  `(bound-fn* (fn ~@fntail)))
+
 ;; CLJW: Var.create/setDynamic -> create-local-var builtin
 (defmacro with-local-vars
   "varbinding=> symbol init-expr

@@ -277,6 +277,42 @@ pub fn popThreadBindingsFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.nil_val;
 }
 
+/// (get-thread-bindings) — Returns a map of Var/value pairs for current thread bindings.
+pub fn getThreadBindingsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "get-thread-bindings takes no arguments, got {d}", .{args.len});
+    var frame = var_mod.getCurrentBindingFrame();
+    if (frame == null) {
+        // No bindings — return empty map
+        const map = try allocator.create(value_mod.PersistentArrayMap);
+        map.* = .{ .entries = &.{} };
+        return Value.initMap(map);
+    }
+    // Collect effective bindings (innermost frame wins per Var)
+    var seen_vars = std.ArrayList(*var_mod.Var).empty;
+    var entries = std.ArrayList(Value).empty;
+    while (frame) |f| {
+        for (f.entries) |e| {
+            // Check if we've already seen this Var (from an inner frame)
+            var already_seen = false;
+            for (seen_vars.items) |sv| {
+                if (sv == e.var_ptr) {
+                    already_seen = true;
+                    break;
+                }
+            }
+            if (!already_seen) {
+                try seen_vars.append(allocator, e.var_ptr);
+                try entries.append(allocator, Value.initVarRef(e.var_ptr));
+                try entries.append(allocator, e.val);
+            }
+        }
+        frame = f.prev;
+    }
+    const map = try allocator.create(value_mod.PersistentArrayMap);
+    map.* = .{ .entries = entries.items };
+    return Value.initMap(map);
+}
+
 // ============================================================
 // thread-bound?, var-raw-root
 // ============================================================
@@ -827,6 +863,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Pops the frame of bindings most recently pushed with push-thread-bindings.",
         .arglists = "([])",
         .added = "1.0",
+    },
+    .{
+        .name = "get-thread-bindings",
+        .func = getThreadBindingsFn,
+        .doc = "Get a map with the Var/value pairs which is currently in effect for the current thread.",
+        .arglists = "([])",
+        .added = "1.1",
     },
     .{
         .name = "thread-bound?",

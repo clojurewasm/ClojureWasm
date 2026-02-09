@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 751 vars done across all namespaces (549/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- Coverage: 754 vars done across all namespaces (552/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -23,16 +23,15 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 42: Quick Wins + Protocol Extension
 1. [x] 42.1: Quick wins (uri?, uuid?, destructure, seq-to-map-for-destructuring)
 2. [x] 42.2: Protocol extension API (extend, extenders, extends?, find-protocol-impl, find-protocol-method)
-3. [ ] 42.3: Remaining implementable core vars (bound-fn, get-thread-bindings)
+3. [x] 42.3: Remaining implementable core vars (bound-fn, bound-fn*, get-thread-bindings)
 
 ## Current Task
 
-Phase 42.3: Remaining implementable core vars — `bound-fn`, `bound-fn*`, `get-thread-bindings`.
+Phase 42 COMPLETE. All 12 vars implemented. Planning next phase.
 
 ## Previous Task
 
-Phase 42.2 complete: 5 vars implemented (extend, extenders, extends?, find-protocol-impl, find-protocol-method).
-satisfies? was already done. All 5 are Zig builtins in predicates.zig.
+Phase 42.3 complete: 3 vars (get-thread-bindings Zig builtin, bound-fn*/bound-fn pure Clojure).
 
 ## Known Issues
 

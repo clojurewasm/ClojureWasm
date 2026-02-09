@@ -267,8 +267,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 297 + 5 (extend, extends?, extenders, find-protocol-impl, find-protocol-method)
-    try std.testing.expectEqual(302, builtin_count);
+    // 302 + 1 (get-thread-bindings)
+    try std.testing.expectEqual(303, builtin_count);
 }
 
 test "comptime lookup finds +" {
