@@ -1379,16 +1379,15 @@ test "detectAndAddSrcPath - finds src/ directory" {
     init(alloc);
     defer deinit();
 
-    // Create temp project structure: zig-cache/test-src-detect/src/
-    std.fs.cwd().makeDir("zig-cache/test-src-detect") catch {};
-    std.fs.cwd().makeDir("zig-cache/test-src-detect/src") catch {};
-    defer std.fs.cwd().deleteTree("zig-cache/test-src-detect") catch {};
+    // Create temp project structure: .zig-cache/test-src-detect/src/
+    std.fs.cwd().makePath(".zig-cache/test-src-detect/src") catch {};
+    defer std.fs.cwd().deleteTree(".zig-cache/test-src-detect") catch {};
 
-    try detectAndAddSrcPath("zig-cache/test-src-detect");
+    try detectAndAddSrcPath(".zig-cache/test-src-detect");
 
     var found = false;
     for (load_paths) |p| {
-        if (std.mem.eql(u8, p, "zig-cache/test-src-detect/src")) found = true;
+        if (std.mem.eql(u8, p, ".zig-cache/test-src-detect/src")) found = true;
     }
     try testing.expect(found);
 }
@@ -1398,17 +1397,17 @@ test "detectAndAddSrcPath - walks up to find src/" {
     init(alloc);
     defer deinit();
 
-    // Create: zig-cache/test-src-walk/src/ and zig-cache/test-src-walk/deep/nested/
-    std.fs.cwd().makePath("zig-cache/test-src-walk/src") catch {};
-    std.fs.cwd().makePath("zig-cache/test-src-walk/deep/nested") catch {};
-    defer std.fs.cwd().deleteTree("zig-cache/test-src-walk") catch {};
+    // Create: .zig-cache/test-src-walk/src/ and .zig-cache/test-src-walk/deep/nested/
+    std.fs.cwd().makePath(".zig-cache/test-src-walk/src") catch {};
+    std.fs.cwd().makePath(".zig-cache/test-src-walk/deep/nested") catch {};
+    defer std.fs.cwd().deleteTree(".zig-cache/test-src-walk") catch {};
 
     // Starting from deep/nested, should walk up and find src/
-    try detectAndAddSrcPath("zig-cache/test-src-walk/deep/nested");
+    try detectAndAddSrcPath(".zig-cache/test-src-walk/deep/nested");
 
     var found = false;
     for (load_paths) |p| {
-        if (std.mem.eql(u8, p, "zig-cache/test-src-walk/src")) found = true;
+        if (std.mem.eql(u8, p, ".zig-cache/test-src-walk/src")) found = true;
     }
     try testing.expect(found);
 }

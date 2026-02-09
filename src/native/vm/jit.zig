@@ -648,6 +648,7 @@ test "ARM64 instruction encoding" {
 }
 
 test "JIT compile and execute simple loop" {
+    if (builtin.cpu.arch != .aarch64) return;
 
     const Value = @import("../../common/value.zig").Value;
 
