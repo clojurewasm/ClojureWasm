@@ -65,6 +65,7 @@
             # Benchmark comparison languages
             python314
             ruby_4_0
+            nodejs_24                 # Node.js 24 LTS (cross-language benchmarks)
 
             # Utilities
             gnused
@@ -78,6 +79,7 @@
             echo "  Java:     $(java --version 2>&1 | head -1 || echo 'N/A')"
             echo "  Python:   $(python3 --version 2>/dev/null || echo 'N/A')"
             echo "  Ruby:     $(ruby --version 2>/dev/null || echo 'N/A')"
+            echo "  Node.js:  $(node --version 2>/dev/null || echo 'N/A')"
           '';
         };
       }

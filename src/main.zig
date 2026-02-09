@@ -31,6 +31,37 @@ const embed_magic = "CLJW";
 /// Trailer size: u64 payload_size (8) + magic (4) = 12 bytes.
 const embed_trailer_size = 12;
 
+fn printHelp() void {
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    _ = stdout.write(
+        \\ClojureWasm v0.1.0
+        \\
+        \\Usage:
+        \\  cljw [options] [file.clj]
+        \\  cljw build <file.clj> [-o <output>]
+        \\
+        \\Options:
+        \\  -e <expr>          Evaluate expression and print result
+        \\  --tree-walk        Use TreeWalk interpreter instead of VM
+        \\  --dump-bytecode    Dump compiled bytecode (VM only)
+        \\  --nrepl-server     Start nREPL server
+        \\  --port=<N>         nREPL server port (default: auto)
+        \\  --version          Print version and exit
+        \\  -h, --help         Show this help
+        \\
+        \\Commands:
+        \\  build <file> [-o <out>]   Build standalone binary with embedded code
+        \\
+        \\Examples:
+        \\  cljw                      Start interactive REPL
+        \\  cljw -e '(+ 1 2)'        Evaluate expression
+        \\  cljw hello.clj            Run a Clojure file
+        \\  cljw build app.clj -o app Build standalone binary
+        \\  ./app                     Run standalone binary
+        \\
+    ) catch {};
+}
+
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
     defer _ = gpa.deinit();
@@ -119,7 +150,14 @@ pub fn main() !void {
     var nrepl_port: u16 = 0;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
-        if (std.mem.eql(u8, args[i], "--tree-walk")) {
+        if (std.mem.eql(u8, args[i], "-h") or std.mem.eql(u8, args[i], "--help")) {
+            printHelp();
+            return;
+        } else if (std.mem.eql(u8, args[i], "--version")) {
+            const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+            _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+            return;
+        } else if (std.mem.eql(u8, args[i], "--tree-walk")) {
             use_vm = false;
         } else if (std.mem.eql(u8, args[i], "--dump-bytecode")) {
             dump_bytecode = true;

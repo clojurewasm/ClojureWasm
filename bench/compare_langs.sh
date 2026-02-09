@@ -52,7 +52,7 @@ for arg in "$@"; do
       echo ""
       echo "Options:"
       echo "  --bench=NAME     Run specific benchmark (e.g. fib_recursive)"
-      echo "  --lang=LANGS     Comma-separated languages (cw,c,zig,java,py,rb,bb)"
+      echo "  --lang=LANGS     Comma-separated languages (cw,c,zig,java,py,rb,js,bb)"
       echo "  --cold           Wall clock only (default)"
       echo "  --warm           Startup-subtracted only"
       echo "  --both           Cold + Warm"
@@ -71,7 +71,7 @@ for arg in "$@"; do
 done
 
 # --- Determine languages ---
-ALL_LANGS=(cw c zig java py rb bb)
+ALL_LANGS=(cw c zig java py rb js bb)
 LANGS=()
 if [[ -n "$LANG_FILTER" ]]; then
   IFS=',' read -ra LANGS <<< "$LANG_FILTER"
@@ -88,6 +88,7 @@ lang_display_name() {
     java) echo "java" ;;
     py)   echo "python" ;;
     rb)   echo "ruby" ;;
+    js)   echo "node" ;;
     bb)   echo "babashka" ;;
     *)    echo "$1" ;;
   esac
@@ -177,6 +178,11 @@ lang_command() {
       [[ -f "$bench_dir/bench.rb" ]] || return 1
       echo "ruby $bench_dir/bench.rb"
       ;;
+    js)
+      [[ -f "$bench_dir/bench.js" ]] || return 1
+      command -v node >/dev/null 2>&1 || return 1
+      echo "node $bench_dir/bench.js"
+      ;;
     bb)
       [[ -f "$bench_dir/bench.clj" ]] || return 1
       command -v bb >/dev/null 2>&1 || return 1
@@ -220,6 +226,10 @@ JEOF
         ;;
       py)   noop_cmd="python3 -c pass" ;;
       rb)   noop_cmd="ruby -e nil" ;;
+      js)
+        command -v node >/dev/null 2>&1 || continue
+        noop_cmd="node -e 0"
+        ;;
       bb)
         command -v bb >/dev/null 2>&1 || continue
         noop_cmd="bb -e nil"
@@ -287,7 +297,7 @@ echo -e "${BOLD}  Cross-Language Benchmark Comparison${RESET}"
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════${RESET}"
 
 # Sort order: c, zig, java, cw, bb, rb, py (fast to slow typical order)
-DISPLAY_ORDER=(c zig java cw bb rb py)
+DISPLAY_ORDER=(c zig java cw js bb rb py)
 
 for bench_dir in "${BENCH_DIRS[@]}"; do
   bench_name=$(basename "$bench_dir" | sed 's/^[0-9]*_//')
