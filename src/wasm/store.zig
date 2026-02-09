@@ -50,9 +50,14 @@ pub const WasmFunction = struct {
     instance: *Instance,
     /// Pre-computed branch targets (lazy: null until first call).
     branch_table: ?*vm_mod.BranchTable = null,
+    /// Predecoded IR (lazy: null until first call, stays null if predecode fails).
+    ir: ?*predecode_mod.IrFunc = null,
+    /// True if predecoding was attempted and failed (avoid retrying).
+    ir_failed: bool = false,
 };
 
 const vm_mod = @import("vm.zig");
+const predecode_mod = @import("predecode.zig");
 
 /// Host function callback signature.
 /// Takes a pointer to the VM and a context value.
@@ -220,6 +225,10 @@ pub const Store = struct {
                 if (f.subtype.wasm_function.branch_table) |bt| {
                     bt.deinit();
                     self.alloc.destroy(bt);
+                }
+                if (f.subtype.wasm_function.ir) |ir| {
+                    ir.deinit();
+                    self.alloc.destroy(ir);
                 }
             }
         }

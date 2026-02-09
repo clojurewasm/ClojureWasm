@@ -440,12 +440,14 @@ pub fn registerWasmModuleImports(
             return error.ImportNotFound;
 
         // Copy the Function from source store into target store.
-        // Reset branch_table to null — it will be lazily rebuilt.
-        // (Sharing branch_table pointers across stores would cause double-free.)
+        // Reset cached pointers to null — they will be lazily rebuilt.
+        // (Sharing these pointers across stores would cause double-free.)
         var src_func = src_module.store.getFunction(export_addr) catch
             return error.ImportNotFound;
         if (src_func.subtype == .wasm_function) {
             src_func.subtype.wasm_function.branch_table = null;
+            src_func.subtype.wasm_function.ir = null;
+            src_func.subtype.wasm_function.ir_failed = false;
         }
         const addr = store.addFunction(src_func) catch
             return error.WasmInstantiateError;

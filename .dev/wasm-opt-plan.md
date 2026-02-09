@@ -49,29 +49,27 @@ Each wasm benchmark is measured three ways:
 `bench/wasm_bench.sh` — dedicated wasm benchmark runner.
 Uses hyperfine. Outputs comparison table + YAML.
 
-## Baseline (Phase 45.1b, 2026-02-10)
+## Baseline (Phase 45.2, 2026-02-10)
 
-TinyGo-compiled .wasm with built-in iteration loops (`result & 1` anti-optimization).
-All modules built with `-scheduler=none` (8KB vs 18KB, no asyncify overhead).
-Measured via `wasm_bench.sh`, startup subtracted ("warm" values).
+After predecoded IR optimization. TinyGo-compiled .wasm with built-in iteration loops.
+All modules built with `-scheduler=none`. Measured via `wasm_bench.sh`, startup subtracted.
 
-| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio    |
-|------------------------|-------------|-------------------|----------|
-| fib(20)x10K            | 10070       | 203               | 49.7x    |
-| tak(18,12,6)x10K       | 27320       | 1153              | 23.7x    |
-| arith(1M)x10           | 0.4         | 0.7               | 0.6x     |
-| sieve(64K)x100         | 600         | 3.5               | 171x     |
-| fib_loop(25)x1M        | 402         | 0.1               | 4022x    |
-| gcd(1M,700K)x1M        | 633         | 35.5              | 17.8x    |
+| Benchmark              | CW warm (ms) | wasmtime warm (ms) | Ratio  | vs 45.1b |
+|------------------------|-------------|-------------------|--------|----------|
+| fib(20)x10K            | 5682        | 219               | 25.9x  | 1.77x    |
+| tak(18,12,6)x10K       | 16264       | 1192              | 13.6x  | 1.68x    |
+| arith(1M)x10           | 1.3         | 0.4               | 3.2x   | —        |
+| sieve(64K)x100         | 239         | 5.9               | 40.5x  | 2.51x    |
+| fib_loop(25)x1M        | 192         | 3.7               | 51.9x  | 2.09x    |
+| gcd(1M,700K)x1M        | 300         | 44.3              | 6.8x   | 2.11x    |
 
-Key insights:
-- **arith (tight integer loop)**: CW faster than wasmtime — loop dispatch already optimized
-- **fib/tak (recursive calls)**: 24-50x — wasm function call overhead is the bottleneck
-- **gcd (loop + integer div)**: 18x — moderate, i32.rem_s is not the issue, loop overhead is
-- **sieve (memory-heavy)**: 171x — memory load/store instructions are very slow
-- **fib_loop (local-heavy loop)**: 4022x — worst ratio; wasmtime JITs this to near-zero
-  while CW pays full dispatch cost per local.get/set/add/br_if cycle
-- CW startup+load (4.6ms) is faster than wasmtime startup (8.3ms)
+Key insights after predecoded IR:
+- **1.7-2.5x improvement** across all compute-heavy benchmarks
+- **fib/tak (recursive calls)**: 26x/14x — still the largest gap (call overhead now dominant)
+- **sieve (memory-heavy)**: 40x — 2.5x improvement from eliminating alignment+offset LEB128 decode
+- **fib_loop/gcd (loop-heavy)**: 52x/7x — 2.1x from eliminating local.get/set/br_if LEB128 decode
+- Remaining bottleneck: function call overhead (recursive execute calls), switch dispatch cost
+- CW startup+load (2.7ms) still faster than wasmtime (4.6ms)
 
 ## Optimization Roadmap (from D90)
 

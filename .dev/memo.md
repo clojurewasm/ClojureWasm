@@ -25,32 +25,30 @@ Phase 45: Wasm Runtime Optimization
 Plan: `.dev/wasm-opt-plan.md`
 
 1. [x] 45.1: Benchmark infrastructure — TinyGo native + wasm benchmarks
-2. [ ] 45.2: Predecoded IR (fixed-width instruction encoding)
+2. [x] 45.2: Predecoded IR (fixed-width instruction encoding)
 3. [ ] 45.3: Tail-call threaded dispatch
 4. [ ] 45.4: Superinstructions (fuse common patterns)
 5. [ ] 45.5: Memory access optimization
 
 ## Current Task
 
-Phase 45.1 COMPLETE: Wasm benchmark infrastructure.
-Next: Phase 45.2 — Predecoded IR.
+Phase 45.3: Tail-call threaded dispatch — replace switch(opcode) with function pointer
+table + @call(.always_tail, ...). Eliminates branch misprediction in the dispatch loop.
+Plan: `.dev/wasm-opt-plan.md` optimization #2.
 
 ## Previous Task
 
-Phase 45.1 COMPLETE: TinyGo benchmark infrastructure.
-- TinyGo added to flake.nix (tinygo 0.40.1)
-- bench.go added to all 20 cross-language benchmarks (01-20)
-- compare_langs.sh: `tgo` language support added
-- bench/wasm/: 4 TinyGo .go sources + 8 .wasm modules (single + bench variants)
-- bench/wasm_bench.sh: CW vs wasmtime comparison (startup subtracted)
-- Baseline (warm, CW interpreter vs wasmtime JIT):
-  - fib(20)x10K: CW 10054ms vs wt 205ms (49x)
-  - tak(18,12,6)x10K: CW 27301ms vs wt 1148ms (24x)
-  - arith(1M)x10: CW ~1ms vs wt ~1ms (1x — parity)
-  - sieve(64K)x100: CW 545ms vs wt 6ms (99x)
-- 44.15: CLJW marker header counts verified and fixed in 23 test files
-- FUNDING.yml + Support section (GitHub Sponsors)
-- Acknowledgments expanded: Rich Hickey, Clojure community, Zig community
+Phase 45.2 COMPLETE: Predecoded IR — fixed-width 8-byte instructions.
+- New file: `src/wasm/predecode.zig` — PreInstr { opcode: u16, extra: u16, operand: u32 }
+- IrFunc: code slice + pool64 (i64/f64 constants)
+- Lazy predecoding: IR computed on first call, cached in WasmFunction.ir
+- executeIR dispatch loop: all non-SIMD opcodes via fixed-width reads
+- SIMD functions fall back to old Reader-based path (return null from predecoder)
+- Multi-module safety: IR pointers reset on function copy across stores
+- Benchmark improvements (1.7-2.5x across all compute-heavy benchmarks):
+  - fib: 10070→5682ms (1.77x), tak: 27320→16264ms (1.68x)
+  - sieve: 600→239ms (2.51x), fib_loop: 402→192ms (2.09x), gcd: 633→300ms (2.11x)
+- CW vs wasmtime ratios: fib 26x, tak 14x, sieve 41x, fib_loop 52x, gcd 7x
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
