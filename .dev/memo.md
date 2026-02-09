@@ -25,25 +25,21 @@ Phase 38: Core Library Completeness
 2. [x] 38.2: Matcher Value type + re-matcher, re-groups — regex group extraction
 3. [x] 38.3: Upstream alignment pass — fix highest-impact UPSTREAM-DIFF items
 4. [-] 38.4: case* compiler special form — DEFERRED (case works, O(1) is optimization)
-5. [ ] 38.5: ns macro enhancement — :import support, docstring
+5. [x] 38.5: ns macro enhancement — :import support, docstring
 
 ## Current Task
 
-38.5: ns macro enhancement — :import support, docstring.
-Add :import clause and docstring support to the ns macro. Currently ns only
-supports :require and :use. :import for Java-like class aliasing and docstring
-for namespace documentation.
+Phase 38 complete. Plan next phase.
 
 ## Previous Task
 
-38.1: Infrastructure fixes enabling thrown-with-msg? in multimethod tests (D88).
-- var_ref bootstrap serialization + deferred fixup (serialize.zig)
-- test.clj report ns-qualification for bootstrap cache (test.clj)
-- compiler emitDefmulti stack_depth double-increment fix (compiler.zig)
-- Cross-boundary exception handling: call_target_frame scope isolation (vm.zig, D88)
-- callFunction errdefer state restoration on error propagation (vm.zig)
-- Namespace restoration in bytecodeCallBridge (bootstrap.zig)
-- Result: 9 tests / 123 assertions pass on both VM + TreeWalk
+38.5: ns macro enhancement — :import support, docstring.
+- Added docstring support to ns macro (parses string arg, stores via set-ns-doc)
+- Added attr-map support ({:doc "..."} form)
+- Added :import clause as no-op (CW has no Java class imports)
+- Added Namespace.doc field (namespace.zig)
+- Added set-ns-doc builtin (ns_ops.zig)
+- Both VM + TreeWalk verified
 
 ## Known Issues
 

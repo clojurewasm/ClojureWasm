@@ -45,6 +45,9 @@ pub const Namespace = struct {
     /// Vars referred from other namespaces (symbol name -> *Var).
     refers: VarMap = .empty,
 
+    /// Namespace docstring (set by ns macro).
+    doc: ?[]const u8 = null,
+
     // === Init / Deinit ===
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) Namespace {

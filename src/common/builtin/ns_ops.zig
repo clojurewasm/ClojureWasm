@@ -388,6 +388,29 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// set-ns-doc (internal — called by ns macro)
+// ============================================================
+
+/// (set-ns-doc ns-sym docstring)
+/// Sets the docstring on the named namespace.
+fn setNsDocFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-ns-doc", .{args.len});
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a symbol, got {s}", .{@tagName(args[0].tag())}),
+    };
+    const doc = switch (args[1].tag()) {
+        .string => args[1].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a string, got {s}", .{@tagName(args[1].tag())}),
+    };
+    const env_ptr = bootstrap.macro_eval_env orelse return error.EvalError;
+    if (env_ptr.findNamespace(name)) |ns| {
+        ns.doc = doc;
+    }
+    return Value.nil_val;
+}
+
+// ============================================================
 // in-ns
 // ============================================================
 
@@ -1090,6 +1113,13 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([ns])",
         .added = "1.0",
     },
+    .{
+        .name = "set-ns-doc",
+        .func = setNsDocFn,
+        .doc = "Sets the docstring on the named namespace. Internal — called by ns macro.",
+        .arglists = "([ns-sym docstring])",
+        .added = "1.0",
+    },
 };
 
 // ============================================================
@@ -1421,4 +1451,30 @@ test "require - loads file from load path" {
     try testing.expect(ns != null);
     const v = ns.?.resolve("greeting");
     try testing.expect(v != null);
+}
+
+test "set-ns-doc sets namespace doc field" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const env = try setupTestEnv(alloc);
+    defer {
+        bootstrap.macro_eval_env = null;
+        env.deinit();
+    }
+
+    // Create a namespace
+    const ns = try env.findOrCreateNamespace("my.test.ns");
+    try testing.expect(ns.doc == null);
+
+    // Call set-ns-doc
+    _ = try setNsDocFn(alloc, &[_]Value{
+        Value.initSymbol(alloc, .{ .ns = null, .name = "my.test.ns" }),
+        Value.initString(alloc, "A documented namespace"),
+    });
+
+    // Doc should now be set
+    try testing.expect(ns.doc != null);
+    try testing.expectEqualStrings("A documented namespace", ns.doc.?);
 }

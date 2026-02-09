@@ -199,11 +199,18 @@
     `(def ~(list 'with-meta name m) (fn ~name ~@fdecl))))
 
 ;; Namespace declaration
-;; UPSTREAM-DIFF: Simplified ns macro; no :import, no docstring, no :gen-class
+;; UPSTREAM-DIFF: no :gen-class (JVM only)
 
-(defmacro ns [name & references]
+(defmacro ns
+  "Sets *ns* to the namespace named by name (unevaluated), creating it
+  if needed. references can include :require, :use, :import,
+  :refer-clojure."
+  [name & references]
   (let [docstring (when (string? (first references)) (first references))
         references (if docstring (rest references) references)
+        attr-map (when (map? (first references)) (first references))
+        references (if attr-map (rest references) references)
+        doc (if docstring docstring (when attr-map (get attr-map :doc)))
         process-ref (fn [ref-form]
                       (let [kw (first ref-form)
                             args (rest ref-form)]
@@ -224,9 +231,12 @@
                             (list (apply list 'clojure.core/refer ''clojure.core
                                          (quote-vals args))))
 
+                          (= kw :import) nil  ; no-op: CW has no Java class imports
+
                           :else nil)))
-        ref-forms (apply concat (map process-ref references))]
-    `(do (in-ns '~name) ~@ref-forms)))
+        ref-forms (apply concat (map process-ref references))
+        doc-form (when doc `(set-ns-doc '~name ~doc))]
+    `(do (in-ns '~name) ~@(when doc-form (list doc-form)) ~@ref-forms)))
 
 ;; Threading macros
 
