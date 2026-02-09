@@ -87,8 +87,16 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 41.1  | ex-cause fix + pprint dynamic vars (7 vars)    | ex-cause, *print-right-margin*, etc.                 |
 | 41.4  | Upstream test porting                          | control, sequences, transducers tests                |
 | 41.5  | Bug fixes and edge cases                       | try/catch peephole, sorted collections, take 0       |
+| 42.1  | Quick wins (uri?, uuid?, destructure)          | with-in-str, seq-to-map-for-destructuring            |
+| 42.2  | Protocol extension API (5 vars)                | extend, extenders, extends?, find-protocol-*         |
+| 42.3  | Remaining core vars (bound-fn)                 | get-thread-bindings, bound-fn*, bound-fn             |
+| 43.1-4| Array subsystem (34 builtins)                  | ZigArray Value type, typed arrays, amap/areduce      |
+| 43.5  | BigInt (pure Zig)                              | BigInt Value type, bigint/biginteger, reader N       |
+| 43.6  | BigDecimal (pure Zig)                          | BigDecimal Value type, bigdec, reader M              |
+| 43.7  | Auto-promoting arithmetic                      | +', -', *', inc', dec' → overflow to BigInt          |
+| 43.8  | Ratio type                                     | Ratio Value type, numerator/denominator/rationalize  |
 
-**Stats**: 742 vars done (540 clojure.core, 14+ namespaces total)
+**Stats**: 795 vars done (593 clojure.core, 14+ namespaces total)
 
 **Note**: Phase 27 (NaN Boxing) and Phase 28 (Single Binary Builder) from the
 original plan were completed as part of Phases 35X (D85) and 31-32 (D81)
@@ -169,27 +177,27 @@ Bug fixes, edge cases, upstream test porting.
 | 41.4  | Upstream test porting                | COMPLETE    |
 | 41.5  | Bug fixes and edge cases             | COMPLETE    |
 
-### Phase 42: Quick Wins + Protocol Extension — PLANNED
+### Phase 42: Quick Wins + Protocol Extension — COMPLETE
 
 SKIP recovery Phase 1. See `.dev/skip-recovery.md` for full context.
 
-| Sub   | Content                                            | Status  |
-|-------|----------------------------------------------------|---------|
-| 42.1  | Quick wins (with-in-str, uri?, uuid?, destructure) | TODO    |
-| 42.2  | Protocol extension API (extend, extenders, extends?)| TODO   |
-| 42.3  | Remaining implementable core vars (bytes?, bound-fn)| TODO   |
+| Sub   | Content                                            | Status   |
+|-------|----------------------------------------------------|----------|
+| 42.1  | Quick wins (with-in-str, uri?, uuid?, destructure) | COMPLETE |
+| 42.2  | Protocol extension API (extend, extenders, extends?)| COMPLETE|
+| 42.3  | Remaining implementable core vars (bytes?, bound-fn)| COMPLETE|
 
-### Phase 43: Numeric Types + Arrays — IN PROGRESS
+### Phase 43: Numeric Types + Arrays — COMPLETE
 
-New Value types: Array, BigInt, BigDecimal, Ratio.
+New Value types: Array, BigInt, BigDecimal, Ratio. Decision D89.
 
 | Sub    | Content                                          | Status   |
 |--------|--------------------------------------------------|----------|
 | 43.1-4 | Array ops, typed arrays, macros                  | COMPLETE |
 | 43.5   | BigInt + bigint/biginteger + reader N literal    | COMPLETE |
 | 43.6   | BigDecimal + bigdec + reader M literal           | COMPLETE |
-| 43.7   | Auto-promotion (+', *', -', inc', dec')          | TODO     |
-| 43.8   | Ratio + numerator/denominator/rationalize        | TODO     |
+| 43.7   | Auto-promotion (+', *', -', inc', dec')          | COMPLETE |
+| 43.8   | Ratio + numerator/denominator/rationalize        | COMPLETE |
 
 ### Phase 44: OSS Release Prep — PLANNED
 

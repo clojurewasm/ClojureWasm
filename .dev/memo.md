@@ -21,23 +21,67 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 43: Numeric Types + Arrays
-1. [x] 43.1: Array Value type + core ops (make-array, object-array, aget, aset, alength, aclone, to-array, into-array)
-2. [x] 43.2: Typed array constructors (int-array..char-array, to-array-2d, ints..chars coercion)
-3. [x] 43.3: Typed setters + bytes? (aset-int..aset-char, bytes?)
-4. [x] 43.4: Array macros (amap, areduce)
-5. [x] 43.5: BigInt Value type + bigint/biginteger fns + reader N literal
-6. [x] 43.6: BigDecimal Value type + bigdec fn + reader M literal
-7. [x] 43.7: Arithmetic auto-promotion (+', *', -', inc', dec' → overflow to BigInt)
-8. [x] 43.8: Ratio Value type + numerator/denominator/rationalize
+Phase 44: OSS Release Prep (v0.1.0-alpha)
+Master plan: `private/20260208/02_oss_plan.md`
 
-Phase 44: OSS Release Prep (starts after Phase 43)
--> Read `private/20260208/02_oss_plan.md` and expand into Task Queue
--> Scope: Lazy Range, Wasm speed, directory restructure, refactoring, license, docs, release prep
+A2. Lazy Range + Chunked Sequences
+1. [ ] 44.1: LazyRange Value type (start/end/step), ISeq integration
+2. [ ] 44.2: `(range)` infinite range support
+3. [ ] 44.3: Chunked sequence producer (range → ChunkedCons)
+4. [ ] 44.4: F102: map/filter chunked processing
+
+A3. Wasm Execution Speed
+5. [ ] 44.5: Research wasmtime/wasm3 dispatch techniques + decide approach
+6. [ ] 44.6: Computed goto or threaded dispatch (Zig comptime)
+7. [ ] 44.7: Wasm function JIT (hot wasm → ARM64) — SKIP if ROI low
+8. [ ] 44.8: Benchmark measurement (wasm_fib, wasm_sieve)
+
+A5. Code Refactoring (largest block)
+9. [ ] 44.12: Full file visual review (70 Zig files, ~65K LOC)
+10. [ ] 44.13: Dead code removal, naming unification, comment quality
+11. [ ] 44.14: TODO/FIXME/HACK triage → fix or checklist.md
+12. [ ] 44.15: Test code quality review (38 upstream test files)
+
+A4. Directory Restructure (during refactoring)
+13. [ ] 44.9: Remove wasm_rt/ directory (mention in README Future Plan)
+14. [ ] 44.10: Merge common/native/ → flat or core/eval/cli
+15. [ ] 44.11: Import path bulk fix + build verification
+
+A6. License
+16. [ ] 44.16: EPL-1.0 header insertion to all .zig files (script)
+17. [ ] 44.17: LICENSE file + test/upstream/ copyright verification
+18. [ ] 44.18: Third-party code attribution check
+
+A7. .claude/ + private/ Cleanup
+19. [ ] 44.19: Add .claude/ to .gitignore
+20. [ ] 44.20: Add private/ to .gitignore
+21. [ ] 44.21: CONTRIBUTING.md from useful parts of CLAUDE.md
+22. [ ] 44.22: Decide .dev/ handling (public or .gitignore)
+
+A8. Documentation
+23. [ ] 44.23: README.md (overview, features, build, usage, benchmarks, future)
+24. [ ] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
+25. [ ] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
+
+A9. Release Preparation
+26. [ ] 44.26: GitHub repo settings (description, topics, About)
+27. [ ] 44.27: Pre-Alpha / Experimental disclaimer (README + badge)
+28. [ ] 44.28: "Verified on macOS Apple Silicon only" notice
+29. [ ] 44.29: Sponsors / Funding setup (GitHub Sponsors)
+30. [ ] 44.30: Clojure community / Rich Hickey acknowledgment
 
 ## Current Task
 
-Phase 44 Planning: Read `private/20260208/02_oss_plan.md` and expand into Task Queue.
+Phase 44.1: LazyRange Value type (start/end/step), ISeq integration.
+
+Design:
+- New LazyRange Value type: start/end/step fields (Number values)
+- Implements ISeq protocol: first/rest/next/seq/count
+- `(range n)` and `(range start end)` and `(range start end step)` return LazyRange
+- LazyRange is lazy: no materialization until consumed
+- `(range)` infinite range → LazyRange with no end bound (44.2)
+- Need to decide NanHeapTag slot for LazyRange
+- Read `.dev/future.md` for lazy sequence design context
 
 ## Previous Task
 
