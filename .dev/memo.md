@@ -39,13 +39,14 @@ Phase 40: Library Expansion — COMPLETE
 
 Phase 41: Polish & Hardening
 1. [x] 41.1: ex-cause fix + pprint dynamic vars (7 vars)
-2. [ ] 41.2: clojure.edn/read
-3. [ ] 41.3: clojure.core.reducers (sequential impl)
+2. [x] 41.2: clojure.edn/read — SKIPPED (needs PushbackReader)
+3. [x] 41.3: clojure.core.reducers — SKIPPED (needs reify, protocols, ForkJoin)
 4. [ ] 41.4: Upstream test porting
+5. [ ] 41.5: Additional bug fixes and edge cases
 
 ## Current Task
 
-41.2: clojure.edn/read.
+41.4: Upstream test porting.
 
 ## Previous Task
 
