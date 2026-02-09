@@ -52,7 +52,7 @@ for arg in "$@"; do
       echo ""
       echo "Options:"
       echo "  --bench=NAME     Run specific benchmark (e.g. fib_recursive)"
-      echo "  --lang=LANGS     Comma-separated languages (cw,c,zig,java,py,rb,js,bb)"
+      echo "  --lang=LANGS     Comma-separated languages (cw,c,zig,java,tgo,py,rb,js,bb)"
       echo "  --cold           Wall clock only (default)"
       echo "  --warm           Startup-subtracted only"
       echo "  --both           Cold + Warm"
@@ -71,7 +71,7 @@ for arg in "$@"; do
 done
 
 # --- Determine languages ---
-ALL_LANGS=(cw c zig java py rb js bb)
+ALL_LANGS=(cw c zig java tgo py rb js bb)
 LANGS=()
 if [[ -n "$LANG_FILTER" ]]; then
   IFS=',' read -ra LANGS <<< "$LANG_FILTER"
@@ -90,6 +90,7 @@ lang_display_name() {
     rb)   echo "ruby" ;;
     js)   echo "node" ;;
     bb)   echo "babashka" ;;
+    tgo)  echo "tinygo" ;;
     *)    echo "$1" ;;
   esac
 }
@@ -188,6 +189,13 @@ lang_command() {
       command -v bb >/dev/null 2>&1 || return 1
       echo "bb $bench_dir/bench.clj"
       ;;
+    tgo)
+      [[ -f "$bench_dir/bench.go" ]] || return 1
+      command -v tinygo >/dev/null 2>&1 || return 1
+      local bin="$TMPDIR_CMP/tgo_$(basename "$bench_dir")"
+      tinygo build -opt=2 -o "$bin" "$bench_dir/bench.go" 2>/dev/null || return 1
+      echo "$bin"
+      ;;
     *)
       return 1
       ;;
@@ -233,6 +241,15 @@ JEOF
       bb)
         command -v bb >/dev/null 2>&1 || continue
         noop_cmd="bb -e nil"
+        ;;
+      tgo)
+        command -v tinygo >/dev/null 2>&1 || continue
+        cat > "$TMPDIR_CMP/noop.go" << 'GOEOF'
+package main
+func main() {}
+GOEOF
+        tinygo build -opt=2 -o "$TMPDIR_CMP/noop_tgo" "$TMPDIR_CMP/noop.go" 2>/dev/null
+        noop_cmd="$TMPDIR_CMP/noop_tgo"
         ;;
       *)    continue ;;
     esac
@@ -297,7 +314,7 @@ echo -e "${BOLD}  Cross-Language Benchmark Comparison${RESET}"
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════${RESET}"
 
 # Sort order: c, zig, java, cw, bb, rb, py (fast to slow typical order)
-DISPLAY_ORDER=(c zig java cw js bb rb py)
+DISPLAY_ORDER=(c zig java tgo cw js bb rb py)
 
 for bench_dir in "${BENCH_DIRS[@]}"; do
   bench_name=$(basename "$bench_dir" | sed 's/^[0-9]*_//')

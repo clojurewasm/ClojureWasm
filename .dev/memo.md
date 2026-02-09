@@ -21,63 +21,33 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 44: OSS Release Prep (v0.1.0-alpha)
-Master plan: `private/20260208/02_oss_plan.md`
+Phase 45: Wasm Runtime Optimization
+Plan: `.dev/wasm-opt-plan.md`
 
-A2. Lazy Range + Chunked Sequences
-1. [x] 44.1+44.2: Lazy range + infinite range (Meta.range, O(1) count/nth)
-3. [~] 44.3: Chunked sequence producer — deferred (fused reduce covers perf case)
-4. [~] 44.4: F102: map/filter chunked processing — deferred
-
-A3. Wasm Execution Speed — deferred to post-alpha (D90)
-5. [x] 44.5: Research complete — predecoded IR + tail-call dispatch recommended
-6. [~] 44.6-44.8: Implementation deferred (HIGH effort, alpha priorities elsewhere)
-
-A5. Code Refactoring (largest block)
-9. [x] 44.12: //! module doc comments (all 66 files) + stale content fixes
-10. [x] 44.13: Remove stale internal phase IDs from inline comments
-11. [x] 44.14: TODO triage → F136, F137 in checklist.md
-12. [x] 44.15: Test file header CLJW marker count verification (23 fixes)
-
-A4. Directory Restructure
-13. [x] 44.9: Removed wasm_rt/ directory
-14. [x] 44.10: Directory restructure — pipeline-based layout (D91)
-15. [x] 44.11: Import path bulk fix + builtin file merges (66 files)
-
-A6. License
-16. [x] 44.16: EPL-1.0 header insertion to all .zig files (66 files)
-17. [x] 44.17: LICENSE file + test/upstream/ copyright verification
-18. [x] 44.18: Third-party code attribution check (NOTICE file)
-
-A7. .claude/ + private/ Cleanup
-19. [x] 44.19: Add .claude/ to .gitignore (backup → git rm → .gitignore → restore)
-20. [x] 44.20: Add private/ to .gitignore
-21. [x] 44.21: CONTRIBUTING.md (build, code style, test rules, PR process)
-22. [x] 44.22: .dev/ stays public (development documentation, no secrets)
-
-A8. Documentation
-23. [x] 44.23: README.md (overview, features, build, usage, benchmarks, future)
-24. [x] 44.24: ARCHITECTURE.md (pipeline, Value repr, backends)
-25. [x] 44.25: DIFFERENCES.md (skip vars, behavioral diffs from Clojure)
-
-A9. Release Preparation
-26. [x] 44.26: GitHub repo settings (description, topics, About)
-27. [x] 44.27: Pre-Alpha / Experimental disclaimer (README + badge)
-28. [x] 44.28: "Verified on macOS Apple Silicon only" notice
-29. [x] 44.29: Sponsors / Funding setup (GitHub Sponsors)
-30. [x] 44.30: Clojure community / Rich Hickey acknowledgment
+1. [x] 45.1: Benchmark infrastructure — TinyGo native + wasm benchmarks
+2. [ ] 45.2: Predecoded IR (fixed-width instruction encoding)
+3. [ ] 45.3: Tail-call threaded dispatch
+4. [ ] 45.4: Superinstructions (fuse common patterns)
+5. [ ] 45.5: Memory access optimization
 
 ## Current Task
 
-Phase 44 A5 Code Refactoring COMPLETE (44.12-44.15).
-All Phase 44 sub-tasks done. Ready for v0.1.0-alpha tag/release.
+Phase 45.1 COMPLETE: Wasm benchmark infrastructure.
+Next: Phase 45.2 — Predecoded IR.
 
 ## Previous Task
 
-Phase 44.12-44.15 COMPLETE: A5 Code Refactoring block.
-- 44.12a-c: //! module doc comments added to all 66 Zig files
-- 44.13: Stale phase IDs removed from ~30 inline comments across 11 files
-- 44.14: 2 TODOs triaged to F136/F137, zero TODO/FIXME/HACK remaining
+Phase 45.1 COMPLETE: TinyGo benchmark infrastructure.
+- TinyGo added to flake.nix (tinygo 0.40.1)
+- bench.go added to all 20 cross-language benchmarks (01-20)
+- compare_langs.sh: `tgo` language support added
+- bench/wasm/: 4 TinyGo .go sources + 8 .wasm modules (single + bench variants)
+- bench/wasm_bench.sh: CW vs wasmtime comparison (startup subtracted)
+- Baseline (warm, CW interpreter vs wasmtime JIT):
+  - fib(20)x10K: CW 10054ms vs wt 205ms (49x)
+  - tak(18,12,6)x10K: CW 27301ms vs wt 1148ms (24x)
+  - arith(1M)x10: CW ~1ms vs wt ~1ms (1x — parity)
+  - sieve(64K)x100: CW 545ms vs wt 6ms (99x)
 - 44.15: CLJW marker header counts verified and fixed in 23 test files
 - FUNDING.yml + Support section (GitHub Sponsors)
 - Acknowledgments expanded: Rich Hickey, Clojure community, Zig community

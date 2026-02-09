@@ -66,6 +66,7 @@
             python314
             ruby_4_0
             nodejs_24                 # Node.js 24 LTS (cross-language benchmarks)
+            tinygo                    # TinyGo 0.40 — native + wasm benchmark targets
 
             # Utilities
             gnused
@@ -80,6 +81,7 @@
             echo "  Python:   $(python3 --version 2>/dev/null || echo 'N/A')"
             echo "  Ruby:     $(ruby --version 2>/dev/null || echo 'N/A')"
             echo "  Node.js:  $(node --version 2>/dev/null || echo 'N/A')"
+            echo "  TinyGo:   $(tinygo version 2>/dev/null || echo 'N/A')"
           '';
         };
       }

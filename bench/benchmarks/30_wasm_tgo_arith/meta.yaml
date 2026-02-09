@@ -1,0 +1,4 @@
+name: "Wasm TinyGo arithmetic"
+category: wasm
+expected_output: "499999500000"
+description: "arith_loop(1M) x 10 via TinyGo-compiled .wasm — tight loop in wasm interpreter"
