@@ -1,3 +1,11 @@
+// Copyright (c) 2026 chaploud. All rights reserved.
+// The use and distribution terms for this software are covered by the
+// Eclipse Public License 1.0 (https://opensource.org/license/epl-1-0)
+// which can be found in the file LICENSE at the root of this distribution.
+// By using this software in any fashion, you are agreeing to be bound by
+// the terms of this license.
+// You must not remove this notice, or any other, from this software.
+
 // Wasm namespace builtins — wasm/load, wasm/fn (Phase 25.1).
 //
 // (wasm/load "path.wasm")  => WasmModule value

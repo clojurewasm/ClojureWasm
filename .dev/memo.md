@@ -39,13 +39,13 @@ A5. Code Refactoring (largest block)
 11. [ ] 44.14: TODO/FIXME/HACK triage → fix or checklist.md
 12. [ ] 44.15: Test code quality review (38 upstream test files)
 
-A4. Directory Restructure (during refactoring)
-13. [ ] 44.9: Remove wasm_rt/ directory (mention in README Future Plan)
-14. [ ] 44.10: Merge common/native/ → flat or core/eval/cli
-15. [ ] 44.11: Import path bulk fix + build verification
+A4. Directory Restructure
+13. [x] 44.9: Removed wasm_rt/ directory
+14. [~] 44.10: Merge common/native/ — deferred (70+ files, high risk for alpha)
+15. [~] 44.11: Import path bulk fix — deferred (depends on 44.10)
 
 A6. License
-16. [ ] 44.16: EPL-1.0 header insertion to all .zig files (script)
+16. [x] 44.16: EPL-1.0 header insertion to all .zig files (70 files, chaploud)
 17. [ ] 44.17: LICENSE file + test/upstream/ copyright verification
 18. [ ] 44.18: Third-party code attribution check
 
@@ -69,9 +69,13 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.10: Merge common/native/ → evaluate if restructure is needed for alpha.
+Phase 44.17: LICENSE file + test/upstream/ copyright verification.
 
 ## Previous Task
+
+Phase 44.16 COMPLETE: EPL-1.0 header inserted in all 70 .zig files.
+- Copyright: `(c) 2026 chaploud`
+- All tests pass (unit + e2e)
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
