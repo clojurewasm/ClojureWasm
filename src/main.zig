@@ -16,23 +16,23 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Env = @import("common/env.zig").Env;
-const registry = @import("common/builtin/registry.zig");
-const bootstrap = @import("common/bootstrap.zig");
+const Env = @import("runtime/env.zig").Env;
+const registry = @import("builtins/registry.zig");
+const bootstrap = @import("runtime/bootstrap.zig");
 const bootstrap_cache = @import("bootstrap_cache");
-const Value = @import("common/value.zig").Value;
-const collections = @import("common/collections.zig");
+const Value = @import("runtime/value.zig").Value;
+const collections = @import("runtime/collections.zig");
 const nrepl = @import("repl/nrepl.zig");
 const line_editor = @import("repl/line_editor.zig");
-const err = @import("common/error.zig");
-const gc_mod = @import("common/gc.zig");
-const vm_mod = @import("native/vm/vm.zig");
-const keyword_intern = @import("common/keyword_intern.zig");
-const ns_ops = @import("common/builtin/ns_ops.zig");
-const http_server = @import("common/builtin/http_server.zig");
-const lifecycle = @import("common/lifecycle.zig");
-const Reader = @import("common/reader/reader.zig").Reader;
-const FormData = @import("common/reader/form.zig").FormData;
+const err = @import("runtime/error.zig");
+const gc_mod = @import("runtime/gc.zig");
+const vm_mod = @import("vm/vm.zig");
+const keyword_intern = @import("runtime/keyword_intern.zig");
+const ns_ops = @import("builtins/ns_ops.zig");
+const http_server = @import("builtins/http_server.zig");
+const lifecycle = @import("runtime/lifecycle.zig");
+const Reader = @import("reader/reader.zig").Reader;
+const FormData = @import("reader/form.zig").FormData;
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";

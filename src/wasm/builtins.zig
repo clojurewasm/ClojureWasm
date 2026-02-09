@@ -14,10 +14,10 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Value = @import("../common/value.zig").Value;
-const var_mod = @import("../common/var.zig");
+const Value = @import("../runtime/value.zig").Value;
+const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
-const err = @import("../common/error.zig");
+const err = @import("../runtime/error.zig");
 const wasm_types = @import("types.zig");
 const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
@@ -305,7 +305,7 @@ pub fn wasmMemoryWriteFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.nil_val;
 }
 
-const collections = @import("../common/collections.zig");
+const collections = @import("../runtime/collections.zig");
 const ExportInfo = wasm_types.ExportInfo;
 
 /// (wasm/exports module) => {"name" {:params [...] :results [...]}}

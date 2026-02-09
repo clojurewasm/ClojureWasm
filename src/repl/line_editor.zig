@@ -15,9 +15,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
-const Env = @import("../common/env.zig").Env;
-const Namespace = @import("../common/namespace.zig").Namespace;
-const VarMap = @import("../common/namespace.zig").VarMap;
+const Env = @import("../runtime/env.zig").Env;
+const Namespace = @import("../runtime/namespace.zig").Namespace;
+const VarMap = @import("../runtime/namespace.zig").VarMap;
 const posix = std.posix;
 
 // termios cc[] indices — platform-dependent

@@ -16,11 +16,11 @@
 //   cache_gen <output_file>
 
 const std = @import("std");
-const Env = @import("common/env.zig").Env;
-const registry = @import("common/builtin/registry.zig");
-const bootstrap = @import("common/bootstrap.zig");
-const gc_mod = @import("common/gc.zig");
-const keyword_intern = @import("common/keyword_intern.zig");
+const Env = @import("runtime/env.zig").Env;
+const registry = @import("builtins/registry.zig");
+const bootstrap = @import("runtime/bootstrap.zig");
+const gc_mod = @import("runtime/gc.zig");
+const keyword_intern = @import("runtime/keyword_intern.zig");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;

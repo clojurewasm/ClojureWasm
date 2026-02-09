@@ -25,8 +25,8 @@ const bootstrap = clj.bootstrap;
 const io_mod = clj.builtin_io;
 const registry = clj.builtin_registry;
 const err_mod = clj.err;
-const lifecycle = @import("../common/lifecycle.zig");
-const gc_mod = @import("../common/gc.zig");
+const lifecycle = @import("../runtime/lifecycle.zig");
+const gc_mod = @import("../runtime/gc.zig");
 
 // ====================================================================
 // Types
@@ -467,7 +467,7 @@ fn opEval(
         sendDone(stream, msg, allocator);
     } else |_| {
         // Error — bind *e and save error state for stacktrace op
-        const err_import = @import("../common/error.zig");
+        const err_import = @import("../runtime/error.zig");
         const err_info = err_import.getLastError();
         const err_msg = if (err_info) |info| info.message else "evaluation failed";
 

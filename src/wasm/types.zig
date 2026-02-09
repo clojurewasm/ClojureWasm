@@ -18,12 +18,12 @@ const wit_parser = @import("wit_parser.zig");
 
 // Custom Wasm runtime (Phase 35W)
 const rt = struct {
-    const store_mod = @import("runtime/store.zig");
-    const module_mod = @import("runtime/module.zig");
-    const instance_mod = @import("runtime/instance.zig");
-    const vm_mod = @import("runtime/vm.zig");
-    const wasi = @import("runtime/wasi.zig");
-    const opcode = @import("runtime/opcode.zig");
+    const store_mod = @import("store.zig");
+    const module_mod = @import("module.zig");
+    const instance_mod = @import("instance.zig");
+    const vm_mod = @import("vm.zig");
+    const wasi = @import("wasi.zig");
+    const opcode = @import("opcode.zig");
 };
 
 /// Wasm value types exposed to Clojure code.
@@ -313,7 +313,7 @@ pub const WasmFn = struct {
     }
 };
 
-const Value = @import("../common/value.zig").Value;
+const Value = @import("../runtime/value.zig").Value;
 
 /// Convert a Clojure Value to a Wasm u64 based on the expected type.
 fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
@@ -347,7 +347,7 @@ fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
 // Host function injection (Clojure -> Wasm callbacks)
 // ============================================================
 
-const bootstrap = @import("../common/bootstrap.zig");
+const bootstrap = @import("../runtime/bootstrap.zig");
 
 /// Host function callback context — stores Clojure fn + signature.
 const HostContext = struct {
@@ -721,7 +721,7 @@ test "lookupImportFn — nested map lookup" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-    const collections = @import("../common/collections.zig");
+    const collections = @import("../runtime/collections.zig");
 
     const target_val = Value.initKeyword(alloc, .{ .name = "found", .ns = null });
     var inner_entries = [_]Value{
@@ -805,7 +805,7 @@ test "getExportInfo — nonexistent name returns null" {
 // ============================================================
 
 test "multi-module — two modules, function import" {
-    const collections = @import("../common/collections.zig");
+    const collections = @import("../runtime/collections.zig");
 
     // math_mod exports "add" and "mul"
     const math_bytes = @embedFile("testdata/20_math_export.wasm");
@@ -840,7 +840,7 @@ test "multi-module — two modules, function import" {
 }
 
 test "multi-module — three module chain" {
-    const collections = @import("../common/collections.zig");
+    const collections = @import("../runtime/collections.zig");
 
     // base exports "double"
     const base_bytes = @embedFile("testdata/22_base.wasm");
