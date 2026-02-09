@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 37 COMPLETE**
-- Coverage: 742 vars done across all namespaces (540/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- Coverage: 746 vars done across all namespaces (544/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
@@ -21,21 +21,20 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 ## Task Queue
 
 Phase 42: Quick Wins + Protocol Extension
-1. [ ] 42.1: Quick wins (with-in-str, uri?, uuid?, destructure, bytes?)
+1. [x] 42.1: Quick wins (uri?, uuid?, destructure, seq-to-map-for-destructuring)
 2. [ ] 42.2: Protocol extension API (extend, extenders, extends?, satisfies?, find-protocol-impl)
-3. [ ] 42.3: Remaining implementable core vars (bound-fn, get-thread-bindings, seq-to-map-for-destructuring)
+3. [ ] 42.3: Remaining implementable core vars (bound-fn, get-thread-bindings)
 
 ## Current Task
 
-Phase 42.1: Quick wins — implement straightforward SKIP vars that need no new Value types.
+Phase 42.2: Protocol extension API — implement `extend`, `extenders`, `extends?`, `satisfies?`, `find-protocol-impl`.
 
-Target vars: `with-in-str`, `uri?`, `uuid?`, `destructure`, `seq-to-map-for-destructuring`, `bytes?`
-
-Reference: `.dev/skip-recovery.md` Category 8 for full context.
+Reference: `.dev/skip-recovery.md` Category 4 for full context.
 
 ## Previous Task
 
-Phase 41 complete. SKIP recovery plan created (`.dev/skip-recovery.md`).
+Phase 42.1 complete: 4 vars implemented (uri?, uuid?, destructure, seq-to-map-for-destructuring).
+Deferred: bytes? (Phase 43 — needs Array type), with-in-str (needs Reader infrastructure).
 
 ## Known Issues
 

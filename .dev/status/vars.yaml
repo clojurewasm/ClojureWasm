@@ -245,7 +245,7 @@ vars:
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
     descendants: {type: function, status: done, note: core.clj hierarchy-aware}
-    destructure: {type: function, status: skip, note: Phase 42 — quick win}
+    destructure: {type: function, status: done, note: 'UPSTREAM-DIFF: reduce1→reduce, Java interop→CW'}
     disj: {type: function, status: done, note: "Zig builtin"}
     "disj!": {type: function, status: done}
     dissoc: {type: function, status: done, note: "Zig builtin"}
@@ -573,7 +573,7 @@ vars:
     "send-off": {type: function, status: skip, note: DEFERRED — multi-thread future}
     "send-via": {type: function, status: skip, note: DEFERRED — multi-thread future}
     seq: {type: function, status: done, note: "Zig builtin"}
-    "seq-to-map-for-destructuring": {type: function, status: skip, note: 'Phase 42 — quick win'}
+    "seq-to-map-for-destructuring": {type: function, status: done, note: 'alias of __seq-to-map builtin'}
     "seq?": {type: function, status: done, note: "Zig builtin"}
     "seqable?": {type: function, status: done, note: builtin (upstream is pure clj)}
     seque: {type: function, status: skip, note: JVM interop}
@@ -679,9 +679,9 @@ vars:
     "update-keys": {type: function, status: done, note: "core.clj with transient"}
     "update-proxy": {type: function, status: skip, note: JVM interop}
     "update-vals": {type: function, status: done, note: "core.clj with transient"}
-    "uri?": {type: function, status: skip, note: "Phase 42 — quick win"}
+    "uri?": {type: function, status: done, note: "always false — no URI type"}
     use: {type: function, status: done, note: 'builtin (upstream is pure clj); no file loading, pre-loaded ns only'}
-    "uuid?": {type: function, status: skip, note: "Phase 42 — quick win"}
+    "uuid?": {type: function, status: done, note: "always false — no UUID type"}
     val: {type: function, status: done, note: "Zig builtin"}
     vals: {type: function, status: done, note: "Zig builtin"}
     "var-get": {type: function, status: done, note: T11.2}

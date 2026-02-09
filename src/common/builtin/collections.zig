@@ -2582,6 +2582,13 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.0",
     },
     .{
+        .name = "seq-to-map-for-destructuring",
+        .func = &seqToMapFn,
+        .doc = "Builds a map from a seq as described in https://clojure.org/reference/special_forms#keyword-arguments",
+        .arglists = "([s])",
+        .added = "1.11",
+    },
+    .{
         .name = "__zig-get-in",
         .func = &zigGetInFn,
         .doc = "Fast Zig builtin for get-in.",
@@ -2881,9 +2888,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 46 entries" {
-    // 43 + 3 (__zig-get-in, __zig-assoc-in, __zig-update-in)
-    try testing.expectEqual(46, builtins.len);
+test "builtins table has 47 entries" {
+    // 46 + 1 (seq-to-map-for-destructuring)
+    try testing.expectEqual(47, builtins.len);
 }
 
 test "reverse list" {

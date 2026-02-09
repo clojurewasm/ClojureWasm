@@ -570,6 +570,20 @@ fn decimalPred(_: Allocator, args: []const Value) anyerror!Value {
     return Value.false_val;
 }
 
+/// (uri? x) — Returns true if x is a java.net.URI.
+fn uriPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to uri?", .{args.len});
+    // No URI type in ClojureWasm
+    return Value.false_val;
+}
+
+/// (uuid? x) — Returns true if x is a java.util.UUID.
+fn uuidPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to uuid?", .{args.len});
+    // No UUID type in ClojureWasm
+    return Value.false_val;
+}
+
 /// (bounded-count n coll) — If coll is counted? returns its count, else counts up to n.
 fn boundedCountFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to bounded-count", .{args.len});
@@ -684,6 +698,8 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "ratio?", .func = &ratioPred, .doc = "Returns true if n is a Ratio.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "rational?", .func = &rationalPred, .doc = "Returns true if n is a rational number.", .arglists = "([n])", .added = "1.0" },
     .{ .name = "decimal?", .func = &decimalPred, .doc = "Returns true if n is a BigDecimal.", .arglists = "([n])", .added = "1.0" },
+    .{ .name = "uri?", .func = &uriPred, .doc = "Return true if x is a java.net.URI.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "uuid?", .func = &uuidPred, .doc = "Return true if x is a java.util.UUID.", .arglists = "([x])", .added = "1.9" },
     .{ .name = "bounded-count", .func = &boundedCountFn, .doc = "If coll is counted? returns its count, else will count at most the first n elements of coll.", .arglists = "([n coll])", .added = "1.9" },
     .{ .name = "special-symbol?", .func = &specialSymbolPred, .doc = "Returns true if s names a special form.", .arglists = "([s])", .added = "1.5" },
     .{ .name = "__delay?", .func = &delayPred, .doc = "Returns true if x is a Delay.", .arglists = "([x])", .added = "1.0" },
@@ -939,8 +955,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 54 entries" {
-    try testing.expectEqual(54, builtins.len);
+test "builtins table has 56 entries" {
+    // 54 + 2 (uri?, uuid?)
+    try testing.expectEqual(56, builtins.len);
 }
 
 test "builtins all have func" {
