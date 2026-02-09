@@ -7,6 +7,7 @@
 //!   Form (Reader) -> Node (Analyzer) -> Bytecode (Compiler) -> Value (VM)
 
 const std = @import("std");
+const builtin = @import("builtin");
 const chunk_mod = @import("../../common/bytecode/chunk.zig");
 const Chunk = chunk_mod.Chunk;
 const OpCode = chunk_mod.OpCode;
@@ -33,6 +34,7 @@ const profile_opcodes = build_options.profile_opcodes;
 
 /// VM execution errors.
 const err_mod = @import("../../common/error.zig");
+pub const jit_mod = @import("jit.zig");
 
 pub const VMError = error{
     StackOverflow,
@@ -139,6 +141,31 @@ pub fn dumpOpcodeProfile() void {
 /// calls from builtins without creating new VM instances.
 pub var active_vm: ?*VM = null;
 
+/// Whether JIT compilation is available on this platform.
+const enable_jit = builtin.cpu.arch == .aarch64;
+
+/// JIT compilation warmup threshold (iterations before compiling).
+const JIT_THRESHOLD: u32 = 64;
+
+/// JIT hot loop cache (one slot per VM for PoC).
+const JitState = struct {
+    /// Identifies the function containing the cached loop.
+    loop_code_ptr: ?[*]const Instruction = null,
+    /// Start IP of the cached loop within the function.
+    loop_start_ip: usize = 0,
+    /// Iteration counter for warmup.
+    loop_count: u32 = 0,
+    /// Compiled native function (valid while compiler is alive).
+    jit_fn: ?jit_mod.JitFn = null,
+    /// JIT compiler instance (owns the mmap'd code buffer).
+    compiler: ?jit_mod.JitCompiler = null,
+
+    fn deinit(self: *JitState) void {
+        if (self.compiler) |*c| c.deinit();
+        self.* = .{};
+    }
+};
+
 /// Stack-based bytecode virtual machine.
 pub const VM = struct {
     allocator: std.mem.Allocator,
@@ -162,6 +189,8 @@ pub const VM = struct {
     env: ?*Env,
     /// GC instance for automatic collection at safe points.
     gc: ?*gc_mod.MarkSweepGc = null,
+    /// JIT compilation state (ARM64 only).
+    jit_state: if (enable_jit) JitState else void = if (enable_jit) .{} else {},
 
     pub fn init(allocator: std.mem.Allocator) VM {
         return initWithEnv(allocator, null);
@@ -197,6 +226,7 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
+        if (enable_jit) self.jit_state.deinit();
         if (self.gc != null) return; // GC handles all memory
         for (self.allocated_fns.items) |fn_ptr| {
             if (fn_ptr.closure_bindings) |cb| {
@@ -1740,8 +1770,101 @@ pub const VM = struct {
         self.sp = dst_start + arg_count;
 
         // Consume next code word (loop offset) and jump back
-        const loop_offset = frame.code[frame.ip].operand;
-        frame.ip = frame.ip + 1 - loop_offset;
+        const data_ip = frame.ip;
+        const loop_offset = frame.code[data_ip].operand;
+        const loop_top = data_ip + 1 - loop_offset;
+        frame.ip = loop_top;
+
+        // JIT: detect hot loops and compile to native code (ARM64 only).
+        if (enable_jit) {
+            const loop_end = data_ip + 1;
+            if (self.tryJitExecution(frame, loop_top, loop_end)) return;
+        }
+    }
+
+    /// Try to execute a JIT-compiled loop or compile one if hot enough.
+    /// Returns true if JIT handled the remaining iterations.
+    fn tryJitExecution(self: *VM, frame: *CallFrame, loop_top: usize, loop_end: usize) bool {
+        if (!enable_jit) return false;
+        var js = &self.jit_state;
+
+        // Fast path: execute cached JIT function.
+        if (js.jit_fn) |jit_fn| {
+            if (js.loop_code_ptr == frame.code.ptr and js.loop_start_ip == loop_top) {
+                const result = jit_fn(
+                    @ptrCast(&self.stack),
+                    frame.base,
+                    @ptrCast(frame.constants.ptr),
+                );
+                if (result.status == 0) {
+                    // Success: push result, skip to post-loop (pop_under).
+                    self.stack[self.sp] = @enumFromInt(result.value);
+                    self.sp += 1;
+                    frame.ip = loop_end;
+                    return true;
+                }
+                // Deopt: invalidate and don't retry.
+                js.jit_fn = null;
+                js.loop_count = std.math.maxInt(u32);
+                return false;
+            }
+        }
+
+        // Warmup counting.
+        if (js.loop_code_ptr == frame.code.ptr and js.loop_start_ip == loop_top) {
+            if (js.loop_count == std.math.maxInt(u32)) return false; // already tried and failed
+            js.loop_count += 1;
+            if (js.loop_count < JIT_THRESHOLD) return false;
+
+            // Compile the hot loop.
+            if (js.compiler == null) {
+                js.compiler = jit_mod.JitCompiler.init() catch return false;
+            } else {
+                // Re-compilation attempt with existing compiler (buffer may be EXEC).
+                // Deinit and create fresh compiler.
+                js.compiler.?.deinit();
+                js.compiler = jit_mod.JitCompiler.init() catch return false;
+            }
+            js.jit_fn = js.compiler.?.compileLoop(
+                frame.code,
+                @ptrCast(frame.constants.ptr),
+                loop_top,
+                loop_end,
+            );
+            if (js.jit_fn == null) {
+                js.loop_count = std.math.maxInt(u32);
+                return false;
+            }
+
+            // Execute the newly compiled function immediately.
+            const result = js.jit_fn.?(
+                @ptrCast(&self.stack),
+                frame.base,
+                @ptrCast(frame.constants.ptr),
+            );
+            if (result.status == 0) {
+                self.stack[self.sp] = @enumFromInt(result.value);
+                self.sp += 1;
+                frame.ip = loop_end;
+                return true;
+            }
+            // Deopt on first execution — don't retry.
+            js.jit_fn = null;
+            js.loop_count = std.math.maxInt(u32);
+            return false;
+        }
+
+        // New loop — start counting.
+        js.loop_code_ptr = frame.code.ptr;
+        js.loop_start_ip = loop_top;
+        js.loop_count = 1;
+        js.jit_fn = null;
+        // Discard old compiler (old JIT code is no longer needed).
+        if (js.compiler) |*c| {
+            c.deinit();
+            js.compiler = null;
+        }
+        return false;
     }
 
     /// Save arg sources from VM debug info for the current binary op instruction.
@@ -2749,4 +2872,8 @@ test "VM empty vec_new" {
     const result = try vm.run(&chunk);
     try std.testing.expect(result.tag() == .vector);
     try std.testing.expectEqual(@as(usize, 0), result.asVector().items.len);
+}
+
+test {
+    _ = jit_mod;
 }

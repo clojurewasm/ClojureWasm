@@ -346,3 +346,38 @@ effective address range. Negative NaN canonicalized to positive NaN.
 | wasm_sieve  | 822ms   | 792ms  | 1.04x   |
 
 **Deferred**: LEB128 predecode, bytecode fusion, register IR, tail-call dispatch → Phase 37.
+
+---
+
+## D87: ARM64 JIT PoC — Hot Loop Native Code Generation
+
+**Decision**: Compile hot integer arithmetic loops to native ARM64 machine code at
+runtime. Interpreter-integrated, single-loop cache, automatic deopt.
+
+**Architecture**:
+
+- **Detection**: Back-edge counter in `vmRecurLoop`. Threshold = 64 iterations.
+- **Compilation**: `jit.zig` — `analyzeLoop` extracts loop ops, `compileLoop` emits ARM64.
+  Supported ops: branch_ne/ge/gt (locals/const), add/sub (locals/const), recur_loop.
+- **NaN-box integration**: SBFX unbox at entry, AND+ORR re-box at exit.
+  `used_slots` bitset: only loads/checks slots referenced by loop body (skips closure self-ref).
+- **THEN path skip**: `analyzeLoop` uses `exit_offset` from data word to jump past
+  exit code, only analyzing the ELSE path (loop body).
+- **Execution**: W^X transition (mmap WRITE → mprotect READ|EXEC), `sys_icache_invalidate`.
+- **JitState per VM**: Single cached loop. `maxInt(u32)` sentinel prevents retry after deopt.
+- **Platform**: ARM64 only (`comptime` check on `builtin.cpu.arch == .aarch64`).
+  No-op on other architectures.
+
+**Results** (hyperfine, ReleaseSafe, Apple M4 Pro):
+
+| Benchmark      | Before (37.3) | After (37.4) | Speedup |
+|----------------|---------------|--------------|---------|
+| arith_loop     | 31ms          | 3ms          | 10.3x   |
+| fib_recursive  | 16ms          | 16ms         | 1.0x    |
+| (cumulative)   | 53ms (base)   | 3ms          | 17.7x   |
+
+**Scope limitation**: PoC targets simple integer loops only. Not compiled: function calls,
+heap allocation, string ops, collection ops. fib_recursive uses recursion (not loop),
+so JIT does not apply.
+
+**Files**: `src/native/vm/jit.zig` (new, ~700 lines), `src/native/vm/vm.zig` (JitState integration).

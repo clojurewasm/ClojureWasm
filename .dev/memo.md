@@ -23,19 +23,17 @@ Phase 37: VM Optimization + JIT (A→B incremental)
 1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
 2. [x] 37.2: Superinstructions (fuse common opcode sequences)
 3. [x] 37.3: Fused branch + loop superinstructions
-4. [ ] 37.4: JIT PoC — hot loop native code generation
+4. [x] 37.4: JIT PoC — hot loop native code generation
 5. [ ] 37.5: Slab GC + bitmap marking (if GC bottleneck remains)
 6. [ ] 37.6: Escape analysis + polymorphic IC (if needed)
 
 ## Current Task
 
-37.4: JIT PoC — hot loop native code generation.
-Evaluate approach: copy-and-patch vs trace JIT. Target: arith_loop hot loop
-compiled to native ARM64/x86_64 code.
+37.5: Evaluate if Slab GC is needed. Profile post-JIT to identify remaining bottlenecks.
 
 ## Previous Task
 
-37.3: Fused branch + loop superinstructions — DONE.
+37.4: JIT PoC — hot loop native ARM64 code generation — DONE.
 - 7 fused opcodes (0xD0-0xD6): branch_ne/ge/gt_locals, branch_ne/ge/gt_local_const, recur_loop
 - Compare-and-branch: eq/lt/le_locals + jump_if_false → single branch dispatch
 - Recur+loop: recur + jump_back → recur_loop (consumes next code word)
@@ -77,6 +75,16 @@ Session resume procedure: read this file → follow references below.
 
 ## Handover Notes
 
+- **Phase 37.4 COMPLETE**: JIT PoC — ARM64 hot loop native code generation
+  - New file: `src/native/vm/jit.zig` — ARM64 JIT compiler (~700 lines)
+  - Hot loop detection in vmRecurLoop: 64-iteration warmup threshold
+  - Supported ops: branch_ne/ge/gt (locals/const), add/sub (locals/const), recur_loop
+  - NaN-box type guards: unbox at entry, re-box at exit, deopt on non-integer
+  - used_slots bitset: only loads/checks referenced slots (skips closure self-ref)
+  - analyzeLoop: skips THEN path (exit code) via exit_offset from data word
+  - JitState per VM: single cached loop, maxInt(u32) sentinel prevents retry after deopt
+  - arith_loop: 31ms → 3ms (10.3x), cumulative 53ms → 3ms (17.7x)
+  - ARM64 only (aarch64 comptime check); no-op on other architectures
 - **Phase 37.3 COMPLETE**: Fused branch + loop superinstructions
   - 7 fused opcodes (0xD0-0xD6): compare-and-branch, recur_loop
   - In-place replacement: second instruction becomes consumed data word

@@ -76,6 +76,15 @@ Completed optimizations and future opportunities, ordered by introduction.
 |28 | Recur-loop fusion                   | Dispatch: 6→4 per loop iteration  |
 |   | Cumulative (37.1 base → 37.3)      | arith_loop 53→31ms (1.71x)        |
 
+### Phase 37.4: JIT PoC — ARM64 Hot Loop Native Code (D87)
+
+| # | Optimization                        | Impact                            |
+|---|-------------------------------------|-----------------------------------|
+|29 | ARM64 JIT (hot integer loops)       | arith_loop 31→3ms (10.3x)         |
+|   | used_slots bitset (skip fn_val)     | Avoids deopt on closure self-ref   |
+|   | THEN path skip in analyzeLoop       | Handles real compiler bytecode     |
+|   | Cumulative (37.1 base → 37.4)      | arith_loop 53→3ms (17.7x)         |
+
 ---
 
 ## 2. Performance Summary
@@ -92,7 +101,7 @@ Completed optimizations and future opportunities, ordered by introduction.
 | multimethod_dispatch | 2,373   | 15     | 5       | **475x**     |
 | real_workload        | 1,286   | 22     | 10      | **129x**     |
 
-All times in ms (warm), ReleaseSafe, Apple M4 Pro. Current = 36.7 entry.
+All times in ms (warm), ReleaseSafe, Apple M4 Pro. Current = 37.4 entry.
 Full table: `bench/history.yaml`.
 
 ### Cross-Language Summary (Cold, Phase 24C.10)
@@ -129,7 +138,7 @@ Re-run with `bash bench/compare_langs.sh --both` for latest numbers.
 |------|------------------------------|-----------------|--------|----------------------------|
 | F103 | Escape analysis              | GC overhead     | HIGH   | Compiler detects local-only|
 | F104 | Profile-guided IC extension  | 2x polymorphic  | MEDIUM | Beyond monomorphic IC      |
-| F105 | JIT compilation              | 5-50x hot paths | HUGE   | Trace or method JIT        |
+| F105 | JIT compilation              | DONE (PoC)      | —      | ARM64 hot loops, D87       |
 | —    | Register-based IR (Wasm)     | 1.5-3x all      | HIGH   | Major rewrite              |
 | —    | Superinstructions (Wasm)     | 10-20% general  | MEDIUM | Bytecode fusion            |
 | —    | Generational GC              | 2-5x allocation | HIGH   | Write barriers required    |
@@ -181,4 +190,5 @@ JIT (Phase 37) target: bring Wasm gap to 2-5x of native.
 | D84 Custom Wasm        | `.dev/decisions.md`            |
 | D85 NaN boxing         | `.dev/decisions.md`            |
 | D86 Wasm optimization  | `.dev/decisions.md`            |
+| D87 JIT PoC            | `.dev/decisions.md`            |
 | Checklist items        | `.dev/checklist.md` (F99-F120)       |
