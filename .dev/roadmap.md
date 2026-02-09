@@ -199,21 +199,36 @@ New Value types: Array, BigInt, BigDecimal, Ratio. Decision D89.
 | 43.7   | Auto-promotion (+', *', -', inc', dec')          | COMPLETE |
 | 43.8   | Ratio + numerator/denominator/rationalize        | COMPLETE |
 
-### Phase 44: OSS Release Prep — PLANNED
+### Phase 44: OSS Release Prep — COMPLETE
 
-Prepare for v0.1.0-alpha public release.
+v0.1.0-alpha release preparation.
 **Master plan**: `private/20260208/02_oss_plan.md`
 
-| Sub     | Category              | Content                                           | Status |
-|---------|-----------------------|---------------------------------------------------|--------|
-| 44.1-4  | Lazy Range            | LazyRange Value, infinite range, chunked seqs     | TODO   |
-| 44.5-8  | Wasm Speed            | Dispatch optimization, Wasm JIT, benchmarks       | TODO   |
-| 44.9-11 | Directory             | Remove wasm_rt, merge common/native, fix imports  | TODO   |
-| 44.12-15| Refactoring           | Full file review, dead code, naming, comments     | TODO   |
-| 44.16-18| License               | EPL-1.0 headers, copyright verification           | TODO   |
-| 44.19-22| Repo Cleanup          | .claude/.gitignore, CONTRIBUTING.md               | TODO   |
-| 44.23-25| Documentation         | README, ARCHITECTURE, DIFFERENCES                 | TODO   |
-| 44.26-30| Release Prep          | GitHub config, Pre-Alpha badge, acknowledgments   | TODO   |
+| Sub      | Category              | Content                                           | Status   |
+|----------|-----------------------|---------------------------------------------------|----------|
+| 44.1-2   | Lazy Range            | LazyRange Value, infinite range support            | COMPLETE |
+| 44.3-8   | Wasm Speed            | Dispatch optimization, wasm benchmarks             | COMPLETE |
+| 44.9-11  | Directory             | Remove wasm_rt, merge common/native, fix imports   | COMPLETE |
+| 44.12-15 | Refactoring           | Module doc comments, stale phase IDs, TODOs        | COMPLETE |
+| 44.16-18 | License               | EPL-1.0 headers, copyright verification            | COMPLETE |
+| 44.19-22 | Repo Cleanup          | .gitignore, CONTRIBUTING.md                        | COMPLETE |
+| 44.23-25 | Documentation         | README, ARCHITECTURE, DIFFERENCES                  | COMPLETE |
+| 44.26-30 | Release Prep          | GitHub config, badges, acknowledgments             | COMPLETE |
+
+### Phase 45: Wasm Runtime Optimization — COMPLETE
+
+Interpreter-level optimizations for wasm execution.
+
+| Sub   | Content                                      | Status   |
+|-------|----------------------------------------------|----------|
+| 45.1  | TinyGo benchmark infrastructure              | COMPLETE |
+| 45.2  | Predecoded IR (fixed-width 8-byte instrs)    | COMPLETE |
+| 45.3  | Tail-call dispatch                           | SKIPPED (0% on M4) |
+| 45.4  | Superinstructions (11 fused opcodes)         | COMPLETE |
+| 45.5  | Cached memory pointer                        | COMPLETE |
+
+**Results**: 2-3x cumulative improvement (fib 2.3x, sieve 3.0x, gcd 2.0x).
+Remaining 7-65x gap to wasmtime is interpreter vs JIT fundamental limit.
 
 ### Phase 50+: Post-Release (deferred)
 

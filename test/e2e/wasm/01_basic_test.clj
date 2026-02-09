@@ -46,4 +46,12 @@
 (wasm-store 108 30)
 (assert (= 60 (sum-range 100 3)) "sum(10,20,30) should be 60")
 
+;; Part 4: Recursive function calls with memory (nqueens)
+;; Regression test for label stack leak on function return (F138).
+(def nq-mod (wasm/load "src/wasm/testdata/25_nqueens.wasm"))
+(def nqueens (wasm/fn nq-mod "nqueens" {:params [:i32] :results [:i32]}))
+
+(assert (= 92 (nqueens 8)) "nqueens(8) should be 92")
+(assert (= 92 (nqueens 8)) "nqueens(8) repeated should be 92")
+
 (println "PASS: 01_basic_test")

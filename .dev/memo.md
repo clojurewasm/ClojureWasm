@@ -32,18 +32,17 @@ Plan: `.dev/wasm-opt-plan.md`
 
 ## Current Task
 
-Phase 45 COMPLETE. Plan next phase.
+F138 DONE. Plan next phase.
 
 ## Previous Task
 
-Phase 45 COMPLETE: Wasm Runtime Optimization — 2-3x cumulative improvement.
-- 45.1: TinyGo benchmark infrastructure (6 wasm benchmarks, native + wasm)
-- 45.2: Predecoded IR (1.7-2.5x, fixed-width 8-byte instructions)
-- 45.3: SKIPPED — tail-call dispatch (0% on Apple M4)
-- 45.4: Superinstructions (1.08-1.30x, 11 fused opcodes)
-- 45.5: Cached memory pointer (marginal ~3% on sieve)
-- Cumulative: fib 2.3x, tak 1.9x, sieve 3.0x, gcd 2.0x
-- Remaining gap to wasmtime: 7-65x (interpreter vs JIT fundamental limit)
+F138 FIX: Wasm label stack leak on function return.
+- Root cause: `return` opcode (0x0F) exits executeIR without popping labels.
+  `doCallDirectIR`/`doCallDirect` pop the frame but didn't reset label_ptr.
+- Fix: Reset `self.label_ptr = frame.label_stack_base` after popFrame in both paths.
+- Also increased FRAME_STACK_SIZE 256→1024 and LABEL_STACK_SIZE 256→4096.
+- Added nqueens WAT regression test (25_nqueens.wasm in E2E test 01).
+- All wasm tests pass: nqueens(8)=92, nested recursion, depth(500).
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

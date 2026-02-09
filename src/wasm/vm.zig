@@ -68,8 +68,8 @@ pub const WasmError = error{
 };
 
 const OPERAND_STACK_SIZE = 4096;
-const FRAME_STACK_SIZE = 256;
-const LABEL_STACK_SIZE = 256;
+const FRAME_STACK_SIZE = 1024;
+const LABEL_STACK_SIZE = 4096;
 
 const Frame = struct {
     locals_start: usize, // index into operand stack where locals begin
@@ -1724,6 +1724,7 @@ pub const Vm = struct {
 
                 // Move results to correct position
                 const frame = self.popFrame();
+                self.label_ptr = frame.label_stack_base;
                 self.current_branch_table = saved_bt;
                 const n = frame.return_arity;
                 if (n > 0) {
@@ -2342,6 +2343,7 @@ pub const Vm = struct {
                 }
 
                 const frame = self.popFrame();
+                self.label_ptr = frame.label_stack_base;
                 self.current_branch_table = saved_bt;
                 const n = frame.return_arity;
                 if (n > 0) {

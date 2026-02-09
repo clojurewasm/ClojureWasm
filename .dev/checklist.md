@@ -34,4 +34,4 @@ Check at session start for items that become actionable.
 | F135 | import → wasm mapping design                 | Explore ClojureDart-like :import for .wasm. Phase 45               |
 | F136 | Wasm table.copy cross-table support          | Currently stub; needed for full bulk memory ops spec               |
 | F137 | Wasm table.init implementation               | Currently stub; needed for element segment initialization          |
-| F138 | Wasm recursive call + memory access bug      | nqueens(8) crashes with OutOfBoundsMemoryAccess on 2nd+ iteration within single invoke; nqueens(7) works fine |
+| F138 | ~~Wasm recursive call + memory access bug~~  | DONE: Label stack leak on function return — labels not cleaned up after popFrame |
