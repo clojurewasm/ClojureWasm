@@ -4,10 +4,11 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 36 COMPLETE**
+- **All phases through 37 COMPLETE**
 - Coverage: 659 vars done across all namespaces (535/704 core, 44/45 math, 7/19 java.io, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
+- **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
 
 ## Strategic Direction
 
@@ -19,27 +20,27 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 37: VM Optimization + JIT (A→B incremental)
+Phase 37: VM Optimization + JIT (A→B incremental) — **COMPLETE**
 1. [x] 37.1: Profiling infrastructure (opcode frequency, allocation histogram)
 2. [x] 37.2: Superinstructions (fuse common opcode sequences)
 3. [x] 37.3: Fused branch + loop superinstructions
 4. [x] 37.4: JIT PoC — hot loop native code generation
-5. [ ] 37.5: Slab GC + bitmap marking (if GC bottleneck remains)
-6. [ ] 37.6: Escape analysis + polymorphic IC (if needed)
+5. [x] 37.5: SKIP — gc_stress 24ms < Java 31ms, GC is not bottleneck
+6. [x] 37.6: SKIP — remaining bottleneck is call/ret overhead, not IC/escape
 
 ## Current Task
 
-37.5: Evaluate if Slab GC is needed. Profile post-JIT to identify remaining bottlenecks.
+Plan Phase 38. Phase 37 complete, need to determine next phase.
 
 ## Previous Task
 
-37.4: JIT PoC — hot loop native ARM64 code generation — DONE.
-- 7 fused opcodes (0xD0-0xD6): branch_ne/ge/gt_locals, branch_ne/ge/gt_local_const, recur_loop
-- Compare-and-branch: eq/lt/le_locals + jump_if_false → single branch dispatch
-- Recur+loop: recur + jump_back → recur_loop (consumes next code word)
-- In-place replacement (no instruction removal, no jump fixup needed)
-- arith_loop: 40ms → 31ms (1.29x), cumulative 53ms → 31ms (1.71x)
-- Dispatch reduction: arith_loop 6→4 instructions/iteration (33%)
+37.5 evaluation — DONE (no implementation needed).
+Post-JIT profiling results:
+- gc_stress 24ms (209K alloc, 10MB): map_new × 100K, already < Java 31ms → Slab GC not needed
+- fib_recursive 17ms: call/ret 30% — function call frame management is bottleneck
+- nqueens 14ms: call/var_load/jump_if_false — mixed workload
+- string_ops 24ms: call + var_load + string allocation
+- Remaining bottleneck = function call overhead, not GC or IC → 37.5/37.6 skipped
 
 ## Known Issues
 
@@ -67,7 +68,7 @@ Session resume procedure: read this file → follow references below.
 |----------------------|-------------------------------------------|
 | Roadmap              | `.dev/roadmap.md`                    |
 | Deferred items       | `.dev/checklist.md` (F3-F120)             |
-| Decisions            | `.dev/decisions.md` (D1-D86)        |
+| Decisions            | `.dev/decisions.md` (D1-D87)        |
 | Optimizations        | `.dev/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |

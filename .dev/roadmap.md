@@ -68,6 +68,10 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 36.9  | F119 WIT string fix              | ptr/len swap in callWithWitMarshalling                 |
 | 36.10 | Documentation + cleanup          | wasm-spec-support.md updated, Phase 36 complete        |
 | 36.11 | Pre-JIT optimizations            | F101 into transient, F102/SmallStr/Intern analyzed+deferred |
+| 37.1  | Profiling infrastructure         | Opcode frequency, allocation histogram, GC benchmarks      |
+| 37.2  | Superinstructions                | 10 fused opcodes, arith_loop 53→40ms (1.33x)              |
+| 37.3  | Branch+loop fusion               | 7 fused branch ops, arith_loop 40→31ms (1.29x)            |
+| 37.4  | JIT PoC — ARM64 hot loops (D87)  | ARM64 native code gen, arith_loop 31→3ms (10.3x)          |
 
 **Stats**: 659/704 core vars done (535 clojure.core, 14 namespaces total)
 
@@ -93,23 +97,28 @@ Remaining work from Phase 36:
 
 **Reference**: F118, F119 in checklist.md
 
-### Phase 37: Advanced GC + JIT Research
+### Phase 37: VM Optimization + JIT PoC — COMPLETE
 
-Research phase for generational GC and JIT compilation feasibility.
+Interpreter-level optimizations with JIT PoC for hot integer loops.
 
-**Scope**:
-- Generational GC design: write barrier strategy, nursery sizing
-- JIT compilation survey: trace JIT vs method JIT vs Cranelift backend
-- Escape analysis (F103): local-only Values skip GC tracking
-- Profile-guided optimization (F104): extend inline caching beyond monomorphic
-- Design documents + PoC prototypes, not full implementation
+**Results** (cumulative from baseline 36.11):
+- Superinstructions (37.2): 10 fused opcodes, arith_loop 53→40ms (1.33x)
+- Branch+loop fusion (37.3): 7 fused branch ops, arith_loop 40→31ms (1.29x)
+- JIT PoC (37.4): ARM64 native code gen, arith_loop 31→3ms (10.3x)
+- **Total**: arith_loop 53→3ms (17.7x), fib_recursive 20→17ms (1.2x)
+- 37.5 (Slab GC): SKIPPED — gc_stress 24ms < Java 31ms
+- 37.6 (Escape analysis + IC): SKIPPED — remaining bottleneck is call/ret overhead
 
-**Wasm interpreter JIT targets** (post-36.7 optimization):
-- wasm_fib: 7.7s → target ~0.5s with JIT (vs wasmtime ~0.02ms)
-- wasm_sieve: 792ms → target ~50ms
+**Decisions**: D87 (JIT PoC architecture)
 
-**Prerequisite**: Phase 36 complete
-**Note**: Design documents and PoC first, full implementation in subsequent phases.
+### Phase 38: TBD
+
+Next phase to be planned. Potential directions:
+- Extended JIT (recursive functions, collection ops)
+- Function call optimization (inline caching for hot call sites)
+- Var coverage expansion (535/704 core → 600+)
+- Wasm interpreter JIT (wasm_fib 7.7s target ~0.5s)
+- Codebase restructuring (F110)
 
 ### Phase 29: Codebase Restructuring (deferred)
 
