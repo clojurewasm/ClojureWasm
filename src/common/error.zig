@@ -161,6 +161,14 @@ pub fn annotateLocation(loc: SourceLocation) void {
     }
 }
 
+/// If no error info is currently stored, set a fallback message.
+/// Use this in `catch` paths where the inner call may or may not have set error info.
+pub fn ensureInfoSet(phase: Phase, kind: Kind, location: SourceLocation, comptime fmt: []const u8, args: anytype) void {
+    if (last_error == null) {
+        setInfoFmt(phase, kind, location, fmt, args);
+    }
+}
+
 pub fn kindToError(kind: Kind) Error {
     return switch (kind) {
         .syntax_error => error.SyntaxError,

@@ -148,8 +148,14 @@ pub fn loadFileFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .io_error, .{}, "Could not read file: {s}", .{path});
 
     // Evaluate all forms using bootstrap pipeline
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    return bootstrap.evalString(allocator, env, content) catch return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
+    return bootstrap.evalString(allocator, env, content) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "load-file: evaluation error", .{});
+        return error.EvalError;
+    };
 }
 
 /// (line-seq filename) => list of strings

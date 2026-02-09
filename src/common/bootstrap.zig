@@ -163,7 +163,10 @@ const hot_core_defs =
 /// Called after registerBuiltins. Temporarily switches to clojure.core namespace,
 /// then re-refers all bindings into user namespace.
 pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
 
     // Save current namespace and switch to clojure.core
     const saved_ns = env.current_ns;
@@ -198,10 +201,16 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Re-refers walk bindings into user namespace for convenience.
 pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.walk namespace
-    const walk_ns = env.findOrCreateNamespace("clojure.walk") catch return error.EvalError;
+    const walk_ns = env.findOrCreateNamespace("clojure.walk") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.walk so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         walk_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -230,17 +239,26 @@ pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Depends on clojure.walk being loaded first.
 pub fn loadTemplate(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.template namespace
-    const template_ns = env.findOrCreateNamespace("clojure.template") catch return error.EvalError;
+    const template_ns = env.findOrCreateNamespace("clojure.template") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.template
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
     }
 
     // Refer clojure.walk bindings into clojure.template (for postwalk-replace)
-    const walk_ns = env.findNamespace("clojure.walk") orelse return error.EvalError;
+    const walk_ns = env.findNamespace("clojure.walk") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var walk_iter = walk_ns.mappings.iterator();
     while (walk_iter.next()) |entry| {
         template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -269,10 +287,16 @@ pub fn loadTemplate(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Re-refers test bindings into user namespace for convenience.
 pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.test namespace
-    const test_ns = env.findOrCreateNamespace("clojure.test") catch return error.EvalError;
+    const test_ns = env.findOrCreateNamespace("clojure.test") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.test so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -309,10 +333,16 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Re-refers set bindings into user namespace for convenience.
 pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.set namespace
-    const set_ns = env.findOrCreateNamespace("clojure.set") catch return error.EvalError;
+    const set_ns = env.findOrCreateNamespace("clojure.set") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.set so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         set_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -338,10 +368,16 @@ pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
 
 pub fn loadData(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.data namespace
-    const data_ns = env.findOrCreateNamespace("clojure.data") catch return error.EvalError;
+    const data_ns = env.findOrCreateNamespace("clojure.data") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.data
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         data_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -365,10 +401,16 @@ pub fn loadData(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Re-refers repl bindings into user namespace for convenience.
 pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
     // Create clojure.repl namespace
-    const repl_ns = env.findOrCreateNamespace("clojure.repl") catch return error.EvalError;
+    const repl_ns = env.findOrCreateNamespace("clojure.repl") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Refer all clojure.core bindings into clojure.repl so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         repl_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -400,9 +442,15 @@ pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Load and evaluate clojure/java/shell.clj in the given Env.
 /// Creates dynamic vars *sh-dir*, *sh-env* and macros with-sh-dir, with-sh-env.
 pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
-    const shell_ns = env.findOrCreateNamespace("clojure.java.shell") catch return error.EvalError;
+    const shell_ns = env.findOrCreateNamespace("clojure.java.shell") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         shell_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -420,9 +468,15 @@ pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Load and evaluate clojure/pprint.clj in the given Env.
 /// Defines print-table (pprint is a Zig builtin registered in registry.zig).
 pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
-    const pprint_ns = env.findOrCreateNamespace("clojure.pprint") catch return error.EvalError;
+    const pprint_ns = env.findOrCreateNamespace("clojure.pprint") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         pprint_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -438,9 +492,15 @@ pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
 }
 
 pub fn loadStacktrace(allocator: Allocator, env: *Env) BootstrapError!void {
-    const st_ns = env.findOrCreateNamespace("clojure.stacktrace") catch return error.EvalError;
+    const st_ns = env.findOrCreateNamespace("clojure.stacktrace") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         st_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -456,9 +516,15 @@ pub fn loadStacktrace(allocator: Allocator, env: *Env) BootstrapError!void {
 }
 
 pub fn loadZip(allocator: Allocator, env: *Env) BootstrapError!void {
-    const zip_ns = env.findOrCreateNamespace("clojure.zip") catch return error.EvalError;
+    const zip_ns = env.findOrCreateNamespace("clojure.zip") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     var core_iter = core_ns.mappings.iterator();
     while (core_iter.next()) |entry| {
         zip_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
@@ -541,7 +607,10 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     var last_value: Value = Value.nil_val;
     for (forms) |form| {
         const node = try analyzeForm(node_alloc, env, form);
-        last_value = tw.run(node) catch return error.EvalError;
+        last_value = tw.run(node) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
     }
     return last_value;
 }
@@ -617,7 +686,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 
             vm.* = VM.initWithEnv(allocator, env);
             vm.gc = gc;
-            last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+            last_value = vm.run(&compiler.chunk) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
         }
         return last_value;
     }
@@ -667,7 +739,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             vm.deinit();
             env.allocator.destroy(vm);
         }
-        last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+        last_value = vm.run(&compiler.chunk) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
         const vm_fns = vm.detachFnAllocations();
         for (vm_fns) |f| {
@@ -708,7 +783,10 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
         compiler.chunk.emitOp(.ret) catch return error.CompileError;
 
         vm.* = VM.initWithEnv(allocator, env);
-        last_value = vm.run(&compiler.chunk) catch return error.EvalError;
+        last_value = vm.run(&compiler.chunk) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
     }
     return last_value;
 }
@@ -840,7 +918,10 @@ pub var last_thrown_exception: ?Value = null;
 /// Heap-allocates the VM to avoid C stack overflow from recursive
 /// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).
 fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
-    const env = macro_eval_env orelse return error.EvalError;
+    const env = macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     // Save namespace before VM call — performCall switches to the function's
     // defining namespace (D68), but if the function throws, the ret opcode
     // never executes and the namespace stays corrupted.
@@ -925,7 +1006,10 @@ pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const 
     defer env.allocator.destroy(vm);
     vm.* = VM.initWithEnv(allocator, env);
     vm.gc = gc;
-    return vm.run(&chunk) catch return error.EvalError;
+    return vm.run(&chunk) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 }
 
 /// Unified bootstrap: loads all standard library namespaces.
@@ -959,7 +1043,10 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
 
     // Re-compile core.clj (all defn/defmacro forms → bytecode)
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     env.current_ns = core_ns;
     _ = try evalStringVMBootstrap(allocator, env, core_clj_source);
     _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
@@ -1053,10 +1140,16 @@ pub fn generateBootstrapCache(allocator: Allocator, env: *Env) BootstrapError![]
 /// and *print-level* var caches for correct print behavior.
 pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: []const u8) BootstrapError!void {
     var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
-    de.restoreEnvSnapshot(allocator, env) catch return error.EvalError;
+    de.restoreEnvSnapshot(allocator, env) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
 
     // Reconnect printVar caches (value.initPrintVars)
-    const core_ns = env.findNamespace("clojure.core") orelse return error.EvalError;
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
     if (core_ns.resolve("*print-length*")) |pl_var| {
         if (core_ns.resolve("*print-level*")) |pv_var| {
             value_mod.initPrintVars(pl_var, pv_var);

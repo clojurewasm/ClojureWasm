@@ -530,7 +530,10 @@ pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "find-var expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const ns_name = sym.ns orelse {
         // Unqualified — look in current ns
         const current = env.current_ns orelse return Value.nil_val;
@@ -558,7 +561,10 @@ pub fn resolveFn(_: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[args.len - 1].asSymbol(),
         else => return Value.nil_val,
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     // 2-arity: (resolve ns sym) — first arg is ns
     const ns = if (args.len == 2) blk: {
@@ -619,7 +625,10 @@ pub fn internFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[1].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "intern expects a symbol for name, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const ns = env.findNamespace(ns_name) orelse {
         return err.setErrorFmt(.eval, .value_error, .{}, "No namespace: {s}", .{ns_name});
     };
@@ -642,7 +651,10 @@ const ns_ops = @import("ns_ops.zig");
 pub fn loadedLibsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to loaded-libs", .{args.len});
     // Build a set of loaded lib names
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     // Return all namespace names as a set
     var count: usize = 0;
     var iter = env.namespaces.iterator();

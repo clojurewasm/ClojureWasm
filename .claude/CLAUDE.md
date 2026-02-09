@@ -55,6 +55,9 @@ yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | len
 - TDD cycle: Red → Green → Refactor
 - Run tests: `zig build test`
 - Run e2e tests: `bash test/e2e/run_e2e.sh`
+- **Upstream test porting** (Phase 42+): Follow `.dev/test-porting-plan.md`
+  - Port relevant upstream tests for each sub-task
+  - Run full upstream regression suite before committing
 - `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 
 **4. Complete** (per task)
@@ -224,3 +227,4 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Bench history   | `bench/history.yaml`                 | Benchmark progression across optimizations |
 | Cross-lang      | `bench/cross-lang-results.yaml`      | Cross-language comparison (F121 fair)      |
 | Bytecode debug  | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
+| Test porting plan | `.dev/test-porting-plan.md`        | Every sub-task in Phase 42+                |

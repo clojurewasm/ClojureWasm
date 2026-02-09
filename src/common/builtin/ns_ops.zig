@@ -232,6 +232,7 @@ fn loadResource(allocator: Allocator, env: *@import("../env.zig").Env, resource:
                 if (tracked_content) |tc| {
                     if (loaded_libs_allocator) |ta| ta.free(tc);
                 }
+                err.ensureInfoSet(.eval, .internal_error, .{}, "error loading resource: {s}", .{resource});
                 return error.EvalError;
             };
 
@@ -267,7 +268,10 @@ fn loadResource(allocator: Allocator, env: *@import("../env.zig").Env, resource:
 pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to load", .{});
 
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     for (args) |arg| {
         const path_str = switch (arg.tag()) {
@@ -281,7 +285,10 @@ pub fn loadFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else
             path_str;
 
-        const loaded = loadResource(allocator, env, resource) catch return error.EvalError;
+        const loaded = loadResource(allocator, env, resource) catch {
+            err.ensureInfoSet(.eval, .io_error, .{}, "error loading resource: {s}", .{resource});
+            return error.EvalError;
+        };
         if (!loaded) {
             return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s}.clj on load path", .{resource});
         }
@@ -303,7 +310,10 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "the-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     if (env.findNamespace(name) == null) return error.NamespaceNotFound;
     return Value.initSymbol(allocator, .{ .ns = null, .name = name });
 }
@@ -316,7 +326,10 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Returns a list of all namespace names as symbols.
 pub fn allNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to all-ns", .{args.len});
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     var ns_iter = env.namespaces.iterator();
     var count: usize = 0;
@@ -349,7 +362,10 @@ pub fn findNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "find-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     if (env.findNamespace(name)) |ns| {
         return Value.initSymbol(allocator, .{ .ns = null, .name = ns.name });
     }
@@ -382,7 +398,10 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "create-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const ns = try env.findOrCreateNamespace(name);
     return Value.initSymbol(allocator, .{ .ns = null, .name = ns.name });
 }
@@ -403,7 +422,10 @@ fn setNsDocFn(_: Allocator, args: []const Value) anyerror!Value {
         .string => args[1].asString(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a string, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env_ptr = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env_ptr = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     if (env_ptr.findNamespace(name)) |ns| {
         ns.doc = doc;
     }
@@ -423,7 +445,10 @@ pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const ns = try env.findOrCreateNamespace(name);
 
     // Refer clojure.core bindings into the new namespace
@@ -471,7 +496,10 @@ fn resolveNs(args: []const Value) !*Namespace {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     return env.findNamespace(name) orelse return error.NamespaceNotFound;
 }
 
@@ -585,7 +613,10 @@ pub fn nsResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-resolve expects a symbol as first argument, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const ns = env.findNamespace(ns_name) orelse return Value.nil_val;
 
     // Last arg is always the symbol to resolve
@@ -679,9 +710,15 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[0].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "refer expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
-    const current_ns = env.current_ns orelse return error.EvalError;
+    const current_ns = env.current_ns orelse {
+            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+            return error.EvalError;
+        };
 
     // Check for :only and :exclude filters
     var only_list: ?[]const Value = null;
@@ -771,10 +808,16 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .symbol => args[1].asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "alias expects a symbol as second argument, got {s}", .{@tagName(args[1].tag())}),
     };
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
     const target_ns = env.findNamespace(ns_name) orelse
         return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{ns_name});
-    const current_ns = env.current_ns orelse return error.EvalError;
+    const current_ns = env.current_ns orelse {
+            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+            return error.EvalError;
+        };
     try current_ns.setAlias(alias_name, target_ns);
     return Value.nil_val;
 }
@@ -789,7 +832,10 @@ pub fn aliasFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// (require 'ns :reload)
 /// Loads namespace from file if not already loaded. Supports :reload/:reload-all.
 pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to require", .{});
 
@@ -829,7 +875,10 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 try requireLib(allocator, env, ns_name, reload);
                 const source_ns = env.findNamespace(ns_name) orelse
                     return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
-                const current_ns = env.current_ns orelse return error.EvalError;
+                const current_ns = env.current_ns orelse {
+            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+            return error.EvalError;
+        };
 
                 var j: usize = 1;
                 while (j + 1 < v.items.len) : (j += 2) {
@@ -926,8 +975,14 @@ fn requireLib(allocator: Allocator, env: *@import("../env.zig").Env, ns_name: []
 /// Equivalent to require + refer :all (or :only).
 /// Loads namespace from file if not already loaded.
 pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
-    const current_ns = env.current_ns orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
+    const current_ns = env.current_ns orelse {
+            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+            return error.EvalError;
+        };
 
     if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to use", .{});
 

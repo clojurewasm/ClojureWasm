@@ -34,7 +34,10 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (s.len == 0) return Value.nil_val;
 
     var reader = Reader.init(allocator, s);
-    const form_opt = reader.read() catch return error.EvalError;
+    const form_opt = reader.read() catch {
+        err.ensureInfoSet(.eval, .syntax_error, .{}, "read-string: reader error", .{});
+        return error.EvalError;
+    };
     const form = form_opt orelse return Value.nil_val;
     return macro.formToValue(allocator, form);
 }
@@ -49,7 +52,10 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// side effects (def, declare) are visible to subsequent forms.
 pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to eval", .{args.len});
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     // Convert Value -> Form
     const form = try macro.valueToForm(allocator, args[0]);
@@ -72,10 +78,16 @@ pub fn evalFn(allocator: Allocator, args: []const Value) anyerror!Value {
 fn evalOneForm(allocator: Allocator, env: *Env, form: Form) anyerror!Value {
     var analyzer = Analyzer.initWithEnv(allocator, env);
     defer analyzer.deinit();
-    const node = analyzer.analyze(form) catch return error.AnalyzeError;
+    const node = analyzer.analyze(form) catch {
+        err.ensureInfoSet(.analysis, .internal_error, .{}, "eval: analysis error", .{});
+        return error.AnalyzeError;
+    };
 
     var tw = TreeWalk.initWithEnv(allocator, env);
-    return tw.run(node) catch return error.EvalError;
+    return tw.run(node) catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "eval: evaluation error", .{});
+        return error.EvalError;
+    };
 }
 
 fn isDoForm(form: Form) bool {
@@ -168,15 +180,27 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     if (s.len == 0) return Value.nil_val;
 
-    const env = bootstrap.macro_eval_env orelse return error.EvalError;
+    const env = bootstrap.macro_eval_env orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
+        return error.EvalError;
+    };
 
     var reader = Reader.init(allocator, s);
     var result: Value = Value.nil_val;
     while (true) {
-        const form_opt = reader.read() catch return error.EvalError;
+        const form_opt = reader.read() catch {
+            err.ensureInfoSet(.eval, .syntax_error, .{}, "load-string: reader error", .{});
+            return error.EvalError;
+        };
         const form = form_opt orelse break;
-        const val = macro.formToValue(allocator, form) catch return error.EvalError;
-        const eval_form = macro.valueToForm(allocator, val) catch return error.EvalError;
+        const val = macro.formToValue(allocator, form) catch {
+            err.ensureInfoSet(.eval, .internal_error, .{}, "load-string: form conversion error", .{});
+            return error.EvalError;
+        };
+        const eval_form = macro.valueToForm(allocator, val) catch {
+            err.ensureInfoSet(.eval, .internal_error, .{}, "load-string: form conversion error", .{});
+            return error.EvalError;
+        };
 
         if (isDoForm(eval_form)) {
             const body = eval_form.data.list[1..];
@@ -210,7 +234,10 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
             };
             if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
-            const form_opt = reader.read() catch return error.EvalError;
+            const form_opt = reader.read() catch {
+                err.ensureInfoSet(.eval, .syntax_error, .{}, "edn/read-string: reader error", .{});
+                return error.EvalError;
+            };
             const form = form_opt orelse return Value.nil_val;
             return macro.formToValue(allocator, form);
         },
@@ -223,7 +250,10 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
             };
             if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
-            const form_opt = reader.read() catch return error.EvalError;
+            const form_opt = reader.read() catch {
+                err.ensureInfoSet(.eval, .syntax_error, .{}, "edn/read-string: reader error", .{});
+                return error.EvalError;
+            };
             const form = form_opt orelse return Value.nil_val;
             return macro.formToValue(allocator, form);
         },
