@@ -16,5 +16,8 @@ bench/simd/*.wasm
 # direnv cache
 .direnv/
 
-# Claude Code local settings
-.claude/settings.local.json
+# Claude Code
+.claude/
+
+# Private notes
+private/

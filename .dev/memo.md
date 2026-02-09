@@ -50,8 +50,8 @@ A6. License
 18. [x] 44.18: Third-party code attribution check (NOTICE file)
 
 A7. .claude/ + private/ Cleanup
-19. [ ] 44.19: Add .claude/ to .gitignore
-20. [ ] 44.20: Add private/ to .gitignore
+19. [x] 44.19: Add .claude/ to .gitignore (backup → git rm → .gitignore → restore)
+20. [x] 44.20: Add private/ to .gitignore
 21. [ ] 44.21: CONTRIBUTING.md from useful parts of CLAUDE.md
 22. [ ] 44.22: Decide .dev/ handling (public or .gitignore)
 
@@ -69,15 +69,13 @@ A9. Release Preparation
 
 ## Current Task
 
-Phase 44.19: Add .claude/ to .gitignore.
+Phase 44.21: CONTRIBUTING.md from useful parts of CLAUDE.md.
 
 ## Previous Task
 
-Phase 44.18 COMPLETE: Third-party code attribution check.
-- Created NOTICE file with Clojure + SCI attribution
-- All third-party code is EPL-1.0 compatible
-- src/clj/: 11 files from upstream Clojure, all marked with UPSTREAM-DIFF
-- No vendored libraries, no license conflicts
+Phase 44.19+44.20 COMPLETE: .claude/ and private/ gitignore.
+- .claude/: backup → git rm → .gitignore → restore
+- private/: added to .gitignore (was never tracked)
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)
