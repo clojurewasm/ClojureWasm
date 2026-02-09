@@ -4,11 +4,12 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 42 COMPLETE**
-- Coverage: 789 vars done across all namespaces (587/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
+- **Phase 43.1-43.4 COMPLETE** (Array subsystem done), 43.5-43.7 remaining
+- Coverage: 789+ vars done across all namespaces (587/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
 - **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
 - **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
+- **Test porting**: 38 upstream test files, all passing. See `.dev/test-porting-plan.md`
 
 ## Strategic Direction
 
@@ -41,7 +42,12 @@ Design:
 
 ## Previous Task
 
-Phase 43.4 COMPLETE: amap, areduce macros in core.clj.
+Phase 43.4 COMPLETE: Array subsystem fully done.
+- 43.1-43.4: 34 array builtins, amap/areduce macros, seq integration
+- EvalError bare return fix (~50 call sites, ensureInfoSet helper)
+- Test porting plan created (.dev/test-porting-plan.md)
+- Phase 42 test porting: protocols.clj + vars.clj + arrays.clj
+- All 38 upstream test files pass (both VM + TreeWalk)
 
 ## Known Issues
 
@@ -69,15 +75,32 @@ Session resume procedure: read this file → follow references below.
 |----------------------|-------------------------------------------|
 | Roadmap              | `.dev/roadmap.md`                    |
 | Deferred items       | `.dev/checklist.md` (F3-F120)             |
-| Decisions            | `.dev/decisions.md` (D1-D88)        |
+| Decisions            | `.dev/decisions.md` (D1-D89)        |
 | Optimizations        | `.dev/optimizations.md`             |
 | Benchmarks           | `bench/history.yaml`                      |
 | Zig tips             | `.claude/references/zig-tips.md`          |
 | Skip recovery        | `.dev/skip-recovery.md`               |
+| Test porting plan    | `.dev/test-porting-plan.md`           |
 | Archived plans       | `.dev/archive/` (Phase 24-30, CX, A) |
 
 ## Handover Notes
 
+- **Phase 43.1-43.4 COMPLETE**: Array subsystem
+  - D89: Three new Value types (array, big_int, ratio) in NaN boxing
+  - 34 array builtins: constructors, typed arrays, setters, coercion, macros
+  - Array seq integration (seq/first/rest/nth/count/vec on arrays)
+  - Upstream test port: arrays.clj (14 tests, 144 assertions)
+- **Phase 42 COMPLETE**: Quick Wins + Protocol Extension
+  - 42.1: uri?, uuid?, destructure, seq-to-map-for-destructuring
+  - 42.2: extend, extenders, extends?, find-protocol-impl, find-protocol-method
+  - 42.3: get-thread-bindings, bound-fn*, bound-fn
+  - Test porting: protocols.clj (8 tests, 27 assertions), vars.clj (7 tests, 18 assertions)
+- **EvalError fix**: All bare `return error.EvalError` now set error details (~50 sites)
+  - Added `err.ensureInfoSet()` helper in error.zig
+  - bootstrap.zig, eval.zig, file_io.zig, misc.zig, ns_ops.zig all fixed
+- **Test porting plan**: `.dev/test-porting-plan.md` — mandatory for Phase 42+
+  - Each sub-task: implement → port tests → regression check → commit
+  - 38 upstream test files all passing
 - **Phase 41 COMPLETE**: Polish & Hardening
   - 41.1: ex-cause fix + pprint dynamic vars (7 vars)
   - 41.4: Upstream test porting (control, sequences, transducers)
