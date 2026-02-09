@@ -28,20 +28,16 @@ const strings_mod = @import("strings.zig");
 const io_mod = @import("io.zig");
 const atom_mod = @import("atom.zig");
 const sequences_mod = @import("sequences.zig");
-const numeric_mod = @import("numeric.zig");
 const metadata_mod = @import("metadata.zig");
 const regex_mod = @import("regex_builtins.zig");
 const eval_mod = @import("eval.zig");
 const ns_ops_mod = @import("ns_ops.zig");
 const misc_mod = @import("misc.zig");
-const clj_string_mod = @import("clj_string.zig");
 const multimethods_mod = @import("multimethods.zig");
-const file_io_mod = @import("file_io.zig");
 const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
 const math_mod = @import("math.zig");
-const java_io_mod = @import("java_io.zig");
 const http_server_mod = @import("http_server.zig");
 const lifecycle_mod = @import("../runtime/lifecycle.zig");
 const wasm_builtins_mod = @import("../wasm/builtins.zig");
@@ -54,7 +50,7 @@ const array_mod = @import("array.zig");
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ numeric_mod.builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ file_io_mod.builtins ++ system_mod.builtins ++ transient_mod.builtins ++ chunk_mod.builtins ++ lifecycle_mod.builtins ++ array_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ arithmetic.numeric_builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ io_mod.file_io_builtins ++ system_mod.builtins ++ transient_mod.builtins ++ chunk_mod.builtins ++ lifecycle_mod.builtins ++ array_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -171,7 +167,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
     // Register clojure.string namespace builtins
     const str_ns = try env.findOrCreateNamespace("clojure.string");
-    for (clj_string_mod.builtins) |b| {
+    for (strings_mod.clj_string_builtins) |b| {
         const v = try str_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
@@ -215,7 +211,7 @@ pub fn registerBuiltins(env: *Env) !void {
 
     // Register clojure.java.io namespace builtins (Phase 33.3, D82)
     const java_io_ns = try env.findOrCreateNamespace("clojure.java.io");
-    for (java_io_mod.builtins) |b| {
+    for (io_mod.java_io_builtins) |b| {
         const v = try java_io_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
