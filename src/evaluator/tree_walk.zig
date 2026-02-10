@@ -611,7 +611,20 @@ pub const TreeWalk = struct {
         };
 
         // Find matching arity (fn_n already extracted above for stack frame)
-        const arity = findArity(fn_n.arities, args.len) orelse return error.ArityError;
+        const arity = findArity(fn_n.arities, args.len) orelse {
+            const fn_name = fn_n.name orelse "fn";
+            if (callee_fn_val.tag() == .fn_val) {
+                const ns_name = callee_fn_val.asFn().defining_ns orelse "";
+                if (ns_name.len > 0) {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: {s}/{s}", .{ args.len, ns_name, fn_name });
+                } else {
+                    err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: {s}", .{ args.len, fn_name });
+                }
+            } else {
+                err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: {s}", .{ args.len, fn_name });
+            }
+            return error.ArityError;
+        };
 
         // Save caller's local frame on heap (avoids stack overflow in deep recursion)
         const saved_count = self.local_count;

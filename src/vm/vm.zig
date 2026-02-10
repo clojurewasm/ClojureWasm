@@ -1535,6 +1535,13 @@ pub const VM = struct {
             }
         }
 
+        const fn_name = primary.name orelse "fn";
+        const ns_name = fn_obj.defining_ns orelse "";
+        if (ns_name.len > 0) {
+            err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: {s}/{s}", .{ arg_count, ns_name, fn_name });
+        } else {
+            err_mod.setInfoFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to: {s}", .{ arg_count, fn_name });
+        }
         return error.ArityError;
     }
 
