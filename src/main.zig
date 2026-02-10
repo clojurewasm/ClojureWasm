@@ -187,13 +187,17 @@ pub fn main() !void {
     }
 
     if (nrepl_mode) {
-        nrepl.startServer(allocator, nrepl_port) catch |e| {
-            const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-            _ = stderr.write("Error: nREPL server failed: ") catch {};
-            _ = stderr.write(@errorName(e)) catch {};
-            _ = stderr.write("\n") catch {};
-            std.process.exit(1);
-        };
+        if (file) |f| {
+            startNreplWithFile(alloc, allocator, &gc, f, nrepl_port);
+        } else {
+            nrepl.startServer(allocator, nrepl_port) catch |e| {
+                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+                _ = stderr.write("Error: nREPL server failed: ") catch {};
+                _ = stderr.write(@errorName(e)) catch {};
+                _ = stderr.write("\n") catch {};
+                std.process.exit(1);
+            };
+        }
         return;
     }
 
@@ -1026,6 +1030,53 @@ fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     if (lifecycle.isShutdownRequested()) {
         lifecycle.runShutdownHooks(gc_alloc, &env);
     }
+}
+
+/// Start nREPL server with a file pre-evaluated.
+/// Used by: cljw --nrepl-server --port=N file.clj
+fn startNreplWithFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, filepath: []const u8, nrepl_port: u16) void {
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    bootstrapFromCache(gc_alloc, &env);
+
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Set up load paths for require resolution
+    const dir = std.fs.path.dirname(filepath) orelse ".";
+    ns_ops.addLoadPath(dir) catch {};
+    ns_ops.detectAndAddSrcPath(dir) catch {};
+
+    const max_file_size = 10 * 1024 * 1024;
+    const file_bytes = std.fs.cwd().readFileAlloc(infra_alloc, filepath, max_file_size) catch {
+        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr.write("Error: could not read file\n") catch {};
+        std.process.exit(1);
+    };
+    defer infra_alloc.free(file_bytes);
+
+    err.setSourceFile(filepath);
+    err.setSourceText(file_bytes);
+
+    // HTTP servers should run in background so nREPL can start after eval.
+    http_server.background_mode = true;
+
+    // Evaluate file (defines user namespaces/defs)
+    _ = bootstrap.evalString(gc_alloc, &env, file_bytes) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+
+    // Start nREPL server with user's Env (blocking accept loop).
+    nrepl.startServerWithEnv(infra_alloc, &env, gc, nrepl_port) catch |e| {
+        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr.write("Error: nREPL server failed: ") catch {};
+        _ = stderr.write(@errorName(e)) catch {};
+        _ = stderr.write("\n") catch {};
+        std.process.exit(1);
+    };
+
+    lifecycle.runShutdownHooks(gc_alloc, &env);
 }
 
 /// Evaluate embedded source, then start nREPL server on the same Env.
