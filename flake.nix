@@ -17,19 +17,29 @@
           inherit system;
         };
 
-        # Zig 0.15.2 binary (builtins.fetchTarball for sandbox-safe evaluation)
+        # Zig 0.15.2 binary (per-architecture URLs and hashes)
+        zigArchInfo = {
+          "aarch64-darwin" = {
+            url = "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz";
+            sha256 = "1csy5ch8aym67w06ffmlwamrzkfq8zwv4kcl6bcpc5vn1cbhd31g";
+          };
+          "x86_64-darwin" = {
+            url = "https://ziglang.org/download/0.15.2/zig-x86_64-macos-0.15.2.tar.xz";
+            sha256 = ""; # untested
+          };
+          "x86_64-linux" = {
+            url = "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz";
+            sha256 = "0skmy2qjg2z4bsxnkdzqp1hjzwwgnvqhw4qjfnsdpv6qm23p4wm0";
+          };
+          "aarch64-linux" = {
+            url = "https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz";
+            sha256 = ""; # untested
+          };
+        }.${system} or (throw "Unsupported system: ${system}");
+
         zigSrc = builtins.fetchTarball {
-          url =
-            if system == "aarch64-darwin" then
-              "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz"
-            else if system == "x86_64-darwin" then
-              "https://ziglang.org/download/0.15.2/zig-x86_64-macos-0.15.2.tar.xz"
-            else if system == "x86_64-linux" then
-              "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz"
-            else if system == "aarch64-linux" then
-              "https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz"
-            else throw "Unsupported system: ${system}";
-          sha256 = "1csy5ch8aym67w06ffmlwamrzkfq8zwv4kcl6bcpc5vn1cbhd31g";
+          url = zigArchInfo.url;
+          sha256 = zigArchInfo.sha256;
         };
 
         # Path wrapper: expose zig binary from nix store

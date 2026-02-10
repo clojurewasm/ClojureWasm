@@ -21,14 +21,11 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 46: Correctness & Cleanup
-
-1. [x] 46.1: Fix F95 — VM compiler intrinsic ns awareness
-2. [x] 46.2: Checklist cleanup — remove resolved items (F3, F95, F110, F130-134, F138)
+(CW on hold — no active tasks)
 
 ## Current Task
 
-nREPL improvements DONE. Continue next task.
+(none)
 
 ## Previous Task
 
