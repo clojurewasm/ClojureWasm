@@ -7,8 +7,8 @@
 > **Status: Pre-Alpha / Experimental**
 >
 > ClojureWasm is under active development. APIs may change, and there are
-> behavioral differences from reference Clojure. See [DIFFERENCES.md](DIFFERENCES.md)
-> for details.
+> behavioral differences from reference Clojure. Bugs and rough edges are
+> expected. See [DIFFERENCES.md](DIFFERENCES.md) for details.
 >
 > **Verified on**: macOS (Apple Silicon / aarch64). Linux x86_64 and
 > aarch64 builds pass CI but have not been extensively tested.

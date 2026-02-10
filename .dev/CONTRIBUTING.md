@@ -4,9 +4,9 @@ Thank you for your interest in ClojureWasm!
 
 ## Current Status
 
-ClojureWasm is in **pre-alpha / experimental** stage. The project is primarily
-developed by a single maintainer. Contributions are welcome, but please
-coordinate before starting significant work.
+ClojureWasm is in pre-alpha and not yet in a position to accept Issues or
+Pull Requests. The codebase is still undergoing significant changes. This
+document is placed here for future use.
 
 ## How to Contribute
 
