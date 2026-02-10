@@ -28,16 +28,16 @@ Phase 46: Correctness & Cleanup
 
 ## Current Task
 
-Phase 46 COMPLETE. Plan next phase.
+nREPL improvements DONE. Continue next task.
 
 ## Previous Task
 
-46.1 DONE: Fix F95 — VM compiler intrinsic ns awareness.
-- Added `current_ns: ?*const Namespace` to Compiler struct
-- Added `isCoreFn()` helper: resolves name in current namespace, checks ns_name == "clojure.core"
-- `emitCall` now gates all intrinsic emission on `isCoreFn()` (F95)
-- Both unit tests (excluded + normal intrinsic) and e2e tests pass
-- No performance regression (all benchmarks within normal variance)
+nREPL stacktrace + GPA leak fix:
+- VM stacktrace now shows file:line (was REPL:0) — FnProto.source_file + CallFrame.source_file
+- error.zig: updateTopFrame() for IP-based line at error time
+- nREPL eval: setSourceFile from message "file" key (CIDER eval-in-buffer)
+- nREPL load-file: file-path → file key mapping for source tracking
+- GPA leak fix: thread.detach() → track + join, socket shutdown() on exit
 
 Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 - rangeFn returns lazy_seq with Meta.range (no new Value type needed)

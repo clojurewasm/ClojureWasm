@@ -486,6 +486,7 @@ pub const Compiler = struct {
             .has_self_ref = has_self_ref,
             .code = optimized.code,
             .constants = const_copy,
+            .source_file = node.source.file,
             .lines = optimized.lines,
             .columns = optimized.columns,
         };

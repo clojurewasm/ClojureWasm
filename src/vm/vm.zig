@@ -81,6 +81,8 @@ const CallFrame = struct {
     base: usize,
     code: []const Instruction,
     constants: []const Value,
+    /// Source file path for error reporting.
+    source_file: ?[]const u8 = null,
     /// Source line per instruction (parallel to code) for error reporting.
     lines: []const u32 = &.{},
     /// Source column per instruction (parallel to code) for error reporting.
@@ -307,11 +309,14 @@ pub const VM = struct {
                                 f.columns[f.ip - 1]
                             else
                                 0;
+                            const file = f.source_file orelse err_mod.getSourceFile();
                             err_mod.annotateLocation(.{
                                 .line = line,
                                 .column = column,
-                                .file = err_mod.getSourceFile(),
+                                .file = file,
                             });
+                            // Update top error stack frame with actual IP location
+                            err_mod.updateTopFrame(line, column);
                         }
                     }
                 }
@@ -1490,17 +1495,20 @@ pub const VM = struct {
             .base = fn_idx + 1,
             .code = proto.code,
             .constants = proto.constants,
+            .source_file = proto.source_file,
             .lines = proto.lines,
             .columns = proto.columns,
             .saved_ns = saved_ns_ptr,
         };
         self.frame_count += 1;
 
-        // Track call stack for error reporting (30.1a)
+        // Track call stack for error reporting
         err_mod.pushFrame(.{
             .fn_name = proto.name,
             .ns = fn_obj.defining_ns,
-            .file = err_mod.getSourceFile(),
+            .file = proto.source_file orelse err_mod.getSourceFile(),
+            .line = if (proto.lines.len > 0) proto.lines[0] else 0,
+            .column = if (proto.columns.len > 0) proto.columns[0] else 0,
         });
     }
 

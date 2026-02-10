@@ -269,6 +269,14 @@ pub fn pushFrame(frame: StackFrame) void {
     }
 }
 
+/// Update the topmost frame's line/column (used by VM on error to set current IP location).
+pub fn updateTopFrame(line: u32, column: u32) void {
+    if (stack_depth > 0) {
+        call_stack[stack_depth - 1].line = line;
+        call_stack[stack_depth - 1].column = column;
+    }
+}
+
 /// Pop the topmost call frame.
 pub fn popFrame() void {
     if (stack_depth > 0) {

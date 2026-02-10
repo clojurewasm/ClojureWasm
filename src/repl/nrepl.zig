@@ -54,6 +54,10 @@ pub const ServerState = struct {
     last_error_stack_depth: u8 = 0,
     /// Persistent copy of error message (msg_buf is threadlocal and gets overwritten).
     last_error_msg_buf: [512]u8 = undefined,
+    /// Active client threads (joined on shutdown to prevent memory leaks).
+    client_threads: std.ArrayList(std.Thread) = .empty,
+    /// Active client streams (closed on shutdown to unblock read).
+    client_streams: std.ArrayList(std.net.Stream) = .empty,
 };
 
 // ====================================================================
@@ -123,6 +127,17 @@ fn runServerLoop(gpa_allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc, p
         if (state.port_file_written) {
             std.fs.cwd().deleteFile(".nrepl-port") catch {};
         }
+        // Shutdown client sockets to unblock read() (returns 0/EOF), then join threads.
+        // Using shutdown() instead of close() avoids double-close — handleClient
+        // will close() the fd after messageLoop exits.
+        for (state.client_streams.items) |s| {
+            std.posix.shutdown(s.handle, .both) catch {};
+        }
+        state.client_streams.deinit(gpa_allocator);
+        for (state.client_threads.items) |t| {
+            t.join();
+        }
+        state.client_threads.deinit(gpa_allocator);
         // Free sessions
         var iter = state.sessions.iterator();
         while (iter.next()) |entry| {
@@ -158,7 +173,11 @@ fn runServerLoop(gpa_allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc, p
             conn.stream.close();
             continue;
         };
-        thread.detach();
+        state.client_threads.append(gpa_allocator, thread) catch {
+            thread.detach();
+            continue;
+        };
+        state.client_streams.append(gpa_allocator, conn.stream) catch {};
     }
 
     std.debug.print("nREPL server shutting down\n", .{});
@@ -414,6 +433,15 @@ fn opEval(
         state.env.current_ns = ns;
     }
 
+    // Set source file from nREPL message (CIDER sends "file" key for eval-in-buffer)
+    const err_import = @import("../runtime/error.zig");
+    const nrepl_file = bencode.dictGetString(msg, "file");
+    const prev_source_file = err_import.getSourceFile();
+    if (nrepl_file) |f| {
+        err_import.setSourceFile(f);
+    }
+    defer err_import.setSourceFile(prev_source_file);
+
     // Set up output capture
     var capture_buf: std.ArrayList(u8) = .empty;
     defer capture_buf.deinit(state.gpa);
@@ -467,7 +495,6 @@ fn opEval(
         sendDone(stream, msg, allocator);
     } else |_| {
         // Error — bind *e and save error state for stacktrace op
-        const err_import = @import("../runtime/error.zig");
         const err_info = err_import.getLastError();
         const err_msg = if (err_info) |info| info.message else "evaluation failed";
 
@@ -577,8 +604,11 @@ fn opLoadFile(
         return;
     };
 
+    // Extract file-path for source tracking (CIDER sends this in load-file)
+    const file_path = bencode.dictGetString(msg, "file-path");
+
     // Build a synthetic eval message with code = file content
-    var eval_msg_buf: [8]BencodeValue.DictEntry = undefined;
+    var eval_msg_buf: [10]BencodeValue.DictEntry = undefined;
     var eval_msg_len: usize = 0;
 
     for (msg) |entry| {
@@ -587,10 +617,23 @@ fn opLoadFile(
             eval_msg_buf[eval_msg_len] = .{ .key = "op", .value = .{ .string = "eval" } };
         } else if (std.mem.eql(u8, entry.key, "file")) {
             eval_msg_buf[eval_msg_len] = .{ .key = "code", .value = .{ .string = file_content } };
+        } else if (std.mem.eql(u8, entry.key, "file-path")) {
+            // Map file-path to "file" key for eval's source file tracking
+            eval_msg_buf[eval_msg_len] = .{ .key = "file", .value = .{ .string = entry.value.string } };
         } else {
             eval_msg_buf[eval_msg_len] = entry;
         }
         eval_msg_len += 1;
+    }
+
+    // If file-path was not in the message, add it from file-name or synthesize
+    if (file_path == null) {
+        if (bencode.dictGetString(msg, "file-name")) |fname| {
+            if (eval_msg_len < eval_msg_buf.len) {
+                eval_msg_buf[eval_msg_len] = .{ .key = "file", .value = .{ .string = fname } };
+                eval_msg_len += 1;
+            }
+        }
     }
 
     opEval(state, eval_msg_buf[0..eval_msg_len], stream, allocator);

@@ -146,6 +146,8 @@ pub const FnProto = struct {
     code: []const Instruction,
     /// Constant pool.
     constants: []const Value,
+    /// Source file path (set by compiler from analyzer source info).
+    source_file: ?[]const u8 = null,
     /// Source line per instruction (parallel to code).
     lines: []const u32 = &.{},
     /// Source column per instruction (parallel to code).
