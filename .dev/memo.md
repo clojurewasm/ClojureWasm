@@ -65,6 +65,11 @@ Phase 44.1+44.2 COMPLETE: Lazy range with infinite range support.
 
 - (none currently open)
 
+## Notes
+
+- CONTRIBUTING.md moved to `.dev/CONTRIBUTING.md` — not accepting external
+  contributions at this stage. Restore to repo root when ready to open up.
+
 ## Reference Chain
 
 Session resume procedure: read this file → follow references below.

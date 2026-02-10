@@ -23,7 +23,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
 - **Wasm FFI** — call WebAssembly modules from Clojure (461 opcodes including SIMD)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
-- **795 vars** across 15+ namespaces (593/706 clojure.core)
+- **795 vars** across 16 namespaces (593/706 clojure.core)
 
 ## Getting Started
 
@@ -64,21 +64,10 @@ info, stacktrace, eldoc, etc.).
 
 ## Features
 
-### Language
-
-- Full Clojure reader (EDN, reader macros, syntax-quote, regex, tagged literals)
-- Persistent collections: list, vector, hash-map, hash-set, sorted variants
-- Transient collections for efficient batch operations
-- Lazy sequences with GC-safe realization
-- Protocols, defrecord, deftype, multimethods
-- Destructuring (sequential, associative, nested)
-- Transducers (map, filter, take, drop, partition, etc.)
-- Numeric types: integers, floats, BigInt, BigDecimal, Ratio
-- try/catch/throw, loop/recur, letfn, with-open
-- Metadata system (with-meta, alter-meta!, vary-meta)
-- Regex via built-in engine (re-find, re-matches, re-seq, re-groups)
-
 ### Namespaces
+
+Each namespace targets behavioral equivalence with its Clojure JVM counterpart.
+Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace          | Vars | Description                    |
 |--------------------|------|--------------------------------|
@@ -117,11 +106,10 @@ Call WebAssembly modules directly from Clojure:
 - v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
-> **Performance note**: The Wasm runtime is a pure interpreter (no JIT).
-> It is approximately 10-30x slower than wasmtime for compute-heavy modules,
-> though module load time is faster (~4ms vs ~5ms). For applications where
-> Wasm execution speed is critical, JIT compilation or wasmtime integration
-> are planned as future optimization paths.
+> **Performance note**: The Wasm runtime is a pure interpreter (no JIT),
+> approximately 10-30x slower than wasmtime for compute-heavy modules.
+> Module load time is faster (~4ms vs ~5ms). Wasm JIT compilation and
+> wasmtime integration are planned as future optimization paths.
 
 ### Server & Networking
 
@@ -145,7 +133,7 @@ Call WebAssembly modules directly from Clojure:
 
 - **NaN-boxed Value** — 8-byte tagged representation (float pass-through, i48 integer, 40-bit heap pointer)
 - **MarkSweep GC** — allocation tracking, free-pool recycling, safe points
-- **Bytecode VM** — 50+ opcodes, superinstructions, fused branch ops
+- **Bytecode VM** — 75 opcodes, superinstructions, fused branch ops
 - **ARM64 JIT** — hot integer loop detection with native code generation
 - **Bootstrap cache** — core.clj pre-compiled at build time (~4ms restore)
 - **Zero-config projects** — auto-detect `src/`, `cljw.edn` optional
@@ -172,16 +160,18 @@ src/
 ├── repl/                       nREPL server, line editor
 └── wasm/                       WebAssembly runtime (461 opcodes)
 
-bench/                          27 benchmarks, multi-language
-test/                           62 Clojure test files (38 upstream ports)
+bench/                          31 benchmarks, multi-language
+test/                           62 Clojure test files (39 upstream ports)
 ```
+
+The [`.dev/`](.dev/) directory contains design decisions, optimization logs,
+and development notes. Some may be outdated, but may interest those curious
+about how the project evolved.
 
 ## Benchmarks
 
-The benchmark suite is in [`bench/benchmarks/`](bench/benchmarks/) with 27 programs
+The benchmark suite is in [`bench/benchmarks/`](bench/benchmarks/) with 31 programs
 covering computation, collections, higher-order functions, GC pressure, and Wasm.
-
-Run them yourself:
 
 ```bash
 # Requires hyperfine
@@ -197,16 +187,13 @@ zig build test                  # 1,300+ Zig test blocks
 bash test/e2e/run_e2e.sh       # End-to-end tests
 ```
 
-62 Clojure test files including 38 upstream test ports with 729 deftests.
+62 Clojure test files including 39 upstream test ports with 735 deftests.
 All tests verified on both VM and TreeWalk backends.
 
 ## Future Plans
 
-Active development areas for future releases:
-
-- **Wasm FFI acceleration** — the built-in Wasm interpreter is ~10-30x slower
-  than wasmtime (JIT) for compute-heavy workloads. Planned approaches include
-  Wasm JIT compilation and optional wasmtime integration via its C API
+- **Wasm FFI acceleration** — Wasm JIT compilation and optional wasmtime
+  integration via its C API
 - **JIT expansion** — float operations, function calls, broader loop patterns
 - **Concurrency** — future, pmap, agent via Zig thread pool
 - **Generational GC** — nursery/tenured generations for throughput
@@ -214,42 +201,33 @@ Active development areas for future releases:
 - **Persistent data structures** — HAMT/RRB-Tree implementations
 - **wasm_rt** — compile Clojure to run *inside* WebAssembly
 
+## Potential Use Cases
+
+Once production-ready, ClojureWasm could enable workloads where the JVM
+is too heavy:
+
+- **Serverless functions** — ~3MB image + ~4ms cold start for AWS Lambda
+  or Fly.io, eliminating JVM warm-up penalties
+- **Wasm plugin host** — embed user-supplied .wasm modules as extensibility
+  points (e.g., Cloudflare Workers-style logic, game scripting)
+- **Edge / IoT** — run Clojure on Raspberry Pi or resource-constrained
+  devices where a JVM runtime is impractical
+
 ## Acknowledgments
 
-ClojureWasm is built with deep appreciation for [Clojure](https://clojure.org/)
-and the work of [Rich Hickey](https://github.com/richhickey). Clojure's design
-— immutable data, functional programming, and a pragmatic approach to state —
-has been a constant source of inspiration. Programming in Clojure is genuinely
-enjoyable, and the community's passion and thoughtfulness make it one of the
-most rewarding ecosystems to be part of. May Clojure continue to thrive for
-many years to come.
-
-This project also builds on the excellent work of the [Zig](https://ziglang.org/)
-community. Zig's emphasis on simplicity and explicit control made it possible
-to implement a full language runtime in a single, small binary.
-
-ClojureWasm ports test cases from the Clojure test suite (EPL-1.0) and includes
-Clojure standard library code adapted for the Zig runtime. See [NOTICE](NOTICE)
-for attribution details.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, code style, and
-development workflow.
-
-Issues are welcome. For larger changes, please open an issue first to discuss
-the approach.
-
-## Support
-
-ClojureWasm is developed and maintained by a single developer. If you find
-this project useful, your support would be greatly appreciated and helps
-keep development going.
-
-[![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa)](https://github.com/sponsors/chaploud)
+Built on [Clojure](https://clojure.org/) by Rich Hickey and
+[Zig](https://ziglang.org/) by Andrew Kelley. Includes adapted Clojure
+standard library code and ported test cases (EPL-1.0).
+See [NOTICE](NOTICE) for attribution details.
 
 ## License
 
 [Eclipse Public License 1.0](LICENSE) (EPL-1.0)
 
 Copyright (c) 2026 chaploud
+
+## Support
+
+Developed in spare time alongside a day job. If you'd like to support
+continued development, sponsorship is welcome via
+[GitHub Sponsors](https://github.com/sponsors/chaploud).
