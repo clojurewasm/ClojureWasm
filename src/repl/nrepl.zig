@@ -494,7 +494,7 @@ fn opEval(
             state.last_error_info = null;
         }
 
-        sendEvalError(stream, msg, err_msg, allocator);
+        sendEvalError(stream, msg, err_msg, err_info, allocator);
         err_import.clearCallStack();
     }
 
@@ -514,24 +514,42 @@ fn opEval(
     }
 }
 
-/// Send eval error response.
+/// Send eval error response with location info.
 fn sendEvalError(
     stream: std.net.Stream,
     msg: []const BencodeValue.DictEntry,
     err_msg: []const u8,
+    err_info: ?err_mod.Info,
     allocator: Allocator,
 ) void {
+    // Build rich error string: "TypeError: msg (file:line:col)"
+    const rich_msg = if (err_info) |info| blk: {
+        const class = kindToClassName(info.kind);
+        if (info.location.line > 0) {
+            const file = info.location.file orelse "REPL";
+            break :blk std.fmt.allocPrint(allocator, "{s}: {s} ({s}:{d}:{d})\n", .{
+                class, info.message, file, info.location.line, info.location.column,
+            }) catch err_msg;
+        }
+        break :blk std.fmt.allocPrint(allocator, "{s}: {s}\n", .{
+            class, info.message,
+        }) catch err_msg;
+    } else err_msg;
+
+    const ex_class = if (err_info) |info| kindToClassName(info.kind) else "Exception";
+
     const err_entries = [_]BencodeValue.DictEntry{
         idEntry(msg),
         sessionEntry(msg),
-        .{ .key = "err", .value = .{ .string = err_msg } },
+        .{ .key = "err", .value = .{ .string = rich_msg } },
     };
     sendBencode(stream, &err_entries, allocator);
 
     const ex_entries = [_]BencodeValue.DictEntry{
         idEntry(msg),
         sessionEntry(msg),
-        .{ .key = "ex", .value = .{ .string = err_msg } },
+        .{ .key = "ex", .value = .{ .string = ex_class } },
+        .{ .key = "root-ex", .value = .{ .string = ex_class } },
     };
     sendBencode(stream, &ex_entries, allocator);
 
