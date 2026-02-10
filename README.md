@@ -170,7 +170,7 @@ about how the project evolved.
 
 ## Benchmarks
 
-The benchmark suite is in [`bench/benchmarks/`](bench/benchmarks/) with 31 programs
+The benchmark suite is in [`bench/`](bench/) with 31 programs
 covering computation, collections, higher-order functions, GC pressure, and Wasm.
 
 ```bash
