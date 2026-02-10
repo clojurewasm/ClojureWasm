@@ -1,0 +1,270 @@
+# Cross-language benchmark comparison
+# Generated: 2026-02-10T08:49:02+09:00
+
+env:
+  cpu: Apple M4 Pro
+  ram: 48 GB
+  os: Darwin 25.2.0
+  tool: hyperfine
+  runs: 5
+  warmup: 2
+
+date: "2026-02-10"
+
+benchmarks:
+  fib_recursive:
+    cold:
+      cw: 17.6
+      c: 2.0
+      zig: 2.6
+      java: 20.9
+      tgo: 2.1
+      py: 19.6
+      rb: 36.3
+      js: 24.8
+      bb: 30.1
+  fib_loop:
+    cold:
+      cw: 2.9
+      c: 2.1
+      zig: 1.5
+      java: 20.4
+      tgo: 2.3
+      py: 13.4
+      rb: 30.3
+      js: 21.6
+      bb: 10.2
+  tak:
+    cold:
+      cw: 8.9
+      c: 3.6
+      zig: 0.7
+      java: 19.2
+      tgo: 2.4
+      py: 15.7
+      rb: 33.4
+      js: 23.6
+      bb: 18.0
+  arith_loop:
+    cold:
+      cw: 5.8
+      c: 0.7
+      zig: 2.1
+      java: 22.1
+      tgo: 1.4
+      py: 61.2
+      rb: 54.5
+      js: 25.0
+      bb: 77.3
+  map_filter_reduce:
+    cold:
+      cw: 5.7
+      c: 1.4
+      zig: 1.7
+      java: 19.7
+      tgo: 2.1
+      py: 13.2
+      rb: 33.9
+      js: 29.1
+      bb: 17.6
+  vector_ops:
+    cold:
+      cw: 8.1
+      c: 1.4
+      zig: 1.4
+      java: 22.3
+      tgo: 2.2
+      py: 13.6
+      rb: 31.7
+      js: 21.7
+      bb: 17.9
+  map_ops:
+    cold:
+      cw: 4.4
+      c: 1.6
+      zig: 1.5
+      java: 22.1
+      tgo: 2.8
+      py: 12.2
+      rb: 32.1
+      js: 23.2
+      bb: 16.6
+  list_build:
+    cold:
+      cw: 4.6
+      c: 3.1
+      zig: 1.6
+      java: 22.0
+      tgo: 2.6
+      py: 15.3
+      rb: 31.9
+      js: 22.1
+      bb: 14.7
+  sieve:
+    cold:
+      cw: 5.5
+      c: 1.6
+      zig: 1.7
+      java: 24.0
+      tgo: 2.1
+      py: 12.9
+      rb: 32.9
+      js: 22.2
+      bb: 17.2
+  nqueens:
+    cold:
+      cw: 15.3
+      c: 1.9
+      zig: 1.5
+      java: 21.5
+      tgo: 2.2
+      py: 15.0
+      rb: 50.1
+      js: 23.9
+      bb: 24.9
+  atom_swap:
+    cold:
+      cw: 5.6
+      c: 1.8
+      zig: 1.4
+      java: 21.2
+      tgo: 2.6
+      py: 12.8
+      rb: 31.9
+      js: 22.7
+      bb: 15.7
+  gc_stress:
+    cold:
+      cw: 29.2
+      c: 2.3
+      zig: 414.6
+      java: 31.5
+      tgo: 19.6
+      py: 27.1
+      rb: 38.6
+      js: 23.7
+      bb: 35.4
+  lazy_chain:
+    cold:
+      cw: 6.3
+      c: 1.3
+      zig: 1.8
+      java: 20.2
+      tgo: 2.2
+      py: 15.1
+      rb: 31.4
+      js: 22.5
+      bb: 17.1
+  transduce:
+    cold:
+      cw: 7.4
+      c: 1.5
+      zig: 1.4
+      java: 20.3
+      tgo: 3.2
+      py: 11.7
+      rb: 31.4
+      js: 22.0
+      bb: 16.0
+  keyword_lookup:
+    cold:
+      cw: 11.1
+      c: 2.1
+      zig: 2.4
+      java: 24.0
+      tgo: 4.3
+      py: 18.2
+      rb: 34.3
+      js: 22.8
+      bb: 19.7
+  protocol_dispatch:
+    cold:
+      cw: 4.5
+      c: 1.4
+      zig: 1.4
+      java: 20.5
+      tgo: 2.3
+      py: 13.7
+      rb: 30.3
+      js: 22.4
+  nested_update:
+    cold:
+      cw: 10.9
+      c: 1.7
+      zig: 1.4
+      java: 22.3
+      tgo: 2.7
+      py: 12.3
+      rb: 30.8
+      js: 22.5
+      bb: 16.3
+  string_ops:
+    cold:
+      cw: 24.5
+      c: 5.4
+      zig: 1.8
+      java: 24.1
+      tgo: 2.1
+      py: 25.6
+      rb: 37.2
+      js: 24.5
+      bb: 24.8
+  multimethod_dispatch:
+    cold:
+      cw: 7.2
+      c: 1.3
+      zig: 1.7
+      java: 22.5
+      tgo: 2.4
+      py: 14.7
+      rb: 30.7
+      js: 22.0
+      bb: 16.5
+  real_workload:
+    cold:
+      cw: 11.0
+      c: 1.6
+      zig: 4.5
+      java: 23.8
+      tgo: 2.0
+      py: 14.9
+      rb: 34.8
+      js: 24.0
+      bb: 17.8
+  wasm_load:
+    cold:
+      cw: 11.1
+  wasm_call:
+    cold:
+      cw: 117.2
+  wasm_memory:
+    cold:
+      cw: 27.3
+  wasm_fib:
+    cold:
+      cw: 3984.1
+  wasm_sieve:
+    cold:
+      cw: 316.3
+  gc_alloc_rate:
+    cold:
+      cw: 51.1
+      js: 25.5
+      bb: 43.9
+  gc_large_heap:
+    cold:
+      cw: 30.4
+      js: 28.5
+      bb: 46.3
+  wasm_tgo_fib:
+    cold:
+      cw: 3345.4
+  wasm_tgo_tak:
+    cold:
+      cw: 11000.8
+  wasm_tgo_arith:
+    cold:
+      cw: 3.9
+  wasm_tgo_sieve:
+    cold:
+      cw: 204.7
