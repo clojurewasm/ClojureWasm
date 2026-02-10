@@ -909,15 +909,17 @@ fn opStacktrace(
         frame_list.append(allocator, .{ .dict = frame_entries }) catch {};
     }
 
-    const entries = [_]BencodeValue.DictEntry{
+    // CIDER accumulates causes as separate messages until "done" arrives.
+    // Send cause data first, then done as a separate message.
+    const cause_entries = [_]BencodeValue.DictEntry{
         idEntry(msg),
         sessionEntry(msg),
         .{ .key = "class", .value = .{ .string = kindToClassName(err_info.kind) } },
         .{ .key = "message", .value = .{ .string = err_info.message } },
         .{ .key = "stacktrace", .value = .{ .list = frame_list.items } },
-        statusDone(),
     };
-    sendBencode(stream, &entries, allocator);
+    sendBencode(stream, &cause_entries, allocator);
+    sendDone(stream, msg, allocator);
 }
 
 /// Map error.Kind to a human-readable exception class name.
