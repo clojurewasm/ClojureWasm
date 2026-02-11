@@ -21,13 +21,36 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 47: v0.1.0-alpha COMPLETE (all 6 tasks done)
+Phase 48: v0.2.0-alpha — Concurrency
 
-Next: Phase 48: v0.2.0-alpha — Concurrency (requires planning)
+- [x] 48.0: Plan Phase 48 (audit + architectural decisions)
+- [ ] 48.1: Thread-safe global state (threadlocal/atomic conversions)
+- [ ] 48.2: GC thread safety (D94 — mutex + stop-the-world)
+- [ ] 48.3: Thread pool infrastructure + per-thread evaluator
+- [ ] 48.4: Future Value type + future/future-call/deref
+- [ ] 48.5: pmap, pcalls, pvalues
+- [ ] 48.6: promise + deliver
 
 ## Current Task
 
-Phase 47 complete. Next: Phase 48 (Concurrency) — see roadmap.md
+48.1: Thread-safe global state — convert module-level vars to threadlocal/atomic.
+
+Audit found ~25 unprotected module-level vars. Changes:
+- `var.zig: current_frame` → threadlocal (per-thread binding stack)
+- `misc.zig: gensym_counter` → atomic u64
+- `collections.zig: _vec_gen_counter` → atomic i64
+- `bootstrap.zig: last_thrown_exception` → threadlocal
+- `bootstrap.zig: macro_eval_env` → threadlocal
+- `io.zig: capture_buf/capture_alloc/capture_stack/input_stack` → threadlocal
+- `predicates.zig: current_env` → threadlocal
+- `keyword_intern.zig: table` → Mutex-protected
+- `arithmetic.zig: prng` → Mutex-protected
+- `vm.zig: active_vm` → threadlocal
+- `wasm/types.zig: host_contexts/next_context_id` → Mutex-protected
+- `ns_ops.zig: loaded_libs/loading_libs` → Mutex-protected
+- `main.zig: file_read_buf` → threadlocal
+
+No functional change — all existing tests must still pass.
 
 ## Previous Task
 
