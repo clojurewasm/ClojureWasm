@@ -481,3 +481,38 @@ arithmetic+numeric → arithmetic. 70 → 66 files.
 **Rationale**: OSS release visibility. New contributors can see the compilation
 pipeline from the directory listing. The common/native split was a wasm_rt-era
 artifact with no current meaning.
+
+## D92: zwasm Integration — External Wasm Runtime Dependency
+
+**Decision**: Replace CW's internal wasm engine (9 files, ~9300 LOC) with zwasm
+as an external Zig path dependency. CW keeps a thin bridge file (`src/wasm/types.zig`)
+that wraps zwasm's public API into CW's Value system.
+
+**Before**: CW had a frozen copy of the wasm runtime (vm, store, module, instance,
+opcode, predecode, memory, leb128, wasi) in `src/wasm/`. This was the Phase 35W
+engine, missing Register IR, ARM64 JIT, and post-Phase 45 optimizations.
+
+**After**:
+```
+src/wasm/
+  types.zig      → Bridge: delegates to zwasm.WasmModule, keeps Value↔u64 marshalling
+  builtins.zig   → Unchanged (imports from types.zig)
+  wit_parser.zig → Unchanged (CW-specific WIT handling)
+```
+
+**Bridge design**: `WasmModule.inner: *zwasm.WasmModule` delegation pattern.
+Host function trampoline uses `zwasm.Vm` for stack access, `zwasm.inspectImportFunctions`
+for import type resolution. The bridge handles Value↔u64 conversion, HostContext,
+and Clojure imports map → `[]zwasm.ImportEntry` translation.
+
+**Build**: `build.zig.zon` path dependency `../zwasm`. Native targets only
+(wasm32-wasi target does not link zwasm).
+
+**Benefits**:
+- -9300 LOC in CW (maintenance burden eliminated)
+- CW automatically inherits zwasm improvements (Register IR, JIT, spec compliance)
+- zwasm remains fully independent (no CW-specific code)
+
+**zwasm API additions** (generic, not CW-specific):
+- `pub const Vm` — re-export for embedder host function access
+- `inspectImportFunctions()` — pre-analysis utility for import type metadata

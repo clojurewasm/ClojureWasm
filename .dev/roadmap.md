@@ -238,6 +238,14 @@ Remaining 7-65x gap to wasmtime is interpreter vs JIT fundamental limit.
 | 46.1 | Fix F95 — VM intrinsic ns awareness       | COMPLETE |
 | 46.2 | Checklist cleanup — remove resolved items | COMPLETE |
 
+### zwasm Integration (D92)
+
+Replaced internal wasm engine (Phase 35W, 9 files, ~9300 LOC) with zwasm as
+external Zig path dependency. CW keeps thin bridge (`src/wasm/types.zig`).
+Branch: `zwasm-integration`.
+
+Benefits: -9300 LOC maintenance, inherits zwasm Register IR + ARM64 JIT + 99.9% spec.
+
 ### Phase 50+: Post-Release (deferred)
 
 | Phase | Content                               | Notes                                   |

@@ -25,5 +25,5 @@ Check at session start for items that become actionable.
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
 | F133 | Future + thread pool                        | Zig std.Thread, GC safety, deref timeout                                 |
 | F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
-| F136 | Wasm table.copy cross-table support         | Currently stub; needed for full bulk memory ops spec                     |
-| F137 | Wasm table.init implementation              | Currently stub; needed for element segment initialization                |
+| F136 | Wasm table.copy cross-table support         | zwasm-side (D92); needed for full bulk memory ops spec                   |
+| F137 | Wasm table.init implementation              | zwasm-side (D92); needed for element segment initialization              |

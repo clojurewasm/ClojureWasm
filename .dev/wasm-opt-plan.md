@@ -95,12 +95,12 @@ Priority order:
 
 ## Files
 
-- Wasm runtime: `src/wasm/vm.zig` (3177 lines, 200+ opcodes)
-- Wasm types: `src/wasm/types.zig`
-- Wasm module: `src/wasm/module.zig`
-- Wasm instance: `src/wasm/instance.zig`
-- Wasm WASI: `src/wasm/wasi.zig`
+**NOTE (D92)**: Internal wasm engine replaced by zwasm dependency.
+Runtime optimizations now happen in zwasm repo (`../zwasm/`).
+
+- Wasm bridge: `src/wasm/types.zig` (delegates to zwasm.WasmModule)
 - Wasm builtins: `src/wasm/builtins.zig` (Clojure FFI bridge)
+- zwasm runtime: `../zwasm/src/` (vm, store, module, instance, etc.)
 
 ## Decision Log
 
@@ -118,8 +118,8 @@ After each session, update:
 
 ## Regression Guard
 
-Wasm optimizations may touch core runtime code (`src/wasm/vm.zig`, `src/wasm/instance.zig`).
-Always verify non-wasm benchmarks don't regress:
+Wasm optimizations now happen in zwasm repo (D92). After zwasm changes,
+verify CW benchmarks don't regress:
 ```bash
 bash bench/run_bench.sh --quick   # Should match or beat previous baseline
 ```
