@@ -256,6 +256,7 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .delay => "delay",
         .future => "future",
         .promise => "promise",
+        .agent => "agent",
         .reduced => "reduced",
         .transient_vector => "transient-vector",
         .transient_map => "transient-map",

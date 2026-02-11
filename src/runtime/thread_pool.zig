@@ -21,6 +21,7 @@ const gc_mod = @import("gc.zig");
 const var_mod = @import("var.zig");
 const bootstrap = @import("bootstrap.zig");
 const ns_mod = @import("namespace.zig");
+const err_mod = @import("error.zig");
 
 /// Result of an asynchronous computation.
 ///
@@ -84,12 +85,16 @@ pub const FutureResult = struct {
 
 /// Work item submitted to the thread pool.
 const WorkItem = struct {
-    func: Value,
-    result: *FutureResult,
+    kind: Kind = .function,
+    func: Value = Value.nil_val,
+    result: ?*FutureResult = null,
+    agent_obj: ?*value_mod.AgentObj = null,
     /// Namespace to set as current_ns in the worker thread.
-    parent_ns: ?*ns_mod.Namespace,
+    parent_ns: ?*ns_mod.Namespace = null,
     /// Parent's binding frame to convey to the worker (F6).
-    parent_bindings: ?*var_mod.BindingFrame,
+    parent_bindings: ?*var_mod.BindingFrame = null,
+
+    const Kind = enum { function, agent };
 };
 
 /// Fixed-size thread pool for concurrent Clojure evaluation.
@@ -154,6 +159,7 @@ pub const ThreadPool = struct {
         self.queue_mutex.lock();
         defer self.queue_mutex.unlock();
         try self.work_items.append(pool_allocator, .{
+            .kind = .function,
             .func = func,
             .result = result,
             .parent_ns = parent_ns,
@@ -161,6 +167,23 @@ pub const ThreadPool = struct {
         });
         self.queue_cond.signal();
         return result;
+    }
+
+    /// Submit agent for processing one action from its queue.
+    /// Called when send/send-off adds an action and the agent isn't already processing.
+    pub fn submitAgentWork(self: *ThreadPool, agent_obj: *value_mod.AgentObj) !void {
+        const parent_ns = if (bootstrap.macro_eval_env) |env| env.current_ns else null;
+        const parent_bindings = var_mod.getCurrentBindingFrame();
+
+        self.queue_mutex.lock();
+        defer self.queue_mutex.unlock();
+        try self.work_items.append(pool_allocator, .{
+            .kind = .agent,
+            .agent_obj = agent_obj,
+            .parent_ns = parent_ns,
+            .parent_bindings = parent_bindings,
+        });
+        self.queue_cond.signal();
     }
 
     /// Shut down the pool: signal workers to exit, then join all threads.
@@ -213,14 +236,112 @@ pub const ThreadPool = struct {
                 var_mod.setCurrentBindingFrame(bindings);
             }
 
-            // Execute the Clojure function (nullary)
-            const result = bootstrap.callFnVal(gc_alloc, item.func, &.{}) catch {
-                const err_val = bootstrap.last_thrown_exception orelse Value.nil_val;
-                item.result.setError(err_val);
+            switch (item.kind) {
+                .function => {
+                    // Execute the Clojure function (nullary)
+                    const result = bootstrap.callFnVal(gc_alloc, item.func, &.{}) catch {
+                        const err_val = bootstrap.last_thrown_exception orelse Value.nil_val;
+                        item.result.?.setError(err_val);
+                        continue;
+                    };
+                    item.result.?.setResult(result);
+                },
+                .agent => {
+                    // Process agent action queue
+                    const agent_obj = item.agent_obj orelse continue;
+                    processAgentActions(pool, agent_obj, gc_alloc);
+                },
+            }
+        }
+    }
+
+    /// Process all queued actions for an agent. Runs on a worker thread.
+    /// Actions execute sequentially: dequeue → execute → update state → repeat.
+    fn processAgentActions(pool: *ThreadPool, agent_obj: *value_mod.AgentObj, gc_alloc: Allocator) void {
+        const inner = agent_obj.getInner();
+
+        while (true) {
+            // Dequeue next action under lock
+            inner.mutex.lock();
+            const action = inner.dequeue();
+            if (action == null) {
+                // Queue empty — clear processing flag and return
+                inner.processing.store(false, .release);
+                inner.mutex.unlock();
+                return;
+            }
+            inner.mutex.unlock();
+
+            const act = action.?;
+
+            // Check if agent is in error state (skip actions if :fail mode)
+            if (inner.isInErrorState()) {
+                pool_allocator.free(act.args);
+                pool_allocator.destroy(act);
+                continue;
+            }
+
+            // Build args: [current-state, extra-args...]
+            const full_args = pool_allocator.alloc(Value, 1 + act.args.len) catch {
+                pool_allocator.free(act.args);
+                pool_allocator.destroy(act);
                 continue;
             };
-            item.result.setResult(result);
+            full_args[0] = inner.state;
+            @memcpy(full_args[1..], act.args);
+
+            // Execute: (fn current-state arg1 arg2 ...)
+            const new_state = bootstrap.callFnVal(gc_alloc, act.func, full_args) catch |e| {
+                // Capture error as a Clojure value for agent-error
+                const err_val = blk: {
+                    if (e == error.UserException) {
+                        break :blk bootstrap.last_thrown_exception orelse Value.nil_val;
+                    }
+                    // For Zig-level errors, create a string from the error info
+                    if (err_mod.getLastError()) |info| {
+                        break :blk Value.initString(gc_alloc, info.message);
+                    }
+                    break :blk Value.initString(gc_alloc, @errorName(e));
+                };
+
+                inner.mutex.lock();
+                if (inner.error_handler.tag() != .nil) {
+                    // Call error handler: (handler agent exception)
+                    const handler = inner.error_handler;
+                    inner.mutex.unlock();
+                    const handler_args = [2]Value{ Value.initAgent(agent_obj), err_val };
+                    _ = bootstrap.callFnVal(gc_alloc, handler, &handler_args) catch {};
+                } else {
+                    // No handler — set error state based on mode
+                    switch (inner.error_mode) {
+                        .fail_mode => {
+                            inner.error_val = err_val;
+                        },
+                        .continue_mode => {
+                            // :continue mode — ignore error, keep going
+                        },
+                    }
+                    inner.mutex.unlock();
+                }
+
+                pool_allocator.free(full_args);
+                pool_allocator.free(act.args);
+                pool_allocator.destroy(act);
+                continue;
+            };
+
+            // Update state
+            inner.mutex.lock();
+            inner.state = new_state;
+            inner.mutex.unlock();
+
+            pool_allocator.free(full_args);
+            pool_allocator.free(act.args);
+            pool_allocator.destroy(act);
         }
+
+        // If we reach here due to shutdown, clear processing flag
+        _ = pool;
     }
 
     fn getDefaultThreadCount() usize {

@@ -1290,6 +1290,17 @@ fn writeValue(w: anytype, val: Value) void {
                 w.print("#promise[pending]", .{}) catch {};
             }
         },
+        .agent => {
+            const a = val.asAgent();
+            const inner = a.getInner();
+            if (inner.isInErrorState()) {
+                w.print("#agent[FAILED ", .{}) catch {};
+            } else {
+                w.print("#agent[", .{}) catch {};
+            }
+            writeValue(w, inner.state);
+            w.print("]", .{}) catch {};
+        },
         .reduced => writeValue(w, val.asReduced().value),
         .transient_vector => w.print("#<TransientVector>", .{}) catch {},
         .transient_map => w.print("#<TransientMap>", .{}) catch {},

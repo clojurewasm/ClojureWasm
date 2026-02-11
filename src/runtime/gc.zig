@@ -912,6 +912,25 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             // FutureResult.value is traced when delivered via get()
         },
 
+        // Agent — state, error, error-handler, meta, queued action values
+        .agent => {
+            const a = val.asAgent();
+            if (gc.markAndCheck(a)) {
+                if (a.getMeta()) |m| traceValue(gc, m);
+                const inner = a.getInner();
+                traceValue(gc, inner.state);
+                traceValue(gc, inner.error_val);
+                traceValue(gc, inner.error_handler);
+                // Trace queued action functions and args
+                var action = inner.action_head;
+                while (action) |act| {
+                    traceValue(gc, act.func);
+                    for (act.args) |arg| traceValue(gc, arg);
+                    action = act.next;
+                }
+            }
+        },
+
         // Reduced — wrapped value
         .reduced => {
             const r = val.asReduced();

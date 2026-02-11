@@ -253,7 +253,7 @@ pub const Reduced = struct {
 };
 
 /// Discriminator for types sharing the delay NanHeapTag slot.
-pub const DeferredKind = enum(u8) { delay, future, promise };
+pub const DeferredKind = enum(u8) { delay, future, promise, agent };
 
 // Sentinel value for "no Value" in extern structs (where ?Value is not allowed).
 pub const NO_VALUE: Value = @enumFromInt(0xDEAD_DEAD_DEAD_DEAD);
@@ -307,6 +307,74 @@ pub const FutureObj = extern struct {
 pub const PromiseObj = extern struct {
     kind: DeferredKind = .promise, // MUST be at offset 0 (tag discriminator)
     sync: *anyopaque = undefined, // *thread_pool.FutureResult
+};
+
+/// Agent — asynchronous state container with serial action queue.
+/// Actions dispatched via send/send-off execute sequentially per agent.
+/// extern struct for guaranteed field order (kind must be at offset 0).
+pub const AgentObj = extern struct {
+    kind: DeferredKind = .agent, // MUST be at offset 0 (tag discriminator)
+    inner: *anyopaque = undefined, // *AgentInner (contains mutex, can't be extern)
+    meta_val: Value = NO_VALUE, // agent metadata
+
+    pub fn getInner(self: *const AgentObj) *AgentInner {
+        return @ptrCast(@alignCast(self.inner));
+    }
+    pub fn getMeta(self: *const AgentObj) ?Value {
+        return if (self.meta_val == NO_VALUE) null else self.meta_val;
+    }
+};
+
+/// Agent inner state — regular struct (contains mutex, queues).
+/// Allocated via page allocator to avoid GC interference.
+pub const AgentInner = struct {
+    state: Value,
+    error_val: Value = Value.nil_val,
+    error_handler: Value = Value.nil_val,
+    error_mode: ErrorMode = .continue_mode,
+    mutex: std.Thread.Mutex = .{},
+    pending_count: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    action_head: ?*AgentAction = null,
+    action_tail: ?*AgentAction = null,
+
+    pub const ErrorMode = enum(u8) { continue_mode, fail_mode };
+
+    pub fn enqueue(self: *AgentInner, action: *AgentAction) void {
+        if (self.action_tail) |tail| {
+            tail.next = action;
+        } else {
+            self.action_head = action;
+        }
+        self.action_tail = action;
+        _ = self.pending_count.fetchAdd(1, .release);
+    }
+
+    pub fn dequeue(self: *AgentInner) ?*AgentAction {
+        const head = self.action_head orelse return null;
+        self.action_head = head.next;
+        if (self.action_head == null) {
+            self.action_tail = null;
+        }
+        _ = self.pending_count.fetchSub(1, .release);
+        return head;
+    }
+
+    pub fn hasPending(self: *const AgentInner) bool {
+        return self.pending_count.load(.acquire) > 0;
+    }
+
+    pub fn isInErrorState(self: *const AgentInner) bool {
+        return self.error_val.tag() != .nil;
+    }
+};
+
+/// A single queued action for an agent.
+/// Allocated via page allocator.
+pub const AgentAction = struct {
+    func: Value,
+    args: []const Value, // additional args beyond current state
+    next: ?*AgentAction = null,
 };
 
 /// Compiled regex pattern.
@@ -688,7 +756,7 @@ pub const Value = enum(u64) {
         fn_val, builtin_fn,
         atom, volatile_ref, regex,
         protocol, protocol_fn, multi_fn,
-        lazy_seq, cons, var_ref, delay, future, promise, reduced,
+        lazy_seq, cons, var_ref, delay, future, promise, agent, reduced,
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
@@ -740,6 +808,7 @@ pub const Value = enum(u64) {
                     .future => .future,
                     .promise => .promise,
                     .delay => .delay,
+                    .agent => .agent,
                 };
             },
             .reduced => .reduced,
@@ -1064,6 +1133,14 @@ pub const Value = enum(u64) {
 
     pub fn asPromise(self: Value) *PromiseObj {
         return decodePtr(self, *PromiseObj);
+    }
+
+    pub fn initAgent(a: *AgentObj) Value {
+        return encodeHeapPtr(.delay, a); // shares delay slot
+    }
+
+    pub fn asAgent(self: Value) *AgentObj {
+        return decodePtr(self, *AgentObj);
     }
 
     pub fn asReduced(self: Value) *const Reduced {
@@ -1490,6 +1567,16 @@ pub const Value = enum(u64) {
                     try w.writeAll("#promise[pending]");
                 }
             },
+            .agent => {
+                const a = self.asAgent();
+                const inner = a.getInner();
+                try w.writeAll("#agent[");
+                if (inner.isInErrorState()) {
+                    try w.writeAll("FAILED ");
+                }
+                try inner.state.formatPrStr(w);
+                try w.writeAll("]");
+            },
             .reduced => {
                 const r = self.asReduced();
                 try r.value.formatPrStr(w);
@@ -1701,6 +1788,7 @@ pub const Value = enum(u64) {
             .delay => self.asDelay() == other.asDelay(), // identity equality
             .future => self.asFuture() == other.asFuture(), // identity equality
             .promise => self.asPromise() == other.asPromise(), // identity equality
+            .agent => self.asAgent() == other.asAgent(), // identity equality
             .reduced => self.asReduced().value.eqlImpl(other.asReduced().value, allocator),
             .map, .hash_map => unreachable, // handled by eqlMaps above
             .set => {

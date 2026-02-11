@@ -44,6 +44,7 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
             .delay => forceDelay(allocator, args[0].asDelay()),
             .future => derefFuture(args[0].asFuture()),
             .promise => derefPromise(args[0].asPromise()),
+            .agent => derefAgent(args[0].asAgent()),
             else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
         };
     }
@@ -118,6 +119,12 @@ fn derefPromise(p: *value_mod.PromiseObj) Value {
 fn derefPromiseWithTimeout(p: *value_mod.PromiseObj, timeout_ms: u64, timeout_val: Value) Value {
     const sync: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(p.sync));
     return sync.getWithTimeout(timeout_ms * std.time.ns_per_ms) orelse timeout_val;
+}
+
+/// Deref an Agent: return current state (non-blocking).
+fn derefAgent(a: *value_mod.AgentObj) Value {
+    const inner = a.getInner();
+    return inner.state;
 }
 
 /// (__delay-create thunk-fn) => delay value
@@ -636,7 +643,229 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([promise val])",
         .added = "1.1",
     },
+    .{
+        .name = "agent",
+        .func = &agentFn,
+        .doc = "Creates and returns an agent with an initial value of state and zero or more options.",
+        .arglists = "([state & options])",
+        .added = "1.0",
+    },
+    .{
+        .name = "agent-error",
+        .func = &agentErrorFn,
+        .doc = "Returns the exception thrown during an asynchronous action of the agent if the agent is failed. Returns nil if the agent is not failed.",
+        .arglists = "([a])",
+        .added = "1.2",
+    },
+    .{
+        .name = "restart-agent",
+        .func = &restartAgentFn,
+        .doc = "When an agent is failed, changes the agent state to new-state and then un-fails the agent so that sends are allowed again.",
+        .arglists = "([a new-state])",
+        .added = "1.2",
+    },
+    .{
+        .name = "set-error-handler!",
+        .func = &setErrorHandlerFn,
+        .doc = "Sets the error-handler of agent a to handler-fn.",
+        .arglists = "([a handler-fn])",
+        .added = "1.2",
+    },
+    .{
+        .name = "set-error-mode!",
+        .func = &setErrorModeFn,
+        .doc = "Sets the error-mode of agent a to mode-keyword, which must be either :fail or :continue.",
+        .arglists = "([a mode-keyword])",
+        .added = "1.2",
+    },
+    .{
+        .name = "agent?",
+        .func = &agentPred,
+        .doc = "Returns true if x is an agent.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "send",
+        .func = &sendFn,
+        .doc = "Dispatch an action to an agent. Returns the agent immediately.",
+        .arglists = "([a f & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "send-off",
+        .func = &sendOffFn,
+        .doc = "Dispatch a potentially blocking action to an agent. Returns the agent immediately.",
+        .arglists = "([a f & args])",
+        .added = "1.0",
+    },
 };
+
+// === Agent builtins ===
+
+/// (agent initial-state) or (agent initial-state :error-handler fn :error-mode mode)
+pub fn agentFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to agent", .{args.len});
+    const initial_state = args[0];
+
+    // Parse optional keyword args
+    var error_handler = Value.nil_val;
+    var error_mode = value_mod.AgentInner.ErrorMode.continue_mode;
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        if (args[i].tag() != .keyword) {
+            return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "agent options must be keyword-value pairs" });
+        }
+        const kw = args[i].asKeyword();
+        if (kw.ns == null) {
+            if (std.mem.eql(u8, kw.name, "error-handler")) {
+                error_handler = args[i + 1];
+            } else if (std.mem.eql(u8, kw.name, "error-mode")) {
+                if (args[i + 1].tag() == .keyword) {
+                    const mode_kw = args[i + 1].asKeyword();
+                    if (mode_kw.ns == null and std.mem.eql(u8, mode_kw.name, "continue")) {
+                        error_mode = .continue_mode;
+                    } else if (mode_kw.ns == null and std.mem.eql(u8, mode_kw.name, "fail")) {
+                        error_mode = .fail_mode;
+                    } else {
+                        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Invalid agent error mode, must be :continue or :fail" });
+                    }
+                } else {
+                    return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "agent :error-mode must be a keyword" });
+                }
+            }
+            // ignore unknown options (JVM Clojure also has :meta, :validator)
+        }
+    }
+
+    // Allocate inner via page allocator (avoids GC interference with mutex)
+    const page_alloc = std.heap.page_allocator;
+    const inner = try page_alloc.create(value_mod.AgentInner);
+    inner.* = .{
+        .state = initial_state,
+        .error_handler = error_handler,
+        .error_mode = error_mode,
+    };
+
+    // Allocate AgentObj via GC allocator (tracked by GC)
+    const agent_obj = try allocator.create(value_mod.AgentObj);
+    agent_obj.* = .{ .inner = @ptrCast(inner) };
+    return Value.initAgent(agent_obj);
+}
+
+/// (agent-error agent) => exception or nil
+pub fn agentErrorFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to agent-error", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "agent-error expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    return inner.error_val;
+}
+
+/// (restart-agent agent new-state) => agent
+pub fn restartAgentFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to restart-agent", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "restart-agent expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    if (!inner.isInErrorState()) {
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Agent does not need restart" });
+    }
+    inner.state = args[1];
+    inner.error_val = Value.nil_val;
+    return args[0];
+}
+
+/// (set-error-handler! agent handler-fn) => agent
+pub fn setErrorHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-error-handler!", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-error-handler! expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    inner.error_handler = args[1];
+    return args[0];
+}
+
+/// (set-error-mode! agent mode-keyword) => agent
+pub fn setErrorModeFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-error-mode!", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-error-mode! expects an agent" });
+    if (args[1].tag() != .keyword) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "set-error-mode! mode must be a keyword" });
+    const mode_kw = args[1].asKeyword();
+    if (mode_kw.ns != null) return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Invalid agent error mode" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    if (std.mem.eql(u8, mode_kw.name, "continue")) {
+        inner.error_mode = .continue_mode;
+    } else if (std.mem.eql(u8, mode_kw.name, "fail")) {
+        inner.error_mode = .fail_mode;
+    } else {
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Invalid agent error mode, must be :continue or :fail" });
+    }
+    return args[0];
+}
+
+/// (send agent fn & args) => agent
+/// Dispatches an action (fn state args...) to the agent's queue.
+pub fn sendFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to send", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "send expects an agent as first argument" });
+    const agent_obj = args[0].asAgent();
+    const inner = agent_obj.getInner();
+
+    // Check if agent is in failed state
+    if (inner.isInErrorState()) {
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "Agent is failed, needs restart-agent" });
+    }
+
+    const page_alloc = std.heap.page_allocator;
+
+    // Copy extra args (args beyond agent and fn)
+    const extra_args = if (args.len > 2)
+        page_alloc.alloc(Value, args.len - 2) catch return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: allocation failed" })
+    else
+        page_alloc.alloc(Value, 0) catch return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: allocation failed" });
+    if (args.len > 2) @memcpy(extra_args, args[2..]);
+
+    // Create action node
+    const action = page_alloc.create(value_mod.AgentAction) catch
+        return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: allocation failed" });
+    action.* = .{ .func = args[1], .args = extra_args };
+
+    // Enqueue and trigger processing
+    inner.mutex.lock();
+    inner.enqueue(action);
+    const was_processing = inner.processing.swap(true, .acq_rel);
+    inner.mutex.unlock();
+
+    if (!was_processing) {
+        // Submit agent work to thread pool
+        const env_ptr = bootstrap.macro_eval_env orelse
+            return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: no eval environment" });
+        const pool = thread_pool_mod.getGlobalPool(env_ptr) catch
+            return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: failed to get thread pool" });
+        pool.submitAgentWork(agent_obj) catch
+            return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "send: failed to submit work" });
+    }
+
+    return args[0]; // return the agent
+}
+
+/// (send-off agent fn & args) => agent
+/// Same as send but intended for potentially blocking actions.
+/// In our implementation, uses the same thread pool as send.
+pub fn sendOffFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return sendFn(allocator, args);
+}
+
+/// (agent? x) => boolean
+pub fn agentPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to agent?", .{args.len});
+    return if (args[0].tag() == .agent) Value.true_val else Value.false_val;
+}
 
 // === Tests ===
 
