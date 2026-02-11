@@ -485,8 +485,9 @@ artifact with no current meaning.
 ## D92: zwasm Integration — External Wasm Runtime Dependency
 
 **Decision**: Replace CW's internal wasm engine (9 files, ~9300 LOC) with zwasm
-as an external Zig path dependency. CW keeps a thin bridge file (`src/wasm/types.zig`)
-that wraps zwasm's public API into CW's Value system.
+as a GitHub URL dependency (v0.1.0, https://github.com/clojurewasm/zwasm).
+CW keeps a thin bridge file (`src/wasm/types.zig`) that wraps zwasm's public API
+into CW's Value system.
 
 **Before**: CW had a frozen copy of the wasm runtime (vm, store, module, instance,
 opcode, predecode, memory, leb128, wasi) in `src/wasm/`. This was the Phase 35W
@@ -505,8 +506,8 @@ Host function trampoline uses `zwasm.Vm` for stack access, `zwasm.inspectImportF
 for import type resolution. The bridge handles Value↔u64 conversion, HostContext,
 and Clojure imports map → `[]zwasm.ImportEntry` translation.
 
-**Build**: `build.zig.zon` path dependency `../zwasm`. Native targets only
-(wasm32-wasi target does not link zwasm).
+**Build**: `build.zig.zon` GitHub URL dependency (v0.1.0 tag tarball).
+`zig build` auto-fetches zwasm. Native targets only (wasm32-wasi does not link zwasm).
 
 **Benefits**:
 - -9300 LOC in CW (maintenance burden eliminated)

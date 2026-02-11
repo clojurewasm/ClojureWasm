@@ -30,8 +30,9 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 ## Previous Task
 
 zwasm integration (D92): Replaced internal wasm engine (9 files, 9300 LOC) with
-zwasm path dependency. Bridge in types.zig delegates to zwasm.WasmModule.
-Branch: `zwasm-integration`.
+zwasm as GitHub URL dependency (v0.1.0). Bridge in types.zig delegates to
+zwasm.WasmModule. `zig build` fetches zwasm automatically from GitHub.
+All tests (unit, e2e 6/6, portability 2/2, benchmarks 31) verified.
 
 Prior previous task — nREPL stacktrace + GPA leak fix:
 - VM stacktrace now shows file:line (was REPL:0) — FnProto.source_file + CallFrame.source_file
@@ -109,7 +110,7 @@ Session resume procedure: read this file → follow references below.
 | Decisions          | `.dev/decisions.md` (D3-D91)         |
 | Optimizations      | `.dev/optimizations.md`              |
 | Benchmarks         | `bench/history.yaml`                 |
-| zwasm dependency   | `../zwasm/` (path dep in build.zig.zon) |
+| zwasm dependency   | GitHub URL dep v0.1.0 (build.zig.zon)   |
 | zwasm integration  | `.dev/decisions.md` D92              |
 | Wasm opt plan      | `.dev/wasm-opt-plan.md`              |
 | Wasm bench history | `bench/wasm_history.yaml`            |
