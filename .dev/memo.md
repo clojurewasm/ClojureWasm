@@ -27,29 +27,29 @@ Phase 48: v0.2.0-alpha — Concurrency
 - [x] 48.1: Thread-safe global state (threadlocal/atomic conversions)
 - [x] 48.2: GC thread safety (D94 — mutex + stop-the-world)
 - [x] 48.3: Thread pool infrastructure + per-thread evaluator
-- [ ] 48.4: Future Value type + future/future-call/deref
+- [x] 48.4: Future Value type + future/future-call/deref
 - [ ] 48.5: pmap, pcalls, pvalues
 - [ ] 48.6: promise + deliver
 
 ## Current Task
 
-48.4: Future Value type + future/future-call/deref.
+48.5: pmap, pcalls, pvalues
 
 Plan:
-- Add future tag to Value (NanBoxed heap pointer to FutureResult)
-- Implement future, future-call, future-done?, future-cancel, future-cancelled?
-- Implement deref for future (blocking + timeout variant)
-- Wire thread pool shutdown into lifecycle
-- Update vars.yaml for future-related vars
+- Implement pmap (parallel map using futures + thread pool)
+- Implement pcalls (parallel function calls)
+- Implement pvalues (parallel value computation)
+- All are bootstrap Clojure, implemented on top of future-call
 
 ## Previous Task
 
-48.3: Thread pool infrastructure + per-thread evaluator.
-- ThreadPool: fixed-size pool backed by std.Thread
-- FutureResult: mutex + cond var for blocking deref
-- Per-thread env (shallow clone of main env)
-- Binding conveyance (parent bindings → worker thread)
-- Global pool with lazy initialization + shutdown
+48.4: Future Value type + future/future-call/deref.
+- FutureObj: extern struct sharing delay NanHeapTag slot 18, DeferredKind discriminator
+- NO_VALUE sentinel (0xDEAD) for extern struct fields (replaces ?Value)
+- future-call, future?, future-done?, future-cancel, future-cancelled? builtins
+- future macro in bootstrap clj
+- deref supports 1-arity (blocking) and 3-arity (timeout) for futures
+- Thread pool shutdown wired into lifecycle.runShutdownHooks
 
 ## Known Issues
 

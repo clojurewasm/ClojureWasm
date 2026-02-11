@@ -22,6 +22,8 @@ const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../runtime/bootstrap.zig");
 const err = @import("../runtime/error.zig");
+const thread_pool_mod = @import("../runtime/thread_pool.zig");
+const env_mod = @import("../runtime/env.zig");
 
 /// (atom val) => #<atom val>
 pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -33,15 +35,33 @@ pub fn atomFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (deref ref) => val  — works on atoms, volatiles, delays, vars, promises
 pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
-    return switch (args[0].tag()) {
-        .atom => derefAtom(allocator, args[0].asAtom()),
-        .volatile_ref => args[0].asVolatile().value,
-        .var_ref => args[0].asVarRef().deref(),
-        .reduced => args[0].asReduced().value,
-        .delay => forceDelay(allocator, args[0].asDelay()),
-        else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
-    };
+    if (args.len == 1) {
+        return switch (args[0].tag()) {
+            .atom => derefAtom(allocator, args[0].asAtom()),
+            .volatile_ref => args[0].asVolatile().value,
+            .var_ref => args[0].asVarRef().deref(),
+            .reduced => args[0].asReduced().value,
+            .delay => forceDelay(allocator, args[0].asDelay()),
+            .future => derefFuture(args[0].asFuture()),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
+        };
+    }
+    // 3-arity: (deref ref timeout-ms timeout-val)
+    if (args.len == 3) {
+        if (args[0].tag() == .future) {
+            const timeout_ms: u64 = switch (args[1].tag()) {
+                .integer => @intCast(@max(0, args[1].asInteger())),
+                else => return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "deref timeout must be an integer" }),
+            };
+            return derefFutureWithTimeout(args[0].asFuture(), timeout_ms, args[2]);
+        }
+        // Delay with timeout: just force (delay doesn't support timeout)
+        if (args[0].tag() == .delay) {
+            return forceDelay(allocator, args[0].asDelay());
+        }
+        return err.setErrorFmt(.eval, .type_error, .{}, "3-arity deref requires a future or delay, got {s}", .{@tagName(args[0].tag())});
+    }
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
 }
 
 /// Deref an atom, with special handling for promise atoms.
@@ -62,34 +82,47 @@ fn derefAtom(allocator: Allocator, a: *Atom) Value {
 /// on subsequent force calls (JVM Delay semantics).
 pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
     if (d.realized) {
-        if (d.error_cached) |cached_ex| {
+        if (d.getErrorCached()) |cached_ex| {
             // Re-throw the cached exception
             bootstrap.last_thrown_exception = cached_ex;
             return error.UserException;
         }
-        return d.cached orelse Value.nil_val;
+        return d.getCached() orelse Value.nil_val;
     }
-    const thunk = d.fn_val orelse return Value.nil_val;
+    const thunk = d.getFnVal() orelse return Value.nil_val;
     const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| {
         // Cache the exception value for re-throwing on subsequent calls
         d.realized = true;
-        d.fn_val = null;
+        d.clearFnVal();
         if (e == error.UserException) {
-            d.error_cached = bootstrap.last_thrown_exception;
+            d.setErrorCached(bootstrap.last_thrown_exception orelse Value.nil_val);
         }
         return e;
     };
-    d.cached = result;
-    d.fn_val = null;
+    d.setCached(result);
+    d.clearFnVal();
     d.realized = true;
     return result;
+}
+
+/// Deref a Future value: block until result is available.
+fn derefFuture(f: *value_mod.FutureObj) Value {
+    const result: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(f.result));
+    return result.get();
+}
+
+/// Deref a Future value with timeout (milliseconds).
+/// Returns timeout_val if the future doesn't complete in time.
+fn derefFutureWithTimeout(f: *value_mod.FutureObj, timeout_ms: u64, timeout_val: Value) Value {
+    const result: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(f.result));
+    return result.getWithTimeout(timeout_ms * std.time.ns_per_ms) orelse timeout_val;
 }
 
 /// (__delay-create thunk-fn) => delay value
 pub fn delayCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __delay-create", .{args.len});
     const d = try allocator.create(value_mod.Delay);
-    d.* = .{ .fn_val = args[0], .cached = null, .error_cached = null, .realized = false };
+    d.* = .{ .fn_val = args[0], .cached = value_mod.NO_VALUE, .error_cached = value_mod.NO_VALUE, .realized = false };
     return Value.initDelay(d);
 }
 
@@ -347,6 +380,75 @@ pub fn getValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
     return a.validator orelse Value.nil_val;
 }
 
+// ============================================================
+// Future builtins
+// ============================================================
+
+/// (future-call f) => future
+fn futureCallFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to future-call", .{args.len});
+    const func = args[0];
+    if (func.tag() != .fn_val and func.tag() != .builtin_fn and func.tag() != .multi_fn)
+        return err.setErrorFmt(.eval, .type_error, .{}, "future-call expects a function, got {s}", .{@tagName(func.tag())});
+
+    // Get or create the global thread pool
+    const env: *env_mod.Env = bootstrap.macro_eval_env orelse
+        return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: no eval environment" });
+    const pool = thread_pool_mod.getGlobalPool(allocator, env) catch
+        return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: failed to create thread pool" });
+
+    // Submit the function to the thread pool
+    const result = pool.submit(func, allocator) catch
+        return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: failed to submit task" });
+
+    // Create a FutureObj Value
+    const future_obj = try allocator.create(value_mod.FutureObj);
+    future_obj.kind = .future;
+    future_obj.result = @ptrCast(result);
+    future_obj.func = func;
+    future_obj.cancelled = false;
+    return Value.initFuture(future_obj);
+}
+
+/// (future? x)
+fn futurePredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to future?", .{args.len});
+    return if (args[0].tag() == .future) Value.true_val else Value.false_val;
+}
+
+/// (future-done? f)
+fn futureDonePredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to future-done?", .{args.len});
+    if (args[0].tag() != .future)
+        return err.setErrorFmt(.eval, .type_error, .{}, "future-done? expects a future, got {s}", .{@tagName(args[0].tag())});
+    const f = args[0].asFuture();
+    const result: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(f.result));
+    return if (result.isDone() or f.cancelled) Value.true_val else Value.false_val;
+}
+
+/// (future-cancel f)
+fn futureCancelFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to future-cancel", .{args.len});
+    if (args[0].tag() != .future)
+        return err.setErrorFmt(.eval, .type_error, .{}, "future-cancel expects a future, got {s}", .{@tagName(args[0].tag())});
+    const f = args[0].asFuture();
+    const result: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(f.result));
+    // Can only cancel if still pending
+    if (!result.isDone() and !f.cancelled) {
+        f.cancelled = true;
+        return Value.true_val;
+    }
+    return Value.false_val;
+}
+
+/// (future-cancelled? f)
+fn futureCancelledPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to future-cancelled?", .{args.len});
+    if (args[0].tag() != .future)
+        return err.setErrorFmt(.eval, .type_error, .{}, "future-cancelled? expects a future, got {s}", .{@tagName(args[0].tag())});
+    return if (args[0].asFuture().cancelled) Value.true_val else Value.false_val;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "atom",
@@ -445,6 +547,41 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Gets the validator-fn for a var/ref/agent/atom.",
         .arglists = "([iref])",
         .added = "1.0",
+    },
+    .{
+        .name = "future-call",
+        .func = &futureCallFn,
+        .doc = "Takes a function of no args and yields a future object that will invoke the function in another thread, and will cache the result and return it on all subsequent calls to deref/@.",
+        .arglists = "([f])",
+        .added = "1.1",
+    },
+    .{
+        .name = "future?",
+        .func = &futurePredFn,
+        .doc = "Returns true if x is a future.",
+        .arglists = "([x])",
+        .added = "1.1",
+    },
+    .{
+        .name = "future-done?",
+        .func = &futureDonePredFn,
+        .doc = "Returns true if future f is done.",
+        .arglists = "([f])",
+        .added = "1.1",
+    },
+    .{
+        .name = "future-cancel",
+        .func = &futureCancelFn,
+        .doc = "Cancels the future, if possible.",
+        .arglists = "([f])",
+        .added = "1.1",
+    },
+    .{
+        .name = "future-cancelled?",
+        .func = &futureCancelledPredFn,
+        .doc = "Returns true if future f is cancelled.",
+        .arglists = "([f])",
+        .added = "1.1",
     },
 };
 

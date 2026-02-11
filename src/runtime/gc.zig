@@ -891,9 +891,17 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
         .delay => {
             const d = val.asDelay();
             if (gc.markAndCheck(d)) {
-                if (d.fn_val) |f| traceValue(gc, f);
-                if (d.cached) |c| traceValue(gc, c);
-                if (d.error_cached) |e| traceValue(gc, e);
+                if (d.getFnVal()) |f| traceValue(gc, f);
+                if (d.getCached()) |c| traceValue(gc, c);
+                if (d.getErrorCached()) |e| traceValue(gc, e);
+            }
+        },
+
+        // Future — func (for GC root tracing)
+        .future => {
+            const f = val.asFuture();
+            if (gc.markAndCheck(f)) {
+                if (f.getFunc()) |fn_val| traceValue(gc, fn_val);
             }
         },
 

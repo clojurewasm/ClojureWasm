@@ -1258,10 +1258,24 @@ fn writeValue(w: anytype, val: Value) void {
             const d = val.asDelay();
             if (d.realized) {
                 w.print("#delay[", .{}) catch {};
-                if (d.cached) |v| writeValue(w, v) else w.print("nil", .{}) catch {};
+                if (d.getCached()) |v| writeValue(w, v) else w.print("nil", .{}) catch {};
                 w.print("]", .{}) catch {};
             } else {
                 w.print("#delay[pending]", .{}) catch {};
+            }
+        },
+        .future => {
+            const f = val.asFuture();
+            const thread_pool = @import("../runtime/thread_pool.zig");
+            const result: *thread_pool.FutureResult = @ptrCast(@alignCast(f.result));
+            if (f.cancelled) {
+                w.print("#future[cancelled]", .{}) catch {};
+            } else if (result.isDone()) {
+                w.print("#future[", .{}) catch {};
+                writeValue(w, result.value);
+                w.print("]", .{}) catch {};
+            } else {
+                w.print("#future[pending]", .{}) catch {};
             }
         },
         .reduced => writeValue(w, val.asReduced().value),

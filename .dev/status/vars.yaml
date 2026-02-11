@@ -312,12 +312,12 @@ vars:
     force: {type: function, status: done, note: "core.clj delay-aware evaluation"}
     format: {type: function, status: done, note: "Zig builtin"}
     frequencies: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    future: {type: macro, status: skip, note: Phase 44 — Zig thread pool}
-    "future-call": {type: function, status: skip, note: Phase 44 — Zig thread pool}
-    "future-cancel": {type: function, status: skip, note: Phase 44 — Zig thread pool}
-    "future-cancelled?": {type: function, status: skip, note: Phase 44 — Zig thread pool}
-    "future-done?": {type: function, status: skip, note: Phase 44 — Zig thread pool}
-    "future?": {type: function, status: skip, note: "Phase 44 — Zig thread pool"}
+    future: {type: macro, status: done, note: "bootstrap clj macro"}
+    "future-call": {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    "future-cancel": {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    "future-cancelled?": {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    "future-done?": {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    "future?": {type: function, status: done, note: "builtin (upstream is pure clj)"}
     "gen-class": {type: macro, status: skip, note: JVM interop}
     "gen-interface": {type: macro, status: skip, note: JVM interop}
     gensym: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}

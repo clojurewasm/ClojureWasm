@@ -2532,6 +2532,10 @@
          (recur (inc ~idx) ~expr)
          ~ret))))
 
+;; future macro
+(defmacro future
+  [& body] `(future-call (fn [] ~@body)))
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)

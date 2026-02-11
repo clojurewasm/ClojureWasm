@@ -19,6 +19,7 @@ const Allocator = std.mem.Allocator;
 const Value = @import("value.zig").Value;
 const bootstrap = @import("bootstrap.zig");
 const Env = @import("env.zig").Env;
+const thread_pool = @import("thread_pool.zig");
 
 // ============================================================
 // Shutdown flag
@@ -180,6 +181,9 @@ pub fn runShutdownHooks(allocator: Allocator, env_ptr: *Env) void {
             };
         }
     }
+
+    // Shutdown the global thread pool (if active)
+    thread_pool.shutdownGlobalPool();
 }
 
 // ============================================================

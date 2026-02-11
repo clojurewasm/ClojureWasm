@@ -219,12 +219,53 @@ pub const Reduced = struct {
     _pad: u64 = 0, // Pad to 16 bytes for GPA bucket alignment
 };
 
+/// Discriminator for types sharing the delay NanHeapTag slot.
+pub const DeferredKind = enum(u8) { delay, future };
+
+// Sentinel value for "no Value" in extern structs (where ?Value is not allowed).
+pub const NO_VALUE: Value = @enumFromInt(0xDEAD_DEAD_DEAD_DEAD);
+
 /// Delay — lazy thunk with cached result. Force to evaluate.
-pub const Delay = struct {
-    fn_val: ?Value, // thunk (null after realization)
-    cached: ?Value, // cached result
-    error_cached: ?Value, // cached exception (re-thrown on subsequent force)
-    realized: bool,
+/// extern struct for guaranteed field order (kind must be at offset 0).
+pub const Delay = extern struct {
+    kind: DeferredKind = .delay, // MUST be at offset 0 (tag discriminator)
+    fn_val: Value = NO_VALUE, // thunk (NO_VALUE after realization)
+    cached: Value = NO_VALUE, // cached result (NO_VALUE = not yet realized)
+    error_cached: Value = NO_VALUE, // cached exception (NO_VALUE = no error)
+    realized: bool = false,
+
+    pub fn getFnVal(self: *const Delay) ?Value {
+        return if (self.fn_val == NO_VALUE) null else self.fn_val;
+    }
+    pub fn getCached(self: *const Delay) ?Value {
+        return if (self.cached == NO_VALUE) null else self.cached;
+    }
+    pub fn getErrorCached(self: *const Delay) ?Value {
+        return if (self.error_cached == NO_VALUE) null else self.error_cached;
+    }
+    pub fn clearFnVal(self: *Delay) void {
+        self.fn_val = NO_VALUE;
+    }
+    pub fn setCached(self: *Delay, val: Value) void {
+        self.cached = val;
+    }
+    pub fn setErrorCached(self: *Delay, val: Value) void {
+        self.error_cached = val;
+    }
+};
+
+/// Future — asynchronous computation result (backed by thread pool).
+/// Wraps a FutureResult from thread_pool.zig.
+/// extern struct for guaranteed field order (kind must be at offset 0).
+pub const FutureObj = extern struct {
+    kind: DeferredKind = .future, // MUST be at offset 0 (tag discriminator)
+    result: *anyopaque = undefined, // *thread_pool.FutureResult
+    func: Value = NO_VALUE, // original function (for GC tracing)
+    cancelled: bool = false,
+
+    pub fn getFunc(self: *const FutureObj) ?Value {
+        return if (self.func == NO_VALUE) null else self.func;
+    }
 };
 
 /// Compiled regex pattern.
@@ -606,7 +647,7 @@ pub const Value = enum(u64) {
         fn_val, builtin_fn,
         atom, volatile_ref, regex,
         protocol, protocol_fn, multi_fn,
-        lazy_seq, cons, var_ref, delay, reduced,
+        lazy_seq, cons, var_ref, delay, future, reduced,
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
@@ -650,7 +691,13 @@ pub const Value = enum(u64) {
             .protocol => .protocol, .protocol_fn => .protocol_fn,
             .multi_fn => .multi_fn, .lazy_seq => .lazy_seq,
             .cons => .cons, .var_ref => .var_ref,
-            .delay => .delay, .reduced => .reduced,
+            .delay => {
+                // Delay and Future share NanHeapTag slot 18.
+                // Discriminate via first byte (DeferredKind).
+                const kind_ptr = self.decodePtr(*const DeferredKind);
+                return if (kind_ptr.* == .future) .future else .delay;
+            },
+            .reduced => .reduced,
             .transient_vector => .transient_vector,
             .transient_map => .transient_map,
             .transient_set => .transient_set,
@@ -956,6 +1003,14 @@ pub const Value = enum(u64) {
 
     pub fn asDelay(self: Value) *Delay {
         return decodePtr(self, *Delay);
+    }
+
+    pub fn initFuture(f: *FutureObj) Value {
+        return encodeHeapPtr(.delay, f); // shares delay slot
+    }
+
+    pub fn asFuture(self: Value) *FutureObj {
+        return decodePtr(self, *FutureObj);
     }
 
     pub fn asReduced(self: Value) *const Reduced {
@@ -1331,10 +1386,24 @@ pub const Value = enum(u64) {
                 const d = self.asDelay();
                 if (d.realized) {
                     try w.writeAll("#delay[");
-                    if (d.cached) |v| try v.formatPrStr(w) else try w.writeAll("nil");
+                    if (d.getCached()) |v| try v.formatPrStr(w) else try w.writeAll("nil");
                     try w.writeAll("]");
                 } else {
                     try w.writeAll("#delay[pending]");
+                }
+            },
+            .future => {
+                const f = self.asFuture();
+                const thread_pool = @import("thread_pool.zig");
+                const result: *thread_pool.FutureResult = @ptrCast(@alignCast(f.result));
+                if (f.cancelled) {
+                    try w.writeAll("#future[cancelled]");
+                } else if (result.isDone()) {
+                    try w.writeAll("#future[");
+                    try result.value.formatPrStr(w);
+                    try w.writeAll("]");
+                } else {
+                    try w.writeAll("#future[pending]");
                 }
             },
             .reduced => {
@@ -1546,6 +1615,7 @@ pub const Value = enum(u64) {
             .var_ref => self.asVarRef() == other.asVarRef(), // identity equality
             .cons => unreachable, // handled by eqlConsSeq above
             .delay => self.asDelay() == other.asDelay(), // identity equality
+            .future => self.asFuture() == other.asFuture(), // identity equality
             .reduced => self.asReduced().value.eqlImpl(other.asReduced().value, allocator),
             .map, .hash_map => unreachable, // handled by eqlMaps above
             .set => {
@@ -2401,4 +2471,27 @@ test "Value tag switch pattern" {
 test "Value size is 8 bytes with NaN boxing" {
     // NaN-boxed enum(u64): all values packed into 8 bytes.
     try testing.expectEqual(@as(usize, 8), @sizeOf(Value));
+}
+
+test "FutureObj extern struct layout and tag discrimination" {
+    const alloc = testing.allocator;
+    // Verify extern struct layout: kind must be at offset 0
+    try testing.expectEqual(@as(usize, 0), @offsetOf(FutureObj, "kind"));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(Delay, "kind"));
+
+    // Create a FutureObj and verify tag discrimination
+    const f = try alloc.create(FutureObj);
+    defer alloc.destroy(f);
+    f.* = .{ .kind = .future, .cancelled = false };
+
+    const val = Value.initFuture(f);
+    try testing.expectEqual(.future, val.tag());
+
+    // Create a Delay and verify tag discrimination
+    const d = try alloc.create(Delay);
+    defer alloc.destroy(d);
+    d.* = .{ .kind = .delay };
+
+    const dval = Value.initDelay(d);
+    try testing.expectEqual(.delay, dval.tag());
 }
