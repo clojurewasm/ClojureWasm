@@ -93,9 +93,12 @@ pub const LineEditor = struct {
     // Allocator for history string duplication
     allocator: Allocator,
 
-    // Prompt
+    // Prompt (dynamic, updated via setNsPrompt)
     prompt: []const u8,
     cont_prompt: []const u8,
+    prompt_display_len: usize, // visible character count (without ANSI escapes)
+    prompt_buf: [256]u8,
+    cont_prompt_buf: [256]u8,
 
     // Rendering state
     prev_cursor_row: usize, // terminal cursor row after last refresh (0-based from first rendered line)
@@ -124,11 +127,37 @@ pub const LineEditor = struct {
             .allocator = allocator,
             .prompt = "user=> ",
             .cont_prompt = "",
+            .prompt_display_len = 7,
+            .prompt_buf = undefined,
+            .cont_prompt_buf = undefined,
             .prev_cursor_row = 0,
         };
         self.resolveHistoryPath();
         self.loadHistory();
         return self;
+    }
+
+    /// Update prompt to reflect the current namespace.
+    /// Call before each readInput() from the REPL loop.
+    pub fn setNsPrompt(self: *LineEditor, ns_name: []const u8) void {
+        // Build colored prompt: "\x1b[32m<ns>\x1b[0m=> "
+        var stream = std.io.fixedBufferStream(&self.prompt_buf);
+        const w = stream.writer();
+        w.writeAll("\x1b[32m") catch return; // green
+        w.writeAll(ns_name) catch return;
+        w.writeAll("\x1b[0m=> ") catch return;
+        self.prompt = stream.getWritten();
+        // Display length = ns_name.len + "=> ".len (no ANSI codes)
+        self.prompt_display_len = ns_name.len + 3;
+
+        // Continuation prompt: spaces matching display width
+        var cont_stream = std.io.fixedBufferStream(&self.cont_prompt_buf);
+        const cw = cont_stream.writer();
+        var i: usize = 0;
+        while (i < self.prompt_display_len) : (i += 1) {
+            cw.writeByte(' ') catch return;
+        }
+        self.cont_prompt = cont_stream.getWritten();
     }
 
     pub fn deinit(self: *LineEditor) void {
@@ -663,8 +692,9 @@ pub const LineEditor = struct {
         if (lines_below > 0) {
             w.print("\x1b[{d}A", .{lines_below}) catch return;
         }
-        const prompt_for_cursor = if (cursor_row == 0) self.prompt else self.cont_prompt;
-        const col_offset = prompt_for_cursor.len + cursor_col;
+        // Use display length (excludes ANSI escape codes) for cursor positioning
+        const prompt_display = if (cursor_row == 0) self.prompt_display_len else self.cont_prompt.len;
+        const col_offset = prompt_display + cursor_col;
         if (col_offset > 0) {
             w.print("\r\x1b[{d}C", .{col_offset}) catch return;
         } else {

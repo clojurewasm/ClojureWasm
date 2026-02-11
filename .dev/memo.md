@@ -23,7 +23,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 47: v0.1.0-alpha — Developer Experience
 
-1. 47.1: REPL improvements (multiline, color, ns prompt)
+1. ~~47.1: REPL improvements (multiline, color, ns prompt)~~ DONE
 2. 47.2: Error message improvements (source context, better formatting)
 3. 47.3: case* compiler special form (deferred from 38.4)
 4. 47.4: Missing quick-win vars (with-in-str, io!, with-precision)
@@ -32,12 +32,13 @@ Phase 47: v0.1.0-alpha — Developer Experience
 
 ## Current Task
 
-(none — start with 47.1: REPL improvements)
+47.2: Error message improvements — source context, better formatting
 
 ## Previous Task
 
-zwasm integration (D92): Replaced internal wasm engine (9 files, 9300 LOC) with
-zwasm as GitHub URL dependency (v0.1.0). All tests verified.
+47.1: REPL improvements — dynamic namespace prompt (green), colored output
+values (blue=int, green=string, cyan=keyword, magenta=nil/bool, yellow=symbol),
+continuation prompt (aligned spaces). LineEditor.setNsPrompt() + colorizeValue().
 
 ## Known Issues
 

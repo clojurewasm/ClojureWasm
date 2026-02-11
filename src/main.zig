@@ -250,6 +250,7 @@ pub fn main() !void {
 
 fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    const is_tty = std.posix.isatty(std.posix.STDOUT_FILENO);
 
     // Use line editor if stdin is a TTY, otherwise fall back to simple reader
     if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
@@ -263,6 +264,10 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
     defer editor.deinit();
 
     while (true) {
+        // Update prompt to reflect current namespace
+        const ns_name = if (env.current_ns) |ns| ns.name else "user";
+        editor.setNsPrompt(ns_name);
+
         const source = editor.readInput() orelse {
             _ = stdout.write("\n") catch {};
             break;
@@ -277,7 +282,14 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         if (result) |val| {
             var buf: [65536]u8 = undefined;
             const output = formatValue(&buf, val);
-            _ = stdout.write(output) catch {};
+            if (is_tty) {
+                // Colored output for result values
+                var color_buf: [65536 + 32]u8 = undefined;
+                const colored = colorizeValue(&color_buf, output, val);
+                _ = stdout.write(colored) catch {};
+            } else {
+                _ = stdout.write(output) catch {};
+            }
             _ = stdout.write("\n") catch {};
         } else |eval_err| {
             reportError(eval_err);
@@ -795,6 +807,30 @@ fn formatValue(buf: []u8, val: Value) []const u8 {
     var stream = std.io.fixedBufferStream(buf);
     const w = stream.writer();
     writeValue(w, val);
+    return stream.getWritten();
+}
+
+/// Wrap pre-formatted value text with ANSI color based on value type.
+fn colorizeValue(buf: []u8, text: []const u8, val: Value) []const u8 {
+    const color: []const u8 = switch (val.tag()) {
+        .nil, .boolean => "\x1b[35m", // magenta
+        .integer, .float => "\x1b[34m", // blue
+        .string, .char, .regex => "\x1b[32m", // green
+        .keyword => "\x1b[36m", // cyan
+        .symbol => "\x1b[33m", // yellow
+        else => "", // no color for collections, fns, etc.
+    };
+    if (color.len == 0) {
+        // No coloring — return original text directly
+        @memcpy(buf[0..text.len], text);
+        return buf[0..text.len];
+    }
+    const reset = "\x1b[0m";
+    var stream = std.io.fixedBufferStream(buf);
+    const w = stream.writer();
+    w.writeAll(color) catch {};
+    w.writeAll(text) catch {};
+    w.writeAll(reset) catch {};
     return stream.getWritten();
 }
 
