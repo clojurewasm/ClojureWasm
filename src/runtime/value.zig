@@ -333,6 +333,7 @@ pub const AgentInner = struct {
     error_handler: Value = Value.nil_val,
     error_mode: ErrorMode = .continue_mode,
     mutex: std.Thread.Mutex = .{},
+    await_cond: std.Thread.Condition = .{},
     pending_count: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     action_head: ?*AgentAction = null,

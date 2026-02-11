@@ -265,8 +265,9 @@ pub const ThreadPool = struct {
             inner.mutex.lock();
             const action = inner.dequeue();
             if (action == null) {
-                // Queue empty — clear processing flag and return
+                // Queue empty — clear processing flag and wake await waiters
                 inner.processing.store(false, .release);
+                inner.await_cond.broadcast();
                 inner.mutex.unlock();
                 return;
             }

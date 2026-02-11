@@ -699,6 +699,48 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([a f & args])",
         .added = "1.0",
     },
+    .{
+        .name = "await",
+        .func = &awaitFn,
+        .doc = "Blocks the current thread until all actions dispatched thus far to the agent(s) have occurred.",
+        .arglists = "([& agents])",
+        .added = "1.0",
+    },
+    .{
+        .name = "await-for",
+        .func = &awaitForFn,
+        .doc = "Blocks the current thread until all actions dispatched thus far to the agent(s) have occurred, or the timeout (in milliseconds) has elapsed.",
+        .arglists = "([timeout-ms & agents])",
+        .added = "1.0",
+    },
+    .{
+        .name = "await1",
+        .func = &awaitFn,
+        .doc = "Internal: same as await.",
+        .arglists = "([a])",
+        .added = "1.0",
+    },
+    .{
+        .name = "release-pending-sends",
+        .func = &releasePendingSendsFn,
+        .doc = "Normally, actions sent directly or indirectly during another action are held until the action completes (changes the agent's state). This function can be used to dispatch any pending sent actions immediately.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "agent-errors",
+        .func = &agentErrorsFn,
+        .doc = "DEPRECATED: Use agent-error instead.",
+        .arglists = "([a])",
+        .added = "1.0",
+    },
+    .{
+        .name = "clear-agent-errors",
+        .func = &clearAgentErrorsFn,
+        .doc = "DEPRECATED: Use restart-agent instead.",
+        .arglists = "([a])",
+        .added = "1.0",
+    },
 };
 
 // === Agent builtins ===
@@ -861,10 +903,81 @@ pub fn sendOffFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return sendFn(allocator, args);
 }
 
+/// (await & agents) => nil
+/// Blocks until all actions dispatched to agents have completed.
+pub fn awaitFn(_: Allocator, args: []const Value) anyerror!Value {
+    for (args) |arg| {
+        if (arg.tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "await expects agents" });
+        const inner = arg.asAgent().getInner();
+        inner.mutex.lock();
+        while (inner.processing.load(.acquire) or inner.action_head != null) {
+            inner.await_cond.wait(&inner.mutex);
+        }
+        inner.mutex.unlock();
+    }
+    return Value.nil_val;
+}
+
+/// (await-for timeout-ms & agents) => boolean
+/// Blocks until all actions have completed or timeout (ms). Returns logical false on timeout.
+pub fn awaitForFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to await-for", .{args.len});
+    if (args[0].tag() != .integer) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "await-for timeout must be an integer" });
+    const timeout_ms: u64 = @intCast(@max(0, args[0].asInteger()));
+    const timeout_ns = timeout_ms * std.time.ns_per_ms;
+
+    for (args[1..]) |arg| {
+        if (arg.tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "await-for expects agents" });
+        const inner = arg.asAgent().getInner();
+        inner.mutex.lock();
+        const start = std.time.nanoTimestamp();
+        while (inner.processing.load(.acquire) or inner.action_head != null) {
+            const elapsed: u64 = @intCast(@max(0, std.time.nanoTimestamp() - start));
+            if (elapsed >= timeout_ns) {
+                inner.mutex.unlock();
+                return Value.nil_val; // timeout — return nil (logical false)
+            }
+            const remaining = timeout_ns - elapsed;
+            inner.await_cond.timedWait(&inner.mutex, remaining) catch {};
+        }
+        inner.mutex.unlock();
+    }
+    return Value.true_val; // all completed
+}
+
 /// (agent? x) => boolean
 pub fn agentPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to agent?", .{args.len});
     return if (args[0].tag() == .agent) Value.true_val else Value.false_val;
+}
+
+/// (release-pending-sends) — no-op in CW (no send buffering)
+pub fn releasePendingSendsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to release-pending-sends", .{args.len});
+    return Value.initInteger(0);
+}
+
+/// (agent-errors agent) — deprecated, returns nil or the error
+pub fn agentErrorsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to agent-errors", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "agent-errors expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    if (inner.isInErrorState()) {
+        // Return as a list (deprecated API returns sequence of errors)
+        return inner.error_val;
+    }
+    return Value.nil_val;
+}
+
+/// (clear-agent-errors agent) — deprecated, same as restart-agent with current state
+pub fn clearAgentErrorsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clear-agent-errors", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "clear-agent-errors expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    inner.error_val = Value.nil_val;
+    return args[0];
 }
 
 // === Tests ===

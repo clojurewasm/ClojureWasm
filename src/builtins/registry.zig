@@ -272,10 +272,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 357 + 2 (shutdown-agents, __thread-sleep) + 1 (__instance?) + 1 (__java-method) + 1 (__regex-quote)
-    // + 3 (remove-ns, ns-unalias, ns-unmap) + 8 (agent, agent-error, restart-agent,
-    // set-error-handler!, set-error-mode!, agent?, send, send-off)
-    try std.testing.expectEqual(373, builtin_count);
+    // 373 + 6 (await, await-for, await1, release-pending-sends, agent-errors, clear-agent-errors)
+    try std.testing.expectEqual(379, builtin_count);
 }
 
 test "comptime lookup finds +" {
