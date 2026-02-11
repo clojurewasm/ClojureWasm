@@ -23,7 +23,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 50: v0.4.0-beta — Ecosystem
 
-- [ ] 50.1: `cljw test` command (project-based test runner)
+- [x] 50.1: `cljw test` command (project-based test runner)
 - [ ] 50.2: cljw.edn `:deps` with local paths
 - [ ] 50.3: cljw.edn `:deps` with git/sha resolution
 - [ ] 50.4: Homebrew tap
@@ -31,12 +31,16 @@ Phase 50: v0.4.0-beta — Ecosystem
 
 ## Current Task
 
-50.1: `cljw test` command — project-based test runner.
+50.2: cljw.edn `:deps` with local paths.
 
 ## Previous Task
 
-49.5: UPSTREAM-DIFF audit complete.
-- ~47 permanent (architectural), ~6 fixable (bootstrap order), ~2 need new features
+50.1: `cljw test` command — complete.
+- `cljw test` subcommand: auto-discovers .clj files in `:test-paths` (default: "test")
+- Supports explicit file args: `cljw test file1.clj file2.clj`
+- Loads cljw.edn `:test-paths` config
+- Exit code 1 on failures/errors, 0 on all pass
+- Arena allocator for file buffers (symbols survive across file loads)
 - Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
 - Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
 - F94 checklist updated with audit results

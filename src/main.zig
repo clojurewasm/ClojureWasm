@@ -59,6 +59,7 @@ fn printHelp() void {
         \\
         \\Commands:
         \\  build <file> [-o <out>]   Build standalone binary with embedded code
+        \\  test [file.clj ...]       Run tests (default: all .clj in test/)
         \\
         \\Examples:
         \\  cljw                      Start interactive REPL
@@ -146,6 +147,12 @@ pub fn main() !void {
     // Handle `build` subcommand: cljw build <file> [-o <output>]
     if (args.len >= 2 and std.mem.eql(u8, args[1], "build")) {
         handleBuildCommand(alloc, allocator, &gc, args[2..]);
+        return;
+    }
+
+    // Handle `test` subcommand: cljw test [file.clj ...]
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "test")) {
+        handleTestCommand(alloc, allocator, &gc, args[2..]);
         return;
     }
 
@@ -529,11 +536,144 @@ fn markBootstrapLibs() void {
     }
 }
 
+/// Handle `cljw test [file.clj ...]` subcommand.
+/// If specific files are given, loads and runs tests from those files.
+/// Otherwise, searches :test-paths (or "test/") for .clj files and runs all tests.
+fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, test_args: []const [:0]const u8) void {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+
+    // Bootstrap
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    bootstrapFromCache(gc_alloc, &env);
+    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
+    env.gc = @ptrCast(gc);
+
+    // Load cljw.edn config
+    var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
+    defer config_arena.deinit();
+    const config_alloc = config_arena.allocator();
+    const config = if (findConfigFile(config_alloc, null)) |content|
+        parseConfig(config_alloc, content)
+    else
+        ProjectConfig{};
+    applyConfig(config, null);
+
+    // Arena for test file paths and source buffers (survives until function exit).
+    var file_arena = std.heap.ArenaAllocator.init(infra_alloc);
+    defer file_arena.deinit();
+    const file_alloc = file_arena.allocator();
+
+    // Collect test files
+    var test_files: std.ArrayList([]const u8) = .empty;
+    defer test_files.deinit(infra_alloc);
+
+    if (test_args.len > 0) {
+        // Specific files provided
+        for (test_args) |arg| {
+            test_files.append(infra_alloc, arg) catch {};
+        }
+    } else {
+        // Search test directories for .clj files
+        const search_paths = if (config.test_paths.len > 0) config.test_paths else &[_][]const u8{"test"};
+        for (search_paths) |test_dir| {
+            collectTestFiles(file_alloc, infra_alloc, test_dir, &test_files);
+        }
+    }
+
+    if (test_files.items.len == 0) {
+        _ = stderr.write("No test files found.\n") catch {};
+        std.process.exit(1);
+    }
+
+    // Add test directories to load path
+    for (test_files.items) |tf| {
+        const dir = std.fs.path.dirname(tf) orelse ".";
+        ns_ops.addLoadPath(dir) catch {};
+    }
+    const max_file_size = 10 * 1024 * 1024;
+    var loaded: usize = 0;
+    for (test_files.items) |tf| {
+        const file_bytes = std.fs.cwd().readFileAlloc(file_alloc, tf, max_file_size) catch {
+            _ = stderr.write("Error: could not read ") catch {};
+            _ = stderr.write(tf) catch {};
+            _ = stderr.write("\n") catch {};
+            continue;
+        };
+
+        err.setSourceFile(tf);
+        err.setSourceText(file_bytes);
+        _ = bootstrap.evalStringVM(gc_alloc, &env, file_bytes) catch |e| {
+            reportError(e);
+            continue;
+        };
+        loaded += 1;
+    }
+
+    if (loaded == 0) {
+        _ = stderr.write("Error: no test files loaded successfully.\n") catch {};
+        std.process.exit(1);
+    }
+
+    // Run all registered tests via (clojure.test/run-tests)
+    err.setSourceFile(null);
+    err.setSourceText("(clojure.test/run-tests)");
+    const result = bootstrap.evalStringVM(gc_alloc, &env, "(clojure.test/run-tests)") catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+
+    // Check result for failures: {:test N :pass N :fail N :error N}
+    // If fail+error > 0, exit with code 1
+    var has_failures = false;
+    if (result.tag() == .map) {
+        const m = result.asMap();
+        var ei: usize = 0;
+        while (ei + 1 < m.entries.len) : (ei += 2) {
+            const k = m.entries[ei];
+            const v = m.entries[ei + 1];
+            if (k.tag() == .keyword and v.tag() == .integer) {
+                const kw = k.asKeyword();
+                if (std.mem.eql(u8, kw.name, "fail") or std.mem.eql(u8, kw.name, "error")) {
+                    if (v.asInteger() > 0) has_failures = true;
+                }
+            }
+        }
+    }
+
+    // Print newline after test output
+    _ = stdout.write("\n") catch {};
+
+    if (has_failures) {
+        std.process.exit(1);
+    }
+}
+
+/// Recursively collect .clj files from a directory.
+/// str_alloc: arena for path strings (long-lived), list_alloc: for ArrayList backing.
+fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []const u8, out: *std.ArrayList([]const u8)) void {
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch return;
+    defer dir.close();
+
+    var it = dir.iterate();
+    while (it.next() catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".clj")) {
+            const full = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
+            out.append(list_alloc, full) catch {};
+        } else if (entry.kind == .directory) {
+            const subdir = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
+            collectTestFiles(str_alloc, list_alloc, subdir, out);
+        }
+    }
+}
+
 // === cljw.edn config parsing ===
 
 /// Parsed cljw.edn configuration.
 const ProjectConfig = struct {
     paths: []const []const u8 = &.{},
+    test_paths: []const []const u8 = &.{},
     main_ns: ?[]const u8 = null,
 };
 
@@ -587,6 +727,19 @@ fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
                     }
                 }
                 config.paths = paths[0..count];
+            }
+        } else if (std.mem.eql(u8, kw, "test-paths")) {
+            if (entries[i + 1].data == .vector) {
+                const vec = entries[i + 1].data.vector;
+                const paths = allocator.alloc([]const u8, vec.len) catch continue;
+                var count: usize = 0;
+                for (vec) |elem| {
+                    if (elem.data == .string) {
+                        paths[count] = elem.data.string;
+                        count += 1;
+                    }
+                }
+                config.test_paths = paths[0..count];
             }
         } else if (std.mem.eql(u8, kw, "main")) {
             if (entries[i + 1].data == .symbol) {
