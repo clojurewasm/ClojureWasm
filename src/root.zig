@@ -50,6 +50,7 @@ pub const wasm_builtins = @import("wasm/builtins.zig");
 pub const wit_parser = @import("wasm/wit_parser.zig");
 pub const builtin_shell = @import("builtins/shell.zig");
 pub const builtin_pprint = @import("builtins/pprint.zig");
+pub const thread_pool = @import("runtime/thread_pool.zig");
 
 test {
     _ = value;
@@ -93,4 +94,5 @@ test {
     _ = wit_parser;
     _ = builtin_shell;
     _ = builtin_pprint;
+    _ = thread_pool;
 }

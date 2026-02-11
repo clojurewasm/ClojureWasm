@@ -155,6 +155,11 @@ pub fn getCurrentBindingFrame() ?*BindingFrame {
     return current_frame;
 }
 
+/// Set the current binding frame (for thread pool binding conveyance).
+pub fn setCurrentBindingFrame(frame: ?*BindingFrame) void {
+    current_frame = frame;
+}
+
 /// Push a new binding frame.
 pub fn pushBindings(frame: *BindingFrame) void {
     frame.prev = current_frame;

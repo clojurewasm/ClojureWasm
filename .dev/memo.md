@@ -26,27 +26,30 @@ Phase 48: v0.2.0-alpha — Concurrency
 - [x] 48.0: Plan Phase 48 (audit + architectural decisions)
 - [x] 48.1: Thread-safe global state (threadlocal/atomic conversions)
 - [x] 48.2: GC thread safety (D94 — mutex + stop-the-world)
-- [ ] 48.3: Thread pool infrastructure + per-thread evaluator
+- [x] 48.3: Thread pool infrastructure + per-thread evaluator
 - [ ] 48.4: Future Value type + future/future-call/deref
 - [ ] 48.5: pmap, pcalls, pvalues
 - [ ] 48.6: promise + deliver
 
 ## Current Task
 
-48.3: Thread pool infrastructure + per-thread evaluator.
+48.4: Future Value type + future/future-call/deref.
 
 Plan:
-- Create ThreadPool (fixed-size, backed by std.Thread)
-- Per-thread Env + VM initialization
-- Safe-point integration with GC ThreadRegistry
-- Submit/await work items
-- Test: spawn threads, each evaluates simple expressions concurrently
+- Add future tag to Value (NanBoxed heap pointer to FutureResult)
+- Implement future, future-call, future-done?, future-cancel, future-cancelled?
+- Implement deref for future (blocking + timeout variant)
+- Wire thread pool shutdown into lifecycle
+- Update vars.yaml for future-related vars
 
 ## Previous Task
 
-48.2: GC thread safety (D94) — added gc_mutex to MarkSweepGc protecting all
-alloc/free/resize/remap and collection paths. ThreadRegistry for future
-stop-the-world coordination. All tests pass.
+48.3: Thread pool infrastructure + per-thread evaluator.
+- ThreadPool: fixed-size pool backed by std.Thread
+- FutureResult: mutex + cond var for blocking deref
+- Per-thread env (shallow clone of main env)
+- Binding conveyance (parent bindings → worker thread)
+- Global pool with lazy initialization + shutdown
 
 ## Known Issues
 

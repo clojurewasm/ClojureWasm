@@ -124,6 +124,23 @@ pub const Env = struct {
     pub fn findNamespace(self: *const Env, name: []const u8) ?*Namespace {
         return self.namespaces.get(name);
     }
+
+    /// Create a lightweight thread-local clone of this Env.
+    ///
+    /// Shares the namespace HashMap backing storage (read-only access)
+    /// but has its own current_ns, node_arena, and gc pointer.
+    /// Used by thread pool workers to evaluate Clojure in parallel.
+    /// The clone does NOT own the namespace data — deinit is a no-op
+    /// for shared resources.
+    pub fn threadClone(self: *const Env) Env {
+        return .{
+            .allocator = self.allocator,
+            .namespaces = self.namespaces,
+            .current_ns = self.current_ns,
+            .gc = self.gc,
+            .node_arena = std.heap.ArenaAllocator.init(self.allocator),
+        };
+    }
 };
 
 // === Tests ===
