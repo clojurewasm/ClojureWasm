@@ -336,7 +336,7 @@ pub fn theNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
-    if (env.findNamespace(name) == null) return error.NamespaceNotFound;
+    if (env.findNamespace(name) == null) return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{name});
     return Value.initSymbol(allocator, .{ .ns = null, .name = name });
 }
 
@@ -535,7 +535,7 @@ fn resolveNs(args: []const Value) !*Namespace {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
-    return env.findNamespace(name) orelse return error.NamespaceNotFound;
+    return env.findNamespace(name) orelse return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{name});
 }
 
 /// Build a {symbol -> var_ref} map from a VarMap (symbol name -> *Var).
@@ -749,7 +749,7 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
         err.setInfoFmt(.eval, .internal_error, .{}, "eval environment not initialized", .{});
         return error.EvalError;
     };
-    const source_ns = env.findNamespace(ns_name) orelse return error.NamespaceNotFound;
+    const source_ns = env.findNamespace(ns_name) orelse return err.setErrorFmt(.eval, .name_error, .{}, "No namespace: {s} found", .{ns_name});
     const current_ns = env.current_ns orelse {
             err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
             return error.EvalError;
@@ -1356,7 +1356,7 @@ test "the-ns - nonexistent namespace errors" {
     }
 
     const result = theNsFn(alloc, &[_]Value{Value.initSymbol(alloc, .{ .ns = null, .name = "nonexistent" })});
-    try testing.expectError(error.NamespaceNotFound, result);
+    try testing.expectError(error.NameError, result);
 }
 
 test "ns-interns - returns map with interned vars" {
