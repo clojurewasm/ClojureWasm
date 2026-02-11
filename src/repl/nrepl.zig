@@ -1278,6 +1278,18 @@ fn writeValue(w: anytype, val: Value) void {
                 w.print("#future[pending]", .{}) catch {};
             }
         },
+        .promise => {
+            const p = val.asPromise();
+            const thread_pool = @import("../runtime/thread_pool.zig");
+            const sync: *thread_pool.FutureResult = @ptrCast(@alignCast(p.sync));
+            if (sync.isDone()) {
+                w.print("#promise[", .{}) catch {};
+                writeValue(w, sync.value);
+                w.print("]", .{}) catch {};
+            } else {
+                w.print("#promise[pending]", .{}) catch {};
+            }
+        },
         .reduced => writeValue(w, val.asReduced().value),
         .transient_vector => w.print("#<TransientVector>", .{}) catch {},
         .transient_map => w.print("#<TransientMap>", .{}) catch {},

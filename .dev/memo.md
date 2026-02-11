@@ -29,25 +29,21 @@ Phase 48: v0.2.0-alpha — Concurrency
 - [x] 48.3: Thread pool infrastructure + per-thread evaluator
 - [x] 48.4: Future Value type + future/future-call/deref
 - [x] 48.5: pmap, pcalls, pvalues
-- [ ] 48.6: promise + deliver
+- [x] 48.6: promise + deliver
 
 ## Current Task
 
-48.6: promise + deliver
-
-Plan:
-- Implement promise (creates a deferred value)
-- Implement deliver (sets promise value)
-- Implement realized? for promise
-- promise uses FutureResult-like mechanism (mutex + cond var)
+Phase 48 complete. Planning next phase.
 
 ## Previous Task
 
-48.5: pmap, pcalls, pvalues.
-- pmap: bootstrap clj, parallel map using future + __available-processors
-- pcalls: bootstrap clj on pmap
-- pvalues: bootstrap clj macro on pcalls
-- __available-processors builtin in system.zig
+48.6: promise + deliver.
+- PromiseObj: extern struct sharing delay NanHeapTag slot 18 via DeferredKind
+- Reuses FutureResult for blocking deref synchronization
+- promise, deliver builtins in atom.zig
+- __promise-realized? builtin in predicates.zig
+- realized? updated for promise and future support
+- Removed old atom-based promise/deliver from core.clj
 
 ## Known Issues
 

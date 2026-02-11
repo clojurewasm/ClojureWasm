@@ -272,8 +272,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 328 + 9 (aset-* typed + bytes?) + 2 (bigint, biginteger) + 1 (bigdec) + 3 (+', -', *') + 3 (numerator, denominator, rationalize) + 2 (push/pop-input-source) + 5 (future-call/future?/future-done?/future-cancel/future-cancelled?) + 1 (__available-processors)
-    try std.testing.expectEqual(354, builtin_count);
+    // 354 + 2 (promise/deliver) + 1 (__promise-realized?)
+    try std.testing.expectEqual(357, builtin_count);
 }
 
 test "comptime lookup finds +" {

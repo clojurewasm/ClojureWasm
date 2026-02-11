@@ -43,37 +43,27 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
             .reduced => args[0].asReduced().value,
             .delay => forceDelay(allocator, args[0].asDelay()),
             .future => derefFuture(args[0].asFuture()),
+            .promise => derefPromise(args[0].asPromise()),
             else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
         };
     }
     // 3-arity: (deref ref timeout-ms timeout-val)
     if (args.len == 3) {
-        if (args[0].tag() == .future) {
-            const timeout_ms: u64 = switch (args[1].tag()) {
-                .integer => @intCast(@max(0, args[1].asInteger())),
-                else => return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "deref timeout must be an integer" }),
-            };
-            return derefFutureWithTimeout(args[0].asFuture(), timeout_ms, args[2]);
-        }
-        // Delay with timeout: just force (delay doesn't support timeout)
-        if (args[0].tag() == .delay) {
-            return forceDelay(allocator, args[0].asDelay());
-        }
-        return err.setErrorFmt(.eval, .type_error, .{}, "3-arity deref requires a future or delay, got {s}", .{@tagName(args[0].tag())});
+        const timeout_ms: u64 = switch (args[1].tag()) {
+            .integer => @intCast(@max(0, args[1].asInteger())),
+            else => return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "deref timeout must be an integer" }),
+        };
+        return switch (args[0].tag()) {
+            .future => derefFutureWithTimeout(args[0].asFuture(), timeout_ms, args[2]),
+            .promise => derefPromiseWithTimeout(args[0].asPromise(), timeout_ms, args[2]),
+            .delay => forceDelay(allocator, args[0].asDelay()),
+            else => err.setErrorFmt(.eval, .type_error, .{}, "3-arity deref requires a future, promise, or delay, got {s}", .{@tagName(args[0].tag())}),
+        };
     }
     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deref", .{args.len});
 }
 
-/// Deref an atom, with special handling for promise atoms.
-/// Promise atoms contain a map with :__promise key; deref returns :val from the map.
-fn derefAtom(allocator: Allocator, a: *Atom) Value {
-    if (a.value.tag() == .map) {
-        const promise_key = Value.initKeyword(allocator, .{ .ns = null, .name = "__promise" });
-        if (a.value.asMap().get(promise_key) != null) {
-            const val_key = Value.initKeyword(allocator, .{ .ns = null, .name = "val" });
-            return a.value.asMap().get(val_key) orelse Value.nil_val;
-        }
-    }
+fn derefAtom(_: Allocator, a: *Atom) Value {
     return a.value;
 }
 
@@ -116,6 +106,18 @@ fn derefFuture(f: *value_mod.FutureObj) Value {
 fn derefFutureWithTimeout(f: *value_mod.FutureObj, timeout_ms: u64, timeout_val: Value) Value {
     const result: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(f.result));
     return result.getWithTimeout(timeout_ms * std.time.ns_per_ms) orelse timeout_val;
+}
+
+/// Deref a Promise value: block until delivered.
+fn derefPromise(p: *value_mod.PromiseObj) Value {
+    const sync: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(p.sync));
+    return sync.get();
+}
+
+/// Deref a Promise value with timeout (milliseconds).
+fn derefPromiseWithTimeout(p: *value_mod.PromiseObj, timeout_ms: u64, timeout_val: Value) Value {
+    const sync: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(p.sync));
+    return sync.getWithTimeout(timeout_ms * std.time.ns_per_ms) orelse timeout_val;
 }
 
 /// (__delay-create thunk-fn) => delay value
@@ -449,6 +451,43 @@ fn futureCancelledPredFn(_: Allocator, args: []const Value) anyerror!Value {
     return if (args[0].asFuture().cancelled) Value.true_val else Value.false_val;
 }
 
+// ============================================================
+// Promise builtins
+// ============================================================
+
+/// (promise) => promise
+fn promiseFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to promise", .{args.len});
+
+    // Create the synchronization object (FutureResult)
+    const sync = try allocator.create(thread_pool_mod.FutureResult);
+    sync.* = thread_pool_mod.FutureResult{};
+
+    // Create the PromiseObj
+    const p = try allocator.create(value_mod.PromiseObj);
+    p.kind = .promise;
+    p.sync = @ptrCast(sync);
+
+    return Value.initPromise(p);
+}
+
+/// (deliver promise val) => promise
+fn deliverFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to deliver", .{args.len});
+    if (args[0].tag() != .promise)
+        return err.setErrorFmt(.eval, .type_error, .{}, "deliver expects a promise, got {s}", .{@tagName(args[0].tag())});
+
+    const p = args[0].asPromise();
+    const sync: *thread_pool_mod.FutureResult = @ptrCast(@alignCast(p.sync));
+
+    // Deliver only if not already delivered (first-write-wins)
+    if (!sync.isDone()) {
+        sync.setResult(args[1]);
+    }
+
+    return args[0]; // return the promise
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "atom",
@@ -581,6 +620,20 @@ pub const builtins = [_]BuiltinDef{
         .func = &futureCancelledPredFn,
         .doc = "Returns true if future f is cancelled.",
         .arglists = "([f])",
+        .added = "1.1",
+    },
+    .{
+        .name = "promise",
+        .func = &promiseFn,
+        .doc = "Returns a promise object that can be read with deref/@, and set, once only, with deliver.",
+        .arglists = "([])",
+        .added = "1.1",
+    },
+    .{
+        .name = "deliver",
+        .func = &deliverFn,
+        .doc = "Delivers the supplied value to the promise, releasing any pending derefs.",
+        .arglists = "([promise val])",
         .added = "1.1",
     },
 };

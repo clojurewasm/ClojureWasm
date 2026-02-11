@@ -255,6 +255,7 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .var_ref => "var",
         .delay => "delay",
         .future => "future",
+        .promise => "promise",
         .reduced => "reduced",
         .transient_vector => "transient-vector",
         .transient_map => "transient-map",
@@ -316,6 +317,16 @@ pub fn lazySeqRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
     return Value.initBoolean(args[0].asLazySeq().realized != null);
 }
 
+/// (__promise-realized? x) — true if promise has been delivered.
+pub fn promiseRealizedPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __promise-realized?", .{args.len});
+    if (args[0].tag() != .promise) return Value.false_val;
+    const thread_pool = @import("../runtime/thread_pool.zig");
+    const p = args[0].asPromise();
+    const sync: *thread_pool.FutureResult = @ptrCast(@alignCast(p.sync));
+    return Value.initBoolean(sync.isDone());
+}
+
 /// (var? x) — true if x is a Var reference.
 pub fn varPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var?", .{args.len});
@@ -369,6 +380,7 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
         .var_ref => "var",
         .delay => "delay",
         .future => "future",
+        .promise => "promise",
         .reduced => "reduced",
         .transient_vector => "transient_vector",
         .transient_map => "transient_map",
@@ -433,6 +445,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .var_ref => "var",
         .delay => "delay",
         .future => "future",
+        .promise => "promise",
         .reduced => "reduced",
         .transient_vector => "transient_vector",
         .transient_map => "transient_map",
@@ -1027,6 +1040,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "__delay?", .func = &delayPred, .doc = "Returns true if x is a Delay.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "__delay-realized?", .func = &delayRealizedPred, .doc = "Returns true if a delay has been realized.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "__lazy-seq-realized?", .func = &lazySeqRealizedPred, .doc = "Returns true if a lazy-seq has been realized.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "__promise-realized?", .func = &promiseRealizedPred, .doc = "Returns true if a promise has been delivered.", .arglists = "([x])", .added = "1.1" },
 };
 
 // === Tests ===
@@ -1277,9 +1291,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 64 entries" {
-    // 56 + 5 (extend, extends?, extenders, find-protocol-impl, find-protocol-method) + 3 (numerator, denominator, rationalize)
-    try testing.expectEqual(64, builtins.len);
+test "builtins table has 65 entries" {
+    // 64 + 1 (__promise-realized?)
+    try testing.expectEqual(65, builtins.len);
 }
 
 test "builtins all have func" {

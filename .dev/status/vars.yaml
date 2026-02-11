@@ -240,7 +240,7 @@ vars:
     deftype: {type: macro, status: skip, note: "no JVM class generation — defrecord covers data use cases"}
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
-    deliver: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
+    deliver: {type: function, status: done, note: "builtin (native PromiseObj with blocking deref)"}
     denominator: {type: function, status: done, note: "builtin (Ratio)"}
     deref: {type: function, status: done, note: "Zig builtin"}
     derive: {type: function, status: done, note: core.clj hierarchy-aware}
@@ -491,7 +491,7 @@ vars:
     "println-str": {type: function, status: done, note: "Zig builtin"}
     prn: {type: function, status: done, note: "Zig builtin"}
     "prn-str": {type: function, status: done, note: "Zig builtin"}
-    promise: {type: function, status: done, note: "UPSTREAM-DIFF (permanent): atom-based, no blocking deref (no Java concurrency)"}
+    promise: {type: function, status: done, note: "builtin (native PromiseObj with blocking deref)"}
     proxy: {type: macro, status: skip, note: JVM interop}
     "proxy-call-with-super": {type: function, status: skip, note: JVM interop}
     "proxy-mappings": {type: function, status: skip, note: JVM interop}

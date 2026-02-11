@@ -905,6 +905,13 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
+        // Promise — sync object (FutureResult holds delivered value)
+        .promise => {
+            const p = val.asPromise();
+            _ = gc.markAndCheck(p);
+            // FutureResult.value is traced when delivered via get()
+        },
+
         // Reduced — wrapped value
         .reduced => {
             const r = val.asReduced();

@@ -1328,6 +1328,8 @@
   (cond
     (delay? x) (__delay-realized? x)
     (= (type x) :lazy-seq) (__lazy-seq-realized? x)
+    (future? x) (future-done? x)
+    (= (type x) :promise) (__promise-realized? x)
     :else false))
 
 (defn delay? [x]
@@ -2350,19 +2352,7 @@
 ;; promise / deliver (simplified, no blocking deref)
 ;; Uses :__promise tag so deref returns :val instead of the whole map.
 ;; swap! receives the raw atom value (the map), bypassing promise-aware deref.
-(defn promise
-  "Returns a promise object. Deliver a value with deliver."
-  []
-  (atom {:__promise true :val nil :delivered false}))
-
-(defn deliver
-  "Delivers val to promise p. Returns p."
-  [p val]
-  (swap! p (fn [m]
-             (if (and (map? m) (:__promise m) (not (:delivered m)))
-               {:__promise true :val val :delivered true}
-               m)))
-  p)
+;; promise and deliver are now builtins (native PromiseObj with mutex/condvar)
 
 ;; Protocol helpers
 ;; UPSTREAM-DIFF: extend-type is a special form, not a macro

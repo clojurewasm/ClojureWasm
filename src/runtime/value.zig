@@ -220,7 +220,7 @@ pub const Reduced = struct {
 };
 
 /// Discriminator for types sharing the delay NanHeapTag slot.
-pub const DeferredKind = enum(u8) { delay, future };
+pub const DeferredKind = enum(u8) { delay, future, promise };
 
 // Sentinel value for "no Value" in extern structs (where ?Value is not allowed).
 pub const NO_VALUE: Value = @enumFromInt(0xDEAD_DEAD_DEAD_DEAD);
@@ -266,6 +266,14 @@ pub const FutureObj = extern struct {
     pub fn getFunc(self: *const FutureObj) ?Value {
         return if (self.func == NO_VALUE) null else self.func;
     }
+};
+
+/// Promise — deferred value set by deliver.
+/// Reuses FutureResult for blocking deref synchronization.
+/// extern struct for guaranteed field order (kind must be at offset 0).
+pub const PromiseObj = extern struct {
+    kind: DeferredKind = .promise, // MUST be at offset 0 (tag discriminator)
+    sync: *anyopaque = undefined, // *thread_pool.FutureResult
 };
 
 /// Compiled regex pattern.
@@ -647,7 +655,7 @@ pub const Value = enum(u64) {
         fn_val, builtin_fn,
         atom, volatile_ref, regex,
         protocol, protocol_fn, multi_fn,
-        lazy_seq, cons, var_ref, delay, future, reduced,
+        lazy_seq, cons, var_ref, delay, future, promise, reduced,
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
@@ -692,10 +700,14 @@ pub const Value = enum(u64) {
             .multi_fn => .multi_fn, .lazy_seq => .lazy_seq,
             .cons => .cons, .var_ref => .var_ref,
             .delay => {
-                // Delay and Future share NanHeapTag slot 18.
+                // Delay, Future, and Promise share NanHeapTag slot 18.
                 // Discriminate via first byte (DeferredKind).
                 const kind_ptr = self.decodePtr(*const DeferredKind);
-                return if (kind_ptr.* == .future) .future else .delay;
+                return switch (kind_ptr.*) {
+                    .future => .future,
+                    .promise => .promise,
+                    .delay => .delay,
+                };
             },
             .reduced => .reduced,
             .transient_vector => .transient_vector,
@@ -1011,6 +1023,14 @@ pub const Value = enum(u64) {
 
     pub fn asFuture(self: Value) *FutureObj {
         return decodePtr(self, *FutureObj);
+    }
+
+    pub fn initPromise(p: *PromiseObj) Value {
+        return encodeHeapPtr(.delay, p); // shares delay slot
+    }
+
+    pub fn asPromise(self: Value) *PromiseObj {
+        return decodePtr(self, *PromiseObj);
     }
 
     pub fn asReduced(self: Value) *const Reduced {
@@ -1406,6 +1426,18 @@ pub const Value = enum(u64) {
                     try w.writeAll("#future[pending]");
                 }
             },
+            .promise => {
+                const p = self.asPromise();
+                const thread_pool = @import("thread_pool.zig");
+                const sync: *thread_pool.FutureResult = @ptrCast(@alignCast(p.sync));
+                if (sync.isDone()) {
+                    try w.writeAll("#promise[");
+                    try sync.value.formatPrStr(w);
+                    try w.writeAll("]");
+                } else {
+                    try w.writeAll("#promise[pending]");
+                }
+            },
             .reduced => {
                 const r = self.asReduced();
                 try r.value.formatPrStr(w);
@@ -1616,6 +1648,7 @@ pub const Value = enum(u64) {
             .cons => unreachable, // handled by eqlConsSeq above
             .delay => self.asDelay() == other.asDelay(), // identity equality
             .future => self.asFuture() == other.asFuture(), // identity equality
+            .promise => self.asPromise() == other.asPromise(), // identity equality
             .reduced => self.asReduced().value.eqlImpl(other.asReduced().value, allocator),
             .map, .hash_map => unreachable, // handled by eqlMaps above
             .set => {

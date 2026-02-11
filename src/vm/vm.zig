@@ -2059,6 +2059,7 @@ fn valueTypeKey(val: Value) []const u8 {
         .var_ref => "var",
         .delay => "delay",
         .future => "future",
+        .promise => "promise",
         .reduced => "reduced",
         .transient_vector => "transient_vector",
         .transient_map => "transient_map",
