@@ -44,8 +44,7 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args) |arg| {
-        const v = try collections.realizeValue(allocator, arg);
-        try v.formatStr(&aw.writer);
+        try arg.formatStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
     return Value.initString(allocator, owned);
@@ -60,8 +59,7 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// allocation. This reduced string_ops from 398ms to 28ms (14x speedup), with
 /// system time dropping from 312ms to 2ms (allocator overhead eliminated).
 fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
-    // Realize lazy seqs/cons before string conversion
-    const v = try collections.realizeValue(allocator, val);
+    const v = val;
     switch (v.tag()) {
         .nil => return Value.initString(allocator, ""),
         .string => return v, // Already a string — zero-copy return
@@ -120,8 +118,7 @@ pub fn prStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     defer aw.deinit();
     for (args, 0..) |arg, i| {
         if (i > 0) try aw.writer.writeAll(" ");
-        const v = try collections.realizeValue(allocator, arg);
-        try v.formatPrStr(&aw.writer);
+        try arg.formatPrStr(&aw.writer);
     }
     const owned = try aw.toOwnedSlice();
     return Value.initString(allocator, owned);
