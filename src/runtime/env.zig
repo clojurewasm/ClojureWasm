@@ -125,6 +125,18 @@ pub const Env = struct {
         return self.namespaces.get(name);
     }
 
+    /// Remove a namespace by name. Returns the removed namespace, or null.
+    pub fn removeNamespace(self: *Env, name: []const u8) ?*Namespace {
+        if (self.namespaces.fetchRemove(name)) |kv| {
+            // Clean up the removed namespace's resources
+            kv.value.deinit();
+            self.allocator.destroy(kv.value);
+            self.allocator.free(kv.key);
+            return null;
+        }
+        return null;
+    }
+
     /// Create a lightweight thread-local clone of this Env.
     ///
     /// Shares the namespace HashMap backing storage (read-only access)

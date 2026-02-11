@@ -1090,6 +1090,49 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// remove-ns, ns-unalias, ns-unmap
+// ============================================================
+
+/// (remove-ns sym)
+/// Removes the namespace named by the symbol. Use with caution.
+pub fn removeNsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-ns", .{args.len});
+    const name = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
+    };
+    const env_ptr = bootstrap.macro_eval_env orelse return Value.nil_val;
+    _ = env_ptr.removeNamespace(name);
+    return Value.nil_val;
+}
+
+/// (ns-unalias ns sym)
+/// Removes the alias for the symbol from the namespace.
+pub fn nsUnaliasFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-unalias", .{args.len});
+    const ns = try resolveNs(args[0..1]);
+    const alias_name = switch (args[1].tag()) {
+        .symbol => args[1].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-unalias expects a symbol, got {s}", .{@tagName(args[1].tag())}),
+    };
+    ns.removeAlias(alias_name);
+    return Value.nil_val;
+}
+
+/// (ns-unmap ns sym)
+/// Removes the mapping for the symbol from the namespace.
+pub fn nsUnmapFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ns-unmap", .{args.len});
+    const ns = try resolveNs(args[0..1]);
+    const sym_name = switch (args[1].tag()) {
+        .symbol => args[1].asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "ns-unmap expects a symbol, got {s}", .{@tagName(args[1].tag())}),
+    };
+    ns.unmap(sym_name);
+    return Value.nil_val;
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -1218,6 +1261,27 @@ pub const builtins = [_]BuiltinDef{
         .func = setNsDocFn,
         .doc = "Sets the docstring on the named namespace. Internal — called by ns macro.",
         .arglists = "([ns-sym docstring])",
+        .added = "1.0",
+    },
+    .{
+        .name = "remove-ns",
+        .func = removeNsFn,
+        .doc = "Removes the namespace named by the symbol. Use with caution.",
+        .arglists = "([sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-unalias",
+        .func = nsUnaliasFn,
+        .doc = "Removes the alias for the symbol from the namespace.",
+        .arglists = "([ns sym])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ns-unmap",
+        .func = nsUnmapFn,
+        .doc = "Removes the mapping for the symbol from the namespace.",
+        .arglists = "([ns sym])",
         .added = "1.0",
     },
 };
