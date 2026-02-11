@@ -6,40 +6,35 @@
 // the terms of this license.
 // You must not remove this notice, or any other, from this software.
 
-//! Wasm InterOp types — Value wrappers for Wasm module interaction.
+//! Wasm InterOp types — thin bridge over zwasm runtime.
 //!
-//! Provides WasmModule and WasmFunction types that wrap the custom Wasm runtime's
-//! Store/Module/Instance into ClojureWasm's Value system. These become first-class
-//! Clojure values accessible via (wasm/load ...) and (wasm/fn ...).
+//! Provides WasmModule and WasmFn types that wrap zwasm's public API
+//! into ClojureWasm's Value system. These become first-class Clojure values
+//! accessible via (wasm/load ...) and (wasm/fn ...).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const wit_parser = @import("wit_parser.zig");
+const zwasm = @import("zwasm");
 
-// Custom Wasm runtime (Phase 35W)
-const rt = struct {
-    const store_mod = @import("store.zig");
-    const module_mod = @import("module.zig");
-    const instance_mod = @import("instance.zig");
-    const vm_mod = @import("vm.zig");
-    const wasi = @import("wasi.zig");
-    const opcode = @import("opcode.zig");
-};
+// ============================================================
+// CW-specific types
+// ============================================================
 
-/// Wasm value types exposed to Clojure code.
+/// Wasm value types exposed to Clojure code (4-variant subset).
 pub const WasmValType = enum {
     i32,
     i64,
     f32,
     f64,
 
-    pub fn fromRuntime(vt: rt.opcode.ValType) ?WasmValType {
+    pub fn fromZwasm(vt: zwasm.WasmValType) ?WasmValType {
         return switch (vt) {
             .i32 => .i32,
             .i64 => .i64,
             .f32 => .f32,
             .f64 => .f64,
-            else => null,
+            .funcref, .externref => null,
         };
     }
 };
@@ -51,125 +46,77 @@ pub const ExportInfo = struct {
     result_types: []const WasmValType,
 };
 
+// ============================================================
+// WasmModule — delegates to zwasm.WasmModule
+// ============================================================
+
 /// A loaded and instantiated Wasm module.
-/// Heap-allocated because Instance holds internal pointers — the
-/// struct must not move after instantiation.
+/// Wraps zwasm.WasmModule with CW-specific bookkeeping.
 pub const WasmModule = struct {
+    inner: *zwasm.WasmModule,
     allocator: Allocator,
-    store: rt.store_mod.Store,
-    module: rt.module_mod.Module,
-    instance: rt.instance_mod.Instance,
-    wasi_ctx: ?rt.wasi.WasiContext = null,
-    export_fns: []const ExportInfo = &[_]ExportInfo{},
-    /// Pre-generated WasmFn instances for keyword lookup dispatch.
-    cached_fns: []WasmFn = &[_]WasmFn{},
-    /// WIT function signatures (set via wasm/load :wit option).
-    wit_funcs: []const wit_parser.WitFunc = &[_]wit_parser.WitFunc{},
-    /// Cached VM instance — reused across invoke() calls to avoid stack reallocation.
-    vm: *rt.vm_mod.Vm = undefined,
+    export_fns: []const ExportInfo,
+    cached_fns: []WasmFn,
+    wit_funcs: []const wit_parser.WitFunc,
 
-    /// Load a Wasm module from binary bytes, decode, and instantiate.
-    /// Returns a heap-allocated WasmModule (pointer-stable).
     pub fn load(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        return loadCore(allocator, wasm_bytes, false, null);
+        const inner = try zwasm.WasmModule.load(allocator, wasm_bytes);
+        return wrapInner(allocator, inner);
     }
 
-    /// Load a WASI module — registers wasi_snapshot_preview1 imports.
     pub fn loadWasi(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        return loadCore(allocator, wasm_bytes, true, null);
+        const inner = try zwasm.WasmModule.loadWasi(allocator, wasm_bytes);
+        return wrapInner(allocator, inner);
     }
 
-    /// Load with host function imports (Clojure fns callable from Wasm).
     pub fn loadWithImports(allocator: Allocator, wasm_bytes: []const u8, imports_map: Value) !*WasmModule {
-        return loadCore(allocator, wasm_bytes, false, imports_map);
+        // Inspect import types before loading (needed for host trampoline context)
+        const import_infos = try zwasm.inspectImportFunctions(allocator, wasm_bytes);
+        defer if (import_infos.len > 0) allocator.free(import_infos);
+
+        // Build ImportEntry[] from the Clojure Value map
+        const entries = try buildImportEntries(allocator, imports_map, import_infos);
+        defer allocator.free(entries);
+
+        const inner = try zwasm.WasmModule.loadWithImports(allocator, wasm_bytes, entries);
+        return wrapInner(allocator, inner);
     }
 
-    fn loadCore(allocator: Allocator, wasm_bytes: []const u8, wasi: bool, imports_map: ?Value) !*WasmModule {
+    fn wrapInner(allocator: Allocator, inner: *zwasm.WasmModule) !*WasmModule {
         const self = try allocator.create(WasmModule);
         errdefer allocator.destroy(self);
-
+        self.inner = inner;
         self.allocator = allocator;
-        self.store = rt.store_mod.Store.init(allocator);
-        errdefer self.store.deinit();
-
-        self.module = rt.module_mod.Module.init(allocator, wasm_bytes);
-        errdefer self.module.deinit();
-        try self.module.decode();
-
-        if (wasi) {
-            try rt.wasi.registerAll(&self.store, &self.module);
-            self.wasi_ctx = rt.wasi.WasiContext.init(allocator);
-        } else {
-            self.wasi_ctx = null;
-        }
-        errdefer if (self.wasi_ctx) |*wc| wc.deinit();
-
-        if (imports_map) |im| {
-            try registerWasmModuleImports(&self.store, &self.module, im, allocator);
-            try registerHostFunctions(&self.store, &self.module, im, allocator);
-        }
-
-        self.instance = rt.instance_mod.Instance.init(allocator, &self.store, &self.module);
-        errdefer self.instance.deinit();
-        if (self.wasi_ctx) |*wc| self.instance.wasi = wc;
-        try self.instance.instantiate();
-
-        self.export_fns = buildExportInfo(allocator, &self.module) catch &[_]ExportInfo{};
+        self.export_fns = buildExportInfo(allocator, inner) catch &[_]ExportInfo{};
         self.cached_fns = buildCachedFns(allocator, self) catch &[_]WasmFn{};
         self.wit_funcs = &[_]wit_parser.WitFunc{};
-
-        self.vm = try allocator.create(rt.vm_mod.Vm);
-        self.vm.* = rt.vm_mod.Vm.init(allocator);
-
         return self;
     }
 
     pub fn deinit(self: *WasmModule) void {
         const allocator = self.allocator;
-        // Free cached WasmFn instances
         if (self.cached_fns.len > 0) allocator.free(self.cached_fns);
-        // Free export info
         for (self.export_fns) |ei| {
             allocator.free(ei.param_types);
             allocator.free(ei.result_types);
         }
         if (self.export_fns.len > 0) allocator.free(self.export_fns);
-        allocator.destroy(self.vm);
-        self.instance.deinit();
-        if (self.wasi_ctx) |*wc| wc.deinit();
-        self.module.deinit();
-        self.store.deinit();
+        self.inner.deinit();
         allocator.destroy(self);
     }
 
-    /// Invoke an exported function by name.
-    /// Args and results are passed as u64 arrays.
     pub fn invoke(self: *WasmModule, name: []const u8, args: []u64, results: []u64) !void {
-        self.vm.reset();
-        try self.vm.invoke(&self.instance, name, args, results);
+        try self.inner.invoke(name, args, results);
     }
 
-    /// Read bytes from linear memory at the given offset.
     pub fn memoryRead(self: *WasmModule, allocator: Allocator, offset: u32, length: u32) ![]const u8 {
-        const mem = try self.instance.getMemory(0);
-        const mem_bytes = mem.memory();
-        const end = @as(u64, offset) + @as(u64, length);
-        if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
-        const result = try allocator.alloc(u8, length);
-        @memcpy(result, mem_bytes[offset..][0..length]);
-        return result;
+        return self.inner.memoryRead(allocator, offset, length);
     }
 
-    /// Write bytes to linear memory at the given offset.
     pub fn memoryWrite(self: *WasmModule, offset: u32, data: []const u8) !void {
-        const mem = try self.instance.getMemory(0);
-        const mem_bytes = mem.memory();
-        const end = @as(u64, offset) + @as(u64, data.len);
-        if (end > mem_bytes.len) return error.OutOfBoundsMemoryAccess;
-        @memcpy(mem_bytes[offset..][0..data.len], data);
+        return self.inner.memoryWrite(offset, data);
     }
 
-    /// Attach WIT info parsed from a .wit file.
     pub fn setWitInfo(self: *WasmModule, funcs: []const wit_parser.WitFunc) void {
         self.wit_funcs = funcs;
         for (self.cached_fns) |*cf| {
@@ -183,7 +130,6 @@ pub const WasmModule = struct {
         }
     }
 
-    /// Get WIT function info by name.
     pub fn getWitFunc(self: *const WasmModule, name: []const u8) ?wit_parser.WitFunc {
         for (self.wit_funcs) |wf| {
             if (std.mem.eql(u8, wf.name, name)) return wf;
@@ -191,7 +137,6 @@ pub const WasmModule = struct {
         return null;
     }
 
-    /// Lookup export function info by name.
     pub fn getExportInfo(self: *const WasmModule, name: []const u8) ?ExportInfo {
         for (self.export_fns) |ei| {
             if (std.mem.eql(u8, ei.name, name)) return ei;
@@ -199,7 +144,6 @@ pub const WasmModule = struct {
         return null;
     }
 
-    /// Lookup a cached WasmFn by export name (for keyword dispatch).
     pub fn getExportFn(self: *const WasmModule, name: []const u8) ?*const WasmFn {
         for (self.cached_fns) |*wf| {
             if (std.mem.eql(u8, wf.name, name)) return wf;
@@ -208,27 +152,23 @@ pub const WasmModule = struct {
     }
 };
 
-/// A bound Wasm function — module ref + export name + signature.
-/// Returned by (wasm/fn mod "add" {:params [:i32 :i32] :results [:i32]}).
-/// Callable as a first-class Clojure function via callFnVal dispatch.
+// ============================================================
+// WasmFn — Value↔u64 marshalling (CW-specific)
+// ============================================================
+
 pub const WasmFn = struct {
     module: *WasmModule,
     name: []const u8,
     param_types: []const WasmValType,
     result_types: []const WasmValType,
-    /// WIT-level parameter types (null = no WIT info, use raw core types).
     wit_params: ?[]const wit_parser.WitParam = null,
-    /// WIT-level result type (null = no WIT info).
     wit_result: ?wit_parser.WitType = null,
 
-    /// Call this Wasm function with Clojure Value arguments.
     pub fn call(self: *const WasmFn, allocator: Allocator, args: []const Value) !Value {
-        // WIT marshalling path
         if (self.wit_params) |wps| {
             return self.callWithWitMarshalling(allocator, args, wps);
         }
 
-        // Core-type path (no WIT)
         if (args.len != self.param_types.len)
             return error.ArityError;
 
@@ -248,7 +188,6 @@ pub const WasmFn = struct {
         return wasmToValue(allocator, wasm_results[0], self.result_types[0]);
     }
 
-    /// WIT-aware call: handles string marshalling via cabi_realloc + memory.
     fn callWithWitMarshalling(self: *const WasmFn, allocator: Allocator, args: []const Value, wit_params: []const wit_parser.WitParam) !Value {
         if (args.len != wit_params.len) return error.ArityError;
 
@@ -291,7 +230,6 @@ pub const WasmFn = struct {
         switch (wit_result) {
             .string => {
                 if (self.result_types.len < 2) return error.TypeError;
-                // Multi-value return: (ptr, len) — pointer first, length second
                 const ptr: u32 = @truncate(wasm_results[0]);
                 const len: u32 = @truncate(wasm_results[1]);
                 const bytes = try self.module.memoryRead(allocator, ptr, len);
@@ -343,13 +281,22 @@ fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
     };
 }
 
+/// Convert a Wasm u64 result to a Clojure Value based on the result type.
+fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
+    return switch (wasm_type) {
+        .i32 => Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw)))))),
+        .i64 => Value.initInteger(@bitCast(raw)),
+        .f32 => Value.initFloat(@as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw)))))),
+        .f64 => Value.initFloat(@bitCast(raw)),
+    };
+}
+
 // ============================================================
-// Host function injection (Clojure -> Wasm callbacks)
+// Host function infrastructure (Clojure → Wasm callbacks)
 // ============================================================
 
 const bootstrap = @import("../runtime/bootstrap.zig");
 
-/// Host function callback context — stores Clojure fn + signature.
 const HostContext = struct {
     clj_fn: Value,
     param_count: u32,
@@ -357,7 +304,6 @@ const HostContext = struct {
     allocator: Allocator,
 };
 
-/// Global context table (max 256 host functions across all modules).
 const MAX_CONTEXTS = 256;
 var host_contexts: [MAX_CONTEXTS]?HostContext = [_]?HostContext{null} ** MAX_CONTEXTS;
 var next_context_id: usize = 0;
@@ -378,12 +324,11 @@ fn allocContext(ctx: HostContext) !usize {
     return error.WasmHostContextFull;
 }
 
-/// Trampoline: called by custom VM, invokes the Clojure function.
+/// Trampoline: called by zwasm VM, invokes the Clojure function.
 fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
-    const vm: *rt.vm_mod.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
     const ctx = host_contexts[context_id] orelse return error.Trap;
 
-    // Pop args from VM stack (reverse order)
     var args_buf: [16]Value = undefined;
     const pc = ctx.param_count;
     if (pc > 16) return error.Trap;
@@ -395,12 +340,10 @@ fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
         args_buf[i] = Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw))))));
     }
 
-    // Call the Clojure function
     const result = bootstrap.callFnVal(ctx.allocator, ctx.clj_fn, args_buf[0..pc]) catch {
         return error.Trap;
     };
 
-    // Push result to VM stack
     if (ctx.result_count > 0) {
         const raw: u64 = switch (result.tag()) {
             .integer => @bitCast(@as(i64, @intCast(@as(i32, @intCast(result.asInteger()))))),
@@ -413,128 +356,121 @@ fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
     }
 }
 
-/// Register exported functions from WasmModule values as imports in the target store.
-/// imports_map: {"module_name" WasmModule-or-map}
-/// When the value for a module name is a WasmModule, its exported functions are
-/// copied into the target store and registered as imports.
-pub fn registerWasmModuleImports(
-    store: *rt.store_mod.Store,
-    module: *const rt.module_mod.Module,
-    imports_map: Value,
+// ============================================================
+// Import bridge — converts Clojure Value map → zwasm ImportEntry[]
+// ============================================================
+
+/// Build zwasm ImportEntry[] from Clojure imports map.
+/// imports_map: {"module_name" WasmModule-or-{fn-map}}
+/// Iterates import_infos (from inspectImportFunctions) to discover module names,
+/// then looks up each in the Clojure map via get().
+fn buildImportEntries(
     allocator: Allocator,
-) !void {
-    _ = allocator;
-    for (module.imports.items) |imp| {
-        if (imp.kind != .func) continue;
-        if (std.mem.eql(u8, imp.module, "wasi_snapshot_preview1")) continue;
+    imports_map: Value,
+    import_infos: []const zwasm.ImportFuncInfo,
+) ![]const zwasm.ImportEntry {
+    var entries = std.ArrayList(zwasm.ImportEntry).empty;
+    defer entries.deinit(allocator);
 
-        // Look up the source for this import's module name
-        const source = lookupImportSource(imports_map, imp.module) orelse continue;
+    // Collect unique module names from import_infos
+    var seen_modules = std.ArrayList([]const u8).empty;
+    defer seen_modules.deinit(allocator);
 
-        // Only handle WasmModule values here
-        if (source.tag() != .wasm_module) continue;
-        const src_module = source.asWasmModule();
-
-        // Look up the exported function in the source module's Instance
-        const export_addr = src_module.instance.getExportFunc(imp.name) orelse
-            return error.ImportNotFound;
-
-        // Copy the Function from source store into target store.
-        // Reset cached pointers to null — they will be lazily rebuilt.
-        // (Sharing these pointers across stores would cause double-free.)
-        var src_func = src_module.store.getFunction(export_addr) catch
-            return error.ImportNotFound;
-        if (src_func.subtype == .wasm_function) {
-            src_func.subtype.wasm_function.branch_table = null;
-            src_func.subtype.wasm_function.ir = null;
-            src_func.subtype.wasm_function.ir_failed = false;
+    for (import_infos) |info| {
+        if (std.mem.eql(u8, info.module, "wasi_snapshot_preview1")) continue;
+        var already = false;
+        for (seen_modules.items) |seen| {
+            if (std.mem.eql(u8, seen, info.module)) {
+                already = true;
+                break;
+            }
         }
-        const addr = store.addFunction(src_func) catch
-            return error.WasmInstantiateError;
-        store.addExport(imp.module, imp.name, .func, addr) catch
-            return error.WasmInstantiateError;
+        if (!already) try seen_modules.append(allocator, info.module);
     }
+
+    for (seen_modules.items) |mod_name| {
+        const mod_val = lookupMapValue(imports_map, mod_name) orelse continue;
+
+        if (mod_val.tag() == .wasm_module) {
+            try entries.append(allocator, .{
+                .module = mod_name,
+                .source = .{ .wasm_module = mod_val.asWasmModule().inner },
+            });
+        } else {
+            // Map of {func_name: clj-fn} — host function imports
+            const host_fns = try buildHostFns(allocator, mod_name, mod_val, import_infos);
+            try entries.append(allocator, .{
+                .module = mod_name,
+                .source = .{ .host_fns = host_fns },
+            });
+        }
+    }
+
+    return entries.toOwnedSlice(allocator);
 }
 
-/// Look up the value for a module name in the imports map.
-/// Returns the sub-value (either a sub-map for host functions, or a WasmModule).
-fn lookupImportSource(imports_map: Value, module_name: []const u8) ?Value {
+/// Build host function entries from a Clojure map of {func_name: clj-fn}.
+fn buildHostFns(
+    allocator: Allocator,
+    mod_name: []const u8,
+    fn_map: Value,
+    import_infos: []const zwasm.ImportFuncInfo,
+) ![]const zwasm.HostFnEntry {
+    var host_fns = std.ArrayList(zwasm.HostFnEntry).empty;
+    defer host_fns.deinit(allocator);
+
+    // Iterate import_infos to find functions for this module, then look up in fn_map
+    for (import_infos) |info| {
+        if (!std.mem.eql(u8, info.module, mod_name)) continue;
+
+        const clj_fn = lookupMapValue(fn_map, info.name) orelse continue;
+
+        const ctx_id = allocContext(.{
+            .clj_fn = clj_fn,
+            .param_count = info.param_count,
+            .result_count = info.result_count,
+            .allocator = allocator,
+        }) catch return error.WasmHostContextFull;
+
+        try host_fns.append(allocator, .{
+            .name = info.name,
+            .callback = &hostTrampoline,
+            .context = ctx_id,
+        });
+    }
+
+    return host_fns.toOwnedSlice(allocator);
+}
+
+/// Lookup a string-keyed value in a Clojure map (PersistentArrayMap or PersistentHashMap).
+fn lookupMapValue(map: Value, key_str: []const u8) ?Value {
     const alloc = std.heap.page_allocator;
-    const mod_key = Value.initString(alloc, module_name);
-    return switch (imports_map.tag()) {
-        .map => imports_map.asMap().get(mod_key),
-        .hash_map => imports_map.asHashMap().get(mod_key),
+    const key = Value.initString(alloc, key_str);
+    return switch (map.tag()) {
+        .map => map.asMap().get(key),
+        .hash_map => map.asHashMap().get(key),
         else => null,
     };
 }
 
-/// Register Clojure functions as Wasm host functions.
-/// imports_map: {"module_name" {"func_name" clj-fn}}
-pub fn registerHostFunctions(
-    store: *rt.store_mod.Store,
-    module: *const rt.module_mod.Module,
-    imports_map: Value,
-    allocator: Allocator,
-) !void {
-    for (module.imports.items) |imp| {
-        if (imp.kind != .func) continue;
+// ============================================================
+// Internal helpers
+// ============================================================
 
-        // Skip wasi imports (handled separately)
-        if (std.mem.eql(u8, imp.module, "wasi_snapshot_preview1")) continue;
+/// Build CW ExportInfo from zwasm's export info.
+fn buildExportInfo(allocator: Allocator, inner: *zwasm.WasmModule) ![]const ExportInfo {
+    // Read exports from the zwasm module via getExportInfo iteration
+    // zwasm doesn't expose a list API, but export_fns are public
+    const src = inner.export_fns;
+    if (src.len == 0) return &[_]ExportInfo{};
 
-        // Skip imports already handled by WasmModule sources
-        if (lookupImportSource(imports_map, imp.module)) |source| {
-            if (source.tag() == .wasm_module) continue;
-        }
-
-        if (imp.index >= module.types.items.len) continue;
-        const functype = module.types.items[imp.index];
-
-        const clj_fn = lookupImportFn(imports_map, imp.module, imp.name) orelse continue;
-
-        const ctx_id = allocContext(.{
-            .clj_fn = clj_fn,
-            .param_count = @intCast(functype.params.len),
-            .result_count = @intCast(functype.results.len),
-            .allocator = allocator,
-        }) catch return error.WasmHostContextFull;
-
-        store.exposeHostFunction(
-            imp.module,
-            imp.name,
-            &hostTrampoline,
-            ctx_id,
-            functype.params,
-            functype.results,
-        ) catch {
-            host_contexts[ctx_id] = null;
-            return error.WasmInstantiateError;
-        };
-    }
-}
-
-/// Build export function info by introspecting the Wasm binary's exports + types.
-fn buildExportInfo(allocator: Allocator, module: *const rt.module_mod.Module) ![]const ExportInfo {
-    var func_count: usize = 0;
-    for (module.exports.items) |exp| {
-        if (exp.kind == .func) func_count += 1;
-    }
-    if (func_count == 0) return &[_]ExportInfo{};
-
-    const infos = try allocator.alloc(ExportInfo, func_count);
-    errdefer allocator.free(infos);
-
+    const infos = try allocator.alloc(ExportInfo, src.len);
     var idx: usize = 0;
-    for (module.exports.items) |exp| {
-        if (exp.kind != .func) continue;
-
-        const functype = module.getFuncType(exp.index) orelse continue;
-
-        const params = try allocator.alloc(WasmValType, functype.params.len);
-        errdefer allocator.free(params);
+    for (src) |ei| {
+        const params = try allocator.alloc(WasmValType, ei.param_types.len);
         var valid = true;
-        for (functype.params, 0..) |p, i| {
-            params[i] = WasmValType.fromRuntime(p) orelse {
+        for (ei.param_types, 0..) |p, i| {
+            params[i] = WasmValType.fromZwasm(p) orelse {
                 valid = false;
                 break;
             };
@@ -544,10 +480,9 @@ fn buildExportInfo(allocator: Allocator, module: *const rt.module_mod.Module) ![
             continue;
         }
 
-        const results = try allocator.alloc(WasmValType, functype.results.len);
-        errdefer allocator.free(results);
-        for (functype.results, 0..) |r, i| {
-            results[i] = WasmValType.fromRuntime(r) orelse {
+        const results = try allocator.alloc(WasmValType, ei.result_types.len);
+        for (ei.result_types, 0..) |r, i| {
+            results[i] = WasmValType.fromZwasm(r) orelse {
                 valid = false;
                 break;
             };
@@ -559,28 +494,26 @@ fn buildExportInfo(allocator: Allocator, module: *const rt.module_mod.Module) ![
         }
 
         infos[idx] = .{
-            .name = exp.name,
+            .name = ei.name,
             .param_types = params,
             .result_types = results,
         };
         idx += 1;
     }
 
-    if (idx < func_count) {
-        if (idx == 0) {
-            allocator.free(infos);
-            return &[_]ExportInfo{};
-        }
+    if (idx == 0) {
+        allocator.free(infos);
+        return &[_]ExportInfo{};
+    }
+    if (idx < src.len) {
         const trimmed = try allocator.alloc(ExportInfo, idx);
         @memcpy(trimmed, infos[0..idx]);
         allocator.free(infos);
         return trimmed;
     }
-
     return infos;
 }
 
-/// Pre-generate WasmFn instances for all exports (used by keyword dispatch).
 fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
     const exports = wasm_mod.export_fns;
     if (exports.len == 0) return &[_]WasmFn{};
@@ -595,34 +528,6 @@ fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
         };
     }
     return fns;
-}
-
-/// Lookup a Clojure function from the nested imports map.
-fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
-    const alloc = std.heap.page_allocator;
-    const mod_key = Value.initString(alloc, module_name);
-    const sub_map_val = switch (imports_map.tag()) {
-        .map => imports_map.asMap().get(mod_key),
-        .hash_map => imports_map.asHashMap().get(mod_key),
-        else => null,
-    } orelse return null;
-
-    const fn_key = Value.initString(alloc, func_name);
-    return switch (sub_map_val.tag()) {
-        .map => sub_map_val.asMap().get(fn_key),
-        .hash_map => sub_map_val.asHashMap().get(fn_key),
-        else => null,
-    };
-}
-
-/// Convert a Wasm u64 result to a Clojure Value based on the result type.
-fn wasmToValue(_: Allocator, raw: u64, wasm_type: WasmValType) Value {
-    return switch (wasm_type) {
-        .i32 => Value.initInteger(@as(i64, @as(i32, @bitCast(@as(u32, @truncate(raw)))))),
-        .i64 => Value.initInteger(@bitCast(raw)),
-        .f32 => Value.initFloat(@as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw)))))),
-        .f64 => Value.initFloat(@bitCast(raw)),
-    };
 }
 
 // === Tests ===
@@ -719,35 +624,6 @@ test "allocContext — allocate and reclaim slots" {
     try testing.expectEqual(@as(usize, 0), id_reused);
 }
 
-test "lookupImportFn — nested map lookup" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const collections = @import("../runtime/collections.zig");
-
-    const target_val = Value.initKeyword(alloc, .{ .name = "found", .ns = null });
-    var inner_entries = [_]Value{
-        Value.initString(alloc, "print_i32"), target_val,
-    };
-    const inner_map = try alloc.create(collections.PersistentArrayMap);
-    inner_map.* = .{ .entries = &inner_entries };
-
-    var outer_entries = [_]Value{
-        Value.initString(alloc, "env"), Value.initMap(inner_map),
-    };
-    const outer_map = try alloc.create(collections.PersistentArrayMap);
-    outer_map.* = .{ .entries = &outer_entries };
-
-    const imports = Value.initMap(outer_map);
-
-    const result = lookupImportFn(imports, "env", "print_i32");
-    try testing.expect(result != null);
-    try testing.expect(result.?.eql(target_val));
-
-    try testing.expect(lookupImportFn(imports, "env", "missing") == null);
-    try testing.expect(lookupImportFn(imports, "other", "print_i32") == null);
-}
-
 test "buildExportInfo — add module exports" {
     const wasm_bytes = @embedFile("testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
@@ -802,25 +678,18 @@ test "getExportInfo — nonexistent name returns null" {
     try testing.expect(wasm_mod.getExportInfo("nonexistent") == null);
 }
 
-// ============================================================
-// Multi-module linking tests (Phase 36.8)
-// ============================================================
-
 test "multi-module — two modules, function import" {
     const collections = @import("../runtime/collections.zig");
 
-    // math_mod exports "add" and "mul"
     const math_bytes = @embedFile("testdata/20_math_export.wasm");
     var math_mod = try WasmModule.load(testing.allocator, math_bytes);
     defer math_mod.deinit();
 
-    // Verify math module works standalone
     var add_args = [_]u64{ 3, 4 };
     var add_results = [_]u64{0};
     try math_mod.invoke("add", &add_args, &add_results);
     try testing.expectEqual(@as(u64, 7), add_results[0]);
 
-    // Build imports map: {"math" WasmModule}
     const math_val = Value.initWasmModule(math_mod);
     var import_entries = [_]Value{
         Value.initString(std.heap.page_allocator, "math"), math_val,
@@ -829,12 +698,10 @@ test "multi-module — two modules, function import" {
     import_map.* = .{ .entries = &import_entries };
     defer testing.allocator.destroy(import_map);
 
-    // app_mod imports "add" and "mul" from "math", exports "add_and_mul"
     const app_bytes = @embedFile("testdata/21_app_import.wasm");
     var app_mod = try WasmModule.loadWithImports(testing.allocator, app_bytes, Value.initMap(import_map));
     defer app_mod.deinit();
 
-    // add_and_mul(3, 4, 5) = (3 + 4) * 5 = 35
     var args = [_]u64{ 3, 4, 5 };
     var results = [_]u64{0};
     try app_mod.invoke("add_and_mul", &args, &results);
@@ -844,12 +711,10 @@ test "multi-module — two modules, function import" {
 test "multi-module — three module chain" {
     const collections = @import("../runtime/collections.zig");
 
-    // base exports "double"
     const base_bytes = @embedFile("testdata/22_base.wasm");
     var base_mod = try WasmModule.load(testing.allocator, base_bytes);
     defer base_mod.deinit();
 
-    // Build imports map for mid: {"base" WasmModule}
     const base_val = Value.initWasmModule(base_mod);
     var base_entries = [_]Value{
         Value.initString(std.heap.page_allocator, "base"), base_val,
@@ -858,18 +723,15 @@ test "multi-module — three module chain" {
     base_map.* = .{ .entries = &base_entries };
     defer testing.allocator.destroy(base_map);
 
-    // mid imports "double" from "base", exports "quadruple"
     const mid_bytes = @embedFile("testdata/23_mid.wasm");
     var mid_mod = try WasmModule.loadWithImports(testing.allocator, mid_bytes, Value.initMap(base_map));
     defer mid_mod.deinit();
 
-    // Verify mid: quadruple(5) = 20
     var mid_args = [_]u64{5};
     var mid_results = [_]u64{0};
     try mid_mod.invoke("quadruple", &mid_args, &mid_results);
     try testing.expectEqual(@as(u64, 20), mid_results[0]);
 
-    // Build imports map for top: {"mid" WasmModule}
     const mid_val = Value.initWasmModule(mid_mod);
     var mid_entries = [_]Value{
         Value.initString(std.heap.page_allocator, "mid"), mid_val,
@@ -878,12 +740,10 @@ test "multi-module — three module chain" {
     mid_map.* = .{ .entries = &mid_entries };
     defer testing.allocator.destroy(mid_map);
 
-    // top imports "quadruple" from "mid", exports "octuple"
     const top_bytes = @embedFile("testdata/24_top.wasm");
     var top_mod = try WasmModule.loadWithImports(testing.allocator, top_bytes, Value.initMap(mid_map));
     defer top_mod.deinit();
 
-    // octuple(3) = 3 * 8 = 24
     var top_args = [_]u64{3};
     var top_results = [_]u64{0};
     try top_mod.invoke("octuple", &top_args, &top_results);

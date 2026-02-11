@@ -7,8 +7,8 @@ Session handover document. Read at session start.
 - **Phase 43 COMPLETE** (Array + BigInt + BigDecimal + auto-promotion + Ratio)
 - Coverage: 795+ vars done across all namespaces (593/706 core, 45/45 math, 28/28 zip, 32/39 test, 9/26 pprint, 6/6 stacktrace, etc.)
 - **Direction**: Native production track (D79). wasm_rt deferred.
-- **Wasm interpreter**: 461 opcodes (225 core + 236 SIMD), 7.9x FFI improvement (D86), multi-module linking
-- **JIT**: ARM64 hot integer loops (D87), arith_loop 53→3ms (17.7x cumulative)
+- **Wasm runtime**: zwasm external dependency (D92), 461 opcodes, Register IR + ARM64 JIT
+- **Wasm bridge**: `src/wasm/types.zig` thin wrapper over zwasm (9 engine files removed, -9300 LOC)
 - **Test porting**: 38 upstream test files, all passing. See `.dev/test-porting-plan.md`
 
 ## Strategic Direction
@@ -29,7 +29,12 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Previous Task
 
-nREPL stacktrace + GPA leak fix:
+zwasm integration (D92): Replaced internal wasm engine (9 files, 9300 LOC) with
+zwasm as GitHub URL dependency (v0.1.0). Bridge in types.zig delegates to
+zwasm.WasmModule. `zig build` fetches zwasm automatically from GitHub.
+All tests (unit, e2e 6/6, portability 2/2, benchmarks 31) verified.
+
+Prior previous task — nREPL stacktrace + GPA leak fix:
 - VM stacktrace now shows file:line (was REPL:0) — FnProto.source_file + CallFrame.source_file
 - error.zig: updateTopFrame() for IP-based line at error time
 - nREPL eval: setSourceFile from message "file" key (CIDER eval-in-buffer)
@@ -105,6 +110,8 @@ Session resume procedure: read this file → follow references below.
 | Decisions          | `.dev/decisions.md` (D3-D91)         |
 | Optimizations      | `.dev/optimizations.md`              |
 | Benchmarks         | `bench/history.yaml`                 |
+| zwasm dependency   | GitHub URL dep v0.1.0 (build.zig.zon)   |
+| zwasm integration  | `.dev/decisions.md` D92              |
 | Wasm opt plan      | `.dev/wasm-opt-plan.md`              |
 | Wasm bench history | `bench/wasm_history.yaml`            |
 | Zig tips           | `.claude/references/zig-tips.md`     |
@@ -201,7 +208,7 @@ Session resume procedure: read this file → follow references below.
   - 36.9: F119 fix (WIT string return ptr/len swap)
   - 36.10: Documentation update (wasm-spec-support.md, 461 opcodes)
 - **Phase 35X COMPLETE**: Cross-platform build (D85 NaN boxing, CI)
-- **Phase 35W COMPLETE** (D84): Custom Wasm runtime (8 files, switch dispatch)
+- **Phase 35W COMPLETE** (D84→D92): Custom Wasm runtime → replaced by zwasm dependency
 - **Phase 35.5 COMPLETE**: Wasm runtime hardening (WASI 84%, conformance tests)
 - **Architecture**: NaN boxing 4-tag 48-bit (D85), single binary trailer, ~3ms startup
 - **nREPL/CIDER**: 14 ops. `cljw --nrepl-server --port=0`
