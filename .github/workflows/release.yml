@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-macos-none
+            os: macos-14
+            artifact: cljw-macos-aarch64
+          - target: x86_64-macos-none
+            os: ubuntu-24.04
+            artifact: cljw-macos-x86_64
+          - target: x86_64-linux-gnu
+            os: ubuntu-24.04
+            artifact: cljw-linux-x86_64
+          - target: aarch64-linux-gnu
+            os: ubuntu-24.04
+            artifact: cljw-linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp zig-out/bin/cljw dist/
+          cd dist && tar czf ../${{ matrix.artifact }}.tar.gz cljw
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Compute SHA256
+        run: sha256sum *.tar.gz > checksums.txt && cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.tar.gz
+            checksums.txt
+          generate_release_notes: true

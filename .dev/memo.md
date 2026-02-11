@@ -26,22 +26,20 @@ Phase 50: v0.4.0-beta — Ecosystem
 - [x] 50.1: `cljw test` command (project-based test runner)
 - [x] 50.2: cljw.edn `:deps` with local paths
 - [x] 50.3: cljw.edn `:deps` with git/sha resolution
-- [ ] 50.4: Homebrew tap
+- [x] 50.4: Homebrew tap
 - [ ] 50.5: Wasm module dependency declaration
 
 ## Current Task
 
-50.4: Homebrew tap.
+50.5: Wasm module dependency declaration.
 
 ## Previous Task
 
-50.3: cljw.edn `:deps` with git/sha resolution — complete.
-- Parse `:deps {lib/name {:git/url "..." :git/sha "..."}}` in cljw.edn
-- Cache: `~/.cljw/gitlibs/_repos/<hash>.git` (bare clone) + `~/.cljw/gitlibs/<hash>/<sha>/` (extracted)
-- Marker file `.cljw-resolved` for fast skip on re-run
-- Pipes `git archive | tar -x` for extraction
-- Fetching progress message on stderr
-- Transitive deps resolved via dep's cljw.edn
+50.4: Homebrew tap — complete.
+- Release workflow: `.github/workflows/release.yml` (tag-triggered, 4 platform builds)
+- Formula template: `homebrew/Formula/cljw.rb` (placeholder SHA256s)
+- Update script: `homebrew/update-formula.sh` (downloads + computes SHA256s)
+- Usage: `brew tap chaploud/cljw && brew install cljw` (after tap repo setup)
 - Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
 - Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
 - F94 checklist updated with audit results
