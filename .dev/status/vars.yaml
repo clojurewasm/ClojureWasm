@@ -590,7 +590,7 @@ vars:
     "short-array": {type: function, status: done, note: Phase 43 — Zig array type}
     shorts: {type: function, status: done, note: Phase 43 — Zig array type}
     shuffle: {type: function, status: done, note: builtin (upstream is pure clj)}
-    "shutdown-agents": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    "shutdown-agents": {type: function, status: done, note: "builtin (shuts down global thread pool)"}
     "simple-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "simple-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "simple-symbol?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}

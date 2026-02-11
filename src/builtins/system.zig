@@ -162,6 +162,30 @@ fn availableProcessorsFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.initInteger(@intCast(count));
 }
 
+/// (shutdown-agents) => nil
+/// Initiates shutdown of thread pools used by agents and futures.
+fn shutdownAgentsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to shutdown-agents", .{args.len});
+    const thread_pool = @import("../runtime/thread_pool.zig");
+    thread_pool.shutdownGlobalPool();
+    return Value.nil_val;
+}
+
+/// (__thread-sleep ms) => nil
+/// Suspends the current thread for the specified number of milliseconds.
+fn threadSleepFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Thread/sleep", .{args.len});
+    const ms: i64 = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @intFromFloat(args[0].asFloat()),
+        else => return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "Thread/sleep expects a number" }),
+    };
+    if (ms > 0) {
+        std.Thread.sleep(@intCast(ms * std.time.ns_per_ms));
+    }
+    return Value.nil_val;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "__nano-time",
@@ -203,6 +227,20 @@ pub const builtins = [_]BuiltinDef{
         .func = &availableProcessorsFn,
         .doc = "Returns the number of available processors.",
         .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "shutdown-agents",
+        .func = &shutdownAgentsFn,
+        .doc = "Initiates a shutdown of the thread pools that back the agent system.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__thread-sleep",
+        .func = &threadSleepFn,
+        .doc = "Causes the current thread to sleep for the specified number of milliseconds.",
+        .arglists = "([ms])",
         .added = "1.0",
     },
 };

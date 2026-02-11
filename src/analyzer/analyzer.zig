@@ -339,6 +339,8 @@ pub const Analyzer = struct {
             return math_rewrites.get(name);
         } else if (std.mem.eql(u8, ns, "System")) {
             return system_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Thread")) {
+            return thread_rewrites.get(name);
         }
         return null;
     }
@@ -360,6 +362,10 @@ pub const Analyzer = struct {
         .{ "nanoTime", "__nano-time" },
         .{ "currentTimeMillis", "__current-time-millis" },
         .{ "getProperty", "__get-property" },
+    });
+
+    const thread_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "sleep", "__thread-sleep" },
     });
 
     /// Resolve a symbol to a Var if possible (via env).

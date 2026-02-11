@@ -12,13 +12,13 @@ Master plan for recovering implementable vars from the 165 SKIP status vars.
 | 2 | Agent (concurrency)   | 17   | DEFER            | —            | DEFERRED    |
 | 3 | STM / Ref             | 9    | OUT OF SCOPE     | —            | PERMANENT   |
 | 4 | Proxy/Reify/Deftype   | ~20  | PARTIAL (5 vars) | 42           | **DONE**    |
-| 5 | Future                | 9    | IMPLEMENT        | 50           | PENDING     |
+| 5 | Future                | 9    | IMPLEMENT        | 48           | **DONE**    |
 | 6 | import → wasm mapping | 2    | DESIGN EXPLORE   | 51           | PENDING     |
 | 7 | BigDecimal/Ratio      | 7    | IMPLEMENT        | 43           | **DONE**    |
 | 8 | Quick wins            | ~10  | IMPLEMENT        | 42           | **DONE**    |
 
-Completed: Cat 1 (Phase 43), Cat 4 (Phase 42), Cat 7 (Phase 43), Cat 8 (Phase 42)
-Remaining: Cat 5 (future/pmap, 9 vars), Cat 6 (import, 2 vars)
+Completed: Cat 1 (Phase 43), Cat 4 (Phase 42), Cat 5 (Phase 48), Cat 7 (Phase 43), Cat 8 (Phase 42)
+Remaining: Cat 6 (import, 2 vars)
 
 ---
 

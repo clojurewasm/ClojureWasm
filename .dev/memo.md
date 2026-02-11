@@ -23,16 +23,15 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 49: v0.3.0-alpha — Compatibility
 
-- [ ] 49.0: Plan Phase 49 (identify compatibility gaps)
-- [ ] 49.1: locking macro (synchronization primitive)
-- [ ] 49.2: Thread/sleep implementation
-- [ ] 49.3: shutdown-agents function
-- [ ] 49.4: Upstream test expansion (5+ additional files)
-- [ ] 49.5: Pure Clojure library compatibility testing
+- [x] 49.1: Thread/sleep + shutdown-agents + analyzer rewrite
+- [ ] 49.2: Upstream test expansion (concurrency tests)
+- [ ] 49.3: Quick-win skip recovery pass
+- [ ] 49.4: Pure Clojure library compatibility testing
+- [ ] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
 
 ## Current Task
 
-49.0: Plan Phase 49. Assess compatibility gaps. Read checklist and skip-recovery.
+49.2: Port upstream concurrency tests to verify Phase 48 implementation.
 
 ## Previous Task
 
