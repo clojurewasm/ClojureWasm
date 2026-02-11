@@ -25,7 +25,7 @@ Phase 48: v0.2.0-alpha — Concurrency
 
 - [x] 48.0: Plan Phase 48 (audit + architectural decisions)
 - [x] 48.1: Thread-safe global state (threadlocal/atomic conversions)
-- [ ] 48.2: GC thread safety (D94 — mutex + stop-the-world)
+- [x] 48.2: GC thread safety (D94 — mutex + stop-the-world)
 - [ ] 48.3: Thread pool infrastructure + per-thread evaluator
 - [ ] 48.4: Future Value type + future/future-call/deref
 - [ ] 48.5: pmap, pcalls, pvalues
@@ -33,23 +33,20 @@ Phase 48: v0.2.0-alpha — Concurrency
 
 ## Current Task
 
-48.2: GC thread safety — add mutex to MarkSweepGc for concurrent allocation,
-implement stop-the-world collection. Record as D94 architectural decision.
+48.3: Thread pool infrastructure + per-thread evaluator.
 
 Plan:
-- Add std.Thread.Mutex to MarkSweepGc
-- Lock mutex in alloc/destroy paths
-- Collection: acquire mutex, stop other threads, mark+sweep, release
-- Thread registry: track spawned threads for stop-the-world coordination
-- Verify all existing tests still pass
+- Create ThreadPool (fixed-size, backed by std.Thread)
+- Per-thread Env + VM initialization
+- Safe-point integration with GC ThreadRegistry
+- Submit/await work items
+- Test: spawn threads, each evaluates simple expressions concurrently
 
 ## Previous Task
 
-48.1: Thread-safe global state — converted ~16 module-level vars:
-threadlocal (current_frame, macro_eval_env, predicates.current_env,
-last_thrown_exception, io stacks, active_vm, file_read_buf),
-atomic (_vec_gen_counter, gensym_counter), mutex (keyword_intern.table,
-prng, host_contexts, loaded_libs/loading_libs).
+48.2: GC thread safety (D94) — added gc_mutex to MarkSweepGc protecting all
+alloc/free/resize/remap and collection paths. ThreadRegistry for future
+stop-the-world coordination. All tests pass.
 
 ## Known Issues
 

@@ -189,6 +189,10 @@ pub const MarkSweepGc = struct {
     collect_count: u64 = 0,
     threshold: usize = 1024 * 1024, // 1MB initial; grows via threshold *= 2
 
+    /// Mutex protecting all GC state (allocations, free pools, counters).
+    /// Serializes allocation and collection across threads.
+    gc_mutex: std.Thread.Mutex = .{},
+
     // --- Free-pool recycling ---
     //
     // Dead allocations from sweep are not immediately freed back to the OS.
@@ -372,6 +376,8 @@ pub const MarkSweepGc = struct {
     /// participate in future mark-sweep cycles normally.
     fn msAlloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         // Fast path: try free pool first — exact (size, alignment) match, O(1) pop
         for (self.free_pools[0..self.free_pool_count]) |*pool| {
             if (pool.size == len and pool.alignment == alignment) {
@@ -412,6 +418,8 @@ pub const MarkSweepGc = struct {
 
     fn msResize(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         if (self.backing.rawResize(memory, alignment, new_len, ret_addr)) {
             const addr = @intFromPtr(memory.ptr);
             if (self.allocations.getPtr(addr)) |info| {
@@ -425,6 +433,8 @@ pub const MarkSweepGc = struct {
 
     fn msRemap(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         const result = self.backing.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
         const old_addr = @intFromPtr(memory.ptr);
         const new_addr = @intFromPtr(result);
@@ -453,6 +463,8 @@ pub const MarkSweepGc = struct {
 
     fn msFree(ptr: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         const addr = @intFromPtr(memory.ptr);
         if (self.allocations.get(addr)) |info| {
             self.bytes_allocated -|= info.len;
@@ -472,12 +484,16 @@ pub const MarkSweepGc = struct {
 
     fn gcCollect(ptr: *anyopaque, roots: RootSet) void {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         traceRoots(self, roots);
         self.sweep();
     }
 
     fn gcShouldCollect(ptr: *anyopaque) bool {
         const self: *MarkSweepGc = @ptrCast(@alignCast(ptr));
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         return self.bytes_allocated >= self.threshold;
     }
 
@@ -492,6 +508,8 @@ pub const MarkSweepGc = struct {
     /// Run a GC cycle if the allocation threshold has been reached.
     /// Traces roots, sweeps dead allocations, and grows threshold if needed.
     pub fn collectIfNeeded(self: *MarkSweepGc, roots: RootSet) void {
+        self.gc_mutex.lock();
+        defer self.gc_mutex.unlock();
         if (self.bytes_allocated < self.threshold) return;
         traceRoots(self, roots);
         self.sweep();
@@ -1046,6 +1064,40 @@ fn traceBindingStack(gc: *MarkSweepGc) void {
         frame = f.prev;
     }
 }
+
+// ============================================================
+// ThreadRegistry — tracks threads for stop-the-world GC (D94)
+// ============================================================
+
+/// Thread registry for coordinating stop-the-world GC collection.
+///
+/// When a GC collection is needed, the collecting thread must ensure
+/// all other mutator threads are paused at safe points before tracing
+/// roots. This registry tracks:
+///   - Active thread count (atomic, for quick check)
+///   - Per-thread root set providers (for multi-thread root tracing)
+///
+/// Currently (Phase 48.2) this is infrastructure only — actual thread
+/// spawning and safe-point integration comes in 48.3.
+pub const ThreadRegistry = struct {
+    /// Number of active mutator threads (including main).
+    thread_count: std.atomic.Value(u32) = std.atomic.Value(u32).init(1),
+
+    pub fn registerThread(self: *ThreadRegistry) void {
+        _ = self.thread_count.fetchAdd(1, .monotonic);
+    }
+
+    pub fn unregisterThread(self: *ThreadRegistry) void {
+        _ = self.thread_count.fetchSub(1, .monotonic);
+    }
+
+    pub fn activeThreadCount(self: *const ThreadRegistry) u32 {
+        return self.thread_count.load(.monotonic);
+    }
+};
+
+/// Global thread registry instance.
+pub var thread_registry: ThreadRegistry = .{};
 
 // === Tests ===
 

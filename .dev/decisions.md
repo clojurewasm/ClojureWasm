@@ -541,3 +541,22 @@ optimal shift/mask parameters. Helper functions: `shift-mask`, `maybe-min-hash`,
 **Also fixed**: Vector destructuring (`makeNthCall`) now uses 3-arity `nth` with
 nil default, matching Clojure's behavior of returning nil for missing positions
 instead of throwing.
+
+## D94: GC Thread Safety — Mutex + Stop-the-World Architecture
+
+**Decision**: Make MarkSweepGc thread-safe via a single `gc_mutex` that serializes
+all allocation (msAlloc/msFree/msResize/msRemap) and collection (collectIfNeeded,
+gcCollect = traceRoots + sweep) paths.
+
+**Design**: Global GC lock approach — simplest correct implementation. The mutex
+is held for the entire mark+sweep cycle, preventing allocation during collection
+(stop-the-world). Multiple threads serialize on the mutex for allocation.
+
+**Thread registry**: `ThreadRegistry` tracks active mutator thread count via
+atomic counter. Infrastructure for future safe-point integration — when a thread
+triggers collection, it will signal others to pause at safe points, wait for
+all to reach safe points, then collect with combined root sets.
+
+**Scope**: Phase 48.2 adds the mutex + registry. Thread spawning (48.3) will
+integrate safe-point coordination. Future optimization: concurrent marking,
+thread-local allocation buffers (TLABs), generational collection.
