@@ -24,7 +24,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 47: v0.1.0-alpha — Developer Experience
 
 1. ~~47.1: REPL improvements (multiline, color, ns prompt)~~ DONE
-2. 47.2: Error message improvements (source context, better formatting)
+2. ~~47.2: Error message improvements (source context, better formatting)~~ DONE
 3. 47.3: case* compiler special form (deferred from 38.4)
 4. 47.4: Missing quick-win vars (with-in-str, io!, with-precision)
 5. 47.5: Upstream test expansion (5+ additional test files)
@@ -32,13 +32,13 @@ Phase 47: v0.1.0-alpha — Developer Experience
 
 ## Current Task
 
-47.2: Error message improvements — source context, better formatting
+47.3: case* compiler special form (deferred from 38.4)
 
 ## Previous Task
 
-47.1: REPL improvements — dynamic namespace prompt (green), colored output
-values (blue=int, green=string, cyan=keyword, magenta=nil/bool, yellow=symbol),
-continuation prompt (aligned spaces). LineEditor.setNsPrompt() + colorizeValue().
+47.2: Error message improvements — cleaner header with error kind labels
+(Type error, Syntax error, etc.), replaced banner with compact format,
+"REPL" instead of "<expr>" for REPL errors. kindToLabel() function.
 
 ## Known Issues
 

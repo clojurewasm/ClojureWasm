@@ -651,15 +651,19 @@ fn reportError(eval_err: anyerror) void {
     const c = if (std.posix.isatty(std.posix.STDERR_FILENO)) Ansi.color else Ansi.plain;
 
     if (err.getLastError()) |info| {
-        w.print("{s}----- Error -----------------------------------------------{s}\n", .{ c.red, c.reset }) catch {};
-        w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, info.message, c.reset }) catch {};
+        // Header: "Type error at REPL:1:5" or "Type error"
+        const kind_label = kindToLabel(info.kind);
         if (info.location.line > 0) {
-            const file = info.location.file orelse "<expr>";
-            w.print("{s}{s}:{d}:{d}{s}\n", .{ c.dim, file, info.location.line, info.location.column, c.reset }) catch {};
+            const file = info.location.file orelse "REPL";
+            w.print("{s}{s}{s}{s} at {s}:{d}:{d}{s}\n", .{
+                c.bold, c.red, kind_label, c.reset,
+                file,   info.location.line, info.location.column, c.reset,
+            }) catch {};
+        } else {
+            w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, kind_label, c.reset }) catch {};
         }
-        if (info.phase != .eval) {
-            w.print("{s}Phase: {s}{s}\n", .{ c.dim, @tagName(info.phase), c.reset }) catch {};
-        }
+        // Message
+        w.print("  {s}\n", .{info.message}) catch {};
         // Call stack trace
         const stack = err.getCallStack();
         if (stack.len > 0) {
@@ -688,10 +692,10 @@ fn reportError(eval_err: anyerror) void {
         }
     } else {
         // No detailed error info — make fallback as helpful as possible
-        w.print("{s}----- Error -----------------------------------------------{s}\n", .{ c.red, c.reset }) catch {};
-        w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, @errorName(eval_err), c.reset }) catch {};
+        w.print("{s}{s}Error{s}\n", .{ c.bold, c.red, c.reset }) catch {};
+        w.print("  {s}\n", .{@errorName(eval_err)}) catch {};
         if (err.getSourceFile()) |file| {
-            w.print("{s}{s}{s}\n", .{ c.dim, file, c.reset }) catch {};
+            w.print("{s}  in {s}{s}\n", .{ c.dim, file, c.reset }) catch {};
         }
         // Show call stack if available
         const stack = err.getCallStack();
@@ -710,6 +714,23 @@ fn reportError(eval_err: anyerror) void {
     }
 
     _ = stderr.write(stream.getWritten()) catch {};
+}
+
+fn kindToLabel(kind: err.Kind) []const u8 {
+    return switch (kind) {
+        .syntax_error => "Syntax error",
+        .number_error => "Number format error",
+        .string_error => "String format error",
+        .name_error => "Name error",
+        .arity_error => "Arity error",
+        .value_error => "Value error",
+        .type_error => "Type error",
+        .arithmetic_error => "Arithmetic error",
+        .index_error => "Index error",
+        .io_error => "IO error",
+        .internal_error => "Internal error",
+        .out_of_memory => "Out of memory",
+    };
 }
 
 fn showSourceContext(w: anytype, location: err.SourceLocation, message: []const u8, c: Ansi) void {
