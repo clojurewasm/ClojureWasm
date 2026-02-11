@@ -24,23 +24,23 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 50: v0.4.0-beta — Ecosystem
 
 - [x] 50.1: `cljw test` command (project-based test runner)
-- [ ] 50.2: cljw.edn `:deps` with local paths
+- [x] 50.2: cljw.edn `:deps` with local paths
 - [ ] 50.3: cljw.edn `:deps` with git/sha resolution
 - [ ] 50.4: Homebrew tap
 - [ ] 50.5: Wasm module dependency declaration
 
 ## Current Task
 
-50.2: cljw.edn `:deps` with local paths.
+50.3: cljw.edn `:deps` with git/sha resolution.
 
 ## Previous Task
 
-50.1: `cljw test` command — complete.
-- `cljw test` subcommand: auto-discovers .clj files in `:test-paths` (default: "test")
-- Supports explicit file args: `cljw test file1.clj file2.clj`
-- Loads cljw.edn `:test-paths` config
-- Exit code 1 on failures/errors, 0 on all pass
-- Arena allocator for file buffers (symbols survive across file loads)
+50.2: cljw.edn `:deps` with local paths — complete.
+- Parse `:deps {lib/name {:local/root "path"}}` in cljw.edn
+- Resolve relative paths against cljw.edn directory
+- Transitively resolve dep's deps (reads dep's cljw.edn)
+- Adds dep's `:paths` (default: "src") to load paths
+- ConfigFile struct: tracks where cljw.edn was found (not entry file dir)
 - Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
 - Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
 - F94 checklist updated with audit results

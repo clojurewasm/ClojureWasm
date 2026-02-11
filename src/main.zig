@@ -33,6 +33,7 @@ const http_server = @import("builtins/http_server.zig");
 const lifecycle = @import("runtime/lifecycle.zig");
 const Reader = @import("reader/reader.zig").Reader;
 const FormData = @import("reader/form.zig").FormData;
+const Form = @import("reader/form.zig").Form;
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
@@ -214,11 +215,12 @@ pub fn main() !void {
     defer config_arena.deinit();
     const config_alloc = config_arena.allocator();
     const file_dir = if (file) |f| std.fs.path.dirname(f) else null;
-    const config = if (findConfigFile(config_alloc, file_dir)) |content|
-        parseConfig(config_alloc, content)
-    else
-        ProjectConfig{};
-    applyConfig(config, file_dir);
+    var config_dir: ?[]const u8 = null;
+    const config = if (findConfigFile(config_alloc, file_dir)) |cf| blk: {
+        config_dir = cf.dir;
+        break :blk parseConfig(config_alloc, cf.content);
+    } else ProjectConfig{};
+    applyConfig(config, config_dir);
 
     if (expr) |e| {
         err.setSourceFile(null);
@@ -554,11 +556,12 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
     var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
     defer config_arena.deinit();
     const config_alloc = config_arena.allocator();
-    const config = if (findConfigFile(config_alloc, null)) |content|
-        parseConfig(config_alloc, content)
-    else
-        ProjectConfig{};
-    applyConfig(config, null);
+    var test_config_dir: ?[]const u8 = null;
+    const config = if (findConfigFile(config_alloc, null)) |cf| blk: {
+        test_config_dir = cf.dir;
+        break :blk parseConfig(config_alloc, cf.content);
+    } else ProjectConfig{};
+    applyConfig(config, test_config_dir);
 
     // Arena for test file paths and source buffers (survives until function exit).
     var file_arena = std.heap.ArenaAllocator.init(infra_alloc);
@@ -670,23 +673,34 @@ fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []con
 
 // === cljw.edn config parsing ===
 
+/// A single dependency declaration from cljw.edn :deps.
+const Dep = struct {
+    local_root: ?[]const u8 = null, // :local/root path
+};
+
 /// Parsed cljw.edn configuration.
 const ProjectConfig = struct {
     paths: []const []const u8 = &.{},
     test_paths: []const []const u8 = &.{},
     main_ns: ?[]const u8 = null,
+    deps: []const Dep = &.{},
+};
+
+const ConfigFile = struct {
+    content: []const u8,
+    dir: ?[]const u8, // directory containing cljw.edn (null = CWD)
 };
 
 /// Search for cljw.edn starting from dir, walking up to root.
-/// Returns file content if found, null otherwise.
-fn findConfigFile(allocator: Allocator, start_dir: ?[]const u8) ?[]const u8 {
+/// Returns file content and the directory where it was found.
+fn findConfigFile(allocator: Allocator, start_dir: ?[]const u8) ?ConfigFile {
     // Try CWD first
-    if (readConfigFromDir(allocator, ".")) |content| return content;
+    if (readConfigFromDir(allocator, ".")) |content| return .{ .content = content, .dir = null };
 
     // Walk up from start_dir
     var current = start_dir orelse return null;
     for (0..10) |_| {
-        if (readConfigFromDir(allocator, current)) |content| return content;
+        if (readConfigFromDir(allocator, current)) |content| return .{ .content = content, .dir = current };
         const parent = std.fs.path.dirname(current) orelse break;
         if (std.mem.eql(u8, parent, current)) break;
         current = parent;
@@ -741,6 +755,10 @@ fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
                 }
                 config.test_paths = paths[0..count];
             }
+        } else if (std.mem.eql(u8, kw, "deps")) {
+            if (entries[i + 1].data == .map) {
+                config.deps = parseDeps(allocator, entries[i + 1].data.map);
+            }
         } else if (std.mem.eql(u8, kw, "main")) {
             if (entries[i + 1].data == .symbol) {
                 const sym = entries[i + 1].data.symbol;
@@ -756,7 +774,40 @@ fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
     return config;
 }
 
-/// Apply cljw.edn config: add paths to load paths.
+/// Parse :deps map → slice of Dep. Format: {lib/name {:local/root "path"}, ...}
+fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
+    const count = dep_entries.len / 2;
+    if (count == 0) return &.{};
+    const deps = allocator.alloc(Dep, count) catch return &.{};
+    var n: usize = 0;
+    var di: usize = 0;
+    while (di + 1 < dep_entries.len) : (di += 2) {
+        // value must be a map: {:local/root "path"}
+        if (dep_entries[di + 1].data != .map) continue;
+        const val_map = dep_entries[di + 1].data.map;
+        var dep = Dep{};
+        var vi: usize = 0;
+        while (vi + 1 < val_map.len) : (vi += 2) {
+            if (val_map[vi].data == .keyword) {
+                const dk = val_map[vi].data.keyword;
+                if (dk.ns != null and std.mem.eql(u8, dk.ns.?, "local") and
+                    std.mem.eql(u8, dk.name, "root"))
+                {
+                    if (val_map[vi + 1].data == .string) {
+                        dep.local_root = val_map[vi + 1].data.string;
+                    }
+                }
+            }
+        }
+        if (dep.local_root != null) {
+            deps[n] = dep;
+            n += 1;
+        }
+    }
+    return deps[0..n];
+}
+
+/// Apply cljw.edn config: add paths and resolve deps.
 fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
     for (config.paths) |path| {
         if (config_dir) |dir| {
@@ -766,6 +817,74 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
             ns_ops.addLoadPath(full) catch {};
         } else {
             ns_ops.addLoadPath(path) catch {};
+        }
+    }
+    // Resolve local deps
+    for (config.deps) |dep| {
+        if (dep.local_root) |root| {
+            resolveLocalDep(root, config_dir);
+        }
+    }
+}
+
+/// Resolve a :local/root dependency: add its :paths to load paths and recurse.
+fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
+    // Resolve relative path against config directory
+    var path_buf: [4096]u8 = undefined;
+    const dep_dir = if (config_dir) |dir|
+        std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ dir, root }) catch return
+    else
+        root;
+
+    // Add default source path (dep_dir/src)
+    var src_buf: [4096]u8 = undefined;
+    const src_path = std.fmt.bufPrint(&src_buf, "{s}/src", .{dep_dir}) catch return;
+    ns_ops.addLoadPath(src_path) catch {};
+
+    // Try to read dep's cljw.edn for custom :paths
+    var dep_config_buf: [4096]u8 = undefined;
+    const dep_config_path = std.fmt.bufPrint(&dep_config_buf, "{s}/cljw.edn", .{dep_dir}) catch return;
+    const dep_content = std.fs.cwd().readFileAlloc(
+        std.heap.page_allocator,
+        dep_config_path,
+        10_000,
+    ) catch return; // No cljw.edn — default "src" already added
+    defer std.heap.page_allocator.free(dep_content);
+
+    var reader = Reader.init(std.heap.page_allocator, dep_content);
+    const form = reader.read() catch return;
+    const root_form = form orelse return;
+    if (root_form.data != .map) return;
+    const map_entries = root_form.data.map;
+
+    // Parse :paths and :deps from dep's cljw.edn
+    var di: usize = 0;
+    while (di + 1 < map_entries.len) : (di += 2) {
+        if (map_entries[di].data != .keyword) {
+            di = di; // no-op to satisfy loop
+            continue;
+        }
+        const kw = map_entries[di].data.keyword;
+        if (kw.ns == null and std.mem.eql(u8, kw.name, "paths")) {
+            if (map_entries[di + 1].data == .vector) {
+                for (map_entries[di + 1].data.vector) |elem| {
+                    if (elem.data == .string) {
+                        var sub_buf: [4096]u8 = undefined;
+                        const full = std.fmt.bufPrint(&sub_buf, "{s}/{s}", .{ dep_dir, elem.data.string }) catch continue;
+                        ns_ops.addLoadPath(full) catch {};
+                    }
+                }
+            }
+        } else if (kw.ns == null and std.mem.eql(u8, kw.name, "deps")) {
+            if (map_entries[di + 1].data == .map) {
+                // Recurse into transitive deps
+                const sub_deps = parseDeps(std.heap.page_allocator, map_entries[di + 1].data.map);
+                for (sub_deps) |sub_dep| {
+                    if (sub_dep.local_root) |sub_root| {
+                        resolveLocalDep(sub_root, dep_dir);
+                    }
+                }
+            }
         }
     }
 }
