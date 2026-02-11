@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 46 COMPLETE** + zwasm integration (D92) done
-- Coverage: 795+ vars (593/706 core, 16 namespaces total)
+- **All phases through 48 COMPLETE** + zwasm integration (D92) done
+- Coverage: 810+ vars (604/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 43 upstream test files, all passing. 6/6 e2e tests pass.
@@ -21,19 +21,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 48: v0.2.0-alpha — Concurrency
+Phase 49: v0.3.0-alpha — Compatibility
 
-- [x] 48.0: Plan Phase 48 (audit + architectural decisions)
-- [x] 48.1: Thread-safe global state (threadlocal/atomic conversions)
-- [x] 48.2: GC thread safety (D94 — mutex + stop-the-world)
-- [x] 48.3: Thread pool infrastructure + per-thread evaluator
-- [x] 48.4: Future Value type + future/future-call/deref
-- [x] 48.5: pmap, pcalls, pvalues
-- [x] 48.6: promise + deliver
+- [ ] 49.0: Plan Phase 49 (identify compatibility gaps)
+- [ ] 49.1: locking macro (synchronization primitive)
+- [ ] 49.2: Thread/sleep implementation
+- [ ] 49.3: shutdown-agents function
+- [ ] 49.4: Upstream test expansion (5+ additional files)
+- [ ] 49.5: Pure Clojure library compatibility testing
 
 ## Current Task
 
-Phase 48 complete. Planning next phase.
+49.0: Plan Phase 49. Assess compatibility gaps. Read checklist and skip-recovery.
 
 ## Previous Task
 

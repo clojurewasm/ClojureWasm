@@ -16,7 +16,7 @@ Check at session start for items that become actionable.
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
-| F6   | Multi-thread dynamic bindings               | Prerequisite for F133 (Future), native multi-thread target               |
+| F6   | Multi-thread dynamic bindings               | Threadlocal frames + conveyance done (48.1/48.3). Push/pop thread bindings remain |
 | F94  | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim             |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
@@ -24,7 +24,6 @@ Check at session start for items that become actionable.
 | F104 | Profile-guided optimization (extend IC)     | Extend inline caching beyond monomorphic                                 |
 | F105 | JIT compilation                             | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
-| F133 | Future + thread pool                        | Zig std.Thread, GC safety, deref timeout                                 |
 | F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
 | F136 | Wasm table.copy cross-table support         | zwasm-side (D92); needed for full bulk memory ops spec                   |
 | F137 | Wasm table.init implementation              | zwasm-side (D92); needed for element segment initialization              |
