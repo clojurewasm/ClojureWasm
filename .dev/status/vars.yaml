@@ -271,8 +271,8 @@ vars:
     ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "ensure-reduced": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "enumeration-seq": {type: function, status: skip, note: JVM interop}
-    "error-handler": {type: function, status: skip, note: JVM interop}
-    "error-mode": {type: function, status: skip, note: JVM interop}
+    "error-handler": {type: function, status: done, note: "builtin"}
+    "error-mode": {type: function, status: done, note: "builtin"}
     eval: {type: function, status: done, note: "Zig builtin"}
     "even?": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     "every-pred": {type: function, status: done, note: "core.clj and-based combinator"}

@@ -679,6 +679,20 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.2",
     },
     .{
+        .name = "error-handler",
+        .func = &errorHandlerFn,
+        .doc = "Returns the error-handler of agent a, or nil if there is none. See set-error-handler!",
+        .arglists = "([a])",
+        .added = "1.2",
+    },
+    .{
+        .name = "error-mode",
+        .func = &errorModeFn,
+        .doc = "Returns the error-mode of agent a. See set-error-mode!",
+        .arglists = "([a])",
+        .added = "1.2",
+    },
+    .{
         .name = "agent?",
         .func = &agentPred,
         .doc = "Returns true if x is an agent.",
@@ -752,6 +766,7 @@ pub fn agentFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // Parse optional keyword args
     var error_handler = Value.nil_val;
+    var has_explicit_error_mode = false;
     var error_mode = value_mod.AgentInner.ErrorMode.continue_mode;
     var i: usize = 1;
     while (i + 1 < args.len) : (i += 2) {
@@ -763,6 +778,7 @@ pub fn agentFn(allocator: Allocator, args: []const Value) anyerror!Value {
             if (std.mem.eql(u8, kw.name, "error-handler")) {
                 error_handler = args[i + 1];
             } else if (std.mem.eql(u8, kw.name, "error-mode")) {
+                has_explicit_error_mode = true;
                 if (args[i + 1].tag() == .keyword) {
                     const mode_kw = args[i + 1].asKeyword();
                     if (mode_kw.ns == null and std.mem.eql(u8, mode_kw.name, "continue")) {
@@ -778,6 +794,11 @@ pub fn agentFn(allocator: Allocator, args: []const Value) anyerror!Value {
             }
             // ignore unknown options (JVM Clojure also has :meta, :validator)
         }
+    }
+
+    // JVM default: :continue if error-handler given, :fail otherwise
+    if (!has_explicit_error_mode) {
+        error_mode = if (error_handler.tag() != .nil) .continue_mode else .fail_mode;
     }
 
     // Allocate inner via page allocator (avoids GC interference with mutex)
@@ -827,6 +848,31 @@ pub fn setErrorHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
     defer inner.mutex.unlock();
     inner.error_handler = args[1];
     return args[0];
+}
+
+/// (error-handler agent) => handler-fn or nil
+pub fn errorHandlerFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to error-handler", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "error-handler expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    const handler = inner.error_handler;
+    if (handler.tag() == .nil) return Value.nil_val;
+    return handler;
+}
+
+/// (error-mode agent) => :continue or :fail
+pub fn errorModeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to error-mode", .{args.len});
+    if (args[0].tag() != .agent) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "error-mode expects an agent" });
+    const inner = args[0].asAgent().getInner();
+    inner.mutex.lock();
+    defer inner.mutex.unlock();
+    return switch (inner.error_mode) {
+        .continue_mode => Value.initKeyword(allocator, .{ .ns = null, .name = "continue" }),
+        .fail_mode => Value.initKeyword(allocator, .{ .ns = null, .name = "fail" }),
+    };
 }
 
 /// (set-error-mode! agent mode-keyword) => agent

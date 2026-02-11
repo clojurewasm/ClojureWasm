@@ -272,8 +272,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 373 + 6 (await, await-for, await1, release-pending-sends, agent-errors, clear-agent-errors)
-    try std.testing.expectEqual(379, builtin_count);
+    // 379 + 2 (error-handler, error-mode)
+    try std.testing.expectEqual(381, builtin_count);
 }
 
 test "comptime lookup finds +" {
