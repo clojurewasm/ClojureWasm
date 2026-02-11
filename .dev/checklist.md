@@ -17,7 +17,7 @@ Check at session start for items that become actionable.
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
 | F6   | Multi-thread dynamic bindings               | Threadlocal frames + conveyance done (48.1/48.3). Push/pop thread bindings remain |
-| F94  | Upstream Alignment pass                     | Replace UPSTREAM-DIFF implementations with upstream verbatim             |
+| F94  | Upstream Alignment pass                     | 49.5 audit done. ~47 permanent, ~6 fixable (bootstrap order), ~2 fixable later. Replace where safe. |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |

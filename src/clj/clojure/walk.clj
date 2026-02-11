@@ -2,7 +2,7 @@
 ;;
 ;; Based on upstream clojure.walk by Stuart Sierra.
 ;;
-;; UPSTREAM-DIFF: No IMapEntry/IRecord handling.
+;; UPSTREAM-DIFF: No IMapEntry/IRecord branches (not needed: CW map entries are vectors).
 
 (ns clojure.walk)
 

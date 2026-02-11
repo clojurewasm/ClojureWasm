@@ -29,8 +29,8 @@ vars:
     new: {type: special-form, status: skip, note: "JVM interop"}
     quote: {type: special-form, status: done, note: special form}
     recur: {type: special-form, status: done, note: special form}
-    "reify*": {type: special-form, status: skip, note: "JVM type system"}
-    "set!": {type: special-form, status: partial, note: "UPSTREAM-DIFF: metadata registered but not in analyzer dispatch; needs F85 binding"}
+    "reify*": {type: special-form, status: done, note: "analyzer special form in CW"}
+    "set!": {type: special-form, status: done, note: "supports dynamic vars in binding + top-level"}
     throw: {type: special-form, status: done, note: special form}
     try: {type: special-form, status: done, note: special form}
     var: {type: special-form, status: done, note: special form}
@@ -191,7 +191,7 @@ vars:
     "chunk-rest": {type: function, status: done, note: builtin}
     "chunked-seq?": {type: function, status: done, note: "builtin"}
     class: {type: function, status: done, note: "Zig builtin alias of type"}
-    "class?": {type: function, status: done, note: "no Java class system", notes: 'UPSTREAM-DIFF: always false (no Java class system)'}
+    "class?": {type: function, status: done, note: 'UPSTREAM-DIFF: always false (no Java class system)'}
     "clear-agent-errors": {type: function, status: skip, note: DEFERRED — multi-thread future}
     "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "coll?": {type: function, status: done, note: "Zig builtin"}
@@ -226,12 +226,12 @@ vars:
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: done}
     "default-data-readers": {type: var, status: done}
-    definline: {type: macro, status: done, note: JVM optimization, notes: 'UPSTREAM-DIFF: no :inline metadata support'}
+    definline: {type: macro, status: done, note: 'UPSTREAM-DIFF: no :inline metadata support'}
     definterface: {type: macro, status: skip, note: JVM interop}
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
-    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF (permanent): simplified, no docstring/metadata/pre-post/inline (upstream is heavy Java interop)'}
+    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: no :inline, :arglists, or pre/post conditions'}
     "defn-": {type: macro, status: done, note: "macro in core.clj"}
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
@@ -265,7 +265,7 @@ vars:
     drop: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-last": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "drop-while": {type: function, status: done, note: "core.clj loop+pred"}
-    eduction: {type: function, status: done, note: needs IReduceInit protocol, notes: 'UPSTREAM-DIFF: eager sequence wrapper (no deftype)'}
+    eduction: {type: function, status: done, note: 'UPSTREAM-DIFF: eager sequence wrapper (no deftype/IReduceInit)'}
     empty: {type: function, status: done, note: "Zig builtin"}
     "empty?": {type: function, status: done, note: "Zig builtin"}
     ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
@@ -352,7 +352,7 @@ vars:
     "inst-ms": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "inst-ms*": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "inst?": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "instance?": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
+    "instance?": {type: function, status: done, note: "compiler special form with Java class mapping"}
     int: {type: function, status: done, note: builtin (upstream is pure clj)}
     "int-array": {type: function, status: done, note: Phase 43 — Zig array type}
     "int?": {type: function, status: done, note: "Zig builtin"}
@@ -366,7 +366,7 @@ vars:
     "io!": {type: macro, status: done, note: "UPSTREAM-DIFF: no STM, implicit do"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    iteration: {type: function, status: done, note: needs lazy stateful iterator, notes: 'UPSTREAM-DIFF: lazy-seq wrapper (no reify/IReduceInit)'}
+    iteration: {type: function, status: done, note: 'UPSTREAM-DIFF: lazy-seq wrapper (no IReduceInit protocol)'}
     "iterator-seq": {type: function, status: skip, note: JVM interop}
     juxt: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     keep: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
@@ -538,7 +538,7 @@ vars:
     "ref-set": {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: done}
-    reify: {type: macro, status: skip, note: "no JVM class generation"}
+    reify: {type: macro, status: done, note: "analyzer special form, protocol impl on anonymous objects"}
     "release-pending-sends": {type: function, status: skip, note: DEFERRED — multi-thread future}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
     remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}

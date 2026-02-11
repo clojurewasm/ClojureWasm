@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 48 COMPLETE** + zwasm integration (D92) done
-- Coverage: 810+ vars (604/706 core, 16 namespaces total)
+- Coverage: 820+ vars (620/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 44 upstream test files, all passing. 6/6 e2e tests pass.
@@ -27,18 +27,19 @@ Phase 49: v0.3.0-alpha — Compatibility
 - [x] 49.2: Upstream test expansion (concurrency tests)
 - [x] 49.3: Quick-win skip recovery pass
 - [x] 49.4: Pure Clojure library compatibility testing
-- [ ] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
+- [x] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
 
 ## Current Task
 
-49.5: Upstream alignment pass — review and clean up UPSTREAM-DIFF markers.
+Phase 49 complete. Planning Phase 50.
 
 ## Previous Task
 
-49.4: Library compatibility testing — complete.
-Tested 2 external + 5 built-in libraries:
-- medley (external): 31 tests, 48 assertions — ALL PASS
-- camel-snake-kebab (external): 7 tests, 14 assertions — ALL PASS
+49.5: UPSTREAM-DIFF audit complete.
+- ~47 permanent (architectural), ~6 fixable (bootstrap order), ~2 need new features
+- Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
+- Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
+- F94 checklist updated with audit results
 - clojure.walk (built-in): all functions verified
 - clojure.set (built-in): 10 tests, 24 assertions — ALL PASS
 - clojure.data (built-in): 6 tests, 21 assertions — ALL PASS
