@@ -20,6 +20,13 @@ pub fn build(b: *std.Build) void {
     });
     const zwasm_mod = zwasm_dep.module("zwasm");
 
+    // zwasm for native target (build-time tools like cache_gen run on the host)
+    const zwasm_native_dep = b.dependency("zwasm", .{
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    const zwasm_native_mod = zwasm_native_dep.module("zwasm");
+
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
@@ -41,7 +48,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     cache_gen.root_module.addImport("build_options", options_module);
-    cache_gen.root_module.addImport("zwasm", zwasm_mod);
+    cache_gen.root_module.addImport("zwasm", zwasm_native_mod);
     cache_gen.stack_size = 512 * 1024 * 1024;
 
     const run_cache_gen = b.addRunArtifact(cache_gen);
