@@ -27,38 +27,28 @@ Phase 50B: Known Bug Fixes
 - [x] 50B.2: Fix dir-fn on non-existent ns (VM panic → error)
 - [x] 50B.3: Fix find-var return type (symbol → var)
 - [x] 50B.4: Implement remove-ns, ns-unalias, ns-unmap
-- [ ] 50B.5: Fix *print-meta*, *print-readably* in pr-str
+- [x] 50B.5: Fix *print-meta*, *print-readably* in pr-str
 - [ ] 50B.6: Fix apply on var refs
 - [ ] 50B.7: Fix apply on infinite lazy seq (pass trailing ISeq lazily)
 - [ ] 50B.8: Fix sequences.clj CLJ-1633 segfault
 
 ## Current Task
 
-50B.5: Fix *print-meta*, *print-readably* in pr-str.
+50B.6: Fix apply on var refs.
 
 ## Previous Task
 
-50.5: Wasm module dependency declaration — complete.
-- `:wasm-deps {"name" {:local/root "path.wasm"}}` in cljw.edn
-- Registry in `wasm/builtins.zig`: module name → resolved path
-- `wasm/load "name"` checks registry when direct path not found
-- Relative paths resolved against cljw.edn directory
-- Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
-- Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
-- F94 checklist updated with audit results
-- clojure.walk (built-in): all functions verified
-- clojure.set (built-in): 10 tests, 24 assertions — ALL PASS
-- clojure.data (built-in): 6 tests, 21 assertions — ALL PASS
-- clojure.zip (built-in): 8 tests, 16 assertions — ALL PASS
-- clojure.pprint (built-in): basic pprint works, cl-format not impl
-
-Fixes in this session:
-1. seq? now returns true for cons/lazy-seq/chunked-cons (was list-only)
-2. Smart type hint stripping: only strip (with-meta x {:tag T}), preserve other metadata
+50B.5: Fix *print-meta*, *print-readably* in pr-str — complete.
+- Added cached Var pointers for `*print-readably*` and `*print-meta*` in value.zig
+- `getPrintReadably()`: threadlocal override (str/print) takes precedence, else checks var binding
+- `getPrintMeta()`: checks var binding, prints `^{...} value` prefix when true
+- Bootstrap: `initPrintFlagVars` called after `initPrintVars`
+- Both backends verified (VM + TreeWalk)
+- Note: with-meta result GC'd when used inline (separate known issue)
 
 ## Known Issues
 
-- *print-meta*, *print-readably* not yet respected by pr-str
+- with-meta result GC'd when used inline (e.g. `(meta (with-meta v m))` → nil)
 - apply on var refs not supported
 - apply on infinite lazy seq realizes eagerly (should pass trailing ISeq lazily)
 - sequences.clj CLJ-1633 segfault (nested apply with & rest args → GC/binding corruption)

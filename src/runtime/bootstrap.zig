@@ -1180,6 +1180,11 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
             value_mod.initPrintVars(pl_var, pv_var);
         }
     }
+    if (core_ns.resolve("*print-readably*")) |pr_var| {
+        if (core_ns.resolve("*print-meta*")) |pm_var| {
+            value_mod.initPrintFlagVars(pr_var, pm_var);
+        }
+    }
 
     // Ensure *ns* is synced
     syncNsVar(env);

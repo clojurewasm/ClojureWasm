@@ -38,6 +38,8 @@ const testing = std.testing;
 // --- Print state (threadlocal for *print-length*, *print-level*, lazy-seq realization) ---
 var print_length_var: ?*const Var = null;
 var print_level_var: ?*const Var = null;
+var print_readably_var: ?*const Var = null;
+var print_meta_var: ?*const Var = null;
 threadlocal var print_depth: u32 = 0;
 threadlocal var print_allocator: ?Allocator = null;
 threadlocal var print_readably: bool = true;
@@ -48,9 +50,40 @@ pub fn initPrintVars(length_v: *const Var, level_v: *const Var) void {
     print_level_var = level_v;
 }
 
+/// Initialize cached Var pointers for *print-readably* and *print-meta*.
+pub fn initPrintFlagVars(readably_v: *const Var, meta_v: *const Var) void {
+    print_readably_var = readably_v;
+    print_meta_var = meta_v;
+}
+
 pub fn resetPrintVars() void {
     print_length_var = null;
     print_level_var = null;
+    print_readably_var = null;
+    print_meta_var = null;
+}
+
+/// Check *print-readably* dynamic var. Returns the current value.
+/// When threadlocal override is active (str/print/println), it takes precedence.
+/// Otherwise, check the dynamic var binding.
+pub fn getPrintReadably() bool {
+    // Threadlocal override: str/print/println set this to false explicitly
+    if (!print_readably) return false;
+    // Check dynamic var (handles `binding` forms)
+    if (print_readably_var) |v| {
+        const val = v.deref();
+        return val.tag() != .nil and !(val.tag() == .boolean and !val.asBoolean());
+    }
+    return true;
+}
+
+/// Check *print-meta* dynamic var. Returns the current value.
+pub fn getPrintMeta() bool {
+    if (print_meta_var) |v| {
+        const val = v.deref();
+        return val.tag() != .nil and !(val.tag() == .boolean and !val.asBoolean());
+    }
+    return false;
 }
 
 /// Set the allocator used for realizing lazy-seqs during printing.
@@ -1113,9 +1146,28 @@ pub const Value = enum(u64) {
 
     /// Clojure pr-str semantics: format value for printing.
     pub fn formatPrStr(self: Value, w: *Writer) Writer.Error!void {
+        // Print metadata prefix when *print-meta* is true
+        if (getPrintMeta()) {
+            const meta_val: ?*const Value = switch (self.tag()) {
+                .list => self.asList().meta,
+                .vector => self.asVector().meta,
+                .map => self.asMap().meta,
+                .hash_map => self.asHashMap().meta,
+                .set => self.asSet().meta,
+                .symbol => self.asSymbol().meta,
+                else => null,
+            };
+            if (meta_val) |m| {
+                if (m.tag() != .nil) {
+                    try w.writeAll("^");
+                    try m.formatPrStr(w);
+                    try w.writeAll(" ");
+                }
+            }
+        }
         switch (self.tag()) {
             .nil => {
-                if (print_readably) try w.writeAll("nil");
+                if (getPrintReadably()) try w.writeAll("nil");
                 // Non-readable: nil => "" (empty), matching Clojure str/print semantics
             },
             .boolean => {
@@ -1173,7 +1225,7 @@ pub const Value = enum(u64) {
             },
             .char => {
                 const c = self.asChar();
-                if (!print_readably) {
+                if (!getPrintReadably()) {
                     // Non-readable: literal character
                     var buf: [4]u8 = undefined;
                     const len = std.unicode.utf8Encode(c, &buf) catch 0;
@@ -1193,7 +1245,7 @@ pub const Value = enum(u64) {
             },
             .string => {
                 const s = self.asString();
-                if (print_readably) {
+                if (getPrintReadably()) {
                     try w.writeByte('"');
                     for (s) |c| {
                         switch (c) {
