@@ -1,5 +1,10 @@
 # Wasm Runtime Optimization Plan (Phase 45)
 
+> **ARCHIVED**: ClojureWasm's internal Wasm engine has been replaced by
+> [zwasm](https://github.com/clojurewasm/zwasm) as an external dependency (D92).
+> Runtime optimizations now happen in the zwasm repository.
+> This document is retained for historical context only.
+
 Goal: bring ClojureWasm's Wasm interpreter performance to wasmtime-competitive levels.
 This is a multi-session iterative effort. Each session picks up from the latest baseline.
 
@@ -85,7 +90,7 @@ Priority order:
    elimination; 0% improvement on Apple M4. Branch prediction too effective.
 
 3. **Superinstructions** — DONE (45.4). 11 fused opcodes (0xE0-0xEA).
-   Peephole pass in predecode.zig fuses local.get+const/local+arith/cmp patterns.
+   Peephole pass in zwasm's predecode layer fuses local.get+const/local+arith/cmp patterns.
    Results: fib 1.30x, tak 1.13x, sieve 1.18x.
 
 4. **Memory access optimization** — DONE (45.5). Cached memory pointer in

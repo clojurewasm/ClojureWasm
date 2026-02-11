@@ -453,24 +453,6 @@ fn lookupMapValue(map: Value, key_str: []const u8) ?Value {
     };
 }
 
-/// Lookup a Clojure function from the nested imports map.
-fn lookupImportFn(imports_map: Value, module_name: []const u8, func_name: []const u8) ?Value {
-    const alloc = std.heap.page_allocator;
-    const mod_key = Value.initString(alloc, module_name);
-    const sub_map_val = switch (imports_map.tag()) {
-        .map => imports_map.asMap().get(mod_key),
-        .hash_map => imports_map.asHashMap().get(mod_key),
-        else => null,
-    } orelse return null;
-
-    const fn_key = Value.initString(alloc, func_name);
-    return switch (sub_map_val.tag()) {
-        .map => sub_map_val.asMap().get(fn_key),
-        .hash_map => sub_map_val.asHashMap().get(fn_key),
-        else => null,
-    };
-}
-
 // ============================================================
 // Internal helpers
 // ============================================================
