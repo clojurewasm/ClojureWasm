@@ -27,8 +27,8 @@ Phase 52: Quality & Alignment — IN PROGRESS
 - [x] 52.2: Expand io_test.clj (revive skipped tests)
 - [x] 52.3: Port test.clj (portable sections)
 - [x] 52.4: Fix bugs found by test.clj (exception type checking, is macro try-expr)
-- [ ] 52.5: Port reader.cljc (portable sections)
-- [ ] 52.6: Fix reader bugs found by reader.cljc
+- [x] 52.5: Port reader.cljc (portable sections)
+- [x] 52.6: Fix reader bugs — N/A (pre-existing limitations only)
 - [ ] 52.7: F94: Align distinct? to upstream style
 - [ ] 52.8: F94: Audit and document remaining UPSTREAM-DIFFs
 - [ ] 52.9: Implement io!, with-precision macros
@@ -37,10 +37,10 @@ Phase 52: Quality & Alignment — IN PROGRESS
 
 ## Current Task
 
-52.5: Port reader.cljc (portable sections)
-- Port: Symbols, Keywords, Literals, Collections, Strings, Chars, Regex, etc.
-- Skip: inst/calendar readers, BigInt/Ratio edge cases, java.io.File
-- Adapt: instance? → symbol?/keyword? etc.
+52.7: F94: Align distinct? to upstream style
+- Current: avoids [x & etc :as xs], uses (first xs)/(next xs) manually
+- Upstream: (loop [s #{x y} [z & etc :as xs] more] ...)
+- Verify CW destructuring supports this pattern, then align
 
 ## Previous Task
 
