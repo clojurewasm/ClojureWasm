@@ -369,12 +369,12 @@ fn buildImportEntries(
     imports_map: Value,
     import_infos: []const zwasm.ImportFuncInfo,
 ) ![]const zwasm.ImportEntry {
-    var entries = std.ArrayList(zwasm.ImportEntry).init(allocator);
-    defer entries.deinit();
+    var entries = std.ArrayList(zwasm.ImportEntry).empty;
+    defer entries.deinit(allocator);
 
     // Collect unique module names from import_infos
-    var seen_modules = std.ArrayList([]const u8).init(allocator);
-    defer seen_modules.deinit();
+    var seen_modules = std.ArrayList([]const u8).empty;
+    defer seen_modules.deinit(allocator);
 
     for (import_infos) |info| {
         if (std.mem.eql(u8, info.module, "wasi_snapshot_preview1")) continue;
@@ -406,7 +406,7 @@ fn buildImportEntries(
         }
     }
 
-    return entries.toOwnedSlice();
+    return entries.toOwnedSlice(allocator);
 }
 
 /// Build host function entries from a Clojure map of {func_name: clj-fn}.
@@ -416,8 +416,8 @@ fn buildHostFns(
     fn_map: Value,
     import_infos: []const zwasm.ImportFuncInfo,
 ) ![]const zwasm.HostFnEntry {
-    var host_fns = std.ArrayList(zwasm.HostFnEntry).init(allocator);
-    defer host_fns.deinit();
+    var host_fns = std.ArrayList(zwasm.HostFnEntry).empty;
+    defer host_fns.deinit(allocator);
 
     // Iterate import_infos to find functions for this module, then look up in fn_map
     for (import_infos) |info| {
@@ -439,7 +439,7 @@ fn buildHostFns(
         });
     }
 
-    return host_fns.toOwnedSlice();
+    return host_fns.toOwnedSlice(allocator);
 }
 
 /// Lookup a string-keyed value in a Clojure map (PersistentArrayMap or PersistentHashMap).

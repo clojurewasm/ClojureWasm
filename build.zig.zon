@@ -3,7 +3,7 @@
     .version = "0.0.1",
     .dependencies = .{
         .zwasm = .{
-            .path = "../Documents/MyProducts/zwasm",
+            .path = "../zwasm",
         },
     },
     .fingerprint = 0x62a7be489d633543,
