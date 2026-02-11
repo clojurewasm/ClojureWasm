@@ -967,6 +967,14 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
             if (call_args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set lookup", .{call_args.len});
             break :blk if (f.asSet().contains(call_args[0])) call_args[0] else Value.nil_val;
         },
+        .var_ref => blk: {
+            // Deref var to get the function, then apply
+            const derefed = f.asVarRef().deref();
+            const new_args = try allocator.alloc(Value, args.len);
+            new_args[0] = derefed;
+            @memcpy(new_args[1..], args[1..]);
+            break :blk try applyFn(allocator, new_args);
+        },
         else => err.setErrorFmt(.eval, .type_error, .{}, "apply expects a function, got {s}", .{@tagName(f.tag())}),
     };
 }

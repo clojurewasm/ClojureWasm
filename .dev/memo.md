@@ -28,28 +28,24 @@ Phase 50B: Known Bug Fixes
 - [x] 50B.3: Fix find-var return type (symbol → var)
 - [x] 50B.4: Implement remove-ns, ns-unalias, ns-unmap
 - [x] 50B.5: Fix *print-meta*, *print-readably* in pr-str
-- [ ] 50B.6: Fix apply on var refs
+- [x] 50B.6: Fix apply on var refs
 - [ ] 50B.7: Fix apply on infinite lazy seq (pass trailing ISeq lazily)
 - [ ] 50B.8: Fix sequences.clj CLJ-1633 segfault
 
 ## Current Task
 
-50B.6: Fix apply on var refs.
+50B.7: Fix apply on infinite lazy seq (pass trailing ISeq lazily).
 
 ## Previous Task
 
-50B.5: Fix *print-meta*, *print-readably* in pr-str — complete.
-- Added cached Var pointers for `*print-readably*` and `*print-meta*` in value.zig
-- `getPrintReadably()`: threadlocal override (str/print) takes precedence, else checks var binding
-- `getPrintMeta()`: checks var binding, prints `^{...} value` prefix when true
-- Bootstrap: `initPrintFlagVars` called after `initPrintVars`
+50B.6: Fix apply on var refs — complete.
+- Added `.var_ref` case to `applyFn` switch in collections.zig
+- Derefs var to get function, then recurses with derefed value
 - Both backends verified (VM + TreeWalk)
-- Note: with-meta result GC'd when used inline (separate known issue)
 
 ## Known Issues
 
 - with-meta result GC'd when used inline (e.g. `(meta (with-meta v m))` → nil)
-- apply on var refs not supported
 - apply on infinite lazy seq realizes eagerly (should pass trailing ISeq lazily)
 - sequences.clj CLJ-1633 segfault (nested apply with & rest args → GC/binding corruption)
 
