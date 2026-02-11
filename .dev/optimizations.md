@@ -4,7 +4,7 @@ Completed optimizations and future opportunities, ordered by introduction.
 
 **Environment**: Apple M4 Pro, 48 GB RAM, Darwin 25.2.0, ReleaseSafe
 **Measurement**: hyperfine (`bench/history.yaml`)
-**Result**: CW wins cold 14/19 vs Babashka, NaN boxing (D85) live
+**Result**: CW wins cold 14/19 vs Babashka, NaN boxing (D85) live, zwasm (D92) integrated
 
 ---
 
@@ -89,19 +89,19 @@ Completed optimizations and future opportunities, ordered by introduction.
 
 ## 2. Performance Summary
 
-### End-to-End Progression (Pre-24 → Current)
+### End-to-End Progression (Pre-24 → Post-zwasm)
 
-| Benchmark            | Pre-24 | 24C.10 | Current | Speedup    |
-|----------------------|--------|--------|---------|------------|
-| fib_recursive        | 542    | 24     | 22      | **24.6x**  |
-| map_filter_reduce    | 4,013  | 17     | 5       | **803x**   |
-| sieve                | 2,152  | 16     | 4       | **538x**   |
-| lazy_chain           | 21,375 | 16     | 5       | **4,275x** |
-| transduce            | 8,409  | 16     | 5       | **1,682x** |
-| multimethod_dispatch | 2,373  | 15     | 5       | **475x**   |
-| real_workload        | 1,286  | 22     | 10      | **129x**   |
+| Benchmark            | Pre-24 | 24C.10 | Post-zwasm | Speedup    |
+|----------------------|--------|--------|------------|------------|
+| fib_recursive        | 542    | 24     | 18         | **30x**    |
+| map_filter_reduce    | 4,013  | 17     | 6          | **669x**   |
+| sieve                | 2,152  | 16     | 6          | **359x**   |
+| lazy_chain           | 21,375 | 16     | 9          | **2,375x** |
+| transduce            | 8,409  | 16     | 6          | **1,402x** |
+| multimethod_dispatch | 2,373  | 15     | 6          | **396x**   |
+| real_workload        | 1,286  | 22     | 9          | **143x**   |
 
-All times in ms (warm), ReleaseSafe, Apple M4 Pro. Current = 37.4 entry.
+All times in ms (warm), ReleaseSafe, Apple M4 Pro. Post-zwasm = latest entry.
 Full table: `bench/history.yaml`.
 
 ### Cross-Language Summary (Cold, Phase 24C.10)
@@ -117,33 +117,24 @@ Re-run with `bash bench/compare_langs.sh --both` for latest numbers.
 
 ## 3. Future Optimizations
 
-### READY (can implement now)
+### CW-side (can implement now)
 
-| ID | Technique               | Expected Impact | Effort | Notes                        |
-|----|-------------------------|-----------------|--------|------------------------------|
-| —  | LEB128 predecode (Wasm) | 10-15% decode   | MEDIUM | Fixed-width IR from bytecode |
+| ID   | Technique                     | Expected Impact | Effort | Notes                             |
+|------|-------------------------------|-----------------|--------|-----------------------------------|
+| F102 | map/filter chunked processing | lazy-seq alloc  | MEDIUM | CW range is eager; deferred       |
+| F103 | Escape analysis               | GC overhead     | HIGH   | Compiler detects local-only       |
+| F104 | Profile-guided IC extension   | 2x polymorphic  | MEDIUM | Beyond monomorphic IC             |
+| —    | Generational GC               | 2-5x allocation | HIGH   | Write barriers required           |
+| —    | SmallVector (inline 2-3 elts) | Small vec alloc | MEDIUM | NaN boxing extension              |
+| —    | Closure stack allocation      | 1-2 capture     | MEDIUM | Avoid heap for small closures     |
 
-### ANALYZED — Deferred (Phase 36.11)
+### Wasm-side (in zwasm repository)
 
-| ID   | Technique                     | Status | Reason                                            |
-|------|-------------------------------|--------|---------------------------------------------------|
-| F101 | into() transient optimization | DONE   | core.clj transient/persistent! for vec/map/set    |
-| F102 | map/filter chunked processing | DEFER  | CW range is eager; no chunked-seq producers exist |
-| —    | SmallString widening          | DEFER  | asString() returns []const u8 — lifetime problem  |
-| —    | String interning expansion    | DEFER  | string_ops bottleneck is alloc, not comparison    |
-
-### DEFERRED (need JIT/GC infrastructure — Phase 37)
-
-| ID   | Technique                     | Expected Impact | Effort | Notes                         |
-|------|-------------------------------|-----------------|--------|-------------------------------|
-| F103 | Escape analysis               | GC overhead     | HIGH   | Compiler detects local-only   |
-| F104 | Profile-guided IC extension   | 2x polymorphic  | MEDIUM | Beyond monomorphic IC         |
-| F105 | JIT compilation               | DONE (PoC)      | —      | ARM64 hot loops, D87          |
-| —    | Register-based IR (Wasm)      | 1.5-3x all      | HIGH   | Major rewrite                 |
-| —    | Superinstructions (Wasm)      | 10-20% general  | MEDIUM | Bytecode fusion               |
-| —    | Generational GC               | 2-5x allocation | HIGH   | Write barriers required       |
-| —    | SmallVector (inline 2-3 elts) | Small vec alloc | MEDIUM | NaN boxing extension          |
-| —    | Closure stack allocation      | 1-2 capture     | MEDIUM | Avoid heap for small closures |
+| Technique                 | Expected Impact | Notes                                    |
+|---------------------------|-----------------|------------------------------------------|
+| Register-based IR         | 1.5-3x all      | Major rewrite of zwasm interpreter       |
+| ARM64 JIT for Wasm        | 5-20x           | Reuse CW JIT PoC (D87) patterns         |
+| Constant folding / DCE    | 5-10%           | Low ROI for current benchmarks           |
 
 ### LOW PRIORITY
 
@@ -152,33 +143,45 @@ Re-run with `bash bench/compare_langs.sh --both` for latest numbers.
 | F99  | Iterative lazy-seq realize | D74 partial fix, general case left |
 | F4   | HAMT persistent vectors    | Current ArrayMap sufficient        |
 | F120 | Native SIMD (@Vector)      | Profile first before investing     |
-| —    | Constant folding           | Low benchmark impact               |
-|      |                            |                                    |
 
 ### DECIDED-AGAINST
 
 | Technique            | Reason                                                     |
 |----------------------|------------------------------------------------------------|
-| wasmtime-as-library  | +20MB binary, Rust dep. Keep custom runtime (2.9MB binary) |
-| Tail-call dispatch   | Incompatible with cross-compile (D84 switch decision)      |
+| wasmtime-as-library  | +20MB binary, Rust dep. Keep zwasm (small, controlled)     |
+| Tail-call dispatch   | 0% improvement on Apple M4 (45.3 measured)                 |
 | RRB-Tree vectors     | Vectors rarely sliced in practice                          |
 | cached_memory (Wasm) | ROI < 1% in benchmarks                                     |
+| SmallString widening | asString() returns []const u8 — lifetime problem           |
+| String interning     | string_ops bottleneck is alloc, not comparison             |
 
-**Revisit condition** for wasmtime: if JIT proves too complex, consider
-`--wasm-backend=wasmtime` build option.
+### COMPLETED (Phase 36.11+37+45)
+
+| Technique                         | Phase | Result                                  |
+|-----------------------------------|-------|-----------------------------------------|
+| F101 into() transient             | 36.11 | core.clj transient/persistent!          |
+| F105 JIT compilation (PoC)        | 37.4  | ARM64 hot loops, arith_loop 17.7x      |
+| Predecoded IR (Wasm)              | 45.2  | Fixed-width 8-byte instrs, 1.7-2.5x    |
+| Superinstructions (Wasm)          | 45.4  | 11 fused opcodes, fib 1.3x             |
+| Cached memory pointer (Wasm)      | 45.5  | Marginal (~3% on sieve)                |
 
 ---
 
-## 4. Wasm Performance Baselines (Phase 36.7)
+## 4. Wasm Performance (Post-zwasm v0.1.0, Register IR + ARM64 JIT)
 
-| Benchmark   | CW (ms) | Native equiv | Gap   | JIT Target |
-|-------------|---------|--------------|-------|------------|
-| wasm_call   | 118     | ~1ms         | ~100x | ~5ms       |
-| wasm_fib    | 7663    | ~500ms       | ~15x  | ~1s        |
-| wasm_sieve  | 792     | ~30ms        | ~26x  | ~50ms      |
-| wasm_memory | 26      | ~1ms         | ~26x  | ~2ms       |
+| Benchmark          | CW warm (ms) | wasmtime (ms) | Ratio | vs Phase 45 |
+|--------------------|--------------|---------------|-------|-------------|
+| fib(20)x10K        | 641          | 211           | 3.0x  | **6.8x**    |
+| tak(18,12,6)x10K   | 2,786        | 1,174         | 2.4x  | **5.1x**    |
+| arith(1M)x10       | 0.8          | 0.1           | 8.0x  | —           |
+| sieve(64K)x100     | 21           | 4.8           | 4.4x  | **9.4x**    |
+| fib_loop(25)x1M    | 22           | 2.2           | 10.0x | **8.0x**    |
+| gcd(1M,700K)x1M    | 54           | 41            | 1.3x  | **5.8x**    |
 
-JIT (Phase 37) target: bring Wasm gap to 2-5x of native.
+CW startup (4.1ms) < wasmtime startup (5.5ms).
+zwasm Register IR + ARM64 JIT brings most benchmarks within 3-10x of wasmtime.
+gcd achieves near-parity (1.3x). Call-heavy workloads (fib, tak) at 2.4-3.0x.
+Full history: `bench/wasm_history.yaml`.
 
 ---
 
@@ -187,9 +190,11 @@ JIT (Phase 37) target: bring Wasm gap to 2-5x of native.
 | Topic                 | Location                       |
 |-----------------------|--------------------------------|
 | Benchmark history     | `bench/history.yaml`           |
+| Wasm bench history    | `bench/wasm_history.yaml`      |
 | Cross-language script | `bench/compare_langs.sh`       |
-| D84 Custom Wasm       | `.dev/decisions.md`            |
+| Cross-language results| `bench/cross-lang-results.yaml`|
 | D85 NaN boxing        | `.dev/decisions.md`            |
-| D86 Wasm optimization | `.dev/decisions.md`            |
 | D87 JIT PoC           | `.dev/decisions.md`            |
-| Checklist items       | `.dev/checklist.md` (F99-F120) |
+| D92 zwasm integration | `.dev/decisions.md`            |
+| Checklist items       | `.dev/checklist.md`            |
+| zwasm repository      | `../zwasm/` or GitHub          |

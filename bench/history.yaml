@@ -715,3 +715,30 @@ entries:
       string_ops: {time_ms: 24, mem_mb: 17.2}
       multimethod_dispatch: {time_ms: 6, mem_mb: 10.2}
       real_workload: {time_ms: 8, mem_mb: 17.1}
+  - id: "post-zwasm"
+    date: "2026-02-11"
+    reason: "Post-zwasm integration baseline (all phases complete)"
+    commit: "923b309"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 18, mem_mb: 10.2}
+      fib_loop: {time_ms: 5, mem_mb: 10.2}
+      tak: {time_ms: 7, mem_mb: 10.2}
+      arith_loop: {time_ms: 4, mem_mb: 10.2}
+      map_filter_reduce: {time_ms: 6, mem_mb: 10.8}
+      vector_ops: {time_ms: 6, mem_mb: 14.6}
+      map_ops: {time_ms: 4, mem_mb: 13.8}
+      list_build: {time_ms: 4, mem_mb: 10.8}
+      sieve: {time_ms: 6, mem_mb: 13.0}
+      nqueens: {time_ms: 14, mem_mb: 18.9}
+      atom_swap: {time_ms: 4, mem_mb: 10.2}
+      gc_stress: {time_ms: 25, mem_mb: 13.9}
+      lazy_chain: {time_ms: 9, mem_mb: 10.2}
+      transduce: {time_ms: 6, mem_mb: 10.2}
+      keyword_lookup: {time_ms: 10, mem_mb: 10.2}
+      protocol_dispatch: {time_ms: 6, mem_mb: 10.2}
+      nested_update: {time_ms: 11, mem_mb: 13.4}
+      string_ops: {time_ms: 24, mem_mb: 17.2}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 10.2}
+      real_workload: {time_ms: 9, mem_mb: 17.0}

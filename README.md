@@ -106,10 +106,10 @@ Call WebAssembly modules directly from Clojure:
 - v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
-> **Performance note**: The Wasm runtime is a pure interpreter (no JIT),
-> approximately 10-30x slower than wasmtime for compute-heavy modules.
-> Module load time is faster (~4ms vs ~5ms). Wasm JIT compilation and
-> wasmtime integration are planned as future optimization paths.
+> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm))
+> uses Register IR with ARM64 JIT, achieving 1.3-10x of wasmtime performance
+> depending on workload (call-heavy: ~3x, compute-heavy: ~1.3x).
+> Module load time is faster (~4ms vs ~6ms).
 
 ### Server & Networking
 

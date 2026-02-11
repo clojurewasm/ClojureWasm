@@ -6,18 +6,19 @@ Master plan for recovering implementable vars from the 165 SKIP status vars.
 
 ## Summary
 
-| # | Category              | Vars | Decision         | Target Phase |
-|---|-----------------------|------|------------------|--------------|
-| 1 | Java Array ops        | 35   | IMPLEMENT        | 43           |
-| 2 | Agent (concurrency)   | 17   | DEFER            | —            |
-| 3 | STM / Ref             | 9    | OUT OF SCOPE     | —            |
-| 4 | Proxy/Reify/Deftype   | ~20  | PARTIAL (5 vars) | 42           |
-| 5 | Future                | 9    | IMPLEMENT        | 44           |
-| 6 | import → wasm mapping | 2    | DESIGN EXPLORE   | 45           |
-| 7 | BigDecimal/Ratio      | 7    | IMPLEMENT        | 43           |
-| 8 | Quick wins            | ~10  | IMPLEMENT        | 42           |
+| # | Category              | Vars | Decision         | Target Phase | Status      |
+|---|-----------------------|------|------------------|--------------|-------------|
+| 1 | Java Array ops        | 35   | IMPLEMENT        | 43           | **DONE**    |
+| 2 | Agent (concurrency)   | 17   | DEFER            | —            | DEFERRED    |
+| 3 | STM / Ref             | 9    | OUT OF SCOPE     | —            | PERMANENT   |
+| 4 | Proxy/Reify/Deftype   | ~20  | PARTIAL (5 vars) | 42           | **DONE**    |
+| 5 | Future                | 9    | IMPLEMENT        | 50           | PENDING     |
+| 6 | import → wasm mapping | 2    | DESIGN EXPLORE   | 51           | PENDING     |
+| 7 | BigDecimal/Ratio      | 7    | IMPLEMENT        | 43           | **DONE**    |
+| 8 | Quick wins            | ~10  | IMPLEMENT        | 42           | **DONE**    |
 
-Phase order: 42 → 43 → 44 → 45
+Completed: Cat 1 (Phase 43), Cat 4 (Phase 42), Cat 7 (Phase 43), Cat 8 (Phase 42)
+Remaining: Cat 5 (future/pmap, 9 vars), Cat 6 (import, 2 vars)
 
 ---
 

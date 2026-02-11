@@ -11,20 +11,22 @@
 - **Zig-based full-scratch Clojure reimplementation**, no Java Interop
 - Single-binary distribution for native track
 - Dual backend: TreeWalk (correct) + BytecodeVM (fast), with `--compare` mode
-- **Current**: 526/704 vars implemented, native production track (D79)
+- **Current**: 795+ vars implemented, native production track (D79)
 - English-only codebase (D10): identifiers, comments, commits, docs
 - **Babashka-competitive performance** — beats Babashka 19/20 benchmarks (Phase 24)
 - OSS-ready from day one (EPL-1.0)
+- **Wasm runtime**: zwasm external dependency (D92), 461 opcodes, Register IR + ARM64 JIT
 
 ### Key metrics
 
-| Metric           | Value                      |
-|------------------|----------------------------|
-| Vars implemented | 526 / 704 (74.7%)          |
-| Phases completed | A-D, 20-25, 22b, 22c, 24.5 |
-| GC               | MarkSweepGc (D69, D70)     |
-| Benchmark suite  | 20 benchmarks, beats bb    |
-| Backends         | VM (bytecode) + TreeWalk   |
+| Metric           | Value                                |
+|------------------|--------------------------------------|
+| Vars implemented | 795+ (593/706 core, 16 namespaces)   |
+| Phases completed | 1-46 + zwasm integration             |
+| GC               | MarkSweepGc (D69, D70)               |
+| Benchmark suite  | 31 benchmarks (20 native + 11 wasm)  |
+| Backends         | VM (bytecode) + TreeWalk              |
+| Wasm engine      | zwasm v0.1.0 (external dependency)    |
 
 ---
 
