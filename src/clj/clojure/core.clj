@@ -1588,7 +1588,7 @@
       (recur (next s) (next lead))
       s)))
 
-;; UPSTREAM-DIFF: avoids [x & etc :as xs] loop destructuring
+;; UPSTREAM-DIFF: PERMANENT: loop doesn't support destructuring bindings
 (defn distinct?
   ([x] true)
   ([x y] (not (= x y)))

@@ -29,18 +29,18 @@ Phase 52: Quality & Alignment — IN PROGRESS
 - [x] 52.4: Fix bugs found by test.clj (exception type checking, is macro try-expr)
 - [x] 52.5: Port reader.cljc (portable sections)
 - [x] 52.6: Fix reader bugs — N/A (pre-existing limitations only)
-- [ ] 52.7: F94: Align distinct? to upstream style
-- [ ] 52.8: F94: Audit and document remaining UPSTREAM-DIFFs
+- [x] 52.7: F94: distinct? cannot align (loop lacks destructuring support)
+- [x] 52.8: F94: Audit UPSTREAM-DIFFs — 32 markers, all accurately documented
 - [ ] 52.9: Implement io!, with-precision macros
 - [ ] 52.10: Full upstream regression on both backends
 - [ ] 52.11: Phase completion: update docs
 
 ## Current Task
 
-52.7: F94: Align distinct? to upstream style
-- Current: avoids [x & etc :as xs], uses (first xs)/(next xs) manually
-- Upstream: (loop [s #{x y} [z & etc :as xs] more] ...)
-- Verify CW destructuring supports this pattern, then align
+52.9: Implement io!, with-precision macros
+- io!: trivially body-only (no STM in CW)
+- with-precision: needs *math-context* dynamic var
+- Update vars.yaml: skip → done
 
 ## Previous Task
 
