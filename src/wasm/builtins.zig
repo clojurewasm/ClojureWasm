@@ -24,16 +24,46 @@ const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
 const wit_parser = @import("wit_parser.zig");
 
+// Wasm module registry: maps module names to resolved file paths.
+// Populated by cljw.edn :wasm-deps processing.
+var wasm_registry: [64]struct { name: []const u8, path: []const u8 } = undefined;
+var wasm_registry_len: usize = 0;
+
+/// Register a wasm module name → path mapping (called from main.zig config processing).
+pub fn registerWasmDep(name: []const u8, path: []const u8) void {
+    if (wasm_registry_len < wasm_registry.len) {
+        wasm_registry[wasm_registry_len] = .{ .name = name, .path = path };
+        wasm_registry_len += 1;
+    }
+}
+
+/// Look up a registered wasm module path by name.
+fn resolveWasmPath(name: []const u8) ?[]const u8 {
+    for (wasm_registry[0..wasm_registry_len]) |entry| {
+        if (std.mem.eql(u8, entry.name, name)) return entry.path;
+    }
+    return null;
+}
+
 /// (wasm/load path) or (wasm/load path opts) => WasmModule
 /// Reads a .wasm file from disk and instantiates it.
 /// opts: {:imports {"module" {"func" clj-fn}}, :wit "path.wit"} — host imports and WIT info.
+/// If path is not found directly, looks up registered :wasm-deps by name.
 pub fn wasmLoadFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1 or args.len > 2)
         return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to wasm/load", .{args.len});
 
-    const path = switch (args[0].tag()) {
+    const path_arg = switch (args[0].tag()) {
         .string => args[0].asString(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "wasm/load expects a string path, got {s}", .{@tagName(args[0].tag())}),
+    };
+
+    // Try direct path first, then wasm dep registry
+    const path = blk: {
+        const cwd = std.fs.cwd();
+        if (cwd.access(path_arg, .{})) |_| break :blk path_arg else |_| {}
+        if (resolveWasmPath(path_arg)) |resolved| break :blk resolved;
+        break :blk path_arg; // fall through to get standard error
     };
 
     // Read .wasm binary from disk

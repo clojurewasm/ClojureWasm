@@ -34,6 +34,7 @@ const lifecycle = @import("runtime/lifecycle.zig");
 const Reader = @import("reader/reader.zig").Reader;
 const FormData = @import("reader/form.zig").FormData;
 const Form = @import("reader/form.zig").Form;
+const wasm_builtins = @import("wasm/builtins.zig");
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
@@ -680,12 +681,19 @@ const Dep = struct {
     git_sha: ?[]const u8 = null, // :git/sha
 };
 
+/// A wasm module dependency: name → path.
+const WasmDep = struct {
+    name: []const u8,
+    path: []const u8,
+};
+
 /// Parsed cljw.edn configuration.
 const ProjectConfig = struct {
     paths: []const []const u8 = &.{},
     test_paths: []const []const u8 = &.{},
     main_ns: ?[]const u8 = null,
     deps: []const Dep = &.{},
+    wasm_deps: []const WasmDep = &.{},
 };
 
 const ConfigFile = struct {
@@ -761,6 +769,10 @@ fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
             if (entries[i + 1].data == .map) {
                 config.deps = parseDeps(allocator, entries[i + 1].data.map);
             }
+        } else if (std.mem.eql(u8, kw, "wasm-deps")) {
+            if (entries[i + 1].data == .map) {
+                config.wasm_deps = parseWasmDeps(allocator, entries[i + 1].data.map);
+            }
         } else if (std.mem.eql(u8, kw, "main")) {
             if (entries[i + 1].data == .symbol) {
                 const sym = entries[i + 1].data.symbol;
@@ -814,6 +826,38 @@ fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
     return deps[0..n];
 }
 
+/// Parse :wasm-deps map → slice of WasmDep. Format: {"name" {:local/root "path.wasm"}}
+fn parseWasmDeps(allocator: Allocator, entries: []const Form) []const WasmDep {
+    const count = entries.len / 2;
+    if (count == 0) return &.{};
+    const deps = allocator.alloc(WasmDep, count) catch return &.{};
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i + 1 < entries.len) : (i += 2) {
+        // key must be a string (module name)
+        if (entries[i].data != .string) continue;
+        const name = entries[i].data.string;
+        // value must be a map with :local/root
+        if (entries[i + 1].data != .map) continue;
+        const val_map = entries[i + 1].data.map;
+        var vi: usize = 0;
+        while (vi + 1 < val_map.len) : (vi += 2) {
+            if (val_map[vi].data == .keyword) {
+                const dk = val_map[vi].data.keyword;
+                const ns = dk.ns orelse continue;
+                if (std.mem.eql(u8, ns, "local") and std.mem.eql(u8, dk.name, "root")) {
+                    if (val_map[vi + 1].data == .string) {
+                        deps[n] = .{ .name = name, .path = val_map[vi + 1].data.string };
+                        n += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return deps[0..n];
+}
+
 /// Apply cljw.edn config: add paths and resolve deps.
 fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
     for (config.paths) |path| {
@@ -833,6 +877,15 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
         } else if (dep.git_url != null and dep.git_sha != null) {
             resolveGitDep(dep.git_url.?, dep.git_sha.?);
         }
+    }
+    // Register wasm module deps
+    for (config.wasm_deps) |wd| {
+        var wasm_buf: [4096]u8 = undefined;
+        const resolved = if (config_dir) |dir|
+            std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+        else
+            wd.path;
+        wasm_builtins.registerWasmDep(wd.name, resolved);
     }
 }
 

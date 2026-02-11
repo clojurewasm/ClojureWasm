@@ -27,19 +27,19 @@ Phase 50: v0.4.0-beta — Ecosystem
 - [x] 50.2: cljw.edn `:deps` with local paths
 - [x] 50.3: cljw.edn `:deps` with git/sha resolution
 - [x] 50.4: Homebrew tap
-- [ ] 50.5: Wasm module dependency declaration
+- [x] 50.5: Wasm module dependency declaration
 
 ## Current Task
 
-50.5: Wasm module dependency declaration.
+Phase 50 complete — planning next phase.
 
 ## Previous Task
 
-50.4: Homebrew tap — complete.
-- Release workflow: `.github/workflows/release.yml` (tag-triggered, 4 platform builds)
-- Formula template: `homebrew/Formula/cljw.rb` (placeholder SHA256s)
-- Update script: `homebrew/update-formula.sh` (downloads + computes SHA256s)
-- Usage: `brew tap chaploud/cljw && brew install cljw` (after tap repo setup)
+50.5: Wasm module dependency declaration — complete.
+- `:wasm-deps {"name" {:local/root "path.wasm"}}` in cljw.edn
+- Registry in `wasm/builtins.zig`: module name → resolved path
+- `wasm/load "name"` checks registry when direct path not found
+- Relative paths resolved against cljw.edn directory
 - Updated vars.yaml: reify/reify*/set!/instance? → done, coverage 620/706
 - Updated stale markers in walk.clj, defn, class?, eduction, definline, iteration
 - F94 checklist updated with audit results
