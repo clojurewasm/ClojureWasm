@@ -107,9 +107,9 @@ vars:
     "add-shutdown-hook!": {type: function, status: done, note: "cljw extension"}
     "add-tap": {type: function, status: done}
     "add-watch": {type: function, status: done}
-    agent: {type: function, status: skip, note: DEFERRED — multi-thread future}
-    "agent-error": {type: function, status: skip, note: DEFERRED — multi-thread future}
-    "agent-errors": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    agent: {type: function, status: done, note: "builtin (thread pool agent)"}
+    "agent-error": {type: function, status: done, note: "builtin"}
+    "agent-errors": {type: function, status: done, note: "builtin (deprecated)"}
     aget: {type: function, status: done, note: Phase 43 — Zig array type}
     alength: {type: function, status: done, note: Phase 43 — Zig array type}
     alias: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -140,9 +140,9 @@ vars:
     "assoc-in": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "associative?": {type: function, status: done, note: "Zig builtin"}
     atom: {type: function, status: done, note: "Zig builtin"}
-    await: {type: function, status: skip, note: DEFERRED — multi-thread future}
-    "await-for": {type: function, status: skip, note: DEFERRED — multi-thread future}
-    await1: {type: function, status: skip, note: DEFERRED — multi-thread future}
+    await: {type: function, status: done, note: "builtin (condition variable)"}
+    "await-for": {type: function, status: done, note: "builtin (timed wait)"}
+    await1: {type: function, status: done, note: "builtin (same as await)"}
     bases: {type: function, status: skip, note: JVM interop}
     bean: {type: function, status: skip, note: JVM interop}
     bigdec: {type: function, status: done}
@@ -192,7 +192,7 @@ vars:
     "chunked-seq?": {type: function, status: done, note: "builtin"}
     class: {type: function, status: done, note: "Zig builtin alias of type"}
     "class?": {type: function, status: done, note: 'UPSTREAM-DIFF: always false (no Java class system)'}
-    "clear-agent-errors": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    "clear-agent-errors": {type: function, status: done, note: "builtin (deprecated)"}
     "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "coll?": {type: function, status: done, note: "Zig builtin"}
     comment: {type: macro, status: done, note: "macro in core.clj"}
@@ -539,7 +539,7 @@ vars:
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: done}
     reify: {type: macro, status: done, note: "analyzer special form, protocol impl on anonymous objects"}
-    "release-pending-sends": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    "release-pending-sends": {type: function, status: done, note: "builtin (no-op in CW)"}
     rem: {type: function, status: done, note: "VM intrinsic opcode"}
     remove: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "remove-all-methods": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -559,7 +559,7 @@ vars:
     "reset-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     resolve: {type: function, status: done}
     rest: {type: function, status: done, note: "Zig builtin"}
-    "restart-agent": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    "restart-agent": {type: function, status: done, note: "builtin"}
     "resultset-seq": {type: function, status: skip, note: JVM interop}
     reverse: {type: function, status: done, note: "portable to clj"}
     "reversible?": {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -569,9 +569,9 @@ vars:
     "satisfies?": {type: function, status: done, note: "Zig builtin"}
     second: {type: function, status: done, note: "core.clj (first (next coll))"}
     "select-keys": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
-    send: {type: function, status: skip, note: DEFERRED — multi-thread future}
-    "send-off": {type: function, status: skip, note: DEFERRED — multi-thread future}
-    "send-via": {type: function, status: skip, note: DEFERRED — multi-thread future}
+    send: {type: function, status: done, note: "builtin (thread pool dispatch)"}
+    "send-off": {type: function, status: done, note: "builtin (same pool as send)"}
+    "send-via": {type: function, status: skip, note: "JVM interop (custom ExecutorService)"}
     seq: {type: function, status: done, note: "Zig builtin"}
     "seq-to-map-for-destructuring": {type: function, status: done, note: 'alias of __seq-to-map builtin'}
     "seq?": {type: function, status: done, note: "Zig builtin"}
@@ -580,10 +580,10 @@ vars:
     sequence: {type: function, status: done, note: 'UPSTREAM-DIFF (permanent): eager via into (upstream uses Java TransformerIterator)'}
     "sequential?": {type: function, status: done, note: "Zig builtin"}
     set: {type: function, status: done, note: "Zig builtin"}
-    "set-agent-send-executor!": {type: function, status: skip, note: "DEFERRED — multi-thread future"}
-    "set-agent-send-off-executor!": {type: function, status: skip, note: "DEFERRED — multi-thread future"}
-    "set-error-handler!": {type: function, status: skip, note: "DEFERRED — multi-thread future"}
-    "set-error-mode!": {type: function, status: skip, note: "DEFERRED — multi-thread future"}
+    "set-agent-send-executor!": {type: function, status: skip, note: "JVM interop (custom ExecutorService)"}
+    "set-agent-send-off-executor!": {type: function, status: skip, note: "JVM interop (custom ExecutorService)"}
+    "set-error-handler!": {type: function, status: done, note: "builtin"}
+    "set-error-mode!": {type: function, status: done, note: "builtin"}
     "set-validator!": {type: function, status: done}
     "set?": {type: function, status: done, note: "Zig builtin"}
     short: {type: function, status: done, note: builtin (upstream is pure clj)}

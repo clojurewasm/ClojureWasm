@@ -9,7 +9,7 @@ Master plan for recovering implementable vars from the 165 SKIP status vars.
 | # | Category              | Vars | Decision         | Target Phase | Status      |
 |---|-----------------------|------|------------------|--------------|-------------|
 | 1 | Java Array ops        | 35   | IMPLEMENT        | 43           | **DONE**    |
-| 2 | Agent (concurrency)   | 17   | DEFER            | —            | DEFERRED    |
+| 2 | Agent (concurrency)   | 17   | IMPLEMENT        | 51           | **DONE**    |
 | 3 | STM / Ref             | 9    | OUT OF SCOPE     | —            | PERMANENT   |
 | 4 | Proxy/Reify/Deftype   | ~20  | PARTIAL (5 vars) | 42           | **DONE**    |
 | 5 | Future                | 9    | IMPLEMENT        | 48           | **DONE**    |
@@ -17,7 +17,7 @@ Master plan for recovering implementable vars from the 165 SKIP status vars.
 | 7 | BigDecimal/Ratio      | 7    | IMPLEMENT        | 43           | **DONE**    |
 | 8 | Quick wins            | ~10  | IMPLEMENT        | 42           | **DONE**    |
 
-Completed: Cat 1 (Phase 43), Cat 4 (Phase 42), Cat 5 (Phase 48), Cat 7 (Phase 43), Cat 8 (Phase 42)
+Completed: Cat 1 (Phase 43), Cat 2 (Phase 51), Cat 4 (Phase 42), Cat 5 (Phase 48), Cat 7 (Phase 43), Cat 8 (Phase 42)
 Remaining: Cat 6 (import, 2 vars)
 
 ---
@@ -49,21 +49,23 @@ to-array, to-array-2d
 
 ---
 
-## Category 2: Agent Concurrency (17 vars) — DEFERRED
+## Category 2: Agent Concurrency (17 vars) — Phase 51 DONE
 
-**Decision**: DEFER — requires multi-thread GC safety, complex interaction
-with dynamic bindings. Revisit after Future (Phase 44).
+**Decision**: IMPLEMENT — built on Phase 48 thread pool infrastructure.
 
-**Vars**:
+**Vars** (13 implemented, 4 JVM-only):
 ```
-agent, agent-error, agent-errors, await, await-for,
-await1, clear-agent-errors, release-pending-sends,
-restart-agent, send, send-off, send-via,
-set-agent-send-executor!, set-agent-send-off-executor!,
-set-error-handler!, set-error-mode!, shutdown-agents
+DONE: agent, agent-error, agent-errors, await, await-for,
+      await1, clear-agent-errors, release-pending-sends,
+      restart-agent, send, send-off,
+      set-error-handler!, set-error-mode!, shutdown-agents, *agent*
+SKIP: send-via, set-agent-send-executor!, set-agent-send-off-executor!
+      (JVM executor interop — no Zig equivalent)
 ```
 
-**Notes**: `*agent*` dynamic var also skipped. Requires F6 (multi-thread bindings).
+**Approach**: AgentObj extern struct + AgentInner (mutex/queue/state).
+Per-agent serial action queue dispatched to shared thread pool.
+Two error modes (:continue/:fail), *agent* bound during processing.
 
 ---
 

@@ -1186,6 +1186,12 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
         }
     }
 
+    // Cache *agent* var for binding in agent action processing
+    if (core_ns.resolve("*agent*")) |agent_v| {
+        const thread_pool_mod = @import("thread_pool.zig");
+        thread_pool_mod.initAgentVar(agent_v);
+    }
+
     // Ensure *ns* is synced
     syncNsVar(env);
 }

@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 48 COMPLETE** + zwasm integration (D92) done
-- Coverage: 820+ vars (620/706 core, 16 namespaces total)
+- **All phases through 51 COMPLETE** + zwasm integration (D92) done
+- Coverage: 830+ vars (633/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 44 upstream test files, all passing. 6/6 e2e tests pass.
@@ -21,31 +21,31 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 50B: Known Bug Fixes
+Phase 51: Agent Subsystem — COMPLETE
 
-- [x] 50B.1: Fix apropos segfault (already fixed — verified working)
-- [x] 50B.2: Fix dir-fn on non-existent ns (VM panic → error)
-- [x] 50B.3: Fix find-var return type (symbol → var)
-- [x] 50B.4: Implement remove-ns, ns-unalias, ns-unmap
-- [x] 50B.5: Fix *print-meta*, *print-readably* in pr-str
-- [x] 50B.6: Fix apply on var refs
-- [~] 50B.7: Defer apply on infinite lazy seq (no tests need it, architecturally complex)
-- [x] 50B.8: Fix sequences.clj segfault (GC swept binding frames)
+- [x] 51.1: AgentObj value type + agent constructor + deref
+- [x] 51.2: send/send-off action dispatch (per-agent serial queue)
+- [x] 51.3: Error handling (agent-error, set-error-handler!, set-error-mode!, restart-agent)
+- [x] 51.4: await/await-for synchronization
+- [x] 51.5: Remaining agent vars (clear-agent-errors, release-pending-sends, *agent*)
+- [x] 51.6: vars.yaml update + *agent* dynamic var binding
 
 ## Current Task
 
-Phase 50B complete. Plan next phase.
+Phase 51 complete. Plan next phase.
 
 ## Previous Task
 
-50B.8: Fix sequences.clj segfault — complete.
-- Root cause: GC swept BindingFrame structs and entries arrays while still on binding stack
-- Fix: `traceBindingStack` now calls `markPtr(frame)` and `markSlice(entries)` to keep them live
-- sequences.clj: 58 tests, 593 assertions — ALL PASS (was segfaulting)
+Phase 51: Agent Subsystem — complete.
+- AgentObj value type + NaN-boxed DeferredKind.agent
+- send/send-off with per-agent serial queue via thread pool
+- Error handling: :fail/:continue modes, error-handler, restart-agent
+- await/await-for synchronization via condition variable
+- *agent* dynamic var binding during action processing
+- 13 vars recovered from skip → done (633/706 core)
 
 ## Known Issues
 
-- with-meta result GC'd when used inline (e.g. `(meta (with-meta v m))` → nil)
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
 
 ## Notes

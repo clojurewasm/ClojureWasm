@@ -260,6 +260,25 @@ pub const ThreadPool = struct {
     fn processAgentActions(pool: *ThreadPool, agent_obj: *value_mod.AgentObj, gc_alloc: Allocator) void {
         const inner = agent_obj.getInner();
 
+        // Bind *agent* dynamic var to this agent for the duration of processing
+        var agent_bound = false;
+        if (agent_var) |av| {
+            const agent_value = Value.initAgent(agent_obj);
+            if (pool_allocator.alloc(var_mod.BindingEntry, 1)) |entries| {
+                entries[0] = .{ .var_ptr = av, .val = agent_value };
+                if (pool_allocator.create(var_mod.BindingFrame) catch null) |frame| {
+                    frame.* = .{ .entries = entries, .prev = var_mod.getCurrentBindingFrame() };
+                    var_mod.pushBindings(frame);
+                    agent_bound = true;
+                }
+            } else |_| {}
+        }
+        defer {
+            if (agent_bound) {
+                var_mod.popBindings();
+            }
+        }
+
         while (true) {
             // Dequeue next action under lock
             inner.mutex.lock();
@@ -353,6 +372,14 @@ pub const ThreadPool = struct {
 /// Global thread pool instance. Initialized lazily on first future/pmap call.
 var global_pool: ?*ThreadPool = null;
 var pool_mutex: std.Thread.Mutex = .{};
+
+/// Cached *agent* dynamic var pointer (set by bootstrap after core.clj loads).
+var agent_var: ?*var_mod.Var = null;
+
+/// Initialize the cached *agent* var pointer (called from bootstrap.zig).
+pub fn initAgentVar(v: *var_mod.Var) void {
+    agent_var = v;
+}
 
 /// Get or create the global thread pool.
 pub fn getGlobalPool(env: *env_mod.Env) !*ThreadPool {
