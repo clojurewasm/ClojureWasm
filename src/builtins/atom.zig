@@ -396,11 +396,11 @@ fn futureCallFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Get or create the global thread pool
     const env: *env_mod.Env = bootstrap.macro_eval_env orelse
         return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: no eval environment" });
-    const pool = thread_pool_mod.getGlobalPool(allocator, env) catch
+    const pool = thread_pool_mod.getGlobalPool(env) catch
         return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: failed to create thread pool" });
 
     // Submit the function to the thread pool
-    const result = pool.submit(func, allocator) catch
+    const result = pool.submit(func) catch
         return err.setError(.{ .kind = .internal_error, .phase = .eval, .message = "future-call: failed to submit task" });
 
     // Create a FutureObj Value

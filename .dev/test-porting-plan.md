@@ -84,7 +84,7 @@ Or use the runner script if available:
 bash test/upstream/run_all.sh
 ```
 
-## Already Ported Files (39 files)
+## Already Ported Files (40 files)
 
 See `test/upstream/clojure/test_clojure/` for the full list.
 Key files with high assertion counts:

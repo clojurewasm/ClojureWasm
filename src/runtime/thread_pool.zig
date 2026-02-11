@@ -98,35 +98,40 @@ const WorkItem = struct {
 /// clone. Each worker has its own current_ns (from parent at submit time),
 /// binding frames (conveyed from parent), and threadlocal state.
 /// GC is shared and mutex-protected (48.2).
+///
+/// IMPORTANT: Pool internals (threads array, work queue, pool struct itself)
+/// are allocated via page_allocator, NOT the GC allocator. This prevents
+/// the GC from sweeping the thread handles during collection.
 pub const ThreadPool = struct {
     threads: []std.Thread,
     queue_mutex: std.Thread.Mutex = .{},
     queue_cond: std.Thread.Condition = .{},
     work_items: std.ArrayList(WorkItem),
     shutdown_flag: std.atomic.Value(bool),
-    allocator: Allocator,
     source_env: *env_mod.Env,
+
+    /// Non-GC allocator for pool internals (thread handles, work queue).
+    const pool_allocator = std.heap.page_allocator;
 
     /// Initialize thread pool with `thread_count` worker threads.
     /// Workers share `source_env` for namespace resolution.
-    pub fn init(allocator: Allocator, source_env: *env_mod.Env, thread_count: usize) !*ThreadPool {
-        const pool = try allocator.create(ThreadPool);
+    pub fn init(source_env: *env_mod.Env, thread_count: usize) !*ThreadPool {
+        const pool = try pool_allocator.create(ThreadPool);
         pool.* = .{
             .threads = &.{},
             .work_items = .empty,
             .shutdown_flag = std.atomic.Value(bool).init(false),
-            .allocator = allocator,
             .source_env = source_env,
         };
         const count = if (thread_count == 0) getDefaultThreadCount() else thread_count;
-        const threads = try allocator.alloc(std.Thread, count);
+        const threads = try pool_allocator.alloc(std.Thread, count);
         var spawned: usize = 0;
         errdefer {
             pool.shutdown_flag.store(true, .release);
             pool.queue_cond.broadcast();
             for (threads[0..spawned]) |t| t.join();
-            allocator.free(threads);
-            allocator.destroy(pool);
+            pool_allocator.free(threads);
+            pool_allocator.destroy(pool);
         }
         for (threads) |*t| {
             t.* = try std.Thread.spawn(.{}, workerLoop, .{pool});
@@ -138,8 +143,8 @@ pub const ThreadPool = struct {
 
     /// Submit a nullary Clojure function for async execution.
     /// Returns a FutureResult that can be deref'd for the result.
-    pub fn submit(self: *ThreadPool, func: Value, allocator: Allocator) !*FutureResult {
-        const result = try allocator.create(FutureResult);
+    pub fn submit(self: *ThreadPool, func: Value) !*FutureResult {
+        const result = try pool_allocator.create(FutureResult);
         result.* = .{};
 
         // Capture parent thread's current namespace and bindings
@@ -148,7 +153,7 @@ pub const ThreadPool = struct {
 
         self.queue_mutex.lock();
         defer self.queue_mutex.unlock();
-        try self.work_items.append(self.allocator, .{
+        try self.work_items.append(pool_allocator, .{
             .func = func,
             .result = result,
             .parent_ns = parent_ns,
@@ -170,9 +175,9 @@ pub const ThreadPool = struct {
         for (self.threads) |t| {
             t.join();
         }
-        self.work_items.deinit(self.allocator);
-        self.allocator.free(self.threads);
-        self.allocator.destroy(self);
+        self.work_items.deinit(pool_allocator);
+        pool_allocator.free(self.threads);
+        pool_allocator.destroy(self);
     }
 
     fn workerLoop(pool: *ThreadPool) void {
@@ -228,11 +233,11 @@ var global_pool: ?*ThreadPool = null;
 var pool_mutex: std.Thread.Mutex = .{};
 
 /// Get or create the global thread pool.
-pub fn getGlobalPool(allocator: Allocator, env: *env_mod.Env) !*ThreadPool {
+pub fn getGlobalPool(env: *env_mod.Env) !*ThreadPool {
     pool_mutex.lock();
     defer pool_mutex.unlock();
     if (global_pool) |pool| return pool;
-    const pool = try ThreadPool.init(allocator, env, 0);
+    const pool = try ThreadPool.init(env, 0);
     global_pool = pool;
     return pool;
 }

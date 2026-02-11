@@ -8,7 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 810+ vars (604/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 43 upstream test files, all passing. 6/6 e2e tests pass.
+- 44 upstream test files, all passing. 6/6 e2e tests pass.
 - Benchmarks: `bench/history.yaml` (post-zwasm entry = latest baseline)
 
 ## Strategic Direction
@@ -24,24 +24,23 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 49: v0.3.0-alpha — Compatibility
 
 - [x] 49.1: Thread/sleep + shutdown-agents + analyzer rewrite
-- [ ] 49.2: Upstream test expansion (concurrency tests)
+- [x] 49.2: Upstream test expansion (concurrency tests)
 - [ ] 49.3: Quick-win skip recovery pass
 - [ ] 49.4: Pure Clojure library compatibility testing
 - [ ] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
 
 ## Current Task
 
-49.2: Port upstream concurrency tests to verify Phase 48 implementation.
+49.3: Quick-win skip recovery pass.
 
 ## Previous Task
 
-48.6: promise + deliver.
-- PromiseObj: extern struct sharing delay NanHeapTag slot 18 via DeferredKind
-- Reuses FutureResult for blocking deref synchronization
-- promise, deliver builtins in atom.zig
-- __promise-realized? builtin in predicates.zig
-- realized? updated for promise and future support
-- Removed old atom-based promise/deliver from core.clj
+49.2: Upstream test expansion (concurrency tests).
+- Ported parallel.clj (2 upstream + 9 CLJW-ADD tests, 30 assertions)
+- Updated vars.clj: restored with-redefs-fn/with-redefs with future, added test-vars-apply-lazily
+- Fixed critical bug: thread pool internals allocated via GC allocator → page_allocator
+  (GC sweep was freeing thread handles, causing ESRCH on pthread_join)
+- 44 upstream test files total, sequences.clj CLJ-1633 segfault is pre-existing
 
 ## Known Issues
 
@@ -51,6 +50,8 @@ Phase 49: v0.3.0-alpha — Compatibility
 - remove-ns, ns-unalias, ns-unmap not yet implemented
 - *print-meta*, *print-readably* not yet respected by pr-str
 - apply on var refs not supported
+- apply on infinite lazy seq realizes eagerly (should pass trailing ISeq lazily)
+- sequences.clj CLJ-1633 segfault (nested apply with & rest args → GC/binding corruption)
 
 ## Notes
 
