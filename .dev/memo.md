@@ -25,20 +25,21 @@ Phase 47: v0.1.0-alpha — Developer Experience
 
 1. ~~47.1: REPL improvements (multiline, color, ns prompt)~~ DONE
 2. ~~47.2: Error message improvements (source context, better formatting)~~ DONE
-3. 47.3: case* compiler special form (deferred from 38.4)
+3. ~~47.3: case* compiler special form (deferred from 38.4)~~ DONE
 4. 47.4: Missing quick-win vars (with-in-str, io!, with-precision)
 5. 47.5: Upstream test expansion (5+ additional test files)
 6. 47.6: Reader validation hardening
 
 ## Current Task
 
-47.3: case* compiler special form (deferred from 38.4)
+47.4: Missing quick-win vars (with-in-str, io!, with-precision)
 
 ## Previous Task
 
-47.2: Error message improvements — cleaner header with error kind labels
-(Type error, Syntax error, etc.), replaced banner with compact format,
-"REPL" instead of "<expr>" for REPL errors. kindToLabel() function.
+47.3: case* special form (D93). Added CaseNode to node.zig, analyzeCaseStar to
+analyzer, emitCase to compiler, runCase to TreeWalk. Ported upstream case macro
+with prep-ints/prep-hashes helpers. Fixed vector destructuring (3-arity nth for
+out-of-bounds → nil instead of throw). Fixed condp forward reference in case macro.
 
 ## Known Issues
 
@@ -56,7 +57,7 @@ Session resume: read this file → roadmap.md → pick next task.
 |--------------------|--------------------------------------|-----------------------------|
 | Roadmap            | `.dev/roadmap.md`                    | Always — next phases        |
 | Deferred items     | `.dev/checklist.md`                  | When planning next work     |
-| Decisions          | `.dev/decisions.md` (D3-D92)         | On architectural questions  |
+| Decisions          | `.dev/decisions.md` (D3-D93)         | On architectural questions  |
 | Optimizations      | `.dev/optimizations.md`              | Performance work            |
 | Benchmarks         | `bench/history.yaml`                 | After perf changes          |
 | Wasm benchmarks    | `bench/wasm_history.yaml`            | After wasm changes          |

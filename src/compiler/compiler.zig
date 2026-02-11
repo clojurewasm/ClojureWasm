@@ -147,6 +147,7 @@ pub const Compiler = struct {
             .lazy_seq_node => |node| try self.emitLazySeq(node),
             .defprotocol_node => |node| try self.emitDefprotocol(node),
             .extend_type_node => |node| try self.emitExtendType(node),
+            .case_node => |node| try self.emitCase(node),
         }
     }
 
@@ -787,6 +788,67 @@ pub const Compiler = struct {
 
         // lazy_seq: replaces fn_val with LazySeq (net 0)
         try self.chunk.emitOp(.lazy_seq);
+    }
+
+    /// Emit case* as a chain of equality checks.
+    /// Stack: [] -> [result]
+    fn emitCase(self: *Compiler, node: *const node_mod.CaseNode) CompileError!void {
+        // Compile expr (+1)
+        try self.compile(node.expr);
+
+        // For each clause: dup expr, load test, eq, jump_if_false, pop expr, then, jump_end
+        const jump_to_end = self.allocator.alloc(usize, node.clauses.len) catch return error.OutOfMemory;
+        const branch_base = self.stack_depth;
+
+        for (node.clauses, 0..) |clause, ci| {
+            // dup the expr value for comparison (+1)
+            try self.chunk.emitOp(.dup);
+            self.stack_depth += 1;
+
+            // Load test constant (+1)
+            const test_idx = self.chunk.addConstant(clause.test_value) catch return error.TooManyConstants;
+            try self.chunk.emit(.const_load, test_idx);
+            self.stack_depth += 1;
+
+            // eq: pops two, pushes boolean (-1)
+            try self.chunk.emitOp(.eq);
+            self.stack_depth -= 1;
+
+            // jump_if_false to next clause (pops boolean: -1)
+            const jump_next = self.chunk.emitJump(.jump_if_false) catch return error.OutOfMemory;
+            self.stack_depth -= 1;
+            // Stack: [expr]
+
+            // Match! Pop expr (-1)
+            try self.chunk.emitOp(.pop);
+            self.stack_depth -= 1;
+            // Stack: []
+
+            // Compile then-expr (+1)
+            try self.compile(clause.then_node);
+
+            // Jump to end
+            jump_to_end[ci] = self.chunk.emitJump(.jump) catch return error.OutOfMemory;
+
+            // Reset depth for next clause (false path has expr on stack)
+            self.stack_depth = branch_base;
+
+            // Patch false jump
+            self.chunk.patchJump(jump_next);
+        }
+
+        // No clause matched: pop expr (-1), compile default (+1)
+        try self.chunk.emitOp(.pop);
+        self.stack_depth -= 1;
+        try self.compile(node.default);
+
+        // Patch all jump-to-end
+        for (jump_to_end[0..node.clauses.len]) |j| {
+            self.chunk.patchJump(j);
+        }
+
+        // Normalize depth: branch_base - 1 (expr popped) + 1 (result) = branch_base
+        self.stack_depth = branch_base;
     }
 
     fn emitDefprotocol(self: *Compiler, node: *const node_mod.DefProtocolNode) CompileError!void {

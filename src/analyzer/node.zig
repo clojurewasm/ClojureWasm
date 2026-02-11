@@ -224,6 +224,33 @@ pub const DefMethodNode = struct {
     source: SourceInfo,
 };
 
+// -- Case dispatch --
+
+/// case* special form: hash-based constant-time dispatch.
+///
+/// (case* expr shift mask default case-map switch-type test-type skip-check?)
+///
+/// The case macro pre-computes hash values; case* performs the lookup.
+pub const CaseNode = struct {
+    expr: *Node,
+    shift: i32,
+    mask: i32,
+    default: *Node,
+    clauses: []const CaseClause,
+    test_type: TestType,
+    skip_check: []const i64, // hashes where equality check is skipped
+    source: SourceInfo,
+
+    pub const TestType = enum { int_test, hash_equiv, hash_identity };
+};
+
+/// A single case clause: hash key → (test-value, then-expr).
+pub const CaseClause = struct {
+    hash_key: i64, // pre-computed hash (key in case-map)
+    test_value: Value, // the actual test constant
+    then_node: *Node, // the then expression
+};
+
 /// Constant literal with optional source location.
 pub const ConstantNode = struct {
     value: Value,
@@ -277,6 +304,9 @@ pub const Node = union(enum) {
     // Lazy sequences
     lazy_seq_node: *LazySeqNode,
 
+    // Case dispatch
+    case_node: *CaseNode,
+
     /// Get source location info for error reporting.
     pub fn source(self: Node) SourceInfo {
         return switch (self) {
@@ -301,6 +331,7 @@ pub const Node = union(enum) {
             .defmulti_node => |n| n.source,
             .defmethod_node => |n| n.source,
             .lazy_seq_node => |n| n.source,
+            .case_node => |n| n.source,
         };
     }
 
@@ -328,6 +359,7 @@ pub const Node = union(enum) {
             .defmulti_node => "defmulti",
             .defmethod_node => "defmethod",
             .lazy_seq_node => "lazy-seq",
+            .case_node => "case*",
         };
     }
 };

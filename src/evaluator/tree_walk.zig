@@ -250,6 +250,7 @@ pub const TreeWalk = struct {
             .defmulti_node => |dm_n| self.runDefmulti(dm_n),
             .defmethod_node => |dm_n| self.runDefmethod(dm_n),
             .lazy_seq_node => |ls_n| self.runLazySeq(ls_n),
+            .case_node => |case_n| self.runCase(case_n),
         };
     }
 
@@ -1143,6 +1144,45 @@ pub const TreeWalk = struct {
             .realized = null,
         };
         return Value.initLazySeq(ls);
+    }
+
+    // --- Case dispatch ---
+
+    fn runCase(self: *TreeWalk, case_n: *const node_mod.CaseNode) TreeWalkError!Value {
+        const expr_val = try self.run(case_n.expr);
+
+        // Compute the lookup key based on test-type
+        const raw_hash: i64 = switch (case_n.test_type) {
+            .int_test => if (expr_val.tag() == .integer) expr_val.asInteger() else return self.run(case_n.default),
+            .hash_equiv, .hash_identity => @import("../builtins/predicates.zig").computeHash(expr_val),
+        };
+
+        // Apply shift/mask
+        const lookup_key: i64 = if (case_n.mask == 0)
+            raw_hash
+        else
+            (raw_hash >> @intCast(@as(u32, @bitCast(case_n.shift)))) & @as(i64, case_n.mask);
+
+        // Search clauses for matching hash key
+        for (case_n.clauses) |clause| {
+            if (clause.hash_key == lookup_key) {
+                // Check if we need equality verification
+                // (skip_check entries have condp-based thens that already verify)
+                if (!isInSkipCheck(lookup_key, case_n.skip_check)) {
+                    if (!expr_val.eql(clause.test_value)) continue;
+                }
+                return self.run(clause.then_node);
+            }
+        }
+
+        return self.run(case_n.default);
+    }
+
+    fn isInSkipCheck(key: i64, skip_check: []const i64) bool {
+        for (skip_check) |sc| {
+            if (sc == key) return true;
+        }
+        return false;
     }
 
     // --- Loop / Recur ---

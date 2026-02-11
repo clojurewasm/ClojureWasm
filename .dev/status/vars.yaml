@@ -12,7 +12,7 @@
 vars:
   clojure_core:
     ".": {type: special-form, status: skip, note: "JVM interop"}
-    "case*": {type: special-form, status: skip, note: 'internal special form, case macro handled'}
+    "case*": {type: special-form, status: done, note: 'analyzer + compiler + tree-walk'}
     catch: {type: special-form, status: done, note: special form (part of try)}
     def: {type: special-form, status: done, note: special form}
     "deftype*": {type: special-form, status: skip, note: "JVM type system"}

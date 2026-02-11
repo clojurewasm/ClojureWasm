@@ -517,3 +517,27 @@ and Clojure imports map → `[]zwasm.ImportEntry` translation.
 **zwasm API additions** (generic, not CW-specific):
 - `pub const Vm` — re-export for embedder host function access
 - `inspectImportFunctions()` — pre-analysis utility for import type metadata
+
+## D93: case* Special Form — Hash-Based Constant Dispatch
+
+**Decision**: Implement `case*` as a proper special form across the full pipeline
+(Analyzer → Node → Compiler + TreeWalk), replacing the previous cond-based `case`
+macro with the upstream case*/hash-dispatch design.
+
+**Node type**: `CaseNode` (expr, shift, mask, default, clauses, test_type, skip_check).
+Three test types: `:int` (integer identity), `:hash-equiv` (hash + equality),
+`:hash-identity` (hash + identity for interned types like keywords).
+
+**Compiler**: Equality-check chain — for each clause: dup expr, load constant,
+eq, conditional jump. O(n) but correct. Future: switch to table jump for `:compact`.
+
+**TreeWalk**: Hash-based dispatch — compute shift-masked hash, scan clauses for match,
+optional skip-check for hash collision buckets.
+
+**case macro**: Ported from upstream. Uses `prep-ints`/`prep-hashes` to compute
+optimal shift/mask parameters. Helper functions: `shift-mask`, `maybe-min-hash`,
+`case-map`, `fits-table?`, `prep-ints`, `merge-hash-collisions`, `prep-hashes`.
+
+**Also fixed**: Vector destructuring (`makeNthCall`) now uses 3-arity `nth` with
+nil default, matching Clojure's behavior of returning nil for missing positions
+instead of throwing.

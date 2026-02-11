@@ -215,6 +215,7 @@ pub const Analyzer = struct {
         .{ "lazy-seq", analyzeLazySeq },
         .{ "var", analyzeVarForm },
         .{ "set!", analyzeSetBang },
+        .{ "case*", analyzeCaseStar },
     });
 
     // === Main entry point ===
@@ -2152,9 +2153,11 @@ pub const Analyzer = struct {
     /// Generate (nth coll idx) call node.
     fn makeNthCall(self: *Analyzer, coll_node: *Node, idx: usize) AnalyzeError!*Node {
         const idx_node = try self.makeConstant(Value.initInteger(@intCast(idx)));
-        const args = self.allocator.alloc(*Node, 2) catch return error.OutOfMemory;
+        const nil_node = try self.makeConstant(Value.nil_val);
+        const args = self.allocator.alloc(*Node, 3) catch return error.OutOfMemory;
         args[0] = coll_node;
         args[1] = idx_node;
+        args[2] = nil_node;
         return self.makeBuiltinCall("nth", args);
     }
 
@@ -2286,6 +2289,125 @@ pub const Analyzer = struct {
         }
         try buf.append(allocator, ')');
         return buf.items;
+    }
+
+    // =================================================================
+    // case* special form
+    // =================================================================
+
+    /// (case* expr shift mask default case-map switch-type test-type skip-check?)
+    fn analyzeCaseStar(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // items[0] = "case*", items[1..] = args
+        if (items.len < 8) {
+            return self.analysisError(.arity_error, "case* requires at least 7 arguments", form);
+        }
+
+        // 1. Analyze expr
+        const expr = try self.analyze(items[1]);
+
+        // 2. Extract shift (integer literal)
+        const shift: i32 = switch (items[2].data) {
+            .integer => |v| @intCast(v),
+            else => return self.analysisError(.syntax_error, "case* shift must be an integer", items[2]),
+        };
+
+        // 3. Extract mask (integer literal)
+        const mask: i32 = switch (items[3].data) {
+            .integer => |v| @intCast(v),
+            else => return self.analysisError(.syntax_error, "case* mask must be an integer", items[3]),
+        };
+
+        // 4. Analyze default expression
+        const default = try self.analyze(items[4]);
+
+        // 5. Parse case-map: {hash-key [test-value then-expr], ...}
+        const map_forms = switch (items[5].data) {
+            .map => |m| m,
+            else => return self.analysisError(.syntax_error, "case* case-map must be a map", items[5]),
+        };
+
+        // map_forms is flat pairs: [key1, val1, key2, val2, ...]
+        const num_clauses = map_forms.len / 2;
+        const clauses = self.allocator.alloc(node_mod.CaseClause, num_clauses) catch return error.OutOfMemory;
+
+        const quote_ns_ptr: ?*const @import("../runtime/namespace.zig").Namespace =
+            if (self.env) |env| (if (env.current_ns) |ns| ns else null) else null;
+
+        var ci: usize = 0;
+        var mi: usize = 0;
+        while (mi + 1 < map_forms.len) : (mi += 2) {
+            // Key: integer hash
+            const hash_key: i64 = switch (map_forms[mi].data) {
+                .integer => |v| v,
+                else => return self.analysisError(.syntax_error, "case* map key must be an integer", map_forms[mi]),
+            };
+
+            // Value: [test-value then-expr]
+            const val_vec = switch (map_forms[mi + 1].data) {
+                .vector => |v| v,
+                else => return self.analysisError(.syntax_error, "case* map value must be a vector", map_forms[mi + 1]),
+            };
+            if (val_vec.len != 2) {
+                return self.analysisError(.syntax_error, "case* map value must be [test then]", map_forms[mi + 1]);
+            }
+
+            // Convert test-value Form to Value (it's a constant, not evaluated)
+            const test_val = macro.formToValueWithNs(self.allocator, val_vec[0], quote_ns_ptr) catch return error.OutOfMemory;
+
+            // Analyze then-expr
+            const then_node = try self.analyze(val_vec[1]);
+
+            clauses[ci] = .{
+                .hash_key = hash_key,
+                .test_value = test_val,
+                .then_node = then_node,
+            };
+            ci += 1;
+        }
+
+        // 6. Extract test-type keyword
+        const test_type: node_mod.CaseNode.TestType = blk: {
+            if (items[7].data == .keyword) {
+                const name = items[7].data.keyword.name;
+                if (std.mem.eql(u8, name, "int")) break :blk .int_test;
+                if (std.mem.eql(u8, name, "hash-equiv")) break :blk .hash_equiv;
+                if (std.mem.eql(u8, name, "hash-identity")) break :blk .hash_identity;
+            }
+            return self.analysisError(.syntax_error, "case* test-type must be :int, :hash-equiv, or :hash-identity", items[7]);
+        };
+
+        // 7. Parse skip-check set (optional, items[8])
+        const skip_check: []const i64 = if (items.len > 8) blk: {
+            switch (items[8].data) {
+                .set => |s| {
+                    const sc = self.allocator.alloc(i64, s.len) catch return error.OutOfMemory;
+                    for (s, 0..) |elem, i| {
+                        sc[i] = switch (elem.data) {
+                            .integer => |v| v,
+                            else => return self.analysisError(.syntax_error, "case* skip-check elements must be integers", elem),
+                        };
+                    }
+                    break :blk sc;
+                },
+                else => break :blk &[_]i64{},
+            }
+        } else &[_]i64{};
+
+        // 8. Create CaseNode
+        const case_data = self.allocator.create(node_mod.CaseNode) catch return error.OutOfMemory;
+        case_data.* = .{
+            .expr = expr,
+            .shift = shift,
+            .mask = mask,
+            .default = default,
+            .clauses = clauses[0..ci],
+            .test_type = test_type,
+            .skip_check = skip_check,
+            .source = self.sourceFromForm(form),
+        };
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .case_node = case_data };
+        return n;
     }
 };
 
