@@ -148,6 +148,17 @@ Build the ecosystem foundation. Dependency management, distribution.
 
 **Exit criteria**: "Can manage multi-file projects with external dependencies"
 
+### Quality & Alignment (Phase 52) — DONE
+
+Test framework hardening, upstream alignment, and bug fixes.
+
+- Fixed println/print/pr/prn/str/pr-str hang on infinite lazy seqs
+- Implemented exception type checking in catch clauses
+- Fixed `is` macro: try-expr pattern, test-ns-hook support
+- Ported test.clj (10 tests, 41 assertions) and reader.cljc (22 tests, 117 assertions)
+- Audited 32 UPSTREAM-DIFF markers
+- 48 upstream test files, all passing on both backends
+
 ### v0.5.0-beta — Advanced Features (Phase 51)
 
 Polish for production use.

@@ -4,11 +4,11 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 51 COMPLETE** + zwasm integration (D92) done
+- **All phases through 52 COMPLETE** + zwasm integration (D92) done
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 44 upstream test files, all passing. 6/6 e2e tests pass.
+- 48 upstream test files, all passing. 6/6 e2e tests pass.
 - Benchmarks: `bench/history.yaml` (post-zwasm entry = latest baseline)
 
 ## Strategic Direction
@@ -31,33 +31,39 @@ Phase 52: Quality & Alignment — IN PROGRESS
 - [x] 52.6: Fix reader bugs — N/A (pre-existing limitations only)
 - [x] 52.7: F94: distinct? cannot align (loop lacks destructuring support)
 - [x] 52.8: F94: Audit UPSTREAM-DIFFs — 32 markers, all accurately documented
-- [ ] 52.9: Implement io!, with-precision macros
-- [ ] 52.10: Full upstream regression on both backends
-- [ ] 52.11: Phase completion: update docs
+- [x] 52.9: io!, with-precision — already implemented
+- [x] 52.10: Full regression — 48 files, both backends, 0 regressions
+- [x] 52.11: Phase completion: update docs
 
 ## Current Task
 
-52.9: Implement io!, with-precision macros
-- io!: trivially body-only (no STM in CW)
-- with-precision: needs *math-context* dynamic var
-- Update vars.yaml: skip → done
+Phase 52 COMPLETE. Ready for next phase direction.
 
 ## Previous Task
 
-52.3-52.4: Port test.clj + exception type checking
-- Ported test.clj: 10 tests, 41 assertions (portable sections)
+Phase 52: Quality & Alignment (complete)
+- Fixed println/print/pr/prn/str/pr-str hang on infinite lazy seqs
+- Expanded io_test.clj: 8 tests, 18 assertions
 - Implemented exception type checking in catch clauses (was ignored since Phase 1c)
   - analyzer: CatchClause.class_name, multi-catch → nested try
   - predicates: exceptionMatchesClass() with Java-like hierarchy
   - compiler: exception_type_check opcode (0xA5)
   - VM + TreeWalk: type check before catch body execution
-- Fixed `is` macro: added try-expr pattern (outer catch Exception for unexpected errors)
+- Fixed `is` macro: added try-expr pattern (upstream alignment)
 - Added test-ns-hook support to run-tests
-- 45 upstream test files, all passing
+- Ported test.clj: 10 tests, 41 assertions
+- Ported reader.cljc: 22 tests, 117 assertions
+- F94: Audited 32 UPSTREAM-DIFF markers — all documented
+- Full regression: 48 files, both backends, 6/6 e2e — 0 regressions
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
+- BigDecimal exponent notation (e.g. 1.0e+1M) causes AnalyzeError
+- Colon in symbol/keyword literals parsed as keyword delimiter
+- loop doesn't support destructuring bindings
+- binding *ns* doesn't affect read-string for auto-resolved keywords
+- Regex capture groups/backreferences not supported
 
 ## Notes
 
