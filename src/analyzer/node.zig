@@ -160,6 +160,7 @@ pub const ThrowNode = struct {
 
 /// catch clause within try
 pub const CatchClause = struct {
+    class_name: []const u8, // exception class to match (e.g. "Exception", "ArithmeticException")
     binding_name: []const u8, // exception binding variable
     body: *Node,
 };
@@ -639,6 +640,7 @@ test "TryNode with catch and finally" {
     try_data.* = .{
         .body = &body,
         .catch_clause = .{
+            .class_name = "Exception",
             .binding_name = "e",
             .body = &catch_body,
         },

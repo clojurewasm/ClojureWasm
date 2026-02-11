@@ -152,6 +152,9 @@ pub const OpCode = enum(u8) {
     try_end = 0xA3,
     /// Throw top of stack as exception
     throw_ex = 0xA4,
+    /// Check exception type: peek top (exception), check against constant class name.
+    /// If no match, re-throw. Operand: constant index for class name string.
+    exception_type_check = 0xA5,
 
     // === [M] Arithmetic/comparison (0xB0-0xBF) ===
 
@@ -345,6 +348,7 @@ test "OpCode category ranges" {
     try std.testing.expectEqual(@as(u8, 0xA2), @intFromEnum(OpCode.pop_handler));
     try std.testing.expectEqual(@as(u8, 0xA3), @intFromEnum(OpCode.try_end));
     try std.testing.expectEqual(@as(u8, 0xA4), @intFromEnum(OpCode.throw_ex));
+    try std.testing.expectEqual(@as(u8, 0xA5), @intFromEnum(OpCode.exception_type_check));
 
     // Arithmetic (0xB0-0xBF)
     try std.testing.expectEqual(@as(u8, 0xB0), @intFromEnum(OpCode.add));

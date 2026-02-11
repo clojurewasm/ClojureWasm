@@ -1892,7 +1892,7 @@ pub const Analyzer = struct {
         }
 
         var body_forms: std.ArrayList(Form) = .empty;
-        var catch_clause: ?node_mod.CatchClause = null;
+        var catch_clauses: std.ArrayList(node_mod.CatchClause) = .empty;
         var finally_body: ?*Node = null;
 
         for (items[1..]) |item| {
@@ -1906,7 +1906,11 @@ pub const Analyzer = struct {
                         if (sub_items.len < 4) {
                             return self.analysisError(.arity_error, "catch requires (catch ExceptionType name body*)", item);
                         }
-                        // sub_items[1] = ExType (ignored in Phase 1c)
+                        // sub_items[1] = ExType (class name for exception matching)
+                        const class_name = if (sub_items[1].data == .symbol)
+                            sub_items[1].data.symbol.name
+                        else
+                            "Exception";
                         if (sub_items[2].data != .symbol) {
                             return self.analysisError(.value_error, "catch binding must be a symbol", sub_items[2]);
                         }
@@ -1922,10 +1926,11 @@ pub const Analyzer = struct {
 
                         self.locals.shrinkRetainingCapacity(saved_depth);
 
-                        catch_clause = .{
+                        catch_clauses.append(self.allocator, .{
+                            .class_name = class_name,
                             .binding_name = binding_name,
                             .body = handler_body,
-                        };
+                        }) catch return error.OutOfMemory;
                         continue;
                     }
 
@@ -1947,17 +1952,49 @@ pub const Analyzer = struct {
 
         const body_node = try self.analyzeBody(body_forms.items, form);
 
-        const try_data = self.allocator.create(node_mod.TryNode) catch return error.OutOfMemory;
-        try_data.* = .{
-            .body = body_node,
-            .catch_clause = catch_clause,
-            .finally_body = finally_body,
-            .source = self.sourceFromForm(form),
-        };
-
-        const n = self.allocator.create(Node) catch return error.OutOfMemory;
-        n.* = .{ .try_node = try_data };
-        return n;
+        // Build nested try nodes for multiple catch clauses (innermost = first clause).
+        // Single catch or no catch: straightforward.
+        // Multi-catch (catch A e h1) (catch B e h2) (finally f):
+        //   → (try (try body (catch A e h1)) (catch B e h2) (finally f))
+        if (catch_clauses.items.len <= 1) {
+            const try_data = self.allocator.create(node_mod.TryNode) catch return error.OutOfMemory;
+            try_data.* = .{
+                .body = body_node,
+                .catch_clause = if (catch_clauses.items.len == 1) catch_clauses.items[0] else null,
+                .finally_body = finally_body,
+                .source = self.sourceFromForm(form),
+            };
+            const n = self.allocator.create(Node) catch return error.OutOfMemory;
+            n.* = .{ .try_node = try_data };
+            return n;
+        } else {
+            // Multi-catch: nest from inside out. First clause is innermost.
+            // Inner try: body + first catch clause (no finally)
+            var current_body = body_node;
+            for (catch_clauses.items[0 .. catch_clauses.items.len - 1]) |clause| {
+                const inner_try = self.allocator.create(node_mod.TryNode) catch return error.OutOfMemory;
+                inner_try.* = .{
+                    .body = current_body,
+                    .catch_clause = clause,
+                    .finally_body = null,
+                    .source = self.sourceFromForm(form),
+                };
+                const inner_node = self.allocator.create(Node) catch return error.OutOfMemory;
+                inner_node.* = .{ .try_node = inner_try };
+                current_body = inner_node;
+            }
+            // Outermost try: nested body + last catch clause + finally
+            const outer_try = self.allocator.create(node_mod.TryNode) catch return error.OutOfMemory;
+            outer_try.* = .{
+                .body = current_body,
+                .catch_clause = catch_clauses.items[catch_clauses.items.len - 1],
+                .finally_body = finally_body,
+                .source = self.sourceFromForm(form),
+            };
+            const n = self.allocator.create(Node) catch return error.OutOfMemory;
+            n.* = .{ .try_node = outer_try };
+            return n;
+        }
     }
 
     // === Call analysis ===

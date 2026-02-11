@@ -1097,6 +1097,66 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.false_val;
 }
 
+/// Check if an exception value matches a catch class name.
+/// Used by try/catch to determine if a catch clause should handle an exception.
+/// Implements Java exception hierarchy: Throwable > Exception > RuntimeException > specific types.
+pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
+    // Throwable/Exception/RuntimeException: catch ALL thrown values (including non-map raw values)
+    if (std.mem.eql(u8, class_name, "Throwable") or
+        std.mem.eql(u8, class_name, "java.lang.Throwable") or
+        std.mem.eql(u8, class_name, "Exception") or
+        std.mem.eql(u8, class_name, "java.lang.Exception") or
+        std.mem.eql(u8, class_name, "RuntimeException") or
+        std.mem.eql(u8, class_name, "java.lang.RuntimeException"))
+        return true;
+
+    // For specific exception types, value must be an exception map (with __ex_info key)
+    const is_exception = switch (ex_val.tag()) {
+        .map => blk: {
+            const m = ex_val.asMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_info" });
+            break :blk m.get(key) != null;
+        },
+        .hash_map => blk: {
+            const m = ex_val.asHashMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_info" });
+            break :blk m.get(key) != null;
+        },
+        else => false,
+    };
+    if (!is_exception) return false;
+
+    // Get the __ex_type from the exception (set by runtime errors)
+    const ex_type: ?[]const u8 = switch (ex_val.tag()) {
+        .map => blk: {
+            const m = ex_val.asMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_type" });
+            const v = m.get(key) orelse break :blk null;
+            break :blk if (v.tag() == .string) v.asString() else null;
+        },
+        .hash_map => blk: {
+            const m = ex_val.asHashMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_type" });
+            const v = m.get(key) orelse break :blk null;
+            break :blk if (v.tag() == .string) v.asString() else null;
+        },
+        else => null,
+    };
+
+    // ExceptionInfo: matches ex-info exceptions (no __ex_type)
+    if (std.mem.eql(u8, class_name, "ExceptionInfo") or
+        std.mem.eql(u8, class_name, "clojure.lang.ExceptionInfo"))
+        return ex_type == null;
+
+    // Specific exception type: exact match against __ex_type
+    if (ex_type) |et| {
+        return std.mem.eql(u8, et, class_name);
+    }
+
+    // No __ex_type means ex-info — doesn't match specific exception classes
+    return false;
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================

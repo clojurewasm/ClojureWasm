@@ -892,6 +892,41 @@ pub const VM = struct {
                 // No-op: marker for catch clause entry.
                 // Handler was already popped by throw_ex (exception flow).
             },
+            .exception_type_check => {
+                // Peek at exception on top of stack, check type against constant class name.
+                // If no match, re-throw the exception.
+                const predicates = @import("../builtins/predicates.zig");
+                const class_name_val = frame.constants[instr.operand];
+                const class_name = class_name_val.asString();
+                const ex_val = self.stack[self.sp - 1];
+                if (!predicates.exceptionMatchesClass(ex_val, class_name)) {
+                    // Re-throw: pop exception and propagate
+                    const thrown = self.pop();
+                    bootstrap.last_thrown_exception = thrown;
+                    if (self.handler_count > 0) {
+                        const handler = self.handlers[self.handler_count - 1];
+                        if (handler.saved_frame_count > self.call_target_frame) {
+                            self.handler_count -= 1;
+                            if (self.env) |env| {
+                                if (self.frame_count > handler.saved_frame_count) {
+                                    const ns_ptr = self.frames[handler.saved_frame_count].saved_ns;
+                                    env.current_ns = if (ns_ptr) |p| @ptrCast(@alignCast(p)) else null;
+                                }
+                            }
+                            self.sp = handler.saved_sp;
+                            self.frame_count = handler.saved_frame_count;
+                            try self.push(thrown);
+                            self.frames[handler.frame_idx].ip = handler.catch_ip;
+                            err_mod.saveCallStack();
+                            err_mod.clearCallStack();
+                        } else {
+                            return error.UserException;
+                        }
+                    } else {
+                        return error.UserException;
+                    }
+                }
+            },
             .pop_handler => {
                 // Normal flow: pop handler that was pushed by try_begin
                 // (exception flow pops via throw_ex instead)
@@ -2942,6 +2977,7 @@ test "VM try/catch handles throw" {
 
     var catch_body = Node{ .local_ref = .{ .name = "e", .idx = 0, .source = .{} } };
     const catch_clause = node_mod.CatchClause{
+        .class_name = "Exception",
         .binding_name = "e",
         .body = &catch_body,
     };

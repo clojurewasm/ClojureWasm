@@ -1311,6 +1311,7 @@ pub const TreeWalk = struct {
     }
 
     fn runTry(self: *TreeWalk, try_n: *const node_mod.TryNode) TreeWalkError!Value {
+        const predicates = @import("../builtins/predicates.zig");
         const result = self.run(try_n.body) catch |e| {
             if (isUserError(e)) {
                 if (try_n.catch_clause) |catch_c| {
@@ -1318,6 +1319,17 @@ pub const TreeWalk = struct {
                         (self.exception orelse Value.nil_val)
                     else
                         self.createRuntimeException(e);
+
+                    // Check if exception matches the catch clause's class
+                    if (!predicates.exceptionMatchesClass(ex_val, catch_c.class_name)) {
+                        // No match — propagate exception
+                        self.exception = ex_val;
+                        if (try_n.finally_body) |finally| {
+                            _ = self.run(finally) catch {};
+                        }
+                        return error.UserException;
+                    }
+
                     self.exception = null;
                     err_mod.saveCallStack();
                     err_mod.clearCallStack();
@@ -1949,6 +1961,7 @@ test "TreeWalk throw and try" {
     var try_data = node_mod.TryNode{
         .body = &body,
         .catch_clause = .{
+            .class_name = "Exception",
             .binding_name = "e",
             .body = &catch_body,
         },

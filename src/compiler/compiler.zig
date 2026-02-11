@@ -996,6 +996,10 @@ pub const Compiler = struct {
             // Exception value is pushed by VM throw handler
             self.stack_depth += 1;
 
+            // Emit exception type check (re-throws if class doesn't match)
+            const class_idx = try self.chunk.addConstant(Value.initString(self.allocator, catch_clause.class_name));
+            try self.chunk.emit(.exception_type_check, class_idx);
+
             // Add catch binding as local
             self.scope_depth += 1;
             const base = self.locals.items.len;

@@ -21,31 +21,39 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 51: Agent Subsystem — COMPLETE
+Phase 52: Quality & Alignment — IN PROGRESS
 
-- [x] 51.1: AgentObj value type + agent constructor + deref
-- [x] 51.2: send/send-off action dispatch (per-agent serial queue)
-- [x] 51.3: Error handling (agent-error, set-error-handler!, set-error-mode!, restart-agent)
-- [x] 51.4: await/await-for synchronization
-- [x] 51.5: Remaining agent vars (clear-agent-errors, release-pending-sends, *agent*)
-- [x] 51.6: vars.yaml update + *agent* dynamic var binding
+- [x] 52.1: Fix println/print hang on infinite lazy seqs
+- [x] 52.2: Expand io_test.clj (revive skipped tests)
+- [x] 52.3: Port test.clj (portable sections)
+- [x] 52.4: Fix bugs found by test.clj (exception type checking, is macro try-expr)
+- [ ] 52.5: Port reader.cljc (portable sections)
+- [ ] 52.6: Fix reader bugs found by reader.cljc
+- [ ] 52.7: F94: Align distinct? to upstream style
+- [ ] 52.8: F94: Audit and document remaining UPSTREAM-DIFFs
+- [ ] 52.9: Implement io!, with-precision macros
+- [ ] 52.10: Full upstream regression on both backends
+- [ ] 52.11: Phase completion: update docs
 
 ## Current Task
 
-Phase complete. Next phase (v0.5.0-beta) needs user direction:
-- spec.alpha basic? Generational GC? x86_64 JIT? Windows? LSP?
-- Or: more bug hunting, upstream alignment (F94), test porting?
+52.5: Port reader.cljc (portable sections)
+- Port: Symbols, Keywords, Literals, Collections, Strings, Chars, Regex, etc.
+- Skip: inst/calendar readers, BigInt/Ratio edge cases, java.io.File
+- Adapt: instance? → symbol?/keyword? etc.
 
 ## Previous Task
 
-Phase 51 + post-51 fixes:
-- Agent subsystem: 15 vars (agent, send, send-off, await, error handling, *agent*)
-- error-handler/error-mode getters + fix default error mode
-- Upstream agent tests ported (5 tests, 13 assertions)
-- **Fix collection hash bug**: computeHash returned 42 for all collections,
-  causing SIGILL crash in case with collection constants (control.clj)
-  → proper ordered/unordered hash for vector/list/map/set/cons/lazy-seq
-- Coverage: 635/706 core vars done
+52.3-52.4: Port test.clj + exception type checking
+- Ported test.clj: 10 tests, 41 assertions (portable sections)
+- Implemented exception type checking in catch clauses (was ignored since Phase 1c)
+  - analyzer: CatchClause.class_name, multi-catch → nested try
+  - predicates: exceptionMatchesClass() with Java-like hierarchy
+  - compiler: exception_type_check opcode (0xA5)
+  - VM + TreeWalk: type check before catch body execution
+- Fixed `is` macro: added try-expr pattern (outer catch Exception for unexpected errors)
+- Added test-ns-hook support to run-tests
+- 45 upstream test files, all passing
 
 ## Known Issues
 

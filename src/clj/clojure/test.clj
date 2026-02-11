@@ -239,6 +239,8 @@
 ;; (is expr), (is expr msg)
 ;; (is (thrown? ExType body...))
 ;; (is (thrown-with-msg? ExType re body...))
+;; All forms are wrapped in try/catch Exception (like upstream's try-expr)
+;; so unexpected exceptions report as :error with the original message.
 (defmacro is [& args]
   (let [expr (first args)
         msg (second args)]
@@ -248,14 +250,19 @@
       (let [klass (second expr)
             body (rest (rest expr))]
         `(try
-           (do ~@body)
-           (clojure.test/report {:type :fail :message ~msg
-                                 :expected '~expr :actual nil})
-           nil
-           (catch ~klass e#
-             (clojure.test/report {:type :pass :message ~msg
-                                   :expected '~expr :actual e#})
-             e#)))
+           (try
+             (do ~@body)
+             (clojure.test/report {:type :fail :message ~msg
+                                   :expected '~expr :actual nil})
+             nil
+             (catch ~klass e#
+               (clojure.test/report {:type :pass :message ~msg
+                                     :expected '~expr :actual e#})
+               e#))
+           (catch Exception t#
+             (clojure.test/report {:type :error :message ~msg
+                                   :expected '~expr :actual t#})
+             t#)))
 
       (and (seq? expr) (= (first expr) 'thrown-with-msg?))
       ;; thrown-with-msg? dispatch: catch + message regex match
@@ -263,29 +270,39 @@
             re (nth expr 2)
             body (rest (rest (rest expr)))]
         `(try
-           (do ~@body)
-           (clojure.test/report {:type :fail :message ~msg
-                                 :expected '~expr :actual nil})
-           nil
-           (catch ~klass e#
-             (if (re-find ~re (str e#))
-               (do (clojure.test/report {:type :pass :message ~msg
-                                         :expected '~expr :actual e#})
-                   e#)
-               (do (clojure.test/report {:type :fail :message ~msg
-                                         :expected '~expr :actual e#})
-                   e#)))))
+           (try
+             (do ~@body)
+             (clojure.test/report {:type :fail :message ~msg
+                                   :expected '~expr :actual nil})
+             nil
+             (catch ~klass e#
+               (if (re-find ~re (str e#))
+                 (do (clojure.test/report {:type :pass :message ~msg
+                                           :expected '~expr :actual e#})
+                     e#)
+                 (do (clojure.test/report {:type :fail :message ~msg
+                                           :expected '~expr :actual e#})
+                     e#))))
+           (catch Exception t#
+             (clojure.test/report {:type :error :message ~msg
+                                   :expected '~expr :actual t#})
+             t#)))
 
       :else
-      ;; default: evaluate and check truthiness
-      `(let [result# ~expr]
-         (if result#
-           (do (clojure.test/report {:type :pass :message ~msg
-                                     :expected '~expr :actual result#})
-               true)
-           (do (clojure.test/report {:type :fail :message ~msg
-                                     :expected '~expr :actual result#})
-               false))))))
+      ;; default: evaluate and check truthiness, wrapped in try-expr
+      `(try
+         (let [result# ~expr]
+           (if result#
+             (do (clojure.test/report {:type :pass :message ~msg
+                                       :expected '~expr :actual result#})
+                 true)
+             (do (clojure.test/report {:type :fail :message ~msg
+                                       :expected '~expr :actual result#})
+                 false)))
+         (catch Exception t#
+           (clojure.test/report {:type :error :message ~msg
+                                 :expected '~expr :actual t#})
+           t#)))))
 
 ;; Group assertions under a descriptive string.
 (defmacro testing [desc & body]
@@ -309,6 +326,7 @@
 ;; ========== Test runner ==========
 
 ;; Run all registered tests with fixtures. Returns true if all pass.
+;; If the current namespace defines test-ns-hook, calls it instead.
 (defn run-tests []
   ;; Reset counters
   (reset! pass-count 0)
@@ -316,31 +334,37 @@
   (reset! error-count 0)
   (reset! test-count 0)
 
-  ;; Collect test vars from registry
-  (let [tests @test-registry
-        vars (map :var tests)]
-    ;; Run through test-vars to apply fixtures
-    (if (seq vars)
-      (test-vars vars)
-      ;; Fallback: run directly if no vars registered (shouldn't happen)
-      (doseq [t tests]
-        (binding [*testing-contexts* (list (:name t))]
-          (println (str "\nTesting " (:name t)))
-          (try
-            ((:fn t))
-            (catch Exception e
-              (swap! error-count inc)
-              (println (str "  ERROR in " (:name t) ": " e)))))))
+  ;; Check for test-ns-hook in current namespace
+  (let [hook-sym (symbol (str (ns-name *ns*)) "test-ns-hook")
+        hook-var (resolve hook-sym)]
+    (if (and hook-var (fn? @hook-var))
+      ;; Use test-ns-hook
+      (@hook-var)
+      ;; Collect test vars from registry
+      (let [tests @test-registry
+            vars (map :var tests)]
+        ;; Run through test-vars to apply fixtures
+        (if (seq vars)
+          (test-vars vars)
+          ;; Fallback: run directly if no vars registered
+          (doseq [t tests]
+            (binding [*testing-contexts* (list (:name t))]
+              (println (str "\nTesting " (:name t)))
+              (try
+                ((:fn t))
+                (catch Exception e
+                  (swap! error-count inc)
+                  (println (str "  ERROR in " (:name t) ": " e))))))))))
 
-    ;; Print summary via report
-    (clojure.test/report {:type :summary
-                          :test @test-count
-                          :pass @pass-count
-                          :fail @fail-count
-                          :error @error-count})
+  ;; Print summary via report
+  (clojure.test/report {:type :summary
+                        :test @test-count
+                        :pass @pass-count
+                        :fail @fail-count
+                        :error @error-count})
 
-    ;; Return summary map (upstream compat)
-    {:test @test-count :pass @pass-count :fail @fail-count :error @error-count}))
+  ;; Return summary map (upstream compat)
+  {:test @test-count :pass @pass-count :fail @fail-count :error @error-count})
 
 (defn successful?
   "Returns true if the given test summary indicates all tests
