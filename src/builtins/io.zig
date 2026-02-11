@@ -20,7 +20,6 @@ const Value = value_mod.Value;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const Writer = std.Io.Writer;
-const collections = @import("collections.zig");
 const err = @import("../runtime/error.zig");
 const PersistentList = value_mod.PersistentList;
 const bootstrap = @import("../runtime/bootstrap.zig");
@@ -72,8 +71,7 @@ pub fn printlnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
-        const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatPrStr(&w) catch break;
+        arg.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     writeOutputByte('\n');
@@ -90,8 +88,7 @@ pub fn prnFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
-        const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatPrStr(&w) catch break;
+        arg.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     writeOutputByte('\n');
@@ -112,8 +109,7 @@ pub fn printFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
-        const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatPrStr(&w) catch break;
+        arg.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     return Value.nil_val;
@@ -129,8 +125,7 @@ pub fn prFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var w: Writer = .fixed(&buf);
     for (args, 0..) |arg, i| {
         if (i > 0) w.writeAll(" ") catch break;
-        const v = collections.realizeValue(allocator, arg) catch arg;
-        v.formatPrStr(&w) catch break;
+        arg.formatPrStr(&w) catch break;
     }
     writeOutput(w.buffered());
     return Value.nil_val;
