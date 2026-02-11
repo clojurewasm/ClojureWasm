@@ -1070,9 +1070,15 @@ fn traceVarRoots(gc: *MarkSweepGc, v: *const var_mod.Var) void {
 }
 
 /// Walk the dynamic binding frame stack and trace all bound Values.
+/// Also marks the BindingFrame structs and entries arrays as live
+/// so GC doesn't sweep them while they're on the binding stack.
 fn traceBindingStack(gc: *MarkSweepGc) void {
     var frame = var_mod.getCurrentBindingFrame();
     while (frame) |f| {
+        // Mark the frame struct itself
+        gc.markPtr(f);
+        // Mark the entries array backing memory
+        gc.markSlice(f.entries);
         for (f.entries) |entry| {
             traceValue(gc, entry.val);
         }
