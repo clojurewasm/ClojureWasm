@@ -8,7 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 795+ vars (593/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 38 upstream test files, all passing. 6/6 e2e tests pass.
+- 43 upstream test files, all passing. 6/6 e2e tests pass.
 - Benchmarks: `bench/history.yaml` (post-zwasm entry = latest baseline)
 
 ## Strategic Direction
@@ -27,22 +27,27 @@ Phase 47: v0.1.0-alpha — Developer Experience
 2. ~~47.2: Error message improvements (source context, better formatting)~~ DONE
 3. ~~47.3: case* compiler special form (deferred from 38.4)~~ DONE
 4. ~~47.4: Missing quick-win vars (with-in-str, io!, with-precision)~~ DONE
-5. 47.5: Upstream test expansion (5+ additional test files)
+5. ~~47.5: Upstream test expansion (5+ additional test files)~~ DONE
 6. 47.6: Reader validation hardening
 
 ## Current Task
 
-47.5: Upstream test expansion (5+ additional test files)
+47.6: Reader validation hardening
 
 ## Previous Task
 
-47.4: Quick-win vars — io! (no-op wrapper, no STM), with-in-str (push/pop
-input source stack in io.zig, read-line checks current_input), with-precision
-(stub binding *math-context*).
+47.5: Upstream test expansion — 5 new test files (31 tests, 60 assertions):
+repl.clj (upstream), hierarchies_test.clj, vars_test.clj, namespaces_test.clj,
+io_test.clj (SCI-adapted). All pass on both VM + TreeWalk.
 
 ## Known Issues
 
-- (none currently open)
+- apropos segfaults (GC bug in namespace iteration)
+- dir-fn on non-existent ns causes VM panic (error code gap)
+- find-var returns symbol instead of var
+- remove-ns, ns-unalias, ns-unmap not yet implemented
+- *print-meta*, *print-readably* not yet respected by pr-str
+- apply on var refs not supported
 
 ## Notes
 
