@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 51 COMPLETE** + zwasm integration (D92) done
-- Coverage: 830+ vars (633/706 core, 16 namespaces total)
+- Coverage: 835+ vars (635/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 44 upstream test files, all passing. 6/6 e2e tests pass.
@@ -32,17 +32,18 @@ Phase 51: Agent Subsystem — COMPLETE
 
 ## Current Task
 
-Phase 51 complete. Plan next phase.
+Phase 52: Bug fixes + polish. Plan next task.
 
 ## Previous Task
 
-Phase 51: Agent Subsystem — complete.
-- AgentObj value type + NaN-boxed DeferredKind.agent
-- send/send-off with per-agent serial queue via thread pool
-- Error handling: :fail/:continue modes, error-handler, restart-agent
-- await/await-for synchronization via condition variable
-- *agent* dynamic var binding during action processing
-- 13 vars recovered from skip → done (633/706 core)
+Phase 51 + post-51 fixes:
+- Agent subsystem: 15 vars (agent, send, send-off, await, error handling, *agent*)
+- error-handler/error-mode getters + fix default error mode
+- Upstream agent tests ported (5 tests, 13 assertions)
+- **Fix collection hash bug**: computeHash returned 42 for all collections,
+  causing SIGILL crash in case with collection constants (control.clj)
+  → proper ordered/unordered hash for vector/list/map/set/cons/lazy-seq
+- Coverage: 635/706 core vars done
 
 ## Known Issues
 
