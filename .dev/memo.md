@@ -25,7 +25,7 @@ Phase 50B: Known Bug Fixes
 
 - [x] 50B.1: Fix apropos segfault (already fixed — verified working)
 - [x] 50B.2: Fix dir-fn on non-existent ns (VM panic → error)
-- [ ] 50B.3: Fix find-var return type (symbol → var)
+- [x] 50B.3: Fix find-var return type (symbol → var)
 - [ ] 50B.4: Implement remove-ns, ns-unalias, ns-unmap
 - [ ] 50B.5: Fix *print-meta*, *print-readably* in pr-str
 - [ ] 50B.6: Fix apply on var refs
@@ -34,7 +34,7 @@ Phase 50B: Known Bug Fixes
 
 ## Current Task
 
-50B.3: Fix find-var return type (symbol → var).
+50B.4: Implement remove-ns, ns-unalias, ns-unmap.
 
 ## Previous Task
 
@@ -58,7 +58,6 @@ Fixes in this session:
 
 ## Known Issues
 
-- find-var returns symbol instead of var
 - remove-ns, ns-unalias, ns-unmap not yet implemented
 - *print-meta*, *print-readably* not yet respected by pr-str
 - apply on var refs not supported

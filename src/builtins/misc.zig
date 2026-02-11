@@ -545,15 +545,11 @@ pub fn findVarFn(_: Allocator, args: []const Value) anyerror!Value {
     const ns_name = sym.ns orelse {
         // Unqualified — look in current ns
         const current = env.current_ns orelse return Value.nil_val;
-        if (current.resolve(sym.name)) |_| {
-            return args[0]; // return the symbol (we don't expose Var as Value)
-        }
+        if (current.resolve(sym.name)) |v| return Value.initVarRef(v);
         return Value.nil_val;
     };
     const ns = env.findNamespace(ns_name) orelse return Value.nil_val;
-    if (ns.resolve(sym.name)) |_| {
-        return args[0];
-    }
+    if (ns.resolve(sym.name)) |v| return Value.initVarRef(v);
     return Value.nil_val;
 }
 
