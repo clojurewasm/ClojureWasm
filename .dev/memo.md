@@ -32,7 +32,9 @@ Phase 51: Agent Subsystem — COMPLETE
 
 ## Current Task
 
-Phase 52: Bug fixes + polish. Plan next task.
+Phase complete. Next phase (v0.5.0-beta) needs user direction:
+- spec.alpha basic? Generational GC? x86_64 JIT? Windows? LSP?
+- Or: more bug hunting, upstream alignment (F94), test porting?
 
 ## Previous Task
 
