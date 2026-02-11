@@ -25,13 +25,17 @@ Phase 49: v0.3.0-alpha — Compatibility
 
 - [x] 49.1: Thread/sleep + shutdown-agents + analyzer rewrite
 - [x] 49.2: Upstream test expansion (concurrency tests)
-- [ ] 49.3: Quick-win skip recovery pass
+- [x] 49.3: Quick-win skip recovery pass
 - [ ] 49.4: Pure Clojure library compatibility testing
 - [ ] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
 
 ## Current Task
 
 49.3: Quick-win skip recovery pass.
+- Add stub dynamic vars: *agent*, *allow-unresolved-vars*, *reader-resolver*,
+  *suppress-read*, *compile-path*, *fn-loader*, *use-context-classloader*
+- Implement class? (always false — no Java class system)
+- Implement definline (simple macro → defn with inlining hint)
 
 ## Previous Task
 

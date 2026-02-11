@@ -39,13 +39,13 @@ vars:
     "*1": {type: dynamic-var, status: done, note: "REPL history var"}
     "*2": {type: dynamic-var, status: done, note: "REPL history var"}
     "*3": {type: dynamic-var, status: done, note: "REPL history var"}
-    "*agent*": {type: var, status: skip, note: JVM interop}
-    "*allow-unresolved-vars*": {type: var, status: skip, note: JVM interop}
+    "*agent*": {type: var, status: done, note: "stub (nil)"}
+    "*allow-unresolved-vars*": {type: var, status: done, note: "stub (false)"}
     "*assert*": {type: var, status: done, note: "dynamic var"}
     "*clojure-version*": {type: dynamic-var, status: done, note: "dynamic var"}
     "*command-line-args*": {type: var, status: done}
     "*compile-files*": {type: var, status: done, note: JVM interop}
-    "*compile-path*": {type: var, status: skip, note: JVM interop}
+    "*compile-path*": {type: var, status: done, note: "stub (nil)"}
     "*compiler-options*": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     "*data-readers*": {type: dynamic-var, status: done}
     "*default-data-reader-fn*": {type: dynamic-var, status: done}
@@ -53,7 +53,7 @@ vars:
     "*err*": {type: var, status: done, note: "stub (nil default)"}
     "*file*": {type: var, status: done}
     "*flush-on-newline*": {type: var, status: done}
-    "*fn-loader*": {type: var, status: skip, note: JVM interop}
+    "*fn-loader*": {type: var, status: done, note: "stub (nil)"}
     "*in*": {type: var, status: done, note: "stub (nil default)"}
     "*math-context*": {type: var, status: done, note: "stub — no BigDecimal, binding only"}
     "*ns*": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
@@ -65,12 +65,12 @@ vars:
     "*print-namespace-maps*": {type: dynamic-var, status: done}
     "*print-readably*": {type: var, status: done}
     "*read-eval*": {type: var, status: done}
-    "*reader-resolver*": {type: var, status: skip, note: JVM interop}
+    "*reader-resolver*": {type: var, status: done, note: "stub (nil)"}
     "*repl*": {type: dynamic-var, status: done}
     "*source-path*": {type: var, status: done}
-    "*suppress-read*": {type: var, status: skip, note: JVM interop}
+    "*suppress-read*": {type: var, status: done, note: "stub (false)"}
     "*unchecked-math*": {type: var, status: done}
-    "*use-context-classloader*": {type: var, status: skip, note: JVM interop}
+    "*use-context-classloader*": {type: var, status: done, note: "stub (true)"}
     "*verbose-defrecords*": {type: dynamic-var, status: done}
     "*warn-on-reflection*": {type: var, status: done, note: "stub dynamic var (no reflection in Zig)"}
     "+": {type: function, status: done, note: "VM intrinsic opcode"}
@@ -191,7 +191,7 @@ vars:
     "chunk-rest": {type: function, status: done, note: builtin}
     "chunked-seq?": {type: function, status: done, note: "builtin"}
     class: {type: function, status: done, note: "Zig builtin alias of type"}
-    "class?": {type: function, status: skip, note: "no Java class system"}
+    "class?": {type: function, status: done, note: "no Java class system", notes: 'UPSTREAM-DIFF: always false (no Java class system)'}
     "clear-agent-errors": {type: function, status: skip, note: DEFERRED — multi-thread future}
     "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "coll?": {type: function, status: done, note: "Zig builtin"}
@@ -226,7 +226,7 @@ vars:
     declare: {type: macro, status: done, note: "core.clj (do (def name) ...)"}
     dedupe: {type: function, status: done}
     "default-data-readers": {type: var, status: done}
-    definline: {type: macro, status: skip, note: JVM optimization}
+    definline: {type: macro, status: done, note: JVM optimization, notes: 'UPSTREAM-DIFF: no :inline metadata support'}
     definterface: {type: macro, status: skip, note: JVM interop}
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}

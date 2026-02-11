@@ -2222,6 +2222,29 @@
 
 ;; Dynamic vars (stubs for JVM compat)
 (def ^:dynamic *warn-on-reflection* false)
+(def ^:dynamic *agent* nil)
+(def ^:dynamic *allow-unresolved-vars* false)
+(def ^:dynamic *reader-resolver* nil)
+(def ^:dynamic *suppress-read* false)
+(def ^:dynamic *compile-path* nil)
+(def ^:dynamic *fn-loader* nil)
+(def ^:dynamic *use-context-classloader* true)
+
+;; UPSTREAM-DIFF: always returns false (no Java class system)
+(defn class?
+  "Returns true if x is an instance of Class"
+  {:added "1.0"}
+  [x] false)
+
+;; UPSTREAM-DIFF: simplified — creates function without :inline metadata support
+(defmacro definline
+  "Experimental - like defmacro, except defines a named function whose
+  body is the expansion, calls to which may be expanded inline as if
+  it were a macro. Cannot be used with variadic (&) args."
+  {:added "1.0"}
+  [name & decl]
+  (let [[pre-args [args expr]] (split-with (comp not vector?) decl)]
+    `(defn ~name ~@pre-args ~args ~expr)))
 
 ;; Char tables (from core_print.clj)
 (def char-escape-string
