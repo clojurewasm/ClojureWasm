@@ -21,17 +21,17 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 49: v0.3.0-alpha — Compatibility
+Phase 50: v0.4.0-beta — Ecosystem
 
-- [x] 49.1: Thread/sleep + shutdown-agents + analyzer rewrite
-- [x] 49.2: Upstream test expansion (concurrency tests)
-- [x] 49.3: Quick-win skip recovery pass
-- [x] 49.4: Pure Clojure library compatibility testing
-- [x] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
+- [ ] 50.1: `cljw test` command (project-based test runner)
+- [ ] 50.2: cljw.edn `:deps` with local paths
+- [ ] 50.3: cljw.edn `:deps` with git/sha resolution
+- [ ] 50.4: Homebrew tap
+- [ ] 50.5: Wasm module dependency declaration
 
 ## Current Task
 
-Phase 49 complete. Planning Phase 50.
+50.1: `cljw test` command — project-based test runner.
 
 ## Previous Task
 
