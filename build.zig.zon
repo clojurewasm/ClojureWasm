@@ -1,7 +1,11 @@
 .{
     .name = .clojure_wasm,
     .version = "0.0.1",
-    .dependencies = .{},
+    .dependencies = .{
+        .zwasm = .{
+            .path = "../Documents/MyProducts/zwasm",
+        },
+    },
     .fingerprint = 0x62a7be489d633543,
     .minimum_zig_version = "0.15.0",
     .paths = .{

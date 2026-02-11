@@ -13,12 +13,20 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "profile_alloc", profile_alloc);
     const options_module = options.createModule();
 
+    // zwasm dependency (Wasm runtime library)
+    const zwasm_dep = b.dependency("zwasm", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zwasm_mod = zwasm_dep.module("zwasm");
+
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
     mod.addImport("build_options", options_module);
+    mod.addImport("zwasm", zwasm_mod);
 
     // --- Bootstrap cache generation (D81) ---
     // Build-time tool that bootstraps from .clj sources, serializes the env
@@ -33,6 +41,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     cache_gen.root_module.addImport("build_options", options_module);
+    cache_gen.root_module.addImport("zwasm", zwasm_mod);
     cache_gen.stack_size = 512 * 1024 * 1024;
 
     const run_cache_gen = b.addRunArtifact(cache_gen);
@@ -57,6 +66,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addImport("build_options", options_module);
+    exe.root_module.addImport("zwasm", zwasm_mod);
     exe.root_module.addAnonymousImport("bootstrap_cache", .{
         .root_source_file = wrapper,
     });
