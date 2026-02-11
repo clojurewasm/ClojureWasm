@@ -147,6 +147,7 @@ pub const Compiler = struct {
             .lazy_seq_node => |node| try self.emitLazySeq(node),
             .defprotocol_node => |node| try self.emitDefprotocol(node),
             .extend_type_node => |node| try self.emitExtendType(node),
+            .reify_node => |node| try self.emitReify(node),
             .case_node => |node| try self.emitCase(node),
         }
     }
@@ -901,6 +902,52 @@ pub const Compiler = struct {
                 self.stack_depth -= 1;
             }
         }
+    }
+
+    /// Global counter for unique reify type names (compile-time).
+    var reify_counter: u64 = 0;
+
+    fn emitReify(self: *Compiler, node: *const node_mod.ReifyNode) CompileError!void {
+        // Generate unique type name
+        reify_counter += 1;
+        const type_key = std.fmt.allocPrint(self.allocator, "__reify_{d}", .{reify_counter}) catch return error.OutOfMemory;
+
+        // Emit extend_type_method for each protocol method
+        var total_methods: usize = 0;
+        for (node.protocols) |proto_block| {
+            for (proto_block.methods) |method| {
+                // Compile method fn -> pushes fn_val (+1)
+                try self.emitFn(method.fn_node);
+
+                // Create meta vector: [type_name, protocol_name, method_name]
+                const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
+                meta_items[0] = Value.initString(self.allocator, type_key);
+                meta_items[1] = Value.initString(self.allocator, proto_block.protocol_name);
+                meta_items[2] = Value.initString(self.allocator, method.name);
+                const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
+                meta_vec.* = .{ .items = meta_items };
+                const meta_idx = self.chunk.addConstant(Value.initVector(meta_vec)) catch return error.TooManyConstants;
+
+                // extend_type_method: pops fn, pushes nil (net 0)
+                try self.chunk.emit(.extend_type_method, meta_idx);
+
+                // Pop nil result from extend_type_method
+                try self.chunk.emitOp(.pop);
+                self.stack_depth -= 1;
+
+                total_methods += 1;
+            }
+        }
+
+        // Push the reified object: a map with {:__reify_type type_key}
+        const obj_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
+        obj_entries[0] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__reify_type" });
+        obj_entries[1] = Value.initString(self.allocator, type_key);
+        const obj_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        obj_map.* = .{ .entries = obj_entries };
+        const map_idx = self.chunk.addConstant(Value.initMap(obj_map)) catch return error.TooManyConstants;
+        try self.chunk.emit(.const_load, map_idx);
+        self.stack_depth += 1;
     }
 
     fn emitQuote(self: *Compiler, node: *const node_mod.QuoteNode) CompileError!void {

@@ -347,6 +347,13 @@ pub const Reader = struct {
             std.fmt.parseInt(u21, name[1..], 16) catch {
                 return self.makeError(.string_error, "Invalid unicode character", token);
             }
+        else if (name.len >= 2 and name.len <= 4 and name[0] == 'o') blk: {
+            const val = std.fmt.parseInt(u21, name[1..], 8) catch {
+                return self.makeError(.string_error, "Invalid octal character", token);
+            };
+            if (val > 0o377) return self.makeError(.string_error, "Octal character out of range", token);
+            break :blk val;
+        }
         else {
             return self.makeError(.string_error, "Unknown character name", token);
         };

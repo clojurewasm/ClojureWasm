@@ -209,6 +209,7 @@ pub const Analyzer = struct {
         .{ "for", analyzeFor },
         .{ "defprotocol", analyzeDefprotocol },
         .{ "extend-type", analyzeExtendType },
+        .{ "reify", analyzeReify },
         .{ "defrecord", analyzeDefrecord },
         .{ "defmulti", analyzeDefmulti },
         .{ "defmethod", analyzeDefmethod },
@@ -216,6 +217,7 @@ pub const Analyzer = struct {
         .{ "var", analyzeVarForm },
         .{ "set!", analyzeSetBang },
         .{ "case*", analyzeCaseStar },
+        .{ "instance?", analyzeInstanceCheck },
     });
 
     // === Main entry point ===
@@ -291,6 +293,14 @@ pub const Analyzer = struct {
             return self.makeConstantFrom(Value.initList(empty_list), form);
         }
 
+        // Strip reader type hints: (with-meta form {:tag Type}) → analyze inner form
+        if (items.len == 3 and items[0].data == .symbol) {
+            const sym = items[0].data.symbol;
+            if (sym.ns == null and std.mem.eql(u8, sym.name, "with-meta")) {
+                return self.analyze(items[1]);
+            }
+        }
+
         // Check for special form (but locals shadow special forms)
         if (items[0].data == .symbol) {
             const sym_name = items[0].data.symbol.name;
@@ -329,6 +339,28 @@ pub const Analyzer = struct {
             }
         }
 
+        // Rewrite (.method obj args...) to (__java-method "method" obj args...)
+        if (items[0].data == .symbol and items[0].data.symbol.ns == null) {
+            const sym_name = items[0].data.symbol.name;
+            if (sym_name.len > 1 and sym_name[0] == '.' and sym_name[1] != '.') {
+                if (items.len < 2) {
+                    return self.analysisError(.arity_error, "instance method call requires an object", form);
+                }
+                const method_name = sym_name[1..];
+                var rewritten = self.allocator.alloc(Form, items.len + 1) catch return error.OutOfMemory;
+                rewritten[0] = .{
+                    .data = .{ .symbol = .{ .ns = null, .name = "__java-method" } },
+                    .line = items[0].line, .column = items[0].column,
+                };
+                rewritten[1] = .{
+                    .data = .{ .string = method_name },
+                    .line = items[0].line, .column = items[0].column,
+                };
+                @memcpy(rewritten[2..], items[1..]);
+                return self.analyzeCall(rewritten, form);
+            }
+        }
+
         // Function call
         return self.analyzeCall(items, form);
     }
@@ -341,6 +373,18 @@ pub const Analyzer = struct {
             return system_rewrites.get(name);
         } else if (std.mem.eql(u8, ns, "Thread")) {
             return thread_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "String")) {
+            return string_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Integer") or std.mem.eql(u8, ns, "Long")) {
+            return integer_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Double") or std.mem.eql(u8, ns, "Float")) {
+            return double_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Character")) {
+            return character_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Boolean")) {
+            return boolean_rewrites.get(name);
+        } else if (std.mem.eql(u8, ns, "Pattern") or std.mem.eql(u8, ns, "java.util.regex.Pattern")) {
+            return pattern_rewrites.get(name);
         }
         return null;
     }
@@ -366,6 +410,47 @@ pub const Analyzer = struct {
 
     const thread_rewrites = std.StaticStringMap([]const u8).initComptime(.{
         .{ "sleep", "__thread-sleep" },
+    });
+
+    const string_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "valueOf", "str" },
+        .{ "format", "format" },
+        .{ "join", "__string-join-static" },
+    });
+
+    const integer_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "parseInt", "__parse-long" },
+        .{ "valueOf", "__parse-long" },
+        .{ "toBinaryString", "__int-to-binary-string" },
+        .{ "toHexString", "__int-to-hex-string" },
+        .{ "toOctalString", "__int-to-octal-string" },
+        .{ "MAX_VALUE", "__integer-max-value" },
+        .{ "MIN_VALUE", "__integer-min-value" },
+    });
+
+    const double_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "parseDouble", "__parse-double" },
+        .{ "valueOf", "__parse-double" },
+        .{ "isNaN", "__double-is-nan" },
+        .{ "isInfinite", "__double-is-infinite" },
+    });
+
+    const character_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "isDigit", "__char-is-digit" },
+        .{ "isLetter", "__char-is-letter" },
+        .{ "isWhitespace", "__char-is-whitespace" },
+        .{ "isUpperCase", "__char-is-upper-case" },
+        .{ "isLowerCase", "__char-is-lower-case" },
+    });
+
+    const boolean_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "parseBoolean", "__parse-boolean" },
+        .{ "valueOf", "__parse-boolean" },
+    });
+
+    const pattern_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "compile", "re-pattern" },
+        .{ "quote", "__regex-quote" },
     });
 
     /// Resolve a symbol to a Var if possible (via env).
@@ -665,7 +750,16 @@ pub const Analyzer = struct {
         const start_locals = self.locals.items.len;
 
         var param_idx: usize = 0;
-        for (params_form) |p| {
+        for (params_form) |raw_p| {
+            // Unwrap (with-meta <form> <meta-map>) — reader produces this for ^Type hints
+            const p = if (raw_p.data == .list) blk: {
+                const wm = raw_p.data.list;
+                if (wm.len == 3 and wm[0].data == .symbol and
+                    std.mem.eql(u8, wm[0].data.symbol.name, "with-meta"))
+                    break :blk wm[1]; // unwrap to inner form (symbol, vector, or map)
+                break :blk raw_p;
+            } else raw_p;
+
             if (p.data == .symbol) {
                 const param_name = p.data.symbol.name;
 
@@ -1424,6 +1518,60 @@ pub const Analyzer = struct {
         return n;
     }
 
+    fn analyzeReify(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (reify Protocol1 (method1 [args] body) ... Protocol2 ...)
+        if (items.len < 2) {
+            return self.analysisError(.arity_error, "reify requires at least a protocol and method", form);
+        }
+
+        var protocols: std.ArrayList(node_mod.ReifyProtocol) = .empty;
+        var i: usize = 1; // skip 'reify'
+        while (i < items.len) {
+            // Expect protocol name (symbol)
+            if (items[i].data != .symbol) {
+                return self.analysisError(.value_error, "reify expects protocol name", items[i]);
+            }
+            const protocol_name = items[i].data.symbol.name;
+            i += 1;
+
+            // Collect methods until we hit another symbol (next protocol) or end
+            var methods: std.ArrayList(node_mod.ExtendMethodNode) = .empty;
+            while (i < items.len and items[i].data == .list) {
+                const m_items = items[i].data.list;
+                if (m_items.len < 3) {
+                    return self.analysisError(.arity_error, "reify method requires name, arglist, body", items[i]);
+                }
+                if (m_items[0].data != .symbol) {
+                    return self.analysisError(.value_error, "method name must be a symbol", m_items[0]);
+                }
+                const method_name = m_items[0].data.symbol.name;
+                const fn_items = self.allocator.alloc(Form, m_items.len) catch return error.OutOfMemory;
+                fn_items[0] = m_items[0];
+                @memcpy(fn_items[1..], m_items[1..]);
+                const fn_node = try self.analyzeFn(fn_items, items[i]);
+                methods.append(self.allocator, .{
+                    .name = method_name,
+                    .fn_node = fn_node.fn_node,
+                }) catch return error.OutOfMemory;
+                i += 1;
+            }
+
+            protocols.append(self.allocator, .{
+                .protocol_name = protocol_name,
+                .methods = methods.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            }) catch return error.OutOfMemory;
+        }
+
+        const reify = self.allocator.create(node_mod.ReifyNode) catch return error.OutOfMemory;
+        reify.* = .{
+            .protocols = protocols.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .source = self.sourceFromForm(form),
+        };
+        const n = self.allocator.create(Node) catch return error.OutOfMemory;
+        n.* = .{ .reify_node = reify };
+        return n;
+    }
+
     fn analyzeDefrecord(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (defrecord Name [fields])
         // Expand to:
@@ -1634,6 +1782,43 @@ pub const Analyzer = struct {
             return self.makeConstant(Value.initVarRef(interned));
         }
         return self.analysisError(.syntax_error, "Unable to resolve var", form);
+    }
+
+    /// Rewrite (instance? ClassName expr) → (__instance? "ClassName" expr)
+    /// The class name is passed as a string literal so it bypasses symbol resolution.
+    /// Also handles keyword type names: (instance? :integer 42) → (__instance? :integer 42)
+    fn analyzeInstanceCheck(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        if (items.len != 3) {
+            return self.analysisError(.arity_error, "instance? requires exactly 2 arguments", form);
+        }
+
+        const callee_form = Form{
+            .data = .{ .symbol = .{ .ns = null, .name = "__instance?" } },
+            .line = items[0].line,
+            .column = items[0].column,
+        };
+
+        var rewritten = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        rewritten[0] = callee_form;
+        rewritten[2] = items[2];
+
+        if (items[1].data == .symbol) {
+            // Class name symbol → convert to string literal
+            const sym = items[1].data.symbol;
+            const class_name = if (sym.ns) |ns|
+                std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ ns, sym.name }) catch return error.OutOfMemory
+            else
+                sym.name;
+            rewritten[1] = Form{
+                .data = .{ .string = class_name },
+                .line = items[1].line,
+                .column = items[1].column,
+            };
+        } else {
+            // Keyword or other expression — pass through as-is
+            rewritten[1] = items[1];
+        }
+        return self.analyzeCall(rewritten, form);
     }
 
     fn analyzeSetBang(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {

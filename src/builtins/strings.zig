@@ -328,6 +328,107 @@ pub fn printlnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initString(allocator, owned);
 }
 
+/// __java-method — Java instance method call interop layer.
+/// Rewrites (.method obj args...) by analyzer to (__java-method "method" obj args...).
+fn javaMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Java method call requires method name and object", .{});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "Java method call: first arg must be method name string", .{});
+    const method = args[0].asString();
+    const obj = args[1];
+    const rest = args[2..];
+
+    // String methods
+    if (obj.tag() == .string) {
+        const s = obj.asString();
+        if (std.mem.eql(u8, method, "length")) {
+            return Value.initInteger(@intCast(s.len));
+        } else if (std.mem.eql(u8, method, "substring")) {
+            if (rest.len == 1) {
+                const begin: usize = @intCast(rest[0].asInteger());
+                if (begin > s.len) return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{begin});
+                return Value.initString(allocator, try allocator.dupe(u8, s[begin..]));
+            } else if (rest.len == 2) {
+                const begin: usize = @intCast(rest[0].asInteger());
+                const end: usize = @intCast(rest[1].asInteger());
+                if (begin > s.len or end > s.len or begin > end)
+                    return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range", .{});
+                return Value.initString(allocator, try allocator.dupe(u8, s[begin..end]));
+            }
+            return err.setErrorFmt(.eval, .arity_error, .{}, ".substring expects 1 or 2 args", .{});
+        } else if (std.mem.eql(u8, method, "charAt")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".charAt expects 1 arg", .{});
+            const idx: usize = @intCast(rest[0].asInteger());
+            if (idx >= s.len) return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{idx});
+            return Value.initChar(@intCast(s[idx]));
+        } else if (std.mem.eql(u8, method, "indexOf")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".indexOf expects 1 arg", .{});
+            const needle = rest[0].asString();
+            if (std.mem.indexOf(u8, s, needle)) |pos| {
+                return Value.initInteger(@intCast(pos));
+            }
+            return Value.initInteger(-1);
+        } else if (std.mem.eql(u8, method, "contains")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".contains expects 1 arg", .{});
+            const needle = rest[0].asString();
+            return Value.initBoolean(std.mem.indexOf(u8, s, needle) != null);
+        } else if (std.mem.eql(u8, method, "startsWith")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".startsWith expects 1 arg", .{});
+            const prefix = rest[0].asString();
+            return Value.initBoolean(std.mem.startsWith(u8, s, prefix));
+        } else if (std.mem.eql(u8, method, "endsWith")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".endsWith expects 1 arg", .{});
+            const suffix = rest[0].asString();
+            return Value.initBoolean(std.mem.endsWith(u8, s, suffix));
+        } else if (std.mem.eql(u8, method, "toUpperCase")) {
+            const buf = try allocator.alloc(u8, s.len);
+            for (s, 0..) |c, i| buf[i] = std.ascii.toUpper(c);
+            return Value.initString(allocator, buf);
+        } else if (std.mem.eql(u8, method, "toLowerCase")) {
+            const buf = try allocator.alloc(u8, s.len);
+            for (s, 0..) |c, i| buf[i] = std.ascii.toLower(c);
+            return Value.initString(allocator, buf);
+        } else if (std.mem.eql(u8, method, "trim")) {
+            const trimmed = std.mem.trim(u8, s, " \t\n\r");
+            return Value.initString(allocator, try allocator.dupe(u8, trimmed));
+        } else if (std.mem.eql(u8, method, "replace")) {
+            if (rest.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, ".replace expects 2 args", .{});
+            const target = rest[0].asString();
+            const replacement = rest[1].asString();
+            const result = try std.mem.replaceOwned(u8, allocator, s, target, replacement);
+            return Value.initString(allocator, result);
+        } else if (std.mem.eql(u8, method, "isEmpty")) {
+            return Value.initBoolean(s.len == 0);
+        } else if (std.mem.eql(u8, method, "equals")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".equals expects 1 arg", .{});
+            if (rest[0].tag() != .string) return Value.false_val;
+            return Value.initBoolean(std.mem.eql(u8, s, rest[0].asString()));
+        } else if (std.mem.eql(u8, method, "toString") or std.mem.eql(u8, method, "valueOf")) {
+            return obj;
+        } else if (std.mem.eql(u8, method, "compareTo")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".compareTo expects 1 arg", .{});
+            const other = rest[0].asString();
+            const result = std.mem.order(u8, s, other);
+            return Value.initInteger(switch (result) { .lt => -1, .eq => 0, .gt => 1 });
+        } else if (std.mem.eql(u8, method, "concat")) {
+            if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".concat expects 1 arg", .{});
+            const other = rest[0].asString();
+            const buf = try allocator.alloc(u8, s.len + other.len);
+            @memcpy(buf[0..s.len], s);
+            @memcpy(buf[s.len..], other);
+            return Value.initString(allocator, buf);
+        }
+    }
+
+    // Collection methods
+    if (std.mem.eql(u8, method, "size") or std.mem.eql(u8, method, "length")) {
+        // count works on any countable
+        const count_fn = @import("collections.zig").countFn;
+        return count_fn(allocator, &.{obj});
+    }
+
+    return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} found for {s}", .{ method, @tagName(obj.tag()) });
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "str",
@@ -405,6 +506,13 @@ pub const builtins = [_]BuiltinDef{
         .doc = "Returns a Keyword with the given namespace and name if one is already interned. Otherwise returns nil.",
         .arglists = "([name] [ns name])",
         .added = "1.3",
+    },
+    .{
+        .name = "__java-method",
+        .func = &javaMethodFn,
+        .doc = "Java instance method interop. (.method obj args...) is rewritten to (__java-method \"method\" obj args...).",
+        .arglists = "([method-name obj & args])",
+        .added = "1.0",
     },
 };
 

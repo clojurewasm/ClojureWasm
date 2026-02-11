@@ -199,6 +199,25 @@ pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initList(l);
 }
 
+/// Pattern.quote — escapes a string so it can be used as a literal in a regex.
+fn regexQuoteFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __regex-quote", .{args.len});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "__regex-quote expects a string", .{});
+    const s = args[0].asString();
+    // Escape regex metacharacters: \.[]{}()*+?^$|
+    var result: std.ArrayList(u8) = .empty;
+    for (s) |c| {
+        switch (c) {
+            '.', '[', ']', '{', '}', '(', ')', '*', '+', '?', '^', '$', '|', '\\' => {
+                result.append(allocator, '\\') catch return error.OutOfMemory;
+            },
+            else => {},
+        }
+        result.append(allocator, c) catch return error.OutOfMemory;
+    }
+    return Value.initString(allocator, try result.toOwnedSlice(allocator));
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "re-pattern",
@@ -240,6 +259,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &reGroupsFn,
         .doc = "Returns the groups from the most recent match/find. If there are no nested groups, returns a string of the entire match. If there are nested groups, returns a vector of the groups, the first element being the entire match.",
         .arglists = "([m])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__regex-quote",
+        .func = &regexQuoteFn,
+        .doc = "Escapes a string so it can be used as a literal pattern in a regex (Pattern.quote equivalent).",
+        .arglists = "([s])",
         .added = "1.0",
     },
 };

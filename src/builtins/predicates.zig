@@ -354,48 +354,8 @@ pub fn satisfiesPred(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to satisfies?", .{args.len});
     if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "satisfies? expects a protocol, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
-    const type_key = Value.initString(allocator, switch (args[1].tag()) {
-        .nil => "nil",
-        .boolean => "boolean",
-        .integer => "integer",
-        .float => "float",
-        .char => "char",
-        .string => "string",
-        .symbol => "symbol",
-        .keyword => "keyword",
-        .list => "list",
-        .vector => "vector",
-        .map => "map",
-        .hash_map => "map",
-        .set => "set",
-        .fn_val, .builtin_fn => "function",
-        .atom => "atom",
-        .volatile_ref => "volatile",
-        .regex => "regex",
-        .protocol => "protocol",
-        .protocol_fn => "protocol_fn",
-        .multi_fn => "multi_fn",
-        .lazy_seq => "lazy_seq",
-        .cons => "cons",
-        .var_ref => "var",
-        .delay => "delay",
-        .future => "future",
-        .promise => "promise",
-        .reduced => "reduced",
-        .transient_vector => "transient_vector",
-        .transient_map => "transient_map",
-        .transient_set => "transient_set",
-        .chunked_cons => "chunked_cons",
-        .chunk_buffer => "chunk_buffer",
-        .array_chunk => "array_chunk",
-        .wasm_module => "wasm_module",
-        .wasm_fn => "wasm_fn",
-        .matcher => "matcher",
-        .array => "array",
-        .big_int => "big_int",
-        .ratio => "ratio",
-        .big_decimal => "big_decimal",
-    });
+    const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
+    const type_key = Value.initString(allocator, TreeWalk.valueTypeKey(args[1]));
     return Value.initBoolean(protocol.impls.get(type_key) != null);
 }
 
@@ -415,53 +375,12 @@ fn mapSymbolToTypeKey(name: []const u8) []const u8 {
     if (std.mem.eql(u8, name, "Atom")) return "atom";
     if (std.mem.eql(u8, name, "Volatile")) return "volatile";
     if (std.mem.eql(u8, name, "Pattern")) return "regex";
+    if (std.mem.eql(u8, name, "Character")) return "char";
     return name;
 }
 
 /// Map a Value's runtime type to its protocol type key string.
-fn valueTypeKey(val: Value) []const u8 {
-    return switch (val.tag()) {
-        .nil => "nil",
-        .boolean => "boolean",
-        .integer => "integer",
-        .float => "float",
-        .char => "char",
-        .string => "string",
-        .symbol => "symbol",
-        .keyword => "keyword",
-        .list => "list",
-        .vector => "vector",
-        .map, .hash_map => "map",
-        .set => "set",
-        .fn_val, .builtin_fn => "function",
-        .atom => "atom",
-        .volatile_ref => "volatile",
-        .regex => "regex",
-        .protocol => "protocol",
-        .protocol_fn => "protocol_fn",
-        .multi_fn => "multi_fn",
-        .lazy_seq => "lazy_seq",
-        .cons => "cons",
-        .var_ref => "var",
-        .delay => "delay",
-        .future => "future",
-        .promise => "promise",
-        .reduced => "reduced",
-        .transient_vector => "transient_vector",
-        .transient_map => "transient_map",
-        .transient_set => "transient_set",
-        .chunked_cons => "chunked_cons",
-        .chunk_buffer => "chunk_buffer",
-        .array_chunk => "array_chunk",
-        .wasm_module => "wasm_module",
-        .wasm_fn => "wasm_fn",
-        .matcher => "matcher",
-        .array => "array",
-        .big_int => "big_int",
-        .ratio => "ratio",
-        .big_decimal => "big_decimal",
-    };
-}
+const valueTypeKey = @import("../evaluator/tree_walk.zig").TreeWalk.valueTypeKey;
 
 /// (extenders protocol) — Returns a collection of types explicitly extended to protocol.
 fn extendersFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -971,6 +890,121 @@ fn specialSymbolPred(_: Allocator, args: []const Value) anyerror!Value {
     return Value.false_val;
 }
 
+/// (__instance? class-name-string value) — Java class compatibility layer.
+/// Maps Java class names to CW type checks. Used by analyzer rewrite of (instance? Class x).
+fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __instance?", .{args.len});
+    const x = args[1];
+    const tag = x.tag();
+
+    // Keyword-based type check (CW-specific: (instance? :integer 42))
+    if (args[0].tag() == .keyword) {
+        const type_kw = args[0].asKeyword().name;
+        const type_name: []const u8 = switch (tag) {
+            .nil => "nil",
+            .boolean => "boolean",
+            .integer => "integer",
+            .float => "float",
+            .string => "string",
+            .keyword => "keyword",
+            .symbol => "symbol",
+            .list => "list",
+            .vector => "vector",
+            .map, .hash_map => "map",
+            .set => "set",
+            .fn_val, .builtin_fn => "function",
+            else => "",
+        };
+        return Value.initBoolean(std.mem.eql(u8, type_kw, type_name));
+    }
+
+    if (args[0].tag() != .string) return Value.false_val;
+    const class_name = args[0].asString();
+
+    // Match Java class names to CW type tags
+    if (std.mem.eql(u8, class_name, "String") or std.mem.eql(u8, class_name, "java.lang.String"))
+        return Value.initBoolean(tag == .string);
+    if (std.mem.eql(u8, class_name, "Boolean") or std.mem.eql(u8, class_name, "java.lang.Boolean"))
+        return Value.initBoolean(tag == .boolean);
+    if (std.mem.eql(u8, class_name, "Number") or std.mem.eql(u8, class_name, "java.lang.Number"))
+        return Value.initBoolean(tag == .integer or tag == .float or tag == .big_int or tag == .big_decimal or tag == .ratio);
+    if (std.mem.eql(u8, class_name, "Long") or std.mem.eql(u8, class_name, "java.lang.Long") or
+        std.mem.eql(u8, class_name, "Integer") or std.mem.eql(u8, class_name, "java.lang.Integer"))
+        return Value.initBoolean(tag == .integer);
+    if (std.mem.eql(u8, class_name, "Double") or std.mem.eql(u8, class_name, "java.lang.Double") or
+        std.mem.eql(u8, class_name, "Float") or std.mem.eql(u8, class_name, "java.lang.Float"))
+        return Value.initBoolean(tag == .float);
+    if (std.mem.eql(u8, class_name, "Character") or std.mem.eql(u8, class_name, "java.lang.Character"))
+        return Value.initBoolean(tag == .char);
+
+    // Clojure lang types
+    if (std.mem.eql(u8, class_name, "clojure.lang.Keyword"))
+        return Value.initBoolean(tag == .keyword);
+    if (std.mem.eql(u8, class_name, "clojure.lang.Symbol"))
+        return Value.initBoolean(tag == .symbol);
+    if (std.mem.eql(u8, class_name, "clojure.lang.IPersistentMap") or
+        std.mem.eql(u8, class_name, "clojure.lang.PersistentHashMap") or
+        std.mem.eql(u8, class_name, "clojure.lang.PersistentArrayMap"))
+        return Value.initBoolean(tag == .map or tag == .hash_map);
+    if (std.mem.eql(u8, class_name, "clojure.lang.IPersistentVector") or
+        std.mem.eql(u8, class_name, "clojure.lang.PersistentVector"))
+        return Value.initBoolean(tag == .vector);
+    if (std.mem.eql(u8, class_name, "clojure.lang.IPersistentSet") or
+        std.mem.eql(u8, class_name, "clojure.lang.PersistentHashSet"))
+        return Value.initBoolean(tag == .set);
+    if (std.mem.eql(u8, class_name, "clojure.lang.IPersistentList") or
+        std.mem.eql(u8, class_name, "clojure.lang.PersistentList"))
+        return Value.initBoolean(tag == .list);
+    if (std.mem.eql(u8, class_name, "clojure.lang.ISeq"))
+        return Value.initBoolean(tag == .list or tag == .cons or tag == .lazy_seq or tag == .chunked_cons);
+    if (std.mem.eql(u8, class_name, "clojure.lang.IFn") or
+        std.mem.eql(u8, class_name, "clojure.lang.Fn") or
+        std.mem.eql(u8, class_name, "clojure.lang.AFn"))
+        return Value.initBoolean(tag == .fn_val or tag == .builtin_fn);
+    if (std.mem.eql(u8, class_name, "clojure.lang.Atom"))
+        return Value.initBoolean(tag == .atom);
+    if (std.mem.eql(u8, class_name, "clojure.lang.Var"))
+        return Value.initBoolean(tag == .var_ref);
+    if (std.mem.eql(u8, class_name, "clojure.lang.Delay"))
+        return Value.initBoolean(tag == .delay);
+    if (std.mem.eql(u8, class_name, "clojure.lang.MapEntry"))
+        return Value.initBoolean(tag == .vector); // MapEntry is a vector in CW
+    if (std.mem.eql(u8, class_name, "clojure.lang.IEditableCollection"))
+        return Value.initBoolean(tag == .map or tag == .hash_map or tag == .vector or tag == .set);
+    if (std.mem.eql(u8, class_name, "clojure.lang.ITransientCollection"))
+        return Value.initBoolean(tag == .transient_map or tag == .transient_vector or tag == .transient_set);
+    if (std.mem.eql(u8, class_name, "clojure.lang.PersistentQueue"))
+        return Value.false_val; // Not implemented in CW
+    if (std.mem.eql(u8, class_name, "clojure.lang.LazySeq"))
+        return Value.initBoolean(tag == .lazy_seq);
+
+    // Java exception types — CW exceptions are maps with :__ex_info key
+    if (std.mem.eql(u8, class_name, "Throwable") or std.mem.eql(u8, class_name, "java.lang.Throwable") or
+        std.mem.eql(u8, class_name, "Exception") or std.mem.eql(u8, class_name, "java.lang.Exception") or
+        std.mem.eql(u8, class_name, "RuntimeException") or std.mem.eql(u8, class_name, "java.lang.RuntimeException"))
+    {
+        if (tag == .map) {
+            const m = x.asMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_info" });
+            return Value.initBoolean(m.get(key) != null);
+        } else if (tag == .hash_map) {
+            const m = x.asHashMap();
+            const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_info" });
+            return Value.initBoolean(m.get(key) != null);
+        }
+        return Value.false_val;
+    }
+
+    // Java utility types
+    if (std.mem.eql(u8, class_name, "java.util.regex.Pattern"))
+        return Value.initBoolean(tag == .regex);
+    if (std.mem.eql(u8, class_name, "java.util.UUID"))
+        return Value.false_val; // UUID not a distinct type in CW
+
+    // Unknown class: return false
+    return Value.false_val;
+}
+
 // ============================================================
 // BuiltinDef table
 // ============================================================
@@ -1041,6 +1075,7 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "__delay-realized?", .func = &delayRealizedPred, .doc = "Returns true if a delay has been realized.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "__lazy-seq-realized?", .func = &lazySeqRealizedPred, .doc = "Returns true if a lazy-seq has been realized.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "__promise-realized?", .func = &promiseRealizedPred, .doc = "Returns true if a promise has been delivered.", .arglists = "([x])", .added = "1.1" },
+    .{ .name = "__instance?", .func = &instanceCheckFn, .doc = "Check if x is an instance of the named class.", .arglists = "([class-name x])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -1291,9 +1326,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 65 entries" {
-    // 64 + 1 (__promise-realized?)
-    try testing.expectEqual(65, builtins.len);
+test "builtins table has 66 entries" {
+    // 65 + 1 (__instance?)
+    try testing.expectEqual(66, builtins.len);
 }
 
 test "builtins all have func" {

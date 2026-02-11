@@ -2045,7 +2045,23 @@ fn valueTypeKey(val: Value) []const u8 {
         .keyword => "keyword",
         .list => "list",
         .vector => "vector",
-        .map, .hash_map => "map",
+        .map => blk: {
+            // Check for reified object: small map with :__reify_type key
+            const entries = val.asMap().entries;
+            var idx: usize = 0;
+            while (idx + 1 < entries.len) : (idx += 2) {
+                if (entries[idx].tag() == .keyword) {
+                    const kw = entries[idx].asKeyword();
+                    if (kw.ns == null and std.mem.eql(u8, kw.name, "__reify_type")) {
+                        if (entries[idx + 1].tag() == .string) {
+                            break :blk entries[idx + 1].asString();
+                        }
+                    }
+                }
+            }
+            break :blk "map";
+        },
+        .hash_map => "map",
         .set => "set",
         .fn_val, .builtin_fn => "function",
         .atom => "atom",

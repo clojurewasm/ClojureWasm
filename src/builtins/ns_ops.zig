@@ -225,48 +225,52 @@ fn loadResource(allocator: Allocator, env: *@import("../runtime/env.zig").Env, r
     const saved_ns = env.current_ns;
 
     for (load_paths) |base| {
+        // Try .clj first, then .cljc (reader conditional files)
+        const extensions = [_][]const u8{ ".clj", ".cljc" };
         var buf: [4096]u8 = undefined;
-        const full_path = std.fmt.bufPrint(&buf, "{s}/{s}.clj", .{ base, resource }) catch continue;
+        for (extensions) |ext| {
+            const full_path = std.fmt.bufPrint(&buf, "{s}/{s}{s}", .{ base, resource, ext }) catch continue;
 
-        const cwd = std.fs.cwd();
-        if (cwd.openFile(full_path, .{})) |file| {
-            defer file.close();
-            const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
+            const cwd = std.fs.cwd();
+            if (cwd.openFile(full_path, .{})) |file| {
+                defer file.close();
+                const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch continue;
 
-            // Dupe content for build tracking before evaluation (content
-            // allocated by GC allocator may not survive evaluation).
-            var tracked_content: ?[]const u8 = null;
-            if (track_loaded_files) {
-                if (loaded_libs_allocator) |tracking_alloc| {
-                    tracked_content = tracking_alloc.dupe(u8, content) catch null;
+                // Dupe content for build tracking before evaluation (content
+                // allocated by GC allocator may not survive evaluation).
+                var tracked_content: ?[]const u8 = null;
+                if (track_loaded_files) {
+                    if (loaded_libs_allocator) |tracking_alloc| {
+                        tracked_content = tracking_alloc.dupe(u8, content) catch null;
+                    }
                 }
-            }
 
-            _ = bootstrap.evalString(allocator, env, content) catch {
+                _ = bootstrap.evalString(allocator, env, content) catch {
+                    env.current_ns = saved_ns;
+                    bootstrap.syncNsVar(env);
+                    if (tracked_content) |tc| {
+                        if (loaded_libs_allocator) |ta| ta.free(tc);
+                    }
+                    err.ensureInfoSet(.eval, .internal_error, .{}, "error loading resource: {s}", .{resource});
+                    return error.EvalError;
+                };
+
+                // Record AFTER evaluation so nested deps are recorded first
+                // (depth-first order: lib.util.math before lib.core).
+                if (tracked_content) |tc| {
+                    if (loaded_libs_allocator) |tracking_alloc| {
+                        ns_mutex.lock();
+                        defer ns_mutex.unlock();
+                        loaded_file_records.append(tracking_alloc, .{ .content = tc }) catch {};
+                    }
+                }
+
                 env.current_ns = saved_ns;
                 bootstrap.syncNsVar(env);
-                if (tracked_content) |tc| {
-                    if (loaded_libs_allocator) |ta| ta.free(tc);
-                }
-                err.ensureInfoSet(.eval, .internal_error, .{}, "error loading resource: {s}", .{resource});
-                return error.EvalError;
-            };
-
-            // Record AFTER evaluation so nested deps are recorded first
-            // (depth-first order: lib.util.math before lib.core).
-            if (tracked_content) |tc| {
-                if (loaded_libs_allocator) |tracking_alloc| {
-                    ns_mutex.lock();
-                    defer ns_mutex.unlock();
-                    loaded_file_records.append(tracking_alloc, .{ .content = tc }) catch {};
-                }
+                return true;
+            } else |_| {
+                continue;
             }
-
-            env.current_ns = saved_ns;
-            bootstrap.syncNsVar(env);
-            return true;
-        } else |_| {
-            continue;
         }
     }
 
@@ -459,8 +463,21 @@ fn setNsDocFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Also refers all clojure.core vars into the new namespace.
 pub fn inNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to in-ns", .{args.len});
-    const name = switch (args[0].tag()) {
-        .symbol => args[0].asSymbol().name,
+    // Handle (with-meta sym meta-map) from reader ^:meta syntax on ns name
+    const arg = blk: {
+        if (args[0].tag() == .list) {
+            const items = args[0].asList().items;
+            if (items.len == 3 and items[0].tag() == .symbol) {
+                const sym = items[0].asSymbol();
+                if (std.mem.eql(u8, sym.name, "with-meta") and sym.ns == null) {
+                    break :blk items[1]; // unwrap to inner symbol
+                }
+            }
+        }
+        break :blk args[0];
+    };
+    const name = switch (arg.tag()) {
+        .symbol => arg.asSymbol().name,
         else => return err.setErrorFmt(.eval, .type_error, .{}, "in-ns expects a symbol, got {s}", .{@tagName(args[0].tag())}),
     };
     const env = bootstrap.macro_eval_env orelse {

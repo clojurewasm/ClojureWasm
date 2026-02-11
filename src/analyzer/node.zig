@@ -199,6 +199,18 @@ pub const ExtendMethodNode = struct {
     fn_node: *FnNode,
 };
 
+/// Protocol implementation block within a reify.
+pub const ReifyProtocol = struct {
+    protocol_name: []const u8,
+    methods: []const ExtendMethodNode,
+};
+
+/// reify: (reify Protocol1 (method1 [args] body) ... Protocol2 ...)
+pub const ReifyNode = struct {
+    protocols: []const ReifyProtocol,
+    source: SourceInfo,
+};
+
 // -- Multimethods --
 
 /// defmulti: (defmulti name dispatch-fn & options)
@@ -296,6 +308,7 @@ pub const Node = union(enum) {
     // Protocols
     defprotocol_node: *DefProtocolNode,
     extend_type_node: *ExtendTypeNode,
+    reify_node: *ReifyNode,
 
     // Multimethods
     defmulti_node: *DefMultiNode,
@@ -328,6 +341,7 @@ pub const Node = union(enum) {
             .try_node => |n| n.source,
             .defprotocol_node => |n| n.source,
             .extend_type_node => |n| n.source,
+            .reify_node => |n| n.source,
             .defmulti_node => |n| n.source,
             .defmethod_node => |n| n.source,
             .lazy_seq_node => |n| n.source,
@@ -356,6 +370,7 @@ pub const Node = union(enum) {
             .try_node => "try",
             .defprotocol_node => "defprotocol",
             .extend_type_node => "extend-type",
+            .reify_node => "reify",
             .defmulti_node => "defmulti",
             .defmethod_node => "defmethod",
             .lazy_seq_node => "lazy-seq",

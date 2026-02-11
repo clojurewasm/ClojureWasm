@@ -186,6 +186,8 @@ pub fn getThreadBinding(v: *const Var) ?Value {
 }
 
 /// set! — mutate the current frame's binding for a Var.
+/// If a thread binding exists, mutates it. Otherwise, for dynamic vars,
+/// sets the root binding (matching JVM Clojure top-level set! behavior).
 pub fn setThreadBinding(v: *Var, new_val: Value) !void {
     var frame = current_frame;
     while (frame) |f| {
@@ -196,6 +198,11 @@ pub fn setThreadBinding(v: *Var, new_val: Value) !void {
             }
         }
         frame = f.prev;
+    }
+    // No thread binding — set root for dynamic vars (top-level set!)
+    if (v.dynamic) {
+        v.root = new_val;
+        return;
     }
     return err_mod.setErrorFmt(.eval, .value_error, .{}, "Can't change/establish root binding of: {s}", .{v.sym.name});
 }
@@ -305,8 +312,17 @@ test "Var set! within binding" {
     try std.testing.expect(v.deref().eql(Value.initInteger(1)));
 }
 
-test "Var set! outside binding is error" {
+test "Var set! outside binding sets root for dynamic vars" {
     var v = Var{ .sym = .{ .name = "*x*", .ns = null }, .ns_name = "user", .dynamic = true };
+    v.bindRoot(Value.initInteger(1));
+
+    // Dynamic vars: set! without thread binding sets root (JVM top-level behavior)
+    try setThreadBinding(&v, Value.initInteger(99));
+    try std.testing.expectEqual(@as(i64, 99), v.root.asInteger());
+}
+
+test "Var set! outside binding is error for non-dynamic vars" {
+    var v = Var{ .sym = .{ .name = "x", .ns = null }, .ns_name = "user", .dynamic = false };
     v.bindRoot(Value.initInteger(1));
 
     try std.testing.expectError(error.ValueError, setThreadBinding(&v, Value.initInteger(99)));

@@ -247,6 +247,7 @@ pub const TreeWalk = struct {
             .try_node => |try_n| self.runTry(try_n),
             .defprotocol_node => |dp_n| self.runDefprotocol(dp_n),
             .extend_type_node => |et_n| self.runExtendType(et_n),
+            .reify_node => |r_n| self.runReify(r_n),
             .defmulti_node => |dm_n| self.runDefmulti(dm_n),
             .defmethod_node => |dm_n| self.runDefmethod(dm_n),
             .lazy_seq_node => |ls_n| self.runLazySeq(ls_n),
@@ -942,6 +943,57 @@ pub const TreeWalk = struct {
         return Value.nil_val;
     }
 
+    /// Global counter for unique reify type names.
+    var reify_counter: u64 = 0;
+
+    fn runReify(self: *TreeWalk, r_n: *const node_mod.ReifyNode) TreeWalkError!Value {
+        const env = self.env orelse return error.UndefinedVar;
+        const ns = env.current_ns orelse return error.UndefinedVar;
+
+        // Generate unique type key
+        reify_counter += 1;
+        const type_key = std.fmt.allocPrint(self.allocator, "__reify_{d}", .{reify_counter}) catch return error.OutOfMemory;
+
+        // Register each protocol's methods under the unique type key
+        for (r_n.protocols) |proto_block| {
+            const proto_var = ns.resolve(proto_block.protocol_name) orelse {
+                err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{proto_block.protocol_name});
+                return error.UndefinedVar;
+            };
+            const proto_val = proto_var.deref();
+            if (proto_val.tag() != .protocol) return error.TypeError;
+            const protocol = proto_val.asProtocol();
+
+            // Build method map
+            const method_count = proto_block.methods.len;
+            const entries = self.allocator.alloc(Value, method_count * 2) catch return error.OutOfMemory;
+            for (proto_block.methods, 0..) |method, i| {
+                entries[i * 2] = Value.initString(self.allocator, method.name);
+                entries[i * 2 + 1] = try self.makeClosure(method.fn_node);
+            }
+            const method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+            method_map.* = .{ .entries = entries };
+
+            // Add to protocol impls
+            const old_impls = protocol.impls;
+            const new_entries = self.allocator.alloc(Value, old_impls.entries.len + 2) catch return error.OutOfMemory;
+            @memcpy(new_entries[0..old_impls.entries.len], old_impls.entries);
+            new_entries[old_impls.entries.len] = Value.initString(self.allocator, type_key);
+            new_entries[old_impls.entries.len + 1] = Value.initMap(method_map);
+            const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+            new_impls.* = .{ .entries = new_entries };
+            protocol.impls = new_impls;
+        }
+
+        // Create reified object: a map with __type key
+        const obj_entries = self.allocator.alloc(Value, 2) catch return error.OutOfMemory;
+        obj_entries[0] = Value.initKeyword(self.allocator, .{ .ns = null, .name = "__reify_type" });
+        obj_entries[1] = Value.initString(self.allocator, type_key);
+        const obj_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+        obj_map.* = .{ .entries = obj_entries };
+        return Value.initMap(obj_map);
+    }
+
     /// Map user-facing type name to internal type key.
     fn mapTypeKey(type_name: []const u8) []const u8 {
         if (std.mem.eql(u8, type_name, "String")) return "string";
@@ -958,6 +1010,7 @@ pub const TreeWalk = struct {
         if (std.mem.eql(u8, type_name, "Atom")) return "atom";
         if (std.mem.eql(u8, type_name, "Volatile")) return "volatile";
         if (std.mem.eql(u8, type_name, "Pattern")) return "regex";
+        if (std.mem.eql(u8, type_name, "Character")) return "char";
         // Default: use as-is (for custom record types)
         return type_name;
     }
@@ -975,7 +1028,23 @@ pub const TreeWalk = struct {
             .keyword => "keyword",
             .list => "list",
             .vector => "vector",
-            .map, .hash_map => "map",
+            .map => blk: {
+                // Check for reified object: small map with :__reify_type key
+                const entries = val.asMap().entries;
+                var idx: usize = 0;
+                while (idx + 1 < entries.len) : (idx += 2) {
+                    if (entries[idx].tag() == .keyword) {
+                        const kw = entries[idx].asKeyword();
+                        if (kw.ns == null and std.mem.eql(u8, kw.name, "__reify_type")) {
+                            if (entries[idx + 1].tag() == .string) {
+                                break :blk entries[idx + 1].asString();
+                            }
+                        }
+                    }
+                }
+                break :blk "map";
+            },
+            .hash_map => "map",
             .set => "set",
             .fn_val, .builtin_fn => "function",
             .atom => "atom",

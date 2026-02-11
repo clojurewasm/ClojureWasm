@@ -31,20 +31,27 @@ Phase 49: v0.3.0-alpha — Compatibility
 
 ## Current Task
 
-49.3: Quick-win skip recovery pass.
-- Add stub dynamic vars: *agent*, *allow-unresolved-vars*, *reader-resolver*,
-  *suppress-read*, *compile-path*, *fn-loader*, *use-context-classloader*
-- Implement class? (always false — no Java class system)
-- Implement definline (simple macro → defn with inlining hint)
+49.4 (continued): Test more libraries (honeysql v2 next).
+- medley: 31 tests, 48 assertions — ALL PASS
+- camel-snake-kebab: 7 tests, 14 assertions — ALL PASS
+- Next: honeysql v2, editscript, or core.match
 
 ## Previous Task
 
-49.2: Upstream test expansion (concurrency tests).
-- Ported parallel.clj (2 upstream + 9 CLJW-ADD tests, 30 assertions)
-- Updated vars.clj: restored with-redefs-fn/with-redefs with future, added test-vars-apply-lazily
-- Fixed critical bug: thread pool internals allocated via GC allocator → page_allocator
-  (GC sweep was freeing thread handles, causing ESRCH on pthread_join)
-- 44 upstream test files total, sequences.clj CLJ-1633 segfault is pre-existing
+49.4: Library compat fixes — medley + CSK passing.
+Implemented 11 compatibility features:
+1. Type hints on fn params (^Type param unwrap)
+2. instance? as compiler special form with Java class mapping
+3. in-ns with-meta unwrap (^:no-doc ns)
+4. .cljc file loading support
+5. Octal character literals (\oNNN)
+6. set! for dynamic vars at top level
+7. .method Java instance method calls (→ __java-method builtin)
+8. Static method rewrites: String/, Pattern/, Integer/, Double/, Character/, Boolean/
+9. reify special form (protocol impl on anonymous objects)
+10. :import registers class short names as symbol vars
+11. with-meta type hint stripping in analyzer
+Also: common java.lang class defs, __regex-quote, Character type key
 
 ## Known Issues
 

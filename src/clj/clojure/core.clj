@@ -231,7 +231,20 @@
                             (list (apply list 'clojure.core/refer ''clojure.core
                                          (quote-vals args))))
 
-                          (= kw :import) nil  ; no-op: CW has no Java class imports
+                          ;; UPSTREAM-DIFF: import registers class short names as symbol vars
+                          (= kw :import)
+                          (mapcat (fn [spec]
+                                    (if (sequential? spec)
+                                      ;; (:import (package Class1 Class2))
+                                      (map (fn [c] `(def ~c '~c)) (rest spec))
+                                      ;; (:import full.Class) — extract short name
+                                      (let [s (str spec)
+                                            idx (clojure.string/last-index-of s ".")]
+                                        (if idx
+                                          (let [short (symbol (subs s (inc idx)))]
+                                            (list `(def ~short '~short)))
+                                          (list `(def ~spec '~spec))))))
+                                  args)
 
                           :else nil)))
         ref-forms (apply concat (map process-ref references))
@@ -1354,8 +1367,23 @@
 
 ;; Type introspection
 
-(defn instance? [t x]
-  (= t (type x)))
+;; instance? is a compiler special form → __instance? builtin
+
+;; UPSTREAM-DIFF: java.lang classes are auto-imported in JVM; CW defines as symbols
+(def String 'String)
+(def Character 'Character)
+(def Number 'Number)
+(def Integer 'Integer)
+(def Long 'Long)
+(def Double 'Double)
+(def Float 'Float)
+(def Boolean 'Boolean)
+(def Object 'Object)
+(def Throwable 'Throwable)
+(def Exception 'Exception)
+(def RuntimeException 'RuntimeException)
+(def Comparable 'Comparable)
+;; Supports both Java class names and CW keyword types
 
 ;; Simple stub; redefined with hierarchy support after global-hierarchy
 (defn isa? [child parent]
