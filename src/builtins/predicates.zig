@@ -21,6 +21,7 @@ const Env = @import("../runtime/env.zig").Env;
 const err = @import("../runtime/error.zig");
 const collections = @import("../runtime/collections.zig");
 const BigInt = collections.BigInt;
+const misc_mod = @import("misc.zig");
 const Ratio = collections.Ratio;
 
 /// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
@@ -543,9 +544,27 @@ fn extendFn(allocator: Allocator, args: []const Value) anyerror!Value {
 // ============================================================
 
 /// (hash x) — returns the hash code of x.
-pub fn hashFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn hashFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to hash", .{args.len});
-    return Value.initInteger(computeHash(args[0]));
+    // For seqable types that computeHash can't handle (lazy-seq, cons with lazy rest),
+    // realize and walk via seq operations
+    const v = args[0];
+    const tag = v.tag();
+    if (tag == .lazy_seq or tag == .cons or tag == .chunked_cons) {
+        const collections_mod = @import("collections.zig");
+        var h: i32 = 1;
+        var n: i32 = 0;
+        var s = try collections_mod.seqFn(allocator, &.{v});
+        while (!s.isNil()) {
+            const first = try collections_mod.firstFn(allocator, &.{s});
+            h = h *% 31 +% @as(i32, @truncate(computeHash(first)));
+            n += 1;
+            s = try collections_mod.restFn(allocator, &.{s});
+            s = try collections_mod.seqFn(allocator, &.{s});
+        }
+        return Value.initInteger(@as(i64, misc_mod.mixCollHash(h, n)));
+    }
+    return Value.initInteger(computeHash(v));
 }
 
 pub fn computeHash(v: Value) i64 {
@@ -587,6 +606,78 @@ pub fn computeHash(v: Value) i64 {
             }
             h = h *% 31 +% stringHash(sym.name);
             break :blk h;
+        },
+        .vector => blk: {
+            const items = v.asVector().items;
+            var h: i32 = 1;
+            for (items) |item| {
+                h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
+            }
+            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
+        },
+        .list => blk: {
+            const items = v.asList().items;
+            var h: i32 = 1;
+            for (items) |item| {
+                h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
+            }
+            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
+        },
+        .map => blk: {
+            const entries = v.asMap().entries;
+            var h: i32 = 0;
+            var i: usize = 0;
+            while (i + 1 < entries.len) : (i += 2) {
+                // Each map entry hashes as (hash-combine (hash k) (hash v))
+                const kh: i32 = @truncate(computeHash(entries[i]));
+                const vh: i32 = @truncate(computeHash(entries[i + 1]));
+                // Map entry hash: key ^ val (consistent with Clojure's MapEntry hash)
+                h +%= kh ^ vh;
+            }
+            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(entries.len / 2)));
+        },
+        .set => blk: {
+            const items = v.asSet().items;
+            var h: i32 = 0;
+            for (items) |item| {
+                h +%= @as(i32, @truncate(computeHash(item)));
+            }
+            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
+        },
+        .cons => blk: {
+            // Ordered hash: walk cons chain
+            var h: i32 = 1;
+            var n: i32 = 0;
+            var cur = v;
+            while (true) {
+                const tag = cur.tag();
+                if (tag == .cons) {
+                    const cell = cur.asCons();
+                    h = h *% 31 +% @as(i32, @truncate(computeHash(cell.first)));
+                    n += 1;
+                    cur = cell.rest;
+                } else if (tag == .list) {
+                    for (cur.asList().items) |item| {
+                        h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
+                        n += 1;
+                    }
+                    break;
+                } else if (tag == .nil) {
+                    break;
+                } else {
+                    // Unknown rest — fallback
+                    break;
+                }
+            }
+            break :blk @as(i64, misc_mod.mixCollHash(h, n));
+        },
+        .lazy_seq => blk: {
+            // If realized, hash the realized value; otherwise fallback
+            const ls = v.asLazySeq();
+            if (ls.realized) |realized| {
+                break :blk computeHash(realized);
+            }
+            break :blk 42;
         },
         else => 42,
     };

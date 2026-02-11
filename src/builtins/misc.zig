@@ -729,7 +729,7 @@ fn fmix(h: i32, length: i32) i32 {
     return h1;
 }
 
-fn mixCollHash(hash_val: i32, count: i32) i32 {
+pub fn mixCollHash(hash_val: i32, count: i32) i32 {
     var h1: i32 = 0; // seed
     const k1 = mixK1(hash_val);
     h1 = mixH1(h1, k1);
