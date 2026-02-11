@@ -2612,16 +2612,14 @@ pub const Analyzer = struct {
 fn isTypeHintMeta(form: Form) bool {
     if (form.data != .map) return false;
     const pairs = form.data.map;
-    var i: usize = 0;
-    while (i + 1 < pairs.len) : (i += 2) {
-        if (pairs[i].data == .keyword) {
-            const kw = pairs[i].data.keyword;
-            if (kw.ns == null and std.mem.eql(u8, kw.name, "tag")) {
-                return true;
-            }
-        }
-    }
-    return false;
+    // Only strip pure type hints: exactly {:tag <symbol>}
+    // Preserve user metadata like {:tag :keyword}, {:tag :test, :other val}
+    if (pairs.len != 2) return false; // must be exactly one key-value pair
+    if (pairs[0].data != .keyword) return false;
+    const kw = pairs[0].data.keyword;
+    if (kw.ns != null or !std.mem.eql(u8, kw.name, "tag")) return false;
+    // Value must be a symbol (type name like String, long, etc.)
+    return pairs[1].data == .symbol;
 }
 
 // === formToValue (for quote) ===
