@@ -233,8 +233,8 @@ pub const Tokenizer = struct {
             }
         }
 
-        // Unterminated regex
-        const len: u16 = @intCast(self.pos - start);
+        // Unterminated regex — cap length to avoid u16 overflow
+        const len: u16 = @intCast(@min(self.pos - start, std.math.maxInt(u16)));
         return .{ .kind = .invalid, .start = start, .len = len, .line = start_line, .column = start_col };
     }
 
@@ -285,8 +285,8 @@ pub const Tokenizer = struct {
             }
         }
 
-        // Unterminated string
-        const len: u16 = @intCast(self.pos - start);
+        // Unterminated string — cap length to avoid u16 overflow
+        const len: u16 = @intCast(@min(self.pos - start, std.math.maxInt(u16)));
         return .{ .kind = .invalid, .start = start, .len = len, .line = start_line, .column = start_col };
     }
 

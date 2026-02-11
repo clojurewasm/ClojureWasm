@@ -164,7 +164,8 @@ pub const Reader = struct {
 
         // Hex, radix, octal: convert to decimal string via i64 parse
         // (BigInt overflow from these is extremely rare in practice)
-        if (s.len > 2 and s[0] == '0' and (s[1] == 'x' or s[1] == 'X')) {
+        if (s.len >= 2 and s[0] == '0' and (s[1] == 'x' or s[1] == 'X')) {
+            if (s.len == 2) return error.InvalidNumber; // "0x" with no digits
             // Hex — try i64 parse for base conversion
             const val = std.fmt.parseInt(i64, s[2..], 16) catch return error.InvalidNumber;
             return self.intToString(if (negative) -val else val);
@@ -180,7 +181,10 @@ pub const Reader = struct {
             return self.intToString(if (negative) -val else val);
         }
 
-        // Decimal: return text as-is (with sign if negative)
+        // Decimal: validate digits then return text as-is (with sign if negative)
+        for (s) |c| {
+            if (c < '0' or c > '9') return error.InvalidNumber;
+        }
         if (negative) {
             const buf = self.allocator.alloc(u8, s.len + 1) catch return error.OutOfMemory;
             buf[0] = '-';
@@ -208,7 +212,8 @@ pub const Reader = struct {
         }
 
         // Hex 0x
-        if (s.len > 2 and s[0] == '0' and (s[1] == 'x' or s[1] == 'X')) {
+        if (s.len >= 2 and s[0] == '0' and (s[1] == 'x' or s[1] == 'X')) {
+            if (s.len == 2) return error.InvalidNumber; // "0x" with no digits
             const val = std.fmt.parseInt(i64, s[2..], 16) catch return error.InvalidNumber;
             return if (negative) -val else val;
         }
@@ -351,6 +356,10 @@ pub const Reader = struct {
     fn readSymbol(self: *Reader, token: Token) ReadError!Form {
         const text = token.text(self.source);
         const sym = parseSymbol(text);
+        // Validate: foo/ (trailing slash with empty name) is invalid
+        if (sym.ns != null and sym.name.len == 0) {
+            return self.makeError(.syntax_error, "Invalid token", token);
+        }
         return Form{ .data = .{ .symbol = sym }, .line = token.line, .column = token.column };
     }
 
@@ -375,6 +384,10 @@ pub const Reader = struct {
             is_auto_resolve = true;
         }
         const sym = parseSymbol(text);
+        // Validate: :foo/ (trailing slash with empty name) is invalid
+        if (sym.ns != null and sym.name.len == 0) {
+            return self.makeError(.syntax_error, "Invalid token", token);
+        }
         return Form{ .data = .{ .keyword = .{
             .ns = sym.ns,
             .name = sym.name,
@@ -670,6 +683,7 @@ pub const Reader = struct {
                     has_rest.* = true;
                 } else if (s.name.len >= 2 and s.name[0] == '%') {
                     const num = std.fmt.parseInt(usize, s.name[1..], 10) catch return;
+                    if (num > 20) return; // Cap at %20 (Clojure convention)
                     if (num > max_param.*) max_param.* = num;
                 }
             },

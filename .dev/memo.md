@@ -21,24 +21,19 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 47: v0.1.0-alpha — Developer Experience
+Phase 47: v0.1.0-alpha COMPLETE (all 6 tasks done)
 
-1. ~~47.1: REPL improvements (multiline, color, ns prompt)~~ DONE
-2. ~~47.2: Error message improvements (source context, better formatting)~~ DONE
-3. ~~47.3: case* compiler special form (deferred from 38.4)~~ DONE
-4. ~~47.4: Missing quick-win vars (with-in-str, io!, with-precision)~~ DONE
-5. ~~47.5: Upstream test expansion (5+ additional test files)~~ DONE
-6. 47.6: Reader validation hardening
+Next: Phase 48: v0.2.0-alpha — Concurrency (requires planning)
 
 ## Current Task
 
-47.6: Reader validation hardening
+Phase 47 complete. Next: Phase 48 (Concurrency) — see roadmap.md
 
 ## Previous Task
 
-47.5: Upstream test expansion — 5 new test files (31 tests, 60 assertions):
-repl.clj (upstream), hierarchies_test.clj, vars_test.clj, namespaces_test.clj,
-io_test.clj (SCI-adapted). All pass on both VM + TreeWalk.
+47.6: Reader validation hardening — fixed 0x/0xG number errors, u16 overflow
+in unterminated strings/regex, trailing-slash keyword/symbol validation (:foo/),
+fn literal %N param cap at 20, decimal BigInt text validation.
 
 ## Known Issues
 
