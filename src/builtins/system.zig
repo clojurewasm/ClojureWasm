@@ -154,6 +154,14 @@ fn getSystemProperty(allocator: Allocator, key: []const u8) !?Value {
     return null;
 }
 
+/// (__available-processors) => integer
+/// Returns the number of available processors (CPU cores).
+fn availableProcessorsFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __available-processors", .{args.len});
+    const count = std.Thread.getCpuCount() catch 1;
+    return Value.initInteger(@intCast(count));
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "__nano-time",
@@ -188,6 +196,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &getPropertyFn,
         .doc = "Returns the system property value for the given key, or default if not found.",
         .arglists = "([key] [key default])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__available-processors",
+        .func = &availableProcessorsFn,
+        .doc = "Returns the number of available processors.",
+        .arglists = "([])",
         .added = "1.0",
     },
 };

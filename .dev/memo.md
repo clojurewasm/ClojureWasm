@@ -28,28 +28,26 @@ Phase 48: v0.2.0-alpha — Concurrency
 - [x] 48.2: GC thread safety (D94 — mutex + stop-the-world)
 - [x] 48.3: Thread pool infrastructure + per-thread evaluator
 - [x] 48.4: Future Value type + future/future-call/deref
-- [ ] 48.5: pmap, pcalls, pvalues
+- [x] 48.5: pmap, pcalls, pvalues
 - [ ] 48.6: promise + deliver
 
 ## Current Task
 
-48.5: pmap, pcalls, pvalues
+48.6: promise + deliver
 
 Plan:
-- Implement pmap (parallel map using futures + thread pool)
-- Implement pcalls (parallel function calls)
-- Implement pvalues (parallel value computation)
-- All are bootstrap Clojure, implemented on top of future-call
+- Implement promise (creates a deferred value)
+- Implement deliver (sets promise value)
+- Implement realized? for promise
+- promise uses FutureResult-like mechanism (mutex + cond var)
 
 ## Previous Task
 
-48.4: Future Value type + future/future-call/deref.
-- FutureObj: extern struct sharing delay NanHeapTag slot 18, DeferredKind discriminator
-- NO_VALUE sentinel (0xDEAD) for extern struct fields (replaces ?Value)
-- future-call, future?, future-done?, future-cancel, future-cancelled? builtins
-- future macro in bootstrap clj
-- deref supports 1-arity (blocking) and 3-arity (timeout) for futures
-- Thread pool shutdown wired into lifecycle.runShutdownHooks
+48.5: pmap, pcalls, pvalues.
+- pmap: bootstrap clj, parallel map using future + __available-processors
+- pcalls: bootstrap clj on pmap
+- pvalues: bootstrap clj macro on pcalls
+- __available-processors builtin in system.zig
 
 ## Known Issues
 

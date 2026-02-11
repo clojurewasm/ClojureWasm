@@ -465,10 +465,10 @@ vars:
     "partition-by": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     partitionv: {type: function, status: done}
     "partitionv-all": {type: function, status: done}
-    pcalls: {type: function, status: skip, note: Phase 44 — Zig thread pool}
+    pcalls: {type: function, status: done, note: "bootstrap clj on pmap"}
     peek: {type: function, status: done, note: "Zig builtin"}
     "persistent!": {type: function, status: done}
-    pmap: {type: function, status: skip, note: Phase 44 — Zig thread pool}
+    pmap: {type: function, status: done, note: "bootstrap clj (upstream is pure clj)"}
     pop: {type: function, status: done, note: "Zig builtin"}
     "pop!": {type: function, status: done}
     "pop-thread-bindings": {type: function, status: done}
@@ -498,7 +498,7 @@ vars:
     "proxy-name": {type: function, status: skip, note: JVM interop}
     "proxy-super": {type: macro, status: skip, note: JVM interop}
     "push-thread-bindings": {type: function, status: done}
-    pvalues: {type: macro, status: skip, note: Phase 44 — Zig thread pool}
+    pvalues: {type: macro, status: done, note: "bootstrap clj macro (upstream is pure clj)"}
     "qualified-ident?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "qualified-keyword?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "qualified-symbol?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}

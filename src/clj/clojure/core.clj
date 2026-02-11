@@ -2536,6 +2536,34 @@
 (defmacro future
   [& body] `(future-call (fn [] ~@body)))
 
+;; pmap — parallel map using futures
+(defn pmap
+  ([f coll]
+   (let [n (+ 2 (__available-processors))
+         rets (map (fn [x] (future (f x))) coll)
+         step (fn step [[x & xs :as vs] fs]
+                (lazy-seq
+                 (if-let [s (seq fs)]
+                   (cons (deref x) (step xs (rest s)))
+                   (map deref vs))))]
+     (step rets (drop n rets))))
+  ([f coll & colls]
+   (let [step (fn step [cs]
+                (lazy-seq
+                 (let [ss (map seq cs)]
+                   (when (every? identity ss)
+                     (cons (map first ss) (step (map rest ss)))))))]
+     (pmap (fn [args] (apply f args)) (step (cons coll colls))))))
+
+;; pcalls — parallel function calls
+(defn pcalls
+  [& fns] (pmap (fn [f] (f)) fns))
+
+;; pvalues — parallel value computation
+(defmacro pvalues
+  [& exprs]
+  `(pcalls ~@(map (fn [e] (list 'fn [] e)) exprs)))
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)
