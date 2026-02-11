@@ -676,6 +676,8 @@ fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []con
 /// A single dependency declaration from cljw.edn :deps.
 const Dep = struct {
     local_root: ?[]const u8 = null, // :local/root path
+    git_url: ?[]const u8 = null, // :git/url
+    git_sha: ?[]const u8 = null, // :git/sha
 };
 
 /// Parsed cljw.edn configuration.
@@ -774,7 +776,8 @@ fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
     return config;
 }
 
-/// Parse :deps map → slice of Dep. Format: {lib/name {:local/root "path"}, ...}
+/// Parse :deps map → slice of Dep.
+/// Formats: {:local/root "path"}, {:git/url "..." :git/sha "..."}
 fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
     const count = dep_entries.len / 2;
     if (count == 0) return &.{};
@@ -782,7 +785,7 @@ fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
     var n: usize = 0;
     var di: usize = 0;
     while (di + 1 < dep_entries.len) : (di += 2) {
-        // value must be a map: {:local/root "path"}
+        // value must be a map
         if (dep_entries[di + 1].data != .map) continue;
         const val_map = dep_entries[di + 1].data.map;
         var dep = Dep{};
@@ -790,16 +793,20 @@ fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
         while (vi + 1 < val_map.len) : (vi += 2) {
             if (val_map[vi].data == .keyword) {
                 const dk = val_map[vi].data.keyword;
-                if (dk.ns != null and std.mem.eql(u8, dk.ns.?, "local") and
-                    std.mem.eql(u8, dk.name, "root"))
-                {
-                    if (val_map[vi + 1].data == .string) {
-                        dep.local_root = val_map[vi + 1].data.string;
+                const ns = dk.ns orelse continue;
+                if (val_map[vi + 1].data == .string) {
+                    const val_str = val_map[vi + 1].data.string;
+                    if (std.mem.eql(u8, ns, "local") and std.mem.eql(u8, dk.name, "root")) {
+                        dep.local_root = val_str;
+                    } else if (std.mem.eql(u8, ns, "git") and std.mem.eql(u8, dk.name, "url")) {
+                        dep.git_url = val_str;
+                    } else if (std.mem.eql(u8, ns, "git") and std.mem.eql(u8, dk.name, "sha")) {
+                        dep.git_sha = val_str;
                     }
                 }
             }
         }
-        if (dep.local_root != null) {
+        if (dep.local_root != null or (dep.git_url != null and dep.git_sha != null)) {
             deps[n] = dep;
             n += 1;
         }
@@ -819,10 +826,12 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
             ns_ops.addLoadPath(path) catch {};
         }
     }
-    // Resolve local deps
+    // Resolve deps
     for (config.deps) |dep| {
         if (dep.local_root) |root| {
             resolveLocalDep(root, config_dir);
+        } else if (dep.git_url != null and dep.git_sha != null) {
+            resolveGitDep(dep.git_url.?, dep.git_sha.?);
         }
     }
 }
@@ -887,6 +896,131 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
             }
         }
     }
+}
+
+/// Resolve a :git/url + :git/sha dependency.
+/// Cache: ~/.cljw/gitlibs/_repos/<hash>.git (bare) and ~/.cljw/gitlibs/<hash>/<sha>/
+fn resolveGitDep(url: []const u8, sha: []const u8) void {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const alloc = std.heap.page_allocator;
+
+    // Compute URL hash for cache key (simple djb2)
+    var hash: u64 = 5381;
+    for (url) |c| hash = hash *% 33 +% c;
+    var hash_str: [20]u8 = undefined;
+    const hash_slice = std.fmt.bufPrint(&hash_str, "{x}", .{hash}) catch return;
+
+    // Get home directory
+    const home = std.process.getEnvVarOwned(alloc, "HOME") catch return;
+    defer alloc.free(home);
+
+    // Ensure cache directories exist
+    var repo_dir_buf: [4096]u8 = undefined;
+    const repo_dir = std.fmt.bufPrint(&repo_dir_buf, "{s}/.cljw/gitlibs/_repos/{s}.git", .{ home, hash_slice }) catch return;
+    var lib_dir_buf: [4096]u8 = undefined;
+    const lib_dir = std.fmt.bufPrint(&lib_dir_buf, "{s}/.cljw/gitlibs/{s}/{s}", .{ home, hash_slice, sha }) catch return;
+
+    // Check if already checked out
+    var marker_buf: [4096]u8 = undefined;
+    const marker = std.fmt.bufPrint(&marker_buf, "{s}/.cljw-resolved", .{lib_dir}) catch return;
+    if (std.fs.cwd().access(marker, .{})) |_| {
+        // Already resolved — just add paths
+        resolveLocalDep(lib_dir, null);
+        return;
+    } else |_| {}
+
+    _ = stderr.write("Fetching ") catch {};
+    _ = stderr.write(url) catch {};
+    _ = stderr.write(" ...\n") catch {};
+
+    // Clone or fetch bare repo
+    const repo_exists = if (std.fs.cwd().access(repo_dir, .{})) |_| true else |_| false;
+    if (!repo_exists) {
+        // Create parent directories
+        const repo_parent = std.fs.path.dirname(repo_dir) orelse return;
+        std.fs.cwd().makePath(repo_parent) catch {};
+
+        // Clone bare
+        var clone = std.process.Child.init(
+            &.{ "git", "clone", "--bare", "--quiet", url, repo_dir },
+            alloc,
+        );
+        clone.stderr_behavior = .Inherit;
+        clone.spawn() catch {
+            _ = stderr.write("Error: git clone failed\n") catch {};
+            return;
+        };
+        const clone_term = clone.wait() catch return;
+        if (clone_term.Exited != 0) {
+            _ = stderr.write("Error: git clone exited with error\n") catch {};
+            return;
+        }
+    } else {
+        // Fetch latest
+        var fetch = std.process.Child.init(
+            &.{ "git", "--git-dir", repo_dir, "fetch", "--quiet", "origin" },
+            alloc,
+        );
+        fetch.stderr_behavior = .Inherit;
+        fetch.spawn() catch return;
+        _ = fetch.wait() catch {};
+    }
+
+    // Extract archive at the requested sha
+    std.fs.cwd().makePath(lib_dir) catch {};
+
+    var archive = std.process.Child.init(
+        &.{ "git", "--git-dir", repo_dir, "archive", "--format=tar", sha },
+        alloc,
+    );
+    archive.stdout_behavior = .Pipe;
+    archive.stderr_behavior = .Inherit;
+    archive.spawn() catch {
+        _ = stderr.write("Error: git archive failed\n") catch {};
+        return;
+    };
+
+    var tar = std.process.Child.init(
+        &.{ "tar", "-x", "-C", lib_dir },
+        alloc,
+    );
+    tar.stdin_behavior = .Pipe;
+    tar.stderr_behavior = .Inherit;
+    tar.spawn() catch {
+        _ = archive.kill() catch {};
+        _ = stderr.write("Error: tar failed\n") catch {};
+        return;
+    };
+
+    // Pipe git archive stdout → tar stdin
+    const archive_stdout = archive.stdout orelse return;
+    const tar_stdin = tar.stdin orelse return;
+    var buf: [8192]u8 = undefined;
+    while (true) {
+        const n = archive_stdout.read(&buf) catch break;
+        if (n == 0) break;
+        tar_stdin.writeAll(buf[0..n]) catch break;
+    }
+    tar.stdin = null; // close stdin
+    // tar_stdin fd is already closed by the stdin = null assignment above
+
+    const archive_term = archive.wait() catch return;
+    const tar_term = tar.wait() catch return;
+
+    if (archive_term.Exited != 0 or tar_term.Exited != 0) {
+        _ = stderr.write("Error: failed to extract git archive for sha ") catch {};
+        _ = stderr.write(sha) catch {};
+        _ = stderr.write("\n") catch {};
+        return;
+    }
+
+    // Write marker file
+    if (std.fs.cwd().createFile(marker, .{})) |f| {
+        f.close();
+    } else |_| {}
+
+    // Resolve paths from the extracted dep
+    resolveLocalDep(lib_dir, null);
 }
 
 // === Error reporting (babashka-style) ===
