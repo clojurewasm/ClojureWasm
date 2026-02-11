@@ -146,8 +146,9 @@ pub const BindingFrame = struct {
     prev: ?*BindingFrame,
 };
 
-/// Global binding stack (single-thread — Wasm target).
-var current_frame: ?*BindingFrame = null;
+/// Per-thread binding stack. Each thread has its own binding frame chain.
+/// (Phase 48: was global var, now threadlocal for concurrency.)
+threadlocal var current_frame: ?*BindingFrame = null;
 
 /// Return the current binding frame (for GC root traversal).
 pub fn getCurrentBindingFrame() ?*BindingFrame {

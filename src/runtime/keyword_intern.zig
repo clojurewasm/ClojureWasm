@@ -17,8 +17,10 @@ const Value = value_mod.Value;
 
 /// Global keyword intern table.
 /// Keys are "ns/name" or "name" strings, owned by this table.
+/// Protected by mutex for thread-safe access.
 var table: std.StringArrayHashMapUnmanaged(void) = .empty;
 var intern_allocator: ?Allocator = null;
+var mutex: std.Thread.Mutex = .{};
 
 /// Initialize the intern table with an allocator.
 /// Must be called once before any intern/find operations.
@@ -42,6 +44,8 @@ pub fn deinit() void {
 pub fn intern(ns: ?[]const u8, name: []const u8) void {
     const alloc = intern_allocator orelse return;
     const key = formatKey(alloc, ns, name) catch return;
+    mutex.lock();
+    defer mutex.unlock();
     if (table.contains(key)) {
         alloc.free(key);
         return;
@@ -56,6 +60,8 @@ pub fn contains(ns: ?[]const u8, name: []const u8) bool {
     const alloc = intern_allocator orelse return false;
     const key = formatKey(alloc, ns, name) catch return false;
     defer alloc.free(key);
+    mutex.lock();
+    defer mutex.unlock();
     return table.contains(key);
 }
 

@@ -24,8 +24,8 @@ const BigInt = collections.BigInt;
 const Ratio = collections.Ratio;
 
 /// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
-/// Module-level (D3 known exception, single-thread only).
-pub var current_env: ?*Env = null;
+/// Per-thread for concurrency (Phase 48).
+pub threadlocal var current_env: ?*Env = null;
 
 // ============================================================
 // Implementations

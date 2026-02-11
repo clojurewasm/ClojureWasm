@@ -149,7 +149,8 @@ pub fn dumpOpcodeProfile() void {
 /// Active VM reference for fused reduce (builtins can call back into VM).
 /// Set during execute(), cleared on return. Enables efficient function
 /// calls from builtins without creating new VM instances.
-pub var active_vm: ?*VM = null;
+/// Per-thread for concurrency (Phase 48).
+pub threadlocal var active_vm: ?*VM = null;
 
 /// Whether JIT compilation is available on this platform.
 const enable_jit = builtin.cpu.arch == .aarch64;

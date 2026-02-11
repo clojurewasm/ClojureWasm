@@ -932,7 +932,8 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 
 /// Last exception value thrown by TreeWalk, for VM boundary crossing.
 /// VM reads this in dispatchErrorToHandler to avoid creating generic ExInfo.
-pub var last_thrown_exception: ?Value = null;
+/// Per-thread for concurrency (Phase 48).
+pub threadlocal var last_thrown_exception: ?Value = null;
 
 /// Execute a bytecode fn_val via a new VM instance.
 /// Heap-allocates the VM to avoid C stack overflow from recursive
@@ -967,7 +968,8 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 
 /// Env reference for macro expansion bridge. Set during evalString.
 /// Public so eval builtins (eval.zig) can access the current Env.
-pub var macro_eval_env: ?*Env = null;
+/// Per-thread for concurrency (Phase 48).
+pub threadlocal var macro_eval_env: ?*Env = null;
 
 // === AOT Compilation ===
 

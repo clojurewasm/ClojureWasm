@@ -307,8 +307,11 @@ const HostContext = struct {
 const MAX_CONTEXTS = 256;
 var host_contexts: [MAX_CONTEXTS]?HostContext = [_]?HostContext{null} ** MAX_CONTEXTS;
 var next_context_id: usize = 0;
+var context_mutex: std.Thread.Mutex = .{};
 
 fn allocContext(ctx: HostContext) !usize {
+    context_mutex.lock();
+    defer context_mutex.unlock();
     var id = next_context_id;
     var tried: usize = 0;
     while (tried < MAX_CONTEXTS) : ({
@@ -327,7 +330,12 @@ fn allocContext(ctx: HostContext) !usize {
 /// Trampoline: called by zwasm VM, invokes the Clojure function.
 fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
     const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
-    const ctx = host_contexts[context_id] orelse return error.Trap;
+    context_mutex.lock();
+    const ctx = host_contexts[context_id] orelse {
+        context_mutex.unlock();
+        return error.Trap;
+    };
+    context_mutex.unlock();
 
     var args_buf: [16]Value = undefined;
     const pc = ctx.param_count;

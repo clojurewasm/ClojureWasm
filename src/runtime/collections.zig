@@ -25,7 +25,8 @@ const testing = std.testing;
 /// a copy with geometric growth is needed to preserve persistent semantics.
 ///
 /// Monotonically increasing; never decremented or reset.
-pub var _vec_gen_counter: i64 = 0;
+/// Atomic for thread safety (Phase 48).
+pub var _vec_gen_counter: std.atomic.Value(i64) = std.atomic.Value(i64).init(0);
 
 /// Persistent list — array-backed for initial simplicity.
 pub const PersistentList = struct {

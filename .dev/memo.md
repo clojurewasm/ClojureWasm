@@ -24,7 +24,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 Phase 48: v0.2.0-alpha — Concurrency
 
 - [x] 48.0: Plan Phase 48 (audit + architectural decisions)
-- [ ] 48.1: Thread-safe global state (threadlocal/atomic conversions)
+- [x] 48.1: Thread-safe global state (threadlocal/atomic conversions)
 - [ ] 48.2: GC thread safety (D94 — mutex + stop-the-world)
 - [ ] 48.3: Thread pool infrastructure + per-thread evaluator
 - [ ] 48.4: Future Value type + future/future-call/deref
@@ -33,30 +33,23 @@ Phase 48: v0.2.0-alpha — Concurrency
 
 ## Current Task
 
-48.1: Thread-safe global state — convert module-level vars to threadlocal/atomic.
+48.2: GC thread safety — add mutex to MarkSweepGc for concurrent allocation,
+implement stop-the-world collection. Record as D94 architectural decision.
 
-Audit found ~25 unprotected module-level vars. Changes:
-- `var.zig: current_frame` → threadlocal (per-thread binding stack)
-- `misc.zig: gensym_counter` → atomic u64
-- `collections.zig: _vec_gen_counter` → atomic i64
-- `bootstrap.zig: last_thrown_exception` → threadlocal
-- `bootstrap.zig: macro_eval_env` → threadlocal
-- `io.zig: capture_buf/capture_alloc/capture_stack/input_stack` → threadlocal
-- `predicates.zig: current_env` → threadlocal
-- `keyword_intern.zig: table` → Mutex-protected
-- `arithmetic.zig: prng` → Mutex-protected
-- `vm.zig: active_vm` → threadlocal
-- `wasm/types.zig: host_contexts/next_context_id` → Mutex-protected
-- `ns_ops.zig: loaded_libs/loading_libs` → Mutex-protected
-- `main.zig: file_read_buf` → threadlocal
-
-No functional change — all existing tests must still pass.
+Plan:
+- Add std.Thread.Mutex to MarkSweepGc
+- Lock mutex in alloc/destroy paths
+- Collection: acquire mutex, stop other threads, mark+sweep, release
+- Thread registry: track spawned threads for stop-the-world coordination
+- Verify all existing tests still pass
 
 ## Previous Task
 
-47.6: Reader validation hardening — fixed 0x/0xG number errors, u16 overflow
-in unterminated strings/regex, trailing-slash keyword/symbol validation (:foo/),
-fn literal %N param cap at 20, decimal BigInt text validation.
+48.1: Thread-safe global state — converted ~16 module-level vars:
+threadlocal (current_frame, macro_eval_env, predicates.current_env,
+last_thrown_exception, io stacks, active_vm, file_read_buf),
+atomic (_vec_gen_counter, gensym_counter), mutex (keyword_intern.table,
+prng, host_contexts, loaded_libs/loading_libs).
 
 ## Known Issues
 

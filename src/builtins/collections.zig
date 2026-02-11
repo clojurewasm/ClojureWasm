@@ -239,14 +239,14 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
                     // Gen match: extend in-place — this vector owns the tail
                     const mutable_ptr: [*]Value = @constCast(vec.items.ptr);
                     mutable_ptr[vec.items.len] = x;
-                    collections_mod._vec_gen_counter += 1;
-                    mutable_ptr[vec._capacity] = Value.initInteger(collections_mod._vec_gen_counter);
+                    const new_gen = collections_mod._vec_gen_counter.fetchAdd(1, .monotonic) + 1;
+                    mutable_ptr[vec._capacity] = Value.initInteger(new_gen);
                     const new_vec = try allocator.create(PersistentVector);
                     new_vec.* = .{
                         .items = vec.items.ptr[0 .. vec.items.len + 1],
                         .meta = vec.meta,
                         ._capacity = vec._capacity,
-                        ._gen = collections_mod._vec_gen_counter,
+                        ._gen = new_gen,
                     };
                     return Value.initVector(new_vec);
                 }
@@ -257,14 +257,14 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             const backing = try allocator.alloc(Value, new_capacity + 1); // +1 for gen tag
             @memcpy(backing[0..old_len], vec.items);
             backing[old_len] = x;
-            collections_mod._vec_gen_counter += 1;
-            backing[new_capacity] = Value.initInteger(collections_mod._vec_gen_counter);
+            const new_gen = collections_mod._vec_gen_counter.fetchAdd(1, .monotonic) + 1;
+            backing[new_capacity] = Value.initInteger(new_gen);
             const new_vec = try allocator.create(PersistentVector);
             new_vec.* = .{
                 .items = backing[0 .. old_len + 1],
                 .meta = vec.meta,
                 ._capacity = new_capacity,
-                ._gen = collections_mod._vec_gen_counter,
+                ._gen = new_gen,
             };
             return Value.initVector(new_vec);
         },

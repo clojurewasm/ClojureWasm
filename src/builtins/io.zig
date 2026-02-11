@@ -29,8 +29,8 @@ const bootstrap = @import("../runtime/bootstrap.zig");
 // Output capture for testing
 // ============================================================
 
-var capture_buf: ?*std.ArrayList(u8) = null;
-var capture_alloc: ?Allocator = null;
+threadlocal var capture_buf: ?*std.ArrayList(u8) = null;
+threadlocal var capture_alloc: ?Allocator = null;
 
 /// Set an output capture buffer. Pass null to restore stdout.
 pub fn setOutputCapture(alloc: ?Allocator, buf: ?*std.ArrayList(u8)) void {
@@ -164,8 +164,8 @@ const CaptureState = struct {
     alloc: ?Allocator,
 };
 
-var capture_stack: [MAX_CAPTURE_DEPTH]CaptureState = [_]CaptureState{.{ .buf = null, .alloc = null }} ** MAX_CAPTURE_DEPTH;
-var capture_depth: usize = 0;
+threadlocal var capture_stack: [MAX_CAPTURE_DEPTH]CaptureState = [_]CaptureState{.{ .buf = null, .alloc = null }} ** MAX_CAPTURE_DEPTH;
+threadlocal var capture_depth: usize = 0;
 
 /// (push-output-capture) — start capturing output to a fresh buffer.
 fn pushOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -212,9 +212,9 @@ const InputSource = struct {
     pos: usize,
 };
 
-var input_stack: [MAX_CAPTURE_DEPTH]?InputSource = [_]?InputSource{null} ** MAX_CAPTURE_DEPTH;
-var input_depth: usize = 0;
-var current_input: ?InputSource = null;
+threadlocal var input_stack: [MAX_CAPTURE_DEPTH]?InputSource = [_]?InputSource{null} ** MAX_CAPTURE_DEPTH;
+threadlocal var input_depth: usize = 0;
+threadlocal var current_input: ?InputSource = null;
 
 /// (push-input-source s) — redirect read-line to read from string s.
 fn pushInputSourceFn(_: Allocator, args: []const Value) anyerror!Value {

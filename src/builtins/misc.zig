@@ -23,7 +23,7 @@ const bootstrap = @import("../runtime/bootstrap.zig");
 // gensym
 // ============================================================
 
-var gensym_counter: u64 = 0;
+var gensym_counter: std.atomic.Value(u64) = std.atomic.Value(u64).init(0);
 
 /// (gensym) => G__42
 /// (gensym prefix-string) => prefix42
@@ -35,12 +35,12 @@ pub fn gensymFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "gensym expects a string prefix, got {s}", .{@tagName(args[0].tag())}),
     } else "G__";
 
-    gensym_counter += 1;
+    const counter = gensym_counter.fetchAdd(1, .monotonic) + 1;
 
     var buf: [128]u8 = undefined;
     var w: std.Io.Writer = .fixed(&buf);
     try w.writeAll(prefix);
-    try w.print("{d}", .{gensym_counter});
+    try w.print("{d}", .{counter});
     const name = try allocator.dupe(u8, w.buffered());
     return Value.initSymbol(allocator, .{ .ns = null, .name = name });
 }

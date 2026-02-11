@@ -814,7 +814,7 @@ fn getSourceForLocation(location: err.SourceLocation) ?[]const u8 {
     return err.getSourceText();
 }
 
-var file_read_buf: [64 * 1024]u8 = undefined;
+threadlocal var file_read_buf: [64 * 1024]u8 = undefined;
 fn readFileForError(path: []const u8) ?[]const u8 {
     const file = std.fs.cwd().openFile(path, .{}) catch return null;
     defer file.close();
