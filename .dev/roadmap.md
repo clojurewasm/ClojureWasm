@@ -15,8 +15,8 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 ## Current Stats
 
-- **820+ vars** implemented (620/706 core, 16 namespaces)
-- **86 skip vars** remaining (70+ permanently JVM, ~16 implementable)
+- **830+ vars** implemented (633/706 core, 16 namespaces)
+- **73 skip vars** remaining (70+ permanently JVM, ~3 implementable)
 - **45 upstream test files**, all passing
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
 - **Wasm engine**: zwasm v0.1.0 (Register IR + ARM64 JIT, 1.3-10x of wasmtime)
@@ -82,6 +82,8 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 45     | Wasm Runtime Optimization                   | Predecoded IR, superinstrs, cached memory (2-3x)            |
 | 46     | Correctness & Cleanup                       | F95 VM intrinsic ns, checklist cleanup                      |
 | —      | zwasm Integration (D92)                     | External wasm engine, -9300 LOC, Register IR + ARM64 JIT    |
+| 47-50B | Alpha DX + Compat + Bug fixes               | REPL, errors, case*, PushbackReader, upstream align, agents |
+| 51     | Agent Subsystem                             | AgentObj, send/send-off, await, error modes, *agent*        |
 ```
 
 ---
@@ -175,8 +177,8 @@ Polish for production use.
 | Category                 | Count | Status                                |
 |--------------------------|-------|---------------------------------------|
 | Permanently JVM          | ~70   | Never implement (class system, etc.)  |
-| Future/pmap/pvalues      | 9     | Phase 48 (concurrency)                |
-| Agent                    | 17    | Phase 49.5 or later (complex)         |
+| Future/pmap/pvalues      | 9     | Phase 48 — DONE                       |
+| Agent                    | 17    | Phase 51 — DONE (13 impl, 4 JVM skip)|
 | STM/Ref                  | 9     | OUT OF SCOPE (atom sufficient)        |
 | read/PushbackReader      | 2     | Phase 49.1                            |
 | import                   | 2     | Phase 50.5                            |
