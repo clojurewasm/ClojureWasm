@@ -21,17 +21,20 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 50: v0.4.0-beta — Ecosystem
+Phase 50B: Known Bug Fixes
 
-- [x] 50.1: `cljw test` command (project-based test runner)
-- [x] 50.2: cljw.edn `:deps` with local paths
-- [x] 50.3: cljw.edn `:deps` with git/sha resolution
-- [x] 50.4: Homebrew tap
-- [x] 50.5: Wasm module dependency declaration
+- [ ] 50B.1: Fix apropos segfault (GC bug in namespace iteration)
+- [ ] 50B.2: Fix dir-fn on non-existent ns (VM panic → error)
+- [ ] 50B.3: Fix find-var return type (symbol → var)
+- [ ] 50B.4: Implement remove-ns, ns-unalias, ns-unmap
+- [ ] 50B.5: Fix *print-meta*, *print-readably* in pr-str
+- [ ] 50B.6: Fix apply on var refs
+- [ ] 50B.7: Fix apply on infinite lazy seq (pass trailing ISeq lazily)
+- [ ] 50B.8: Fix sequences.clj CLJ-1633 segfault
 
 ## Current Task
 
-Phase 50 complete — planning next phase.
+50B.1: Fix apropos segfault (GC bug in namespace iteration).
 
 ## Previous Task
 
