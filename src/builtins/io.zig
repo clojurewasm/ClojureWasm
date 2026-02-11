@@ -203,6 +203,66 @@ fn popOutputCaptureFn(allocator: Allocator, args: []const Value) anyerror!Value 
     return result;
 }
 
+// ============================================================
+// Input source stack for with-in-str nesting
+// ============================================================
+
+const InputSource = struct {
+    data: []const u8,
+    pos: usize,
+};
+
+var input_stack: [MAX_CAPTURE_DEPTH]?InputSource = [_]?InputSource{null} ** MAX_CAPTURE_DEPTH;
+var input_depth: usize = 0;
+var current_input: ?InputSource = null;
+
+/// (push-input-source s) — redirect read-line to read from string s.
+fn pushInputSourceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to push-input-source", .{args.len});
+    if (input_depth >= MAX_CAPTURE_DEPTH) return err.setErrorFmt(.eval, .value_error, .{}, "Input source stack overflow", .{});
+
+    // Save current state
+    input_stack[input_depth] = current_input;
+    input_depth += 1;
+
+    // Set new input source
+    current_input = .{ .data = args[0].asString(), .pos = 0 };
+    return Value.nil_val;
+}
+
+/// (pop-input-source) — restore previous input source.
+fn popInputSourceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to pop-input-source", .{args.len});
+    if (input_depth == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Input source stack underflow", .{});
+
+    input_depth -= 1;
+    current_input = input_stack[input_depth];
+    return Value.nil_val;
+}
+
+/// Read one line from the current input source (string). Returns null if exhausted.
+fn readLineFromInput(allocator: Allocator) !?Value {
+    const input = &(current_input orelse return null);
+    if (input.pos >= input.data.len) return Value.nil_val; // EOF
+
+    // Find next newline
+    const remaining = input.data[input.pos..];
+    const newline_idx = std.mem.indexOfScalar(u8, remaining, '\n');
+    const line_end = newline_idx orelse remaining.len;
+
+    // Strip trailing \r
+    var line_len = line_end;
+    if (line_len > 0 and remaining[line_len - 1] == '\r') line_len -= 1;
+
+    const owned = try allocator.alloc(u8, line_len);
+    @memcpy(owned, remaining[0..line_len]);
+
+    // Advance position past the newline
+    input.pos += line_end + (if (newline_idx != null) @as(usize, 1) else @as(usize, 0));
+
+    return Value.initString(allocator, owned);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "print",
@@ -257,6 +317,20 @@ pub const builtins = [_]BuiltinDef{
         .name = "pop-output-capture",
         .func = &popOutputCaptureFn,
         .doc = "Stop capturing output, return captured string. Used internally by with-out-str.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "push-input-source",
+        .func = &pushInputSourceFn,
+        .doc = "Redirect read-line to read from string. Used internally by with-in-str.",
+        .arglists = "([s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "pop-input-source",
+        .func = &popInputSourceFn,
+        .doc = "Restore previous input source. Used internally by with-in-str.",
         .arglists = "([])",
         .added = "1.0",
     },
@@ -351,9 +425,15 @@ pub fn spitFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (read-line) => string or nil
-/// Reads a line from stdin. Returns nil on EOF.
+/// Reads a line from the current input source (*in*) or stdin.
 pub fn readLineFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-line", .{args.len});
+
+    // Check if we have a string input source (from with-in-str)
+    if (current_input != null) {
+        const maybe_val = readLineFromInput(allocator) catch return Value.nil_val;
+        return maybe_val orelse Value.nil_val;
+    }
 
     const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
     var buf: [8192]u8 = undefined;

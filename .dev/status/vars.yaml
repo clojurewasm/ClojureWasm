@@ -55,7 +55,7 @@ vars:
     "*flush-on-newline*": {type: var, status: done}
     "*fn-loader*": {type: var, status: skip, note: JVM interop}
     "*in*": {type: var, status: done, note: "stub (nil default)"}
-    "*math-context*": {type: var, status: skip, note: JVM interop}
+    "*math-context*": {type: var, status: done, note: "stub — no BigDecimal, binding only"}
     "*ns*": {type: var, status: done, note: 'dynamic var, synced with env.current_ns'}
     "*out*": {type: var, status: done, note: "stub (nil default)"}
     "*print-dup*": {type: var, status: done, note: "stub (false default)"}
@@ -363,7 +363,7 @@ vars:
     into: {type: function, status: done, note: "portable to clj"}
     "into-array": {type: function, status: done, note: Phase 43 — Zig array type}
     ints: {type: function, status: done, note: Phase 43 — Zig array type}
-    "io!": {type: macro, status: skip, note: "JVM interop"}
+    "io!": {type: macro, status: done, note: "UPSTREAM-DIFF: no STM, implicit do"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     iteration: {type: function, status: done, note: needs lazy stateful iterator, notes: 'UPSTREAM-DIFF: lazy-seq wrapper (no reify/IReduceInit)'}
@@ -704,13 +704,13 @@ vars:
     while: {type: macro, status: done, note: "core.clj loop+when+recur"}
     "with-bindings": {type: macro, status: done}
     "with-bindings*": {type: function, status: done}
-    "with-in-str": {type: macro, status: skip, note: Phase 42 — quick win}
+    "with-in-str": {type: macro, status: done, note: "UPSTREAM-DIFF: push/pop-input-source builtins"}
     "with-loading-context": {type: macro, status: skip, note: JVM classloader}
     "with-local-vars": {type: macro, status: done, note: needs Var.create(), notes: 'UPSTREAM-DIFF: create-local-var builtin instead of Var.create'}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: done, note: "UPSTREAM-DIFF: (close x) instead of (.close x)"}
     "with-out-str": {type: macro, status: done}
-    "with-precision": {type: macro, status: skip, note: Phase 43 — pure Zig BigInt/BigDecimal}
+    "with-precision": {type: macro, status: done, note: "UPSTREAM-DIFF: stub — binds *math-context* only"}
     "with-redefs": {type: macro, status: done}
     "with-redefs-fn": {type: function, status: done}
     "xml-seq": {type: function, status: done, note: "core.clj (upstream is pure clj)"}

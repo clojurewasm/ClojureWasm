@@ -1690,6 +1690,30 @@
          _# (try (do ~@body) (catch Exception e# (pop-output-capture) (throw e#)))]
      (pop-output-capture)))
 
+;; CLJW: uses push/pop-input-source builtins (upstream uses Java StringReader)
+(defmacro with-in-str
+  "Evaluates body in a context in which *in* is bound to a fresh
+  StringReader initialized with the string s."
+  {:added "1.0"}
+  [s & body]
+  `(let [_# (push-input-source ~s)
+         result# (try (do ~@body) (catch Exception e# (pop-input-source) (throw e#)))
+         _# (pop-input-source)]
+     result#))
+
+;; CLJW: *math-context* stub — no BigDecimal, but macro signature compatibility
+(def ^:dynamic *math-context* nil)
+
+(defmacro with-precision
+  "Sets the precision and rounding mode to be used for BigDecimal operations.
+  Note: ClojureWasm does not currently support BigDecimal. This macro binds
+  *math-context* for compatibility but has no effect on arithmetic."
+  {:added "1.0"}
+  [precision & exprs]
+  (let [body (if (= (first exprs) :rounding) (nnext exprs) exprs)]
+    `(binding [*math-context* ~precision]
+       ~@body)))
+
 ;; CLJW: .close Java interop replaced with (close x) function call.
 ;; No-op for now; will dispatch on type when file IO types are added.
 (defn close
@@ -2246,6 +2270,16 @@
   (single-threaded), this simply evaluates body."
   [x & body]
   `(do ~x ~@body))
+
+;; CLJW: no STM, so io! is just an implicit do (upstream checks LockingTransaction/isRunning)
+(defmacro io!
+  "If an io! block occurs in a transaction, throws an
+  IllegalStateException, else runs body in an implicit do. If the
+  first expression in body is a literal string, will use that as the
+  exception message."
+  [& body]
+  (let [body (if (string? (first body)) (next body) body)]
+    `(do ~@body)))
 
 ;; requiring-resolve
 (defn requiring-resolve
