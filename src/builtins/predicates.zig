@@ -67,7 +67,7 @@ fn isVector(v: Value) bool {
     return v.tag() == .vector;
 }
 fn isSeq(v: Value) bool {
-    return v.tag() == .list;
+    return v.tag() == .list or v.tag() == .cons or v.tag() == .lazy_seq or v.tag() == .chunked_cons;
 }
 fn isFn(v: Value) bool {
     return v.tag() == .fn_val or v.tag() == .builtin_fn;

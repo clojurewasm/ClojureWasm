@@ -26,32 +26,28 @@ Phase 49: v0.3.0-alpha — Compatibility
 - [x] 49.1: Thread/sleep + shutdown-agents + analyzer rewrite
 - [x] 49.2: Upstream test expansion (concurrency tests)
 - [x] 49.3: Quick-win skip recovery pass
-- [ ] 49.4: Pure Clojure library compatibility testing
+- [x] 49.4: Pure Clojure library compatibility testing
 - [ ] 49.5: Upstream alignment pass (UPSTREAM-DIFF cleanup)
 
 ## Current Task
 
-49.4 (continued): Test more libraries (honeysql v2 next).
-- medley: 31 tests, 48 assertions — ALL PASS
-- camel-snake-kebab: 7 tests, 14 assertions — ALL PASS
-- Next: honeysql v2, editscript, or core.match
+49.5: Upstream alignment pass — review and clean up UPSTREAM-DIFF markers.
 
 ## Previous Task
 
-49.4: Library compat fixes — medley + CSK passing.
-Implemented 11 compatibility features:
-1. Type hints on fn params (^Type param unwrap)
-2. instance? as compiler special form with Java class mapping
-3. in-ns with-meta unwrap (^:no-doc ns)
-4. .cljc file loading support
-5. Octal character literals (\oNNN)
-6. set! for dynamic vars at top level
-7. .method Java instance method calls (→ __java-method builtin)
-8. Static method rewrites: String/, Pattern/, Integer/, Double/, Character/, Boolean/
-9. reify special form (protocol impl on anonymous objects)
-10. :import registers class short names as symbol vars
-11. with-meta type hint stripping in analyzer
-Also: common java.lang class defs, __regex-quote, Character type key
+49.4: Library compatibility testing — complete.
+Tested 2 external + 5 built-in libraries:
+- medley (external): 31 tests, 48 assertions — ALL PASS
+- camel-snake-kebab (external): 7 tests, 14 assertions — ALL PASS
+- clojure.walk (built-in): all functions verified
+- clojure.set (built-in): 10 tests, 24 assertions — ALL PASS
+- clojure.data (built-in): 6 tests, 21 assertions — ALL PASS
+- clojure.zip (built-in): 8 tests, 16 assertions — ALL PASS
+- clojure.pprint (built-in): basic pprint works, cl-format not impl
+
+Fixes in this session:
+1. seq? now returns true for cons/lazy-seq/chunked-cons (was list-only)
+2. Smart type hint stripping: only strip (with-meta x {:tag T}), preserve other metadata
 
 ## Known Issues
 

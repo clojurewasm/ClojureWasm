@@ -293,11 +293,15 @@ pub const Analyzer = struct {
             return self.makeConstantFrom(Value.initList(empty_list), form);
         }
 
-        // Strip reader type hints: (with-meta form {:tag Type}) → analyze inner form
+        // Strip type hints: (with-meta form {:tag Type}) → analyze inner form
+        // Only strip when metadata map contains :tag (reader type hints).
+        // Preserve with-meta calls using other metadata keys (e.g. zip metadata).
         if (items.len == 3 and items[0].data == .symbol) {
             const sym = items[0].data.symbol;
             if (sym.ns == null and std.mem.eql(u8, sym.name, "with-meta")) {
-                return self.analyze(items[1]);
+                if (isTypeHintMeta(items[2])) {
+                    return self.analyze(items[1]);
+                }
             }
         }
 
@@ -2601,6 +2605,24 @@ pub const Analyzer = struct {
         return n;
     }
 };
+
+/// Check if a metadata form is a type hint (map literal containing :tag key).
+/// Used to distinguish reader type hints (^String x → strip) from
+/// intentional metadata (^{:zip/branch? f} vec → keep).
+fn isTypeHintMeta(form: Form) bool {
+    if (form.data != .map) return false;
+    const pairs = form.data.map;
+    var i: usize = 0;
+    while (i + 1 < pairs.len) : (i += 2) {
+        if (pairs[i].data == .keyword) {
+            const kw = pairs[i].data.keyword;
+            if (kw.ns == null and std.mem.eql(u8, kw.name, "tag")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 // === formToValue (for quote) ===
 
