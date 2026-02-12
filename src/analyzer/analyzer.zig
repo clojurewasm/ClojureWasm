@@ -279,8 +279,27 @@ pub const Analyzer = struct {
                 return self.makeLocalRef(local.name, local.idx, form);
             }
         }
+        // Rewrite Java static field access: Math/PI → clojure.math/PI, etc.
+        if (sym.ns) |ns| {
+            if (rewriteStaticField(ns, sym.name)) |rewritten| {
+                return self.makeVarRef(.{ .ns = rewritten.ns, .name = rewritten.name }, form);
+            }
+        }
         // Fall through to var_ref (name-based in Phase 1c)
         return self.makeVarRef(sym, form);
+    }
+
+    const StaticFieldRewrite = struct { ns: ?[]const u8, name: []const u8 };
+
+    /// Rewrite Java static field access to CW var reference.
+    /// Handles: Math/PI → clojure.math/PI, Math/E → clojure.math/E, etc.
+    fn rewriteStaticField(ns: []const u8, name: []const u8) ?StaticFieldRewrite {
+        if (std.mem.eql(u8, ns, "Math") or std.mem.eql(u8, ns, "java.lang.Math") or std.mem.eql(u8, ns, "StrictMath")) {
+            if (std.mem.eql(u8, name, "PI") or std.mem.eql(u8, name, "E")) {
+                return .{ .ns = "clojure.math", .name = name };
+            }
+        }
+        return null;
     }
 
     // === List analysis ===

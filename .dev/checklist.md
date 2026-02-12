@@ -16,7 +16,7 @@ Check at session start for items that become actionable.
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
-| F94  | Upstream Alignment pass                     | Phase 52 audit: 32 markers audited. distinct? aligned (53.3). 31 markers remain. |
+| F94  | Upstream Alignment pass                     | Phase 54 audit: 38 markers total. 14 permanent (JVM), 9 bootstrap/minor, 15 fixable. defn pre/post DONE (54.2). |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |
