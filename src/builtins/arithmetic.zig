@@ -1401,6 +1401,53 @@ pub fn floorFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Integer string conversion (Java Integer.toBinaryString etc.)
+// ============================================================
+
+fn intToBinaryStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Integer/toBinaryString", .{args.len});
+    const n = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i48, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toBinaryString expects a number", .{}),
+    };
+    // Java uses unsigned 32-bit representation for negative numbers
+    const unsigned: u32 = @bitCast(@as(i32, @truncate(n)));
+    var buf: [32]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{b}", .{unsigned}) catch return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toBinaryString format error", .{});
+    const owned = allocator.dupe(u8, s) catch return err.setErrorFmt(.eval, .type_error, .{}, "OOM", .{});
+    return Value.initString(allocator, owned);
+}
+
+fn intToHexStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Integer/toHexString", .{args.len});
+    const n = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i48, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toHexString expects a number", .{}),
+    };
+    const unsigned: u32 = @bitCast(@as(i32, @truncate(n)));
+    var buf: [8]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{x}", .{unsigned}) catch return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toHexString format error", .{});
+    const owned = allocator.dupe(u8, s) catch return err.setErrorFmt(.eval, .type_error, .{}, "OOM", .{});
+    return Value.initString(allocator, owned);
+}
+
+fn intToOctalStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Integer/toOctalString", .{args.len});
+    const n = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i48, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toOctalString expects a number", .{}),
+    };
+    const unsigned: u32 = @bitCast(@as(i32, @truncate(n)));
+    var buf: [11]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{o}", .{unsigned}) catch return err.setErrorFmt(.eval, .type_error, .{}, "Integer/toOctalString format error", .{});
+    const owned = allocator.dupe(u8, s) catch return err.setErrorFmt(.eval, .type_error, .{}, "OOM", .{});
+    return Value.initString(allocator, owned);
+}
+
+// ============================================================
 // BigInt constructors
 // ============================================================
 
@@ -1759,6 +1806,27 @@ pub const numeric_builtins = [_]BuiltinDef{
         .func = &floorFn,
         .doc = "Returns the largest integer value <= n.",
         .arglists = "([n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__int-to-binary-string",
+        .func = &intToBinaryStringFn,
+        .doc = "Returns a string representation of the integer argument as an unsigned integer in base 2.",
+        .arglists = "([i])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__int-to-hex-string",
+        .func = &intToHexStringFn,
+        .doc = "Returns a string representation of the integer argument as an unsigned integer in base 16.",
+        .arglists = "([i])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__int-to-octal-string",
+        .func = &intToOctalStringFn,
+        .doc = "Returns a string representation of the integer argument as an unsigned integer in base 8.",
+        .arglists = "([i])",
         .added = "1.0",
     },
 };

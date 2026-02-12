@@ -335,8 +335,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 379 + 2 (error-handler, error-mode)
-    try std.testing.expectEqual(381, builtin_count);
+    // 379 + 2 (error-handler, error-mode) + 12 Java interop methods
+    try std.testing.expectEqual(393, builtin_count);
 }
 
 test "comptime lookup finds +" {

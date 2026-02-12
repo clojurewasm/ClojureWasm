@@ -1158,6 +1158,65 @@ pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
 }
 
 // ============================================================
+// Java interop utility functions
+// ============================================================
+
+fn doubleIsNanFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Double/isNaN", .{args.len});
+    const t = args[0].tag();
+    if (t != .float) return Value.false_val;
+    return Value.initBoolean(std.math.isNan(args[0].asFloat()));
+}
+
+fn doubleIsInfiniteFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Double/isInfinite", .{args.len});
+    const t = args[0].tag();
+    if (t != .float) return Value.false_val;
+    return Value.initBoolean(std.math.isInf(args[0].asFloat()));
+}
+
+fn charIsDigitFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Character/isDigit", .{args.len});
+    if (args[0].tag() != .char) return Value.false_val;
+    const cp = args[0].asChar();
+    return Value.initBoolean(cp >= '0' and cp <= '9');
+}
+
+fn charIsLetterFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Character/isLetter", .{args.len});
+    if (args[0].tag() != .char) return Value.false_val;
+    const cp = args[0].asChar();
+    return Value.initBoolean((cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z'));
+}
+
+fn charIsWhitespaceFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Character/isWhitespace", .{args.len});
+    if (args[0].tag() != .char) return Value.false_val;
+    const cp = args[0].asChar();
+    return Value.initBoolean(cp == ' ' or cp == '\t' or cp == '\n' or cp == '\r' or cp == 0x0C);
+}
+
+fn charIsUpperCaseFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Character/isUpperCase", .{args.len});
+    if (args[0].tag() != .char) return Value.false_val;
+    const cp = args[0].asChar();
+    return Value.initBoolean(cp >= 'A' and cp <= 'Z');
+}
+
+fn charIsLowerCaseFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Character/isLowerCase", .{args.len});
+    if (args[0].tag() != .char) return Value.false_val;
+    const cp = args[0].asChar();
+    return Value.initBoolean(cp >= 'a' and cp <= 'z');
+}
+
+fn parseBooleanFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to Boolean/parseBoolean", .{args.len});
+    if (args[0].tag() != .string) return Value.false_val;
+    return Value.initBoolean(std.mem.eql(u8, args[0].asString(), "true"));
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -1228,6 +1287,14 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "__lazy-seq-realized?", .func = &lazySeqRealizedPred, .doc = "Returns true if a lazy-seq has been realized.", .arglists = "([x])", .added = "1.0" },
     .{ .name = "__promise-realized?", .func = &promiseRealizedPred, .doc = "Returns true if a promise has been delivered.", .arglists = "([x])", .added = "1.1" },
     .{ .name = "__instance?", .func = &instanceCheckFn, .doc = "Check if x is an instance of the named class.", .arglists = "([class-name x])", .added = "1.0" },
+    .{ .name = "__double-is-nan", .func = &doubleIsNanFn, .doc = "Returns true if the specified number is NaN.", .arglists = "([v])", .added = "1.0" },
+    .{ .name = "__double-is-infinite", .func = &doubleIsInfiniteFn, .doc = "Returns true if the specified number is infinitely large.", .arglists = "([v])", .added = "1.0" },
+    .{ .name = "__char-is-digit", .func = &charIsDigitFn, .doc = "Determines if the specified character is a digit.", .arglists = "([ch])", .added = "1.0" },
+    .{ .name = "__char-is-letter", .func = &charIsLetterFn, .doc = "Determines if the specified character is a letter.", .arglists = "([ch])", .added = "1.0" },
+    .{ .name = "__char-is-whitespace", .func = &charIsWhitespaceFn, .doc = "Determines if the specified character is white space.", .arglists = "([ch])", .added = "1.0" },
+    .{ .name = "__char-is-upper-case", .func = &charIsUpperCaseFn, .doc = "Determines if the specified character is an uppercase character.", .arglists = "([ch])", .added = "1.0" },
+    .{ .name = "__char-is-lower-case", .func = &charIsLowerCaseFn, .doc = "Determines if the specified character is a lowercase character.", .arglists = "([ch])", .added = "1.0" },
+    .{ .name = "__parse-boolean", .func = &parseBooleanFn, .doc = "Parses the string argument as a boolean.", .arglists = "([s])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -1478,9 +1545,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 66 entries" {
-    // 65 + 1 (__instance?)
-    try testing.expectEqual(66, builtins.len);
+test "builtins table has 74 entries" {
+    // 65 + 1 (__instance?) + 8 Java interop (isNaN, isInfinite, char predicates, parseBoolean)
+    try testing.expectEqual(74, builtins.len);
 }
 
 test "builtins all have func" {

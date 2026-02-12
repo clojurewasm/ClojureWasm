@@ -16,7 +16,7 @@ Check at session start for items that become actionable.
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
-| F94  | Upstream Alignment pass                     | Phase 54: 38 markers. pre/post DONE (54.2). Java static fields DONE (54.3). Missing: utility methods (isNaN, isInfinite, toBinaryString, char predicates, parseBoolean). |
+| F94  | Upstream Alignment pass                     | Phase 54: 38 markers. pre/post DONE (54.2). Java static fields + utility methods DONE (54.3-54.4). Remaining: 15 fixable UPSTREAM-DIFF markers. |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |

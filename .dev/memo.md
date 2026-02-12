@@ -25,13 +25,11 @@ Phase 54: Upstream Fidelity II
 - 54.1: Checklist cleanup (F136/F137 resolved by zwasm v0.11.0) ← DONE
 - 54.2: defn :pre/:post conditions ← DONE
 - 54.3: Java static field constants (Integer/Long/Double/Float/Short/Byte/Boolean/Character) ← DONE
-- 54.4: Missing Java interop utility methods
+- 54.4: Missing Java interop utility methods ← DONE
 
 ## Current Task
 
-54.4: Implement missing Java interop utility methods (Double.isNaN, Double.isInfinite,
-Integer.toBinaryString/toHexString/toOctalString, Character predicates, Boolean.parseBoolean).
-These are method rewrites that exist in the analyzer but lack builtin implementations.
+Phase 54 complete. Review remaining UPSTREAM-DIFF markers and plan Phase 55.
 
 ## Previous Task
 

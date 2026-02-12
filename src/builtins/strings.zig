@@ -325,6 +325,24 @@ pub fn printlnStrFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initString(allocator, owned);
 }
 
+/// __string-join-static — Java String.join(delimiter, elements...).
+/// (String/join delimiter e1 e2 ...) → "e1<delim>e2<delim>..."
+fn stringJoinStaticFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to String/join", .{args.len});
+    const delimiter = switch (args[0].tag()) {
+        .string => args[0].asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "String/join: delimiter must be a string", .{}),
+    };
+    if (args.len == 1) return Value.initString(allocator, "");
+    var buf: std.ArrayList(u8) = .empty;
+    for (args[1..], 0..) |arg, i| {
+        if (i > 0) buf.appendSlice(allocator, delimiter) catch return err.setErrorFmt(.eval, .type_error, .{}, "OOM", .{});
+        const s = try strFn(allocator, &.{arg});
+        buf.appendSlice(allocator, s.asString()) catch return err.setErrorFmt(.eval, .type_error, .{}, "OOM", .{});
+    }
+    return Value.initString(allocator, buf.items);
+}
+
 /// __java-method — Java instance method call interop layer.
 /// Rewrites (.method obj args...) by analyzer to (__java-method "method" obj args...).
 fn javaMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
@@ -509,6 +527,13 @@ pub const builtins = [_]BuiltinDef{
         .func = &javaMethodFn,
         .doc = "Java instance method interop. (.method obj args...) is rewritten to (__java-method \"method\" obj args...).",
         .arglists = "([method-name obj & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__string-join-static",
+        .func = &stringJoinStaticFn,
+        .doc = "Java String.join(delimiter, elements...). Returns a new String from elements joined by delimiter.",
+        .arglists = "([delimiter & elements])",
         .added = "1.0",
     },
 };
