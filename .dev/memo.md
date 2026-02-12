@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 57 COMPLETE**, Phase 58 in progress
+- **All phases through 58 COMPLETE**
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -19,38 +19,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - Zero-config project model (no deps.edn required)
 
-## Task Queue
-
-Phase 55: Upstream Test Recovery
-- ~~55.1: Restore Java static field references in upstream tests~~ DONE
-- ~~55.2: Restore Double/POSITIVE_INFINITY in reader.clj~~ DONE
-- ~~55.3: N/A — upstream tests don't use parseInt/toBinaryString directly~~
-
 ## Current Task
 
-Phase 58 complete. Ready for next phase planning.
-
-Next phase candidates:
-- Port numbers.clj upstream tests for Ratio + promote ops (43.7/43.8 — impl done, tests not ported)
-- F138: binding *ns* + read-string (reader↔runtime dynamic var bridge)
+Ready for next phase planning. See Task Queue below.
 
 ## Task Queue
 
-Phase 58: clojure.core.reducers — ALL DONE
-- ~~58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce)~~ DONE
-- ~~58.2: Implement reducers core (reduce, fold, CollFold, monoid)~~ DONE
-- ~~58.3: Implement reducer/folder wrappers (reify-based)~~ DONE
-- ~~58.4: Implement transformation fns (map, filter, remove, take, take-while, drop, flatten, mapcat)~~ DONE
-- ~~58.5: Implement Cat type (defrecord) + cat/append!/foldcat~~ DONE
-- ~~58.6: Port reducers.clj upstream test~~ DONE
+Phase 59: Deferred cleanup & test porting
+- 59.1: Port numbers.clj upstream tests for Ratio (43.8 — impl done, tests not ported)
+- 59.2: Port numbers.clj upstream tests for promote ops +' *' -' inc' dec' (43.7 — impl done, tests not ported)
 
 ## Previous Task
 
-Bug fixes across 3 known test errors:
-- parse-boolean nil: fixed test (upstream expects throw, not nil)
-- catch Error: added Error/AssertionError to exceptionMatchesClass catch-all
-- walk + records: removed map-entry? branch (CW map entries are vectors),
-  fixed record? predicate, filtered :__reify_type from seq/keys/vals iteration
+Phase 58: clojure.core.reducers (ALL DONE, 58.1-58.6).
+Post-phase: 3 bug fixes (parse-boolean, catch Error, walk+records),
+deferred/stale comment cleanup, record __reify_type filtering (seq/keys/vals/count).
 
 ## Known Issues
 
