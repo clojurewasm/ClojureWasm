@@ -651,6 +651,91 @@ pub const Analyzer = struct {
         return n;
     }
 
+    /// Transform body forms with :pre/:post condition map into assert-wrapped body.
+    /// If body_forms[0] is a map {:pre [...] :post [...]} and there are more body forms,
+    /// extract conditions and synthesize assertion forms (matching upstream Clojure fn semantics).
+    fn transformPrePost(self: *Analyzer, body_forms: []const Form) ![]const Form {
+        if (body_forms.len < 2) return body_forms;
+        if (body_forms[0].data != .map) return body_forms;
+
+        const map_items = body_forms[0].data.map;
+        var pre_conds: ?[]const Form = null;
+        var post_conds: ?[]const Form = null;
+
+        var i: usize = 0;
+        while (i < map_items.len) : (i += 2) {
+            if (i + 1 >= map_items.len) break;
+            if (map_items[i].data == .keyword and map_items[i].data.keyword.ns == null) {
+                if (std.mem.eql(u8, map_items[i].data.keyword.name, "pre")) {
+                    if (map_items[i + 1].data == .vector) {
+                        pre_conds = map_items[i + 1].data.vector;
+                    }
+                } else if (std.mem.eql(u8, map_items[i].data.keyword.name, "post")) {
+                    if (map_items[i + 1].data == .vector) {
+                        post_conds = map_items[i + 1].data.vector;
+                    }
+                }
+            }
+        }
+
+        if (pre_conds == null and post_conds == null) return body_forms;
+
+        const actual_body = body_forms[1..]; // skip condition map
+        const alloc = self.allocator;
+
+        // Build new body forms
+        var new_body: std.ArrayList(Form) = .empty;
+
+        // Pre-conditions: prepend (assert cond) for each
+        if (pre_conds) |pres| {
+            for (pres) |cond| {
+                const assert_items = alloc.alloc(Form, 2) catch return error.OutOfMemory;
+                assert_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "assert" } } };
+                assert_items[1] = cond;
+                new_body.append(alloc, .{ .data = .{ .list = assert_items } }) catch return error.OutOfMemory;
+            }
+        }
+
+        if (post_conds) |posts| {
+            // Post-conditions: wrap body in (let [% (do body...)] (assert c1) ... %)
+            // Build the result expression
+            const result_expr: Form = if (actual_body.len == 1)
+                actual_body[0]
+            else blk: {
+                const do_items = alloc.alloc(Form, actual_body.len + 1) catch return error.OutOfMemory;
+                do_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "do" } } };
+                @memcpy(do_items[1..], actual_body);
+                break :blk .{ .data = .{ .list = do_items } };
+            };
+
+            // Build let form: (let [% result-expr] (assert c1) ... %)
+            const bindings = alloc.alloc(Form, 2) catch return error.OutOfMemory;
+            bindings[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "%" } } };
+            bindings[1] = result_expr;
+
+            // let items: [let, [% expr], (assert c1), ..., %]
+            const let_items = alloc.alloc(Form, 3 + posts.len) catch return error.OutOfMemory;
+            let_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "let" } } };
+            let_items[1] = .{ .data = .{ .vector = bindings } };
+            for (posts, 0..) |cond, j| {
+                const assert_items = alloc.alloc(Form, 2) catch return error.OutOfMemory;
+                assert_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "assert" } } };
+                assert_items[1] = cond;
+                let_items[2 + j] = .{ .data = .{ .list = assert_items } };
+            }
+            let_items[let_items.len - 1] = .{ .data = .{ .symbol = .{ .ns = null, .name = "%" } } };
+
+            new_body.append(alloc, .{ .data = .{ .list = let_items } }) catch return error.OutOfMemory;
+        } else {
+            // No post-conditions, just append original body
+            for (actual_body) |bf| {
+                new_body.append(alloc, bf) catch return error.OutOfMemory;
+            }
+        }
+
+        return new_body.toOwnedSlice(alloc) catch return error.OutOfMemory;
+    }
+
     fn analyzeFn(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (fn name? docstring? [params] body...) or (fn name? docstring? ([params] body...) ...)
         if (items.len < 2) {
@@ -743,7 +828,10 @@ pub const Analyzer = struct {
         return n;
     }
 
-    fn analyzeFnArity(self: *Analyzer, params_form: []const Form, body_forms: []const Form, form: Form) AnalyzeError!node_mod.FnArity {
+    fn analyzeFnArity(self: *Analyzer, params_form: []const Form, body_forms_raw: []const Form, form: Form) AnalyzeError!node_mod.FnArity {
+        // Detect :pre/:post condition map: {:pre [...] :post [...]} as first body form
+        const body_forms = try self.transformPrePost(body_forms_raw);
+
         var params: std.ArrayList([]const u8) = .empty;
         var variadic = false;
 
