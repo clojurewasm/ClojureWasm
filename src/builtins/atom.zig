@@ -71,29 +71,48 @@ fn derefAtom(_: Allocator, a: *Atom) Value {
 /// Force a Delay value: evaluate thunk on first access, cache result.
 /// Exception caching: if thunk throws, the exception is cached and re-thrown
 /// on subsequent force calls (JVM Delay semantics).
+/// Thread-safe: uses CAS on fn_val to ensure only one thread executes the thunk.
+/// Matches Java's Delay: double-checked locking via volatile fn + synchronized.
 pub fn forceDelay(allocator: Allocator, d: *value_mod.Delay) anyerror!Value {
-    if (d.realized) {
-        if (d.getErrorCached()) |cached_ex| {
-            // Re-throw the cached exception
-            bootstrap.last_thrown_exception = cached_ex;
-            return error.UserException;
-        }
-        return d.getCached() orelse Value.nil_val;
+    // Fast path: already realized (lock-free read)
+    if (@atomicLoad(bool, &d.realized, .acquire)) {
+        return readDelayResult(d);
     }
-    const thunk = d.getFnVal() orelse return Value.nil_val;
-    const result = bootstrap.callFnVal(allocator, thunk, &.{}) catch |e| {
-        // Cache the exception value for re-throwing on subsequent calls
-        d.realized = true;
-        d.clearFnVal();
-        if (e == error.UserException) {
-            d.setErrorCached(bootstrap.last_thrown_exception orelse Value.nil_val);
+
+    // Slow path: try to claim the thunk via CAS (fn_val → NO_VALUE)
+    const thunk_raw = @atomicLoad(Value, &d.fn_val, .acquire);
+    if (thunk_raw != value_mod.NO_VALUE) {
+        if (@cmpxchgStrong(Value, &d.fn_val, thunk_raw, value_mod.NO_VALUE, .acq_rel, .acquire) == null) {
+            // We claimed it — execute the thunk
+            const result = bootstrap.callFnVal(allocator, thunk_raw, &.{}) catch |e| {
+                if (e == error.UserException) {
+                    @atomicStore(Value, &d.error_cached, bootstrap.last_thrown_exception orelse Value.nil_val, .release);
+                }
+                @atomicStore(bool, &d.realized, true, .release);
+                return e;
+            };
+            @atomicStore(Value, &d.cached, result, .release);
+            @atomicStore(bool, &d.realized, true, .release);
+            return result;
         }
-        return e;
-    };
-    d.setCached(result);
-    d.clearFnVal();
-    d.realized = true;
-    return result;
+    }
+
+    // Lost the CAS or fn_val already cleared — spin until realized
+    while (!@atomicLoad(bool, &d.realized, .acquire)) {
+        std.atomic.spinLoopHint();
+    }
+    return readDelayResult(d);
+}
+
+/// Read the cached result of a realized Delay (success or error).
+fn readDelayResult(d: *value_mod.Delay) anyerror!Value {
+    const err_val = @atomicLoad(Value, &d.error_cached, .acquire);
+    if (err_val != value_mod.NO_VALUE) {
+        bootstrap.last_thrown_exception = err_val;
+        return error.UserException;
+    }
+    const cached_val = @atomicLoad(Value, &d.cached, .acquire);
+    return if (cached_val != value_mod.NO_VALUE) cached_val else Value.nil_val;
 }
 
 /// Deref a Future value: block until result is available.
