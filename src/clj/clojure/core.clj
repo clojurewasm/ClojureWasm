@@ -1588,17 +1588,16 @@
       (recur (next s) (next lead))
       s)))
 
-;; UPSTREAM-DIFF: PERMANENT: loop doesn't support destructuring bindings
 (defn distinct?
   ([x] true)
   ([x y] (not (= x y)))
   ([x y & more]
    (if (not= x y)
-     (loop [s #{x y} xs (seq more)]
+     (loop [s #{x y} [x & etc :as xs] more]
        (if xs
-         (if (contains? s (first xs))
+         (if (contains? s x)
            false
-           (recur (conj s (first xs)) (next xs)))
+           (recur (conj s x) etc))
          true))
      false)))
 

@@ -17,7 +17,7 @@ Check at session start for items that become actionable.
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
 | F6   | Multi-thread dynamic bindings               | DONE: threadlocal frames (48.1), conveyance (48.3), *agent* binding (51.6) |
-| F94  | Upstream Alignment pass                     | Phase 52 audit: 32 markers audited, all accurately documented. distinct? permanent (loop destructuring). |
+| F94  | Upstream Alignment pass                     | Phase 52 audit: 32 markers audited. distinct? aligned (53.3). 31 markers remain. |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |

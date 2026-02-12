@@ -25,7 +25,7 @@ Phase 53: Hardening & pprint Tests — IN PROGRESS
 
 - [x] 53.1: Update zwasm to v0.7.0
 - [x] 53.2: Fix loop destructuring recur bug
-- [ ] 53.3: Align distinct? to upstream (enabled by 53.2)
+- [x] 53.3: Align distinct? to upstream (enabled by 53.2)
 - [ ] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
 - [ ] 53.5: Fix colon in symbol/keyword literals
 - [ ] 53.6: Port pprint tests (content-equivalent, CW-adapted)
@@ -33,7 +33,7 @@ Phase 53: Hardening & pprint Tests — IN PROGRESS
 
 ## Current Task
 
-53.3: Align distinct? to upstream (enabled by 53.2 loop destructuring fix)
+53.4: Fix BigDecimal exponent notation (1.0e+1M)
 
 ## Previous Task
 
