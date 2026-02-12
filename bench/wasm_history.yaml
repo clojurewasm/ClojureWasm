@@ -221,3 +221,47 @@ entries:
         wt_warm_ms: 41
         ratio: 1.3
         speedup_vs_prev: 5.76
+  - id: "zwasm-0.7.0"
+    date: "2026-02-12"
+    reason: "zwasm v0.7.0 — exception handling, memory64, wide arithmetic, security"
+    commit: 4b0416c
+    build: ReleaseSafe
+    cw_startup_ms: 3.6
+    wt_startup_ms: 4.8
+    results:
+      fib:
+        desc: "fib(20) x 10000"
+        cw_warm_ms: 509
+        wt_warm_ms: 229
+        ratio: 2.2
+        speedup_vs_prev: 1.26
+      tak:
+        desc: "tak(18,12,6) x 10000"
+        cw_warm_ms: 2587
+        wt_warm_ms: 1225
+        ratio: 2.1
+        speedup_vs_prev: 1.08
+      arith:
+        desc: "arith(1M) x 10"
+        cw_warm_ms: 0.1
+        wt_warm_ms: 0.1
+        ratio: 1.0
+        speedup_vs_prev: 8.00
+      sieve:
+        desc: "sieve(64K) x 100"
+        cw_warm_ms: 6.3
+        wt_warm_ms: 7.3
+        ratio: 0.9
+        speedup_vs_prev: 3.33
+      fib_loop:
+        desc: "fib_loop(25) x 1000000"
+        cw_warm_ms: 10.6
+        wt_warm_ms: 5.3
+        ratio: 2.0
+        speedup_vs_prev: 2.08
+      gcd:
+        desc: "gcd(1M,700K) x 1000000"
+        cw_warm_ms: 55.7
+        wt_warm_ms: 41.1
+        ratio: 1.4
+        speedup_vs_prev: 0.97
