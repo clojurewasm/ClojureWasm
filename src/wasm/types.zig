@@ -17,6 +17,12 @@ const Allocator = std.mem.Allocator;
 const wit_parser = @import("wit_parser.zig");
 const zwasm = @import("zwasm");
 
+/// Non-GC allocator for all Wasm internals. Wasm modules and their
+/// children (zwasm VM, store, instance, etc.) must not be GC-managed
+/// because the GC cannot trace into opaque zwasm data structures.
+/// Without this, GC sweeps the ~1MB zwasm VM causing segfaults.
+const wasm_alloc = std.heap.smp_allocator;
+
 // ============================================================
 // CW-specific types
 // ============================================================
@@ -58,37 +64,50 @@ pub const WasmModule = struct {
     export_fns: []const ExportInfo,
     cached_fns: []WasmFn,
     wit_funcs: []const wit_parser.WitFunc,
+    owned_bytes: []const u8, // wasm binary copy (zwasm stores reference, not copy)
 
-    pub fn load(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        const inner = try zwasm.WasmModule.load(allocator, wasm_bytes);
-        return wrapInner(allocator, inner);
+    pub fn load(_: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        // Copy bytes to non-GC allocator (zwasm Module stores a reference)
+        const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
+        @memcpy(owned, wasm_bytes);
+        errdefer wasm_alloc.free(owned);
+        const inner = try zwasm.WasmModule.load(wasm_alloc, owned);
+        return wrapInner(inner, owned);
     }
 
-    pub fn loadWasi(allocator: Allocator, wasm_bytes: []const u8) !*WasmModule {
-        const inner = try zwasm.WasmModule.loadWasi(allocator, wasm_bytes);
-        return wrapInner(allocator, inner);
+    pub fn loadWasi(_: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
+        @memcpy(owned, wasm_bytes);
+        errdefer wasm_alloc.free(owned);
+        const inner = try zwasm.WasmModule.loadWasi(wasm_alloc, owned);
+        return wrapInner(inner, owned);
     }
 
     pub fn loadWithImports(allocator: Allocator, wasm_bytes: []const u8, imports_map: Value) !*WasmModule {
-        // Inspect import types before loading (needed for host trampoline context)
-        const import_infos = try zwasm.inspectImportFunctions(allocator, wasm_bytes);
+        const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
+        @memcpy(owned, wasm_bytes);
+        errdefer wasm_alloc.free(owned);
+
+        // Temporary data — use caller's allocator (freed via defer)
+        const import_infos = try zwasm.inspectImportFunctions(allocator, owned);
         defer if (import_infos.len > 0) allocator.free(import_infos);
 
         // Build ImportEntry[] from the Clojure Value map
         const entries = try buildImportEntries(allocator, imports_map, import_infos);
         defer allocator.free(entries);
 
-        const inner = try zwasm.WasmModule.loadWithImports(allocator, wasm_bytes, entries);
-        return wrapInner(allocator, inner);
+        const inner = try zwasm.WasmModule.loadWithImports(wasm_alloc, owned, entries);
+        return wrapInner(inner, owned);
     }
 
-    fn wrapInner(allocator: Allocator, inner: *zwasm.WasmModule) !*WasmModule {
-        const self = try allocator.create(WasmModule);
-        errdefer allocator.destroy(self);
+    fn wrapInner(inner: *zwasm.WasmModule, owned_bytes: []const u8) !*WasmModule {
+        const self = try wasm_alloc.create(WasmModule);
+        errdefer wasm_alloc.destroy(self);
         self.inner = inner;
-        self.allocator = allocator;
-        self.export_fns = buildExportInfo(allocator, inner) catch &[_]ExportInfo{};
-        self.cached_fns = buildCachedFns(allocator, self) catch &[_]WasmFn{};
+        self.allocator = wasm_alloc;
+        self.owned_bytes = owned_bytes;
+        self.export_fns = buildExportInfo(wasm_alloc, inner) catch &[_]ExportInfo{};
+        self.cached_fns = buildCachedFns(wasm_alloc, self) catch &[_]WasmFn{};
         self.wit_funcs = &[_]wit_parser.WitFunc{};
         return self;
     }
@@ -102,6 +121,7 @@ pub const WasmModule = struct {
         }
         if (self.export_fns.len > 0) allocator.free(self.export_fns);
         self.inner.deinit();
+        if (self.owned_bytes.len > 0) allocator.free(self.owned_bytes);
         allocator.destroy(self);
     }
 
