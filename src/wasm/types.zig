@@ -40,7 +40,7 @@ pub const WasmValType = enum {
             .i64 => .i64,
             .f32 => .f32,
             .f64 => .f64,
-            .funcref, .externref => null,
+            .v128, .funcref, .externref => null,
         };
     }
 };
