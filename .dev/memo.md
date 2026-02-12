@@ -28,14 +28,26 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-Phase 56 COMPLETE. Next: Phase 57 — v0.2.0-alpha concurrency (future, pmap).
+57.1: Zig test — multiple futures allocating concurrently (GC mutex contention).
 
 ## Task Queue
 
-Phase 56: Bug Fixes & read Implementation — COMPLETE
-- ~~56.1: Fix pprint infinite lazy seq hang~~ DONE
-- ~~56.2: Implement `read` and `read+string` (PushbackReader)~~ DONE
-- Then: Phase 57 — v0.2.0-alpha concurrency (future, pmap)
+Phase 57: Concurrency Test Suite (see `.dev/concurrency-test-plan.md`)
+- 57.1: Zig — multiple futures allocating concurrently
+- 57.2: Zig — GC collection during future execution
+- 57.3: Zig — agent actions with heavy allocation
+- 57.4: Zig — deref-blocked thread survives GC
+- 57.5: Clj — atom swap! N-thread contention
+- 57.6: Clj — delay N-thread simultaneous deref
+- 57.7: Clj — mass future spawn + collect all results
+- 57.8: Clj — agent high-frequency send
+- 57.9: Clj — future inherits bindings
+- 57.10: Clj — nested binding + future
+- 57.11: Clj — agent send inherits bindings
+- 57.12: Clj — shutdown-agents then send
+- 57.13: Clj — future-cancel
+- 57.14: Clj — promise deref with timeout
+- 57.15: Clj — agent restart-agent after error
 
 ## Previous Task
 
@@ -76,4 +88,5 @@ Session resume: read this file → roadmap.md → pick next task.
 | Test porting       | `.dev/test-porting-plan.md`          | When porting tests          |
 | Design document    | `.dev/future.md`                     | Major feature design        |
 | Zig tips           | `.claude/references/zig-tips.md`     | Before writing Zig          |
+| Concurrency tests  | `.dev/concurrency-test-plan.md`      | Phase 57 task details       |
 | zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |
