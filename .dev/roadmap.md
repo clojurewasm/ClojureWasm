@@ -17,7 +17,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 - **835+ vars** implemented (635/706 core, 16 namespaces)
 - **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
-- **48 upstream test files**, all passing (43 upstream ports + 5 SCI)
+- **49 upstream test files**, all passing (44 upstream ports + 5 SCI)
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
 - **Wasm engine**: zwasm v0.7.0 (Register IR + ARM64 JIT, 0.9-2.2x of wasmtime)
 
@@ -84,6 +84,8 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | —      | zwasm Integration (D92)                     | External wasm engine, -9300 LOC, Register IR + ARM64 JIT    |
 | 47-50B | Alpha DX + Compat + Bug fixes               | REPL, errors, case*, PushbackReader, upstream align, agents |
 | 51     | Agent Subsystem                             | AgentObj, send/send-off, await, error modes, *agent*        |
+| 52     | Quality & Alignment                         | println fix, catch types, is macro, test/reader port        |
+| 53     | Hardening & pprint Tests                    | Loop destr, BigDec exp, colon symbols, pprint tests         |
 ```
 
 ---

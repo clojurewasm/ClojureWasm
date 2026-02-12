@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 52 COMPLETE** + Phase 53 in progress
+- **All phases through 53 COMPLETE**
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.7.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -21,29 +21,22 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 53: Hardening & pprint Tests — IN PROGRESS
-
-- [x] 53.1: Update zwasm to v0.7.0
-- [x] 53.2: Fix loop destructuring recur bug
-- [x] 53.3: Align distinct? to upstream (enabled by 53.2)
-- [x] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
-- [x] 53.5: Fix colon in symbol/keyword literals
-- [x] 53.6: Port pprint tests (content-equivalent, CW-adapted)
-- [ ] 53.7: Full regression + update docs
+Ready for next phase direction.
 
 ## Current Task
 
-53.7: Full regression + update docs
+None — Phase 53 complete.
 
 ## Previous Task
 
-53.6: Port pprint tests — 12 tests, 78 assertions
-- Content-equivalent approach: test names from upstream, CW-adapted content
-- Tests: pprint-test, pprint-reader-macro-test, print-length-tests,
-  print-level-tests, pprint-datastructures-tests, pprint-wrapping-test,
-  pprint-empty-collections-test, pprint-strings-test, pprint-nested-test,
-  print-table-test, pprint-special-values-test, pprint-print-length-and-level-combined
-- Both VM + TreeWalk passing
+Phase 53: Hardening & pprint Tests (complete)
+- 53.1: Updated zwasm to v0.7.0
+- 53.2: Fixed loop destructuring recur bug
+- 53.3: Aligned distinct? to upstream
+- 53.4: Fixed BigDecimal exponent notation
+- 53.5: Fixed colon in symbol/keyword literals
+- 53.6: Ported pprint tests (12 tests, 78 assertions, content-equivalent)
+- 53.7: Full regression — 47/49 VM, 47/49 TW (2 pre-existing), 6/6 e2e
 
 ## Known Issues
 
@@ -51,6 +44,8 @@ Phase 53: Hardening & pprint Tests — IN PROGRESS
 - pprint on infinite lazy seq hangs (realizeValue in singleLine/pprintImpl)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported
+- arrays.clj: 5 errors — exception type mismatch (ClassCastException vs ExceptionInfo)
+- sci/core_test.clj: 2 fails — macroexpand returns cons, not list (list? false)
 
 ## Notes
 
