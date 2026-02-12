@@ -1074,23 +1074,126 @@ pub const Analyzer = struct {
             return self.analysisError(.value_error, "loop bindings must have even number of forms", items[1]);
         }
 
-        const start_locals = self.locals.items.len;
-
-        // Process bindings with destructuring support
-        var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
-        var i: usize = 0;
-        while (i < binding_pairs.len) : (i += 2) {
-            const init_node = try self.analyze(binding_pairs[i + 1]);
-            try self.expandBindingPattern(binding_pairs[i], init_node, &bindings_list, form);
+        // Check if any binding uses destructuring patterns
+        var has_destructuring = false;
+        {
+            var ci: usize = 0;
+            while (ci < binding_pairs.len) : (ci += 2) {
+                if (binding_pairs[ci].data != .symbol) {
+                    has_destructuring = true;
+                    break;
+                }
+            }
         }
 
-        const body = try self.analyzeBody(items[2..], form);
+        const start_locals = self.locals.items.len;
+
+        if (!has_destructuring) {
+            // Simple case: all bindings are symbols — no transformation needed
+            var bindings_list: std.ArrayList(node_mod.LetBinding) = .empty;
+            var i: usize = 0;
+            while (i < binding_pairs.len) : (i += 2) {
+                const init_node = try self.analyze(binding_pairs[i + 1]);
+                try self.expandBindingPattern(binding_pairs[i], init_node, &bindings_list, form);
+            }
+
+            const body = try self.analyzeBody(items[2..], form);
+            self.locals.shrinkRetainingCapacity(start_locals);
+
+            const loop_data = self.allocator.create(node_mod.LoopNode) catch return error.OutOfMemory;
+            loop_data.* = .{
+                .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = body,
+                .source = self.sourceFromForm(form),
+            };
+
+            const n = self.allocator.create(Node) catch return error.OutOfMemory;
+            n.* = .{ .loop_node = loop_data };
+            return n;
+        }
+
+        // Destructuring case: transform to temp recur targets + inner let.
+        // (loop [[x & etc :as xs] coll] body)
+        // becomes:
+        // (loop [__loop_0__ coll]
+        //   (let [[x & etc :as xs] __loop_0__]
+        //     body))
+        const pair_count = binding_pairs.len / 2;
+
+        // Phase 1: Create recur-target bindings (simple symbols only)
+        var loop_bindings: std.ArrayList(node_mod.LetBinding) = .empty;
+        const temp_names = self.allocator.alloc([]const u8, pair_count) catch return error.OutOfMemory;
+        const temp_indices = self.allocator.alloc(u32, pair_count) catch return error.OutOfMemory;
+        const is_destructured = self.allocator.alloc(bool, pair_count) catch return error.OutOfMemory;
+
+        var i: usize = 0;
+        var pair_idx: usize = 0;
+        while (i < binding_pairs.len) : ({
+            i += 2;
+            pair_idx += 1;
+        }) {
+            const pattern = binding_pairs[i];
+            const init_node = try self.analyze(binding_pairs[i + 1]);
+
+            if (pattern.data == .symbol) {
+                // Simple symbol: use directly as recur target
+                const name = pattern.data.symbol.name;
+                temp_names[pair_idx] = name;
+                is_destructured[pair_idx] = false;
+
+                const idx: u32 = @intCast(self.locals.items.len);
+                temp_indices[pair_idx] = idx;
+                self.locals.append(self.allocator, .{ .name = name, .idx = idx }) catch return error.OutOfMemory;
+                loop_bindings.append(self.allocator, .{ .name = name, .init = init_node }) catch return error.OutOfMemory;
+            } else {
+                // Destructuring pattern: create temp var as recur target
+                const temp_name = std.fmt.allocPrint(self.allocator, "__loop_{d}__", .{pair_idx}) catch return error.OutOfMemory;
+                temp_names[pair_idx] = temp_name;
+                is_destructured[pair_idx] = true;
+
+                const idx: u32 = @intCast(self.locals.items.len);
+                temp_indices[pair_idx] = idx;
+                self.locals.append(self.allocator, .{ .name = temp_name, .idx = idx }) catch return error.OutOfMemory;
+                loop_bindings.append(self.allocator, .{ .name = temp_name, .init = init_node }) catch return error.OutOfMemory;
+            }
+        }
+
+        // Phase 2: Create inner let bindings that destructure from temp vars
+        var let_bindings: std.ArrayList(node_mod.LetBinding) = .empty;
+        pair_idx = 0;
+        i = 0;
+        while (i < binding_pairs.len) : ({
+            i += 2;
+            pair_idx += 1;
+        }) {
+            if (is_destructured[pair_idx]) {
+                const temp_ref = try self.makeTempLocalRef(temp_names[pair_idx], temp_indices[pair_idx]);
+                try self.expandBindingPattern(binding_pairs[i], temp_ref, &let_bindings, form);
+            }
+        }
+
+        // Phase 3: Wrap body in inner let for destructuring
+        const inner_body = try self.analyzeBody(items[2..], form);
+
+        var body: *Node = undefined;
+        if (let_bindings.items.len > 0) {
+            const let_data = self.allocator.create(node_mod.LetNode) catch return error.OutOfMemory;
+            let_data.* = .{
+                .bindings = let_bindings.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+                .body = inner_body,
+                .source = self.sourceFromForm(form),
+            };
+            body = self.allocator.create(Node) catch return error.OutOfMemory;
+            body.* = .{ .let_node = let_data };
+        } else {
+            body = inner_body;
+        }
 
         self.locals.shrinkRetainingCapacity(start_locals);
 
         const loop_data = self.allocator.create(node_mod.LoopNode) catch return error.OutOfMemory;
         loop_data.* = .{
-            .bindings = bindings_list.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .bindings = loop_bindings.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
             .body = body,
             .source = self.sourceFromForm(form),
         };

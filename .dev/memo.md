@@ -21,47 +21,30 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 52: Quality & Alignment — IN PROGRESS
+Phase 53: Hardening & pprint Tests — IN PROGRESS
 
-- [x] 52.1: Fix println/print hang on infinite lazy seqs
-- [x] 52.2: Expand io_test.clj (revive skipped tests)
-- [x] 52.3: Port test.clj (portable sections)
-- [x] 52.4: Fix bugs found by test.clj (exception type checking, is macro try-expr)
-- [x] 52.5: Port reader.cljc (portable sections)
-- [x] 52.6: Fix reader bugs — N/A (pre-existing limitations only)
-- [x] 52.7: F94: distinct? cannot align (loop lacks destructuring support)
-- [x] 52.8: F94: Audit UPSTREAM-DIFFs — 32 markers, all accurately documented
-- [x] 52.9: io!, with-precision — already implemented
-- [x] 52.10: Full regression — 48 files, both backends, 0 regressions
-- [x] 52.11: Phase completion: update docs
+- [x] 53.1: Update zwasm to v0.7.0
+- [x] 53.2: Fix loop destructuring recur bug
+- [ ] 53.3: Align distinct? to upstream (enabled by 53.2)
+- [ ] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
+- [ ] 53.5: Fix colon in symbol/keyword literals
+- [ ] 53.6: Port pprint tests (content-equivalent, CW-adapted)
+- [ ] 53.7: Full regression + update docs
 
 ## Current Task
 
-Phase 52 COMPLETE. Ready for next phase direction.
+53.3: Align distinct? to upstream (enabled by 53.2 loop destructuring fix)
 
 ## Previous Task
 
 Phase 52: Quality & Alignment (complete)
-- Fixed println/print/pr/prn/str/pr-str hang on infinite lazy seqs
-- Expanded io_test.clj: 8 tests, 18 assertions
-- Implemented exception type checking in catch clauses (was ignored since Phase 1c)
-  - analyzer: CatchClause.class_name, multi-catch → nested try
-  - predicates: exceptionMatchesClass() with Java-like hierarchy
-  - compiler: exception_type_check opcode (0xA5)
-  - VM + TreeWalk: type check before catch body execution
-- Fixed `is` macro: added try-expr pattern (upstream alignment)
-- Added test-ns-hook support to run-tests
-- Ported test.clj: 10 tests, 41 assertions
-- Ported reader.cljc: 22 tests, 117 assertions
-- F94: Audited 32 UPSTREAM-DIFF markers — all documented
-- Full regression: 48 files, both backends, 6/6 e2e — 0 regressions
+- See Phase 52 commit history for details
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
 - BigDecimal exponent notation (e.g. 1.0e+1M) causes AnalyzeError
 - Colon in symbol/keyword literals parsed as keyword delimiter
-- loop doesn't support destructuring bindings
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported
 
