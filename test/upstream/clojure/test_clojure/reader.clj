@@ -133,9 +133,9 @@
   (is (float? -1.0))
   (is (float? -1.))
 
-  ;; CLJW: ##Inf, ##-Inf, ##NaN
-  (is (= ##Inf ##Inf))
-  (is (= ##-Inf ##-Inf))
+  ;; CLJW: upstream uses (instance? Double ##NaN) (.isNaN ##NaN) — no instance? for Java types
+  (is (= Double/POSITIVE_INFINITY ##Inf))
+  (is (= Double/NEGATIVE_INFINITY ##-Inf))
   (is (not (= ##NaN ##NaN)))
 
   ;; Read BigDecimal
