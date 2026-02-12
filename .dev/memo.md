@@ -21,19 +21,20 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Phase 54: Upstream Fidelity II
-- 54.1: Checklist cleanup (F136/F137 resolved by zwasm v0.11.0) ← DONE
-- 54.2: defn :pre/:post conditions ← DONE
-- 54.3: Java static field constants (Integer/Long/Double/Float/Short/Byte/Boolean/Character) ← DONE
-- 54.4: Missing Java interop utility methods ← DONE
+Phase 55: Upstream Test Recovery
+- 55.1: Restore Java static field references in upstream tests (Long/MAX_VALUE etc.)
+- 55.2: Restore Double.isNaN/isInfinite in upstream tests
+- 55.3: Restore Integer.parseInt/toBinaryString etc. in upstream tests
 
 ## Current Task
 
-Phase 54 complete. Review remaining UPSTREAM-DIFF markers and plan Phase 55.
+55.1: Restore Java static field references in upstream tests. Now that Integer/MAX_VALUE,
+Long/MAX_VALUE, Double/NaN, etc. are implemented, un-adapt upstream test files that
+previously hardcoded literal values.
 
 ## Previous Task
 
-Phase 53: Hardening & pprint Tests (complete)
+Phase 54: Upstream Fidelity II (pre/post conditions, Java static fields + methods)
 
 ## Known Issues
 
