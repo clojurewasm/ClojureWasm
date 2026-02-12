@@ -62,8 +62,8 @@ which limited accessibility. Agent response language is personal preference
 
 ## D12: Division Semantics — Float Now, Ratio Later
 
-**Decision**: The `/` operator always returns float, even for `int / int`.
-Ratio type is deferred (F3).
+**Decision**: The `/` operator returns Ratio for non-exact int division, matching JVM.
+Ratio type implemented (F3 resolved).
 
 **Clojure JVM**: `(/ 6 3)` → `2` (Long), `(/ 1 3)` → `1/3` (Ratio).
 **ClojureWasm**: `(/ 6 3)` → `2.0` (float), `(/ 1 3)` → `0.333...` (float).
@@ -345,7 +345,7 @@ effective address range. Negative NaN canonicalized to positive NaN.
 | wasm_memory | 192ms   | 26ms   | 7.4x    |
 | wasm_sieve  | 822ms   | 792ms  | 1.04x   |
 
-**Deferred**: LEB128 predecode, bytecode fusion, register IR, tail-call dispatch → Phase 37.
+**Resolved**: Register IR implemented in zwasm. LEB128 predecode and bytecode fusion done (Phase 37/45).
 
 ---
 

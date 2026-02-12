@@ -30,6 +30,10 @@ Phase 55: Upstream Test Recovery
 
 Phase 58 complete. Ready for next phase planning.
 
+Next phase candidates:
+- Port numbers.clj upstream tests for Ratio + promote ops (43.7/43.8 — impl done, tests not ported)
+- F138: binding *ns* + read-string (reader↔runtime dynamic var bridge)
+
 ## Task Queue
 
 Phase 58: clojure.core.reducers — ALL DONE
@@ -50,9 +54,8 @@ Bug fixes across 3 known test errors:
 
 ## Known Issues
 
-- apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
-- binding *ns* doesn't affect read-string for auto-resolved keywords
-- ~~record count includes :__reify_type~~ FIXED (count/seq/keys/vals all filter)
+- apply on infinite lazy seq realizes eagerly (F99 — apply doesn't pass rest args as seq)
+- binding *ns* doesn't affect read-string for auto-resolved keywords (F138)
 
 ## Resolved Issues (this session)
 

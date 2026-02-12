@@ -1,6 +1,8 @@
 ;; clojure.pprint — Pretty-printing for Clojure data structures.
 ;; UPSTREAM-DIFF: Simplified implementation. pprint is a Zig builtin.
-;; print-table ported from upstream. cl-format deferred.
+;; print-table ported from upstream.
+;; cl-format (Common Lisp format directives) intentionally not implemented —
+;; large surface area with very low usage. May revisit if user demand arises.
 
 (ns clojure.pprint)
 

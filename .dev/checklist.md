@@ -15,12 +15,12 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
-| F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
-| F94  | Upstream Alignment pass                     | Phase 54-55 done. Java static fields/methods/tests restored. Remaining: ~24 UPSTREAM-DIFF vars in vars.yaml (mostly permanent design diffs: protocol→fn, Java→Zig). |
-| F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
-| F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
+| F94  | Upstream Alignment pass                     | ~38 UPSTREAM-DIFF markers remain — mostly permanent design diffs (protocol→fn, Java→Zig). No further alignment expected. |
+| F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General deep lazy-seq + apply-on-infinite still deferred. See `optimizations.md` |
+| F102 | map/filter chunked processing               | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |
 | F104 | Profile-guided optimization (extend IC)     | Extend inline caching beyond monomorphic                                 |
-| F105 | JIT compilation                             | Future major phase — trace-based or method-based. See `optimizations.md` |
+| F105 | JIT compilation (expand beyond ARM64 PoC)   | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
 | F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
+| F138 | binding *ns* + read-string                  | `(binding [*ns* ...] (read-string "::foo"))` — reader doesn't see runtime *ns*. Needs reader↔runtime dynamic var bridge. |
