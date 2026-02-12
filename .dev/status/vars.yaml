@@ -231,7 +231,7 @@ vars:
     defmacro: {type: macro, status: done, note: "special form in this impl; analyzer special form in CW"}
     defmethod: {type: macro, status: done, note: "analyzer special form in CW"}
     defmulti: {type: macro, status: done, note: "analyzer special form in CW"}
-    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: no :inline, :arglists, or pre/post conditions'}
+    defn: {type: macro, status: done, note: 'UPSTREAM-DIFF: no :inline or :arglists (pre/post conditions supported)'}
     "defn-": {type: macro, status: done, note: "macro in core.clj"}
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}

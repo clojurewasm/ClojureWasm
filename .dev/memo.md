@@ -23,15 +23,12 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 Phase 54: Upstream Fidelity II
 - 54.1: Checklist cleanup (F136/F137 resolved by zwasm v0.11.0) ← DONE
-- 54.2: defn :pre/:post conditions
+- 54.2: defn :pre/:post conditions ← DONE
 - 54.3: Additional UPSTREAM-DIFF fixes
 
 ## Current Task
 
-54.2: Implement defn :pre/:post condition support.
-Upstream Clojure defn wraps fn body with :pre/:post assertions.
-:pre asserts each expression before body execution.
-:post binds % to return value and asserts after execution.
+54.3: Additional UPSTREAM-DIFF fixes (high-impact, low-effort items).
 
 ## Previous Task
 

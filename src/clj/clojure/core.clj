@@ -42,7 +42,7 @@
       nil)))
 
 ;; Full defn: propagates docstring via with-meta on name
-;; UPSTREAM-DIFF: No inline support, simplified attr-map handling
+;; UPSTREAM-DIFF: No :inline or :arglists metadata support
 (defmacro defn [name & fdecl]
   (let [doc (when (string? (first fdecl)) (first fdecl))
         fdecl (if doc (next fdecl) fdecl)
@@ -54,6 +54,40 @@
         fdecl (if (map? (last fdecl))
                 (butlast fdecl)
                 fdecl)
+        ;; Process :pre/:post conditions in each arity.
+        ;; Uses loop/recur (not map — map is defined after defn).
+        make-asserts
+        (fn [conds]
+          (loop [cs (seq conds) acc (list)]
+            (if cs
+              (recur (next cs) (cons (list 'assert (first cs)) acc))
+              (reverse acc))))
+        process-arity
+        (fn [sig]
+          (let [params (first sig)
+                body (next sig)
+                conds (if (next body)
+                        (if (map? (first body)) (first body) nil)
+                        nil)
+                body (if conds (next body) body)
+                pre (:pre conds)
+                post (:post conds)
+                body (if post
+                       (let [result-expr (if (next body)
+                                           (cons 'do body)
+                                           (first body))]
+                         (list (concat (list 'let ['% result-expr])
+                                       (make-asserts post)
+                                       (list '%))))
+                       body)
+                body (if pre
+                       (concat (make-asserts pre) body)
+                       body)]
+            (cons params body)))
+        fdecl (loop [sigs (seq fdecl) acc (list)]
+                (if sigs
+                  (recur (next sigs) (cons (process-arity (first sigs)) acc))
+                  (reverse acc)))
         m (merge (meta name) attr-map (when doc {:doc doc}))
         def-name (if (seq m)
                    (list 'with-meta name m)
