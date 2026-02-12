@@ -48,8 +48,9 @@
    (let [s (seq coll)]
      (naive-seq-reduce s f val))))
 
-;; CLJW: Object fallback delegates to CW builtin reduce which handles
-;; all collection types efficiently (vectors, maps, sets, lazy-seqs, etc.)
+;; CLJW: Object fallback delegates to __zig-reduce (CW Zig-level reduce)
+;; directly to avoid circular calls when core/reduce dispatches through
+;; coll-reduce for reducible collections (e.g. reducer/folder reify objects).
 (extend-type nil CollReduce
              (coll-reduce
                ([coll f] (f))
@@ -57,8 +58,8 @@
 
 (extend-type Object CollReduce
              (coll-reduce
-               ([coll f] (clojure.core/reduce f coll))
-               ([coll f val] (clojure.core/reduce f val coll))))
+               ([coll f] (seq-reduce coll f))
+               ([coll f val] (__zig-reduce f val coll))))
 
 (extend-type nil InternalReduce
              (internal-reduce
@@ -99,3 +100,22 @@
 
 (extend-type Object Navigable
              (nav [_ _ x] x))
+
+;; CLJW: Redefine clojure.core/reduce to dispatch through CollReduce protocol
+;; for reducible collections (reify objects from clojure.core.reducers).
+;; Regular collections use __zig-reduce fast path. Reify objects (maps with
+;; :__reify_type key) dispatch through coll-reduce to reach reify-specific impls.
+(in-ns 'clojure.core)
+(defn reduce
+  ([f coll]
+   (if (and (map? coll) (contains? coll :__reify_type))
+     (clojure.core.protocols/coll-reduce coll f)
+     (let [s (seq coll)]
+       (if s
+         (__zig-reduce f (first s) (next s))
+         (f)))))
+  ([f init coll]
+   (if (and (map? coll) (contains? coll :__reify_type))
+     (clojure.core.protocols/coll-reduce coll f init)
+     (__zig-reduce f init coll))))
+(in-ns 'clojure.core.protocols)

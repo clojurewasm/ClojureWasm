@@ -733,27 +733,28 @@ vars:
     "kv-reduce": {type: function, status: done}
     nav: {type: function, status: done}
   clojure_core_reducers:
-    "->Cat": {type: function, status: todo}
-    CollFold: {type: var, status: todo}
-    "append!": {type: function, status: todo}
-    cat: {type: function, status: todo}
-    "coll-fold": {type: function, status: todo}
-    drop: {type: function, status: todo}
-    filter: {type: function, status: todo}
-    fjtask: {type: function, status: todo}
-    flatten: {type: function, status: todo}
-    fold: {type: function, status: todo}
-    foldcat: {type: function, status: todo}
-    folder: {type: function, status: todo}
-    map: {type: function, status: todo}
-    mapcat: {type: function, status: todo}
-    monoid: {type: function, status: todo}
-    pool: {type: var, status: todo}
-    reduce: {type: function, status: todo}
-    reducer: {type: function, status: todo}
-    remove: {type: function, status: todo}
-    take: {type: function, status: todo}
-    "take-while": {type: function, status: done, note: "core.clj loop+pred"}
+    "->Cat": {type: function, status: done}
+    CollFold: {type: var, status: done}
+    "append!": {type: function, status: done}
+    cat: {type: function, status: done}
+    "coll-fold": {type: function, status: done}
+    drop: {type: function, status: done}
+    filter: {type: function, status: done}
+    fjtask: {type: function, status: done, notes: "UPSTREAM-DIFF: identity (no ForkJoin)"}
+    flatten: {type: function, status: done}
+    fold: {type: function, status: done, notes: "UPSTREAM-DIFF: sequential fold (no ForkJoin)"}
+    foldcat: {type: function, status: done}
+    folder: {type: function, status: done}
+    map: {type: function, status: done}
+    "map->Cat": {type: function, status: done}
+    mapcat: {type: function, status: done}
+    monoid: {type: function, status: done}
+    pool: {type: var, status: done, notes: "UPSTREAM-DIFF: nil (no ForkJoinPool)"}
+    reduce: {type: function, status: done}
+    reducer: {type: function, status: done}
+    remove: {type: function, status: done}
+    take: {type: function, status: done}
+    "take-while": {type: function, status: done}
   clojure_core_server:
     "*session*": {type: dynamic-var, status: todo}
     "io-prepl": {type: function, status: todo}

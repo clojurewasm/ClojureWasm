@@ -799,11 +799,11 @@ pub const VM = struct {
                 // Pop method fn from stack
                 const method_fn = self.pop();
 
-                // Read meta vector: [type_name, protocol_name, method_name]
+                // Read meta vector: [type_name, protocol_name, method_name, protocol_ns?]
                 const meta_val = frame.constants[instr.operand];
                 if (meta_val.tag() != .vector) return error.InvalidInstruction;
                 const meta = meta_val.asVector().items;
-                if (meta.len != 3) return error.InvalidInstruction;
+                if (meta.len < 3) return error.InvalidInstruction;
                 const type_name_val = meta[0];
                 const proto_name_val = meta[1];
                 const method_name_val = meta[2];
@@ -814,10 +814,20 @@ pub const VM = struct {
                 const proto_name = proto_name_val.asString();
                 const method_name = method_name_val.asString();
 
-                // Resolve protocol
+                // Resolve protocol (supports namespace-qualified names)
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
-                const proto_var = ns.resolve(proto_name) orelse {
+                const proto_var = if (meta.len >= 4 and meta[3].tag() == .string) blk: {
+                    const pns_name = meta[3].asString();
+                    const proto_ns = env.findNamespace(pns_name) orelse {
+                        err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns_name});
+                        return error.UndefinedVar;
+                    };
+                    break :blk proto_ns.resolve(proto_name) orelse {
+                        err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}/{s}", .{ pns_name, proto_name });
+                        return error.UndefinedVar;
+                    };
+                } else ns.resolve(proto_name) orelse {
                     err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{proto_name});
                     return error.UndefinedVar;
                 };

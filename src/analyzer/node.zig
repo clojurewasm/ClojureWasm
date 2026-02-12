@@ -189,6 +189,7 @@ pub const MethodSigNode = struct {
 /// extend-type: (extend-type TypeName Protocol (method [args] body) ...)
 pub const ExtendTypeNode = struct {
     type_name: []const u8,
+    protocol_ns: ?[]const u8,
     protocol_name: []const u8,
     methods: []const ExtendMethodNode,
     source: SourceInfo,
@@ -202,6 +203,7 @@ pub const ExtendMethodNode = struct {
 
 /// Protocol implementation block within a reify.
 pub const ReifyProtocol = struct {
+    protocol_ns: ?[]const u8,
     protocol_name: []const u8,
     methods: []const ExtendMethodNode,
 };

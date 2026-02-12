@@ -4,8 +4,8 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 57 COMPLETE**
-- Coverage: 847+ vars (637/706 core, 10/11 protocols, 17 namespaces total)
+- **All phases through 57 COMPLETE**, Phase 58 in progress
+- Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 49 upstream test files, all passing. 6/6 e2e tests pass.
@@ -28,30 +28,26 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-58.2: Implement reducers core (reduce, fold, CollFold, monoid).
+58.6: Port reducers.clj upstream test.
 
 ## Task Queue
 
 Phase 58: clojure.core.reducers (see below)
 - ~~58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce)~~ DONE
-- 58.2: Implement reducers core (reduce, fold, CollFold, monoid)
-- 58.3: Implement reducer/folder wrappers (reify-based)
-- 58.4: Implement transformation fns (map, filter, remove, take, take-while, drop, flatten, mapcat)
-- 58.5: Implement Cat type (defrecord) + cat/append!/foldcat
+- ~~58.2: Implement reducers core (reduce, fold, CollFold, monoid)~~ DONE
+- ~~58.3: Implement reducer/folder wrappers (reify-based)~~ DONE
+- ~~58.4: Implement transformation fns (map, filter, remove, take, take-while, drop, flatten, mapcat)~~ DONE
+- ~~58.5: Implement Cat type (defrecord) + cat/append!/foldcat~~ DONE
 - 58.6: Port reducers.clj upstream test
-
-Design notes:
-- Cat uses `defrecord` instead of `deftype` (deftype is skip in CW)
-- ForkJoin → sequential fold first (parallel fold via thread pool can be added later)
-- `java.util.ArrayList` → transient vector or atom+conj
-- `reify` is available for reducer/folder wrappers
-- `clojure.core.protocols/coll-reduce` delegates to existing CW reduce builtin
 
 ## Previous Task
 
-58.1: Created `clojure.core.protocols` namespace with 10/11 vars (CollReduce, InternalReduce,
-IKVReduce, Datafiable, Navigable). Fixed extend-type nil, defprotocol docstrings, Object fallback
-dispatch. Protocol values not serializable — re-loaded after cache restore.
+58.2-58.5: Implemented full clojure.core.reducers namespace (22 vars). Key changes:
+- defrecord now adds `:__reify_type` for protocol dispatch on record types
+- Namespace-qualified protocol names in extend-type/reify (protocol_ns field added to node)
+- core/reduce redefined in protocols.clj to dispatch through CollReduce for reify objects
+- Object CollReduce extension uses __zig-reduce directly (avoids circular reduce→coll-reduce→reduce)
+- Multi-arity reify methods use nested arity form (single method, multiple arities)
 
 ## Known Issues
 

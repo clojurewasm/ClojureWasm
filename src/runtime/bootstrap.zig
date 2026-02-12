@@ -76,6 +76,9 @@ const zip_clj_source = @embedFile("../clj/clojure/zip.clj");
 /// Embedded clojure/core/protocols.clj source (compiled into binary).
 const protocols_clj_source = @embedFile("../clj/clojure/core/protocols.clj");
 
+/// Embedded clojure/core/reducers.clj source (compiled into binary).
+const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -572,6 +575,34 @@ pub fn loadProtocols(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = protocols_ns;
 
     _ = try evalString(allocator, env, protocols_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load and evaluate clojure/core/reducers.clj in the given Env.
+/// Creates the clojure.core.reducers namespace with reduce, fold, CollFold,
+/// monoid, and transformation functions (map, filter, etc.).
+/// Requires clojure.walk and clojure.core.protocols to be loaded first.
+pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
+    const reducers_ns = env.findOrCreateNamespace("clojure.core.reducers") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        reducers_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = reducers_ns;
+
+    _ = try evalString(allocator, env, reducers_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -1084,6 +1115,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadStacktrace(allocator, env);
     try loadZip(allocator, env);
     try loadProtocols(allocator, env);
+    try loadReducers(allocator, env);
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -1173,6 +1205,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, protocols_clj_source);
     }
 
+    // Re-compile core/reducers.clj
+    if (env.findNamespace("clojure.core.reducers")) |reducers_ns| {
+        env.current_ns = reducers_ns;
+        _ = try evalStringVMBootstrap(allocator, env, reducers_clj_source);
+    }
+
     // Restore namespace
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -1229,9 +1267,10 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
         thread_pool_mod.initAgentVar(agent_v);
     }
 
-    // Re-load protocols namespace (protocol/protocol_fn values are not serializable,
-    // so they are nil after cache restore — re-evaluate from source to recreate them)
+    // Re-load protocols and reducers namespaces (protocol/protocol_fn values are not
+    // serializable, so they are nil after cache restore — re-evaluate from source)
     loadProtocols(allocator, env) catch {};
+    loadReducers(allocator, env) catch {};
 
     // Ensure *ns* is synced
     syncNsVar(env);

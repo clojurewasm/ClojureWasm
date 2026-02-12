@@ -1765,10 +1765,11 @@ pub const Analyzer = struct {
             return self.analysisError(.value_error, "extend-type type must be a symbol", items[1]);
         };
 
-        // Protocol name
+        // Protocol name (may be namespace-qualified, e.g. clojure.core.protocols/CollReduce)
         if (items[2].data != .symbol) {
             return self.analysisError(.value_error, "extend-type protocol must be a symbol", items[2]);
         }
+        const protocol_ns = items[2].data.symbol.ns;
         const protocol_name = items[2].data.symbol.name;
 
         // Methods
@@ -1806,6 +1807,7 @@ pub const Analyzer = struct {
         const et = self.allocator.create(node_mod.ExtendTypeNode) catch return error.OutOfMemory;
         et.* = .{
             .type_name = type_name,
+            .protocol_ns = protocol_ns,
             .protocol_name = protocol_name,
             .methods = methods.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
             .source = self.sourceFromForm(form),
@@ -1829,6 +1831,7 @@ pub const Analyzer = struct {
             if (items[i].data != .symbol) {
                 return self.analysisError(.value_error, "reify expects protocol name", items[i]);
             }
+            const protocol_ns = items[i].data.symbol.ns;
             const protocol_name = items[i].data.symbol.name;
             i += 1;
 
@@ -1855,6 +1858,7 @@ pub const Analyzer = struct {
             }
 
             protocols.append(self.allocator, .{
+                .protocol_ns = protocol_ns,
                 .protocol_name = protocol_name,
                 .methods = methods.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
             }) catch return error.OutOfMemory;
@@ -1898,13 +1902,16 @@ pub const Analyzer = struct {
         const ctor_name = std.fmt.allocPrint(self.allocator, "->{s}", .{rec_name}) catch return error.OutOfMemory;
         const map_ctor_name = std.fmt.allocPrint(self.allocator, "map->{s}", .{rec_name}) catch return error.OutOfMemory;
 
-        // Build (hash-map :field1 field1 :field2 field2 ...) as Forms
-        const hm_form_count = 1 + fields.len * 2; // hash-map + pairs
+        // Build (hash-map :__reify_type "Name" :field1 field1 :field2 field2 ...) as Forms
+        // The :__reify_type key enables protocol dispatch via extend-type on record types.
+        const hm_form_count = 1 + 2 + fields.len * 2; // hash-map + type tag + pairs
         const hm_forms = self.allocator.alloc(Form, hm_form_count) catch return error.OutOfMemory;
         hm_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "hash-map" } } };
+        hm_forms[1] = .{ .data = .{ .keyword = .{ .ns = null, .name = "__reify_type" } } };
+        hm_forms[2] = .{ .data = .{ .string = rec_name } };
         for (fields, 0..) |field, i| {
-            hm_forms[1 + i * 2] = .{ .data = .{ .keyword = .{ .ns = null, .name = field.data.symbol.name } } };
-            hm_forms[1 + i * 2 + 1] = field; // symbol ref
+            hm_forms[3 + i * 2] = .{ .data = .{ .keyword = .{ .ns = null, .name = field.data.symbol.name } } };
+            hm_forms[3 + i * 2 + 1] = field; // symbol ref
         }
 
         // Build (fn ->Name [fields...] (hash-map ...))

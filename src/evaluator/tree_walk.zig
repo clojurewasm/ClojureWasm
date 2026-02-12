@@ -910,8 +910,17 @@ pub const TreeWalk = struct {
         const env = self.env orelse return error.UndefinedVar;
         const ns = env.current_ns orelse return error.UndefinedVar;
 
-        // Resolve protocol
-        const proto_var = ns.resolve(et_n.protocol_name) orelse {
+        // Resolve protocol (supports namespace-qualified names like clojure.core.protocols/CollReduce)
+        const proto_var = if (et_n.protocol_ns) |pns| blk: {
+            const proto_ns = env.findNamespace(pns) orelse {
+                err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns});
+                return error.UndefinedVar;
+            };
+            break :blk proto_ns.resolve(et_n.protocol_name) orelse {
+                err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}/{s}", .{ pns, et_n.protocol_name });
+                return error.UndefinedVar;
+            };
+        } else ns.resolve(et_n.protocol_name) orelse {
             err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{et_n.protocol_name});
             return error.UndefinedVar;
         };
@@ -958,7 +967,16 @@ pub const TreeWalk = struct {
 
         // Register each protocol's methods under the unique type key
         for (r_n.protocols) |proto_block| {
-            const proto_var = ns.resolve(proto_block.protocol_name) orelse {
+            const proto_var = if (proto_block.protocol_ns) |pns| blk: {
+                const proto_ns = env.findNamespace(pns) orelse {
+                    err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns});
+                    return error.UndefinedVar;
+                };
+                break :blk proto_ns.resolve(proto_block.protocol_name) orelse {
+                    err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}/{s}", .{ pns, proto_block.protocol_name });
+                    return error.UndefinedVar;
+                };
+            } else ns.resolve(proto_block.protocol_name) orelse {
                 err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve protocol: {s}", .{proto_block.protocol_name});
                 return error.UndefinedVar;
             };

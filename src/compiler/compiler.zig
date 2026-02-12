@@ -884,11 +884,16 @@ pub const Compiler = struct {
             // Compile method fn -> pushes fn_val (+1)
             try self.emitFn(method.fn_node);
 
-            // Create meta vector: [type_name, protocol_name, method_name]
-            const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
+            // Create meta vector: [type_name, protocol_name, method_name, protocol_ns?]
+            const has_ns = node.protocol_ns != null;
+            const meta_count: usize = if (has_ns) 4 else 3;
+            const meta_items = self.allocator.alloc(Value, meta_count) catch return error.OutOfMemory;
             meta_items[0] = Value.initString(self.allocator, node.type_name);
             meta_items[1] = Value.initString(self.allocator, node.protocol_name);
             meta_items[2] = Value.initString(self.allocator, method.name);
+            if (node.protocol_ns) |pns| {
+                meta_items[3] = Value.initString(self.allocator, pns);
+            }
             const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
             meta_vec.* = .{ .items = meta_items };
             const meta_idx = self.chunk.addConstant(Value.initVector(meta_vec)) catch return error.TooManyConstants;
@@ -919,11 +924,16 @@ pub const Compiler = struct {
                 // Compile method fn -> pushes fn_val (+1)
                 try self.emitFn(method.fn_node);
 
-                // Create meta vector: [type_name, protocol_name, method_name]
-                const meta_items = self.allocator.alloc(Value, 3) catch return error.OutOfMemory;
+                // Create meta vector: [type_name, protocol_name, method_name, protocol_ns?]
+                const has_pns = proto_block.protocol_ns != null;
+                const pm_count: usize = if (has_pns) 4 else 3;
+                const meta_items = self.allocator.alloc(Value, pm_count) catch return error.OutOfMemory;
                 meta_items[0] = Value.initString(self.allocator, type_key);
                 meta_items[1] = Value.initString(self.allocator, proto_block.protocol_name);
                 meta_items[2] = Value.initString(self.allocator, method.name);
+                if (proto_block.protocol_ns) |pns| {
+                    meta_items[3] = Value.initString(self.allocator, pns);
+                }
                 const meta_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
                 meta_vec.* = .{ .items = meta_items };
                 const meta_idx = self.chunk.addConstant(Value.initVector(meta_vec)) catch return error.TooManyConstants;
