@@ -244,7 +244,7 @@
   (is (false? (parse-boolean "false")))
   (is (nil? (parse-boolean "yes")))
   (is (nil? (parse-boolean "1")))
-  (is (nil? (parse-boolean nil))))
+  (is (thrown? Exception (parse-boolean nil))))
 
 (deftest test-reductions
   (is (= [1 3 6 10] (vec (reductions + [1 2 3 4]))))

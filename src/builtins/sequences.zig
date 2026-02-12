@@ -213,10 +213,17 @@ pub fn keysFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     const n = m.count();
     if (n == 0) return Value.nil_val;
-    const items = try allocator.alloc(Value, n);
+    // Filter :__reify_type for records (CW implementation detail)
+    const is_record = collections_builtin.isRecordArrayMap(m);
+    const actual_n = if (is_record) n - 1 else n;
+    if (actual_n == 0) return Value.nil_val;
+    const items = try allocator.alloc(Value, actual_n);
+    var idx: usize = 0;
     var i: usize = 0;
-    while (i < n) : (i += 1) {
-        items[i] = m.entries[i * 2];
+    while (i < m.entries.len) : (i += 2) {
+        if (is_record and collections_builtin.isReifyTypeKey(m.entries[i])) continue;
+        items[idx] = m.entries[i];
+        idx += 1;
     }
     const lst = try allocator.create(PersistentList);
     lst.* = .{ .items = items };
@@ -249,10 +256,17 @@ pub fn valsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
     const n = m.count();
     if (n == 0) return Value.nil_val;
-    const items = try allocator.alloc(Value, n);
+    // Filter :__reify_type for records (CW implementation detail)
+    const is_record = collections_builtin.isRecordArrayMap(m);
+    const actual_n = if (is_record) n - 1 else n;
+    if (actual_n == 0) return Value.nil_val;
+    const items = try allocator.alloc(Value, actual_n);
+    var idx: usize = 0;
     var i: usize = 0;
-    while (i < n) : (i += 1) {
-        items[i] = m.entries[i * 2 + 1];
+    while (i < m.entries.len) : (i += 2) {
+        if (is_record and collections_builtin.isReifyTypeKey(m.entries[i])) continue;
+        items[idx] = m.entries[i + 1];
+        idx += 1;
     }
     const lst = try allocator.create(PersistentList);
     lst.* = .{ .items = items };

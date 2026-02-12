@@ -28,6 +28,27 @@ const bootstrap = @import("../runtime/bootstrap.zig");
 const err = @import("../runtime/error.zig");
 
 // ============================================================
+// Record helpers
+// ============================================================
+
+/// Check if a keyword Value is :__reify_type (CW record implementation detail).
+/// Used to filter this internal key from user-visible iteration (seq, keys, vals).
+pub fn isReifyTypeKey(v: Value) bool {
+    if (v.tag() != .keyword) return false;
+    const kw = v.asKeyword();
+    return kw.ns == null and std.mem.eql(u8, kw.name, "__reify_type");
+}
+
+/// Check if a PersistentArrayMap is a CW record (has :__reify_type key).
+pub fn isRecordArrayMap(m: *const PersistentArrayMap) bool {
+    var i: usize = 0;
+    while (i < m.entries.len) : (i += 2) {
+        if (isReifyTypeKey(m.entries[i])) return true;
+    }
+    return false;
+}
+
+// ============================================================
 // Implementations
 // ============================================================
 
@@ -709,10 +730,15 @@ pub fn seqFn(allocator: Allocator, args: []const Value) anyerror!Value {
             const m = args[0].asMap();
             const n = m.count();
             if (n == 0) return Value.nil_val;
-            const entry_vecs = try allocator.alloc(Value, n);
+            // Filter :__reify_type for records (CW implementation detail)
+            const is_record = isRecordArrayMap(m);
+            const actual_n = if (is_record) n - 1 else n;
+            if (actual_n == 0) return Value.nil_val;
+            const entry_vecs = try allocator.alloc(Value, actual_n);
             var idx: usize = 0;
             var i: usize = 0;
             while (i < m.entries.len) : (i += 2) {
+                if (is_record and isReifyTypeKey(m.entries[i])) continue;
                 const pair = try allocator.alloc(Value, 2);
                 pair[0] = m.entries[i];
                 pair[1] = m.entries[i + 1];

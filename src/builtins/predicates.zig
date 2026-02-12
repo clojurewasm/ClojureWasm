@@ -830,10 +830,24 @@ fn sortedPred(_: Allocator, args: []const Value) anyerror!Value {
     });
 }
 
-/// (record? x) — Returns true if x is a record.
-fn recordPred(_: Allocator, args: []const Value) anyerror!Value {
+/// (record? x) — Returns true if x is a record (map with :__reify_type key whose value is a string).
+fn recordPred(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to record?", .{args.len});
-    // No defrecord in ClojureWasm yet
+    // CW records are maps with a :__reify_type string key (set by defrecord)
+    const tag = args[0].tag();
+    if (tag == .map) {
+        const m = args[0].asMap();
+        const key = Value.initKeyword(allocator, .{ .ns = null, .name = "__reify_type" });
+        if (m.get(key)) |v| {
+            return Value.initBoolean(v.tag() == .string);
+        }
+    } else if (tag == .hash_map) {
+        const m = args[0].asHashMap();
+        const key = Value.initKeyword(allocator, .{ .ns = null, .name = "__reify_type" });
+        if (m.get(key)) |v| {
+            return Value.initBoolean(v.tag() == .string);
+        }
+    }
     return Value.false_val;
 }
 
@@ -1101,13 +1115,18 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Used by try/catch to determine if a catch clause should handle an exception.
 /// Implements Java exception hierarchy: Throwable > Exception > RuntimeException > specific types.
 pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
-    // Throwable/Exception/RuntimeException: catch ALL thrown values (including non-map raw values)
+    // Throwable/Exception/RuntimeException/Error: catch ALL thrown values (including non-map raw values).
+    // CW has a flat exception hierarchy — Error is treated as catch-all like Throwable.
     if (std.mem.eql(u8, class_name, "Throwable") or
         std.mem.eql(u8, class_name, "java.lang.Throwable") or
         std.mem.eql(u8, class_name, "Exception") or
         std.mem.eql(u8, class_name, "java.lang.Exception") or
         std.mem.eql(u8, class_name, "RuntimeException") or
-        std.mem.eql(u8, class_name, "java.lang.RuntimeException"))
+        std.mem.eql(u8, class_name, "java.lang.RuntimeException") or
+        std.mem.eql(u8, class_name, "Error") or
+        std.mem.eql(u8, class_name, "java.lang.Error") or
+        std.mem.eql(u8, class_name, "AssertionError") or
+        std.mem.eql(u8, class_name, "java.lang.AssertionError"))
         return true;
 
     // For specific exception types, value must be an exception map (with __ex_info key)

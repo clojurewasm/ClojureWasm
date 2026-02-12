@@ -2,8 +2,6 @@
 ;;
 ;; Based on upstream clojure.walk by Stuart Sierra.
 ;;
-;; UPSTREAM-DIFF: No IMapEntry/IRecord branches (not needed: CW map entries are vectors).
-
 (ns clojure.walk)
 
 (defn walk
@@ -14,7 +12,11 @@
   [inner outer form]
   (cond
     (list? form) (outer (with-meta (apply list (map inner form)) (meta form)))
+    ;; UPSTREAM-DIFF: no IMapEntry branch — CW map entries are plain vectors,
+    ;; so the coll? branch handles them correctly via (into (empty form) ...).
     (seq? form) (outer (with-meta (doall (map inner form)) (meta form)))
+    ;; UPSTREAM-DIFF: skip :__reify_type entry (CW record implementation detail)
+    (record? form) (outer (reduce (fn [r x] (if (= (key x) :__reify_type) r (conj r (inner x)))) form form))
     (coll? form) (outer (into (empty form) (map inner form)))
     :else (outer form)))
 

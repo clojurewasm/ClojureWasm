@@ -42,15 +42,17 @@ Phase 58: clojure.core.reducers — ALL DONE
 
 ## Previous Task
 
-58.6: Port reducers.clj upstream test (10 tests, 119 assertions). Bug fixes:
-- reduce-kv: added reduced? handling + nil guard (was missing early termination)
-- zipmap: rewrote to lazy seq iteration (was eagerly collecting, hung on infinite seqs)
-- run-tests: added namespace argument support (upstream compat: run-tests & namespaces)
+Bug fixes across 3 known test errors:
+- parse-boolean nil: fixed test (upstream expects throw, not nil)
+- catch Error: added Error/AssertionError to exceptionMatchesClass catch-all
+- walk + records: removed map-entry? branch (CW map entries are vectors),
+  fixed record? predicate, filtered :__reify_type from seq/keys/vals iteration
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
+- record count includes :__reify_type (minor — seq/keys/vals already filtered)
 
 ## Resolved Issues (this session)
 
