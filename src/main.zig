@@ -600,6 +600,7 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
     }
     const max_file_size = 10 * 1024 * 1024;
     var loaded: usize = 0;
+    var total_failures = false;
     for (test_files.items) |tf| {
         const file_bytes = std.fs.cwd().readFileAlloc(file_alloc, tf, max_file_size) catch {
             _ = stderr.write("Error: could not read ") catch {};
@@ -610,11 +611,17 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
 
         err.setSourceFile(tf);
         err.setSourceText(file_bytes);
-        _ = bootstrap.evalStringVM(gc_alloc, &env, file_bytes) catch |e| {
+        const result = bootstrap.evalStringVM(gc_alloc, &env, file_bytes) catch |e| {
             reportError(e);
             continue;
         };
         loaded += 1;
+
+        // Each test file ends with (run-tests) which returns {:test N :pass N :fail N :error N}.
+        // Check for failures in per-file results.
+        if (result.tag() == .map) {
+            if (checkTestFailures(result)) total_failures = true;
+        }
     }
 
     if (loaded == 0) {
@@ -622,38 +629,30 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
         std.process.exit(1);
     }
 
-    // Run all registered tests via (clojure.test/run-tests)
-    err.setSourceFile(null);
-    err.setSourceText("(clojure.test/run-tests)");
-    const result = bootstrap.evalStringVM(gc_alloc, &env, "(clojure.test/run-tests)") catch |e| {
-        reportError(e);
-        std.process.exit(1);
-    };
-
-    // Check result for failures: {:test N :pass N :fail N :error N}
-    // If fail+error > 0, exit with code 1
-    var has_failures = false;
-    if (result.tag() == .map) {
-        const m = result.asMap();
-        var ei: usize = 0;
-        while (ei + 1 < m.entries.len) : (ei += 2) {
-            const k = m.entries[ei];
-            const v = m.entries[ei + 1];
-            if (k.tag() == .keyword and v.tag() == .integer) {
-                const kw = k.asKeyword();
-                if (std.mem.eql(u8, kw.name, "fail") or std.mem.eql(u8, kw.name, "error")) {
-                    if (v.asInteger() > 0) has_failures = true;
-                }
-            }
-        }
-    }
-
     // Print newline after test output
     _ = stdout.write("\n") catch {};
 
-    if (has_failures) {
+    if (total_failures) {
         std.process.exit(1);
     }
+}
+
+/// Check if a test result map has failures (:fail > 0 or :error > 0).
+fn checkTestFailures(result: Value) bool {
+    if (result.tag() != .map) return false;
+    const m = result.asMap();
+    var ei: usize = 0;
+    while (ei + 1 < m.entries.len) : (ei += 2) {
+        const k = m.entries[ei];
+        const v = m.entries[ei + 1];
+        if (k.tag() == .keyword and v.tag() == .integer) {
+            const kw = k.asKeyword();
+            if (std.mem.eql(u8, kw.name, "fail") or std.mem.eql(u8, kw.name, "error")) {
+                if (v.asInteger() > 0) return true;
+            }
+        }
+    }
+    return false;
 }
 
 /// Recursively collect .clj files from a directory.

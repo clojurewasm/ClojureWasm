@@ -4,7 +4,6 @@
 ;; UPSTREAM-DIFF: report is a dynamic fn (not multimethod)
 ;; UPSTREAM-DIFF: do-report does not add file/line info (no StackTraceElement)
 ;; UPSTREAM-DIFF: deftest uses register-test atom (not ns metadata)
-;; UPSTREAM-DIFF: run-tests uses atom registry (not ns-based test-ns)
 
 ;; ========== Test state management ==========
 
@@ -388,11 +387,10 @@
   names matching the regular expression (with re-matches) will be
   tested."
   {:added "1.1"}
-  ([] (run-tests))
+  ([] (apply run-tests (distinct (map :ns @test-registry))))
   ([re]
-   ;; UPSTREAM-DIFF: CW uses atom registry, so just run-tests (no ns filtering)
-   ;; All registered tests run regardless of ns filter
-   (run-tests)))
+   (apply run-tests (filter #(re-matches re (str %))
+                            (distinct (map :ns @test-registry))))))
 
 ;; Run tests for a single var, with fixtures and summary output.
 (defn run-test-var
