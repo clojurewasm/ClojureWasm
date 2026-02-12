@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 55 COMPLETE**
+- **All phases through 57 COMPLETE**
 - Coverage: 837+ vars (637/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -28,21 +28,28 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-Phase 57 complete. Next: read roadmap.md for next phase.
+58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce, coll-reduce, kv-reduce).
 
 ## Task Queue
 
-(empty — Phase 57 done)
+Phase 58: clojure.core.reducers (see below)
+- 58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce)
+- 58.2: Implement reducers core (reduce, fold, CollFold, monoid)
+- 58.3: Implement reducer/folder wrappers (reify-based)
+- 58.4: Implement transformation fns (map, filter, remove, take, take-while, drop, flatten, mapcat)
+- 58.5: Implement Cat type (defrecord) + cat/append!/foldcat
+- 58.6: Port reducers.clj upstream test
+
+Design notes:
+- Cat uses `defrecord` instead of `deftype` (deftype is skip in CW)
+- ForkJoin → sequential fold first (parallel fold via thread pool can be added later)
+- `java.util.ArrayList` → transient vector or atom+conj
+- `reify` is available for reducer/folder wrappers
+- `clojure.core.protocols/coll-reduce` delegates to existing CW reduce builtin
 
 ## Previous Task
 
-Phase 57: Concurrency Test Suite — all 15 sub-tasks complete.
-- 57.1-57.4: Zig-level GC concurrency tests (`src/runtime/concurrency_test.zig`)
-- 57.5-57.15: Clojure concurrency stress tests (`test/cw/concurrency_stress.clj`)
-- Bug found & fixed: swap!/swap-vals! had no CAS retry loop — lost updates under contention.
-  Fixed with `@cmpxchgStrong` CAS loop. reset!/reset-vals! also made atomic (`@atomicRmw .Xchg`).
-  deref on atom uses `@atomicLoad` for safe cross-thread reads.
-- All 10 Clj tests (33 assertions) pass on both VM and TreeWalk.
+Phase 57: Concurrency Test Suite + swap! CAS fix + Delay thread safety.
 
 ## Known Issues
 

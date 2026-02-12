@@ -89,6 +89,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 54     | Upstream Fidelity II                        | fn pre/post, Java static fields + 12 utility methods        |
 | 55     | Upstream Test Recovery                      | Restore Java constant refs in 5 test files, reduce markers  |
 | 56     | Bug Fixes & read                            | pprint lazy fix, read/read+string/edn-read, 637/706 core   |
+| 57     | Concurrency Test Suite                      | 4 Zig + 10 Clj tests, swap! CAS fix, atomic atom ops       |
 ```
 
 ---
