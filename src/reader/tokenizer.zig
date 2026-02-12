@@ -13,7 +13,7 @@
 //!   - Token stores offset + length into original source (no copies)
 //!   - Tracks line/column for error reporting
 //!   - Comma is whitespace (Clojure convention)
-//!   - Escape processing deferred to Reader stage
+//!   - Escape processing handled by Reader stage
 
 const std = @import("std");
 

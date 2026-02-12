@@ -1035,7 +1035,7 @@ pub const VM = struct {
             .nop => {},
             .debug_print => _ = self.pop(),
 
-            // Upvalues (deferred to Task 2.8)
+            // Upvalue opcodes unused — CW closures capture via environment, not upvalues.
             .upvalue_load, .upvalue_store => return error.InvalidInstruction,
         }
         return null;

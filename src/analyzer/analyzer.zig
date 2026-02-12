@@ -852,7 +852,7 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "fn requires parameter vector", form);
         }
 
-        // Optional docstring (skip it, metadata support deferred)
+        // Optional docstring (fn forms don't attach docstring metadata, same as JVM)
         if (items[idx].data == .string) {
             idx += 1;
         }
@@ -2991,10 +2991,9 @@ pub fn formToValue(allocator: Allocator, form: Form) Value {
         .string => |s| Value.initString(allocator, s),
         .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
         .keyword => |sym| Value.initKeyword(allocator, .{ .ns = sym.ns, .name = sym.name }),
-        // Collections require allocation; for Phase 1c, return nil placeholder.
-        // Full collection quote support requires allocator (deferred).
+        // Collections/regex not supported here — use macro.formToValue instead.
         .list, .vector, .map, .set => Value.nil_val,
-        .regex => |_| Value.nil_val, // use macro.formToValue for regex support
+        .regex => |_| Value.nil_val,
         .tag => Value.nil_val,
     };
 }

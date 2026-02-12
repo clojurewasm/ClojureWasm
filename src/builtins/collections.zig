@@ -688,7 +688,10 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initInteger(@intCast(switch (args[0].tag()) {
         .list => args[0].asList().count(),
         .vector => args[0].asVector().count(),
-        .map => args[0].asMap().count(),
+        .map => blk: {
+            const m = args[0].asMap();
+            break :blk if (isRecordArrayMap(m)) m.count() - 1 else m.count();
+        },
         .hash_map => args[0].asHashMap().getCount(),
         .set => args[0].asSet().count(),
         .nil => @as(usize, 0),

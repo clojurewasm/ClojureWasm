@@ -8,6 +8,8 @@
 ;;
 ;; Uses clojure.test (auto-referred from bootstrap).
 
+(require '[clojure.string :as str])
+
 (println "[sci/core_test] running...")
 
 ;; =========================================================================
@@ -369,17 +371,9 @@
 ;; =========================================================================
 ;; some-> / some->>
 ;; =========================================================================
-;; Using str-based workaround since clojure.string not available
-(defn __to-lower [s]
-  ;; manual lower-case for ASCII — simplified for test purposes
-  s)
-(defn __st-h1 [] (some-> {:a {:a nil}} :a :a :a str))
-(defn __st-h2 [] (some-> {:a {:a {:a "AAA"}}} :a :a :a str))
-
 (deftest some-threading-test
-  (is (nil? (__st-h1)))
-  ;; some-> stops at nil and returns nil; __st-h2 returns "AAA" (no lower-case)
-  (is (= "AAA" (__st-h2))))
+  (is (nil? (some-> {:a {:a nil}} :a :a :a (str/lower-case))))
+  (is (= "aaa" (some-> {:a {:a {:a "AAA"}}} :a :a :a (str/lower-case)))))
 
 ;; =========================================================================
 ;; macroexpand

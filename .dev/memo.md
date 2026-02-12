@@ -52,7 +52,7 @@ Bug fixes across 3 known test errors:
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
-- record count includes :__reify_type (minor — seq/keys/vals already filtered)
+- ~~record count includes :__reify_type~~ FIXED (count/seq/keys/vals all filter)
 
 ## Resolved Issues (this session)
 
