@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 60
+;; CLJW markers: 59
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -109,7 +109,8 @@
     (+ 1.1 2.4) 3.5
     (+ 1.1 2.2 3.3) 6.6))
 
-;; CLJW: thrown? tests removed from test-add — Integer/MAX_VALUE, ClassCastException
+;; CLJW: thrown? ClassCastException test removed — CW throws different exception type for (+ "ab" "cd")
+(is (> (+ Integer/MAX_VALUE 10) Integer/MAX_VALUE))  ; no overflow
 
 (deftest test-subtract
   ;; CLJW: (is (thrown? IllegalArgumentException (-))) — arity error differs
@@ -139,7 +140,7 @@
     (- 2.2 1.1) 1.1
     (- 6.6 2.2 1.1) 3.3))
 
-;; CLJW: Integer/MIN_VALUE overflow check removed
+(is (< (- Integer/MIN_VALUE 10) Integer/MIN_VALUE))  ; no underflow
 
 (deftest test-multiply
   (are [x y] (= x y)
@@ -164,7 +165,9 @@
   (are [x y] (< (- x y) DELTA)
     (* 1.2) 1.2
     (* 2.0 1.2) 2.4
-    (* 3.5 2.0 1.2) 8.4))
+    (* 3.5 2.0 1.2) 8.4)
+
+  (is (> (* 3 (int (/ Integer/MAX_VALUE 2.0))) Integer/MAX_VALUE)))  ; no overflow
 
 ;; CLJW: adapted to i48 integer range (NaN-boxing), upstream uses Long/MIN_VALUE
 (def ^:private I48-MIN -140737488355328)  ;; CLJW-ADD: i48 min for NaN-boxed integers

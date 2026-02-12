@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/printer.clj
 ;; Upstream lines: 195
-;; CLJW markers: 8
+;; CLJW markers: 7
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -102,7 +102,14 @@
 ;; CLJW: print-meta skipped — uses .endsWith/.startsWith/.contains Java String methods
 ;; CLJW: print-throwable skipped — uses Throwable->map, *data-readers*, Exception chain (JVM interop)
 ;; CLJW: print-ns-maps skipped — uses pprint, create-struct, bean, java.util.Date (JVM interop)
-;; CLJW: print-symbol-values skipped — uses Double/POSITIVE_INFINITY etc. (JVM interop)
+(deftest print-symbol-values
+  (are [s v] (= s (pr-str v))
+    "##Inf" Double/POSITIVE_INFINITY
+    "##-Inf" Double/NEGATIVE_INFINITY
+    "##NaN" Double/NaN
+    "##Inf" Float/POSITIVE_INFINITY
+    "##-Inf" Float/NEGATIVE_INFINITY
+    "##NaN" Float/NaN))
 
 ;; CLJW-ADD: test runner invocation
 (run-tests)

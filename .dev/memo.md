@@ -22,19 +22,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 ## Task Queue
 
 Phase 55: Upstream Test Recovery
-- 55.1: Restore Java static field references in upstream tests (Long/MAX_VALUE etc.)
-- 55.2: Restore Double.isNaN/isInfinite in upstream tests
+- ~~55.1: Restore Java static field references in upstream tests~~ DONE
+- 55.2: Restore Double.isNaN/isInfinite and method calls in upstream tests
 - 55.3: Restore Integer.parseInt/toBinaryString etc. in upstream tests
 
 ## Current Task
 
-55.1: Restore Java static field references in upstream tests. Now that Integer/MAX_VALUE,
-Long/MAX_VALUE, Double/NaN, etc. are implemented, un-adapt upstream test files that
-previously hardcoded literal values.
+55.2: Restore Double.isNaN/isInfinite and Integer.parseInt/toBinaryString calls in upstream
+tests. Now that these Java interop methods are implemented as builtins, un-adapt upstream
+test files that previously used workarounds (NaN?, ##Inf, etc.).
 
 ## Previous Task
 
-Phase 54: Upstream Fidelity II (pre/post conditions, Java static fields + methods)
+55.1: Restored Java static field references in parse.clj (Long/MAX_VALUE, Double/POSITIVE_INFINITY,
+Double/isNaN), math.clj (Long/MAX_VALUE, Double/MIN_VALUE, Double/MAX_EXPONENT), numbers.clj
+(Integer/MAX_VALUE, Integer/MIN_VALUE), printer.clj (print-symbol-values un-skipped).
 
 ## Known Issues
 

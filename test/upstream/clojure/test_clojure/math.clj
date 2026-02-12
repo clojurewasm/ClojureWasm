@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/math.clj
 ;; Upstream lines: 327
-;; CLJW markers: 12
+;; CLJW markers: 6
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -182,43 +182,44 @@
 
 (deftest test-round
   (is (= 0 (m/round ##NaN)))
-  ;; CLJW: adapted — Long/MIN_VALUE, Long/MAX_VALUE → expression
-  (is (= (dec -9223372036854775807) (m/round ##-Inf)))
-  (is (= 9223372036854775807 (m/round ##Inf)))
+  (is (= Long/MIN_VALUE (m/round ##-Inf)))
+  (is (= Long/MIN_VALUE (m/round (- Long/MIN_VALUE 2.0))))
+  (is (= Long/MAX_VALUE (m/round ##Inf)))
+  (is (= Long/MAX_VALUE (m/round (+ Long/MAX_VALUE 2.0))))
   (is (= 4 (m/round 3.5))))
 
 ;; CLJW: adapted — ArithmeticException → Exception (catch arithmetic overflow)
 (deftest test-add-exact
   (try
-    (m/add-exact 9223372036854775807 1)
+    (m/add-exact Long/MAX_VALUE 1)
     (is false)
     (catch Exception _
       (is true))))
 
 (deftest test-subtract-exact
   (try
-    (m/subtract-exact (dec -9223372036854775807) 1)
+    (m/subtract-exact Long/MIN_VALUE 1)
     (is false)
     (catch Exception _
       (is true))))
 
 (deftest test-multiply-exact
   (try
-    (m/multiply-exact 9223372036854775807 2)
+    (m/multiply-exact Long/MAX_VALUE 2)
     (is false)
     (catch Exception _
       (is true))))
 
 (deftest test-increment-exact
   (try
-    (m/increment-exact 9223372036854775807)
+    (m/increment-exact Long/MAX_VALUE)
     (is false)
     (catch Exception _
       (is true))))
 
 (deftest test-decrement-exact
   (try
-    (m/decrement-exact (dec -9223372036854775807))
+    (m/decrement-exact Long/MIN_VALUE)
     (is false)
     (catch Exception _
       (is true))))
@@ -243,10 +244,9 @@
   (is (NaN? (m/ulp ##NaN)))
   (is (= ##Inf (m/ulp ##Inf)))
   (is (= ##Inf (m/ulp ##-Inf)))
-  ;; CLJW: Double/MIN_VALUE and Double/MAX_VALUE tests adapted for value comparison
-  (is (> (m/ulp 0.0) 0))
-  (is (< (m/ulp 0.0) 1e-300))
-  (is (= (m/pow 2 971) (m/ulp (parse-double "1.7976931348623157E308")))))
+  (is (= Double/MIN_VALUE (m/ulp 0.0)))
+  (is (= (m/pow 2 971) (m/ulp Double/MAX_VALUE)))
+  (is (= (m/pow 2 971) (m/ulp (- Double/MAX_VALUE)))))
 
 (deftest test-signum
   (is (NaN? (m/signum ##NaN)))
@@ -298,12 +298,11 @@
   (is (= -1.0 (m/copy-sign 1.0 -42.0)))
   (is (= -1.0 (m/copy-sign 1.0 ##-Inf))))
 
-;; CLJW: test-get-exponent adapted — Double/MAX_EXPONENT (1023), Double/MIN_EXPONENT (-1022)
 (deftest test-get-exponent
-  (is (= 1024 (m/get-exponent ##NaN)))
-  (is (= 1024 (m/get-exponent ##Inf)))
-  (is (= 1024 (m/get-exponent ##-Inf)))
-  (is (= -1023 (m/get-exponent 0.0)))
+  (is (= (inc Double/MAX_EXPONENT) (m/get-exponent ##NaN)))
+  (is (= (inc Double/MAX_EXPONENT) (m/get-exponent ##Inf)))
+  (is (= (inc Double/MAX_EXPONENT) (m/get-exponent ##-Inf)))
+  (is (= (dec Double/MIN_EXPONENT) (m/get-exponent 0.0)))
   (is (= 0 (m/get-exponent 1.0)))
   (is (= 13 (m/get-exponent 12345.678))))
 
@@ -311,18 +310,19 @@
   (is (NaN? (m/next-after ##NaN 1)))
   (is (NaN? (m/next-after 1 ##NaN)))
   (is (pos-zero? (m/next-after 0.0 0.0)))
-  (is (neg-zero? (m/next-after -0.0 -0.0))))
-;; CLJW: Double/MAX_VALUE and Double/MIN_VALUE assertions deferred — need float literal support
+  (is (neg-zero? (m/next-after -0.0 -0.0)))
+  (is (= Double/MAX_VALUE (m/next-after ##Inf 1.0)))
+  (is (pos-zero? (m/next-after Double/MIN_VALUE -1.0))))
 
 (deftest test-next-up
   (is (NaN? (m/next-up ##NaN)))
-  (is (= ##Inf (m/next-up ##Inf))))
-;; CLJW: Double/MIN_VALUE assertion deferred
+  (is (= ##Inf (m/next-up ##Inf)))
+  (is (= Double/MIN_VALUE (m/next-up 0.0))))
 
 (deftest test-next-down
   (is (NaN? (m/next-down ##NaN)))
-  (is (= ##-Inf (m/next-down ##-Inf))))
-;; CLJW: -Double/MIN_VALUE assertion deferred
+  (is (= ##-Inf (m/next-down ##-Inf)))
+  (is (= (- Double/MIN_VALUE) (m/next-down 0.0))))
 
 (deftest test-scalb
   (is (NaN? (m/scalb ##NaN 1)))
