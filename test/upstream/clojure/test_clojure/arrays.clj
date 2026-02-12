@@ -37,9 +37,9 @@
 (deftest-type-array int-array)
 (deftest-type-array long-array)
 
-;; CLJW: adapted — ExceptionInfo instead of NegativeArraySizeException
+;; CLJW: adapted — Exception instead of NegativeArraySizeException (JVM-specific)
 (deftest test-type-array-exceptions
-  (are [x] (thrown? ExceptionInfo x)
+  (are [x] (thrown? Exception x)
     (int-array -1)
     (long-array -1)
     (float-array -1)
@@ -48,7 +48,8 @@
 ;; CLJW: adapted — type arg is string, removed class checks
 (deftest test-make-array
   ;; negative size
-  (is (thrown? ExceptionInfo (make-array "Integer" -1)))
+  ;; CLJW: Exception instead of NegativeArraySizeException
+  (is (thrown? Exception (make-array "Integer" -1)))
 
   ;; one-dimensional
   (are [x] (= (alength (make-array "Integer" x)) x)

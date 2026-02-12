@@ -51,7 +51,7 @@ fn makeArrayMultiDim(allocator: Allocator, dims: []const Value) anyerror!Value {
     const size_val = dims[0];
     if (size_val.tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "make-array size must be integer, got {s}", .{@tagName(size_val.tag())});
     const size_i = size_val.asInteger();
-    if (size_i < 0) return err.setErrorFmt(.eval, .type_error, .{}, "make-array size must be non-negative, got {d}", .{size_i});
+    if (size_i < 0) return err.setErrorFmt(.eval, .value_error, .{}, "make-array size must be non-negative, got {d}", .{size_i});
     const size: usize = @intCast(size_i);
 
     const arr_val = try createArray(allocator, size, .object);
@@ -75,7 +75,7 @@ fn objectArrayFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const arg = args[0];
     if (arg.tag() == .integer) {
         const size_i = arg.asInteger();
-        if (size_i < 0) return err.setErrorFmt(.eval, .type_error, .{}, "object-array size must be non-negative, got {d}", .{size_i});
+        if (size_i < 0) return err.setErrorFmt(.eval, .value_error, .{}, "object-array size must be non-negative, got {d}", .{size_i});
         return createArray(allocator, @intCast(size_i), .object);
     }
     // Collection: convert to array
@@ -308,7 +308,7 @@ fn typedArrayFn(allocator: Allocator, args: []const Value, elem_type: ZigArray.E
     const arg = args[0];
     if (arg.tag() == .integer) {
         const size_i = arg.asInteger();
-        if (size_i < 0) return err.setErrorFmt(.eval, .type_error, .{}, name ++ " size must be non-negative, got {d}", .{size_i});
+        if (size_i < 0) return err.setErrorFmt(.eval, .value_error, .{}, name ++ " size must be non-negative, got {d}", .{size_i});
         return createArray(allocator, @intCast(size_i), elem_type);
     }
     // Collection: convert to typed array

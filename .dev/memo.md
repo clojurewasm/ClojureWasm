@@ -36,7 +36,9 @@ Phase 53: Hardening & pprint Tests (complete)
 - 53.4: Fixed BigDecimal exponent notation
 - 53.5: Fixed colon in symbol/keyword literals
 - 53.6: Ported pprint tests (12 tests, 78 assertions, content-equivalent)
-- 53.7: Full regression — 47/49 VM, 47/49 TW (2 pre-existing), 6/6 e2e
+- 53.7: Full regression — 49/49 VM, 49/49 TW, 6/6 e2e
+- 53.8: Fix macroexpand list? (when macro upstream alignment)
+- 53.9: Fix array negative size exception type (value_error)
 
 ## Known Issues
 
@@ -44,8 +46,6 @@ Phase 53: Hardening & pprint Tests (complete)
 - pprint on infinite lazy seq hangs (realizeValue in singleLine/pprintImpl)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported
-- arrays.clj: 5 errors — exception type mismatch (ClassCastException vs ExceptionInfo)
-- sci/core_test.clj: 2 fails — macroexpand returns cons, not list (list? false)
 
 ## Notes
 

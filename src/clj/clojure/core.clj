@@ -8,8 +8,11 @@
 (defmacro defn [name & fdecl]
   `(def ~name (fn ~name ~@fdecl)))
 
-(defmacro when [test & body]
-  `(if ~test (do ~@body)))
+(defmacro when
+  "Evaluates test. If logical true, evaluates body in an implicit do."
+  {:added "1.0"}
+  [test & body]
+  (list 'if test (cons 'do body)))
 
 ;; Arithmetic helpers
 
@@ -168,8 +171,11 @@
 (defmacro if-not [test then & more]
   `(if (not ~test) ~then ~(first more)))
 
-(defmacro when-not [test & body]
-  `(if (not ~test) (do ~@body)))
+(defmacro when-not
+  "Evaluates test. If logical false, evaluates body in an implicit do."
+  {:added "1.0"}
+  [test & body]
+  (list 'if test nil (cons 'do body)))
 
 ;; Utility functions
 
