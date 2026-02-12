@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "Task",
+      "Skill",
+      "mcp__emacs-tools__claude-code-ide-mcp-imenu-list-symbols",
+      "mcp__emacs-tools__claude-code-ide-mcp-xref-find-references",
+      "mcp__ide__getDiagnostics"
+    ],
+    "deny": []
+  }
+}

@@ -17,7 +17,7 @@ bench/simd/*.wasm
 .direnv/
 
 # Claude Code
-.claude/
+.claude/settings.local.json
 
 # Private notes
 private/
