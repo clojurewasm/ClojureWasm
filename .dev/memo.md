@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 53 COMPLETE**
+- **All phases through 55 COMPLETE**
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -28,7 +28,12 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-Phase 55 complete. Plan next phase from roadmap.md.
+Phase 55 complete. No active task. Awaiting direction.
+Candidates for next phase:
+- Bug fixes (pprint infinite seq hang)
+- Implement read/read+string (PushbackReader, roadmap 49.1)
+- Port additional upstream test files (limited options — most remaining are JVM-only)
+- Begin v0.2.0-alpha concurrency work (future, pmap — requires GC thread safety)
 
 ## Previous Task
 

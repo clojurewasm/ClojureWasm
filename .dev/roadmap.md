@@ -86,6 +86,8 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 51     | Agent Subsystem                             | AgentObj, send/send-off, await, error modes, *agent*        |
 | 52     | Quality & Alignment                         | println fix, catch types, is macro, test/reader port        |
 | 53     | Hardening & pprint Tests                    | Loop destr, BigDec exp, colon symbols, pprint tests         |
+| 54     | Upstream Fidelity II                        | fn pre/post, Java static fields + 12 utility methods        |
+| 55     | Upstream Test Recovery                      | Restore Java constant refs in 5 test files, reduce markers  |
 ```
 
 ---
