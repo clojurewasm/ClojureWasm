@@ -4,12 +4,12 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 52 COMPLETE** + zwasm integration (D92) done
+- **All phases through 52 COMPLETE** + Phase 53 in progress
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
-- Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon)
+- Wasm engine: zwasm v0.7.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 48 upstream test files, all passing. 6/6 e2e tests pass.
-- Benchmarks: `bench/history.yaml` (post-zwasm entry = latest baseline)
+- Benchmarks: `bench/wasm_history.yaml` (zwasm-0.7.0 entry = latest baseline)
 
 ## Strategic Direction
 

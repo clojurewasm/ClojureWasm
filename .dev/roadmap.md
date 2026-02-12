@@ -15,11 +15,11 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 ## Current Stats
 
-- **830+ vars** implemented (633/706 core, 16 namespaces)
-- **73 skip vars** remaining (70+ permanently JVM, ~3 implementable)
-- **45 upstream test files**, all passing
+- **835+ vars** implemented (635/706 core, 16 namespaces)
+- **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
+- **48 upstream test files**, all passing (43 upstream ports + 5 SCI)
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
-- **Wasm engine**: zwasm v0.1.0 (Register IR + ARM64 JIT, 1.3-10x of wasmtime)
+- **Wasm engine**: zwasm v0.7.0 (Register IR + ARM64 JIT, 0.9-2.2x of wasmtime)
 
 ## Completed Phases
 

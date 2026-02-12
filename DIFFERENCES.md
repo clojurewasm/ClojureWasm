@@ -6,17 +6,16 @@ where JVM-specific features have no meaningful equivalent.
 
 ## Execution Model
 
-### Single-threaded
+### Concurrency
 
-ClojureWasm runs in a single thread. Concurrency primitives that require
-threading are not yet implemented:
+ClojureWasm supports multi-threaded concurrency via Zig's thread pool:
 
 | Feature         | Status          | Notes                              |
 |-----------------|-----------------|------------------------------------|
-| atom, volatile  | Implemented     | Work as expected (single-threaded) |
-| future, promise | Not implemented | Planned for a future release       |
-| pmap, pcalls    | Not implemented | Planned with future                |
-| agent, send     | Not implemented | Requires multi-thread GC safety    |
+| atom, volatile  | Implemented     | Thread-safe (atomic operations)    |
+| future, promise | Implemented     | Zig std.Thread based               |
+| pmap, pcalls    | Implemented     | Chunked parallel dispatch          |
+| agent, send     | Implemented     | Per-agent serial queue             |
 | ref, dosync     | Not implemented | STM out of scope (atom suffices)   |
 
 ### No Java Interop
@@ -64,7 +63,7 @@ Java standard library functionality is replaced with Zig equivalents:
 
 | Namespace      | Done | Total | Notes                       |
 |----------------|------|-------|-----------------------------|
-| clojure.core   | 593  | 706   | 84% — see skip list below   |
+| clojure.core   | 635  | 706   | 90% — see skip list below   |
 | clojure.test   | 32   | 39    | No spec integration         |
 | clojure.pprint | 9    | 26    | Core pprint + print-table   |
 | clojure.repl   | 11   | 13    | No spec, no Java reflection |
@@ -77,7 +76,7 @@ clojure.string (21), clojure.set (12), clojure.math (45), clojure.walk (10),
 clojure.zip (28), clojure.template (2), clojure.stacktrace (6),
 clojure.java.io (7), clojure.java.shell (5), cljw.http (6).
 
-## Skipped clojure.core Vars (112 of 706)
+## Skipped clojure.core Vars (71 of 706)
 
 ### JVM Class System (~25 vars)
 
@@ -86,18 +85,10 @@ clojure.java.io (7), clojure.java.shell (5), cljw.http (6).
 `construct-proxy`, `reify`, `memfn`, `bean`, `supers`, `bases`, `class?`,
 `accessor`, `create-struct`, `defstruct`, `struct`, `struct-map`
 
-### Concurrency (~35 vars)
+### STM/Refs (~10 vars)
 
-**Agents**: `agent`, `send`, `send-off`, `send-via`, `await`, `await-for`,
-`agent-error`, `agent-errors`, `restart-agent`, `set-agent-send-executor!`,
-`set-agent-send-off-executor!`, `release-pending-sends`, `*agent*`,
-`set-error-handler!`, `error-handler`, `set-error-mode!`, `error-mode`
-
-**STM/Refs**: `ref`, `alter`, `commute`, `ref-set`, `dosync`, `ensure`,
-`io!`, `ref-history-count`, `ref-min-history`, `ref-max-history`
-
-**Futures**: `future`, `future-call`, `future-cancel`, `future-cancelled?`,
-`future-done?`, `future?`, `pmap`, `pcalls`, `pvalues`, `seque`
+`ref`, `alter`, `commute`, `ref-set`, `dosync`, `ensure`,
+`ref-history-count`, `ref-min-history`, `ref-max-history`
 
 ### Threading/Locking (~5 vars)
 
@@ -167,16 +158,20 @@ clojure.java.io (7), clojure.java.shell (5), cljw.http (6).
 
 ## Exception Handling
 
-ClojureWasm has a single `Exception` type. JVM Clojure's exception class
-hierarchy (ArithmeticException, ClassCastException, etc.) is collapsed:
+ClojureWasm supports exception type checking in catch clauses.
+`Exception`, `Throwable`, and `RuntimeException` catch all thrown values.
+Specific exception types (e.g., `ExceptionInfo`) are matched by the
+`__ex_type` field on exception maps.
 
 ```clojure
-;; JVM Clojure
-(try (/ 1 0) (catch ArithmeticException e ...))
-
-;; ClojureWasm — use Exception for all
-(try (/ 1 0) (catch Exception e ...))
+;; Both work:
+(try (/ 1 0) (catch Exception e (ex-message e)))
+(try (throw (ex-info "oops" {:k 1}))
+     (catch ExceptionInfo e (ex-data e)))
 ```
+
+JVM Clojure's deep class hierarchy (ArithmeticException, ClassCastException,
+etc.) is not replicated; use `Exception` for general catches.
 
 `ex-info`, `ex-message`, `ex-data`, and `ex-cause` work as expected.
 

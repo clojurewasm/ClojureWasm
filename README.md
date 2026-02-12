@@ -23,7 +23,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
 - **Wasm FFI** — call WebAssembly modules from Clojure (461 opcodes including SIMD)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
-- **795 vars** across 16 namespaces (593/706 clojure.core)
+- **835+ vars** across 16 namespaces (635/706 clojure.core)
 
 ## Getting Started
 
@@ -71,7 +71,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace          | Vars | Description                    |
 |--------------------|------|--------------------------------|
-| clojure.core       | 593  | Core language functions        |
+| clojure.core       | 635  | Core language functions        |
 | clojure.string     | 21   | String manipulation            |
 | clojure.math       | 45   | Math functions                 |
 | clojure.set        | 12   | Set operations                 |
@@ -106,10 +106,10 @@ Call WebAssembly modules directly from Clojure:
 - v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
-> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm))
-> uses Register IR with ARM64 JIT, achieving 1.3-10x of wasmtime performance
-> depending on workload (call-heavy: ~3x, compute-heavy: ~1.3x).
-> Module load time is faster (~4ms vs ~6ms).
+> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm) v0.7.0)
+> uses Register IR with ARM64 JIT, achieving 0.9-2.2x of wasmtime performance
+> depending on workload (call-heavy: ~2.2x, compute-heavy: ~1x, sieve: CW wins).
+> Module load time is faster (~4ms vs ~5ms).
 
 ### Server & Networking
 
@@ -161,7 +161,7 @@ src/
 └── wasm/                       WebAssembly runtime (461 opcodes)
 
 bench/                          31 benchmarks, multi-language
-test/                           62 Clojure test files (39 upstream ports)
+test/                           48 Clojure test files (43 upstream ports)
 ```
 
 The [`.dev/`](.dev/) directory contains design decisions, optimization logs,
@@ -187,15 +187,12 @@ zig build test                  # 1,300+ Zig test blocks
 bash test/e2e/run_e2e.sh       # End-to-end tests
 ```
 
-62 Clojure test files including 39 upstream test ports with 735 deftests.
+48 Clojure test files including 43 upstream test ports with 600+ deftests.
 All tests verified on both VM and TreeWalk backends.
 
 ## Future Plans
 
-- **Wasm FFI acceleration** — Wasm JIT compilation and optional wasmtime
-  integration via its C API
 - **JIT expansion** — float operations, function calls, broader loop patterns
-- **Concurrency** — future, pmap, agent via Zig thread pool
 - **Generational GC** — nursery/tenured generations for throughput
 - **Dependency management** — deps.edn compatible (git/sha deps)
 - **Persistent data structures** — HAMT/RRB-Tree implementations
