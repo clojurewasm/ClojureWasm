@@ -16,7 +16,6 @@ Check at session start for items that become actionable.
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
 | F4   | Persistent data structures (HAMT, RRB-Tree) | Collection benchmarks show bottleneck                                    |
-| F6   | Multi-thread dynamic bindings               | DONE: threadlocal frames (48.1), conveyance (48.3), *agent* binding (51.6) |
 | F94  | Upstream Alignment pass                     | Phase 52 audit: 32 markers audited. distinct? aligned (53.3). 31 markers remain. |
 | F99  | Iterative lazy-seq realization engine       | D74 fixes sieve. General recursion remains. See `optimizations.md`       |
 | F102 | map/filter chunked processing               | Lazy range first, then chunked map/filter                                |
@@ -25,5 +24,3 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation                             | Future major phase — trace-based or method-based. See `optimizations.md` |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
 | F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
-| F136 | Wasm table.copy cross-table support         | zwasm-side (D92); needed for full bulk memory ops spec                   |
-| F137 | Wasm table.init implementation              | zwasm-side (D92); needed for element segment initialization              |

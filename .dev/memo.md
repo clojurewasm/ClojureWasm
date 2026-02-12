@@ -21,38 +21,33 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Task Queue
 
-Ready for next phase direction.
+Phase 54: Upstream Fidelity II
+- 54.1: Checklist cleanup (F136/F137 resolved by zwasm v0.11.0) ← DONE
+- 54.2: defn :pre/:post conditions
+- 54.3: Additional UPSTREAM-DIFF fixes
 
 ## Current Task
 
-None — Phase 53 complete.
+54.2: Implement defn :pre/:post condition support.
+Upstream Clojure defn wraps fn body with :pre/:post assertions.
+:pre asserts each expression before body execution.
+:post binds % to return value and asserts after execution.
 
 ## Previous Task
 
 Phase 53: Hardening & pprint Tests (complete)
-- 53.1: Updated zwasm to v0.7.0
-- 53.2: Fixed loop destructuring recur bug
-- 53.3: Aligned distinct? to upstream
-- 53.4: Fixed BigDecimal exponent notation
-- 53.5: Fixed colon in symbol/keyword literals
-- 53.6: Ported pprint tests (12 tests, 78 assertions, content-equivalent)
-- 53.7: Full regression — 49/49 VM, 49/49 TW, 6/6 e2e
-- 53.8: Fix macroexpand list? (when macro upstream alignment)
-- 53.9: Fix array negative size exception type (value_error)
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
 - pprint on infinite lazy seq hangs (realizeValue in singleLine/pprintImpl)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
-- Regex capture groups/backreferences not supported
 
 ## Resolved Issues (this session)
 
-- **Wasm call segfault**: GC was sweeping zwasm internals (~1MB VM) because
-  GC only marked the CW WasmModule wrapper, not zwasm's child allocations.
-  Fix: use `std.heap.smp_allocator` for all zwasm allocations (bce1c2e).
-  Also copy wasm binary bytes to non-GC memory since zwasm Module stores a reference.
+- **Checklist cleanup**: F136/F137 resolved (zwasm v0.11.0 implements table.copy
+  cross-table + table.init). F6 resolved (multi-thread dynamic bindings done).
+- **Regex fix**: Capture groups + backreferences actually work — removed from Known Issues.
 
 ## Notes
 
