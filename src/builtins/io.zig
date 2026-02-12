@@ -211,6 +211,26 @@ threadlocal var input_stack: [MAX_CAPTURE_DEPTH]?InputSource = [_]?InputSource{n
 threadlocal var input_depth: usize = 0;
 threadlocal var current_input: ?InputSource = null;
 
+/// Returns the remaining unread data from the current input source, or null if no source.
+pub fn getCurrentInputRemaining() ?[]const u8 {
+    const input = current_input orelse return null;
+    if (input.pos >= input.data.len) return "";
+    return input.data[input.pos..];
+}
+
+/// Advance the current input source position by n bytes.
+pub fn advanceCurrentInput(n: usize) void {
+    if (current_input) |*input| {
+        input.pos += n;
+        if (input.pos > input.data.len) input.pos = input.data.len;
+    }
+}
+
+/// Returns true if there is an active string input source (from with-in-str).
+pub fn hasInputSource() bool {
+    return current_input != null;
+}
+
 /// (push-input-source s) — redirect read-line to read from string s.
 fn pushInputSourceFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to push-input-source", .{args.len});

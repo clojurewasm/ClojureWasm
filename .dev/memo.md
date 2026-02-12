@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 55 COMPLETE**
-- Coverage: 835+ vars (635/706 core, 16 namespaces total)
+- Coverage: 837+ vars (637/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 49 upstream test files, all passing. 6/6 e2e tests pass.
@@ -28,22 +28,21 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-56.2: Implement `read` and `read+string` (PushbackReader).
+Phase 56 COMPLETE. Next: Phase 57 — v0.2.0-alpha concurrency (future, pmap).
 
 ## Task Queue
 
-Phase 56: Bug Fixes & read Implementation
+Phase 56: Bug Fixes & read Implementation — COMPLETE
 - ~~56.1: Fix pprint infinite lazy seq hang~~ DONE
-- 56.2: Implement `read` and `read+string` (PushbackReader)
+- ~~56.2: Implement `read` and `read+string` (PushbackReader)~~ DONE
 - Then: Phase 57 — v0.2.0-alpha concurrency (future, pmap)
 
 ## Previous Task
 
-56.1: Fixed pprint infinite lazy seq hang. Root cause: `realizeValue` tried to collect ALL items
-from lazy sequences. Fix: rewrote pprint.zig to walk lazy seqs lazily via `resolveLazy` (peels
-one lazy wrapper), use `formatPrStr` (respects `*print-length*`) for single-line attempts, and
-inline seq walking with print-length support for multi-line formatting.
-12 pprint tests, 78 assertions pass. 6/6 e2e pass.
+56.2: Implemented `read`, `read+string`, and `clojure.edn/read`. No PushbackReader type needed —
+reads from `with-in-str` input source or stdin directly. Added Reader.position() for tracking
+consumed bytes. Supports 0/1/3-arg arities with eof handling. `read+string` returns [form string].
+Both backends verified. 637/706 core vars done.
 
 ## Known Issues
 

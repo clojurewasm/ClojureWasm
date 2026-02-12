@@ -26,6 +26,9 @@ const bootstrap = @import("../runtime/bootstrap.zig");
 const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
 const err = @import("../runtime/error.zig");
 const Env = @import("../runtime/env.zig").Env;
+const io = @import("io.zig");
+const value_mod = @import("../runtime/value.zig");
+const PersistentVector = value_mod.PersistentVector;
 
 // ============================================================
 // read-string
@@ -223,6 +226,241 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// read
+// ============================================================
+
+/// Read one form from the current input source (*in* / with-in-str) or stdin.
+/// Returns the parsed form, or throws on EOF (default) or returns eof-value.
+fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyerror!Value {
+    if (io.hasInputSource()) {
+        // Read from string input source (with-in-str)
+        const remaining = io.getCurrentInputRemaining() orelse return eof_value;
+        if (remaining.len == 0) {
+            if (eof_error) {
+                return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+            }
+            return eof_value;
+        }
+        var reader = Reader.init(allocator, remaining);
+        const form_opt = reader.read() catch {
+            err.ensureInfoSet(.eval, .syntax_error, .{}, "read: reader error", .{});
+            return error.EvalError;
+        };
+        const form = form_opt orelse {
+            if (eof_error) {
+                return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+            }
+            return eof_value;
+        };
+        // Advance input source past consumed bytes
+        io.advanceCurrentInput(reader.position());
+        return macro.formToValue(allocator, form);
+    }
+
+    // Read from stdin — read lines and try parsing after each
+    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    var buf = std.ArrayList(u8).empty;
+    defer buf.deinit(allocator);
+
+    const max_retries: usize = 100; // prevent infinite loop on truly broken input
+    var retries: usize = 0;
+
+    while (retries < max_retries) : (retries += 1) {
+        // Read one line from stdin
+        var line_buf: [8192]u8 = undefined;
+        var pos: usize = 0;
+        while (pos < line_buf.len) {
+            var byte: [1]u8 = undefined;
+            const n = stdin.read(&byte) catch {
+                if (eof_error) {
+                    return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+                }
+                return eof_value;
+            };
+            if (n == 0) {
+                // EOF
+                if (buf.items.len == 0 and pos == 0) {
+                    if (eof_error) {
+                        return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+                    }
+                    return eof_value;
+                }
+                break;
+            }
+            if (byte[0] == '\n') break;
+            line_buf[pos] = byte[0];
+            pos += 1;
+        }
+
+        // Strip trailing \r
+        if (pos > 0 and line_buf[pos - 1] == '\r') pos -= 1;
+
+        // Append line to buffer (with newline separator if not first line)
+        if (buf.items.len > 0) {
+            buf.append(allocator, '\n') catch return error.OutOfMemory;
+        }
+        for (line_buf[0..pos]) |b| {
+            buf.append(allocator, b) catch return error.OutOfMemory;
+        }
+
+        // Try to parse accumulated input
+        if (buf.items.len > 0) {
+            var reader = Reader.init(allocator, buf.items);
+            const form_opt = reader.read() catch {
+                // Syntax error — might be incomplete (unclosed paren, etc.)
+                // Continue reading more input
+                continue;
+            };
+            if (form_opt) |form| {
+                return macro.formToValue(allocator, form);
+            }
+        }
+    }
+
+    return err.setErrorFmt(.eval, .syntax_error, .{}, "read: could not parse complete form from stdin", .{});
+}
+
+/// (read) (read stream) (read stream eof-error? eof-value) (read opts stream)
+/// CW simplification: only 0-arg (from *in*/stdin) and 3-arg (eof handling) supported.
+/// Stream args are ignored — always reads from current input source.
+pub fn readFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    switch (args.len) {
+        0 => return readFromSource(allocator, true, Value.nil_val),
+        1 => {
+            // (read stream) — ignore stream, read from *in*
+            return readFromSource(allocator, true, Value.nil_val);
+        },
+        3 => {
+            // (read stream eof-error? eof-value)
+            const eof_error = if (args[1] == Value.false_val or args[1] == Value.nil_val) false else true;
+            return readFromSource(allocator, eof_error, args[2]);
+        },
+        else => return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read", .{args.len}),
+    }
+}
+
+// ============================================================
+// read+string
+// ============================================================
+
+/// Read one form and return [form string] — the parsed form and the source text.
+fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyerror!Value {
+    if (io.hasInputSource()) {
+        const remaining = io.getCurrentInputRemaining() orelse {
+            if (eof_error) {
+                return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+            }
+            return eof_value;
+        };
+        if (remaining.len == 0) {
+            if (eof_error) {
+                return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+            }
+            return eof_value;
+        }
+        var reader = Reader.init(allocator, remaining);
+        const form_opt = reader.read() catch {
+            err.ensureInfoSet(.eval, .syntax_error, .{}, "read+string: reader error", .{});
+            return error.EvalError;
+        };
+        const form = form_opt orelse {
+            if (eof_error) {
+                return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+            }
+            return eof_value;
+        };
+        const consumed = reader.position();
+        // Capture the consumed source text (trimmed)
+        const src_text = std.mem.trimLeft(u8, remaining[0..consumed], " \t\n\r,");
+        const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
+        io.advanceCurrentInput(consumed);
+        const val = try macro.formToValue(allocator, form);
+        // Return [form string] vector
+        const items = try allocator.alloc(Value, 2);
+        items[0] = val;
+        items[1] = text_str;
+        const vec = try allocator.create(PersistentVector);
+        vec.* = .{ .items = items };
+        return Value.initVector(vec);
+    }
+
+    // stdin path — accumulate lines and return [form string]
+    const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    var buf = std.ArrayList(u8).empty;
+    defer buf.deinit(allocator);
+
+    const max_retries: usize = 100;
+    var retries: usize = 0;
+
+    while (retries < max_retries) : (retries += 1) {
+        var line_buf: [8192]u8 = undefined;
+        var pos: usize = 0;
+        while (pos < line_buf.len) {
+            var byte: [1]u8 = undefined;
+            const n = stdin.read(&byte) catch {
+                if (eof_error) {
+                    return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+                }
+                return eof_value;
+            };
+            if (n == 0) {
+                if (buf.items.len == 0 and pos == 0) {
+                    if (eof_error) {
+                        return err.setErrorFmt(.eval, .io_error, .{}, "EOF while reading", .{});
+                    }
+                    return eof_value;
+                }
+                break;
+            }
+            if (byte[0] == '\n') break;
+            line_buf[pos] = byte[0];
+            pos += 1;
+        }
+        if (pos > 0 and line_buf[pos - 1] == '\r') pos -= 1;
+        if (buf.items.len > 0) {
+            buf.append(allocator, '\n') catch return error.OutOfMemory;
+        }
+        for (line_buf[0..pos]) |b| {
+            buf.append(allocator, b) catch return error.OutOfMemory;
+        }
+
+        if (buf.items.len > 0) {
+            var reader = Reader.init(allocator, buf.items);
+            const form_opt = reader.read() catch {
+                continue;
+            };
+            if (form_opt) |form| {
+                const consumed = reader.position();
+                const src_text = std.mem.trimLeft(u8, buf.items[0..consumed], " \t\n\r,");
+                const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
+                const val = try macro.formToValue(allocator, form);
+                const items = try allocator.alloc(Value, 2);
+                items[0] = val;
+                items[1] = text_str;
+                const vec = try allocator.create(PersistentVector);
+                vec.* = .{ .items = items };
+                return Value.initVector(vec);
+            }
+        }
+    }
+
+    return err.setErrorFmt(.eval, .syntax_error, .{}, "read+string: could not parse complete form from stdin", .{});
+}
+
+/// (read+string) (read+string stream) (read+string stream eof-error? eof-value)
+pub fn readPlusStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    switch (args.len) {
+        0 => return readPlusStringFromSource(allocator, true, Value.nil_val),
+        1 => return readPlusStringFromSource(allocator, true, Value.nil_val),
+        3 => {
+            const eof_error = if (args[1] == Value.false_val or args[1] == Value.nil_val) false else true;
+            return readPlusStringFromSource(allocator, eof_error, args[2]);
+        },
+        else => return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read+string", .{args.len}),
+    }
+}
+
+// ============================================================
 // clojure.edn/read-string
 // ============================================================
 
@@ -309,6 +547,20 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([form])",
         .added = "1.0",
     },
+    .{
+        .name = "read",
+        .func = readFn,
+        .doc = "Reads the next object from the current input source (*in*). With eof-error? false, returns eof-value on end of input.",
+        .arglists = "([] [stream] [stream eof-error? eof-value])",
+        .added = "1.0",
+    },
+    .{
+        .name = "read+string",
+        .func = readPlusStringFn,
+        .doc = "Like read, but returns a vector [object string] where string is the source text that was read.",
+        .arglists = "([] [stream] [stream eof-error? eof-value])",
+        .added = "1.10",
+    },
 };
 
 /// clojure.edn namespace builtins.
@@ -318,6 +570,13 @@ pub const edn_builtins = [_]BuiltinDef{
         .func = ednReadStringFn,
         .doc = "Reads one object from the string s. Returns nil when s is nil or empty.",
         .arglists = "([s] [opts s])",
+        .added = "1.5",
+    },
+    .{
+        .name = "read",
+        .func = readFn,
+        .doc = "Reads the next object from the current input source in EDN format.",
+        .arglists = "([] [stream] [stream eof-error? eof-value])",
         .added = "1.5",
     },
 };

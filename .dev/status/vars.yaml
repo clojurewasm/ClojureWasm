@@ -518,8 +518,8 @@ vars:
     "re-matches": {type: function, status: done, note: "Zig builtin"}
     "re-pattern": {type: function, status: done, note: "Zig builtin"}
     "re-seq": {type: function, status: done, note: "Zig builtin"}
-    read: {type: function, status: skip, note: needs PushbackReader type}
-    read+string: {type: function, status: skip, note: needs PushbackReader type}
+    read: {type: function, status: done, note: "builtin (reads from *in*/stdin)"}
+    read+string: {type: function, status: done, note: "builtin (returns [form string])"}
     "read-line": {type: function, status: done, note: "Zig builtin"}
     "read-string": {type: function, status: done, note: "Zig builtin"}
     "reader-conditional": {type: function, status: done, note: "UPSTREAM-DIFF: returns map instead of ReaderConditional type"}
@@ -778,7 +778,7 @@ vars:
     datafy: {type: function, status: todo}
     nav: {type: function, status: todo}
   clojure_edn:
-    read: {type: function, status: skip, notes: "needs PushbackReader stream"}
+    read: {type: function, status: done, notes: "builtin (reads from *in*/stdin)"}
     "read-string": {type: function, status: done, notes: builtin (Zig)}
   clojure_inspector:
     "atom?": {type: function, status: todo}

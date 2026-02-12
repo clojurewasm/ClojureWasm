@@ -185,7 +185,7 @@ get-thread-bindings — current binding frame access
 **Also consider**:
 ```
 definline          — compiler macro (low priority)
-read, read+string  — needs PushbackReader (may defer)
+read, read+string  — DONE (Phase 56.2, no PushbackReader needed)
 ```
 
 **Approach**: Mix of core.clj (Tier 2) and Zig builtins (Tier 1).

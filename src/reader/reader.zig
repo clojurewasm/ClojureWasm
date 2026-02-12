@@ -58,6 +58,14 @@ pub const Reader = struct {
         };
     }
 
+    /// Returns the current byte position in the source.
+    /// After read(), this points to just past the last consumed token
+    /// (before any peeked token or remaining whitespace).
+    pub fn position(self: *Reader) u32 {
+        if (self.peeked) |tok| return tok.start;
+        return self.tokenizer.pos;
+    }
+
     /// Read the next form. Returns null on EOF.
     pub fn read(self: *Reader) ReadError!?Form {
         const token = self.nextToken();
