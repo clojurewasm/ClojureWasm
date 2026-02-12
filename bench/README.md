@@ -1,14 +1,16 @@
 # ClojureWasm Benchmark Suite
 
-25 benchmarks (20 Clojure + 5 Wasm). Multi-language comparison available.
+31 benchmarks (20 Clojure + 2 GC + 5 Wasm legacy + 4 Wasm TinyGo).
+Multi-language comparison and Wasm runtime benchmarking available.
 
 ## Scripts
 
-| Script             | Purpose                   | Measurement     |
-|--------------------|---------------------------|-----------------|
-| `run_bench.sh`     | Quick CW-only run         | hyperfine (3+1) |
-| `record.sh`        | Record to `history.yaml`  | hyperfine (5+2) |
-| `compare_langs.sh` | Cross-language comparison | hyperfine (5+2) |
+| Script             | Purpose                          | Measurement     |
+|--------------------|----------------------------------|-----------------|
+| `run_bench.sh`     | Quick CW-only run                | hyperfine (3+1) |
+| `record.sh`        | Record to `history.yaml`         | hyperfine (5+2) |
+| `compare_langs.sh` | Cross-language comparison        | hyperfine (5+2) |
+| `wasm_bench.sh`    | CW vs wasmtime wasm runtime      | hyperfine (5+2) |
 
 ## Quick Start
 
@@ -23,11 +25,16 @@ bash bench/run_bench.sh --bench=fib_recursive
 bash bench/run_bench.sh --quick
 
 # Record to history
-bash bench/record.sh --id="36.7" --reason="Wasm optimization"
+bash bench/record.sh --id="53.7" --reason="Phase 53 complete"
 
 # Cross-language comparison
 bash bench/compare_langs.sh
 bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
+
+# Wasm runtime benchmark: CW interpreter vs wasmtime JIT
+bash bench/wasm_bench.sh
+bash bench/wasm_bench.sh --quick
+bash bench/wasm_bench.sh --bench=fib
 ```
 
 ## run_bench.sh Options
@@ -53,15 +60,27 @@ bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 
 ## compare_langs.sh Options
 
-| Option         | Effect                                   |
-|----------------|------------------------------------------|
-| `--bench=NAME` | Single benchmark                         |
-| `--lang=LANGS` | Comma-separated (cw,c,zig,java,py,rb,bb) |
-| `--cold`       | Wall clock only (default)                |
-| `--warm`       | Startup-subtracted                       |
-| `--both`       | Cold + Warm                              |
-| `--runs=N`     | Hyperfine runs (default: 5)              |
-| `--yaml=FILE`  | YAML output                              |
+| Option         | Effect                                          |
+|----------------|--------------------------------------------------|
+| `--bench=NAME` | Single benchmark                                |
+| `--lang=LANGS` | Comma-separated (cw,c,zig,java,py,rb,bb,tgo)   |
+| `--cold`       | Wall clock only (default)                       |
+| `--warm`       | Startup-subtracted                              |
+| `--both`       | Cold + Warm                                     |
+| `--runs=N`     | Hyperfine runs (default: 5)                     |
+| `--yaml=FILE`  | YAML output                                     |
+
+## wasm_bench.sh Options
+
+Compares CW's built-in Wasm runtime (zwasm) against wasmtime JIT.
+Both execute the same TinyGo-compiled `.wasm` modules.
+
+| Option         | Effect                                |
+|----------------|---------------------------------------|
+| `--bench=NAME` | Single benchmark (fib/tak/arith/sieve/fib_loop/gcd) |
+| `--runs=N`     | Hyperfine runs (default: 5)           |
+| `--warmup=N`   | Warmup runs (default: 2)              |
+| `--quick`      | 1 run, no warmup                      |
 
 ## Benchmarks
 
@@ -90,7 +109,17 @@ bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 | 19 | multimethod_dispatch | Multimethods | 500000500000 |
 | 20 | real_workload        | Mixed        | 333283335000 |
 
-### Wasm (5)
+### GC (2)
+
+| #  | Name           | Category | Measures                        |
+|----|----------------|----------|---------------------------------|
+| 26 | gc_alloc_rate  | Memory   | Raw allocation + GC throughput  |
+| 27 | gc_large_heap  | Memory   | Large heap GC collection        |
+
+### Wasm Legacy (5)
+
+CW-side Wasm FFI benchmarks — measures `cljw.wasm` interop overhead
+(module load, function calls, memory access) using handwritten `.wasm`.
 
 | #  | Name        | Category | Measures                  |
 |----|-------------|----------|---------------------------|
@@ -100,6 +129,43 @@ bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
 | 24 | wasm_fib    | Compute  | fib(40) in Wasm           |
 | 25 | wasm_sieve  | Compute  | Sieve in Wasm             |
 
+### Wasm TinyGo (4)
+
+Wasm runtime performance benchmarks — same TinyGo-compiled `.wasm`
+modules executed by both CW (zwasm) and wasmtime. Used by `wasm_bench.sh`
+for apples-to-apples runtime comparison.
+
+| #  | Name            | Category | Measures              |
+|----|-----------------|----------|-----------------------|
+| 28 | wasm_tgo_fib    | Compute  | fib(20) x 10000       |
+| 29 | wasm_tgo_tak    | Compute  | tak(18,12,6) x 10000  |
+| 30 | wasm_tgo_arith  | Compute  | arith(1M) x 10        |
+| 31 | wasm_tgo_sieve  | Compute  | sieve(64K) x 100      |
+
+## Wasm FFI
+
+ClojureWasm includes a built-in Wasm runtime (zwasm) enabling direct
+`.wasm` module execution from Clojure code:
+
+```clojure
+(require '[cljw.wasm :as wasm])
+
+;; Load and call a Wasm module
+(def module (wasm/load "path/to/module.wasm"))
+(def add-fn (wasm/fn module "add"))
+(add-fn 2 3)  ;; => 5
+
+;; WASI support
+(def wasi-mod (wasm/load-wasi "path/to/wasi-module.wasm"))
+
+;; Memory interop
+(wasm/mem-write-bytes module 0 [72 101 108])
+(wasm/mem-read-string module 0 3)  ;; => "Hel"
+```
+
+The Wasm benchmarks (#21-25) measure FFI overhead, while the TinyGo
+benchmarks (#28-31) compare zwasm's execution speed against wasmtime.
+
 ## Directory Structure
 
 ```
@@ -107,13 +173,17 @@ bench/
   run_bench.sh          # CW-only benchmark (hyperfine)
   record.sh             # Record to history.yaml
   compare_langs.sh      # Cross-language comparison
+  wasm_bench.sh         # CW vs wasmtime wasm runtime comparison
   clj_warm_bench.clj    # Warm JVM measurement
-  history.yaml          # Benchmark history (all entries)
-  benchmarks/           # 25 benchmark directories
+  history.yaml          # Native benchmark history
+  wasm_history.yaml     # Wasm runtime benchmark history
+  cross-lang-results.yaml # Cross-language comparison results
+  benchmarks/           # 31 benchmark directories
+  wasm/                 # TinyGo-compiled .wasm modules
   simd/                 # SIMD benchmark programs
 ```
 
-## Latest Results (2026-02-10)
+## Latest Clojure Results (2026-02-10)
 
 Apple M4 Pro, 48GB RAM, macOS 15. hyperfine 5 runs + 2 warmup.
 All times in milliseconds. These are **cold start** measurements (process
@@ -149,3 +219,20 @@ is significantly faster. C/Zig/TinyGo are native-compiled (AOT) baselines.
 
 Note: gc_stress Zig value (414.6ms) omitted — Zig benchmark uses
 `std.AutoArrayHashMap` which is not comparable to GC-managed collections.
+
+## Latest Wasm Runtime Results (2026-02-12)
+
+CW's built-in Wasm runtime (zwasm v0.7.0, Register IR + ARM64 JIT)
+vs wasmtime JIT. Same TinyGo-compiled `.wasm` modules, startup subtracted.
+
+| Benchmark | CW (ms)  | wasmtime (ms) | Ratio (CW/wt) |
+|-----------|----------|---------------|----------------|
+| fib       | 509      | 229           | 2.2x           |
+| tak       | 2587     | 1225          | 2.1x           |
+| arith     | 0.1      | 0.1           | 1.0x           |
+| sieve     | 6.3      | 7.3           | 0.9x (CW wins) |
+| fib_loop  | 10.6     | 5.3           | 2.0x           |
+| gcd       | 55.7     | 41.1          | 1.4x           |
+
+zwasm reaches 0.9-2.2x of wasmtime performance across benchmarks.
+History tracked in `wasm_history.yaml`.
