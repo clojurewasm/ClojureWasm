@@ -23,7 +23,6 @@ const PersistentHashMap = value_mod.PersistentHashMap;
 const PersistentHashSet = value_mod.PersistentHashSet;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
-const collections = @import("collections.zig");
 const io = @import("io.zig");
 const err = @import("../runtime/error.zig");
 const Writer = std.Io.Writer;
@@ -34,13 +33,28 @@ const default_right_margin: usize = 72;
 // Pretty-print core
 // ============================================================
 
+/// Resolve lazy-seq one step. Returns the resolved value (cons, list, or nil).
+/// Does NOT realize the entire sequence — only peels off one lazy wrapper.
+fn resolveLazy(allocator: Allocator, val: Value) Value {
+    var v = val;
+    while (v.tag() == .lazy_seq) {
+        const ls = v.asLazySeq();
+        if (ls.realized) |r| {
+            v = r;
+        } else {
+            v = ls.realize(allocator) catch return val;
+        }
+    }
+    return v;
+}
+
 /// Format a value as a single-line pr-str, returns the string.
-/// Caller must have setPrintAllocator set before calling.
+/// Does NOT realize lazy sequences eagerly — formatPrStr handles them
+/// lazily and respects *print-length*.
 fn singleLine(allocator: Allocator, val: Value) ![]const u8 {
     var buf: [4096]u8 = undefined;
     var w: Writer = .fixed(&buf);
-    const v = collections.realizeValue(allocator, val) catch val;
-    v.formatPrStr(&w) catch return "";
+    val.formatPrStr(&w) catch return "";
     const s = w.buffered();
     return try allocator.dupe(u8, s);
 }
@@ -48,7 +62,8 @@ fn singleLine(allocator: Allocator, val: Value) ![]const u8 {
 /// Recursively pretty-print `val` into writer `w`.
 /// `col` tracks the current column position.
 fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin: usize) !void {
-    const v = collections.realizeValue(allocator, val) catch val;
+    // Resolve lazy-seq one step (not the entire sequence)
+    const v = resolveLazy(allocator, val);
 
     // Try single-line first
     const s = try singleLine(allocator, v);
@@ -58,6 +73,11 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
         return;
     }
 
+    const print_length: ?usize = if (value_mod.getPrintLength()) |len|
+        @as(usize, @intCast(len))
+    else
+        null;
+
     // Need multi-line formatting for collections
     switch (v.tag()) {
         .list => {
@@ -66,6 +86,18 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
             const new_indent = col.*;
             const list = v.asList();
             for (list.items, 0..) |item, i| {
+                if (print_length) |len| {
+                    if (i >= len) {
+                        if (i > 0) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, new_indent);
+                            col.* = new_indent;
+                        }
+                        try w.writeAll("...");
+                        col.* += 3;
+                        break;
+                    }
+                }
                 if (i > 0) {
                     try w.writeByte('\n');
                     try writeSpaces(w, new_indent);
@@ -76,42 +108,96 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
             try w.writeByte(')');
             col.* += 1;
         },
-        .cons => {
+        .cons, .chunked_cons => {
+            // Inline seq walking (avoids mutual recursion with anytype)
             try w.writeByte('(');
             col.* += 1;
-            const new_indent = col.*;
-            var first = true;
+            const seq_indent = col.*;
+            var seq_count: usize = 0;
             var cur = v;
-            while (true) {
+
+            seq_loop: while (true) {
+                // Check print-length
+                if (print_length) |len| {
+                    if (seq_count >= len) {
+                        if (seq_count > 0) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, seq_indent);
+                            col.* = seq_indent;
+                        }
+                        try w.writeAll("...");
+                        col.* += 3;
+                        break;
+                    }
+                }
+
+                cur = resolveLazy(allocator, cur);
+
                 if (cur.tag() == .cons) {
                     const cell = cur.asCons();
-                    if (!first) {
+                    if (seq_count > 0) {
                         try w.writeByte('\n');
-                        try writeSpaces(w, new_indent);
-                        col.* = new_indent;
+                        try writeSpaces(w, seq_indent);
+                        col.* = seq_indent;
                     }
                     try pprintImpl(allocator, w, cell.first, col, margin);
-                    first = false;
+                    seq_count += 1;
                     cur = cell.rest;
+                } else if (cur.tag() == .chunked_cons) {
+                    const cc = cur.asChunkedCons();
+                    var ci: usize = 0;
+                    while (ci < cc.chunk.count()) : (ci += 1) {
+                        if (print_length) |len| {
+                            if (seq_count >= len) break;
+                        }
+                        if (seq_count > 0) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, seq_indent);
+                            col.* = seq_indent;
+                        }
+                        try pprintImpl(allocator, w, cc.chunk.nth(ci).?, col, margin);
+                        seq_count += 1;
+                    }
+                    if (print_length) |len| {
+                        if (seq_count >= len) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, seq_indent);
+                            col.* = seq_indent;
+                            try w.writeAll("...");
+                            col.* += 3;
+                            break;
+                        }
+                    }
+                    cur = cc.more;
                 } else if (cur.tag() == .list) {
                     const list = cur.asList();
                     for (list.items) |item| {
-                        if (!first) {
+                        if (print_length) |len| {
+                            if (seq_count >= len) {
+                                try w.writeByte('\n');
+                                try writeSpaces(w, seq_indent);
+                                col.* = seq_indent;
+                                try w.writeAll("...");
+                                col.* += 3;
+                                break :seq_loop;
+                            }
+                        }
+                        if (seq_count > 0) {
                             try w.writeByte('\n');
-                            try writeSpaces(w, new_indent);
-                            col.* = new_indent;
+                            try writeSpaces(w, seq_indent);
+                            col.* = seq_indent;
                         }
                         try pprintImpl(allocator, w, item, col, margin);
-                        first = false;
+                        seq_count += 1;
                     }
                     break;
                 } else if (cur == Value.nil_val) {
                     break;
                 } else {
-                    // dotted pair — shouldn't happen in Clojure
                     break;
                 }
             }
+
             try w.writeByte(')');
             col.* += 1;
         },
@@ -121,6 +207,18 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
             const new_indent = col.*;
             const vec = v.asVector();
             for (vec.items, 0..) |item, i| {
+                if (print_length) |len| {
+                    if (i >= len) {
+                        if (i > 0) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, new_indent);
+                            col.* = new_indent;
+                        }
+                        try w.writeAll("...");
+                        col.* += 3;
+                        break;
+                    }
+                }
                 if (i > 0) {
                     try w.writeByte('\n');
                     try writeSpaces(w, new_indent);
@@ -177,6 +275,18 @@ fn pprintImpl(allocator: Allocator, w: anytype, val: Value, col: *usize, margin:
             const new_indent = col.*;
             const set = v.asSet();
             for (set.items, 0..) |item, i| {
+                if (print_length) |len| {
+                    if (i >= len) {
+                        if (i > 0) {
+                            try w.writeByte('\n');
+                            try writeSpaces(w, new_indent);
+                            col.* = new_indent;
+                        }
+                        try w.writeAll("...");
+                        col.* += 3;
+                        break;
+                    }
+                }
                 if (i > 0) {
                     try w.writeByte('\n');
                     try writeSpaces(w, new_indent);
@@ -283,4 +393,3 @@ test "pprint - short map on one line" {
     _ = try pprintFn(alloc, &[_]Value{Value.initMap(&am)});
     try testing.expectEqualStrings("{:a 1}\n", buf.items);
 }
-

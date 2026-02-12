@@ -28,23 +28,26 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-Phase 55 complete. No active task. Awaiting direction.
-Candidates for next phase:
-- Bug fixes (pprint infinite seq hang)
-- Implement read/read+string (PushbackReader, roadmap 49.1)
-- Port additional upstream test files (limited options — most remaining are JVM-only)
-- Begin v0.2.0-alpha concurrency work (future, pmap — requires GC thread safety)
+56.2: Implement `read` and `read+string` (PushbackReader).
+
+## Task Queue
+
+Phase 56: Bug Fixes & read Implementation
+- ~~56.1: Fix pprint infinite lazy seq hang~~ DONE
+- 56.2: Implement `read` and `read+string` (PushbackReader)
+- Then: Phase 57 — v0.2.0-alpha concurrency (future, pmap)
 
 ## Previous Task
 
-55.1: Restored Java static field references in parse.clj (Long/MAX_VALUE, Double/POSITIVE_INFINITY,
-Double/isNaN), math.clj (Long/MAX_VALUE, Double/MIN_VALUE, Double/MAX_EXPONENT), numbers.clj
-(Integer/MAX_VALUE, Integer/MIN_VALUE), printer.clj (print-symbol-values un-skipped).
+56.1: Fixed pprint infinite lazy seq hang. Root cause: `realizeValue` tried to collect ALL items
+from lazy sequences. Fix: rewrote pprint.zig to walk lazy seqs lazily via `resolveLazy` (peels
+one lazy wrapper), use `formatPrStr` (respects `*print-length*`) for single-line attempts, and
+inline seq walking with print-length support for multi-line formatting.
+12 pprint tests, 78 assertions pass. 6/6 e2e pass.
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
-- pprint on infinite lazy seq hangs (realizeValue in singleLine/pprintImpl)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 
 ## Resolved Issues (this session)

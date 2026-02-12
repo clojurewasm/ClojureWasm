@@ -186,7 +186,7 @@ fn printSeqRest(w: *Writer, start: Value, length: ?i64, count: *usize) Writer.Er
     }
 }
 
-fn getPrintLength() ?i64 {
+pub fn getPrintLength() ?i64 {
     const v = (print_length_var orelse return null).deref();
     return if (v.tag() == .integer) v.asInteger() else null;
 }
