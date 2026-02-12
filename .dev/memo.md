@@ -47,6 +47,13 @@ Phase 53: Hardening & pprint Tests (complete)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported
 
+## Resolved Issues (this session)
+
+- **Wasm call segfault**: GC was sweeping zwasm internals (~1MB VM) because
+  GC only marked the CW WasmModule wrapper, not zwasm's child allocations.
+  Fix: use `std.heap.smp_allocator` for all zwasm allocations (bce1c2e).
+  Also copy wasm binary bytes to non-GC memory since zwasm Module stores a reference.
+
 ## Notes
 
 - CONTRIBUTING.md at `.dev/CONTRIBUTING.md` — restore to repo root when accepting contributions
