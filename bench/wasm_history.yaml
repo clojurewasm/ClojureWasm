@@ -265,3 +265,46 @@ entries:
         wt_warm_ms: 41.1
         ratio: 1.4
         speedup_vs_prev: 0.97
+  - id: "zwasm-0.11.0"
+    date: "2026-02-12"
+    reason: "zwasm v0.11.0 — x86_64 JIT, tail calls, multi-memory"
+    commit: c2d5cdd
+    build: ReleaseSafe
+    cw_startup_ms: 5.1
+    wt_startup_ms: 6.3
+    results:
+      fib:
+        desc: "fib(20) x 10000"
+        cw_warm_ms: 546
+        wt_warm_ms: 226
+        ratio: 2.4
+        speedup_vs_prev: 0.93
+      tak:
+        desc: "tak(18,12,6) x 10000"
+        cw_warm_ms: 2620
+        wt_warm_ms: 1257
+        ratio: 2.1
+        speedup_vs_prev: 0.99
+      arith:
+        desc: "arith(1M) x 10"
+        cw_warm_ms: 0.2
+        wt_warm_ms: 0.1
+        ratio: 2.0
+      sieve:
+        desc: "sieve(64K) x 100"
+        cw_warm_ms: 6.0
+        wt_warm_ms: 4.3
+        ratio: 1.4
+        speedup_vs_prev: 1.05
+      fib_loop:
+        desc: "fib_loop(25) x 1000000"
+        cw_warm_ms: 13.6
+        wt_warm_ms: 0.9
+        ratio: 15.1
+        speedup_vs_prev: 0.78
+      gcd:
+        desc: "gcd(1M,700K) x 1000000"
+        cw_warm_ms: 58.7
+        wt_warm_ms: 45.3
+        ratio: 1.3
+        speedup_vs_prev: 0.95

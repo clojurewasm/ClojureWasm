@@ -106,9 +106,9 @@ Call WebAssembly modules directly from Clojure:
 - v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
-> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm) v0.8.0)
-> uses Register IR with ARM64 JIT, achieving 0.9-2.2x of wasmtime performance
-> depending on workload (call-heavy: ~2.2x, compute-heavy: ~1x, sieve: CW wins).
+> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm) v0.11.0)
+> uses Register IR with ARM64/x86_64 JIT, achieving 1.3-2.4x of wasmtime performance
+> depending on workload (call-heavy: ~2.4x, compute-heavy: ~1.3x, sieve: CW wins).
 > Module load time is faster (~4ms vs ~5ms).
 
 ### Server & Networking

@@ -6,10 +6,10 @@ Session handover document. Read at session start.
 
 - **All phases through 53 COMPLETE**
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
-- Wasm engine: zwasm v0.8.0 (GitHub URL dependency, build.zig.zon)
+- Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 49 upstream test files, all passing. 6/6 e2e tests pass.
-- Benchmarks: `bench/history.yaml` (zwasm-v0.8.0 entry = latest baseline)
+- Benchmarks: `bench/history.yaml` (zwasm-v0.11.0 entry = latest baseline)
 
 ## Strategic Direction
 

@@ -222,18 +222,18 @@ Note: gc_stress Zig value (462.7ms) omitted — Zig benchmark uses
 
 ## Latest Wasm Runtime Results (2026-02-12)
 
-CW's built-in Wasm runtime (zwasm v0.7.0, Register IR + ARM64 JIT)
+CW's built-in Wasm runtime (zwasm v0.11.0, Register IR + ARM64/x86_64 JIT)
 vs wasmtime JIT. Same TinyGo-compiled `.wasm` modules, startup subtracted.
 
-| Benchmark | CW (ms)  | wasmtime (ms) | Ratio (CW/wt) |
-|-----------|----------|---------------|----------------|
-| fib       | 522      | 227           | 2.3x           |
-| tak       | 2647     | 1274          | 2.1x           |
-| arith     | 0.3      | 0.1           | 3.0x           |
-| sieve     | 8.0      | 4.4           | 1.8x           |
-| fib_loop  | 13.0     | 0.5           | 26.0x          |
-| gcd       | 59.1     | 43.9          | 1.3x           |
+| Benchmark | CW (ms) | wasmtime (ms) | Ratio (CW/wt) |
+|-----------|---------|---------------|----------------|
+| fib       | 546     | 226           | 2.4x           |
+| tak       | 2620    | 1257          | 2.1x           |
+| arith     | 0.2     | 0.1           | 2.0x           |
+| sieve     | 6.0     | 4.3           | 1.4x           |
+| fib_loop  | 13.6    | 0.9           | 15.1x          |
+| gcd       | 58.7    | 45.3          | 1.3x           |
 
-zwasm reaches 1.3-2.3x of wasmtime performance on compute-heavy benchmarks.
-fib_loop and arith show higher ratios due to loop optimization differences.
+zwasm reaches 1.3-2.4x of wasmtime performance on compute-heavy benchmarks.
+fib_loop shows higher ratio due to loop optimization differences.
 History tracked in `wasm_history.yaml`.
