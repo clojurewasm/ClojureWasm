@@ -26,14 +26,14 @@ Phase 53: Hardening & pprint Tests — IN PROGRESS
 - [x] 53.1: Update zwasm to v0.7.0
 - [x] 53.2: Fix loop destructuring recur bug
 - [x] 53.3: Align distinct? to upstream (enabled by 53.2)
-- [ ] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
+- [x] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
 - [ ] 53.5: Fix colon in symbol/keyword literals
 - [ ] 53.6: Port pprint tests (content-equivalent, CW-adapted)
 - [ ] 53.7: Full regression + update docs
 
 ## Current Task
 
-53.4: Fix BigDecimal exponent notation (1.0e+1M)
+53.5: Fix colon in symbol/keyword literals
 
 ## Previous Task
 
@@ -43,7 +43,6 @@ Phase 52: Quality & Alignment (complete)
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
-- BigDecimal exponent notation (e.g. 1.0e+1M) causes AnalyzeError
 - Colon in symbol/keyword literals parsed as keyword delimiter
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported

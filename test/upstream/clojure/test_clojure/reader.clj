@@ -10,7 +10,7 @@
 
 ;; Upstream: clojure/test/clojure/test_clojure/reader.cljc
 ;; Upstream lines: 802
-;; CLJW markers: 30
+;; CLJW markers: 29
 
 (ns clojure.test-clojure.reader
   ;; CLJW: removed clojure.instant, clojure.walk, clojure.edn, test.generative,
@@ -139,9 +139,8 @@
   (is (= ##-Inf ##-Inf))
   (is (not (= ##NaN ##NaN)))
 
-  ;; Read BigDecimal (simple forms only)
+  ;; Read BigDecimal
   ;; CLJW: decimal? instead of instance? BigDecimal
-  ;; CLJW: BigDecimal with exponent notation (e.g. 1.0e+1M) causes AnalyzeError, skipped
   (is (decimal? 9223372036854775808M))
   (is (decimal? -9223372036854775809M))
   (is (decimal? 2147483647M))
@@ -152,6 +151,42 @@
   (is (decimal? -0M))
   (is (decimal? -1M))
   (is (decimal? -2147483648M))
+
+  (is (decimal? +1.0e+1M))
+  (is (decimal? +1.e+1M))
+  (is (decimal? +1e+1M))
+
+  (is (decimal? +1.0e1M))
+  (is (decimal? +1.e1M))
+  (is (decimal? +1e1M))
+
+  (is (decimal? +1.0e-1M))
+  (is (decimal? +1.e-1M))
+  (is (decimal? +1e-1M))
+
+  (is (decimal? 1.0e+1M))
+  (is (decimal? 1.e+1M))
+  (is (decimal? 1e+1M))
+
+  (is (decimal? 1.0e1M))
+  (is (decimal? 1.e1M))
+  (is (decimal? 1e1M))
+
+  (is (decimal? 1.0e-1M))
+  (is (decimal? 1.e-1M))
+  (is (decimal? 1e-1M))
+
+  (is (decimal? -1.0e+1M))
+  (is (decimal? -1.e+1M))
+  (is (decimal? -1e+1M))
+
+  (is (decimal? -1.0e1M))
+  (is (decimal? -1.e1M))
+  (is (decimal? -1e1M))
+
+  (is (decimal? -1.0e-1M))
+  (is (decimal? -1.e-1M))
+  (is (decimal? -1e-1M))
 
   (is (decimal? +1.0M))
   (is (decimal? +1.M))

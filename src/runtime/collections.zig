@@ -267,26 +267,37 @@ pub const BigDecimal = extern struct {
         return bd;
     }
 
-    /// Create from string like "42.5", "123", "-3.14".
+    /// Create from string like "42.5", "123", "-3.14", "1.0e+1", "1e10".
     pub fn initFromString(allocator: std.mem.Allocator, text: []const u8) !*BigDecimal {
         const bd = try allocator.create(BigDecimal);
         bd.kind = .big_decimal;
 
-        // Find decimal point
-        if (std.mem.indexOfScalar(u8, text, '.')) |dot_pos| {
-            // Has decimal point: "42.5" → unscaled=425, scale=1
-            const frac_len = text.len - dot_pos - 1;
-            // Build string without the dot
-            const buf = try allocator.alloc(u8, text.len - 1);
-            @memcpy(buf[0..dot_pos], text[0..dot_pos]);
-            @memcpy(buf[dot_pos..], text[dot_pos + 1 ..]);
-            bd.unscaled = try BigInt.initFromString(allocator, buf);
-            bd.scale = @intCast(frac_len);
-        } else {
-            // No decimal point: "42" → unscaled=42, scale=0
-            bd.unscaled = try BigInt.initFromString(allocator, text);
-            bd.scale = 0;
+        // Split off exponent part (e.g. "1.0e+1" → mantissa="1.0", exp=1)
+        var mantissa = text;
+        var exponent: i32 = 0;
+        if (std.mem.indexOfScalar(u8, text, 'e') orelse std.mem.indexOfScalar(u8, text, 'E')) |e_pos| {
+            mantissa = text[0..e_pos];
+            const exp_str = text[e_pos + 1 ..];
+            exponent = std.fmt.parseInt(i32, exp_str, 10) catch return error.InvalidCharacter;
         }
+
+        // Parse mantissa (may have decimal point)
+        var base_scale: i32 = 0;
+        if (std.mem.indexOfScalar(u8, mantissa, '.')) |dot_pos| {
+            // Has decimal point: "1.0" → digits="10", base_scale=1
+            const frac_len = mantissa.len - dot_pos - 1;
+            base_scale = @intCast(frac_len);
+            const buf = try allocator.alloc(u8, mantissa.len - 1);
+            @memcpy(buf[0..dot_pos], mantissa[0..dot_pos]);
+            @memcpy(buf[dot_pos..], mantissa[dot_pos + 1 ..]);
+            bd.unscaled = try BigInt.initFromString(allocator, buf);
+        } else {
+            // No decimal point
+            bd.unscaled = try BigInt.initFromString(allocator, mantissa);
+        }
+
+        // Apply exponent: effective scale = base_scale - exponent
+        bd.scale = base_scale - exponent;
         return bd;
     }
 
