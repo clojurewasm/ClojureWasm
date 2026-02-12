@@ -8,7 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 835+ vars (635/706 core, 16 namespaces total)
 - Wasm engine: zwasm v0.7.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 48 upstream test files, all passing. 6/6 e2e tests pass.
+- 49 upstream test files, all passing. 6/6 e2e tests pass.
 - Benchmarks: `bench/wasm_history.yaml` (zwasm-0.7.0 entry = latest baseline)
 
 ## Strategic Direction
@@ -28,21 +28,27 @@ Phase 53: Hardening & pprint Tests — IN PROGRESS
 - [x] 53.3: Align distinct? to upstream (enabled by 53.2)
 - [x] 53.4: Fix BigDecimal exponent notation (1.0e+1M)
 - [x] 53.5: Fix colon in symbol/keyword literals
-- [ ] 53.6: Port pprint tests (content-equivalent, CW-adapted)
+- [x] 53.6: Port pprint tests (content-equivalent, CW-adapted)
 - [ ] 53.7: Full regression + update docs
 
 ## Current Task
 
-53.6: Port pprint tests (content-equivalent, CW-adapted)
+53.7: Full regression + update docs
 
 ## Previous Task
 
-Phase 52: Quality & Alignment (complete)
-- See Phase 52 commit history for details
+53.6: Port pprint tests — 12 tests, 78 assertions
+- Content-equivalent approach: test names from upstream, CW-adapted content
+- Tests: pprint-test, pprint-reader-macro-test, print-length-tests,
+  print-level-tests, pprint-datastructures-tests, pprint-wrapping-test,
+  pprint-empty-collections-test, pprint-strings-test, pprint-nested-test,
+  print-table-test, pprint-special-values-test, pprint-print-length-and-level-combined
+- Both VM + TreeWalk passing
 
 ## Known Issues
 
 - apply on infinite lazy seq realizes eagerly (deferred — no tests need it)
+- pprint on infinite lazy seq hangs (realizeValue in singleLine/pprintImpl)
 - binding *ns* doesn't affect read-string for auto-resolved keywords
 - Regex capture groups/backreferences not supported
 
