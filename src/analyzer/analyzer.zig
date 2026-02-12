@@ -1705,6 +1705,8 @@ pub const Analyzer = struct {
 
         var sigs: std.ArrayList(node_mod.MethodSigNode) = .empty;
         for (method_forms) |mf| {
+            // Skip docstrings and keyword options (e.g. :extend-via-metadata true)
+            if (mf.data == .string or mf.data == .keyword or mf.data == .boolean) continue;
             if (mf.data != .list) {
                 return self.analysisError(.value_error, "defprotocol method must be a list", mf);
             }
@@ -1754,10 +1756,14 @@ pub const Analyzer = struct {
         }
 
         // Type name (symbol, e.g. String, Integer, nil)
-        if (items[1].data != .symbol) {
+        // nil comes as a nil literal from macro expansion, not a symbol
+        const type_name = if (items[1].data == .symbol)
+            items[1].data.symbol.name
+        else if (items[1].data == .nil)
+            "nil"
+        else {
             return self.analysisError(.value_error, "extend-type type must be a symbol", items[1]);
-        }
-        const type_name = items[1].data.symbol.name;
+        };
 
         // Protocol name
         if (items[2].data != .symbol) {

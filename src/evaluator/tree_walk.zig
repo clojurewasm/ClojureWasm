@@ -850,9 +850,11 @@ pub const TreeWalk = struct {
             }
         }
 
-        // Cache miss: full lookup
+        // Cache miss: full lookup (exact type, then "Object" fallback)
         const protocol = pf.protocol;
-        const method_map_val = protocol.impls.get(Value.initString(self.allocator, type_key)) orelse return error.TypeError;
+        const method_map_val = protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
+            protocol.impls.get(Value.initString(self.allocator, "Object")) orelse
+            return error.TypeError;
         if (method_map_val.tag() != .map) return error.TypeError;
         const method_map = method_map_val.asMap();
         const fn_val = method_map.get(Value.initString(self.allocator, pf.method_name)) orelse return error.TypeError;

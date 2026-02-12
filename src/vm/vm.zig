@@ -1340,8 +1340,9 @@ pub const VM = struct {
                         return self.performCall(arg_count);
                     }
                 }
-                // Cache miss: full protocol lookup (type_key -> method_map -> method_fn)
+                // Cache miss: full protocol lookup (exact type, then "Object" fallback)
                 const method_map_val = pf.protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
+                    pf.protocol.impls.get(Value.initString(self.allocator, "Object")) orelse
                     return error.TypeError;
                 if (method_map_val.tag() != .map) return error.TypeError;
                 const method_fn = method_map_val.asMap().get(Value.initString(self.allocator, pf.method_name)) orelse

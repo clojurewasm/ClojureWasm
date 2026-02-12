@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 57 COMPLETE**
-- Coverage: 837+ vars (637/706 core, 16 namespaces total)
+- Coverage: 847+ vars (637/706 core, 10/11 protocols, 17 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 49 upstream test files, all passing. 6/6 e2e tests pass.
@@ -28,12 +28,12 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce, coll-reduce, kv-reduce).
+58.2: Implement reducers core (reduce, fold, CollFold, monoid).
 
 ## Task Queue
 
 Phase 58: clojure.core.reducers (see below)
-- 58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce)
+- ~~58.1: Create `clojure.core.protocols` namespace (CollReduce, IKVReduce)~~ DONE
 - 58.2: Implement reducers core (reduce, fold, CollFold, monoid)
 - 58.3: Implement reducer/folder wrappers (reify-based)
 - 58.4: Implement transformation fns (map, filter, remove, take, take-while, drop, flatten, mapcat)
@@ -49,7 +49,9 @@ Design notes:
 
 ## Previous Task
 
-Phase 57: Concurrency Test Suite + swap! CAS fix + Delay thread safety.
+58.1: Created `clojure.core.protocols` namespace with 10/11 vars (CollReduce, InternalReduce,
+IKVReduce, Datafiable, Navigable). Fixed extend-type nil, defprotocol docstrings, Object fallback
+dispatch. Protocol values not serializable — re-loaded after cache restore.
 
 ## Known Issues
 

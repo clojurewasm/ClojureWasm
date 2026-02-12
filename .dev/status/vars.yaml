@@ -721,17 +721,17 @@ vars:
       status: done
       note: core.clj private hierarchy atom
   clojure_core_protocols:
-    CollReduce: {type: var, status: todo}
-    Datafiable: {type: var, status: todo}
-    IKVReduce: {type: var, status: todo}
-    InternalReduce: {type: var, status: todo}
-    Navigable: {type: var, status: todo}
-    "coll-reduce": {type: function, status: todo}
-    datafy: {type: function, status: todo}
-    "internal-reduce": {type: function, status: todo}
-    "iterator-reduce!": {type: function, status: todo}
-    "kv-reduce": {type: function, status: todo}
-    nav: {type: function, status: todo}
+    CollReduce: {type: var, status: done}
+    Datafiable: {type: var, status: done}
+    IKVReduce: {type: var, status: done}
+    InternalReduce: {type: var, status: done}
+    Navigable: {type: var, status: done}
+    "coll-reduce": {type: function, status: done}
+    datafy: {type: function, status: done}
+    "internal-reduce": {type: function, status: done}
+    "iterator-reduce!": {type: function, status: skip, notes: "Java iterator interop"}
+    "kv-reduce": {type: function, status: done}
+    nav: {type: function, status: done}
   clojure_core_reducers:
     "->Cat": {type: function, status: todo}
     CollFold: {type: var, status: todo}

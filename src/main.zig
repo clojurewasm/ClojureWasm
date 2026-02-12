@@ -533,6 +533,7 @@ fn markBootstrapLibs() void {
         "clojure.pprint",
         "clojure.stacktrace",
         "clojure.zip",
+        "clojure.core.protocols",
     };
     for (libs) |name| {
         ns_ops.markLibLoaded(name) catch {};
