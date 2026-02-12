@@ -1241,6 +1241,14 @@ fn intCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0].tag()) {
         .integer => args[0],
         .float => Value.initInteger(@intFromFloat(args[0].asFloat())),
+        .ratio => Value.initInteger(@intFromFloat(args[0].asRatio().toF64())),
+        .big_int => blk: {
+            const bi = args[0].asBigInt();
+            const i = bi.managed.toInt(i48) catch
+                return err.setErrorFmt(.eval, .type_error, .{}, "Value out of range for int", .{});
+            break :blk Value.initInteger(i);
+        },
+        .big_decimal => Value.initInteger(@intFromFloat(args[0].asBigDecimal().toF64())),
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to integer", .{@tagName(args[0].tag())}),
     };
 }
@@ -1251,6 +1259,9 @@ fn floatCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
     return switch (args[0].tag()) {
         .float => args[0],
         .integer => Value.initFloat(@floatFromInt(args[0].asInteger())),
+        .ratio => Value.initFloat(args[0].asRatio().toF64()),
+        .big_int => Value.initFloat(args[0].asBigInt().toF64()),
+        .big_decimal => Value.initFloat(args[0].asBigDecimal().toF64()),
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to float", .{@tagName(args[0].tag())}),
     };
 }
@@ -1259,7 +1270,7 @@ fn floatCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
 fn numFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to num", .{args.len});
     return switch (args[0].tag()) {
-        .integer, .float => args[0],
+        .integer, .float, .ratio, .big_int, .big_decimal => args[0],
         else => err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to number", .{@tagName(args[0].tag())}),
     };
 }
@@ -1494,6 +1505,15 @@ fn toBigInt(allocator: Allocator, v: Value) anyerror!Value {
             result.managed = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
             var remainder = std.math.big.int.Managed.init(alloc) catch return error.OutOfMemory;
             result.managed.divTrunc(&remainder, &bd.unscaled.managed, &ten_pow.managed) catch return error.OutOfMemory;
+            break :blk Value.initBigInt(result);
+        },
+        .ratio => blk: {
+            // Truncate towards zero: numerator / denominator
+            const r = v.asRatio();
+            const result = allocator.create(collections.BigInt) catch return error.OutOfMemory;
+            result.managed = std.math.big.int.Managed.init(allocator) catch return error.OutOfMemory;
+            var remainder = std.math.big.int.Managed.init(allocator) catch return error.OutOfMemory;
+            result.managed.divTrunc(&remainder, &r.numerator.managed, &r.denominator.managed) catch return error.OutOfMemory;
             break :blk Value.initBigInt(result);
         },
         .string => blk: {

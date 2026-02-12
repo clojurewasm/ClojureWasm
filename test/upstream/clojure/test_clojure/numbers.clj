@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/numbers.clj
 ;; Upstream lines: 959
-;; CLJW markers: 59
+;; CLJW markers: 63
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -94,8 +94,10 @@
     (+ 1 -1) 0
     (+ -1 1) 0
 
-      ;; CLJW: ratio literals (2/3 etc.) removed — not supported
-    )
+      ;; CLJW: ratio literals — restored (Ratio now supported)
+    (+ 2/3) 2/3
+    (+ 2/3 1) 5/3
+    (+ 2/3 1/3) 1)
 
   ;; CLJW: BigInt addition tests
   (are [x y] (= x y)
@@ -126,8 +128,10 @@
     (- 1 1) 0
     (- -1 -1) 0
 
-      ;; CLJW: ratio literals removed
-    )
+      ;; CLJW: ratio literals — restored (Ratio now supported)
+    (- 2/3) -2/3
+    (- 2/3 1) -1/3
+    (- 2/3 1/3) 1/3)
 
   ;; CLJW: BigInt subtraction tests
   (are [x y] (= x y)
@@ -153,8 +157,10 @@
     (* 2 -3) -6
     (* 2 -3 -1) 6
 
-      ;; CLJW: ratio literals removed
-    )
+      ;; CLJW: ratio literals — restored (Ratio now supported)
+    (* 1/2) 1/2
+    (* 1/2 1/3) 1/6
+    (* 1/2 1/3 -1/4) -1/24)
 
   ;; CLJW: BigInt multiplication tests
   (are [x y] (= x y)
@@ -502,10 +508,24 @@
 
 ;; CLJW: test-array-types skipped — Java arrays
 
-;; CLJW: adapted from upstream — removed Long/MIN_VALUE tests (i48), added basic ratio tests
+;; CLJW: adapted from upstream — i48 range instead of Long/MIN_VALUE, added ratio predicate/arithmetic tests
 (deftest test-ratios
   (is (== (denominator 1/2) 2))
   (is (== (numerator 1/2) 1))
+  ;; CLJW: upstream uses bigint of large number — adapted to CW BigInt
+  (is (= (bigint (/ 100000000000000000000 3)) 33333333333333333333N))
+
+  ;; CLJW: i48 edge cases (upstream uses Long/MIN_VALUE)
+  (is (= (/ 1 I48-MIN) -1/140737488355328))
+  (is (true? (< (/ 1 I48-MIN) 0)))
+  (is (true? (< (* 1 (/ 1 I48-MIN)) 0)))
+  (is (= (abs (/ 1 I48-MIN)) 1/140737488355328))
+  (is (false? (< (abs (/ 1 I48-MIN)) 0)))
+  (is (false? (< (* 1 (abs (/ 1 I48-MIN))) 0)))
+  (is (= (/ I48-MIN -3) 140737488355328/3))
+  (is (false? (< (/ I48-MIN -3) 0)))
+
+  ;; CLJW-ADD: additional ratio tests
   (is (= (/ 1 3) 1/3))
   (is (= (/ 2 4) 1/2))
   (is (= (+ 1/3 2/3) 1))

@@ -21,12 +21,14 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Ready for next phase planning. See Task Queue below.
+Phase 59.2: Port numbers.clj upstream tests for promote ops +' *' -' inc' dec'.
+- Tests already present as CLJW-ADD (test-auto-promoting-arithmetic)
+- Check if upstream has additional promote-related tests to port
 
 ## Task Queue
 
 Phase 59: Deferred cleanup & test porting
-- 59.1: Port numbers.clj upstream tests for Ratio (43.8 — impl done, tests not ported)
+- ~~59.1: Port numbers.clj upstream tests for Ratio~~ DONE
 - 59.2: Port numbers.clj upstream tests for promote ops +' *' -' inc' dec' (43.7 — impl done, tests not ported)
 
 ## Previous Task
