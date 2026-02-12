@@ -65,7 +65,7 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 fn derefAtom(_: Allocator, a: *Atom) Value {
-    return a.value;
+    return @atomicLoad(Value, &a.value, .acquire);
 }
 
 /// Force a Delay value: evaluate thunk on first access, cache result.
@@ -136,14 +136,14 @@ pub fn delayCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (reset! atom new-val) => new-val
+/// Uses atomic exchange (getAndSet) for thread safety.
 pub fn resetBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset!", .{args.len});
     return switch (args[0].tag()) {
         .atom => {
             const a = args[0].asAtom();
             try validate(allocator, a, args[1]);
-            const old = a.value;
-            a.value = args[1];
+            const old = @atomicRmw(Value, &a.value, .Xchg, args[1], .acq_rel);
             try notifyWatchers(allocator, a, args[0], old, args[1]);
             return args[1];
         },
@@ -153,7 +153,7 @@ pub fn resetBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (swap! atom f) => (f @atom)
 /// (swap! atom f x y ...) => (f @atom x y ...)
-/// Supports builtin_fn directly and fn_val via call_fn dispatcher.
+/// Uses CAS retry loop for thread safety (matches Clojure's AtomicReference.compareAndSet).
 pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap!", .{args.len});
     const atom_ptr = switch (args[0].tag()) {
@@ -168,28 +168,33 @@ pub fn swapBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const total = 1 + extra_args.len;
     var call_args: [256]Value = undefined;
     if (total > call_args.len) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap!", .{args.len});
-    call_args[0] = atom_ptr.value;
     for (extra_args, 0..) |arg, i| {
         call_args[1 + i] = arg;
     }
 
-    const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
-
-    try validate(allocator, atom_ptr, new_val);
-    const old_val = atom_ptr.value;
-    atom_ptr.value = new_val;
-    try notifyWatchers(allocator, atom_ptr, args[0], old_val, new_val);
-    return new_val;
+    // CAS retry loop: read → compute → compare-and-swap
+    while (true) {
+        const old_val = @atomicLoad(Value, &atom_ptr.value, .acquire);
+        call_args[0] = old_val;
+        const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
+        try validate(allocator, atom_ptr, new_val);
+        if (@cmpxchgStrong(Value, &atom_ptr.value, old_val, new_val, .acq_rel, .acquire) == null) {
+            // CAS succeeded
+            try notifyWatchers(allocator, atom_ptr, args[0], old_val, new_val);
+            return new_val;
+        }
+        // CAS failed — another thread modified the atom; retry
+    }
 }
 
 /// (reset-vals! atom new-val) => [old-val new-val]
+/// Uses atomic exchange for thread safety.
 pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reset-vals!", .{args.len});
     return switch (args[0].tag()) {
         .atom => {
             const a = args[0].asAtom();
-            const old = a.value;
-            a.value = args[1];
+            const old = @atomicRmw(Value, &a.value, .Xchg, args[1], .acq_rel);
             const items = try allocator.alloc(Value, 2);
             items[0] = old;
             items[1] = args[1];
@@ -203,6 +208,7 @@ pub fn resetValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (swap-vals! atom f) => [old-val new-val]
 /// (swap-vals! atom f x y ...) => [old-val (f @atom x y ...)]
+/// Uses CAS retry loop for thread safety.
 pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap-vals!", .{args.len});
     const atom_ptr = switch (args[0].tag()) {
@@ -217,22 +223,26 @@ pub fn swapValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const total = 1 + extra_args.len;
     var call_args: [256]Value = undefined;
     if (total > call_args.len) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to swap-vals!", .{args.len});
-    call_args[0] = atom_ptr.value;
     for (extra_args, 0..) |arg, i| {
         call_args[1 + i] = arg;
     }
 
-    const old = atom_ptr.value;
-    const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
-
-    atom_ptr.value = new_val;
-
-    const items = try allocator.alloc(Value, 2);
-    items[0] = old;
-    items[1] = new_val;
-    const vec = try allocator.create(value_mod.PersistentVector);
-    vec.* = .{ .items = items };
-    return Value.initVector(vec);
+    // CAS retry loop: read → compute → compare-and-swap
+    while (true) {
+        const old_val = @atomicLoad(Value, &atom_ptr.value, .acquire);
+        call_args[0] = old_val;
+        const new_val = bootstrap.callFnVal(allocator, fn_val, call_args[0..total]) catch |e| return e;
+        if (@cmpxchgStrong(Value, &atom_ptr.value, old_val, new_val, .acq_rel, .acquire) == null) {
+            // CAS succeeded
+            const items = try allocator.alloc(Value, 2);
+            items[0] = old_val;
+            items[1] = new_val;
+            const vec = try allocator.create(value_mod.PersistentVector);
+            vec.* = .{ .items = items };
+            return Value.initVector(vec);
+        }
+        // CAS failed — retry
+    }
 }
 
 /// (volatile! val) => #<volatile val>

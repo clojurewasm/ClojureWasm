@@ -28,33 +28,21 @@ Phase 55: Upstream Test Recovery
 
 ## Current Task
 
-57.1: Zig test — multiple futures allocating concurrently (GC mutex contention).
+Phase 57 complete. Next: read roadmap.md for next phase.
 
 ## Task Queue
 
-Phase 57: Concurrency Test Suite (see `.dev/concurrency-test-plan.md`)
-- 57.1: Zig — multiple futures allocating concurrently
-- 57.2: Zig — GC collection during future execution
-- 57.3: Zig — agent actions with heavy allocation
-- 57.4: Zig — deref-blocked thread survives GC
-- 57.5: Clj — atom swap! N-thread contention
-- 57.6: Clj — delay N-thread simultaneous deref
-- 57.7: Clj — mass future spawn + collect all results
-- 57.8: Clj — agent high-frequency send
-- 57.9: Clj — future inherits bindings
-- 57.10: Clj — nested binding + future
-- 57.11: Clj — agent send inherits bindings
-- 57.12: Clj — shutdown-agents then send
-- 57.13: Clj — future-cancel
-- 57.14: Clj — promise deref with timeout
-- 57.15: Clj — agent restart-agent after error
+(empty — Phase 57 done)
 
 ## Previous Task
 
-56.2: Implemented `read`, `read+string`, and `clojure.edn/read`. No PushbackReader type needed —
-reads from `with-in-str` input source or stdin directly. Added Reader.position() for tracking
-consumed bytes. Supports 0/1/3-arg arities with eof handling. `read+string` returns [form string].
-Both backends verified. 637/706 core vars done.
+Phase 57: Concurrency Test Suite — all 15 sub-tasks complete.
+- 57.1-57.4: Zig-level GC concurrency tests (`src/runtime/concurrency_test.zig`)
+- 57.5-57.15: Clojure concurrency stress tests (`test/cw/concurrency_stress.clj`)
+- Bug found & fixed: swap!/swap-vals! had no CAS retry loop — lost updates under contention.
+  Fixed with `@cmpxchgStrong` CAS loop. reset!/reset-vals! also made atomic (`@atomicRmw .Xchg`).
+  deref on atom uses `@atomicLoad` for safe cross-thread reads.
+- All 10 Clj tests (33 assertions) pass on both VM and TreeWalk.
 
 ## Known Issues
 
@@ -63,6 +51,8 @@ Both backends verified. 637/706 core vars done.
 
 ## Resolved Issues (this session)
 
+- **swap! race condition**: swap!/swap-vals! had no CAS retry loop. Fixed with lock-free
+  `@cmpxchgStrong` CAS. Also made reset!/reset-vals!/deref atomic.
 - **Checklist cleanup**: F136/F137 resolved (zwasm v0.11.0 implements table.copy
   cross-table + table.init). F6 resolved (multi-thread dynamic bindings done).
 - **Regex fix**: Capture groups + backreferences actually work — removed from Known Issues.
