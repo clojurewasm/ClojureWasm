@@ -455,8 +455,9 @@ fn isTerminator(c: u8) bool {
 fn isSymbolChar(c: u8) bool {
     // # is valid inside symbols (gensym: foo#, tagged: my#tag)
     // but not at start (handled by next() dispatch).
-    // : is excluded — colons start keywords.
-    return !isTerminator(c) and c != ':';
+    // : is valid inside symbols/keywords (e.g. abc:def, :abc:def:ghi).
+    // Colons only start keywords at token boundaries (handled by next()).
+    return !isTerminator(c);
 }
 
 fn isWhitespace(c: u8) bool {

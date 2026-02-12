@@ -10,7 +10,7 @@
 
 ;; Upstream: clojure/test/clojure/test_clojure/reader.cljc
 ;; Upstream lines: 802
-;; CLJW markers: 29
+;; CLJW markers: 27
 
 (ns clojure.test-clojure.reader
   ;; CLJW: removed clojure.instant, clojure.walk, clojure.edn, test.generative,
@@ -22,12 +22,11 @@
 (deftest Symbols
   (is (= 'abc (symbol "abc")))
   (is (= '*+!-_? (symbol "*+!-_?")))
-  ;; CLJW: colon in symbol names parsed as keyword delimiter, skipped 2 tests
-  ;; (is (= 'abc:def:ghi (symbol "abc:def:ghi")))
+  (is (= 'abc:def:ghi (symbol "abc:def:ghi")))
   (is (= 'abc/def (symbol "abc" "def")))
   (is (= 'abc.def/ghi (symbol "abc.def" "ghi")))
   (is (= 'abc/def.ghi (symbol "abc" "def.ghi")))
-  ;; (is (= 'abc:def/ghi:jkl.mno (symbol "abc:def" "ghi:jkl.mno")))
+  (is (= 'abc:def/ghi:jkl.mno (symbol "abc:def" "ghi:jkl.mno")))
   ;; CLJW: symbol? instead of instance? clojure.lang.Symbol
   (is (symbol? 'alphabet)))
 
@@ -226,14 +225,12 @@
   (is (= :abc (keyword "abc")))
   (is (= :abc (keyword 'abc)))
   (is (= :*+!-_? (keyword "*+!-_?")))
-  ;; CLJW: colon in keyword literals parsed as keyword delimiter
-  ;; Use keyword fn to create and verify instead of literal
-  (is (= (keyword "abc:def:ghi") (keyword "abc:def:ghi")))
+  (is (= :abc:def:ghi (keyword "abc:def:ghi")))
   (is (= :abc/def (keyword "abc" "def")))
   (is (= :abc/def (keyword 'abc/def)))
   (is (= :abc.def/ghi (keyword "abc.def" "ghi")))
   (is (= :abc/def.ghi (keyword "abc" "def.ghi")))
-  (is (= (keyword "abc:def" "ghi:jkl.mno") (keyword "abc:def" "ghi:jkl.mno")))
+  (is (= :abc:def/ghi:jkl.mno (keyword "abc:def" "ghi:jkl.mno")))
   ;; CLJW: keyword? instead of instance? clojure.lang.Keyword
   (is (keyword? :alphabet)))
 
