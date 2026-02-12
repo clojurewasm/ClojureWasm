@@ -199,6 +199,69 @@ pub fn registerBuiltins(env: *Env) !void {
     const e_var = try math_ns.intern("E");
     e_var.bindRoot(Value.initFloat(math_mod.E));
 
+    // Register Java interop static field constants in clojure.core.
+    // These are referenced via rewriteStaticField in the analyzer
+    // (e.g. Integer/MAX_VALUE → __integer-max-value).
+    const java_consts = [_]struct { name: []const u8, val: Value }{
+        // Integer (Java i32)
+        .{ .name = "__integer-max-value", .val = Value.initInteger(2147483647) },
+        .{ .name = "__integer-min-value", .val = Value.initInteger(-2147483648) },
+        .{ .name = "__integer-size", .val = Value.initInteger(32) },
+        .{ .name = "__integer-bytes", .val = Value.initInteger(4) },
+        // Double (Java f64)
+        .{ .name = "__double-max-value", .val = Value.initFloat(std.math.floatMax(f64)) },
+        .{ .name = "__double-min-value", .val = Value.initFloat(std.math.floatTrueMin(f64)) },
+        .{ .name = "__double-nan", .val = Value.initFloat(std.math.nan(f64)) },
+        .{ .name = "__double-positive-infinity", .val = Value.initFloat(std.math.inf(f64)) },
+        .{ .name = "__double-negative-infinity", .val = Value.initFloat(-std.math.inf(f64)) },
+        .{ .name = "__double-min-normal", .val = Value.initFloat(std.math.floatMin(f64)) },
+        .{ .name = "__double-max-exponent", .val = Value.initInteger(1023) },
+        .{ .name = "__double-min-exponent", .val = Value.initInteger(-1022) },
+        .{ .name = "__double-size", .val = Value.initInteger(64) },
+        .{ .name = "__double-bytes", .val = Value.initInteger(8) },
+        // Float (Java f32, values stored as f64)
+        .{ .name = "__float-max-value", .val = Value.initFloat(@as(f64, std.math.floatMax(f32))) },
+        .{ .name = "__float-min-value", .val = Value.initFloat(@as(f64, std.math.floatTrueMin(f32))) },
+        .{ .name = "__float-nan", .val = Value.initFloat(std.math.nan(f64)) },
+        .{ .name = "__float-positive-infinity", .val = Value.initFloat(std.math.inf(f64)) },
+        .{ .name = "__float-negative-infinity", .val = Value.initFloat(-std.math.inf(f64)) },
+        .{ .name = "__float-min-normal", .val = Value.initFloat(@as(f64, std.math.floatMin(f32))) },
+        .{ .name = "__float-max-exponent", .val = Value.initInteger(127) },
+        .{ .name = "__float-min-exponent", .val = Value.initInteger(-126) },
+        .{ .name = "__float-size", .val = Value.initInteger(32) },
+        .{ .name = "__float-bytes", .val = Value.initInteger(4) },
+        // Short (Java i16)
+        .{ .name = "__short-max-value", .val = Value.initInteger(32767) },
+        .{ .name = "__short-min-value", .val = Value.initInteger(-32768) },
+        .{ .name = "__short-size", .val = Value.initInteger(16) },
+        .{ .name = "__short-bytes", .val = Value.initInteger(2) },
+        // Byte (Java i8)
+        .{ .name = "__byte-max-value", .val = Value.initInteger(127) },
+        .{ .name = "__byte-min-value", .val = Value.initInteger(-128) },
+        .{ .name = "__byte-size", .val = Value.initInteger(8) },
+        .{ .name = "__byte-bytes", .val = Value.initInteger(1) },
+        // Boolean
+        .{ .name = "__boolean-true", .val = Value.true_val },
+        .{ .name = "__boolean-false", .val = Value.false_val },
+        // Character (Java u16)
+        .{ .name = "__character-max-value", .val = Value.initChar(0xFFFF) },
+        .{ .name = "__character-min-value", .val = Value.initChar(0) },
+        .{ .name = "__character-max-code-point", .val = Value.initInteger(0x10FFFF) },
+        .{ .name = "__character-min-code-point", .val = Value.initInteger(0) },
+        .{ .name = "__character-size", .val = Value.initInteger(16) },
+        .{ .name = "__character-bytes", .val = Value.initInteger(2) },
+        // Long (i64 — exceeds i48 NaN-boxing, auto-promotes to float via initInteger)
+        .{ .name = "__long-max-value", .val = Value.initInteger(std.math.maxInt(i64)) },
+        .{ .name = "__long-min-value", .val = Value.initInteger(std.math.minInt(i64)) },
+        .{ .name = "__long-size", .val = Value.initInteger(64) },
+        .{ .name = "__long-bytes", .val = Value.initInteger(8) },
+    };
+    for (java_consts) |jc| {
+        const v = try core_ns.intern(jc.name);
+        v.bindRoot(jc.val);
+        try user_ns.refer(jc.name, v);
+    }
+
     // Register wasm namespace builtins (Phase 25, D82: renamed wasm -> cljw.wasm)
     const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
     for (wasm_builtins_mod.builtins) |b| {
