@@ -929,15 +929,45 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const f = args[0];
     const last_arg = args[args.len - 1];
+    const middle_count = args.len - 2; // exclude f and last_arg
 
-    // Collect spread args from last collection
+    // For variadic fn_val, avoid realizing infinite seqs (F99).
+    // Build a lazy cons chain (like JVM's list*) and peel off only fixed params.
+    if (f.tag() == .fn_val) {
+        if (findVariadicFixedCount(f.asFn())) |fixed_count| {
+            // Build arg_seq = list*(middle_args, last_arg) via cons chain
+            var arg_seq = if (last_arg == Value.nil_val) Value.nil_val else last_arg;
+            var i = middle_count;
+            while (i > 0) {
+                i -= 1;
+                const cell = try allocator.create(value_mod.Cons);
+                cell.* = .{ .first = args[1 + i], .rest = arg_seq };
+                arg_seq = Value.initCons(cell);
+            }
+
+            // Take exactly fixed_count items from arg_seq
+            const call_args = try allocator.alloc(Value, fixed_count + 1);
+            for (0..fixed_count) |j| {
+                call_args[j] = try firstFn(allocator, &.{arg_seq});
+                arg_seq = try restFn(allocator, &.{arg_seq});
+            }
+
+            // Remaining seq is the rest param (lazy!) — convert to seq or nil
+            call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
+
+            // Signal VM/TreeWalk that the rest arg is already a seq (F99)
+            bootstrap.apply_rest_is_seq = true;
+            return bootstrap.callFnVal(allocator, f, call_args);
+        }
+    }
+
+    // Non-variadic or non-fn_val: collect all items eagerly (existing path)
     const spread_items: []const Value = if (last_arg == Value.nil_val)
         &.{}
     else
         try collectSeqItems(allocator, last_arg);
 
     // Build final args: middle args + spread items
-    const middle_count = args.len - 2; // exclude f and last_arg
     const total = middle_count + spread_items.len;
     const call_args = try allocator.alloc(Value, total);
     if (middle_count > 0) {
@@ -1006,6 +1036,32 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         else => err.setErrorFmt(.eval, .type_error, .{}, "apply expects a function, got {s}", .{@tagName(f.tag())}),
     };
+}
+
+/// Find the fixed param count of a variadic arity, if any.
+/// Returns null if the function has no variadic arity.
+fn findVariadicFixedCount(fn_obj: *const value_mod.Fn) ?usize {
+    const FnProto = @import("../compiler/chunk.zig").FnProto;
+    const FnNode = @import("../analyzer/node.zig").FnNode;
+
+    if (fn_obj.kind == .bytecode) {
+        const primary: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+        if (primary.variadic) return primary.arity -| 1;
+        if (fn_obj.extra_arities) |extras| {
+            for (extras) |extra| {
+                const p: *const FnProto = @ptrCast(@alignCast(extra));
+                if (p.variadic) return p.arity -| 1;
+            }
+        }
+    } else {
+        // TreeWalk Closure: first field is *const FnNode (avoid importing tree_walk.zig
+        // to prevent circular dependency: bootstrap → collections → tree_walk → bootstrap)
+        const fn_node_ptr: *const *const FnNode = @ptrCast(@alignCast(fn_obj.proto));
+        for (fn_node_ptr.*.arities) |a| {
+            if (a.variadic) return a.params.len - 1;
+        }
+    }
+    return null;
 }
 
 /// (vector & items) — creates a vector from arguments.

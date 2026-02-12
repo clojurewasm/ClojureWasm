@@ -996,6 +996,11 @@ fn treewalkCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
 /// Per-thread for concurrency (Phase 48).
 pub threadlocal var last_thrown_exception: ?Value = null;
 
+/// Flag set by apply's lazy variadic path (F99). When true, the single rest arg
+/// in the next variadic call is already a seq and should not be re-wrapped in a list.
+/// Consumed (reset to false) by VM/TreeWalk rest packing code.
+pub threadlocal var apply_rest_is_seq: bool = false;
+
 /// Execute a bytecode fn_val via a new VM instance.
 /// Heap-allocates the VM to avoid C stack overflow from recursive
 /// VM → TreeWalk → VM calls (VM struct is ~500KB due to fixed-size stack).

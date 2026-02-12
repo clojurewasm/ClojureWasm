@@ -1481,6 +1481,9 @@ pub const VM = struct {
                 if (rest_count == 0) {
                     // No rest args: rest param is nil (matches Clojure/TreeWalk behavior)
                     self.stack[args_start + fixed] = Value.nil_val;
+                } else if (rest_count == 1 and bootstrap.apply_rest_is_seq) {
+                    // Already a seq from apply's lazy path (F99) — use directly
+                    bootstrap.apply_rest_is_seq = false;
                 } else {
                     const rest_items = self.allocator.alloc(Value, rest_count) catch return error.OutOfMemory;
                     for (0..rest_count) |i| {

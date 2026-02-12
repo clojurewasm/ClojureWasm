@@ -678,6 +678,10 @@ pub const TreeWalk = struct {
             const rest_args = args[fixed_count..];
             const rest_val: Value = if (rest_args.len == 0)
                 Value.nil_val
+            else if (rest_args.len == 1 and bootstrap.apply_rest_is_seq) blk2: {
+                bootstrap.apply_rest_is_seq = false;
+                break :blk2 rest_args[0]; // Already a seq from apply's lazy path (F99)
+            }
             else blk: {
                 const collections = @import("../runtime/collections.zig");
                 const items = self.allocator.alloc(Value, rest_args.len) catch return error.OutOfMemory;

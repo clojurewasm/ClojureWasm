@@ -29,20 +29,16 @@ Ready for next phase planning. See Task Queue below.
 
 ## Previous Task
 
-Phase 59: Deferred cleanup & test porting (ALL DONE).
-59.1: Ported Ratio upstream tests (ratio literals in add/sub/mul, i48 edge cases, BigInt/Ratio coercion).
-59.2: Ported promote ops tests (test-arbitrary-precision-subtract, defspec generative tests covered by CLJW-ADD).
-Also fixed: int/long/bigint/float coercion for Ratio/BigInt/BigDecimal types.
+F99 fix: apply on infinite lazy seq. Added lazy variadic path to applyFn
+(cons chain + peel fixed params, threadlocal flag for VM/TreeWalk rest packing).
 
 Previous:
 
-Phase 58: clojure.core.reducers (ALL DONE, 58.1-58.6).
-Post-phase: 3 bug fixes (parse-boolean, catch Error, walk+records),
-deferred/stale comment cleanup, record __reify_type filtering (seq/keys/vals/count).
+Phase 59: Deferred cleanup & test porting (ALL DONE).
+59.1-59.2: Ratio/promote ops upstream tests, coercion fixes.
 
 ## Known Issues
 
-- apply on infinite lazy seq realizes eagerly (F99 — apply doesn't pass rest args as seq)
 - binding *ns* doesn't affect read-string for auto-resolved keywords (F138)
 
 ## Resolved Issues (this session)
