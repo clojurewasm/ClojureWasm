@@ -111,5 +111,5 @@ Key files with high assertion counts:
 | 43.1-4   | Array ops, typed arrays, macros | arrays.clj (ported)    | DONE   |
 | 43.5     | BigInt, bigint, biginteger      | numbers.clj (24t/276a) | DONE   |
 | 43.6     | BigDecimal, bigdec, M literal   | numbers.clj (26t/323a) | DONE   |
-| 43.7     | +', *', -', inc', dec'          | numbers.clj            | IMPL   |
+| 43.7     | +', *', -', inc', dec'          | numbers.clj (32t/424a) | DONE   |
 | 43.8     | Ratio, numerator, denominator   | numbers.clj (31t/421a) | DONE   |

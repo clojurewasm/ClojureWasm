@@ -539,7 +539,13 @@
   (is (< 1/3 1/2))
   (is (> 2/3 1/2)))
 
-;; CLJW: test-arbitrary-precision-subtract skipped — BigInt class
+;; CLJW: adapted — i48 range, :big-int/:integer types instead of Java classes
+(deftest test-arbitrary-precision-subtract
+  (are [x y] (= x y)
+    140737488355328N (-' 0 I48-MIN)
+    :big-int (type (-' 0 I48-MIN))
+    :integer (type (-' 0 (+ I48-MIN 1)))))
+
 ;; CLJW: test-min-max skipped — Float. constructor, class checks
 
 (deftest test-abs

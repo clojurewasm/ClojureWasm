@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 58 COMPLETE**
+- **All phases through 59 COMPLETE**
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.11.0 (GitHub URL dependency, build.zig.zon)
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -21,17 +21,20 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 59.2: Port numbers.clj upstream tests for promote ops +' *' -' inc' dec'.
-- Tests already present as CLJW-ADD (test-auto-promoting-arithmetic)
-- Check if upstream has additional promote-related tests to port
+Ready for next phase planning. See Task Queue below.
 
 ## Task Queue
 
-Phase 59: Deferred cleanup & test porting
-- ~~59.1: Port numbers.clj upstream tests for Ratio~~ DONE
-- 59.2: Port numbers.clj upstream tests for promote ops +' *' -' inc' dec' (43.7 — impl done, tests not ported)
+(empty — plan next phase)
 
 ## Previous Task
+
+Phase 59: Deferred cleanup & test porting (ALL DONE).
+59.1: Ported Ratio upstream tests (ratio literals in add/sub/mul, i48 edge cases, BigInt/Ratio coercion).
+59.2: Ported promote ops tests (test-arbitrary-precision-subtract, defspec generative tests covered by CLJW-ADD).
+Also fixed: int/long/bigint/float coercion for Ratio/BigInt/BigDecimal types.
+
+Previous:
 
 Phase 58: clojure.core.reducers (ALL DONE, 58.1-58.6).
 Post-phase: 3 bug fixes (parse-boolean, catch Error, walk+records),
