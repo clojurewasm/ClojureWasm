@@ -169,9 +169,9 @@
 
 ;; ========== Test registration and running ==========
 
-;; Register a test function with its name and var.
+;; Register a test function with its name, var, and namespace.
 (defn- register-test [name test-fn test-var]
-  (swap! test-registry conj {:name name :fn test-fn :var test-var}))
+  (swap! test-registry conj {:name name :fn test-fn :var test-var :ns (ns-name *ns*)}))
 
 ;; Define a test function. Registers it and adds :test metadata to the var.
 (defmacro deftest [tname & body]
@@ -327,44 +327,51 @@
 
 ;; Run all registered tests with fixtures. Returns true if all pass.
 ;; If the current namespace defines test-ns-hook, calls it instead.
-(defn run-tests []
-  ;; Reset counters
-  (reset! pass-count 0)
-  (reset! fail-count 0)
-  (reset! error-count 0)
-  (reset! test-count 0)
+(defn run-tests
+  "Runs all tests in the given namespaces; prints results.
+  Defaults to current namespace if none given. Returns a map
+  summarizing test results."
+  {:added "1.1"}
+  ([] (run-tests *ns*))
+  ([& namespaces]
+   ;; Reset counters
+   (reset! pass-count 0)
+   (reset! fail-count 0)
+   (reset! error-count 0)
+   (reset! test-count 0)
 
-  ;; Check for test-ns-hook in current namespace
-  (let [hook-sym (symbol (str (ns-name *ns*)) "test-ns-hook")
-        hook-var (resolve hook-sym)]
-    (if (and hook-var (fn? @hook-var))
-      ;; Use test-ns-hook
-      (@hook-var)
-      ;; Collect test vars from registry
-      (let [tests @test-registry
-            vars (map :var tests)]
-        ;; Run through test-vars to apply fixtures
-        (if (seq vars)
-          (test-vars vars)
-          ;; Fallback: run directly if no vars registered
-          (doseq [t tests]
-            (binding [*testing-contexts* (list (:name t))]
-              (println (str "\nTesting " (:name t)))
-              (try
-                ((:fn t))
-                (catch Exception e
-                  (swap! error-count inc)
-                  (println (str "  ERROR in " (:name t) ": " e))))))))))
+   (let [ns-set (set (map #(if (symbol? %) % (ns-name %)) namespaces))]
+     ;; Check for test-ns-hook in first requested namespace
+     (let [hook-sym (symbol (str (first ns-set)) "test-ns-hook")
+           hook-var (resolve hook-sym)]
+       (if (and hook-var (fn? @hook-var))
+         ;; Use test-ns-hook
+         (@hook-var)
+         ;; Collect test vars from registry filtered by namespace
+         (let [tests (filter #(contains? ns-set (:ns %)) @test-registry)
+               vars (map :var tests)]
+           ;; Run through test-vars to apply fixtures
+           (if (seq vars)
+             (test-vars vars)
+             ;; Fallback: run directly if no vars registered
+             (doseq [t tests]
+               (binding [*testing-contexts* (list (:name t))]
+                 (println (str "\nTesting " (:name t)))
+                 (try
+                   ((:fn t))
+                   (catch Exception e
+                     (swap! error-count inc)
+                     (println (str "  ERROR in " (:name t) ": " e)))))))))))
 
-  ;; Print summary via report
-  (clojure.test/report {:type :summary
-                        :test @test-count
-                        :pass @pass-count
-                        :fail @fail-count
-                        :error @error-count})
+   ;; Print summary via report
+   (clojure.test/report {:type :summary
+                         :test @test-count
+                         :pass @pass-count
+                         :fail @fail-count
+                         :error @error-count})
 
-  ;; Return summary map (upstream compat)
-  {:test @test-count :pass @pass-count :fail @fail-count :error @error-count})
+   ;; Return summary map (upstream compat)
+   {:test @test-count :pass @pass-count :fail @fail-count :error @error-count}))
 
 (defn successful?
   "Returns true if the given test summary indicates all tests

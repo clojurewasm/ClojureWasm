@@ -989,25 +989,36 @@
        (list)))))
 
 (defn reduce-kv [f init m]
-  (if (vector? m)
-    (let [cnt (count m)]
-      (loop [i 0 acc init]
-        (if (< i cnt)
-          (recur (inc i) (f acc i (nth m i)))
-          acc)))
-    (if (map? m)
-      (let [ks (keys m)]
-        (loop [s (seq ks) acc init]
-          (if s
-            (let [k (first s)]
-              (recur (next s) (f acc k (get m k))))
+  (if (nil? m)
+    init
+    (if (vector? m)
+      (let [cnt (count m)]
+        (loop [i 0 acc init]
+          (if (< i cnt)
+            (let [ret (f acc i (nth m i))]
+              (if (reduced? ret)
+                @ret
+                (recur (inc i) ret)))
             acc)))
-      ;; UPSTREAM-DIFF: fallback for seqs of map entries (JVM uses seqkvreduce)
-      (loop [s (seq m) acc init]
-        (if s
-          (let [entry (first s)]
-            (recur (next s) (f acc (key entry) (val entry))))
-          acc)))))
+      (if (map? m)
+        (let [ks (keys m)]
+          (loop [s (seq ks) acc init]
+            (if s
+              (let [k (first s)
+                    ret (f acc k (get m k))]
+                (if (reduced? ret)
+                  @ret
+                  (recur (next s) ret)))
+              acc)))
+        ;; UPSTREAM-DIFF: fallback for seqs of map entries (JVM uses seqkvreduce)
+        (loop [s (seq m) acc init]
+          (if s
+            (let [entry (first s)
+                  ret (f acc (key entry) (val entry))]
+              (if (reduced? ret)
+                @ret
+                (recur (next s) ret)))
+            acc))))))
 
 ;; Convenience accessors (last/butlast defined early for defn macro)
 

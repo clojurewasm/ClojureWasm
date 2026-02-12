@@ -1425,18 +1425,27 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (zipmap keys vals) — returns a map with keys mapped to corresponding vals.
+/// Iterates lazily using seq/first/next to support infinite lazy seqs.
 pub fn zipmapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to zipmap", .{args.len});
 
-    const key_items = try collectSeqItems(allocator, args[0]);
-    const val_items = try collectSeqItems(allocator, args[1]);
+    var entries_list: std.ArrayList(Value) = .empty;
 
-    const pair_count = @min(key_items.len, val_items.len);
-    const entries = try allocator.alloc(Value, pair_count * 2);
-    for (0..pair_count) |i| {
-        entries[i * 2] = key_items[i];
-        entries[i * 2 + 1] = val_items[i];
+    var ks = try seqFn(allocator, &.{args[0]});
+    var vs = try seqFn(allocator, &.{args[1]});
+
+    while (ks != Value.nil_val and vs != Value.nil_val) {
+        const k = try firstFn(allocator, &.{ks});
+        const v = try firstFn(allocator, &.{vs});
+        try entries_list.append(allocator, k);
+        try entries_list.append(allocator, v);
+        // next = seq(rest(x))
+        ks = try seqFn(allocator, &.{try restFn(allocator, &.{ks})});
+        vs = try seqFn(allocator, &.{try restFn(allocator, &.{vs})});
     }
+
+    const entries = try allocator.alloc(Value, entries_list.items.len);
+    @memcpy(entries, entries_list.items);
 
     const new_map = try allocator.create(PersistentArrayMap);
     new_map.* = .{ .entries = entries };
