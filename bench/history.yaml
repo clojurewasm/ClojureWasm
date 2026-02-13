@@ -907,27 +907,27 @@ entries:
   - id: "v0.2.0"
     date: "2026-02-14"
     reason: "v0.2.0 release"
-    commit: "d7f4a29"
+    commit: "5f27625"
     build: ReleaseSafe
     backend: vm
     results:
-      fib_recursive: {time_ms: 18, mem_mb: 11.6}
+      fib_recursive: {time_ms: 19, mem_mb: 11.6}
       fib_loop: {time_ms: 5, mem_mb: 11.6}
-      tak: {time_ms: 8, mem_mb: 11.6}
+      tak: {time_ms: 11, mem_mb: 11.6}
       arith_loop: {time_ms: 5, mem_mb: 11.6}
-      map_filter_reduce: {time_ms: 6, mem_mb: 12.2}
+      map_filter_reduce: {time_ms: 7, mem_mb: 12.2}
       vector_ops: {time_ms: 6, mem_mb: 16.7}
-      map_ops: {time_ms: 5, mem_mb: 15.6}
-      list_build: {time_ms: 4, mem_mb: 12.2}
-      sieve: {time_ms: 5, mem_mb: 15.1}
+      map_ops: {time_ms: 6, mem_mb: 15.6}
+      list_build: {time_ms: 6, mem_mb: 12.2}
+      sieve: {time_ms: 6, mem_mb: 15.1}
       nqueens: {time_ms: 15, mem_mb: 22.6}
       atom_swap: {time_ms: 5, mem_mb: 11.6}
       gc_stress: {time_ms: 26, mem_mb: 17.4}
-      lazy_chain: {time_ms: 6, mem_mb: 11.6}
-      transduce: {time_ms: 7, mem_mb: 11.6}
-      keyword_lookup: {time_ms: 12, mem_mb: 11.6}
-      protocol_dispatch: {time_ms: 38, mem_mb: 11.6}
+      lazy_chain: {time_ms: 7, mem_mb: 11.6}
+      transduce: {time_ms: 6, mem_mb: 11.6}
+      keyword_lookup: {time_ms: 11, mem_mb: 11.6}
+      protocol_dispatch: {time_ms: 6, mem_mb: 11.6}
       nested_update: {time_ms: 10, mem_mb: 16.8}
-      string_ops: {time_ms: 24, mem_mb: 21.3}
-      multimethod_dispatch: {time_ms: 5, mem_mb: 11.6}
+      string_ops: {time_ms: 25, mem_mb: 21.3}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 11.6}
       real_workload: {time_ms: 10, mem_mb: 18.6}

@@ -18,7 +18,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 
 ## Highlights
 
-- **Fast startup** — ~5ms to evaluate an expression (ReleaseSafe)
+- **Fast startup** — ~4ms to evaluate an expression (ReleaseSafe)
 - **Small binary** — ~4MB single executable (ReleaseSafe)
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
@@ -225,7 +225,7 @@ All tests verified on both VM and TreeWalk backends.
 Once production-ready, ClojureWasm could enable workloads where the JVM
 is too heavy:
 
-- **Serverless functions** — ~4MB image + ~5ms cold start for AWS Lambda
+- **Serverless functions** — ~4MB image + ~4ms cold start for AWS Lambda
   or Fly.io, eliminating JVM warm-up penalties
 - **Wasm plugin host** — embed user-supplied .wasm modules as extensibility
   points (e.g., Cloudflare Workers-style logic, game scripting)

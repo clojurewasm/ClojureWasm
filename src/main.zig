@@ -45,7 +45,7 @@ const embed_trailer_size = 12;
 fn printHelp() void {
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     _ = stdout.write(
-        \\ClojureWasm v0.1.0
+        \\ClojureWasm v0.2.0
         \\
         \\Usage:
         \\  cljw [options] [file.clj]
@@ -202,7 +202,7 @@ pub fn main() !void {
             return;
         } else if (std.mem.eql(u8, arg, "--version")) {
             const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-            _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+            _ = stdout.write("ClojureWasm v0.2.0\n") catch {};
             return;
         } else if (std.mem.eql(u8, arg, "--tree-walk")) {
             use_vm = false;
@@ -542,7 +542,7 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         return;
     }
 
-    _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
+    _ = stdout.write("ClojureWasm v0.2.0\n") catch {};
 
     var editor = line_editor.LineEditor.init(allocator, env);
     defer editor.deinit();

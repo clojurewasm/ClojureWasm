@@ -197,22 +197,22 @@ launch to exit) — languages with heavy runtimes (JVM, V8) pay startup cost.
 | Benchmark            | CW   | Python | Ruby | Node | Java* | C   | Zig | TinyGo |
 |----------------------|------|--------|------|------|-------|-----|-----|--------|
 | fib_recursive        | 19   | 17.1   | 37.7 | 25.2 | 20.3  | 1.2 | 1.7 | 3.3    |
-| fib_loop             | 4    | 12.7   | 37.9 | 21.8 | 20.6  | 3.8 | 0.6 | 2.6    |
-| tak                  | 7    | 13.2   | 33.6 | 24.2 | 21.0  | 1.7 | 2.9 | 2.0    |
+| fib_loop             | 5    | 12.7   | 37.9 | 21.8 | 20.6  | 3.8 | 0.6 | 2.6    |
+| tak                  | 8    | 13.2   | 33.6 | 24.2 | 21.0  | 1.7 | 2.9 | 2.0    |
 | arith_loop           | 5    | 60.7   | 54.5 | 25.2 | 21.4  | 1.7 | 1.2 | 1.7    |
-| map_filter_reduce    | 7    | 13.0   | 35.9 | 23.7 | 21.4  | 1.4 | 1.4 | 2.6    |
+| map_filter_reduce    | 6    | 13.0   | 35.9 | 23.7 | 21.4  | 1.4 | 1.4 | 2.6    |
 | vector_ops           | 6    | 13.5   | 31.6 | 22.7 | 24.1  | 1.3 | 1.4 | 2.3    |
-| map_ops              | 5    | 12.8   | 30.8 | 22.3 | 18.7  | 1.0 | 1.7 | 2.4    |
-| list_build           | 5    | 14.6   | 34.6 | 25.7 | 21.9  | 1.5 | 1.8 | 2.5    |
+| map_ops              | 6    | 12.8   | 30.8 | 22.3 | 18.7  | 1.0 | 1.7 | 2.4    |
+| list_build           | 6    | 14.6   | 34.6 | 25.7 | 21.9  | 1.5 | 1.8 | 2.5    |
 | sieve                | 6    | 12.2   | 35.8 | 24.4 | 23.8  | 1.4 | 1.2 | 1.6    |
 | nqueens              | 15   | 16.2   | 51.6 | 23.5 | 20.9  | 0.5 | 0.9 | 1.9    |
-| atom_swap            | 6    | 11.7   | 36.2 | 24.0 | 20.9  | 1.4 | 2.9 | 3.5    |
-| gc_stress            | 28   | 30.5   | 41.4 | 26.7 | 30.5  | 2.6 | --- | 20.2   |
-| lazy_chain           | 8    | 15.4   | 33.0 | 26.1 | 22.2  | 2.6 | 1.6 | 2.2    |
+| atom_swap            | 5    | 11.7   | 36.2 | 24.0 | 20.9  | 1.4 | 2.9 | 3.5    |
+| gc_stress            | 26   | 30.5   | 41.4 | 26.7 | 30.5  | 2.6 | --- | 20.2   |
+| lazy_chain           | 7    | 15.4   | 33.0 | 26.1 | 22.2  | 2.6 | 1.6 | 2.2    |
 | transduce            | 6    | 12.6   | 36.2 | 23.5 | 23.7  | 1.3 | 1.7 | 1.9    |
-| keyword_lookup       | 12   | 19.4   | 37.0 | 27.4 | 23.9  | 1.6 | 0.0 | 4.9    |
-| protocol_dispatch    | 7    | 12.7   | 32.8 | 24.3 | 22.0  | 2.3 | 1.7 | 2.2    |
-| nested_update        | 11   | 12.6   | 32.9 | 24.0 | 23.7  | 0.2 | 1.3 | 3.1    |
+| keyword_lookup       | 11   | 19.4   | 37.0 | 27.4 | 23.9  | 1.6 | 0.0 | 4.9    |
+| protocol_dispatch    | 6    | 12.7   | 32.8 | 24.3 | 22.0  | 2.3 | 1.7 | 2.2    |
+| nested_update        | 10   | 12.6   | 32.9 | 24.0 | 23.7  | 0.2 | 1.3 | 3.1    |
 | string_ops           | 25   | 25.2   | 38.0 | 24.5 | 24.8  | 4.3 | 2.0 | 1.5    |
 | multimethod_dispatch | 6    | 13.3   | 33.8 | 24.6 | 20.0  | 2.6 | 0.9 | 2.1    |
 | real_workload        | 10   | 13.6   | 37.1 | 24.7 | 26.6  | 0.9 | 1.0 | 1.7    |
@@ -232,7 +232,7 @@ Measured as ReleaseSafe builds on ARM64 macOS.
 
 | Runtime        | Version      | Binary Size |
 |----------------|--------------|-------------|
-| **zwasm**      | 0.1.0        | **1.1 MB**  |
+| **zwasm**      | 0.2.0        | **1.1 MB**  |
 | wasmtime       | 41.0.1       | 56.3 MB     |
 | bun            | 1.3.8        | 57.1 MB     |
 | node           | v24.13.0     | 61.7 MB     |
@@ -243,7 +243,7 @@ Full Wasm 3.0 support (all 9 proposals including GC) in 1.1 MB.
 
 ## Latest Wasm Runtime Results (2026-02-14)
 
-CW's built-in Wasm runtime (zwasm, Register IR + ARM64/x86_64 JIT)
+CW's built-in Wasm runtime (zwasm v0.2.0, Register IR + ARM64/x86_64 JIT)
 vs 4 other Wasm runtimes. Apple M4 Pro, 48GB RAM.
 21 benchmarks (WAT 5, TinyGo 11, Shootout 5), hyperfine 3 runs + 1 warmup.
 
