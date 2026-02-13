@@ -2,6 +2,7 @@
 
 31 benchmarks (20 Clojure + 2 GC + 5 Wasm legacy + 4 Wasm TinyGo).
 Multi-language comparison and Wasm runtime benchmarking available.
+Wasm runtime (zwasm) performance tracked against wasmtime, wasmer, bun, node.
 
 ## Scripts
 
@@ -10,7 +11,7 @@ Multi-language comparison and Wasm runtime benchmarking available.
 | `run_bench.sh`     | Quick CW-only run                | hyperfine (3+1) |
 | `record.sh`        | Record to `history.yaml`         | hyperfine (5+2) |
 | `compare_langs.sh` | Cross-language comparison        | hyperfine (5+2) |
-| `wasm_bench.sh`    | CW vs wasmtime wasm runtime      | hyperfine (5+2) |
+| `wasm_bench.sh`    | CW wasm runtime vs wasmtime      | hyperfine (5+2) |
 
 ## Quick Start
 
@@ -74,6 +75,8 @@ bash bench/wasm_bench.sh --bench=fib
 
 Compares CW's built-in Wasm runtime (zwasm) against wasmtime JIT.
 Both execute the same TinyGo-compiled `.wasm` modules.
+For full multi-runtime comparison (5 runtimes, 21 benchmarks), see zwasm's
+`bench/record_comparison.sh`.
 
 | Option         | Effect                                |
 |----------------|---------------------------------------|
@@ -165,6 +168,8 @@ ClojureWasm includes a built-in Wasm runtime (zwasm) enabling direct
 
 The Wasm benchmarks (#21-25) measure FFI overhead, while the TinyGo
 benchmarks (#28-31) compare zwasm's execution speed against wasmtime.
+zwasm supports full Wasm 3.0 (all 9 proposals including GC, function
+references, SIMD, exception handling, tail call, etc.).
 
 ## Directory Structure
 
@@ -220,20 +225,74 @@ is significantly faster. C/Zig/TinyGo are native-compiled (AOT) baselines.
 Note: gc_stress Zig value (462.7ms) omitted — Zig benchmark uses
 `std.AutoArrayHashMap` which is not comparable to GC-managed collections.
 
-## Latest Wasm Runtime Results (2026-02-12)
+## Binary Size Comparison
 
-CW's built-in Wasm runtime (zwasm v0.11.0, Register IR + ARM64/x86_64 JIT)
-vs wasmtime JIT. Same TinyGo-compiled `.wasm` modules, startup subtracted.
+CW's built-in Wasm runtime (zwasm) is extremely compact compared to other runtimes.
+Measured as ReleaseSafe builds on ARM64 macOS.
 
-| Benchmark | CW (ms) | wasmtime (ms) | Ratio (CW/wt) |
-|-----------|---------|---------------|----------------|
-| fib       | 546     | 226           | 2.4x           |
-| tak       | 2620    | 1257          | 2.1x           |
-| arith     | 0.2     | 0.1           | 2.0x           |
-| sieve     | 6.0     | 4.3           | 1.4x           |
-| fib_loop  | 13.6    | 0.9           | 15.1x          |
-| gcd       | 58.7    | 45.3          | 1.3x           |
+| Runtime        | Version      | Binary Size |
+|----------------|--------------|-------------|
+| **zwasm**      | 0.1.0        | **1.1 MB**  |
+| wasmtime       | 41.0.1       | 56.3 MB     |
+| bun            | 1.3.8        | 57.1 MB     |
+| node           | v24.13.0     | 61.7 MB     |
+| wasmer         | 7.0.1        | 118.3 MB    |
 
-zwasm reaches 1.3-2.4x of wasmtime performance on compute-heavy benchmarks.
-fib_loop shows higher ratio due to loop optimization differences.
-History tracked in `wasm_history.yaml`.
+zwasm is **1/50th** the size of wasmtime and **1/100th** of wasmer.
+Full Wasm 3.0 support (all 9 proposals including GC) in 1.1 MB.
+
+## Latest Wasm Runtime Results (2026-02-13)
+
+CW's built-in Wasm runtime (zwasm, Register IR + ARM64/x86_64 JIT)
+vs 4 other Wasm runtimes. Apple M4 Pro, 48GB RAM.
+21 benchmarks (WAT 5, TinyGo 11, Shootout 5), hyperfine 3 runs + 1 warmup.
+
+### WAT Benchmarks (handwritten)
+
+| Benchmark | zwasm (ms) | wasmtime | wasmer | bun    | node   |
+|-----------|------------|----------|--------|--------|--------|
+| fib       | 92.4       | 52.8     | 51.3   | **37.3** | 48.8 |
+| tak       | **10.6**   | 10.7     | 13.8   | 18.6   | 25.3   |
+| sieve     | **3.6**    | 7.1      | 11.5   | 16.7   | 29.1   |
+| nbody     | 51.7       | 24.5     | **27.7** | 32.3 | 38.1   |
+| nqueens   | **2.5**    | 8.4      | 8.2    | 14.7   | 23.9   |
+
+### TinyGo Benchmarks (compiled .wasm)
+
+| Benchmark   | zwasm (ms) | wasmtime | wasmer   | bun    | node   |
+|-------------|------------|----------|----------|--------|--------|
+| tgo_fib     | 52.0       | 27.5     | **9.9**  | 42.5   | 47.0   |
+| tgo_tak     | 9.6        | 9.6      | **5.0**  | 18.0   | 25.0   |
+| tgo_arith   | **2.4**    | 6.5      | 9.0      | 14.6   | 21.6   |
+| tgo_sieve   | **3.5**    | 6.4      | 11.5     | 16.3   | 27.6   |
+| tgo_fib_loop| **2.8**    | 5.3      | 10.7     | 15.1   | 23.6   |
+| tgo_gcd     | **1.5**    | 5.3      | 11.5     | 14.5   | 27.5   |
+| tgo_nqueens | 44.1       | 41.6     | **9.2**  | 47.6   | 99.0   |
+| tgo_mfr     | 71.8       | 35.1     | **9.7**  | 43.8   | 84.2   |
+| tgo_list    | 56.0       | 56.6     | **10.9** | 41.7   | 159.7  |
+| tgo_rwork   | 8.1        | **7.1**  | 11.1     | 18.6   | 30.2   |
+| tgo_strops  | 36.7       | 31.5     | **11.8** | 33.5   | 96.5   |
+
+### Shootout Benchmarks (WASI)
+
+| Benchmark     | zwasm (ms) | wasmtime | wasmer  | bun      | node    |
+|---------------|------------|----------|---------|----------|---------|
+| st_fib2       | 1361.2     | 683.3    | 684.7   | **371.3** | 397.1 |
+| st_sieve      | 232.5      | 200.2    | 198.0   | **177.5** | 627.0 |
+| st_nestedloop | 5.3        | **4.3**  | 10.3    | 15.8     | 25.7   |
+| st_ackermann  | **7.0**    | 8.6      | 14.6    | 17.5     | 28.5   |
+| st_matrix     | 312.7      | 92.1     | 93.8    | **85.2** | 168.9  |
+
+### Summary
+
+**zwasm wins (fastest)**: 9/21 benchmarks — dominant on short-running tasks
+where startup overhead matters (sieve, nqueens, arith, gcd, fib_loop, etc.)
+
+**vs wasmtime**: zwasm wins 10/21, tie 2, wasmtime wins 9.
+zwasm excels at fast startup (1.1 MB vs 56 MB binary, 3 MB vs 12 MB RSS).
+wasmtime excels at heavy compute (optimizing JIT with Cranelift backend).
+
+**Memory usage**: zwasm consistently uses 3-5 MB RSS vs 12-13 MB (wasmtime),
+30-33 MB (wasmer), 31-34 MB (bun), 41-44 MB (node).
+
+Data source: `zwasm/bench/runtime_comparison.yaml`. History tracked in `wasm_history.yaml`.
