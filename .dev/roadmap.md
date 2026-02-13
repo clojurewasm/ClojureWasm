@@ -102,7 +102,19 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 66     | deps.edn Foundation                         | Parser (deps.zig), alias resolution, CLI flags -A/-M/-X/-P  |
 | 67     | Git Dependencies                            | Tag validation, :deps/root, -Sforce, transitive resolution  |
 | 68     | Integration                                 | test+alias, Leiningen detection, 14 e2e tests               |
+| 69     | deps.edn Design Cleanup                     | Fetch-on-demand, remove cljw.edn                            |
 ```
+
+### Planned Phases (Phase 70-73)
+
+Full plan: `.dev/next-phases-plan.md`
+
+| Phase | Summary                          | Key Deliverables                                  |
+|-------|----------------------------------|---------------------------------------------------|
+| 70    | spec.alpha                       | 87 vars, Spec/Specize protocols, regex ops        |
+| 71    | Library Compatibility Testing    | 5 pure-Clj libs tested (medley, hiccup, etc.)     |
+| 72    | Optimization + GC Assessment     | Profiling, targeted opts, GC bottleneck analysis  |
+| 73    | Generational GC (conditional)    | Write barriers, nursery allocator (if warranted)  |
 
 ---
 
