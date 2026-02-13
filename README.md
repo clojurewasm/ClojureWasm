@@ -18,10 +18,10 @@ a native implementation targeting behavioral compatibility with Clojure.
 
 ## Highlights
 
-- **Fast startup** — ~4ms to evaluate an expression (ReleaseSafe)
-- **Small binary** — ~3MB single executable (ReleaseSafe)
+- **Fast startup** — ~5ms to evaluate an expression (ReleaseSafe)
+- **Small binary** — ~4MB single executable (ReleaseSafe)
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
-- **Wasm FFI** — call WebAssembly modules from Clojure (461 opcodes including SIMD)
+- **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **835+ vars** across 16 namespaces (635/706 clojure.core)
 
@@ -106,10 +106,10 @@ Call WebAssembly modules directly from Clojure:
 - v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
-> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm) v0.11.0)
-> uses Register IR with ARM64/x86_64 JIT, achieving 1.3-2.4x of wasmtime performance
-> depending on workload (call-heavy: ~2.4x, compute-heavy: ~1.3x, sieve: CW wins).
-> Module load time is faster (~4ms vs ~5ms).
+> **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm))
+> uses Register IR with ARM64/x86_64 JIT. Full Wasm 3.0 support (all 9 proposals
+> including GC, function references, SIMD, exception handling).
+> zwasm wins 10/21 benchmarks vs wasmtime, with ~5x smaller binary.
 
 ### Server & Networking
 
@@ -135,7 +135,7 @@ Call WebAssembly modules directly from Clojure:
 - **MarkSweep GC** — allocation tracking, free-pool recycling, safe points
 - **Bytecode VM** — 75 opcodes, superinstructions, fused branch ops
 - **ARM64 JIT** — hot integer loop detection with native code generation
-- **Bootstrap cache** — core.clj pre-compiled at build time (~4ms restore)
+- **Bootstrap cache** — core.clj pre-compiled at build time (~5ms restore)
 - **Zero-config projects** — auto-detect `src/`, `cljw.edn` optional
 
 ## Project Structure
@@ -203,7 +203,7 @@ All tests verified on both VM and TreeWalk backends.
 Once production-ready, ClojureWasm could enable workloads where the JVM
 is too heavy:
 
-- **Serverless functions** — ~3MB image + ~4ms cold start for AWS Lambda
+- **Serverless functions** — ~4MB image + ~5ms cold start for AWS Lambda
   or Fly.io, eliminating JVM warm-up penalties
 - **Wasm plugin host** — embed user-supplied .wasm modules as extensibility
   points (e.g., Cloudflare Workers-style logic, game scripting)
