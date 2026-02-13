@@ -489,7 +489,11 @@ pub fn main() !void {
         _ = stderr_file.write("WARNING: cljw.edn is deprecated. Use deps.edn instead.\n") catch {};
         config_dir = cf.dir;
         break :blk parseConfig(config_alloc, cf.content);
-    } else ProjectConfig{};
+    } else blk: {
+        // No deps.edn or cljw.edn — check for project.clj
+        warnIfLeinProject(".");
+        break :blk ProjectConfig{};
+    };
     applyConfig(config, config_dir);
 
     if (s_verbose) {
@@ -1481,7 +1485,11 @@ fn resolveLocalDepFromCljwEdn(dep_dir: []const u8, resolve_deps: bool) void {
         std.heap.page_allocator,
         dep_config_path,
         10_000,
-    ) catch return; // No cljw.edn — default "src" already added
+    ) catch {
+        // No cljw.edn — check for project.clj (Leiningen)
+        warnIfLeinProject(dep_dir);
+        return; // default "src" already added
+    };
     defer std.heap.page_allocator.free(dep_content);
 
     var reader = Reader.init(std.heap.page_allocator, dep_content);
@@ -1520,6 +1528,18 @@ fn resolveLocalDepFromCljwEdn(dep_dir: []const u8, resolve_deps: bool) void {
             }
         }
     }
+}
+
+/// Warn if a directory contains project.clj (Leiningen) but no deps.edn/cljw.edn.
+fn warnIfLeinProject(dir: []const u8) void {
+    var proj_buf: [4096]u8 = undefined;
+    const proj_path = std.fmt.bufPrint(&proj_buf, "{s}/project.clj", .{dir}) catch return;
+    if (std.fs.cwd().access(proj_path, .{})) |_| {
+        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr.write("WARNING: ") catch {};
+        _ = stderr.write(dir) catch {};
+        _ = stderr.write(" uses project.clj (Leiningen). ClojureWasm requires deps.edn.\n") catch {};
+    } else |_| {}
 }
 
 /// Resolve a :git/url + :git/sha dependency.

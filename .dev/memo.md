@@ -22,8 +22,8 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 68: Integration. Next task: 68.5 (Leiningen project.clj detection).
-See `.dev/deps-edn-plan.md` for full design and task breakdown.
+Phase 68: Integration — COMPLETE. deps.edn support fully functional.
+See `.dev/deps-edn-plan.md` for full design.
 
 ## Task Queue
 
@@ -43,8 +43,8 @@ Phase 68 — Integration:
 - [x] 68.1: Transitive dep resolution — done in 67.5
 - [x] 68.4: cljw.edn fallback + deprecation warning — done in 66.3
 - [x] 68.7: E2E tests — done in 67.4 (11 tests)
-- [ ] 68.5: Leiningen project.clj detection
-- [x] 68.6: cljw test + alias integration (13 e2e tests)
+- [x] 68.5: Leiningen project.clj detection + warning
+- [x] 68.6: cljw test + alias integration (14 e2e tests)
 
 ## Previous Task
 

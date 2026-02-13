@@ -358,6 +358,14 @@ run_test "cljw test -A:test alias" \
   "cd $PROJ12 && $CLJW test -A:test" \
   "0 failed, 0 errors"
 
+# --- Test 14: Leiningen project.clj detection ---
+PROJ14="$TMPDIR_BASE/proj14"
+mkdir -p "$PROJ14"
+echo '(defproject my-app "0.1.0")' > "$PROJ14/project.clj"
+run_test_stderr "Leiningen project.clj warning" \
+  "cd $PROJ14 && $CLJW -e '(+ 1 2)'" \
+  "project.clj (Leiningen)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed (total $((PASS + FAIL)))"
 
