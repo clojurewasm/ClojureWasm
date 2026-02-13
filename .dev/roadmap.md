@@ -15,11 +15,12 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 ## Current Stats
 
-- **835+ vars** implemented (635/706 core, 16 namespaces)
+- **869+ vars** implemented (637/706 core, 18 namespaces)
 - **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
-- **49 upstream test files**, all passing (44 upstream ports + 5 SCI)
+- **50 upstream test files**, all passing
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
-- **Wasm engine**: zwasm v0.11.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.4x of wasmtime)
+- **Wasm engine**: zwasm v0.1.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.3x of wasmtime)
+- **Binary**: 3.7MB ReleaseSafe (Mac ARM64)
 
 ## Completed Phases
 
@@ -90,6 +91,9 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 55     | Upstream Test Recovery                      | Restore Java constant refs in 5 test files, reduce markers  |
 | 56     | Bug Fixes & read                            | pprint lazy fix, read/read+string/edn-read, 637/706 core   |
 | 57     | Concurrency Test Suite                      | 4 Zig + 10 Clj tests, swap! CAS fix, atomic atom ops       |
+| 58     | v0.1.0-alpha Release Prep                   | Tag-replace planning, zwasm v0.1.0 dependency migration     |
+| 59     | zwasm v0.1.0 Integration                    | zwasm v0.1.0 tar.gz dep, benchmark validation               |
+| 60     | v0.1.0 Release                              | Docs overhaul, binary audit, benchmark record (3.7MB)       |
 ```
 
 ---
@@ -153,6 +157,32 @@ Build the ecosystem foundation. Dependency management, distribution.
 | 50.5 | import → wasm mapping           | COULD    | F135, ClojureDart-like :import     |
 
 **Exit criteria**: "Can manage multi-file projects with external dependencies"
+
+### Phase 61 — Bug Fixes
+
+| Sub  | Content                         | Priority | Notes                              |
+|------|---------------------------------|----------|------------------------------------|
+| 61.1 | F138 binding *ns* + read-string | MUST     | Reader doesn't see runtime *ns*    |
+| 61.2 | Record hash edge case           | SHOULD   | assoc on record field changes hash |
+
+### Phase 62 — Edge Cases
+
+| Sub  | Content                         | Priority | Notes                              |
+|------|---------------------------------|----------|------------------------------------|
+| 62.1 | F99 Iterative lazy-seq realize  | MUST     | Deep lazy chain stack overflow     |
+
+### Phase 63 — import → wasm mapping
+
+| Sub  | Content                         | Priority | Notes                              |
+|------|---------------------------------|----------|------------------------------------|
+| 63.1 | F135 :import-wasm ns macro      | SHOULD   | Declarative wasm module loading    |
+
+### Phase 64 — Upstream Alignment Re-evaluation
+
+| Sub  | Content                         | Priority | Notes                              |
+|------|---------------------------------|----------|------------------------------------|
+| 64.1 | UPSTREAM-DIFF re-evaluation     | SHOULD   | After F138/F99 fixes               |
+| 64.2 | checklist/roadmap final update  | SHOULD   | Document permanent diffs           |
 
 ### Quality & Alignment (Phase 52) — DONE
 

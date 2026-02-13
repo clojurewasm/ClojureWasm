@@ -122,6 +122,15 @@ Run before every commit:
    - `zig build test` — verify CW tests pass (bridge delegates to zwasm)
    - Wasm engine changes go in zwasm repo (`../zwasm/`), not CW
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
+8. **Non-functional regression** (when changing execution code: src/vm/, src/evaluator/,
+   src/compiler/, src/runtime/, src/builtins/, src/wasm/, bootstrap):
+   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.0MB
+   - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 5ms
+   - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 12MB
+   - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
+   - **Hard block**: Do NOT commit if any threshold exceeded.
+     Benchmark regression → stop, profile, fix in place or insert optimization phase first.
+   - Baselines & policy: `.dev/baselines.md`.
 
 ### Phase Completion
 
@@ -177,6 +186,7 @@ bash bench/wasm_bench.sh --bench=fib  # Specific benchmark (fib/tak/arith/sieve)
 History: `bench/history.yaml` — CW native benchmark progression.
 Wasm history: `bench/wasm_history.yaml` — CW vs wasmtime wasm benchmark progression.
 **Record after every optimization task.** Use task ID as entry id (e.g. "36.7").
+**Regression check on execution code changes.** See Commit Gate #8 and `.dev/baselines.md`.
 
 ## Notice
 
@@ -242,5 +252,6 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Cross-lang        | `bench/cross-lang-results.yaml`      | Cross-language comparison                  |
 | Alpha plans       | `private/alpha_plan/`                | Multi-perspective Alpha planning docs      |
 | Test porting plan | `.dev/test-porting-plan.md`          | When porting upstream tests                |
+| Baselines         | `.dev/baselines.md`                  | Non-functional regression thresholds       |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
 

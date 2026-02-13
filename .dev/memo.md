@@ -22,38 +22,39 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-v0.1.0 Tag Replace — Phase 4: CW tag operations.
-Requirements: `~/Documents/MyProducts/ClojureWasm/private/my-tag-replace.md`
+Phase 61.1: Fix F138 — binding *ns* + read-string.
+`(binding [*ns* my-ns] (read-string "::foo"))` で reader が runtime の `*ns*` を見ない。
+auto-resolved keyword `::foo` が現在の ns で修飾されない。
 
-## v0.1.0 Tag Replace Queue
+修正方針:
+1. `readStringFn` (`src/builtins/eval.zig`) が現在の `*ns*` を取得
+2. `macro.formToValueWithNs()` は既に ns を受け取れる — これに橋渡し
+3. `bootstrap.macro_eval_env` (threadlocal) → `env.current_ns` でアクセス
 
-Phase 3: CW dependency + docs (after zwasm v0.1.0 tag exists)
-- [x] 3.1: Switch build.zig.zon to zwasm v0.1.0 tar.gz, test Mac
-- [x] 3.2: Full benchmark + record
-- [x] 3.3: Code comments + YAML cleanup (-alpha refs)
-- [x] 3.4: Public docs overhaul
-- [x] 3.5: Commit, push, CI green
+## Task Queue
 
-Phase 4: CW tag operations (do in one session)
-- [ ] 4.1: Delete old -alpha tags + releases
-- [ ] 4.2: Create CW v0.1.0 tag, push
+Phase 61 — Bug Fixes:
+- [ ] 61.1: F138 binding *ns* + read-string
+- [ ] 61.2: record hash edge case (assoc で field 変更時 hash 不変にする)
+
+Phase 62 — Edge Cases:
+- [ ] 62.1: F99 Iterative lazy-seq realization engine
+
+Phase 63 — import → wasm mapping:
+- [ ] 63.1: F135 :import-wasm ns macro
+
+Phase 64 — Upstream Alignment 再評価:
+- [ ] 64.1: UPSTREAM-DIFF 再評価 (F138/F99 修正後)
+- [ ] 64.2: checklist.md / roadmap.md 最終更新
 
 ## Previous Task
 
-Phase 60.3-60.4 complete: Binary size audit (3.7MB ReleaseSafe, see .dev/binary-size-audit.md)
-+ benchmark recording (60.4 entry in history.yaml). zwasm main API compatibility verified.
+v0.1.0 release complete. zwasm v0.1.0 dependency, docs overhaul, binary size audit,
+benchmark recording (60.4 entry). All CI green.
 
 ## Known Issues
 
 - binding *ns* doesn't affect read-string for auto-resolved keywords (F138)
-
-## Resolved Issues (this session)
-
-- **swap! race condition**: swap!/swap-vals! had no CAS retry loop. Fixed with lock-free
-  `@cmpxchgStrong` CAS. Also made reset!/reset-vals!/deref atomic.
-- **Checklist cleanup**: F136/F137 resolved (zwasm v0.11.0 implements table.copy
-  cross-table + table.init). F6 resolved (multi-thread dynamic bindings done).
-- **Regex fix**: Capture groups + backreferences actually work — removed from Known Issues.
 
 ## Notes
 
@@ -77,4 +78,5 @@ Session resume: read this file → roadmap.md → pick next task.
 | Design document    | `.dev/future.md`                     | Major feature design        |
 | Zig tips           | `.claude/references/zig-tips.md`     | Before writing Zig          |
 | Concurrency tests  | `.dev/concurrency-test-plan.md`      | Phase 57 task details       |
+| Baselines          | `.dev/baselines.md`                  | Non-functional thresholds   |
 | zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |
