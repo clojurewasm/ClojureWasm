@@ -22,7 +22,8 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 65 complete. All 5 edge cases resolved.
+Phase 66: deps.edn Foundation. Next task: 66.1 (deps.edn parser).
+See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
 
@@ -80,4 +81,5 @@ Session resume: read this file → roadmap.md → pick next task.
 | Zig tips           | `.claude/references/zig-tips.md`     | Before writing Zig          |
 | Concurrency tests  | `.dev/concurrency-test-plan.md`      | Phase 57 task details       |
 | Baselines          | `.dev/baselines.md`                  | Non-functional thresholds   |
+| deps.edn plan      | `.dev/deps-edn-plan.md`              | When implementing deps.edn  |
 | zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |

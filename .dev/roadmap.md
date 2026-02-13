@@ -98,6 +98,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 62     | Edge Cases                                  | F99 iterative lazy-seq realization (D96), FRAMES_MAX 1024   |
 | 63     | import → wasm mapping                       | F135 :import-wasm ns macro                                  |
 | 64     | Upstream Alignment Re-evaluation            | 416 CLJW markers reviewed — all permanent design diffs      |
+| 65     | Edge Case Cleanup                           | apropos/dir, dup keys, fn docstr, regex cache, *print-dup*  |
 ```
 
 ---
@@ -173,6 +174,24 @@ Build the ecosystem foundation. Dependency management, distribution.
   - ~100 exception adaptation (Throwable→Exception)
   - ~62 numeric types (BigDecimal not implemented)
   - ~28 other (lazy-seq limitations, reader diffs)
+
+### Edge Case Cleanup (Phase 65) — DONE
+
+Pre-deps.edn cleanup: fix small correctness issues and restore skipped tests.
+
+- 65.1: Restored apropos + dir-fn tests in repl.clj (already working)
+- 65.2: Reader duplicate key detection for map/set literals
+- 65.3: Fix `(fn "a" [])` analyzer — reject docstring without name
+- 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
+- 65.5: Implement `*print-dup*` basic support (print-str respects binding)
+
+### Phase 66-68: deps.edn Support — IN PROGRESS
+
+Full plan: `.dev/deps-edn-plan.md`
+
+- **Phase 66**: deps.edn Foundation (parser, alias resolution, CLI flags, -X exec mode)
+- **Phase 67**: Git Dependencies (clone, io.github inference, tag/sha, cache)
+- **Phase 68**: Integration (transitive deps, path cache, user config, e2e tests)
 
 ### Quality & Alignment (Phase 52) — DONE
 
