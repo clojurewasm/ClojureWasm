@@ -4,13 +4,13 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 68 COMPLETE** (deps.edn support fully functional)
+- **All phases through 69 COMPLETE** (deps.edn design cleanup done)
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 50 upstream test files, all passing. 6/6 e2e tests pass.
+- 50 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (60.4 entry = latest baseline)
-- Binary: 3.7MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 3.86MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 
 ## Strategic Direction
 
@@ -18,38 +18,19 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
 - Tiny single binary (3.7MB macOS, ~14MB Linux static)
 - Wasm FFI (unique: call .wasm modules from Clojure)
-- Zero-config project model (no deps.edn required)
+- deps.edn compatible project model (Clojure CLI subset)
 
 ## Current Task
 
-Phase 68: Integration — COMPLETE. deps.edn support fully functional.
-See `.dev/deps-edn-plan.md` for full design.
-
-## Task Queue
-
-Phase 66 — deps.edn Foundation (COMPLETE):
-- [x] 66.1: deps.edn parser (EDN reader + schema validation)
-- [x] 66.2: Alias resolution engine
-- [x] 66.3: -A/-M/-X/-P CLI flag parsing (includes -X exec mode)
-- [x] 66.4: -X exec mode (fn invoke + arg parsing) — merged into 66.3
-- [x] 66.5: -Spath/-Sdeps/-Srepro/-Sforce — merged into 66.3
-
-Phase 67 — Git Dependencies (COMPLETE):
-- [x] 67.2: Enhanced resolveGitDep (:git/tag, :deps/root, -Sforce)
-- [x] 67.4: E2E tests (11 scenarios)
-- [x] 67.5: Transitive dep resolution from deps.edn
-
-Phase 68 — Integration:
-- [x] 68.1: Transitive dep resolution — done in 67.5
-- [x] 68.4: cljw.edn fallback + deprecation warning — done in 66.3
-- [x] 68.7: E2E tests — done in 67.4 (11 tests)
-- [x] 68.5: Leiningen project.clj detection + warning
-- [x] 68.6: cljw test + alias integration (14 e2e tests)
+Phase 69: deps.edn design cleanup — COMPLETE.
+- Git dep fetch only with `-P` (cache miss → error otherwise)
+- cljw.edn support removed entirely
+- deps.edn always read (+0.1ms negligible)
 
 ## Previous Task
 
-Phase 66: deps.edn Foundation — parser, alias resolution, CLI flags (-A/-M/-X/-P),
-exec mode, -Spath/-Sdeps/-Sverbose, deps.edn priority over cljw.edn.
+Phase 66-68: deps.edn Foundation + Git Dependencies + Integration.
+See `.dev/deps-edn-plan.md` for full design.
 
 ## Known Issues
 

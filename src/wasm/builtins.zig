@@ -25,7 +25,7 @@ const WasmValType = wasm_types.WasmValType;
 const wit_parser = @import("wit_parser.zig");
 
 // Wasm module registry: maps module names to resolved file paths.
-// Populated by cljw.edn :wasm-deps processing.
+// Populated by deps.edn :cljw/wasm-deps processing.
 var wasm_registry: [64]struct { name: []const u8, path: []const u8 } = undefined;
 var wasm_registry_len: usize = 0;
 

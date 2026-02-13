@@ -294,7 +294,7 @@ pub fn main() !void {
         return;
     }
 
-    // Load deps.edn (preferred) or cljw.edn config if present.
+    // Load deps.edn config if present.
     // Uses arena for config parsing — freed when config is no longer needed.
     var config_arena = std.heap.ArenaAllocator.init(allocator);
     defer config_arena.deinit();
@@ -368,12 +368,12 @@ pub fn main() !void {
             if (dep.local_root) |root| {
                 resolveLocalDep(root, config_dir, true);
             } else if (dep.git_url != null and dep.git_sha != null) {
-                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, s_force, true);
+                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, s_force, true, mode == .resolve_only);
             } else {
                 // Try io.github/io.gitlab URL inference
                 if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
                     if (dep.git_sha) |sha| {
-                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, s_force, true);
+                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, s_force, true, mode == .resolve_only);
                     }
                 }
             }
@@ -481,16 +481,10 @@ pub fn main() !void {
 
     // Standard mode (no deps.edn flags)
     const config = if (deps_config_opt) |dc| blk: {
-        // deps.edn found but no -A/-M/-X flags — convert to ProjectConfig
+        // deps.edn found — convert to ProjectConfig
         break :blk projectConfigFromDepsConfig(config_alloc, dc);
-    } else if (findConfigFile(config_alloc, file_dir)) |cf| blk: {
-        // Fallback to cljw.edn with deprecation warning
-        const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
-        _ = stderr_file.write("WARNING: cljw.edn is deprecated. Use deps.edn instead.\n") catch {};
-        config_dir = cf.dir;
-        break :blk parseConfig(config_alloc, cf.content);
     } else blk: {
-        // No deps.edn or cljw.edn — check for project.clj
+        // No deps.edn — check for project.clj
         warnIfLeinProject(".");
         break :blk ProjectConfig{};
     };
@@ -527,7 +521,7 @@ pub fn main() !void {
         err.setSourceText(file_bytes);
         evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
     } else if (config.main_ns) |main_ns| {
-        // deps.edn :cljw/main or cljw.edn :main — load the main namespace
+        // deps.edn :cljw/main — load the main namespace
         runMainNs(alloc, allocator, &gc, main_ns, use_vm);
     } else {
         // No args, no file, no :main — start REPL
@@ -941,7 +935,7 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
     defer env.deinit();
     bootstrapFromCache(gc_alloc, &env, gc);
 
-    // Load config: deps.edn (preferred) or cljw.edn
+    // Load config: deps.edn
     var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
     defer config_arena.deinit();
     const config_alloc = config_arena.allocator();
@@ -982,11 +976,11 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
             if (dep.local_root) |root| {
                 resolveLocalDep(root, test_config_dir, true);
             } else if (dep.git_url != null and dep.git_sha != null) {
-                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true);
+                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true, false);
             } else {
                 if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
                     if (dep.git_sha) |sha| {
-                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, false, true);
+                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, false, true, false);
                     }
                 }
             }
@@ -1004,13 +998,7 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
 
         test_paths_from_config = resolved.test_paths;
     } else {
-        // Fallback to cljw.edn
-        const config = if (findConfigFile(config_alloc, null)) |cf| blk: {
-            test_config_dir = cf.dir;
-            break :blk parseConfig(config_alloc, cf.content);
-        } else ProjectConfig{};
-        applyConfig(config, test_config_dir);
-        test_paths_from_config = config.test_paths;
+        // No deps.edn — no config to apply
     }
 
     // Arena for test file paths and source buffers (survives until function exit).
@@ -1122,8 +1110,13 @@ fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []con
 
 // === deps.edn support ===
 
+const DepsEdnFile = struct {
+    content: []const u8,
+    dir: ?[]const u8, // directory containing deps.edn (null = CWD)
+};
+
 /// Search for deps.edn starting from dir, walking up to root.
-fn findDepsEdnFile(allocator: Allocator, start_dir: ?[]const u8) ?ConfigFile {
+fn findDepsEdnFile(allocator: Allocator, start_dir: ?[]const u8) ?DepsEdnFile {
     // Try CWD first
     if (readFileFromDir(allocator, ".", "deps.edn")) |content| return .{ .content = content, .dir = null };
 
@@ -1194,9 +1187,9 @@ fn inferGitUrlFromName(allocator: Allocator, name: []const u8) ?[]const u8 {
     return deps_mod.inferGitUrl(allocator, name);
 }
 
-// === cljw.edn config parsing ===
+// === Config types for deps.edn ===
 
-/// A single dependency declaration from cljw.edn / deps.edn :deps.
+/// A single dependency declaration from deps.edn :deps.
 const Dep = struct {
     local_root: ?[]const u8 = null, // :local/root path
     git_url: ?[]const u8 = null, // :git/url
@@ -1211,7 +1204,7 @@ const WasmDep = struct {
     path: []const u8,
 };
 
-/// Parsed cljw.edn configuration.
+/// Parsed project configuration (from deps.edn via projectConfigFromDepsConfig).
 const ProjectConfig = struct {
     paths: []const []const u8 = &.{},
     test_paths: []const []const u8 = &.{},
@@ -1220,169 +1213,7 @@ const ProjectConfig = struct {
     wasm_deps: []const WasmDep = &.{},
 };
 
-const ConfigFile = struct {
-    content: []const u8,
-    dir: ?[]const u8, // directory containing cljw.edn (null = CWD)
-};
-
-/// Search for cljw.edn starting from dir, walking up to root.
-/// Returns file content and the directory where it was found.
-fn findConfigFile(allocator: Allocator, start_dir: ?[]const u8) ?ConfigFile {
-    // Try CWD first
-    if (readConfigFromDir(allocator, ".")) |content| return .{ .content = content, .dir = null };
-
-    // Walk up from start_dir
-    var current = start_dir orelse return null;
-    for (0..10) |_| {
-        if (readConfigFromDir(allocator, current)) |content| return .{ .content = content, .dir = current };
-        const parent = std.fs.path.dirname(current) orelse break;
-        if (std.mem.eql(u8, parent, current)) break;
-        current = parent;
-    }
-    return null;
-}
-
-fn readConfigFromDir(allocator: Allocator, dir: []const u8) ?[]const u8 {
-    var buf: [4096]u8 = undefined;
-    const path = std.fmt.bufPrint(&buf, "{s}/cljw.edn", .{dir}) catch return null;
-    return std.fs.cwd().readFileAlloc(allocator, path, 10_000) catch null;
-}
-
-/// Parse cljw.edn content using the Reader (no bootstrap needed).
-fn parseConfig(allocator: Allocator, source: []const u8) ProjectConfig {
-    var reader = Reader.init(allocator, source);
-    const form = reader.read() catch return .{};
-    const root = form orelse return .{};
-
-    if (root.data != .map) return .{};
-    const entries = root.data.map;
-
-    var config = ProjectConfig{};
-    var i: usize = 0;
-    while (i + 1 < entries.len) : (i += 2) {
-        if (entries[i].data != .keyword) continue;
-        const kw = entries[i].data.keyword.name;
-
-        if (std.mem.eql(u8, kw, "paths")) {
-            if (entries[i + 1].data == .vector) {
-                const vec = entries[i + 1].data.vector;
-                const paths = allocator.alloc([]const u8, vec.len) catch continue;
-                var count: usize = 0;
-                for (vec) |elem| {
-                    if (elem.data == .string) {
-                        paths[count] = elem.data.string;
-                        count += 1;
-                    }
-                }
-                config.paths = paths[0..count];
-            }
-        } else if (std.mem.eql(u8, kw, "test-paths")) {
-            if (entries[i + 1].data == .vector) {
-                const vec = entries[i + 1].data.vector;
-                const paths = allocator.alloc([]const u8, vec.len) catch continue;
-                var count: usize = 0;
-                for (vec) |elem| {
-                    if (elem.data == .string) {
-                        paths[count] = elem.data.string;
-                        count += 1;
-                    }
-                }
-                config.test_paths = paths[0..count];
-            }
-        } else if (std.mem.eql(u8, kw, "deps")) {
-            if (entries[i + 1].data == .map) {
-                config.deps = parseDeps(allocator, entries[i + 1].data.map);
-            }
-        } else if (std.mem.eql(u8, kw, "wasm-deps")) {
-            if (entries[i + 1].data == .map) {
-                config.wasm_deps = parseWasmDeps(allocator, entries[i + 1].data.map);
-            }
-        } else if (std.mem.eql(u8, kw, "main")) {
-            if (entries[i + 1].data == .symbol) {
-                const sym = entries[i + 1].data.symbol;
-                if (sym.ns) |ns| {
-                    // Qualified: my-app/core → my-app.core
-                    config.main_ns = std.fmt.allocPrint(allocator, "{s}.{s}", .{ ns, sym.name }) catch null;
-                } else {
-                    config.main_ns = sym.name;
-                }
-            }
-        }
-    }
-    return config;
-}
-
-/// Parse :deps map → slice of Dep.
-/// Formats: {:local/root "path"}, {:git/url "..." :git/sha "..."}
-fn parseDeps(allocator: Allocator, dep_entries: []const Form) []const Dep {
-    const count = dep_entries.len / 2;
-    if (count == 0) return &.{};
-    const deps = allocator.alloc(Dep, count) catch return &.{};
-    var n: usize = 0;
-    var di: usize = 0;
-    while (di + 1 < dep_entries.len) : (di += 2) {
-        // value must be a map
-        if (dep_entries[di + 1].data != .map) continue;
-        const val_map = dep_entries[di + 1].data.map;
-        var dep = Dep{};
-        var vi: usize = 0;
-        while (vi + 1 < val_map.len) : (vi += 2) {
-            if (val_map[vi].data == .keyword) {
-                const dk = val_map[vi].data.keyword;
-                const ns = dk.ns orelse continue;
-                if (val_map[vi + 1].data == .string) {
-                    const val_str = val_map[vi + 1].data.string;
-                    if (std.mem.eql(u8, ns, "local") and std.mem.eql(u8, dk.name, "root")) {
-                        dep.local_root = val_str;
-                    } else if (std.mem.eql(u8, ns, "git") and std.mem.eql(u8, dk.name, "url")) {
-                        dep.git_url = val_str;
-                    } else if (std.mem.eql(u8, ns, "git") and std.mem.eql(u8, dk.name, "sha")) {
-                        dep.git_sha = val_str;
-                    }
-                }
-            }
-        }
-        if (dep.local_root != null or (dep.git_url != null and dep.git_sha != null)) {
-            deps[n] = dep;
-            n += 1;
-        }
-    }
-    return deps[0..n];
-}
-
-/// Parse :wasm-deps map → slice of WasmDep. Format: {"name" {:local/root "path.wasm"}}
-fn parseWasmDeps(allocator: Allocator, entries: []const Form) []const WasmDep {
-    const count = entries.len / 2;
-    if (count == 0) return &.{};
-    const deps = allocator.alloc(WasmDep, count) catch return &.{};
-    var n: usize = 0;
-    var i: usize = 0;
-    while (i + 1 < entries.len) : (i += 2) {
-        // key must be a string (module name)
-        if (entries[i].data != .string) continue;
-        const name = entries[i].data.string;
-        // value must be a map with :local/root
-        if (entries[i + 1].data != .map) continue;
-        const val_map = entries[i + 1].data.map;
-        var vi: usize = 0;
-        while (vi + 1 < val_map.len) : (vi += 2) {
-            if (val_map[vi].data == .keyword) {
-                const dk = val_map[vi].data.keyword;
-                const ns = dk.ns orelse continue;
-                if (std.mem.eql(u8, ns, "local") and std.mem.eql(u8, dk.name, "root")) {
-                    if (val_map[vi + 1].data == .string) {
-                        deps[n] = .{ .name = name, .path = val_map[vi + 1].data.string };
-                        n += 1;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return deps[0..n];
-}
-
-/// Apply cljw.edn config: add paths and resolve deps.
+/// Apply project config: add paths and resolve deps.
 fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
     for (config.paths) |path| {
         if (config_dir) |dir| {
@@ -1399,7 +1230,7 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
         if (dep.local_root) |root| {
             resolveLocalDep(root, config_dir, true);
         } else if (dep.git_url != null and dep.git_sha != null) {
-            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true);
+            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true, false);
         }
     }
     // Register wasm module deps
@@ -1430,7 +1261,7 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8, resolve_deps: bool
     const src_path = std.fmt.bufPrint(&src_buf, "{s}/src", .{dep_dir}) catch return;
     ns_ops.addLoadPath(src_path) catch {};
 
-    // Try deps.edn first, then fall back to cljw.edn
+    // Try deps.edn for paths and deps
     var dep_deps_edn_buf: [4096]u8 = undefined;
     const dep_deps_edn_path = std.fmt.bufPrint(&dep_deps_edn_buf, "{s}/deps.edn", .{dep_dir}) catch return;
 
@@ -1454,12 +1285,12 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8, resolve_deps: bool
                 if (sub_dep.local_root) |sub_root| {
                     resolveLocalDep(sub_root, dep_dir, false);
                 } else if (sub_dep.git_url != null and sub_dep.git_sha != null) {
-                    resolveGitDep(sub_dep.git_url.?, sub_dep.git_sha.?, sub_dep.git_tag, sub_dep.deps_root, false, false);
+                    resolveGitDep(sub_dep.git_url.?, sub_dep.git_sha.?, sub_dep.git_tag, sub_dep.deps_root, false, false, false);
                 } else {
                     // Try io.github/io.gitlab URL inference for transitive deps
                     if (deps_mod.inferGitUrl(arena.allocator(), sub_dep.name)) |inferred_url| {
                         if (sub_dep.git_sha) |sha| {
-                            resolveGitDep(inferred_url, sha, sub_dep.git_tag, sub_dep.deps_root, false, false);
+                            resolveGitDep(inferred_url, sha, sub_dep.git_tag, sub_dep.deps_root, false, false, false);
                         }
                     } else {
                         // Unsupported dep type in transitive chain — warn
@@ -1472,65 +1303,11 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8, resolve_deps: bool
             }
         }
     } else |_| {
-        // No deps.edn — try cljw.edn
-        resolveLocalDepFromCljwEdn(dep_dir, resolve_deps);
+        // No deps.edn — dep uses default "src" path (already added above)
     }
 }
 
-/// Fallback: read cljw.edn for a dependency's paths and deps.
-fn resolveLocalDepFromCljwEdn(dep_dir: []const u8, resolve_deps: bool) void {
-    var dep_config_buf: [4096]u8 = undefined;
-    const dep_config_path = std.fmt.bufPrint(&dep_config_buf, "{s}/cljw.edn", .{dep_dir}) catch return;
-    const dep_content = std.fs.cwd().readFileAlloc(
-        std.heap.page_allocator,
-        dep_config_path,
-        10_000,
-    ) catch {
-        // No cljw.edn — check for project.clj (Leiningen)
-        warnIfLeinProject(dep_dir);
-        return; // default "src" already added
-    };
-    defer std.heap.page_allocator.free(dep_content);
-
-    var reader = Reader.init(std.heap.page_allocator, dep_content);
-    const form = reader.read() catch return;
-    const root_form = form orelse return;
-    if (root_form.data != .map) return;
-    const map_entries = root_form.data.map;
-
-    // Parse :paths and :deps from dep's cljw.edn
-    var di: usize = 0;
-    while (di + 1 < map_entries.len) : (di += 2) {
-        if (map_entries[di].data != .keyword) {
-            di = di; // no-op to satisfy loop
-            continue;
-        }
-        const kw = map_entries[di].data.keyword;
-        if (kw.ns == null and std.mem.eql(u8, kw.name, "paths")) {
-            if (map_entries[di + 1].data == .vector) {
-                for (map_entries[di + 1].data.vector) |elem| {
-                    if (elem.data == .string) {
-                        var sub_buf: [4096]u8 = undefined;
-                        const full = std.fmt.bufPrint(&sub_buf, "{s}/{s}", .{ dep_dir, elem.data.string }) catch continue;
-                        ns_ops.addLoadPath(full) catch {};
-                    }
-                }
-            }
-        } else if (resolve_deps and kw.ns == null and std.mem.eql(u8, kw.name, "deps")) {
-            if (map_entries[di + 1].data == .map) {
-                // Recurse into transitive deps (one level only)
-                const sub_deps = parseDeps(std.heap.page_allocator, map_entries[di + 1].data.map);
-                for (sub_deps) |sub_dep| {
-                    if (sub_dep.local_root) |sub_root| {
-                        resolveLocalDep(sub_root, dep_dir, false);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Warn if a directory contains project.clj (Leiningen) but no deps.edn/cljw.edn.
+/// Warn if a directory contains project.clj (Leiningen) but no deps.edn.
 fn warnIfLeinProject(dir: []const u8) void {
     var proj_buf: [4096]u8 = undefined;
     const proj_path = std.fmt.bufPrint(&proj_buf, "{s}/project.clj", .{dir}) catch return;
@@ -1548,7 +1325,8 @@ fn warnIfLeinProject(dir: []const u8) void {
 /// deps_root: optional :deps/root subdirectory within the git repo
 /// force: -Sforce flag — bypass cache and re-fetch
 /// resolve_deps: if true, also resolve transitive deps from the dep's deps.edn
-fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool, resolve_deps: bool) void {
+/// allow_fetch: if false, cache miss → error instead of clone (requires `cljw -P`)
+fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool, resolve_deps: bool, allow_fetch: bool) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     const alloc = std.heap.page_allocator;
 
@@ -1584,6 +1362,14 @@ fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: 
             resolveLocalDep(effective_dir, null, resolve_deps);
             return;
         } else |_| {}
+    }
+
+    // Cache miss: if fetching not allowed, error out
+    if (!allow_fetch) {
+        _ = stderr.write("ERROR: Git dependency not in cache: ") catch {};
+        _ = stderr.write(url) catch {};
+        _ = stderr.write("\nRun 'cljw -P' to download dependencies first.\n") catch {};
+        return;
     }
 
     _ = stderr.write("Fetching ") catch {};

@@ -233,22 +233,19 @@ run_test "-M main mode" \
   "cd $PROJ8 && $CLJW -M:run" \
   "Main via -M!"
 
-# --- Test 9: deps.edn priority over cljw.edn ---
+# --- Test 9: git dep without -P gives cache miss error ---
 PROJ9="$TMPDIR_BASE/proj9"
-mkdir -p "$PROJ9/src/app"
-cat > "$PROJ9/deps.edn" << 'EOF'
-{:paths ["src"]}
+mkdir -p "$PROJ9/src"
+cat > "$PROJ9/deps.edn" << EOF
+{:paths ["src"]
+ :deps {test-dep/test-dep {:git/url "$GIT_REPO"
+                            :git/tag "v0.1.0"
+                            :git/sha "deadbeef123456789"}}}
 EOF
-cat > "$PROJ9/cljw.edn" << 'EOF'
-{:paths ["other"]}
-EOF
-cat > "$PROJ9/src/app/core.clj" << 'CLOJ'
-(ns app.core)
-(println "deps.edn wins")
-CLOJ
-run_test "deps.edn priority over cljw.edn" \
-  "cd $PROJ9 && $CLJW src/app/core.clj" \
-  "deps.edn wins"
+echo '(println "ok")' > "$PROJ9/src/test.clj"
+run_test_stderr "git dep without -P gives error" \
+  "cd $PROJ9 && $CLJW src/test.clj" \
+  "Run 'cljw -P' to download dependencies first."
 
 # --- Test 10: Transitive local dep ---
 # dep-a depends on dep-b via :local/root, project depends on dep-a
