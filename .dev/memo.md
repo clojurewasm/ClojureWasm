@@ -22,15 +22,15 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 61.2: Fix record hash edge case.
-assoc で record field 変更時、hash が変化する (upstream は不変のはず)。
-test/upstream/data_structures.clj に CLJW マーカー 1 個。
+Phase 62.1: F99 Iterative lazy-seq realization engine.
+Deep nested lazy-seq (map→filter→map→...) の realize が再帰的で stack overflow する。
+D74 は filter chain collapsing で sieve を修正したが、一般ケースは未対応。
 
 ## Task Queue
 
 Phase 61 — Bug Fixes:
 - [x] 61.1: F138 binding *ns* + read-string
-- [ ] 61.2: record hash edge case (assoc で field 変更時 hash 不変にする)
+- [x] 61.2: record hash edge case (already works — stale CLJW marker removed)
 
 Phase 62 — Edge Cases:
 - [ ] 62.1: F99 Iterative lazy-seq realization engine

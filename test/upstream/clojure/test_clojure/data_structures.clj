@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
 ;; Upstream lines: 1363
-;; CLJW markers: 34
+;; CLJW markers: 32
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -647,8 +647,6 @@
       {x1 v4a, w5a v4c, v4a z3b, y2 2} [x1 v4a, w5a v4a, w5b v4b,
                                         v4a z3a, y2 2, v4b z3b, w5c v4c])))
 
-;; CLJW: adapted — UPSTREAM-DIFF: hash does not change when record fields are modified via assoc
-;; (hash equality tests involving assoc :a 2 are skipped as our hash is based on record identity, not field values)
 (defrecord Rec [a b])
 
 (deftest record-hashing
@@ -657,10 +655,9 @@
         r2 (assoc r :c 2)]
     (is (= (hash (->Rec 1 1)) (hash r)))
     (is (= (hash r) (hash (with-meta r {:foo 2}))))
-    ;; CLJW: skipped — our record hash doesn't change with field modifications
-    ;; (is (not= (hash (->Rec 1 1)) (hash (assoc (->Rec 1 1) :a 2))))
-    ;; (is (not= (hash (->Rec 1 1)) (hash r2)))
-    ;; (is (not= (hash (->Rec 1 1)) (hash (assoc r :a 2))))
+    (is (not= (hash (->Rec 1 1)) (hash (assoc (->Rec 1 1) :a 2))))
+    (is (not= (hash (->Rec 1 1)) (hash r2)))
+    (is (not= (hash (->Rec 1 1)) (hash (assoc r :a 2))))
     (is (= (hash (->Rec 1 1)) (hash (assoc r :a 1))))
     (is (= (hash (->Rec 1 1)) (hash (dissoc r2 :c))))
     (is (= (hash (->Rec 1 1)) (hash (dissoc (assoc r :c 1) :c))))))
