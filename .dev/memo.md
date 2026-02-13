@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 64 COMPLETE**
+- **All phases through 65 COMPLETE**
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -22,37 +22,23 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 66: deps.edn Foundation. Next task: 66.1 (deps.edn parser).
+Phase 66: deps.edn Foundation. Next task: 66.2 (alias resolution engine).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
 
-Phase 61 — Bug Fixes:
-- [x] 61.1: F138 binding *ns* + read-string
-- [x] 61.2: record hash edge case (already works — stale CLJW marker removed)
-
-Phase 62 — Edge Cases:
-- [x] 62.1: F99 Iterative lazy-seq realization engine (D96)
-
-Phase 63 — import → wasm mapping:
-- [x] 63.1: F135 :import-wasm ns macro
-
-Phase 64 — Upstream Alignment 再評価:
-- [x] 64.1: UPSTREAM-DIFF 再評価 (416 markers — all permanent)
-- [x] 64.2: checklist.md / roadmap.md 最終更新
-
-Phase 65 — Edge Case Cleanup (pre-deps.edn):
-- [x] 65.1: Restore apropos + dir-fn tests (already working)
-- [x] 65.2: Reader duplicate key detection
-- [x] 65.3: Fix (fn "a" []) analyzer
-- [x] 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
-- [x] 65.5: Implement *print-dup* (basic support)
+Phase 66 — deps.edn Foundation:
+- [x] 66.1: deps.edn parser (EDN reader + schema validation)
+- [ ] 66.2: Alias resolution engine
+- [ ] 66.3: -A/-M/-X/-P CLI flag parsing
+- [ ] 66.4: -X exec mode (fn invoke + arg parsing)
+- [ ] 66.5: -Spath/-Sdeps/-Srepro/-Sforce
 
 ## Previous Task
 
-Phase 61-64: Bug fixes (F138 binding *ns* + read-string, record hash), edge cases
-(F99 iterative lazy-seq D96), :import-wasm ns macro (F135), upstream alignment review
-(416 CLJW + 36 UPSTREAM-DIFF — all permanent design diffs).
+Phase 65: Edge case cleanup (pre-deps.edn) — apropos/dir tests, reader duplicate
+key detection, fn docstring analyzer fix, regex serialization in bootstrap cache,
+*print-dup* basic support.
 
 ## Known Issues
 

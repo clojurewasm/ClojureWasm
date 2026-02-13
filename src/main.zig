@@ -35,6 +35,7 @@ const Reader = @import("reader/reader.zig").Reader;
 const FormData = @import("reader/form.zig").FormData;
 const Form = @import("reader/form.zig").Form;
 const wasm_builtins = @import("wasm/builtins.zig");
+const deps_mod = @import("deps.zig");
 
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
@@ -210,14 +211,21 @@ pub fn main() !void {
         return;
     }
 
-    // Load cljw.edn config if present (search CWD and entry file directory).
+    // Load deps.edn (preferred) or cljw.edn config if present.
     // Uses arena for config parsing — freed when config is no longer needed.
     var config_arena = std.heap.ArenaAllocator.init(allocator);
     defer config_arena.deinit();
     const config_alloc = config_arena.allocator();
     const file_dir = if (file) |f| std.fs.path.dirname(f) else null;
     var config_dir: ?[]const u8 = null;
-    const config = if (findConfigFile(config_alloc, file_dir)) |cf| blk: {
+    const config = if (findDepsEdnFile(config_alloc, file_dir)) |cf| blk: {
+        // deps.edn found — use new parser
+        config_dir = cf.dir;
+        break :blk projectConfigFromDeps(config_alloc, cf.content);
+    } else if (findConfigFile(config_alloc, file_dir)) |cf| blk: {
+        // Fallback to cljw.edn with deprecation warning
+        const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr_file.write("WARNING: cljw.edn is deprecated. Use deps.edn instead.\n") catch {};
         config_dir = cf.dir;
         break :blk parseConfig(config_alloc, cf.content);
     } else ProjectConfig{};
@@ -668,6 +676,79 @@ fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []con
             collectTestFiles(str_alloc, list_alloc, subdir, out);
         }
     }
+}
+
+// === deps.edn support ===
+
+/// Search for deps.edn starting from dir, walking up to root.
+fn findDepsEdnFile(allocator: Allocator, start_dir: ?[]const u8) ?ConfigFile {
+    // Try CWD first
+    if (readFileFromDir(allocator, ".", "deps.edn")) |content| return .{ .content = content, .dir = null };
+
+    // Walk up from start_dir
+    var current = start_dir orelse return null;
+    for (0..10) |_| {
+        if (readFileFromDir(allocator, current, "deps.edn")) |content| return .{ .content = content, .dir = current };
+        const parent = std.fs.path.dirname(current) orelse break;
+        if (std.mem.eql(u8, parent, current)) break;
+        current = parent;
+    }
+    return null;
+}
+
+fn readFileFromDir(allocator: Allocator, dir: []const u8, filename: []const u8) ?[]const u8 {
+    var buf: [4096]u8 = undefined;
+    const path = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, filename }) catch return null;
+    return std.fs.cwd().readFileAlloc(allocator, path, 10_000) catch null;
+}
+
+/// Convert deps.edn (parsed by deps_mod) to ProjectConfig for existing applyConfig.
+fn projectConfigFromDeps(allocator: Allocator, source: []const u8) ProjectConfig {
+    const deps_config = deps_mod.parseDepsEdn(allocator, source);
+
+    // Print warnings to stderr
+    const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    for (deps_config.warnings) |warning| {
+        _ = stderr_file.write(warning) catch {};
+        _ = stderr_file.write("\n") catch {};
+    }
+
+    // Convert deps
+    const dep_count = deps_config.deps.len;
+    const deps = if (dep_count > 0) blk: {
+        const d = allocator.alloc(Dep, dep_count) catch break :blk @as([]const Dep, &.{});
+        for (deps_config.deps, 0..) |src_dep, i| {
+            d[i] = .{
+                .local_root = src_dep.local_root,
+                .git_url = src_dep.git_url orelse inferGitUrlFromName(allocator, src_dep.name),
+                .git_sha = src_dep.git_sha,
+            };
+        }
+        break :blk @as([]const Dep, d[0..dep_count]);
+    } else @as([]const Dep, &.{});
+
+    // Convert wasm deps
+    const wasm_count = deps_config.wasm_deps.len;
+    const wasm_deps = if (wasm_count > 0) blk: {
+        const w = allocator.alloc(WasmDep, wasm_count) catch break :blk @as([]const WasmDep, &.{});
+        for (deps_config.wasm_deps, 0..) |src_wd, i| {
+            w[i] = .{ .name = src_wd.name, .path = src_wd.path };
+        }
+        break :blk @as([]const WasmDep, w[0..wasm_count]);
+    } else @as([]const WasmDep, &.{});
+
+    return .{
+        .paths = deps_config.paths,
+        .test_paths = deps_config.test_paths,
+        .main_ns = deps_config.main_ns,
+        .deps = deps,
+        .wasm_deps = wasm_deps,
+    };
+}
+
+/// Try to infer git URL from io.github/io.gitlab lib name pattern.
+fn inferGitUrlFromName(allocator: Allocator, name: []const u8) ?[]const u8 {
+    return deps_mod.inferGitUrl(allocator, name);
 }
 
 // === cljw.edn config parsing ===

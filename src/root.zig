@@ -52,6 +52,7 @@ pub const builtin_shell = @import("builtins/shell.zig");
 pub const builtin_pprint = @import("builtins/pprint.zig");
 pub const thread_pool = @import("runtime/thread_pool.zig");
 pub const concurrency_test = @import("runtime/concurrency_test.zig");
+pub const deps = @import("deps.zig");
 
 test {
     _ = value;
@@ -97,4 +98,5 @@ test {
     _ = builtin_pprint;
     _ = thread_pool;
     _ = concurrency_test;
+    _ = deps;
 }
