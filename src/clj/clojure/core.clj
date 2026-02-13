@@ -180,7 +180,11 @@
          (let [s (seq remaining)]
            (when s
              (step (f (first s)) (rest s)))))))
-    nil coll)))
+    nil coll))
+  ([f c1 c2]
+   (apply concat (map f c1 c2)))
+  ([f c1 c2 c3]
+   (apply concat (map f c1 c2 c3))))
 
 ;; Core macros
 

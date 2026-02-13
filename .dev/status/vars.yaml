@@ -986,30 +986,30 @@ vars:
     "superset?": {type: function, status: done}
     union: {type: function, status: done}
   clojure_spec_alpha:
-    "&": {type: macro, status: todo}
-    "*": {type: macro, status: todo}
+    "&": {type: macro, status: done}
+    "*": {type: macro, status: done}
     "*coll-check-limit*": {type: dynamic-var, status: done}
     "*coll-error-limit*": {type: dynamic-var, status: done}
-    "*compile-asserts*": {type: dynamic-var, status: todo}
+    "*compile-asserts*": {type: dynamic-var, status: done}
     "*explain-out*": {type: function, status: done}
     "*fspec-iterations*": {type: dynamic-var, status: done}
     "*recursion-limit*": {type: dynamic-var, status: done}
-    "+": {type: macro, status: todo}
-    "?": {type: macro, status: todo}
+    "+": {type: macro, status: done}
+    "?": {type: macro, status: done}
     Spec: {type: var, status: done}
     Specize: {type: var, status: done}
     abbrev: {type: function, status: done}
-    alt: {type: macro, status: todo}
-    "alt-impl": {type: function, status: todo}
-    "amp-impl": {type: function, status: todo}
+    alt: {type: macro, status: done}
+    "alt-impl": {type: function, status: done}
+    "amp-impl": {type: function, status: done}
     and: {type: macro, status: done}
     "and-spec-impl": {type: function, status: done}
-    assert: {type: macro, status: todo}
-    "assert*": {type: function, status: todo}
-    cat: {type: macro, status: todo}
-    "cat-impl": {type: function, status: todo}
-    "check-asserts": {type: function, status: todo}
-    "check-asserts?": {type: function, status: todo}
+    assert: {type: macro, status: done}
+    "assert*": {type: function, status: done}
+    cat: {type: macro, status: done}
+    "cat-impl": {type: function, status: done}
+    "check-asserts": {type: function, status: done}
+    "check-asserts?": {type: function, status: done}
     "coll-of": {type: macro, status: done}
     conform: {type: function, status: done}
     "conform*": {type: function, status: done}
@@ -1018,7 +1018,7 @@ vars:
     "def-impl": {type: function, status: done}
     describe: {type: function, status: done}
     "describe*": {type: function, status: done}
-    "double-in": {type: macro, status: todo}
+    "double-in": {type: macro, status: done}
     every: {type: macro, status: done}
     "every-impl": {type: function, status: done}
     "every-kv": {type: macro, status: done}
@@ -1031,37 +1031,37 @@ vars:
     "explain-out": {type: function, status: done}
     "explain-printer": {type: function, status: done}
     "explain-str": {type: function, status: done}
-    fdef: {type: macro, status: todo}
+    fdef: {type: macro, status: done}
     form: {type: function, status: done}
-    fspec: {type: macro, status: todo}
-    "fspec-impl": {type: function, status: todo}
+    fspec: {type: macro, status: done}
+    "fspec-impl": {type: function, status: done}
     gen: {type: function, status: done}
     "gen*": {type: function, status: done}
     "get-spec": {type: function, status: done}
-    "inst-in": {type: macro, status: todo}
-    "inst-in-range?": {type: function, status: todo}
-    "int-in": {type: macro, status: todo}
-    "int-in-range?": {type: function, status: todo}
+    "inst-in": {type: macro, status: done, note: "stub — no inst types"}
+    "inst-in-range?": {type: function, status: done, note: "stub — no inst types"}
+    "int-in": {type: macro, status: done}
+    "int-in-range?": {type: function, status: done}
     "invalid?": {type: function, status: done}
     keys: {type: macro, status: done}
     "keys*": {type: macro, status: done}
     "map-of": {type: macro, status: done}
     "map-spec-impl": {type: function, status: done}
-    "maybe-impl": {type: function, status: todo}
+    "maybe-impl": {type: function, status: done}
     merge: {type: macro, status: done}
     "merge-spec-impl": {type: function, status: done}
-    "multi-spec": {type: macro, status: todo}
-    "multi-spec-impl": {type: function, status: todo}
+    "multi-spec": {type: macro, status: done}
+    "multi-spec-impl": {type: function, status: done}
     nilable: {type: macro, status: done}
     "nilable-impl": {type: function, status: done}
     nonconforming: {type: function, status: done}
     or: {type: macro, status: done}
     "or-spec-impl": {type: function, status: done}
-    "regex-spec-impl": {type: function, status: done, note: "stub — full regex Phase 70.3"}
+    "regex-spec-impl": {type: function, status: done}
     "regex?": {type: function, status: done}
     registry: {type: function, status: done}
-    rep+impl: {type: function, status: todo}
-    "rep-impl": {type: function, status: todo}
+    rep+impl: {type: function, status: done}
+    "rep-impl": {type: function, status: done}
     spec: {type: macro, status: done}
     "spec-impl": {type: function, status: done}
     "spec?": {type: function, status: done}

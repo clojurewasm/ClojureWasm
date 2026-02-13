@@ -816,8 +816,8 @@ pub const Reader = struct {
                 // Namespace-qualify unqualified symbols (Clojure syntax-quote behavior)
                 if (sym.ns == null) {
                     if (self.current_ns) |ns| {
-                        // Special forms stay unqualified
-                        if (!isSpecialFormName(sym.name)) {
+                        // Special forms and anonymous fn params stay unqualified
+                        if (!isSpecialFormName(sym.name) and !isAnonFnParam(sym.name)) {
                             // Resolve in current namespace
                             if (ns.resolve(sym.name)) |v| {
                                 // Qualify with the var's defining namespace
@@ -905,6 +905,17 @@ pub const Reader = struct {
     /// Matches the analyzer's special_forms table + try-related forms.
     fn isSpecialFormName(name: []const u8) bool {
         return sq_special_forms.has(name);
+    }
+
+    /// Check if name is an anonymous function parameter (%, %1, %2, ..., %&)
+    fn isAnonFnParam(name: []const u8) bool {
+        if (name.len == 0 or name[0] != '%') return false;
+        if (name.len == 1) return true; // %
+        if (name[1] == '&' and name.len == 2) return true; // %&
+        for (name[1..]) |c| {
+            if (c < '0' or c > '9') return false;
+        }
+        return true; // %1, %2, etc.
     }
 
     const sq_special_forms = std.StaticStringMap(void).initComptime(.{

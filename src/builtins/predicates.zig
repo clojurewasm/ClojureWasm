@@ -572,7 +572,7 @@ pub fn computeHash(v: Value) i64 {
         .nil => 0,
         .boolean => if (v.asBoolean()) @as(i64, 1231) else @as(i64, 1237),
         .integer => v.asInteger(),
-        .float => @as(i64, @intFromFloat(v.asFloat() * 1000003)),
+        .float => @as(i64, @bitCast(@as(u64, @bitCast(v.asFloat())))),
         .big_int => blk: {
             const bi = v.asBigInt();
             // If fits in i64, use same hash as integer for consistency
@@ -715,6 +715,7 @@ pub fn identicalPred(_: Allocator, args: []const Value) anyerror!Value {
         .map => a.asMap() == b.asMap(),
         .set => a.asSet() == b.asSet(),
         .fn_val => a.asFn() == b.asFn(),
+        .builtin_fn => a.asBuiltinFn() == b.asBuiltinFn(),
         .atom => a.asAtom() == b.asAtom(),
         else => false,
     };

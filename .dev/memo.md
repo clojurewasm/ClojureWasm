@@ -22,12 +22,13 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70: spec.alpha — sub-task 70.3 (Regex Ops + Advanced).
+Phase 70: spec.alpha — sub-task 70.4 (gen stubs + upstream tests).
 Full plan: `.dev/next-phases-plan.md`
 
-70.2 done: s/and, s/or, s/keys, s/tuple, s/nilable, s/every, s/coll-of,
-s/map-of, s/merge, s/every-kv + impl functions. Seq-based destructuring (D99).
-sort-by lazy-seq fix.
+70.3 done: Full regex engine (cat, alt, *, +, ?, &), fspec, fdef, multi-spec,
+assert, int-in, double-in, inst-in. Fixed: case→cond (CW case int-only),
+float hash overflow, identical? for builtins, mapcat multi-arity,
+syntax-quote anon fn params, ^:skip-wiki metadata.
 
 ## Task Queue
 
@@ -56,9 +57,10 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.2: Core Specs + Macros.
-s/and, s/or, s/keys, s/tuple, s/nilable, s/every, s/coll-of, s/map-of, s/merge.
-Seq-based sequential destructuring with & (D99). sort-by lazy-seq support.
+Phase 70.3: Regex Ops + Advanced.
+Full regex engine (deriv-based), fspec, fdef, multi-spec, assert, int-in.
+6 bug fixes: case→cond, float hash, identical? builtin, mapcat multi-arity,
+syntax-quote % params, ^:skip-wiki.
 
 ## Known Issues
 
