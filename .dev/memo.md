@@ -22,7 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 65.4: Implement source-fn (:file metadata on vars).
+Phase 65.5: Implement *print-dup* (basic).
 
 ## Task Queue
 
@@ -44,7 +44,7 @@ Phase 65 — Edge Case Cleanup (pre-deps.edn):
 - [x] 65.1: Restore apropos + dir-fn tests (already working)
 - [x] 65.2: Reader duplicate key detection
 - [x] 65.3: Fix (fn "a" []) analyzer
-- [ ] 65.4: Implement source-fn (:file metadata)
+- [x] 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
 - [ ] 65.5: Implement *print-dup* (basic)
 
 ## Previous Task

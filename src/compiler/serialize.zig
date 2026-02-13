@@ -45,6 +45,7 @@
 //!   0x0F volatile_ref (Value)
 //!   0x10 protocol (u32 name + u32 sig_count + [sig_count](u32 name + u8 arity) + u32 pair_count + [pair_count*2]Value)
 //!   0x11 protocol_fn (u32 method_name + u32 protocol_ns + u32 protocol_var_name)
+//!   0x12 regex (u32 source string table index)
 
 const std = @import("std");
 const chunk_mod = @import("chunk.zig");
@@ -88,6 +89,7 @@ pub const ValueTag = enum(u8) {
     volatile_ref = 0x0F,
     protocol = 0x10,
     protocol_fn = 0x11,
+    regex = 0x12,
 };
 
 // --- Byte encoding helpers (little-endian) ---
@@ -340,6 +342,12 @@ pub const Serializer = struct {
                 try self.writeBytes(allocator, &encodeU32(ns_idx));
                 const var_name_idx = try self.internString(allocator, pref.var_name);
                 try self.writeBytes(allocator, &encodeU32(var_name_idx));
+            },
+            .regex => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.regex));
+                const r = val.asRegex();
+                const src_idx = try self.internString(allocator, r.source);
+                try self.writeBytes(allocator, &encodeU32(src_idx));
             },
             else => {
                 // Unsupported type — serialize as nil
@@ -1020,6 +1028,22 @@ pub const Deserializer = struct {
                     .var_name = self.strings[var_name_idx],
                 });
                 break :blk Value.initProtocolFn(pf);
+            },
+            .regex => blk: {
+                const src_idx = try self.readU32();
+                if (src_idx >= self.strings.len) return error.InvalidStringIndex;
+                const source = self.strings[src_idx];
+                const regex_mod2 = @import("../regex/regex.zig");
+                const matcher_mod = @import("../regex/matcher.zig");
+                const compiled = try allocator.create(regex_mod2.CompiledRegex);
+                compiled.* = matcher_mod.compile(allocator, source) catch return error.InvalidRegex;
+                const pat = try allocator.create(value_mod.Pattern);
+                pat.* = .{
+                    .source = source,
+                    .compiled = @ptrCast(compiled),
+                    .group_count = compiled.group_count,
+                };
+                break :blk Value.initRegex(pat);
             },
         };
     }
