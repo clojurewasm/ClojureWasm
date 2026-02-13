@@ -1266,6 +1266,11 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
         }
     }
 
+    // Cache *print-dup* var for readable override
+    if (core_ns.resolve("*print-dup*")) |pd_var| {
+        value_mod.initPrintDupVar(pd_var);
+    }
+
     // Cache *agent* var for binding in agent action processing
     if (core_ns.resolve("*agent*")) |agent_v| {
         const thread_pool_mod = @import("thread_pool.zig");

@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/printer.clj
 ;; Upstream lines: 195
-;; CLJW markers: 7
+;; CLJW markers: 6
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -87,8 +87,23 @@
                 *print-length* length]
         (is (= val (print-str coll)))))))
 
-;; CLJW: print-dup-expected skipped — *print-dup* is stub, java.math.BigInteger JVM interop
-;; CLJW: print-dup-readable skipped — *print-dup* is stub
+;; CLJW: adapted — removed java.math.BigInteger (JVM interop)
+(deftest print-dup-expected
+  (are [x s] (= s (binding [*print-dup* true] (print-str x)))
+    1 "1"
+    1.0 "1.0"
+    1N "1N"
+    1M "1M"
+    "hi" "\"hi\""))
+
+(deftest print-dup-readable
+  (are [form] (let [x form]
+                (= x (read-string (binding [*print-dup* true] (print-str x)))))
+    1
+    1.0
+    1N
+    1M
+    "hi"))
 
 (def ^{:foo :anything} var-with-meta 42)
 (def ^{:type :anything} var-with-type 666)

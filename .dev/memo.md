@@ -22,7 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 65.5: Implement *print-dup* (basic).
+Phase 65 complete. All 5 edge cases resolved.
 
 ## Task Queue
 
@@ -45,7 +45,7 @@ Phase 65 — Edge Case Cleanup (pre-deps.edn):
 - [x] 65.2: Reader duplicate key detection
 - [x] 65.3: Fix (fn "a" []) analyzer
 - [x] 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
-- [ ] 65.5: Implement *print-dup* (basic)
+- [x] 65.5: Implement *print-dup* (basic support)
 
 ## Previous Task
 

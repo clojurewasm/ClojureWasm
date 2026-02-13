@@ -40,6 +40,7 @@ var print_length_var: ?*const Var = null;
 var print_level_var: ?*const Var = null;
 var print_readably_var: ?*const Var = null;
 var print_meta_var: ?*const Var = null;
+var print_dup_var: ?*const Var = null;
 threadlocal var print_depth: u32 = 0;
 threadlocal var print_allocator: ?Allocator = null;
 threadlocal var print_readably: bool = true;
@@ -50,10 +51,14 @@ pub fn initPrintVars(length_v: *const Var, level_v: *const Var) void {
     print_level_var = level_v;
 }
 
-/// Initialize cached Var pointers for *print-readably* and *print-meta*.
+/// Initialize cached Var pointers for *print-readably*, *print-meta*, *print-dup*.
 pub fn initPrintFlagVars(readably_v: *const Var, meta_v: *const Var) void {
     print_readably_var = readably_v;
     print_meta_var = meta_v;
+}
+
+pub fn initPrintDupVar(dup_v: *const Var) void {
+    print_dup_var = dup_v;
 }
 
 pub fn resetPrintVars() void {
@@ -61,12 +66,15 @@ pub fn resetPrintVars() void {
     print_level_var = null;
     print_readably_var = null;
     print_meta_var = null;
+    print_dup_var = null;
 }
 
 /// Check *print-readably* dynamic var. Returns the current value.
-/// When threadlocal override is active (str/print/println), it takes precedence.
-/// Otherwise, check the dynamic var binding.
+/// When threadlocal override is active (str/print/println), it takes precedence
+/// unless *print-dup* is true (which forces readable output).
 pub fn getPrintReadably() bool {
+    // *print-dup* overrides: when true, always print readably (JVM behavior)
+    if (getPrintDup()) return true;
     // Threadlocal override: str/print/println set this to false explicitly
     if (!print_readably) return false;
     // Check dynamic var (handles `binding` forms)
@@ -75,6 +83,15 @@ pub fn getPrintReadably() bool {
         return val.tag() != .nil and !(val.tag() == .boolean and !val.asBoolean());
     }
     return true;
+}
+
+/// Check *print-dup* dynamic var.
+pub fn getPrintDup() bool {
+    if (print_dup_var) |v| {
+        const val = v.deref();
+        return val.tag() != .nil and !(val.tag() == .boolean and !val.asBoolean());
+    }
+    return false;
 }
 
 /// Check *print-meta* dynamic var. Returns the current value.
