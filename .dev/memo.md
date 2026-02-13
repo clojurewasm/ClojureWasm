@@ -22,9 +22,9 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 62.1: F99 Iterative lazy-seq realization engine.
-Deep nested lazy-seq (map→filter→map→...) の realize が再帰的で stack overflow する。
-D74 は filter chain collapsing で sieve を修正したが、一般ケースは未対応。
+Phase 63.1: F135 :import-wasm ns macro.
+ns 宣言で `:import-wasm` としてロードしたい。
+`(ns my-app.core (:import-wasm ["math.wasm" :as m]))` → `(def m (wasm/load "math.wasm"))` に展開。
 
 ## Task Queue
 
@@ -33,7 +33,7 @@ Phase 61 — Bug Fixes:
 - [x] 61.2: record hash edge case (already works — stale CLJW marker removed)
 
 Phase 62 — Edge Cases:
-- [ ] 62.1: F99 Iterative lazy-seq realization engine
+- [x] 62.1: F99 Iterative lazy-seq realization engine (D96)
 
 Phase 63 — import → wasm mapping:
 - [ ] 63.1: F135 :import-wasm ns macro

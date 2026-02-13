@@ -583,3 +583,24 @@ method map instead of always appending.
 
 **Result**: Startup 23.3ms → 5.3ms (4.4x), memory 226MB → 8.1MB (28x reduction).
 All upstream tests pass, no regression.
+
+## D96: Lazy-seq Realization Depth — VM Frames + Iterative Unwrapping
+
+**Problem**: User-defined lazy-seq thunks (non-Meta path) consumed VM call frames
+proportional to nesting depth. VM FRAMES_MAX was 256, limiting thunk-based lazy-seq
+chains to ~200 levels.
+
+**Decision**:
+1. Increase VM FRAMES_MAX from 256 to 1024 (4x headroom)
+2. Add iterative unwrapping in `LazySeq.realize`: when a thunk returns another
+   lazy-seq, loop instead of recursing (matches JVM LazySeq.seq() pattern)
+3. Keep TreeWalk MAX_CALL_DEPTH at 512 (Zig stack limited in Debug builds)
+
+**Depth limits after D96**:
+- Built-in map/filter/take (Meta path): effectively unlimited (Zig stack only)
+- User-defined lazy-seq via VM: ~1000 levels
+- User-defined lazy-seq via TreeWalk: ~500 levels
+- D74 filter chain collapsing: unlimited nested filters (sieve)
+
+**Trade-off**: VM struct grows ~78KB (frames array). No measurable impact on
+binary size, startup, RSS, or benchmarks.

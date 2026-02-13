@@ -2920,7 +2920,7 @@ test "evalString - call depth limit prevents crash" {
     // Moderate depth should succeed (within MAX_CALL_DEPTH)
     try expectEvalInt(alloc, &env, "(deep 100)", 100);
 
-    // Exceeding MAX_CALL_DEPTH (512) should return error, not crash
+    // Exceeding MAX_CALL_DEPTH (512, TreeWalk) should return error, not crash
     const result = evalString(alloc, &env, "(deep 520)");
     try testing.expectError(error.EvalError, result);
 }

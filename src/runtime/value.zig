@@ -547,6 +547,10 @@ pub const LazySeq = struct {
 
     /// Realize this lazy seq by calling the thunk via bootstrap.callFnVal,
     /// or by computing from structural metadata.
+    ///
+    /// Iterative unwrapping (D94): if the thunk returns another lazy-seq,
+    /// continue realizing in a loop instead of recursing. This matches
+    /// JVM LazySeq.seq()'s `while (ls instanceof LazySeq)` pattern.
     pub fn realize(self: *LazySeq, allocator: std.mem.Allocator) anyerror!Value {
         if (self.realized) |r| return r;
 
@@ -560,7 +564,30 @@ pub const LazySeq = struct {
         // Clear thunk BEFORE calling it to prevent re-entrancy issues.
         // JVM Clojure's LazySeq.sval() also clears fn before invoking.
         self.thunk = null;
-        const result = try bootstrap.callFnVal(allocator, thunk, &.{});
+        var result = try bootstrap.callFnVal(allocator, thunk, &.{});
+
+        // Iterative unwrapping: if result is another lazy-seq, realize it
+        // in a loop rather than recursing through the call stack.
+        while (result.tag() == .lazy_seq) {
+            const inner = result.asLazySeq();
+            if (inner.realized) |r| {
+                result = r;
+                continue;
+            }
+            if (inner.meta) |m| {
+                const meta_result = try realizeMeta(allocator, m);
+                inner.realized = meta_result;
+                result = meta_result;
+                continue;
+            }
+            const inner_thunk = inner.thunk orelse {
+                result = Value.nil_val;
+                break;
+            };
+            inner.thunk = null;
+            result = try bootstrap.callFnVal(allocator, inner_thunk, &.{});
+        }
+
         self.realized = result;
         return result;
     }
