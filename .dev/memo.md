@@ -4,13 +4,13 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 69 COMPLETE** (deps.edn design cleanup done)
-- Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
+- **All phases through 70 COMPLETE** (spec.alpha fully implemented)
+- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 50 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
+- 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
-- Binary: 3.90MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 3.80MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 
 ## Strategic Direction
 
@@ -22,23 +22,16 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70: spec.alpha — sub-task 70.4 (gen stubs + upstream tests).
+Phase 71: Library Compatibility Testing — sub-task 71.1 (medley).
 Full plan: `.dev/next-phases-plan.md`
 
-70.3 done: Full regex engine (cat, alt, *, +, ?, &), fspec, fdef, multi-spec,
-assert, int-in, double-in, inst-in. Fixed: case→cond (CW case int-only),
-float hash overflow, identical? for builtins, mapcat multi-arity,
-syntax-quote anon fn params, ^:skip-wiki metadata.
+70.4 done: exercise/exercise-fn stubs, syntax-quote resolution fixes for
+excluded symbols (and/or/cat/keys/merge/+/*/?), macro arg limit 256→512,
+upstream spec.clj test ported (10 tests, 110 assertions, both backends).
 
 ## Task Queue
 
 ```
-Phase 70: spec.alpha (87 vars, ~2000 LOC upstream)
-  70.1: Infrastructure + Protocols (UUID, Spec/Specize, registry)
-  70.2: Core Specs + Macros (s/def, s/valid?, s/conform, s/keys, s/and, s/or, etc.)
-  70.3: Regex Ops + Advanced (s/cat, s/alt, s/*, fspec, multi-spec, assert)
-  70.4: gen stubs + spec.gen.alpha shell + upstream tests
-
 Phase 71: Library Compatibility Testing (5 libraries)
   71.1: medley
   71.2: hiccup
@@ -57,10 +50,10 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.3: Regex Ops + Advanced.
-Full regex engine (deriv-based), fspec, fdef, multi-spec, assert, int-in.
-6 bug fixes: case→cond, float hash, identical? builtin, mapcat multi-arity,
-syntax-quote % params, ^:skip-wiki.
+Phase 70.4: gen stubs + upstream tests.
+exercise/exercise-fn added. Fixed syntax-quote resolution bug for excluded symbols
+in spec.alpha macros (CW's read-all-then-eval-all model). Ported upstream spec.clj
+(312 lines → 293 lines, 19 CLJW markers). Macro arg limit increased to 512.
 
 ## Known Issues
 

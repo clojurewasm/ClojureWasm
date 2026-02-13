@@ -592,7 +592,7 @@ pub const Analyzer = struct {
         const root = v.deref();
 
         // Convert arg Forms to Values for the macro function
-        var arg_vals: [256]Value = undefined;
+        var arg_vals: [512]Value = undefined;
         if (arg_forms.len > arg_vals.len) {
             return self.analysisError(.arity_error, "too many macro arguments", form);
         }

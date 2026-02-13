@@ -1022,8 +1022,8 @@ vars:
     every: {type: macro, status: done}
     "every-impl": {type: function, status: done}
     "every-kv": {type: macro, status: done}
-    exercise: {type: function, status: todo}
-    "exercise-fn": {type: function, status: todo}
+    exercise: {type: function, status: done}
+    "exercise-fn": {type: function, status: done}
     explain: {type: function, status: done}
     "explain*": {type: function, status: done}
     "explain-data": {type: function, status: done}
