@@ -22,11 +22,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Awaiting v0.1.0 release (zwasm tag-replace workflow).
+Waiting for zwasm Phase 1-2 to complete. CW work starts at Phase 3.
+Requirements: `~/Documents/MyProducts/ClojureWasm/private/my-tag-replace.md`
 
-## Task Queue
+## v0.1.0 Tag Replace Queue
 
-(empty — Phase 60 complete, pending v0.1.0 release)
+Phase 3: CW dependency + docs (after zwasm v0.1.0 tag exists)
+- [ ] 3.1: Switch build.zig.zon to zwasm v0.1.0 tar.gz, test Mac+Ubuntu
+- [ ] 3.2: Full benchmark + record
+- [ ] 3.3: Code comments + YAML cleanup (-alpha refs)
+- [ ] 3.4: Public docs overhaul
+- [ ] 3.5: Commit, push, CI green
+
+Phase 4: CW tag operations (do in one session)
+- [ ] 4.1: Delete old -alpha tags + releases
+- [ ] 4.2: Create CW v0.1.0 tag, push
 
 ## Previous Task
 
