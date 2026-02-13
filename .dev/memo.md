@@ -22,14 +22,14 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 66: deps.edn Foundation. Next task: 66.2 (alias resolution engine).
+Phase 66: deps.edn Foundation. Next task: 66.3 (-A/-M/-X/-P CLI flag parsing).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
 
 Phase 66 — deps.edn Foundation:
 - [x] 66.1: deps.edn parser (EDN reader + schema validation)
-- [ ] 66.2: Alias resolution engine
+- [x] 66.2: Alias resolution engine
 - [ ] 66.3: -A/-M/-X/-P CLI flag parsing
 - [ ] 66.4: -X exec mode (fn invoke + arg parsing)
 - [ ] 66.5: -Spath/-Sdeps/-Srepro/-Sforce

@@ -431,6 +431,123 @@ pub fn inferGitUrl(allocator: Allocator, lib_name: []const u8) ?[]const u8 {
 }
 
 // =============================================================================
+// Alias Resolution
+// =============================================================================
+
+/// Resolved configuration after applying aliases.
+pub const ResolvedConfig = struct {
+    paths: []const []const u8 = &.{},
+    deps: []const Dep = &.{},
+    main_ns: ?[]const u8 = null,
+    test_paths: []const []const u8 = &.{},
+    wasm_deps: []const WasmDep = &.{},
+    // -M mode
+    main_opts: []const []const u8 = &.{},
+    // -X mode
+    exec_fn: ?[]const u8 = null,
+    exec_args: []const ExecArg = &.{},
+    // Warnings
+    warnings: []const []const u8 = &.{},
+};
+
+/// Resolve aliases and produce a merged configuration.
+/// alias_names: colon-separated alias names (e.g. "dev:test") or individual names.
+pub fn resolveAliases(allocator: Allocator, config: DepsConfig, alias_names: []const []const u8) ResolvedConfig {
+    var resolved = ResolvedConfig{
+        .paths = config.paths,
+        .deps = config.deps,
+        .main_ns = config.main_ns,
+        .test_paths = config.test_paths,
+        .wasm_deps = config.wasm_deps,
+        .warnings = config.warnings,
+    };
+
+    if (alias_names.len == 0) return resolved;
+
+    // Collect extra paths and deps from all aliases
+    var all_paths = std.ArrayList([]const u8).empty;
+    var all_deps = std.ArrayList(Dep).empty;
+
+    // Start with base paths/deps
+    for (config.paths) |p| all_paths.append(allocator, p) catch {};
+    for (config.deps) |d| all_deps.append(allocator, d) catch {};
+
+    for (alias_names) |name| {
+        const alias_entry = findAlias(config.aliases, name) orelse continue;
+        const alias = alias_entry.alias;
+
+        // Merge extra-paths
+        for (alias.extra_paths) |p| all_paths.append(allocator, p) catch {};
+
+        // Merge extra-deps
+        for (alias.extra_deps) |d| all_deps.append(allocator, d) catch {};
+
+        // -M mode: last alias's main-opts wins
+        if (alias.main_opts.len > 0) {
+            resolved.main_opts = alias.main_opts;
+        }
+
+        // -X mode: last alias's exec-fn/exec-args wins
+        if (alias.exec_fn) |fn_name| {
+            resolved.exec_fn = fn_name;
+        }
+        if (alias.exec_args.len > 0) {
+            resolved.exec_args = alias.exec_args;
+        }
+
+        // Override main_ns if alias has ns-default
+        if (alias.ns_default) |ns| {
+            resolved.main_ns = ns;
+        }
+    }
+
+    resolved.paths = all_paths.toOwnedSlice(allocator) catch config.paths;
+    resolved.deps = all_deps.toOwnedSlice(allocator) catch config.deps;
+
+    return resolved;
+}
+
+/// Find an alias by name in the alias entries list.
+fn findAlias(aliases: []const AliasEntry, name: []const u8) ?AliasEntry {
+    for (aliases) |entry| {
+        if (std.mem.eql(u8, entry.name, name)) return entry;
+    }
+    return null;
+}
+
+/// Parse a colon-separated alias string into individual names.
+/// ":dev:test" → ["dev", "test"], "dev" → ["dev"]
+pub fn parseAliasString(allocator: Allocator, alias_str: []const u8) []const []const u8 {
+    // Strip leading colon if present
+    const input = if (alias_str.len > 0 and alias_str[0] == ':') alias_str[1..] else alias_str;
+    if (input.len == 0) return &.{};
+
+    // Count colons to determine number of aliases
+    var count: usize = 1;
+    for (input) |c| {
+        if (c == ':') count += 1;
+    }
+
+    const names = allocator.alloc([]const u8, count) catch return &.{};
+    var n: usize = 0;
+    var start: usize = 0;
+    for (input, 0..) |c, idx| {
+        if (c == ':') {
+            if (idx > start) {
+                names[n] = input[start..idx];
+                n += 1;
+            }
+            start = idx + 1;
+        }
+    }
+    if (start < input.len) {
+        names[n] = input[start..];
+        n += 1;
+    }
+    return names[0..n];
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -641,6 +758,123 @@ test "parseDepsEdn: full realistic example" {
     try std.testing.expectEqualStrings("dev", dev.name);
     try std.testing.expectEqual(@as(usize, 1), dev.alias.extra_deps.len);
     try std.testing.expectEqualStrings("my/dev-tools", dev.alias.extra_deps[0].name);
+}
+
+test "parseAliasString: colon-separated" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const names = parseAliasString(arena.allocator(), ":dev:test");
+    try std.testing.expectEqual(@as(usize, 2), names.len);
+    try std.testing.expectEqualStrings("dev", names[0]);
+    try std.testing.expectEqualStrings("test", names[1]);
+}
+
+test "parseAliasString: single" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const names = parseAliasString(arena.allocator(), ":dev");
+    try std.testing.expectEqual(@as(usize, 1), names.len);
+    try std.testing.expectEqualStrings("dev", names[0]);
+}
+
+test "parseAliasString: empty" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), parseAliasString(arena.allocator(), "").len);
+    try std.testing.expectEqual(@as(usize, 0), parseAliasString(arena.allocator(), ":").len);
+}
+
+test "resolveAliases: extra-paths and extra-deps merged" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var state = testParseDepsEdn(
+        \\{:paths ["src"]
+        \\ :deps {lib-a/lib-a {:local/root "../lib-a"}}
+        \\ :aliases {:dev {:extra-paths ["dev" "resources"]
+        \\                 :extra-deps {lib-b/lib-b {:local/root "../lib-b"}}}
+        \\           :test {:extra-paths ["test"]}}}
+    );
+    defer state.arena.deinit();
+    const config = state.config;
+
+    const alias_names = parseAliasString(alloc, ":dev:test");
+    const resolved = resolveAliases(alloc, config, alias_names);
+
+    // Base "src" + dev "dev","resources" + test "test" = 4 paths
+    try std.testing.expectEqual(@as(usize, 4), resolved.paths.len);
+    try std.testing.expectEqualStrings("src", resolved.paths[0]);
+    try std.testing.expectEqualStrings("dev", resolved.paths[1]);
+    try std.testing.expectEqualStrings("resources", resolved.paths[2]);
+    try std.testing.expectEqualStrings("test", resolved.paths[3]);
+
+    // Base lib-a + dev lib-b = 2 deps
+    try std.testing.expectEqual(@as(usize, 2), resolved.deps.len);
+}
+
+test "resolveAliases: main-opts from alias" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var state = testParseDepsEdn(
+        \\{:paths ["src"]
+        \\ :aliases {:dev {:main-opts ["-m" "my-app.dev"]}}}
+    );
+    defer state.arena.deinit();
+
+    const alias_names = parseAliasString(alloc, ":dev");
+    const resolved = resolveAliases(alloc, state.config, alias_names);
+
+    try std.testing.expectEqual(@as(usize, 2), resolved.main_opts.len);
+    try std.testing.expectEqualStrings("-m", resolved.main_opts[0]);
+    try std.testing.expectEqualStrings("my-app.dev", resolved.main_opts[1]);
+}
+
+test "resolveAliases: exec-fn from alias" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var state = testParseDepsEdn(
+        \\{:aliases {:build {:exec-fn my-app.build/release
+        \\                   :exec-args {:target "native"}}}}
+    );
+    defer state.arena.deinit();
+
+    const alias_names = parseAliasString(alloc, ":build");
+    const resolved = resolveAliases(alloc, state.config, alias_names);
+
+    try std.testing.expectEqualStrings("my-app.build/release", resolved.exec_fn.?);
+    try std.testing.expectEqual(@as(usize, 1), resolved.exec_args.len);
+    try std.testing.expectEqualStrings("target", resolved.exec_args[0].key);
+}
+
+test "resolveAliases: no aliases" {
+    var state = testParseDepsEdn(
+        \\{:paths ["src"]}
+    );
+    defer state.arena.deinit();
+
+    const resolved = resolveAliases(std.testing.allocator, state.config, &.{});
+    try std.testing.expectEqual(@as(usize, 1), resolved.paths.len);
+    try std.testing.expectEqualStrings("src", resolved.paths[0]);
+}
+
+test "resolveAliases: unknown alias ignored" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var state = testParseDepsEdn(
+        \\{:paths ["src"]}
+    );
+    defer state.arena.deinit();
+
+    const alias_names = parseAliasString(alloc, ":nonexistent");
+    const resolved = resolveAliases(alloc, state.config, alias_names);
+    try std.testing.expectEqual(@as(usize, 1), resolved.paths.len);
 }
 
 test "checkDepForMaven" {
