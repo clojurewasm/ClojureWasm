@@ -22,7 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 67: Git Dependencies — COMPLETE. Next: Phase 68 (Integration).
+Phase 68: Integration. Next task: 68.5 (Leiningen project.clj detection).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
@@ -34,12 +34,17 @@ Phase 66 — deps.edn Foundation (COMPLETE):
 - [x] 66.4: -X exec mode (fn invoke + arg parsing) — merged into 66.3
 - [x] 66.5: -Spath/-Sdeps/-Srepro/-Sforce — merged into 66.3
 
-Phase 67 — Git Dependencies:
-- [x] 67.1: Create test repo — deferred (use local git repos for testing)
-- [x] 67.2: Enhanced resolveGitDep (:git/tag validation, :deps/root, -Sforce)
-- [x] 67.3: io.github/io.gitlab URL inference — already in deps.zig + main.zig
-- [x] 67.4: E2E test with local git repo (9 tests)
-- [x] 67.5: Transitive deps from git repos (read dep's deps.edn)
+Phase 67 — Git Dependencies (COMPLETE):
+- [x] 67.2: Enhanced resolveGitDep (:git/tag, :deps/root, -Sforce)
+- [x] 67.4: E2E tests (11 scenarios)
+- [x] 67.5: Transitive dep resolution from deps.edn
+
+Phase 68 — Integration:
+- [x] 68.1: Transitive dep resolution — done in 67.5
+- [x] 68.4: cljw.edn fallback + deprecation warning — done in 66.3
+- [x] 68.7: E2E tests — done in 67.4 (11 tests)
+- [ ] 68.5: Leiningen project.clj detection
+- [x] 68.6: cljw test + alias integration (13 e2e tests)
 
 ## Previous Task
 

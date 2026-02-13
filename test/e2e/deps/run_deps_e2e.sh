@@ -327,6 +327,37 @@ run_test "transitive git dep (git→local)" \
   "cd $PROJ11 && $CLJW -P && $CLJW src/app/core.clj" \
   "21"
 
+# --- Test 12: cljw test + deps.edn with alias ---
+PROJ12="$TMPDIR_BASE/proj12"
+mkdir -p "$PROJ12/src/mylib"
+mkdir -p "$PROJ12/test/mylib"
+cat > "$PROJ12/deps.edn" << 'EOF'
+{:paths ["src"]
+ :cljw/test-paths ["test"]
+ :aliases {:test {:extra-paths ["test"]}}}
+EOF
+cat > "$PROJ12/src/mylib/core.clj" << 'CLOJ'
+(ns mylib.core)
+(defn add1 [x] (+ x 1))
+CLOJ
+cat > "$PROJ12/test/mylib/core_test.clj" << 'CLOJ'
+(ns mylib.core-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [mylib.core :as c]))
+(deftest add1-test
+  (is (= 2 (c/add1 1)))
+  (is (= 0 (c/add1 -1))))
+(run-tests)
+CLOJ
+run_test "cljw test with deps.edn" \
+  "cd $PROJ12 && $CLJW test" \
+  "0 failed, 0 errors"
+
+# --- Test 13: cljw test -A:test with alias paths ---
+run_test "cljw test -A:test alias" \
+  "cd $PROJ12 && $CLJW test -A:test" \
+  "0 failed, 0 errors"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed (total $((PASS + FAIL)))"
 

@@ -909,28 +909,105 @@ fn markBootstrapLibs() void {
     }
 }
 
-/// Handle `cljw test [file.clj ...]` subcommand.
+/// Handle `cljw test [-A:alias] [file.clj ...]` subcommand.
 /// If specific files are given, loads and runs tests from those files.
 /// Otherwise, searches :test-paths (or "test/") for .clj files and runs all tests.
+/// Supports -A:alias for extra paths/deps via deps.edn aliases.
 fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, test_args: []const [:0]const u8) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+
+    // Parse test subcommand flags: -A:alias, --tree-walk, and file paths
+    var test_alias_str: ?[]const u8 = null;
+    var test_file_args: [64][]const u8 = undefined;
+    var test_file_count: usize = 0;
+    for (test_args) |arg| {
+        if (std.mem.startsWith(u8, arg, "-A")) {
+            test_alias_str = arg[2..]; // ":dev" or ":dev:test"
+        } else {
+            if (test_file_count < test_file_args.len) {
+                test_file_args[test_file_count] = arg;
+                test_file_count += 1;
+            }
+        }
+    }
 
     // Bootstrap
     var env = Env.init(infra_alloc);
     defer env.deinit();
     bootstrapFromCache(gc_alloc, &env, gc);
 
-    // Load cljw.edn config
+    // Load config: deps.edn (preferred) or cljw.edn
     var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
     defer config_arena.deinit();
     const config_alloc = config_arena.allocator();
     var test_config_dir: ?[]const u8 = null;
-    const config = if (findConfigFile(config_alloc, null)) |cf| blk: {
+
+    // Try deps.edn first
+    const deps_config_opt: ?deps_mod.DepsConfig = if (findDepsEdnFile(config_alloc, null)) |cf| blk: {
         test_config_dir = cf.dir;
-        break :blk parseConfig(config_alloc, cf.content);
-    } else ProjectConfig{};
-    applyConfig(config, test_config_dir);
+        break :blk deps_mod.parseDepsEdn(config_alloc, cf.content);
+    } else null;
+
+    var test_paths_from_config: []const []const u8 = &.{};
+
+    if (deps_config_opt) |dc| {
+        // Apply deps.edn config with optional alias
+        const alias_names = if (test_alias_str) |as_| deps_mod.parseAliasString(config_alloc, as_) else &[_][]const u8{};
+        const resolved = deps_mod.resolveAliases(config_alloc, dc, alias_names);
+
+        // Print warnings
+        for (resolved.warnings) |warning| {
+            _ = stderr.write(warning) catch {};
+            _ = stderr.write("\n") catch {};
+        }
+
+        // Apply paths
+        for (resolved.paths) |path| {
+            if (test_config_dir) |dir| {
+                var buf: [4096]u8 = undefined;
+                const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, path }) catch continue;
+                ns_ops.addLoadPath(full) catch {};
+            } else {
+                ns_ops.addLoadPath(path) catch {};
+            }
+        }
+
+        // Apply deps
+        for (resolved.deps) |dep| {
+            if (dep.local_root) |root| {
+                resolveLocalDep(root, test_config_dir, true);
+            } else if (dep.git_url != null and dep.git_sha != null) {
+                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true);
+            } else {
+                if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
+                    if (dep.git_sha) |sha| {
+                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, false, true);
+                    }
+                }
+            }
+        }
+
+        // Apply wasm deps
+        for (resolved.wasm_deps) |wd| {
+            var wasm_buf: [4096]u8 = undefined;
+            const wasm_resolved = if (test_config_dir) |dir|
+                std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+            else
+                wd.path;
+            wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+        }
+
+        test_paths_from_config = resolved.test_paths;
+    } else {
+        // Fallback to cljw.edn
+        const config = if (findConfigFile(config_alloc, null)) |cf| blk: {
+            test_config_dir = cf.dir;
+            break :blk parseConfig(config_alloc, cf.content);
+        } else ProjectConfig{};
+        applyConfig(config, test_config_dir);
+        test_paths_from_config = config.test_paths;
+    }
 
     // Arena for test file paths and source buffers (survives until function exit).
     var file_arena = std.heap.ArenaAllocator.init(infra_alloc);
@@ -941,14 +1018,14 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
     var test_files: std.ArrayList([]const u8) = .empty;
     defer test_files.deinit(infra_alloc);
 
-    if (test_args.len > 0) {
+    if (test_file_count > 0) {
         // Specific files provided
-        for (test_args) |arg| {
+        for (test_file_args[0..test_file_count]) |arg| {
             test_files.append(infra_alloc, arg) catch {};
         }
     } else {
         // Search test directories for .clj files
-        const search_paths = if (config.test_paths.len > 0) config.test_paths else &[_][]const u8{"test"};
+        const search_paths = if (test_paths_from_config.len > 0) test_paths_from_config else &[_][]const u8{"test"};
         for (search_paths) |test_dir| {
             collectTestFiles(file_alloc, infra_alloc, test_dir, &test_files);
         }
