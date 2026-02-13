@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/repl.clj
 ;; Upstream lines: 62
-;; CLJW markers: 5
+;; CLJW markers: 3
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -27,9 +27,23 @@
 ;; CLJW: test-source-read-eval-* skipped — depends on source
 
 (deftest test-dir
-  ;; CLJW: thrown? test for non-existent-ns removed (vm error handling gap)
+  (is (thrown? Exception (dir-fn 'non-existent-ns)))
   (is (some #{'union} (dir-fn 'clojure.set))))
 
-;; CLJW: apropos tests removed — segfault in namespace iteration (pre-existing GC bug)
+(deftest test-apropos
+  (testing "with a regular expression"
+    (is (= '[clojure.core/defmacro] (apropos #"^defmacro$")))
+    (is (some #{'clojure.core/defmacro} (apropos #"def.acr.")))
+    (is (= [] (apropos #"nothing-has-this-name"))))
+
+  (testing "with a string"
+    (is (some #{'clojure.core/defmacro} (apropos "defmacro")))
+    (is (some #{'clojure.core/defmacro} (apropos "efmac")))
+    (is (= [] (apropos "nothing-has-this-name"))))
+
+  (testing "with a symbol"
+    (is (some #{'clojure.core/defmacro} (apropos 'defmacro)))
+    (is (some #{'clojure.core/defmacro} (apropos 'efmac)))
+    (is (= [] (apropos 'nothing-has-this-name)))))
 
 (run-tests)
