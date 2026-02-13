@@ -117,6 +117,11 @@ pub fn getLastError() ?Info {
     return info;
 }
 
+/// Peek at the last error without clearing it.
+pub fn peekLastError() ?Info {
+    return last_error;
+}
+
 /// Cache source file name for Node source tracking.
 pub fn setSourceFile(file: ?[]const u8) void {
     source_file_cache = file;

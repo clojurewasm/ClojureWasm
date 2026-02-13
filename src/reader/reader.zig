@@ -24,6 +24,7 @@ const FormData = form_mod.FormData;
 const SymbolRef = form_mod.SymbolRef;
 const TaggedLiteral = form_mod.TaggedLiteral;
 const err = @import("../runtime/error.zig");
+const Namespace = @import("../runtime/namespace.zig").Namespace;
 
 pub const ReadError = err.Error;
 
@@ -40,6 +41,9 @@ pub const Reader = struct {
     peeked: ?Token = null,
     depth: u32 = 0,
     limits: Limits = .{},
+    /// Current namespace for syntax-quote symbol resolution.
+    /// When set, syntax-quote qualifies symbols with their defining namespace.
+    current_ns: ?*const Namespace = null,
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8) Reader {
         return .{
@@ -809,6 +813,29 @@ pub const Reader = struct {
                     };
                     return self.makeQuote(Form{ .data = .{ .symbol = .{ .ns = null, .name = resolved } }, .line = form.line, .column = form.column });
                 }
+                // Namespace-qualify unqualified symbols (Clojure syntax-quote behavior)
+                if (sym.ns == null) {
+                    if (self.current_ns) |ns| {
+                        // Special forms stay unqualified
+                        if (!isSpecialFormName(sym.name)) {
+                            // Resolve in current namespace
+                            if (ns.resolve(sym.name)) |v| {
+                                // Qualify with the var's defining namespace
+                                return self.makeQuote(Form{
+                                    .data = .{ .symbol = .{ .ns = v.ns_name, .name = v.sym.name } },
+                                    .line = form.line,
+                                    .column = form.column,
+                                });
+                            }
+                            // Not resolved — qualify with current namespace name
+                            return self.makeQuote(Form{
+                                .data = .{ .symbol = .{ .ns = ns.name, .name = sym.name } },
+                                .line = form.line,
+                                .column = form.column,
+                            });
+                        }
+                    }
+                }
                 return self.makeQuote(form);
             },
             .list => |items| {
@@ -861,6 +888,50 @@ pub const Reader = struct {
             .set => self.makeApplyCall("hash-set", seq_concat),
         };
     }
+
+    /// Special form names that stay unqualified in syntax-quote.
+    /// Matches the analyzer's special_forms table + try-related forms.
+    fn isSpecialFormName(name: []const u8) bool {
+        return sq_special_forms.has(name);
+    }
+
+    const sq_special_forms = std.StaticStringMap(void).initComptime(.{
+        .{ "if", {} },
+        .{ "do", {} },
+        .{ "let", {} },
+        .{ "let*", {} },
+        .{ "letfn*", {} },
+        .{ "fn", {} },
+        .{ "fn*", {} },
+        .{ "def", {} },
+        .{ "quote", {} },
+        .{ "defmacro", {} },
+        .{ "loop", {} },
+        .{ "loop*", {} },
+        .{ "recur", {} },
+        .{ "throw", {} },
+        .{ "try", {} },
+        .{ "catch", {} },
+        .{ "finally", {} },
+        .{ "for", {} },
+        .{ "defprotocol", {} },
+        .{ "extend-type", {} },
+        .{ "reify", {} },
+        .{ "reify*", {} },
+        .{ "defrecord", {} },
+        .{ "deftype*", {} },
+        .{ "defmulti", {} },
+        .{ "defmethod", {} },
+        .{ "lazy-seq", {} },
+        .{ "var", {} },
+        .{ "set!", {} },
+        .{ "case*", {} },
+        .{ "instance?", {} },
+        .{ "new", {} },
+        .{ "import*", {} },
+        .{ "monitor-enter", {} },
+        .{ "monitor-exit", {} },
+    });
 
     fn isUnquote(items: []const Form) bool {
         if (items.len == 2) {

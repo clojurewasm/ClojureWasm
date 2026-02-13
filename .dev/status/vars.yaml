@@ -988,17 +988,17 @@ vars:
   clojure_spec_alpha:
     "&": {type: macro, status: todo}
     "*": {type: macro, status: todo}
-    "*coll-check-limit*": {type: dynamic-var, status: todo}
-    "*coll-error-limit*": {type: dynamic-var, status: todo}
+    "*coll-check-limit*": {type: dynamic-var, status: done}
+    "*coll-error-limit*": {type: dynamic-var, status: done}
     "*compile-asserts*": {type: dynamic-var, status: todo}
-    "*explain-out*": {type: function, status: todo}
-    "*fspec-iterations*": {type: dynamic-var, status: todo}
-    "*recursion-limit*": {type: dynamic-var, status: todo}
+    "*explain-out*": {type: function, status: done}
+    "*fspec-iterations*": {type: dynamic-var, status: done}
+    "*recursion-limit*": {type: dynamic-var, status: done}
     "+": {type: macro, status: todo}
     "?": {type: macro, status: todo}
-    Spec: {type: var, status: todo}
-    Specize: {type: var, status: todo}
-    abbrev: {type: function, status: todo}
+    Spec: {type: var, status: done}
+    Specize: {type: var, status: done}
+    abbrev: {type: function, status: done}
     alt: {type: macro, status: todo}
     "alt-impl": {type: function, status: todo}
     "amp-impl": {type: function, status: todo}
@@ -1011,38 +1011,38 @@ vars:
     "check-asserts": {type: function, status: todo}
     "check-asserts?": {type: function, status: todo}
     "coll-of": {type: macro, status: todo}
-    conform: {type: function, status: todo}
-    "conform*": {type: function, status: todo}
-    conformer: {type: macro, status: todo}
-    def: {type: macro, status: todo}
-    "def-impl": {type: function, status: todo}
-    describe: {type: function, status: todo}
-    "describe*": {type: function, status: todo}
+    conform: {type: function, status: done}
+    "conform*": {type: function, status: done}
+    conformer: {type: macro, status: done}
+    def: {type: macro, status: done}
+    "def-impl": {type: function, status: done}
+    describe: {type: function, status: done}
+    "describe*": {type: function, status: done}
     "double-in": {type: macro, status: todo}
     every: {type: macro, status: todo}
     "every-impl": {type: function, status: todo}
     "every-kv": {type: macro, status: todo}
     exercise: {type: function, status: todo}
     "exercise-fn": {type: function, status: todo}
-    explain: {type: function, status: todo}
-    "explain*": {type: function, status: todo}
-    "explain-data": {type: function, status: todo}
-    "explain-data*": {type: function, status: todo}
-    "explain-out": {type: function, status: todo}
-    "explain-printer": {type: function, status: todo}
-    "explain-str": {type: function, status: todo}
+    explain: {type: function, status: done}
+    "explain*": {type: function, status: done}
+    "explain-data": {type: function, status: done}
+    "explain-data*": {type: function, status: done}
+    "explain-out": {type: function, status: done}
+    "explain-printer": {type: function, status: done}
+    "explain-str": {type: function, status: done}
     fdef: {type: macro, status: todo}
-    form: {type: function, status: todo}
+    form: {type: function, status: done}
     fspec: {type: macro, status: todo}
     "fspec-impl": {type: function, status: todo}
-    gen: {type: function, status: todo}
-    "gen*": {type: function, status: todo}
-    "get-spec": {type: function, status: todo}
+    gen: {type: function, status: done}
+    "gen*": {type: function, status: done}
+    "get-spec": {type: function, status: done}
     "inst-in": {type: macro, status: todo}
     "inst-in-range?": {type: function, status: todo}
     "int-in": {type: macro, status: todo}
     "int-in-range?": {type: function, status: todo}
-    "invalid?": {type: function, status: todo}
+    "invalid?": {type: function, status: done}
     keys: {type: macro, status: todo}
     "keys*": {type: macro, status: todo}
     "map-of": {type: macro, status: todo}
@@ -1054,80 +1054,80 @@ vars:
     "multi-spec-impl": {type: function, status: todo}
     nilable: {type: macro, status: todo}
     "nilable-impl": {type: function, status: todo}
-    nonconforming: {type: function, status: todo}
+    nonconforming: {type: function, status: done}
     or: {type: macro, status: todo}
     "or-spec-impl": {type: function, status: todo}
-    "regex-spec-impl": {type: function, status: todo}
-    "regex?": {type: function, status: todo}
-    registry: {type: function, status: todo}
+    "regex-spec-impl": {type: function, status: done, note: "stub — full regex Phase 70.3"}
+    "regex?": {type: function, status: done}
+    registry: {type: function, status: done}
     rep+impl: {type: function, status: todo}
     "rep-impl": {type: function, status: todo}
-    spec: {type: macro, status: todo}
-    "spec-impl": {type: function, status: todo}
-    "spec?": {type: function, status: todo}
-    "specize*": {type: function, status: todo}
+    spec: {type: macro, status: done}
+    "spec-impl": {type: function, status: done}
+    "spec?": {type: function, status: done}
+    "specize*": {type: function, status: done}
     tuple: {type: macro, status: todo}
     "tuple-impl": {type: function, status: todo}
-    unform: {type: function, status: todo}
-    "unform*": {type: function, status: todo}
-    "valid?": {type: function, status: todo}
-    "with-gen": {type: function, status: todo}
-    "with-gen*": {type: function, status: todo}
+    unform: {type: function, status: done}
+    "unform*": {type: function, status: done}
+    "valid?": {type: function, status: done}
+    "with-gen": {type: function, status: done}
+    "with-gen*": {type: function, status: done}
   clojure_spec_gen_alpha:
     any: {type: function, status: todo}
     "any-printable": {type: function, status: todo}
-    bind: {type: function, status: todo}
+    bind: {type: function, status: done, note: "stub (throws, needs test.check)"}
     boolean: {type: function, status: done, note: "core.clj (if x true false)"}
-    bytes: {type: function, status: todo}
-    cat: {type: function, status: todo}
+    bytes: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    cat: {type: function, status: done, note: "stub (throws, needs test.check)"}
     char: {type: function, status: todo}
     "char-alpha": {type: function, status: todo}
     "char-alphanumeric": {type: function, status: todo}
     "char-ascii": {type: function, status: todo}
-    choose: {type: function, status: todo}
+    choose: {type: function, status: done, note: "stub (throws, needs test.check)"}
     delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
     "delay-impl": {type: function, status: todo}
     double: {type: function, status: todo}
-    "double*": {type: function, status: todo}
+    "double*": {type: function, status: done, note: "stub (throws, needs test.check)"}
     elements: {type: function, status: todo}
-    fmap: {type: function, status: todo}
-    "for-all*": {type: function, status: todo}
-    frequency: {type: function, status: todo}
+    fmap: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    "for-all*": {type: function, status: done, note: "stub (throws, needs test.check)"}
+    frequency: {type: function, status: done, note: "stub (throws, needs test.check)"}
     "gen-for-name": {type: function, status: todo}
-    "gen-for-pred": {type: function, status: todo}
-    generate: {type: function, status: todo}
-    "hash-map": {type: function, status: todo}
+    "gen-for-pred": {type: function, status: done, note: "stub (throws, needs test.check)"}
+    generate: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    "hash-map": {type: function, status: done, note: "stub (throws, needs test.check)"}
     int: {type: function, status: todo}
     keyword: {type: function, status: todo}
     "keyword-ns": {type: function, status: todo}
     "large-integer": {type: function, status: todo}
-    "large-integer*": {type: function, status: todo}
+    "large-integer*": {type: function, status: done, note: "stub (throws, needs test.check)"}
     "lazy-combinator": {type: macro, status: todo}
     "lazy-combinators": {type: macro, status: todo}
     "lazy-prim": {type: macro, status: todo}
     "lazy-prims": {type: macro, status: todo}
-    list: {type: function, status: todo}
-    map: {type: function, status: todo}
+    list: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    map: {type: function, status: done, note: "stub (throws, needs test.check)"}
     "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
-    "one-of": {type: function, status: todo}
-    "quick-check": {type: function, status: todo}
+    "one-of": {type: function, status: done, note: "stub (throws, needs test.check)"}
+    "quick-check": {type: function, status: done, note: "stub (throws, needs test.check)"}
     ratio: {type: function, status: todo}
-    return: {type: function, status: todo}
-    sample: {type: function, status: todo}
-    set: {type: function, status: todo}
-    shuffle: {type: function, status: todo}
+    return: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    sample: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    set: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    shuffle: {type: function, status: done, note: "stub (throws, needs test.check)"}
     "simple-type": {type: function, status: todo}
     "simple-type-printable": {type: function, status: todo}
     string: {type: function, status: todo}
     "string-alphanumeric": {type: function, status: todo}
     "string-ascii": {type: function, status: todo}
-    "such-that": {type: function, status: todo}
+    "such-that": {type: function, status: done, note: "stub (throws, needs test.check)"}
     symbol: {type: function, status: todo}
     "symbol-ns": {type: function, status: todo}
-    tuple: {type: function, status: todo}
+    tuple: {type: function, status: done, note: "stub (throws, needs test.check)"}
     uuid: {type: function, status: todo}
-    vector: {type: function, status: todo}
-    "vector-distinct": {type: function, status: todo}
+    vector: {type: function, status: done, note: "stub (throws, needs test.check)"}
+    "vector-distinct": {type: function, status: done, note: "stub (throws, needs test.check)"}
   clojure_stacktrace:
     e: {type: function, status: done}
     "print-cause-trace": {type: function, status: done}

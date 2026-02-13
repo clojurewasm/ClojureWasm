@@ -412,6 +412,13 @@ pub const Analyzer = struct {
                         return handler(self, items, form);
                     }
                 }
+            } else if (items[0].data.symbol.ns) |ns_prefix| {
+                // Qualified special forms: clojure.core/def, c/def (via alias), etc.
+                if (self.isClojureCoreNs(ns_prefix)) {
+                    if (special_forms.get(sym_name)) |handler| {
+                        return handler(self, items, form);
+                    }
+                }
             }
         }
 
@@ -554,12 +561,28 @@ pub const Analyzer = struct {
         .{ "quote", "__regex-quote" },
     });
 
+    /// Check if a namespace prefix resolves to clojure.core.
+    /// Handles: literal "clojure.core" or an alias pointing to clojure.core.
+    fn isClojureCoreNs(self: *const Analyzer, ns_prefix: []const u8) bool {
+        if (std.mem.eql(u8, ns_prefix, "clojure.core")) return true;
+        const env = self.env orelse return false;
+        const ns = env.current_ns orelse return false;
+        const aliased = ns.aliases.get(ns_prefix) orelse return false;
+        return std.mem.eql(u8, aliased.name, "clojure.core");
+    }
+
     /// Resolve a symbol to a Var if possible (via env).
     fn resolveMacroVar(self: *const Analyzer, sym: SymbolRef) ?*Var {
         const env = self.env orelse return null;
         const ns = env.current_ns orelse return null;
         if (sym.ns) |ns_name| {
-            return ns.resolveQualified(ns_name, sym.name);
+            // Try alias/own namespace first
+            if (ns.resolveQualified(ns_name, sym.name)) |v| return v;
+            // Fall back to full namespace name lookup in env
+            if (env.findNamespace(ns_name)) |target_ns| {
+                if (target_ns.resolve(sym.name)) |v| return v;
+            }
+            return null;
         }
         return ns.resolve(sym.name);
     }
@@ -1040,10 +1063,10 @@ pub const Analyzer = struct {
     }
 
     fn analyzeDef(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (def name) or (def name value)
+        // (def name) or (def name value) or (def name "doc" value)
         // (def ^:dynamic name value) → reader produces (def (with-meta name {:dynamic true}) value)
-        if (items.len < 2 or items.len > 3) {
-            return self.analysisError(.arity_error, "def requires 1 or 2 arguments", form);
+        if (items.len < 2 or items.len > 4) {
+            return self.analysisError(.arity_error, "def requires 1, 2, or 3 arguments", form);
         }
 
         var sym_name: []const u8 = undefined;
@@ -1096,7 +1119,18 @@ pub const Analyzer = struct {
             return self.analysisError(.value_error, "def name must be a symbol", items[1]);
         }
 
-        const init_node: ?*Node = if (items.len == 3)
+        // (def name "doc" value) — inline docstring form
+        if (items.len == 4) {
+            if (items[2].data == .string) {
+                doc = items[2].data.string;
+            } else {
+                return self.analysisError(.value_error, "def docstring must be a string", items[2]);
+            }
+        }
+
+        const init_node: ?*Node = if (items.len == 4)
+            try self.analyze(items[3])
+        else if (items.len == 3)
             try self.analyze(items[2])
         else
             null;

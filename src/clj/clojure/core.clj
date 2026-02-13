@@ -355,8 +355,8 @@
     (let [a (first args)
           more (rest args)]
       (if (seq more)
-        `(let [and__val ~a]
-           (if and__val (and ~@more) and__val))
+        `(let [and__auto# ~a]
+           (if and__auto# (and ~@more) and__auto#))
         a))))
 
 (defmacro or
@@ -364,8 +364,8 @@
   (let [a (first args)
         more (rest args)]
     (if (seq more)
-      `(let [or__val ~a]
-         (if or__val or__val (or ~@more)))
+      `(let [or__auto# ~a]
+         (if or__auto# or__auto# (or ~@more)))
       a)))
 
 ;; Nested collection operations
@@ -1466,8 +1466,9 @@
   (when (map? ex) (:message ex)))
 
 (defmacro defonce [name expr]
-  (list 'when-not (list 'bound? (list 'quote name))
-        (list 'def name expr)))
+  (let [sym (if (symbol? name) name (second name))]
+    (list 'when-not (list 'bound? (list 'quote sym))
+          (list 'def name expr))))
 
 (defmacro refer-clojure
   [& filters]

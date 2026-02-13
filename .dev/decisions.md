@@ -604,3 +604,33 @@ chains to ~200 levels.
 
 **Trade-off**: VM struct grows ~78KB (frames array). No measurable impact on
 binary size, startup, RSS, or benchmarks.
+
+---
+
+## D97: Syntax-Quote Namespace Qualification at Read Time
+
+**Problem**: JVM Clojure's syntax-quote resolves unqualified symbols to fully
+qualified names at read time (e.g., `\`foo` becomes `my.ns/foo`). CW's reader
+did not do this, causing macro expansions to produce unqualified symbols that
+failed when evaluated in different namespaces.
+
+**Decision**: Reader gets `current_ns` field. `expandSyntaxQuote` qualifies
+unqualified symbols using `current_ns` (except special forms and auto-gensyms).
+
+**Scope**: reader.zig (new field + qualifier logic), eval.zig (passes current
+ns to reader), bootstrap.zig (readFormsWithNs helper).
+
+---
+
+## D98: spec.alpha Lazy Bootstrap Loading
+
+**Problem**: spec.alpha (~500 LOC) added to eager bootstrap increased startup
+from 4.2ms to 5.9ms, exceeding the 5ms threshold.
+
+**Decision**: spec.alpha and spec.gen.alpha are embedded in the binary but NOT
+loaded at startup. Instead, first `(require '[clojure.spec.alpha :as s])`
+triggers loading via `loadEmbeddedLib` fallback in ns_ops.loadLib.
+
+**Trade-off**: First `require` of spec.alpha has a ~1-2ms cost (one-time).
+Startup stays at baseline (4.1ms). Binary still embeds the source (~unchanged
+size since cache excludes spec.alpha serialization).

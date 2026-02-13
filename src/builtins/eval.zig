@@ -46,6 +46,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (s.len == 0) return Value.nil_val;
 
     var reader = Reader.init(allocator, s);
+    reader.current_ns = resolveCurrentNs();
     const form_opt = reader.read() catch {
         err.ensureInfoSet(.eval, .syntax_error, .{}, "read-string: reader error", .{});
         return error.EvalError;
@@ -213,6 +214,7 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     };
 
     var reader = Reader.init(allocator, s);
+    reader.current_ns = resolveCurrentNs();
     var result: Value = Value.nil_val;
     while (true) {
         const form_opt = reader.read() catch {
@@ -258,6 +260,7 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
             return eof_value;
         }
         var reader = Reader.init(allocator, remaining);
+        reader.current_ns = resolveCurrentNs();
         const form_opt = reader.read() catch {
             err.ensureInfoSet(.eval, .syntax_error, .{}, "read: reader error", .{});
             return error.EvalError;
@@ -322,6 +325,7 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
         // Try to parse accumulated input
         if (buf.items.len > 0) {
             var reader = Reader.init(allocator, buf.items);
+            reader.current_ns = resolveCurrentNs();
             const form_opt = reader.read() catch {
                 // Syntax error — might be incomplete (unclosed paren, etc.)
                 // Continue reading more input
@@ -375,6 +379,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
             return eof_value;
         }
         var reader = Reader.init(allocator, remaining);
+        reader.current_ns = resolveCurrentNs();
         const form_opt = reader.read() catch {
             err.ensureInfoSet(.eval, .syntax_error, .{}, "read+string: reader error", .{});
             return error.EvalError;
@@ -442,6 +447,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
 
         if (buf.items.len > 0) {
             var reader = Reader.init(allocator, buf.items);
+            reader.current_ns = resolveCurrentNs();
             const form_opt = reader.read() catch {
                 continue;
             };
@@ -496,6 +502,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
             };
             if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
+            reader.current_ns = resolveCurrentNs();
             const form_opt = reader.read() catch {
                 err.ensureInfoSet(.eval, .syntax_error, .{}, "edn/read-string: reader error", .{});
                 return error.EvalError;
@@ -512,6 +519,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
             };
             if (s.len == 0) return Value.nil_val;
             var reader = Reader.init(allocator, s);
+            reader.current_ns = resolveCurrentNs();
             const form_opt = reader.read() catch {
                 err.ensureInfoSet(.eval, .syntax_error, .{}, "edn/read-string: reader error", .{});
                 return error.EvalError;

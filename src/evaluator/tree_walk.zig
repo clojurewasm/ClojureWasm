@@ -1323,9 +1323,13 @@ pub const TreeWalk = struct {
     }
 
     fn runRecur(self: *TreeWalk, recur_n: *const node_mod.RecurNode) TreeWalkError!Value {
+        // Evaluate into temp buffer first — inner function calls (e.g. drop-while's
+        // loop/recur) may overwrite self.recur_args during evaluation.
+        var temp: [MAX_LOCALS]Value = undefined;
         for (recur_n.args, 0..) |arg, i| {
-            self.recur_args[i] = try self.run(arg);
+            temp[i] = try self.run(arg);
         }
+        @memcpy(self.recur_args[0..recur_n.args.len], temp[0..recur_n.args.len]);
         self.recur_arg_count = recur_n.args.len;
         self.recur_pending = true;
         return Value.nil_val; // value is ignored; loop checks recur_pending

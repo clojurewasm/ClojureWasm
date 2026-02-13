@@ -904,6 +904,7 @@ fn markBootstrapLibs() void {
         "clojure.zip",
         "clojure.core.protocols",
         "clojure.core.reducers",
+        // spec.alpha loaded lazily on first require
     };
     for (libs) |name| {
         ns_ops.markLibLoaded(name) catch {};

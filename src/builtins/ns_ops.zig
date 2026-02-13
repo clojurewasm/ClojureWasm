@@ -217,7 +217,10 @@ fn loadLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_nam
     else
         resource_path;
 
-    return loadResource(allocator, env, resource);
+    if (try loadResource(allocator, env, resource)) return true;
+
+    // Fallback: try loading from embedded source (lazy-loaded libraries)
+    return bootstrap.loadEmbeddedLib(allocator, env, ns_name) catch false;
 }
 
 /// Load a resource file by searching load paths. Saves/restores *ns*.

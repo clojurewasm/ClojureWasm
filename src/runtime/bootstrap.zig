@@ -21,6 +21,7 @@ const Node = @import("../analyzer/node.zig").Node;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const Env = @import("env.zig").Env;
+const Namespace = @import("namespace.zig").Namespace;
 const err = @import("error.zig");
 const TreeWalk = @import("../evaluator/tree_walk.zig").TreeWalk;
 const predicates_mod = @import("../builtins/predicates.zig");
@@ -78,6 +79,12 @@ const protocols_clj_source = @embedFile("../clj/clojure/core/protocols.clj");
 
 /// Embedded clojure/core/reducers.clj source (compiled into binary).
 const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
+
+/// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
+const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
+
+/// Embedded clojure/spec/alpha.clj source (compiled into binary).
+const spec_alpha_clj_source = @embedFile("../clj/clojure/spec/alpha.clj");
 
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
@@ -608,6 +615,75 @@ pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
+pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
+    const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        spec_gen_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = spec_gen_ns;
+
+    _ = try evalString(allocator, env, spec_gen_alpha_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load and evaluate clojure/spec/alpha.clj (spec.alpha core).
+/// Must be called after loadSpecGenAlpha (spec.alpha requires spec.gen.alpha).
+pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
+    const spec_ns = env.findOrCreateNamespace("clojure.spec.alpha") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        spec_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = spec_ns;
+
+    _ = try evalString(allocator, env, spec_alpha_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load an embedded library lazily (called from ns_ops.requireLib on first require).
+/// Returns true if the namespace was loaded from embedded source.
+pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
+    if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {
+        try loadSpecGenAlpha(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) {
+        // Ensure spec.gen.alpha is loaded first (spec.alpha depends on it)
+        if (env.findNamespace("clojure.spec.gen.alpha") == null) {
+            try loadSpecGenAlpha(allocator, env);
+        }
+        try loadSpecAlpha(allocator, env);
+        return true;
+    }
+    return false;
+}
+
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.
 pub fn syncNsVar(env: *Env) void {
     const ns_name = if (env.current_ns) |ns| ns.name else "user";
@@ -622,8 +698,14 @@ pub fn syncNsVar(env: *Env) void {
 }
 
 /// Parse source into top-level forms.
+/// When current_ns is provided, syntax-quote resolves symbols using that namespace.
 fn readForms(allocator: Allocator, source: []const u8) BootstrapError![]Form {
+    return readFormsWithNs(allocator, source, null);
+}
+
+fn readFormsWithNs(allocator: Allocator, source: []const u8, current_ns: ?*const Namespace) BootstrapError![]Form {
     var reader = Reader.init(allocator, source);
+    reader.current_ns = current_ns;
     return reader.readAll() catch return error.ReadError;
 }
 
@@ -663,7 +745,8 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked) so AST Nodes
     // survive GC sweeps. TreeWalk uses allocator (gc_alloc) for Value creation.
     const node_alloc = env.nodeAllocator();
-    const forms = try readForms(node_alloc, source);
+    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
+    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
     if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
@@ -677,9 +760,9 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     for (forms) |form| {
         const node = try analyzeForm(node_alloc, env, form);
         last_value = tw.run(node) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
+            err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+            return error.EvalError;
+        };
     }
     return last_value;
 }
@@ -692,7 +775,8 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
 /// Dumps top-level chunks and all nested FnProtos.
 pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!void {
     const node_alloc = env.nodeAllocator();
-    const forms = try readForms(node_alloc, source);
+    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
+    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
     if (forms.len == 0) return;
 
     const prev = setupMacroEnv(env);
@@ -733,7 +817,8 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked).
     // Compiler/VM use allocator (gc_alloc) for bytecode and Values.
     const node_alloc = env.nodeAllocator();
-    const forms = try readForms(node_alloc, source);
+    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
+    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
     if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
@@ -838,7 +923,8 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 /// Values (lists, vectors, maps, fns) may be stored in Vars via def/defn.
 fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     const node_alloc = env.nodeAllocator();
-    const forms = try readForms(node_alloc, source);
+    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
+    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
     if (forms.len == 0) return Value.nil_val;
 
     const prev = setupMacroEnv(env);
@@ -1121,6 +1207,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadZip(allocator, env);
     try loadProtocols(allocator, env);
     try loadReducers(allocator, env);
+    // spec.alpha loaded lazily on first require (startup time)
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -1215,6 +1302,8 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         env.current_ns = reducers_ns;
         _ = try evalStringVMBootstrap(allocator, env, reducers_clj_source);
     }
+
+    // spec.alpha re-compiled lazily on first require (startup time)
 
     // Restore namespace
     env.current_ns = saved_ns;

@@ -22,8 +22,11 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70: spec.alpha — sub-task 70.1 (Infrastructure + Protocols).
+Phase 70: spec.alpha — sub-task 70.2 (Core Specs + Macros).
 Full plan: `.dev/next-phases-plan.md`
+
+70.1 done: Spec/Specize protocols, registry, spec-impl, valid?, conform, describe.
+Lazy loading via D98. Syntax-quote NS qualification (D97). TreeWalk recur fix.
 
 ## Task Queue
 
@@ -52,8 +55,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-v0.2.0 release — zwasm v0.2.0, docs update, benchmarks recorded.
-Phase 66-68: deps.edn Foundation + Git Dependencies + Integration.
+Phase 70.1: spec.alpha Infrastructure + Protocols.
+Syntax-quote NS qualification (D97), spec.alpha lazy loading (D98),
+TreeWalk recur temp buffer fix, and/or gensym, peekLastError.
 
 ## Known Issues
 

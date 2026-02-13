@@ -47,10 +47,14 @@ pub fn main() !void {
     var env = Env.init(allocator);
     defer env.deinit();
     try registry.registerBuiltins(&env);
+    std.debug.print("cache_gen: loadBootstrapAll...\n", .{});
     try bootstrap.loadBootstrapAll(alloc, &env);
+    std.debug.print("cache_gen: loadBootstrapAll OK\n", .{});
 
     // Generate serialized cache (vmRecompileAll + serializeEnvSnapshot)
+    std.debug.print("cache_gen: generateBootstrapCache...\n", .{});
     const cache_bytes = try bootstrap.generateBootstrapCache(alloc, &env);
+    std.debug.print("cache_gen: generateBootstrapCache OK\n", .{});
 
     // Write to output file
     const out_file = try std.fs.cwd().createFile(args[1], .{});
