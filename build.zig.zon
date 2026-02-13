@@ -1,14 +1,14 @@
 .{
     .name = .clojure_wasm,
-    .version = "0.0.1",
+    .version = "0.2.0",
     .dependencies = .{
         .zwasm = .{
-            .url = "https://github.com/clojurewasm/zwasm/archive/v0.1.0.tar.gz",
-            .hash = "zwasm-0.1.0-IBbzFweBFQCbZ2ZfBEA-8xH-yQ9LavuFbeYIEfrFu4Sf",
+            .url = "https://github.com/clojurewasm/zwasm/archive/v0.2.0.tar.gz",
+            .hash = "zwasm-0.2.0-IBbzFwWdGQD-xHjh536a-04lal8Su_TaMzBy5hwn8bR0",
         },
     },
     .fingerprint = 0x62a7be489d633543,
-    .minimum_zig_version = "0.15.0",
+    .minimum_zig_version = "0.15.2",
     .paths = .{
         "build.zig",
         "build.zig.zon",

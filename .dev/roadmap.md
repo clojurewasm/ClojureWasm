@@ -19,8 +19,8 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 - **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
 - **50 upstream test files**, all passing
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
-- **Wasm engine**: zwasm v0.1.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.3x of wasmtime)
-- **Binary**: 3.7MB ReleaseSafe (Mac ARM64)
+- **Wasm engine**: zwasm v0.2.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.3x of wasmtime)
+- **Binary**: 3.9MB ReleaseSafe (Mac ARM64)
 
 ## Completed Phases
 

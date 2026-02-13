@@ -6,11 +6,11 @@ Session handover document. Read at session start.
 
 - **All phases through 69 COMPLETE** (deps.edn design cleanup done)
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
-- Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
+- Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 50 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
-- Benchmarks: `bench/history.yaml` (60.4 entry = latest baseline)
-- Binary: 3.86MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
+- Binary: 3.90MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 
 ## Strategic Direction
 
@@ -22,10 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 69: deps.edn design cleanup — COMPLETE.
-- Git dep fetch only with `-P` (cache miss → error otherwise)
-- cljw.edn support removed entirely
-- deps.edn always read (+0.1ms negligible)
+v0.2.0 release prep — zwasm v0.2.0, docs update, benchmarks recorded.
 
 ## Previous Task
 

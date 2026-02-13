@@ -1,14 +1,14 @@
-# Binary Size Audit — Phase 60.3
+# Binary Size Audit — v0.2.0
 
-Date: 2026-02-13
-zwasm: main (acff466), local path dependency
+Date: 2026-02-14
+zwasm: v0.2.0 (GitHub URL dependency)
 Platform: macOS ARM64 (Apple Silicon)
 
 ## Binary Size Summary
 
 | Build mode   | Size  |
 |-------------|-------|
-| ReleaseSafe | 3.7MB |
+| ReleaseSafe | 3.9MB |
 | Debug       | 12MB  |
 
 ## ReleaseSafe Segment Breakdown
