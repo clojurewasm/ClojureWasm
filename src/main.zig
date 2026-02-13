@@ -368,12 +368,12 @@ pub fn main() !void {
             if (dep.local_root) |root| {
                 resolveLocalDep(root, config_dir);
             } else if (dep.git_url != null and dep.git_sha != null) {
-                resolveGitDep(dep.git_url.?, dep.git_sha.?);
+                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, s_force);
             } else {
                 // Try io.github/io.gitlab URL inference
                 if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
                     if (dep.git_sha) |sha| {
-                        resolveGitDep(inferred_url, sha);
+                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, s_force);
                     }
                 }
             }
@@ -499,9 +499,7 @@ pub fn main() !void {
     if (s_repro) {
         // -Srepro: exclude user config (no-op for now, CW has no user config dir yet)
     }
-    if (s_force) {
-        // -Sforce: ignore cache (no-op for now, cache invalidation in 68.2)
-    }
+    // s_force is passed through to resolveGitDep() — bypasses cache
 
     if (expr) |e| {
         err.setSourceFile(null);
@@ -1084,6 +1082,8 @@ fn projectConfigFromDepsConfig(allocator: Allocator, deps_config: deps_mod.DepsC
                 .local_root = src_dep.local_root,
                 .git_url = src_dep.git_url orelse inferGitUrlFromName(allocator, src_dep.name),
                 .git_sha = src_dep.git_sha,
+                .git_tag = src_dep.git_tag,
+                .deps_root = src_dep.deps_root,
             };
         }
         break :blk @as([]const Dep, d[0..dep_count]);
@@ -1115,11 +1115,13 @@ fn inferGitUrlFromName(allocator: Allocator, name: []const u8) ?[]const u8 {
 
 // === cljw.edn config parsing ===
 
-/// A single dependency declaration from cljw.edn :deps.
+/// A single dependency declaration from cljw.edn / deps.edn :deps.
 const Dep = struct {
     local_root: ?[]const u8 = null, // :local/root path
     git_url: ?[]const u8 = null, // :git/url
     git_sha: ?[]const u8 = null, // :git/sha
+    git_tag: ?[]const u8 = null, // :git/tag (optional, for display + validation)
+    deps_root: ?[]const u8 = null, // :deps/root (monorepo subdirectory)
 };
 
 /// A wasm module dependency: name → path.
@@ -1316,7 +1318,7 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
         if (dep.local_root) |root| {
             resolveLocalDep(root, config_dir);
         } else if (dep.git_url != null and dep.git_sha != null) {
-            resolveGitDep(dep.git_url.?, dep.git_sha.?);
+            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false);
         }
     }
     // Register wasm module deps
@@ -1394,7 +1396,10 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
 
 /// Resolve a :git/url + :git/sha dependency.
 /// Cache: ~/.cljw/gitlibs/_repos/<hash>.git (bare) and ~/.cljw/gitlibs/<hash>/<sha>/
-fn resolveGitDep(url: []const u8, sha: []const u8) void {
+/// tag: optional :git/tag for validation (verify tag points to sha)
+/// deps_root: optional :deps/root subdirectory within the git repo
+/// force: -Sforce flag — bypass cache and re-fetch
+fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     const alloc = std.heap.page_allocator;
 
@@ -1414,17 +1419,31 @@ fn resolveGitDep(url: []const u8, sha: []const u8) void {
     var lib_dir_buf: [4096]u8 = undefined;
     const lib_dir = std.fmt.bufPrint(&lib_dir_buf, "{s}/.cljw/gitlibs/{s}/{s}", .{ home, hash_slice, sha }) catch return;
 
-    // Check if already checked out
+    // Compute effective root (lib_dir or lib_dir/deps_root)
+    var effective_dir_buf: [4096]u8 = undefined;
+    const effective_dir = if (deps_root) |dr|
+        std.fmt.bufPrint(&effective_dir_buf, "{s}/{s}", .{ lib_dir, dr }) catch return
+    else
+        lib_dir;
+
+    // Check if already checked out (skip if force)
     var marker_buf: [4096]u8 = undefined;
     const marker = std.fmt.bufPrint(&marker_buf, "{s}/.cljw-resolved", .{lib_dir}) catch return;
-    if (std.fs.cwd().access(marker, .{})) |_| {
-        // Already resolved — just add paths
-        resolveLocalDep(lib_dir, null);
-        return;
-    } else |_| {}
+    if (!force) {
+        if (std.fs.cwd().access(marker, .{})) |_| {
+            // Already resolved — just add paths
+            resolveLocalDep(effective_dir, null);
+            return;
+        } else |_| {}
+    }
 
     _ = stderr.write("Fetching ") catch {};
     _ = stderr.write(url) catch {};
+    if (tag) |t| {
+        _ = stderr.write(" (") catch {};
+        _ = stderr.write(t) catch {};
+        _ = stderr.write(")") catch {};
+    }
     _ = stderr.write(" ...\n") catch {};
 
     // Clone or fetch bare repo
@@ -1450,7 +1469,7 @@ fn resolveGitDep(url: []const u8, sha: []const u8) void {
             return;
         }
     } else {
-        // Fetch latest
+        // Fetch latest (always when force, otherwise only if not cached)
         var fetch = std.process.Child.init(
             &.{ "git", "--git-dir", repo_dir, "fetch", "--quiet", "origin" },
             alloc,
@@ -1458,6 +1477,16 @@ fn resolveGitDep(url: []const u8, sha: []const u8) void {
         fetch.stderr_behavior = .Inherit;
         fetch.spawn() catch return;
         _ = fetch.wait() catch {};
+    }
+
+    // Validate :git/tag matches :git/sha (if tag provided)
+    if (tag) |t| {
+        if (!validateGitTag(alloc, repo_dir, t, sha)) return;
+    }
+
+    // If force, remove old extraction to re-extract
+    if (force) {
+        std.fs.cwd().deleteTree(lib_dir) catch {};
     }
 
     // Extract archive at the requested sha
@@ -1496,7 +1525,6 @@ fn resolveGitDep(url: []const u8, sha: []const u8) void {
         tar_stdin.writeAll(buf[0..n]) catch break;
     }
     tar.stdin = null; // close stdin
-    // tar_stdin fd is already closed by the stdin = null assignment above
 
     const archive_term = archive.wait() catch return;
     const tar_term = tar.wait() catch return;
@@ -1513,8 +1541,59 @@ fn resolveGitDep(url: []const u8, sha: []const u8) void {
         f.close();
     } else |_| {}
 
-    // Resolve paths from the extracted dep
-    resolveLocalDep(lib_dir, null);
+    // Resolve paths from the extracted dep (using effective_dir for :deps/root)
+    resolveLocalDep(effective_dir, null);
+}
+
+/// Validate that a git tag points to the expected SHA.
+/// Returns true if valid, false if mismatch (prints error).
+fn validateGitTag(alloc: Allocator, repo_dir: []const u8, tag_name: []const u8, expected_sha: []const u8) bool {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+
+    // Use rev-parse to resolve tag to SHA (^{} dereferences annotated tags)
+    var tag_ref_buf: [256]u8 = undefined;
+    const tag_ref = std.fmt.bufPrint(&tag_ref_buf, "refs/tags/{s}^{{}}", .{tag_name}) catch return true;
+
+    var rev_parse = std.process.Child.init(
+        &.{ "git", "--git-dir", repo_dir, "rev-parse", tag_ref },
+        alloc,
+    );
+    rev_parse.stdout_behavior = .Pipe;
+    rev_parse.stderr_behavior = .Pipe;
+    rev_parse.spawn() catch return true; // can't validate → proceed
+
+    // Read stdout to get resolved SHA
+    var out_buf: [256]u8 = undefined;
+    const stdout_pipe = rev_parse.stdout orelse return true;
+    const n = stdout_pipe.read(&out_buf) catch return true;
+    const tag_sha_raw = out_buf[0..n];
+
+    const term = rev_parse.wait() catch return true;
+    if (term.Exited != 0) {
+        // Tag doesn't exist in repo — warn but continue (sha is the authority)
+        _ = stderr.write("WARNING: Git tag \"") catch {};
+        _ = stderr.write(tag_name) catch {};
+        _ = stderr.write("\" not found in repository. Using :git/sha directly.\n") catch {};
+        return true;
+    }
+
+    // Trim trailing newline
+    const tag_sha = std.mem.trimRight(u8, tag_sha_raw, "\n\r ");
+
+    // Compare: expected_sha can be a prefix (short sha)
+    if (tag_sha.len >= expected_sha.len and std.mem.eql(u8, tag_sha[0..expected_sha.len], expected_sha)) {
+        return true; // match
+    }
+
+    // Full sha provided but doesn't match
+    _ = stderr.write("ERROR: Git tag \"") catch {};
+    _ = stderr.write(tag_name) catch {};
+    _ = stderr.write("\" does not match :git/sha \"") catch {};
+    _ = stderr.write(expected_sha) catch {};
+    _ = stderr.write("\"\n  Tag points to: ") catch {};
+    _ = stderr.write(tag_sha) catch {};
+    _ = stderr.write("\n  Fix the :git/sha in deps.edn\n") catch {};
+    return false;
 }
 
 // === Error reporting (babashka-style) ===

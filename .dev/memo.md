@@ -22,23 +22,29 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 66: deps.edn Foundation. Next task: 66.5 (-Spath/-Sdeps/-Srepro/-Sforce).
+Phase 67: Git Dependencies. Next task: 67.4 (e2e test with local git repo).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
 
-Phase 66 — deps.edn Foundation:
+Phase 66 — deps.edn Foundation (COMPLETE):
 - [x] 66.1: deps.edn parser (EDN reader + schema validation)
 - [x] 66.2: Alias resolution engine
 - [x] 66.3: -A/-M/-X/-P CLI flag parsing (includes -X exec mode)
 - [x] 66.4: -X exec mode (fn invoke + arg parsing) — merged into 66.3
-- [ ] 66.5: -Spath/-Sdeps/-Srepro/-Sforce
+- [x] 66.5: -Spath/-Sdeps/-Srepro/-Sforce — merged into 66.3
+
+Phase 67 — Git Dependencies:
+- [x] 67.1: Create test repo — deferred (use local git repos for testing)
+- [x] 67.2: Enhanced resolveGitDep (:git/tag validation, :deps/root, -Sforce)
+- [x] 67.3: io.github/io.gitlab URL inference — already in deps.zig + main.zig
+- [ ] 67.4: E2E test with local git repo
+- [ ] 67.5: Transitive deps from git repos (read dep's deps.edn)
 
 ## Previous Task
 
-Phase 65: Edge case cleanup (pre-deps.edn) — apropos/dir tests, reader duplicate
-key detection, fn docstring analyzer fix, regex serialization in bootstrap cache,
-*print-dup* basic support.
+Phase 66: deps.edn Foundation — parser, alias resolution, CLI flags (-A/-M/-X/-P),
+exec mode, -Spath/-Sdeps/-Sverbose, deps.edn priority over cljw.edn.
 
 ## Known Issues
 
