@@ -836,6 +836,18 @@ pub const Reader = struct {
                         }
                     }
                 }
+                // Resolve namespace aliases for qualified symbols (e.g., c/and → clojure.core/and)
+                if (sym.ns) |ns_prefix| {
+                    if (self.current_ns) |ns| {
+                        if (ns.getAlias(ns_prefix)) |target_ns| {
+                            return self.makeQuote(Form{
+                                .data = .{ .symbol = .{ .ns = target_ns.name, .name = sym.name } },
+                                .line = form.line,
+                                .column = form.column,
+                            });
+                        }
+                    }
+                }
                 return self.makeQuote(form);
             },
             .list => |items| {

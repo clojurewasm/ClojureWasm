@@ -657,6 +657,20 @@ pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
         spec_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
     }
 
+    // Pre-create aliases needed at read time: CW reads all forms before evaluating,
+    // so (alias 'c 'clojure.core) in the source hasn't executed when syntax-quotes
+    // are processed by the reader. JVM Clojure reads one form at a time.
+    spec_ns.setAlias("c", core_ns) catch {};
+    if (env.findNamespace("clojure.walk")) |walk_ns| {
+        spec_ns.setAlias("walk", walk_ns) catch {};
+    }
+    if (env.findNamespace("clojure.spec.gen.alpha")) |gen_ns| {
+        spec_ns.setAlias("gen", gen_ns) catch {};
+    }
+    if (env.findNamespace("clojure.string")) |str_ns| {
+        spec_ns.setAlias("str", str_ns) catch {};
+    }
+
     const saved_ns = env.current_ns;
     env.current_ns = spec_ns;
 

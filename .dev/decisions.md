@@ -634,3 +634,17 @@ triggers loading via `loadEmbeddedLib` fallback in ns_ops.loadLib.
 **Trade-off**: First `require` of spec.alpha has a ~1-2ms cost (one-time).
 Startup stays at baseline (4.1ms). Binary still embeds the source (~unchanged
 size since cache excludes spec.alpha serialization).
+
+## D99: Seq-Based Sequential Destructuring with &
+
+**Problem**: Sequential destructuring `[a b & r]` used `nth` for positional
+access. This fails on maps (which are seqable but don't support `nth`),
+breaking `s/keys` which uses `[[k v] & ks :as keys]` patterns on maps.
+
+**Decision**: When `&` is present in a sequential destructuring pattern,
+use `seq`/`first`/`next` chain instead of `nth`. Each `(next seq_ref)` gets
+a fresh local variable slot to avoid stale references. Without `&`, the
+original `nth`-based path is preserved for efficiency.
+
+**Matches JVM**: Clojure's `destructure` uses seq/first/next when `&` is
+present. The CW analyzer now does the same.

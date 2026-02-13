@@ -22,11 +22,12 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70: spec.alpha — sub-task 70.2 (Core Specs + Macros).
+Phase 70: spec.alpha — sub-task 70.3 (Regex Ops + Advanced).
 Full plan: `.dev/next-phases-plan.md`
 
-70.1 done: Spec/Specize protocols, registry, spec-impl, valid?, conform, describe.
-Lazy loading via D98. Syntax-quote NS qualification (D97). TreeWalk recur fix.
+70.2 done: s/and, s/or, s/keys, s/tuple, s/nilable, s/every, s/coll-of,
+s/map-of, s/merge, s/every-kv + impl functions. Seq-based destructuring (D99).
+sort-by lazy-seq fix.
 
 ## Task Queue
 
@@ -55,9 +56,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.1: spec.alpha Infrastructure + Protocols.
-Syntax-quote NS qualification (D97), spec.alpha lazy loading (D98),
-TreeWalk recur temp buffer fix, and/or gensym, peekLastError.
+Phase 70.2: Core Specs + Macros.
+s/and, s/or, s/keys, s/tuple, s/nilable, s/every, s/coll-of, s/map-of, s/merge.
+Seq-based sequential destructuring with & (D99). sort-by lazy-seq support.
 
 ## Known Issues
 

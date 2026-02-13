@@ -1460,7 +1460,9 @@ pub fn sortByFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const items = switch (coll.tag()) {
         .list => coll.asList().items,
         .vector => coll.asVector().items,
+        .set => coll.asSet().items,
         .nil => @as([]const Value, &.{}),
+        .lazy_seq, .cons => try collectSeqItems(allocator, coll),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "sort-by not supported on {s}", .{@tagName(coll.tag())}),
     };
 

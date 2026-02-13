@@ -1002,15 +1002,15 @@ vars:
     alt: {type: macro, status: todo}
     "alt-impl": {type: function, status: todo}
     "amp-impl": {type: function, status: todo}
-    and: {type: macro, status: todo}
-    "and-spec-impl": {type: function, status: todo}
+    and: {type: macro, status: done}
+    "and-spec-impl": {type: function, status: done}
     assert: {type: macro, status: todo}
     "assert*": {type: function, status: todo}
     cat: {type: macro, status: todo}
     "cat-impl": {type: function, status: todo}
     "check-asserts": {type: function, status: todo}
     "check-asserts?": {type: function, status: todo}
-    "coll-of": {type: macro, status: todo}
+    "coll-of": {type: macro, status: done}
     conform: {type: function, status: done}
     "conform*": {type: function, status: done}
     conformer: {type: macro, status: done}
@@ -1019,9 +1019,9 @@ vars:
     describe: {type: function, status: done}
     "describe*": {type: function, status: done}
     "double-in": {type: macro, status: todo}
-    every: {type: macro, status: todo}
-    "every-impl": {type: function, status: todo}
-    "every-kv": {type: macro, status: todo}
+    every: {type: macro, status: done}
+    "every-impl": {type: function, status: done}
+    "every-kv": {type: macro, status: done}
     exercise: {type: function, status: todo}
     "exercise-fn": {type: function, status: todo}
     explain: {type: function, status: done}
@@ -1043,20 +1043,20 @@ vars:
     "int-in": {type: macro, status: todo}
     "int-in-range?": {type: function, status: todo}
     "invalid?": {type: function, status: done}
-    keys: {type: macro, status: todo}
-    "keys*": {type: macro, status: todo}
-    "map-of": {type: macro, status: todo}
-    "map-spec-impl": {type: function, status: todo}
+    keys: {type: macro, status: done}
+    "keys*": {type: macro, status: done}
+    "map-of": {type: macro, status: done}
+    "map-spec-impl": {type: function, status: done}
     "maybe-impl": {type: function, status: todo}
-    merge: {type: macro, status: todo}
-    "merge-spec-impl": {type: function, status: todo}
+    merge: {type: macro, status: done}
+    "merge-spec-impl": {type: function, status: done}
     "multi-spec": {type: macro, status: todo}
     "multi-spec-impl": {type: function, status: todo}
-    nilable: {type: macro, status: todo}
-    "nilable-impl": {type: function, status: todo}
+    nilable: {type: macro, status: done}
+    "nilable-impl": {type: function, status: done}
     nonconforming: {type: function, status: done}
-    or: {type: macro, status: todo}
-    "or-spec-impl": {type: function, status: todo}
+    or: {type: macro, status: done}
+    "or-spec-impl": {type: function, status: done}
     "regex-spec-impl": {type: function, status: done, note: "stub — full regex Phase 70.3"}
     "regex?": {type: function, status: done}
     registry: {type: function, status: done}
@@ -1066,8 +1066,8 @@ vars:
     "spec-impl": {type: function, status: done}
     "spec?": {type: function, status: done}
     "specize*": {type: function, status: done}
-    tuple: {type: macro, status: todo}
-    "tuple-impl": {type: function, status: todo}
+    tuple: {type: macro, status: done}
+    "tuple-impl": {type: function, status: done}
     unform: {type: function, status: done}
     "unform*": {type: function, status: done}
     "valid?": {type: function, status: done}

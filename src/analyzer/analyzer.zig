@@ -2465,7 +2465,7 @@ pub const Analyzer = struct {
 
     /// Expand sequential destructuring pattern.
     /// [a b c]       -> a = (nth coll 0), b = (nth coll 1), c = (nth coll 2)
-    /// [a b & rest]  -> a = (nth coll 0), b = (nth coll 1), rest = (rest (rest coll))
+    /// [a b & rest]  -> seq-based: s = (seq coll), a = (first s), s = (next s), ...
     /// [a b :as all] -> a = (nth coll 0), b = (nth coll 1), all = coll
     fn expandSequentialPattern(
         self: *Analyzer,
@@ -2483,39 +2483,27 @@ pub const Analyzer = struct {
         // Create reference node for the temp var
         const temp_ref = try self.makeTempLocalRef(temp_name, temp_idx);
 
+        // Pre-scan for & — when present, use seq/first/next chain (JVM behavior).
+        // This is needed because non-seqable collections (maps) can be destructured
+        // via & (e.g., [[k v] & ks :as keys] some-map).
+        const has_rest = blk: {
+            for (elems) |e| {
+                if (e.data == .symbol and std.mem.eql(u8, e.data.symbol.name, "&"))
+                    break :blk true;
+            }
+            break :blk false;
+        };
+
+        if (has_rest) {
+            // seq-based access: seq_ref = (seq coll), then first/next chain
+            return self.expandSequentialPatternSeqBased(elems, temp_ref, bindings, form);
+        }
+
+        // No & — use efficient nth-based access
         var pos: usize = 0;
         var i: usize = 0;
         while (i < elems.len) : (i += 1) {
             const elem = elems[i];
-
-            // & rest check
-            if (elem.data == .symbol and std.mem.eql(u8, elem.data.symbol.name, "&")) {
-                if (i + 1 >= elems.len) {
-                    return self.analysisError(.value_error, "& must be followed by a binding", form);
-                }
-                const rest_pattern = elems[i + 1];
-
-                // rest = (seq (rest (rest ... coll))) — seq ensures nil on empty
-                const rest_raw = try self.makeNthRest(temp_ref, pos);
-                const seq_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
-                seq_args[0] = rest_raw;
-                const rest_init = try self.makeBuiltinCall("seq", seq_args);
-                try self.expandBindingPattern(rest_pattern, rest_init, bindings, form);
-
-                i += 1; // skip rest pattern
-
-                // Check for :as after & rest
-                if (i + 1 < elems.len) {
-                    if (elems[i + 1].data == .keyword and std.mem.eql(u8, elems[i + 1].data.keyword.name, "as")) {
-                        if (i + 2 >= elems.len) {
-                            return self.analysisError(.value_error, ":as must be followed by a symbol", form);
-                        }
-                        try self.expandBindingPattern(elems[i + 2], temp_ref, bindings, form);
-                        i += 2;
-                    }
-                }
-                continue;
-            }
 
             // :as check
             if (elem.data == .keyword and std.mem.eql(u8, elem.data.keyword.name, "as")) {
@@ -2531,6 +2519,82 @@ pub const Analyzer = struct {
             const nth_init = try self.makeNthCall(temp_ref, pos);
             try self.expandBindingPattern(elem, nth_init, bindings, form);
             pos += 1;
+        }
+    }
+
+    /// seq-based sequential destructuring for patterns with &.
+    /// Matches JVM Clojure: s = (seq coll), elem = (first s), s = (next s), ...
+    fn expandSequentialPatternSeqBased(
+        self: *Analyzer,
+        elems: []const Form,
+        coll_ref: *Node,
+        bindings: *std.ArrayList(node_mod.LetBinding),
+        form: Form,
+    ) AnalyzeError!void {
+        // seq_ref = (seq coll)
+        const seq_name = "__destructure_s__";
+        var seq_idx: u32 = @intCast(self.locals.items.len);
+        self.locals.append(self.allocator, .{ .name = seq_name, .idx = seq_idx }) catch return error.OutOfMemory;
+        const seq_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+        seq_args[0] = coll_ref;
+        const seq_init = try self.makeBuiltinCall("seq", seq_args);
+        bindings.append(self.allocator, .{ .name = seq_name, .init = seq_init }) catch return error.OutOfMemory;
+
+        var i: usize = 0;
+        while (i < elems.len) : (i += 1) {
+            const elem = elems[i];
+
+            // & rest check
+            if (elem.data == .symbol and std.mem.eql(u8, elem.data.symbol.name, "&")) {
+                if (i + 1 >= elems.len) {
+                    return self.analysisError(.value_error, "& must be followed by a binding", form);
+                }
+                const rest_pattern = elems[i + 1];
+
+                // rest = seq_ref (already a seq, nil if exhausted)
+                const rest_ref = try self.makeTempLocalRef(seq_name, seq_idx);
+                try self.expandBindingPattern(rest_pattern, rest_ref, bindings, form);
+
+                i += 1; // skip rest pattern
+
+                // Check for :as after & rest
+                if (i + 1 < elems.len) {
+                    if (elems[i + 1].data == .keyword and std.mem.eql(u8, elems[i + 1].data.keyword.name, "as")) {
+                        if (i + 2 >= elems.len) {
+                            return self.analysisError(.value_error, ":as must be followed by a symbol", form);
+                        }
+                        try self.expandBindingPattern(elems[i + 2], coll_ref, bindings, form);
+                        i += 2;
+                    }
+                }
+                continue;
+            }
+
+            // :as check
+            if (elem.data == .keyword and std.mem.eql(u8, elem.data.keyword.name, "as")) {
+                if (i + 1 >= elems.len) {
+                    return self.analysisError(.value_error, ":as must be followed by a symbol", form);
+                }
+                try self.expandBindingPattern(elems[i + 1], coll_ref, bindings, form);
+                i += 1;
+                continue;
+            }
+
+            // Normal element: elem = (first seq_ref)
+            const cur_seq_ref = try self.makeTempLocalRef(seq_name, seq_idx);
+            const first_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+            first_args[0] = cur_seq_ref;
+            const first_init = try self.makeBuiltinCall("first", first_args);
+            try self.expandBindingPattern(elem, first_init, bindings, form);
+
+            // Advance: seq_ref = (next seq_ref) — new local slot each time
+            const next_seq_ref = try self.makeTempLocalRef(seq_name, seq_idx);
+            const next_args = self.allocator.alloc(*Node, 1) catch return error.OutOfMemory;
+            next_args[0] = next_seq_ref;
+            const next_init = try self.makeBuiltinCall("next", next_args);
+            seq_idx = @intCast(self.locals.items.len);
+            self.locals.append(self.allocator, .{ .name = seq_name, .idx = seq_idx }) catch return error.OutOfMemory;
+            bindings.append(self.allocator, .{ .name = seq_name, .init = next_init }) catch return error.OutOfMemory;
         }
     }
 
