@@ -363,17 +363,17 @@ pub fn main() !void {
             }
         }
 
-        // Apply resolved deps
+        // Apply resolved deps (resolve_deps=true for direct deps → reads transitive dep configs)
         for (resolved.deps) |dep| {
             if (dep.local_root) |root| {
-                resolveLocalDep(root, config_dir);
+                resolveLocalDep(root, config_dir, true);
             } else if (dep.git_url != null and dep.git_sha != null) {
-                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, s_force);
+                resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, s_force, true);
             } else {
                 // Try io.github/io.gitlab URL inference
                 if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
                     if (dep.git_sha) |sha| {
-                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, s_force);
+                        resolveGitDep(inferred_url, sha, dep.git_tag, dep.deps_root, s_force, true);
                     }
                 }
             }
@@ -1313,12 +1313,12 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
             ns_ops.addLoadPath(path) catch {};
         }
     }
-    // Resolve deps
+    // Resolve deps (resolve_deps=true for direct deps)
     for (config.deps) |dep| {
         if (dep.local_root) |root| {
-            resolveLocalDep(root, config_dir);
+            resolveLocalDep(root, config_dir, true);
         } else if (dep.git_url != null and dep.git_sha != null) {
-            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false);
+            resolveGitDep(dep.git_url.?, dep.git_sha.?, dep.git_tag, dep.deps_root, false, true);
         }
     }
     // Register wasm module deps
@@ -1332,11 +1332,14 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
     }
 }
 
-/// Resolve a :local/root dependency: add its :paths to load paths and recurse.
-fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
-    // Resolve relative path against config directory
+/// Resolve a :local/root dependency: add its :paths to load paths and optionally recurse.
+/// resolve_deps: if true, also resolve transitive deps (one more level with resolve_deps=false).
+fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8, resolve_deps: bool) void {
+    // Resolve relative path against config directory (skip if root is absolute)
     var path_buf: [4096]u8 = undefined;
-    const dep_dir = if (config_dir) |dir|
+    const dep_dir = if (std.fs.path.isAbsolute(root))
+        root
+    else if (config_dir) |dir|
         std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ dir, root }) catch return
     else
         root;
@@ -1346,7 +1349,55 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
     const src_path = std.fmt.bufPrint(&src_buf, "{s}/src", .{dep_dir}) catch return;
     ns_ops.addLoadPath(src_path) catch {};
 
-    // Try to read dep's cljw.edn for custom :paths
+    // Try deps.edn first, then fall back to cljw.edn
+    var dep_deps_edn_buf: [4096]u8 = undefined;
+    const dep_deps_edn_path = std.fmt.bufPrint(&dep_deps_edn_buf, "{s}/deps.edn", .{dep_dir}) catch return;
+
+    if (std.fs.cwd().readFileAlloc(std.heap.page_allocator, dep_deps_edn_path, 10_000)) |dep_content| {
+        defer std.heap.page_allocator.free(dep_content);
+        // Parse deps.edn using deps.zig parser
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const dc = deps_mod.parseDepsEdn(arena.allocator(), dep_content);
+
+        // Add custom :paths
+        for (dc.paths) |p| {
+            var sub_buf: [4096]u8 = undefined;
+            const full = std.fmt.bufPrint(&sub_buf, "{s}/{s}", .{ dep_dir, p }) catch continue;
+            ns_ops.addLoadPath(full) catch {};
+        }
+
+        // Resolve transitive deps (one level only)
+        if (resolve_deps) {
+            for (dc.deps) |sub_dep| {
+                if (sub_dep.local_root) |sub_root| {
+                    resolveLocalDep(sub_root, dep_dir, false);
+                } else if (sub_dep.git_url != null and sub_dep.git_sha != null) {
+                    resolveGitDep(sub_dep.git_url.?, sub_dep.git_sha.?, sub_dep.git_tag, sub_dep.deps_root, false, false);
+                } else {
+                    // Try io.github/io.gitlab URL inference for transitive deps
+                    if (deps_mod.inferGitUrl(arena.allocator(), sub_dep.name)) |inferred_url| {
+                        if (sub_dep.git_sha) |sha| {
+                            resolveGitDep(inferred_url, sha, sub_dep.git_tag, sub_dep.deps_root, false, false);
+                        }
+                    } else {
+                        // Unsupported dep type in transitive chain — warn
+                        const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+                        _ = stderr.write("WARNING: Skipping transitive dependency ") catch {};
+                        _ = stderr.write(sub_dep.name) catch {};
+                        _ = stderr.write(" — unsupported coordinates\n") catch {};
+                    }
+                }
+            }
+        }
+    } else |_| {
+        // No deps.edn — try cljw.edn
+        resolveLocalDepFromCljwEdn(dep_dir, resolve_deps);
+    }
+}
+
+/// Fallback: read cljw.edn for a dependency's paths and deps.
+fn resolveLocalDepFromCljwEdn(dep_dir: []const u8, resolve_deps: bool) void {
     var dep_config_buf: [4096]u8 = undefined;
     const dep_config_path = std.fmt.bufPrint(&dep_config_buf, "{s}/cljw.edn", .{dep_dir}) catch return;
     const dep_content = std.fs.cwd().readFileAlloc(
@@ -1380,13 +1431,13 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
                     }
                 }
             }
-        } else if (kw.ns == null and std.mem.eql(u8, kw.name, "deps")) {
+        } else if (resolve_deps and kw.ns == null and std.mem.eql(u8, kw.name, "deps")) {
             if (map_entries[di + 1].data == .map) {
-                // Recurse into transitive deps
+                // Recurse into transitive deps (one level only)
                 const sub_deps = parseDeps(std.heap.page_allocator, map_entries[di + 1].data.map);
                 for (sub_deps) |sub_dep| {
                     if (sub_dep.local_root) |sub_root| {
-                        resolveLocalDep(sub_root, dep_dir);
+                        resolveLocalDep(sub_root, dep_dir, false);
                     }
                 }
             }
@@ -1399,7 +1450,8 @@ fn resolveLocalDep(root: []const u8, config_dir: ?[]const u8) void {
 /// tag: optional :git/tag for validation (verify tag points to sha)
 /// deps_root: optional :deps/root subdirectory within the git repo
 /// force: -Sforce flag — bypass cache and re-fetch
-fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool) void {
+/// resolve_deps: if true, also resolve transitive deps from the dep's deps.edn
+fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: ?[]const u8, force: bool, resolve_deps: bool) void {
     const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     const alloc = std.heap.page_allocator;
 
@@ -1432,7 +1484,7 @@ fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: 
     if (!force) {
         if (std.fs.cwd().access(marker, .{})) |_| {
             // Already resolved — just add paths
-            resolveLocalDep(effective_dir, null);
+            resolveLocalDep(effective_dir, null, resolve_deps);
             return;
         } else |_| {}
     }
@@ -1542,7 +1594,7 @@ fn resolveGitDep(url: []const u8, sha: []const u8, tag: ?[]const u8, deps_root: 
     } else |_| {}
 
     // Resolve paths from the extracted dep (using effective_dir for :deps/root)
-    resolveLocalDep(effective_dir, null);
+    resolveLocalDep(effective_dir, null, resolve_deps);
 }
 
 /// Validate that a git tag points to the expected SHA.

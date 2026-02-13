@@ -22,7 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 67: Git Dependencies. Next task: 67.5 (transitive deps from git repos).
+Phase 67: Git Dependencies — COMPLETE. Next: Phase 68 (Integration).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
@@ -39,7 +39,7 @@ Phase 67 — Git Dependencies:
 - [x] 67.2: Enhanced resolveGitDep (:git/tag validation, :deps/root, -Sforce)
 - [x] 67.3: io.github/io.gitlab URL inference — already in deps.zig + main.zig
 - [x] 67.4: E2E test with local git repo (9 tests)
-- [ ] 67.5: Transitive deps from git repos (read dep's deps.edn)
+- [x] 67.5: Transitive deps from git repos (read dep's deps.edn)
 
 ## Previous Task
 

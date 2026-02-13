@@ -250,6 +250,83 @@ run_test "deps.edn priority over cljw.edn" \
   "cd $PROJ9 && $CLJW src/app/core.clj" \
   "deps.edn wins"
 
+# --- Test 10: Transitive local dep ---
+# dep-a depends on dep-b via :local/root, project depends on dep-a
+DEP_B="$TMPDIR_BASE/dep-b"
+mkdir -p "$DEP_B/src/dep_b"
+cat > "$DEP_B/src/dep_b/core.clj" << 'CLOJ'
+(ns dep-b.core)
+(defn magic [] 42)
+CLOJ
+cat > "$DEP_B/deps.edn" << 'CLOJ'
+{:paths ["src"]}
+CLOJ
+
+DEP_A="$TMPDIR_BASE/dep-a"
+mkdir -p "$DEP_A/src/dep_a"
+cat > "$DEP_A/src/dep_a/core.clj" << 'CLOJ'
+(ns dep-a.core (:require [dep-b.core :as b]))
+(defn answer [] (b/magic))
+CLOJ
+cat > "$DEP_A/deps.edn" << EOF
+{:paths ["src"]
+ :deps {dep-b/dep-b {:local/root "$DEP_B"}}}
+EOF
+
+PROJ10="$TMPDIR_BASE/proj10"
+mkdir -p "$PROJ10/src/app"
+cat > "$PROJ10/deps.edn" << EOF
+{:paths ["src"]
+ :deps {dep-a/dep-a {:local/root "$DEP_A"}}}
+EOF
+cat > "$PROJ10/src/app/core.clj" << 'CLOJ'
+(ns app.core (:require [dep-a.core :as a] [dep-b.core :as b]))
+(println (a/answer))
+(println (b/magic))
+CLOJ
+run_test "transitive local dep" \
+  "cd $PROJ10 && $CLJW src/app/core.clj" \
+  "42"
+
+# --- Test 11: Transitive git dep (git dep has own deps.edn with local dep) ---
+# Create a git repo that declares a local transitive dep
+GIT_REPO_TRANS="$TMPDIR_BASE/test-trans-repo"
+mkdir -p "$GIT_REPO_TRANS/src/trans_dep"
+mkdir -p "$GIT_REPO_TRANS/lib/src/trans_lib"
+cat > "$GIT_REPO_TRANS/src/trans_dep/core.clj" << 'CLOJ'
+(ns trans-dep.core)
+(defn hello [] "from-git-dep")
+CLOJ
+cat > "$GIT_REPO_TRANS/lib/src/trans_lib/util.clj" << 'CLOJ'
+(ns trans-lib.util)
+(defn calc [x] (* x 3))
+CLOJ
+cat > "$GIT_REPO_TRANS/lib/deps.edn" << 'CLOJ'
+{:paths ["src"]}
+CLOJ
+cat > "$GIT_REPO_TRANS/deps.edn" << 'CLOJ'
+{:paths ["src"]
+ :deps {trans-lib/trans-lib {:local/root "lib"}}}
+CLOJ
+(cd "$GIT_REPO_TRANS" && git init -q && git add -A && git commit -q -m "init")
+TRANS_SHA=$(cd "$GIT_REPO_TRANS" && git rev-parse HEAD)
+
+PROJ11="$TMPDIR_BASE/proj11"
+mkdir -p "$PROJ11/src/app"
+cat > "$PROJ11/deps.edn" << EOF
+{:paths ["src"]
+ :deps {trans-dep/trans-dep {:git/url "$GIT_REPO_TRANS"
+                              :git/sha "$TRANS_SHA"}}}
+EOF
+cat > "$PROJ11/src/app/core.clj" << 'CLOJ'
+(ns app.core (:require [trans-dep.core :as td] [trans-lib.util :as tu]))
+(println (td/hello))
+(println (tu/calc 7))
+CLOJ
+run_test "transitive git dep (git→local)" \
+  "cd $PROJ11 && $CLJW -P && $CLJW src/app/core.clj" \
+  "21"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed (total $((PASS + FAIL)))"
 
