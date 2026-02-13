@@ -877,3 +877,30 @@ entries:
       string_ops: {time_ms: 25, mem_mb: 20.5}
       multimethod_dispatch: {time_ms: 6, mem_mb: 10.8}
       real_workload: {time_ms: 9, mem_mb: 17.1}
+  - id: "69.0"
+    date: "2026-02-14"
+    reason: "Phase 69: deps.edn cleanup, cljw.edn removed, pre-v0.1.0 tag"
+    commit: "1046dd8"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 19, mem_mb: 11.5}
+      fib_loop: {time_ms: 6, mem_mb: 11.6}
+      tak: {time_ms: 9, mem_mb: 11.5}
+      arith_loop: {time_ms: 5, mem_mb: 11.5}
+      map_filter_reduce: {time_ms: 7, mem_mb: 12.2}
+      vector_ops: {time_ms: 6, mem_mb: 16.7}
+      map_ops: {time_ms: 5, mem_mb: 15.6}
+      list_build: {time_ms: 6, mem_mb: 12.1}
+      sieve: {time_ms: 6, mem_mb: 15.1}
+      nqueens: {time_ms: 15, mem_mb: 22.6}
+      atom_swap: {time_ms: 5, mem_mb: 11.6}
+      gc_stress: {time_ms: 32, mem_mb: 17.3}
+      lazy_chain: {time_ms: 7, mem_mb: 11.6}
+      transduce: {time_ms: 6, mem_mb: 11.6}
+      keyword_lookup: {time_ms: 12, mem_mb: 11.6}
+      protocol_dispatch: {time_ms: 7, mem_mb: 11.6}
+      nested_update: {time_ms: 11, mem_mb: 16.7}
+      string_ops: {time_ms: 25, mem_mb: 21.3}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 11.6}
+      real_workload: {time_ms: 10, mem_mb: 18.6}

@@ -63,7 +63,7 @@ Java standard library functionality is replaced with Zig equivalents:
 
 | Namespace      | Done | Total | Notes                       |
 |----------------|------|-------|-----------------------------|
-| clojure.core   | 635  | 706   | 90% — see skip list below   |
+| clojure.core   | 637  | 706   | 90% — see skip list below   |
 | clojure.test   | 32   | 39    | No spec integration         |
 | clojure.pprint | 9    | 26    | Core pprint + print-table   |
 | clojure.repl   | 11   | 13    | No spec, no Java reflection |

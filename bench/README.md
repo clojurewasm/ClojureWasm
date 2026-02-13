@@ -188,7 +188,7 @@ bench/
   simd/                 # SIMD benchmark programs
 ```
 
-## Latest Clojure Results (2026-02-13)
+## Latest Clojure Results (2026-02-14)
 
 Apple M4 Pro, 48GB RAM, macOS 15. hyperfine 5 runs + 2 warmup.
 All times in milliseconds. These are **cold start** measurements (process
@@ -201,7 +201,7 @@ launch to exit) — languages with heavy runtimes (JVM, V8) pay startup cost.
 | tak                  | 7    | 13.2   | 33.6 | 24.2 | 21.0  | 1.7 | 2.9 | 2.0    |
 | arith_loop           | 5    | 60.7   | 54.5 | 25.2 | 21.4  | 1.7 | 1.2 | 1.7    |
 | map_filter_reduce    | 7    | 13.0   | 35.9 | 23.7 | 21.4  | 1.4 | 1.4 | 2.6    |
-| vector_ops           | 7    | 13.5   | 31.6 | 22.7 | 24.1  | 1.3 | 1.4 | 2.3    |
+| vector_ops           | 6    | 13.5   | 31.6 | 22.7 | 24.1  | 1.3 | 1.4 | 2.3    |
 | map_ops              | 5    | 12.8   | 30.8 | 22.3 | 18.7  | 1.0 | 1.7 | 2.4    |
 | list_build           | 5    | 14.6   | 34.6 | 25.7 | 21.9  | 1.5 | 1.8 | 2.5    |
 | sieve                | 6    | 12.2   | 35.8 | 24.4 | 23.8  | 1.4 | 1.2 | 1.6    |
@@ -211,9 +211,9 @@ launch to exit) — languages with heavy runtimes (JVM, V8) pay startup cost.
 | lazy_chain           | 8    | 15.4   | 33.0 | 26.1 | 22.2  | 2.6 | 1.6 | 2.2    |
 | transduce            | 6    | 12.6   | 36.2 | 23.5 | 23.7  | 1.3 | 1.7 | 1.9    |
 | keyword_lookup       | 12   | 19.4   | 37.0 | 27.4 | 23.9  | 1.6 | 0.0 | 4.9    |
-| protocol_dispatch    | 5    | 12.7   | 32.8 | 24.3 | 22.0  | 2.3 | 1.7 | 2.2    |
-| nested_update        | 12   | 12.6   | 32.9 | 24.0 | 23.7  | 0.2 | 1.3 | 3.1    |
-| string_ops           | 27   | 25.2   | 38.0 | 24.5 | 24.8  | 4.3 | 2.0 | 1.5    |
+| protocol_dispatch    | 7    | 12.7   | 32.8 | 24.3 | 22.0  | 2.3 | 1.7 | 2.2    |
+| nested_update        | 11   | 12.6   | 32.9 | 24.0 | 23.7  | 0.2 | 1.3 | 3.1    |
+| string_ops           | 25   | 25.2   | 38.0 | 24.5 | 24.8  | 4.3 | 2.0 | 1.5    |
 | multimethod_dispatch | 6    | 13.3   | 33.8 | 24.6 | 20.0  | 2.6 | 0.9 | 2.1    |
 | real_workload        | 10   | 13.6   | 37.1 | 24.7 | 26.6  | 0.9 | 1.0 | 1.7    |
 
@@ -241,7 +241,7 @@ Measured as ReleaseSafe builds on ARM64 macOS.
 zwasm is **1/50th** the size of wasmtime and **1/100th** of wasmer.
 Full Wasm 3.0 support (all 9 proposals including GC) in 1.1 MB.
 
-## Latest Wasm Runtime Results (2026-02-13)
+## Latest Wasm Runtime Results (2026-02-14)
 
 CW's built-in Wasm runtime (zwasm, Register IR + ARM64/x86_64 JIT)
 vs 4 other Wasm runtimes. Apple M4 Pro, 48GB RAM.

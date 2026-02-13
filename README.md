@@ -23,7 +23,8 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
-- **835+ vars** across 16 namespaces (635/706 clojure.core)
+- **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
+- **869+ vars** across 17 namespaces (637/706 clojure.core)
 
 ## Getting Started
 
@@ -45,6 +46,26 @@ zig build -Doptimize=ReleaseSafe  # Optimized build
 ./zig-out/bin/cljw script.clj                        # Run a file
 ./zig-out/bin/cljw                                   # Interactive REPL
 ```
+
+### deps.edn Projects
+
+```bash
+# Download dependencies (git deps require explicit -P)
+./zig-out/bin/cljw -P
+
+# Run with aliases
+./zig-out/bin/cljw -M:run                # Main opts
+./zig-out/bin/cljw -X:build              # Exec function
+./zig-out/bin/cljw -A:dev src/app.clj    # Extra paths
+./zig-out/bin/cljw -Spath                # Show classpath
+
+# Run tests
+./zig-out/bin/cljw test                  # Auto-discover test/
+./zig-out/bin/cljw test -A:test          # With alias
+```
+
+Supports `:local/root`, `:git/url`+`:git/sha`, `:deps/root`, transitive deps.
+No Maven/Clojars support (git deps and local deps only).
 
 ### Build a Standalone Binary
 
@@ -71,7 +92,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace          | Vars | Description                    |
 |--------------------|------|--------------------------------|
-| clojure.core       | 635  | Core language functions        |
+| clojure.core       | 637  | Core language functions        |
 | clojure.string     | 21   | String manipulation            |
 | clojure.math       | 45   | Math functions                 |
 | clojure.set        | 12   | Set operations                 |
@@ -87,6 +108,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 | clojure.java.io    | 7    | File I/O (Zig-native)          |
 | clojure.java.shell | 5    | Shell commands (sh)            |
 | cljw.http          | 6    | HTTP server/client             |
+| cljw.wasm          | 17   | WebAssembly FFI                |
 
 ### Wasm FFI
 
@@ -136,7 +158,7 @@ Call WebAssembly modules directly from Clojure:
 - **Bytecode VM** — 75 opcodes, superinstructions, fused branch ops
 - **ARM64 JIT** — hot integer loop detection with native code generation
 - **Bootstrap cache** — core.clj pre-compiled at build time (~5ms restore)
-- **Zero-config projects** — auto-detect `src/`, `cljw.edn` optional
+- **deps.edn projects** — Clojure CLI compatible config (git deps, local deps, aliases)
 
 ## Project Structure
 
@@ -161,7 +183,7 @@ src/
 └── wasm/                       WebAssembly runtime (523 opcodes)
 
 bench/                          31 benchmarks, multi-language
-test/                           48 Clojure test files (43 upstream ports)
+test/                           74 Clojure test files (50 upstream ports)
 ```
 
 The [`.dev/`](.dev/) directory contains design decisions, optimization logs,
@@ -184,17 +206,17 @@ bash bench/run_bench.sh --bench=fib_recursive  # Single benchmark
 
 ```bash
 zig build test                  # 1,300+ Zig test blocks
-bash test/e2e/run_e2e.sh       # End-to-end tests
+bash test/e2e/run_e2e.sh       # End-to-end tests (6 wasm)
+bash test/e2e/deps/run_deps_e2e.sh  # deps.edn E2E tests (14)
 ```
 
-48 Clojure test files including 43 upstream test ports with 600+ deftests.
+74 Clojure test files including 50 upstream test ports with 600+ deftests.
 All tests verified on both VM and TreeWalk backends.
 
 ## Future Plans
 
 - **JIT expansion** — float operations, function calls, broader loop patterns
 - **Generational GC** — nursery/tenured generations for throughput
-- **Dependency management** — deps.edn compatible (git/sha deps)
 - **Persistent data structures** — HAMT/RRB-Tree implementations
 - **wasm_rt** — compile Clojure to run *inside* WebAssembly
 
