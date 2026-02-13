@@ -251,9 +251,7 @@ pub fn main() !void {
         // No args, no file, no :main — start REPL
         var env = Env.init(allocator);
         defer env.deinit();
-        bootstrapFromCache(alloc, &env);
-        gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-        env.gc = @ptrCast(&gc);
+        bootstrapFromCache(alloc, &env, &gc);
         runRepl(alloc, &env, &gc);
     }
 }
@@ -435,12 +433,7 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     // bootstrap and evaluation use gc_alloc (MarkSweepGc) for Values.
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-
-    // Enable GC for user evaluation (bootstrap runs without GC).
-    // Reset threshold to avoid immediate sweep on first safe point.
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Dump bytecode if requested (VM only, dump to stderr then exit)
     if (dump_bytecode) {
@@ -486,9 +479,7 @@ fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepG
     _ = use_vm;
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Generate and evaluate (require 'main-ns)
     var buf: [4096]u8 = undefined;
@@ -505,7 +496,9 @@ fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepG
 /// Initialize env from pre-compiled bootstrap cache (D81).
 /// Registers builtins (Zig function pointers), then restores Clojure-defined
 /// Vars from the serialized env snapshot embedded at build time.
-fn bootstrapFromCache(gc_alloc: Allocator, env: *Env) void {
+/// Protocol/ProtocolFn values are now serialized directly in the cache,
+/// so no re-evaluation of protocols.clj/reducers.clj is needed.
+fn bootstrapFromCache(gc_alloc: Allocator, env: *Env, gc: ?*gc_mod.MarkSweepGc) void {
     registry.registerBuiltins(env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});
         std.process.exit(1);
@@ -515,6 +508,12 @@ fn bootstrapFromCache(gc_alloc: Allocator, env: *Env) void {
         std.process.exit(1);
     };
     markBootstrapLibs();
+
+    // Enable GC after cache restore for subsequent evaluation.
+    if (gc) |g| {
+        g.threshold = @max(g.bytes_allocated * 2, g.threshold);
+        env.gc = @ptrCast(g);
+    }
 }
 
 /// Mark built-in namespaces as loaded so require skips them.
@@ -551,9 +550,7 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
     // Bootstrap
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Load cljw.edn config
     var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
@@ -1565,14 +1562,10 @@ fn readEmbeddedSource(allocator: Allocator) ?[]const u8 {
 fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, cli_args: []const [:0]const u8) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Set *command-line-args*
     setCommandLineArgs(gc_alloc, &env, cli_args);
-
-    // Enable GC
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
 
     // Evaluate using VM backend
     _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
@@ -1591,10 +1584,7 @@ fn evalEmbedded(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
 fn startNreplWithFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, filepath: []const u8, nrepl_port: u16) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Set up load paths for require resolution
     const dir = std.fs.path.dirname(filepath) orelse ".";
@@ -1638,12 +1628,9 @@ fn startNreplWithFile(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.M
 fn evalEmbeddedWithNrepl(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, cli_args: []const [:0]const u8, nrepl_port: u16) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     setCommandLineArgs(gc_alloc, &env, cli_args);
-
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
 
     // HTTP servers should run in background so nREPL can start after eval.
     http_server.background_mode = true;
@@ -1725,8 +1712,7 @@ fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.M
     // Bootstrap runtime from cache
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-    _ = gc;
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     // Set up load paths from entry file directory
     const dir = std.fs.path.dirname(source_file.?) orelse ".";
@@ -1828,9 +1814,7 @@ fn handleBuildCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.M
 fn runEmbeddedBytecode(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, module_bytes: []const u8) void {
     var env = Env.init(infra_alloc);
     defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env);
-    gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
-    env.gc = @ptrCast(gc);
+    bootstrapFromCache(gc_alloc, &env, gc);
 
     _ = bootstrap.runBytecodeModule(gc_alloc, &env, module_bytes) catch |e| {
         reportError(e);

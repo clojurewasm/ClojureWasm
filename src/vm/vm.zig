@@ -838,25 +838,42 @@ pub const VM = struct {
                 // Get or create method map for this type in protocol.impls
                 const existing = protocol.impls.get(Value.initString(self.allocator, type_key));
                 if (existing) |ex_val| {
-                    // Existing method map for this type — add method
+                    // Existing method map for this type — update or add method
                     if (ex_val.tag() != .map) return error.TypeError;
                     const old_map = ex_val.asMap();
-                    const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
-                    if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
-                    @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
-                    new_entries[old_map.entries.len] = Value.initString(self.allocator, method_name);
-                    new_entries[old_map.entries.len + 1] = method_fn;
-                    const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
-                    new_method_map.* = .{ .entries = new_entries };
-                    if (self.gc == null) self.allocated_maps.append(self.allocator, new_method_map) catch return error.OutOfMemory;
-                    // Update impls: replace the type_key -> method_map entry
-                    const impls = protocol.impls;
-                    var i: usize = 0;
-                    while (i < impls.entries.len) : (i += 2) {
-                        if (impls.entries[i].eql(Value.initString(self.allocator, type_key))) {
-                            // Mutate in place — protocol.impls is mutable
-                            @constCast(impls.entries)[i + 1] = Value.initMap(new_method_map);
-                            break;
+
+                    // Check if the method already exists in the map (replace in-place)
+                    const method_key = Value.initString(self.allocator, method_name);
+                    var replaced = false;
+                    {
+                        var j: usize = 0;
+                        while (j + 1 < old_map.entries.len) : (j += 2) {
+                            if (old_map.entries[j].eql(method_key)) {
+                                @constCast(old_map.entries)[j + 1] = method_fn;
+                                replaced = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!replaced) {
+                        // New method for this type — append
+                        const new_entries = self.allocator.alloc(Value, old_map.entries.len + 2) catch return error.OutOfMemory;
+                        if (self.gc == null) self.allocated_slices.append(self.allocator, new_entries) catch return error.OutOfMemory;
+                        @memcpy(new_entries[0..old_map.entries.len], old_map.entries);
+                        new_entries[old_map.entries.len] = method_key;
+                        new_entries[old_map.entries.len + 1] = method_fn;
+                        const new_method_map = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
+                        new_method_map.* = .{ .entries = new_entries };
+                        if (self.gc == null) self.allocated_maps.append(self.allocator, new_method_map) catch return error.OutOfMemory;
+                        // Update impls: replace the type_key -> method_map entry
+                        const impls = protocol.impls;
+                        var i: usize = 0;
+                        while (i < impls.entries.len) : (i += 2) {
+                            if (impls.entries[i].eql(Value.initString(self.allocator, type_key))) {
+                                @constCast(impls.entries)[i + 1] = Value.initMap(new_method_map);
+                                break;
+                            }
                         }
                     }
                 } else {
@@ -881,6 +898,9 @@ pub const VM = struct {
                     if (self.gc == null) self.allocated_maps.append(self.allocator, new_impls) catch return error.OutOfMemory;
                     protocol.impls = new_impls;
                 }
+
+                // Invalidate ProtocolFn inline caches by bumping generation
+                protocol.generation +%= 1;
 
                 try self.push(Value.nil_val);
             },
@@ -1344,7 +1364,9 @@ pub const VM = struct {
                 const type_key = valueTypeKey(first_arg);
                 const mutable_pf: *ProtocolFn = @constCast(pf);
                 if (mutable_pf.cached_type_key) |ck| {
-                    if (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)) {
+                    if (mutable_pf.cached_generation == pf.protocol.generation and
+                        (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)))
+                    {
                         // Cache hit — skip full protocol resolution
                         self.stack[fn_idx] = mutable_pf.cached_method;
                         return self.performCall(arg_count);
@@ -1360,6 +1382,7 @@ pub const VM = struct {
                 // Update cache for next call
                 mutable_pf.cached_type_key = type_key;
                 mutable_pf.cached_method = method_fn;
+                mutable_pf.cached_generation = pf.protocol.generation;
                 self.stack[fn_idx] = method_fn;
                 return self.performCall(arg_count);
             },

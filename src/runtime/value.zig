@@ -412,6 +412,9 @@ pub const Protocol = struct {
     method_sigs: []const MethodSig,
     /// Maps type_key (string) -> method_map (PersistentArrayMap of method_name -> fn)
     impls: *PersistentArrayMap,
+    /// Incremented when impls are modified (by extend_type_method / extend-type).
+    /// Used by ProtocolFn inline cache to detect stale entries.
+    generation: u32 = 0,
 };
 
 /// Protocol method reference — dispatches on first arg's type key.
@@ -426,6 +429,9 @@ pub const ProtocolFn = struct {
     method_name: []const u8,
     cached_type_key: ?[]const u8 = null,
     cached_method: Value = Value.nil_val,
+    /// Protocol generation at the time of cache update.
+    /// Cache is valid only when this matches protocol.generation.
+    cached_generation: u32 = 0,
 };
 
 /// MultiFn — multimethod with dispatch function and 2-level cache.

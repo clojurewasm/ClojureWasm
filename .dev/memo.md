@@ -21,21 +21,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Ready for next phase planning. See Task Queue below.
+Phase 60: Startup & Memory Optimization.
+Task 60.3: Binary size audit and optimization.
 
 ## Task Queue
 
-(empty — plan next phase)
+- 60.3: Binary size audit and optimization
+- 60.4: Record benchmarks, update docs
 
 ## Previous Task
 
-F99 fix: apply on infinite lazy seq. Added lazy variadic path to applyFn
-(cons chain + peel fixed params, threadlocal flag for VM/TreeWalk rest packing).
-
-Previous:
-
-Phase 59: Deferred cleanup & test porting (ALL DONE).
-59.1-59.2: Ratio/promote ops upstream tests, coercion fixes.
+Phase 60.1-60.2 complete: Protocol/ProtocolFn serialization (D95).
+Root cause: reloadProtocolNamespaces re-evaluated ~440 lines at every startup.
+Fix: Serialize Protocol/ProtocolFn in bootstrap cache + generation counter
+for ProtocolFn inline cache + method replacement in extend_type_method.
+Result: startup 23.3ms → 5.3ms, memory 226MB → 8.1MB.
 
 ## Known Issues
 

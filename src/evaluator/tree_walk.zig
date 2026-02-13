@@ -849,7 +849,9 @@ pub const TreeWalk = struct {
         // Monomorphic inline cache: check if same type as last dispatch
         const mutable_pf: *value_mod.ProtocolFn = @constCast(pf);
         if (mutable_pf.cached_type_key) |ck| {
-            if (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)) {
+            if (mutable_pf.cached_generation == pf.protocol.generation and
+                (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)))
+            {
                 return self.callValue(mutable_pf.cached_method, args);
             }
         }
@@ -866,6 +868,7 @@ pub const TreeWalk = struct {
         // Update cache
         mutable_pf.cached_type_key = type_key;
         mutable_pf.cached_method = fn_val;
+        mutable_pf.cached_generation = pf.protocol.generation;
 
         // Call the impl function
         return self.callValue(fn_val, args);
@@ -954,6 +957,7 @@ pub const TreeWalk = struct {
         const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
         new_impls.* = .{ .entries = new_entries };
         protocol.impls = new_impls;
+        protocol.generation +%= 1;
 
         return Value.nil_val;
     }
@@ -1007,6 +1011,7 @@ pub const TreeWalk = struct {
             const new_impls = self.allocator.create(value_mod.PersistentArrayMap) catch return error.OutOfMemory;
             new_impls.* = .{ .entries = new_entries };
             protocol.impls = new_impls;
+            protocol.generation +%= 1;
         }
 
         // Create reified object: a map with __type key

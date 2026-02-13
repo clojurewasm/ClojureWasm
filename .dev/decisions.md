@@ -560,3 +560,26 @@ all to reach safe points, then collect with combined root sets.
 **Scope**: Phase 48.2 adds the mutex + registry. Thread spawning (48.3) will
 integrate safe-point coordination. Future optimization: concurrent marking,
 thread-local allocation buffers (TLABs), generational collection.
+
+## D95: Protocol/ProtocolFn Serialization — Eliminating Startup Re-evaluation
+
+**Problem**: After D81 (bootstrap cache), Protocol and ProtocolFn values were not
+serializable. `restoreFromBootstrapCache` called `reloadProtocolNamespaces` to
+re-evaluate protocols.clj + reducers.clj (~440 lines) via TreeWalk at every startup,
+causing 23.3ms startup time and 226MB memory usage.
+
+**Decision**: Serialize Protocol and ProtocolFn values in the bootstrap cache.
+Protocol stores name + method_sigs + impls (nested map of type_key → method_map).
+ProtocolFn stores method_name + protocol var reference (ns + name), resolved via
+deferred fixup after env restore. Fn closure_bindings also serialized.
+
+**Cache invalidation**: Protocol gains a `generation` counter, incremented on every
+`extend_type_method` / `extend-type` call. ProtocolFn inline cache checks
+`cached_generation == protocol.generation` to detect stale entries. This fixes a
+latent bug where VM-compiled reify forms share compile-time type keys, causing the
+monomorphic cache to return stale methods when the same type key gets new impls.
+Also fixed `extend_type_method` to replace existing methods (same name) in the
+method map instead of always appending.
+
+**Result**: Startup 23.3ms → 5.3ms (4.4x), memory 226MB → 8.1MB (28x reduction).
+All upstream tests pass, no regression.

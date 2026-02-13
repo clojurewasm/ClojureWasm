@@ -35,12 +35,16 @@
 //!   0x05 string (u32 string table index)
 //!   0x06 symbol (i32 ns index + u32 name index)
 //!   0x07 keyword (i32 ns index + u32 name index)
-//!   0x08 fn_val (u32 proto_index + u32 extra_count + [extra_count]u32 indices + i32 defining_ns)
+//!   0x08 fn_val (u32 proto_index + u32 extra_count + [extra_count]u32 indices + i32 defining_ns + u32 bindings_count + [bindings_count]Value)
 //!   0x09 list (u32 count + [count]Value)
 //!   0x0A vector (u32 count + [count]Value)
 //!   0x0B map (u32 pair count + [count*2]Value)
 //!   0x0C set (u32 count + [count]Value)
 //!   0x0D var_ref (u32 ns name index + u32 var name index)
+//!   0x0E atom (Value)
+//!   0x0F volatile_ref (Value)
+//!   0x10 protocol (u32 name + u32 sig_count + [sig_count](u32 name + u8 arity) + u32 pair_count + [pair_count*2]Value)
+//!   0x11 protocol_fn (u32 method_name + u32 protocol_ns + u32 protocol_var_name)
 
 const std = @import("std");
 const chunk_mod = @import("chunk.zig");
@@ -82,6 +86,8 @@ pub const ValueTag = enum(u8) {
     var_ref = 0x0D,
     atom = 0x0E,
     volatile_ref = 0x0F,
+    protocol = 0x10,
+    protocol_fn = 0x11,
 };
 
 // --- Byte encoding helpers (little-endian) ---
@@ -127,6 +133,12 @@ fn decodeF64(bytes: *const [8]u8) f64 {
     return @bitCast(bits);
 }
 
+/// Reference to a protocol's var location (for ProtocolFn serialization).
+const ProtocolRef = struct {
+    ns_name: []const u8,
+    var_name: []const u8,
+};
+
 /// Serialization context — tracks string interning and FnProto indices.
 pub const Serializer = struct {
     /// String table: deduplicated strings.
@@ -139,6 +151,8 @@ pub const Serializer = struct {
     fn_proto_map: std.AutoHashMapUnmanaged(*const anyopaque, u32) = .empty,
     /// Ordered list of FnProto pointers (inner-first ordering for serialization).
     fn_protos: std.ArrayListUnmanaged(*const anyopaque) = .empty,
+    /// Map from Protocol pointer to its var location (for ProtocolFn serialization).
+    protocol_refs: std.AutoHashMapUnmanaged(*const anyopaque, ProtocolRef) = .empty,
 
     pub fn deinit(self: *Serializer, allocator: std.mem.Allocator) void {
         self.strings.deinit(allocator);
@@ -146,6 +160,7 @@ pub const Serializer = struct {
         self.buf.deinit(allocator);
         self.fn_proto_map.deinit(allocator);
         self.fn_protos.deinit(allocator);
+        self.protocol_refs.deinit(allocator);
     }
 
     /// Intern a string, returning its index in the string table.
@@ -234,6 +249,14 @@ pub const Serializer = struct {
                 } else {
                     try self.writeBytes(allocator, &encodeI32(-1));
                 }
+                // Closure bindings (captured upvalues)
+                const bindings_count: u32 = if (fn_obj.closure_bindings) |b| @intCast(b.len) else 0;
+                try self.writeBytes(allocator, &encodeU32(bindings_count));
+                if (fn_obj.closure_bindings) |bindings| {
+                    for (bindings) |binding| {
+                        try self.serializeValue(allocator, binding);
+                    }
+                }
             },
             .vector => {
                 try self.buf.append(allocator, @intFromEnum(ValueTag.vector));
@@ -282,6 +305,41 @@ pub const Serializer = struct {
             .volatile_ref => {
                 try self.buf.append(allocator, @intFromEnum(ValueTag.volatile_ref));
                 try self.serializeValue(allocator, val.asVolatile().value);
+            },
+            .protocol => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.protocol));
+                const p = val.asProtocol();
+                // Name
+                const name_idx = try self.internString(allocator, p.name);
+                try self.writeBytes(allocator, &encodeU32(name_idx));
+                // Method signatures
+                try self.writeBytes(allocator, &encodeU32(@intCast(p.method_sigs.len)));
+                for (p.method_sigs) |sig| {
+                    const sig_name_idx = try self.internString(allocator, sig.name);
+                    try self.writeBytes(allocator, &encodeU32(sig_name_idx));
+                    try self.buf.append(allocator, sig.arity);
+                }
+                // Impls as nested map (pair_count + key/value pairs)
+                const entries = p.impls.entries;
+                try self.writeBytes(allocator, &encodeU32(@intCast(entries.len / 2)));
+                for (entries) |entry| {
+                    try self.serializeValue(allocator, entry);
+                }
+            },
+            .protocol_fn => {
+                const pf = val.asProtocolFn();
+                const pref = self.protocol_refs.get(@ptrCast(pf.protocol)) orelse {
+                    // Protocol ref not found — serialize as nil
+                    try self.buf.append(allocator, @intFromEnum(ValueTag.nil));
+                    return;
+                };
+                try self.buf.append(allocator, @intFromEnum(ValueTag.protocol_fn));
+                const method_idx = try self.internString(allocator, pf.method_name);
+                try self.writeBytes(allocator, &encodeU32(method_idx));
+                const ns_idx = try self.internString(allocator, pref.ns_name);
+                try self.writeBytes(allocator, &encodeU32(ns_idx));
+                const var_name_idx = try self.internString(allocator, pref.var_name);
+                try self.writeBytes(allocator, &encodeU32(var_name_idx));
             },
             else => {
                 // Unsupported type — serialize as nil
@@ -354,6 +412,24 @@ pub const Serializer = struct {
 
     /// Recursively collect all FnProtos reachable from a Value (inner-first ordering).
     pub fn collectFnProtos(self: *Serializer, allocator: std.mem.Allocator, val: Value) !void {
+        // Walk Protocol.impls to find nested fn_vals
+        if (val.tag() == .protocol) {
+            const p = val.asProtocol();
+            const entries = p.impls.entries;
+            var i: usize = 0;
+            while (i < entries.len) : (i += 2) {
+                if (i + 1 < entries.len and entries[i + 1].tag() == .map) {
+                    const method_entries = entries[i + 1].asMap().entries;
+                    var j: usize = 0;
+                    while (j < method_entries.len) : (j += 2) {
+                        if (j + 1 < method_entries.len) {
+                            try self.collectFnProtos(allocator, method_entries[j + 1]);
+                        }
+                    }
+                }
+            }
+            return;
+        }
         if (val.tag() != .fn_val) return;
         const fn_obj = val.asFn();
         // TreeWalk closures store Closure*, not FnProto* — cannot be serialized.
@@ -364,6 +440,12 @@ pub const Serializer = struct {
         // Collect inner FnProtos from constants first (depth-first)
         for (proto.constants) |c| {
             try self.collectFnProtos(allocator, c);
+        }
+        // Collect FnProtos from closure bindings (captured upvalues)
+        if (fn_obj.closure_bindings) |bindings| {
+            for (bindings) |b| {
+                try self.collectFnProtos(allocator, b);
+            }
         }
         // Register this proto
         const idx: u32 = @intCast(self.fn_protos.items.len);
@@ -459,6 +541,25 @@ pub const Serializer = struct {
             try self.writeBytes(allocator, &encodeI32(@intCast(idx)));
         } else {
             try self.writeBytes(allocator, &encodeI32(-1));
+        }
+    }
+
+    /// Build protocol_refs map: Protocol pointer → (ns_name, var_name).
+    /// Required before serializing ProtocolFn values, which reference their Protocol by var location.
+    pub fn buildProtocolRefMap(self: *Serializer, allocator: std.mem.Allocator, env: *const Env) !void {
+        var ns_iter = env.namespaces.iterator();
+        while (ns_iter.next()) |ns_entry| {
+            const ns = ns_entry.value_ptr.*;
+            var var_iter = ns.mappings.iterator();
+            while (var_iter.next()) |var_entry| {
+                const v = var_entry.value_ptr.*;
+                if (v.root.tag() == .protocol) {
+                    try self.protocol_refs.put(allocator, @ptrCast(v.root.asProtocol()), .{
+                        .ns_name = ns.name,
+                        .var_name = v.sym.name,
+                    });
+                }
+            }
         }
     }
 
@@ -582,7 +683,9 @@ pub const Serializer = struct {
 
     /// Serialize a complete env snapshot: header + string table + FnProto table + env state.
     pub fn serializeEnvSnapshot(self: *Serializer, allocator: std.mem.Allocator, env: *const Env) !void {
-        // Phase 1: collect all FnProtos from var roots
+        // Phase 0: build protocol ref map (needed for ProtocolFn serialization)
+        try self.buildProtocolRefMap(allocator, env);
+        // Phase 1: collect all FnProtos from var roots (including Protocol.impls fn_vals)
         try self.collectEnvFnProtos(allocator, env);
 
         // Phase 2: serialize body to temp buffer (populates string table)
@@ -609,6 +712,14 @@ pub const Serializer = struct {
     }
 };
 
+/// Deferred ProtocolFn fixup entry: Protocol var wasn't available yet during
+/// deserialization. Resolved after all vars are created.
+const DeferredProtocolFn = struct {
+    protocol_fn: *value_mod.ProtocolFn,
+    ns_name: []const u8,
+    var_name: []const u8,
+};
+
 /// Deserialization context.
 /// Deferred var_ref fixup entry: var wasn't available yet during FnProto
 /// constant deserialization. Resolved after all vars are created.
@@ -630,6 +741,8 @@ pub const Deserializer = struct {
     env: ?*Env = null,
     /// Deferred var_ref fixups.
     deferred_var_refs: std.ArrayListUnmanaged(DeferredVarRef) = .empty,
+    /// Deferred ProtocolFn fixups.
+    deferred_protocol_fns: std.ArrayListUnmanaged(DeferredProtocolFn) = .empty,
 
     pub fn readU8(self: *Deserializer) !u8 {
         if (self.pos >= self.data.len) return error.UnexpectedEof;
@@ -761,12 +874,24 @@ pub const Deserializer = struct {
                     break :blk2 self.strings[idx];
                 } else null;
 
+                // Closure bindings
+                const bindings_count = try self.readU32();
+                var closure_bindings: ?[]const Value = null;
+                if (bindings_count > 0) {
+                    const bindings = try allocator.alloc(Value, bindings_count);
+                    for (0..bindings_count) |i| {
+                        bindings[i] = try self.deserializeValue(allocator);
+                    }
+                    closure_bindings = bindings;
+                }
+
                 if (proto_idx >= self.fn_protos.len) return error.InvalidFnProtoIndex;
                 const fn_obj = try allocator.create(value_mod.Fn);
                 fn_obj.* = .{
                     .proto = self.fn_protos[proto_idx],
                     .extra_arities = extra_arities,
                     .defining_ns = defining_ns,
+                    .closure_bindings = closure_bindings,
                 };
                 break :blk Value.initFn(fn_obj);
             },
@@ -846,6 +971,55 @@ pub const Deserializer = struct {
                 const v = try allocator.create(value_mod.Volatile);
                 v.* = .{ .value = inner };
                 break :blk Value.initVolatile(v);
+            },
+            .protocol => blk: {
+                // Name
+                const name_idx = try self.readU32();
+                if (name_idx >= self.strings.len) return error.InvalidStringIndex;
+                const name = self.strings[name_idx];
+                // Method signatures
+                const sig_count = try self.readU32();
+                const method_sigs = try allocator.alloc(value_mod.MethodSig, sig_count);
+                for (0..sig_count) |i| {
+                    const sig_name_idx = try self.readU32();
+                    if (sig_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                    const arity = try self.readU8();
+                    method_sigs[i] = .{ .name = self.strings[sig_name_idx], .arity = arity };
+                }
+                // Impls as nested map
+                const pair_count = try self.readU32();
+                const entries = try allocator.alloc(Value, pair_count * 2);
+                for (0..pair_count * 2) |i| {
+                    entries[i] = try self.deserializeValue(allocator);
+                }
+                const impls = try allocator.create(value_mod.PersistentArrayMap);
+                impls.* = .{ .entries = entries, .meta = null };
+                const protocol = try allocator.create(value_mod.Protocol);
+                protocol.* = .{
+                    .name = name,
+                    .method_sigs = method_sigs,
+                    .impls = impls,
+                };
+                break :blk Value.initProtocol(protocol);
+            },
+            .protocol_fn => blk: {
+                const method_name_idx = try self.readU32();
+                const ns_idx = try self.readU32();
+                const var_name_idx = try self.readU32();
+                if (method_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                if (ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                if (var_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                const pf = try allocator.create(value_mod.ProtocolFn);
+                pf.* = .{
+                    .protocol = undefined, // resolved by deferred fixup
+                    .method_name = self.strings[method_name_idx],
+                };
+                try self.deferred_protocol_fns.append(allocator, .{
+                    .protocol_fn = pf,
+                    .ns_name = self.strings[ns_idx],
+                    .var_name = self.strings[var_name_idx],
+                });
+                break :blk Value.initProtocolFn(pf);
             },
         };
     }
@@ -1124,6 +1298,8 @@ pub const Deserializer = struct {
         try self.restoreEnvState(allocator, env);
         // Resolve deferred var_refs now that all vars exist.
         try self.resolveDeferredVarRefs(env);
+        // Resolve deferred ProtocolFn → Protocol pointers.
+        try self.resolveDeferredProtocolFns(env);
     }
 
     /// Resolve var_refs that were deferred during FnProto deserialization.
@@ -1133,6 +1309,17 @@ pub const Deserializer = struct {
             const ns = env.findNamespace(entry.ns_name) orelse return error.InvalidVarRef;
             const v = ns.resolve(entry.var_name) orelse return error.InvalidVarRef;
             entry.constants[entry.index] = Value.initVarRef(v);
+        }
+    }
+
+    /// Resolve ProtocolFn.protocol pointers deferred during deserialization.
+    /// Called after restoreEnvState when all Protocol vars are available.
+    fn resolveDeferredProtocolFns(self: *Deserializer, env: *Env) !void {
+        for (self.deferred_protocol_fns.items) |entry| {
+            const ns = env.findNamespace(entry.ns_name) orelse return error.InvalidProtocolRef;
+            const v = ns.resolve(entry.var_name) orelse return error.InvalidProtocolRef;
+            if (v.root.tag() != .protocol) return error.InvalidProtocolRef;
+            entry.protocol_fn.protocol = v.root.asProtocol();
         }
     }
 };
@@ -1917,4 +2104,109 @@ test "serializeValue rejects treewalk fn_val" {
     var ser: Serializer = .{};
     const result = ser.serializeValue(alloc, Value.initFn(fn_obj));
     try std.testing.expectError(error.TreeWalkClosureNotSerializable, result);
+}
+
+test "env snapshot with protocol and protocol_fn" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Create a FnProto for the protocol method impl
+    const fn_code = [_]Instruction{
+        .{ .op = .local_load, .operand = 0 },
+        .{ .op = .ret },
+    };
+    const fn_constants = [_]Value{};
+    const proto = try alloc.create(FnProto);
+    proto.* = .{
+        .name = "coll-reduce-integer",
+        .arity = 2,
+        .variadic = false,
+        .local_count = 2,
+        .code = &fn_code,
+        .constants = &fn_constants,
+    };
+    const fn_obj = try alloc.create(value_mod.Fn);
+    fn_obj.* = .{ .proto = proto, .defining_ns = "test.protocols" };
+
+    // Build method_map: {"coll-reduce" -> fn_val}
+    const method_entries = try alloc.alloc(Value, 2);
+    method_entries[0] = Value.initString(alloc, "coll-reduce");
+    method_entries[1] = Value.initFn(fn_obj);
+    const method_map = try alloc.create(value_mod.PersistentArrayMap);
+    method_map.* = .{ .entries = method_entries, .meta = null };
+
+    // Build impls: {"integer" -> method_map}
+    const impls_entries = try alloc.alloc(Value, 2);
+    impls_entries[0] = Value.initString(alloc, "integer");
+    impls_entries[1] = Value.initMap(method_map);
+    const impls = try alloc.create(value_mod.PersistentArrayMap);
+    impls.* = .{ .entries = impls_entries, .meta = null };
+
+    // Create Protocol
+    const method_sigs = try alloc.alloc(value_mod.MethodSig, 1);
+    method_sigs[0] = .{ .name = "coll-reduce", .arity = 2 };
+    const protocol = try alloc.create(value_mod.Protocol);
+    protocol.* = .{
+        .name = "CollReduce",
+        .method_sigs = method_sigs,
+        .impls = impls,
+    };
+
+    // Create ProtocolFn referencing the protocol
+    const protocol_fn = try alloc.create(value_mod.ProtocolFn);
+    protocol_fn.* = .{
+        .protocol = protocol,
+        .method_name = "coll-reduce",
+    };
+
+    // Set up env
+    var env1 = Env.init(alloc);
+    const ns = try env1.findOrCreateNamespace("test.protocols");
+    const v_proto = try ns.intern("CollReduce");
+    v_proto.bindRoot(Value.initProtocol(protocol));
+    const v_fn = try ns.intern("coll-reduce");
+    v_fn.bindRoot(Value.initProtocolFn(protocol_fn));
+
+    // Serialize
+    var ser: Serializer = .{};
+    try ser.serializeEnvSnapshot(alloc, &env1);
+
+    // FnProtos from protocol impls should be collected
+    try std.testing.expectEqual(@as(usize, 1), ser.fn_protos.items.len);
+
+    // Restore
+    var env2 = Env.init(alloc);
+    var de: Deserializer = .{ .data = ser.getBytes() };
+    try de.restoreEnvSnapshot(alloc, &env2);
+
+    // Verify Protocol
+    const r_ns = env2.findNamespace("test.protocols").?;
+    const r_v_proto = r_ns.mappings.get("CollReduce").?;
+    try std.testing.expect(r_v_proto.root.tag() == .protocol);
+    const r_protocol = r_v_proto.root.asProtocol();
+    try std.testing.expectEqualStrings("CollReduce", r_protocol.name);
+    try std.testing.expectEqual(@as(usize, 1), r_protocol.method_sigs.len);
+    try std.testing.expectEqualStrings("coll-reduce", r_protocol.method_sigs[0].name);
+    try std.testing.expectEqual(@as(u8, 2), r_protocol.method_sigs[0].arity);
+
+    // Verify impls
+    const type_key = Value.initString(alloc, "integer");
+    const r_method_map = r_protocol.impls.get(type_key);
+    try std.testing.expect(r_method_map != null);
+    try std.testing.expect(r_method_map.?.tag() == .map);
+    const method_name_key = Value.initString(alloc, "coll-reduce");
+    const r_impl_fn = r_method_map.?.asMap().get(method_name_key);
+    try std.testing.expect(r_impl_fn != null);
+    try std.testing.expect(r_impl_fn.?.tag() == .fn_val);
+    const r_impl_proto: *const FnProto = @ptrCast(@alignCast(r_impl_fn.?.asFn().proto));
+    try std.testing.expectEqualStrings("coll-reduce-integer", r_impl_proto.name.?);
+
+    // Verify ProtocolFn
+    const r_v_fn = r_ns.mappings.get("coll-reduce").?;
+    try std.testing.expect(r_v_fn.root.tag() == .protocol_fn);
+    const r_pf = r_v_fn.root.asProtocolFn();
+    try std.testing.expectEqualStrings("coll-reduce", r_pf.method_name);
+    // ProtocolFn.protocol should point to the restored Protocol
+    try std.testing.expectEqual(r_protocol, r_pf.protocol);
 }

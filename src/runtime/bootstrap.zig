@@ -1272,11 +1272,6 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
         thread_pool_mod.initAgentVar(agent_v);
     }
 
-    // Re-load protocols and reducers namespaces (protocol/protocol_fn values are not
-    // serializable, so they are nil after cache restore — re-evaluate from source)
-    loadProtocols(allocator, env) catch {};
-    loadReducers(allocator, env) catch {};
-
     // Ensure *ns* is synced
     syncNsVar(env);
 }
