@@ -15,7 +15,7 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 ## Current Stats
 
-- **869+ vars** implemented (637/706 core, 18 namespaces)
+- **869+ vars** implemented (637/706 core, 18 namespaces, deps.edn support)
 - **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
 - **50 upstream test files**, all passing
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
@@ -99,6 +99,9 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 63     | import → wasm mapping                       | F135 :import-wasm ns macro                                  |
 | 64     | Upstream Alignment Re-evaluation            | 416 CLJW markers reviewed — all permanent design diffs      |
 | 65     | Edge Case Cleanup                           | apropos/dir, dup keys, fn docstr, regex cache, *print-dup*  |
+| 66     | deps.edn Foundation                         | Parser (deps.zig), alias resolution, CLI flags -A/-M/-X/-P  |
+| 67     | Git Dependencies                            | Tag validation, :deps/root, -Sforce, transitive resolution  |
+| 68     | Integration                                 | test+alias, Leiningen detection, 14 e2e tests               |
 ```
 
 ---
@@ -185,13 +188,15 @@ Pre-deps.edn cleanup: fix small correctness issues and restore skipped tests.
 - 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
 - 65.5: Implement `*print-dup*` basic support (print-str respects binding)
 
-### Phase 66-68: deps.edn Support — IN PROGRESS
+### Phase 66-68: deps.edn Support — DONE
 
 Full plan: `.dev/deps-edn-plan.md`
 
-- **Phase 66**: deps.edn Foundation (parser, alias resolution, CLI flags, -X exec mode)
-- **Phase 67**: Git Dependencies (clone, io.github inference, tag/sha, cache)
-- **Phase 68**: Integration (transitive deps, path cache, user config, e2e tests)
+- **Phase 66**: deps.edn Foundation — parser, alias resolution, CLI flags (-A/-M/-X/-P/-S*)
+- **Phase 67**: Git Dependencies — tag validation, :deps/root, -Sforce, transitive resolution
+- **Phase 68**: Integration — test+alias, Leiningen detection, 14 e2e tests
+- Key features: deps.edn parser (deps.zig, 750+ lines), alias resolution, io.github inference,
+  git bare clone + archive extraction, ~/.cljw/gitlibs/ cache, depth-limited transitive deps
 
 ### Quality & Alignment (Phase 52) — DONE
 

@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 65 COMPLETE**
+- **All phases through 68 COMPLETE** (deps.edn support fully functional)
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
