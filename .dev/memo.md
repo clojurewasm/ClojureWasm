@@ -22,7 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 66: deps.edn Foundation. Next task: 66.3 (-A/-M/-X/-P CLI flag parsing).
+Phase 66: deps.edn Foundation. Next task: 66.5 (-Spath/-Sdeps/-Srepro/-Sforce).
 See `.dev/deps-edn-plan.md` for full design and task breakdown.
 
 ## Task Queue
@@ -30,8 +30,8 @@ See `.dev/deps-edn-plan.md` for full design and task breakdown.
 Phase 66 — deps.edn Foundation:
 - [x] 66.1: deps.edn parser (EDN reader + schema validation)
 - [x] 66.2: Alias resolution engine
-- [ ] 66.3: -A/-M/-X/-P CLI flag parsing
-- [ ] 66.4: -X exec mode (fn invoke + arg parsing)
+- [x] 66.3: -A/-M/-X/-P CLI flag parsing (includes -X exec mode)
+- [x] 66.4: -X exec mode (fn invoke + arg parsing) — merged into 66.3
 - [ ] 66.5: -Spath/-Sdeps/-Srepro/-Sforce
 
 ## Previous Task

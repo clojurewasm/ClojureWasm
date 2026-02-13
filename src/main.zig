@@ -49,27 +49,43 @@ fn printHelp() void {
         \\
         \\Usage:
         \\  cljw [options] [file.clj]
-        \\  cljw build <file.clj> [-o <output>]
+        \\  cljw -A:alias              REPL with alias
+        \\  cljw -M:alias [-m ns]      Main mode with alias
+        \\  cljw -X:alias fn [:k v]    Exec mode
+        \\  cljw -P                    Resolve deps only
+        \\  cljw build <file> [-o out] Build standalone binary
+        \\  cljw test [files...]       Run tests
+        \\
+        \\deps.edn flags:
+        \\  -A:alias[:alias...]  Apply alias(es) for REPL
+        \\  -M:alias[:alias...]  Apply alias(es) for main execution
+        \\  -X:alias[:alias...]  Apply alias(es) for exec function
+        \\  -P                   Resolve dependencies only (git clone)
+        \\  -m <ns>              Namespace to run -main (with -M)
+        \\  -Spath               Print load paths
+        \\  -Sdeps <edn>         Extra deps (EDN map)
+        \\  -Srepro              Exclude user config
+        \\  -Sforce              Ignore cache
+        \\  -Sverbose            Debug output
         \\
         \\Options:
-        \\  -e <expr>          Evaluate expression and print result
-        \\  --tree-walk        Use TreeWalk interpreter instead of VM
-        \\  --dump-bytecode    Dump compiled bytecode (VM only)
-        \\  --nrepl-server     Start nREPL server
-        \\  --port=<N>         nREPL server port (default: auto)
-        \\  --version          Print version and exit
-        \\  -h, --help         Show this help
-        \\
-        \\Commands:
-        \\  build <file> [-o <out>]   Build standalone binary with embedded code
-        \\  test [file.clj ...]       Run tests (default: all .clj in test/)
+        \\  -e <expr>            Evaluate expression and print result
+        \\  --tree-walk          Use TreeWalk interpreter instead of VM
+        \\  --dump-bytecode      Dump compiled bytecode (VM only)
+        \\  --nrepl-server       Start nREPL server
+        \\  --port=<N>           nREPL server port (default: auto)
+        \\  --version            Print version and exit
+        \\  -h, --help           Show this help
         \\
         \\Examples:
-        \\  cljw                      Start interactive REPL
-        \\  cljw -e '(+ 1 2)'        Evaluate expression
-        \\  cljw hello.clj            Run a Clojure file
-        \\  cljw build app.clj -o app Build standalone binary
-        \\  ./app                     Run standalone binary
+        \\  cljw                       Start interactive REPL
+        \\  cljw -e '(+ 1 2)'         Evaluate expression
+        \\  cljw hello.clj             Run a Clojure file
+        \\  cljw -A:dev                REPL with :dev alias
+        \\  cljw -M:dev -m my-app.core Run -main with :dev alias
+        \\  cljw -X:build my.ns/task   Exec function with :build alias
+        \\  cljw -P                    Fetch git dependencies
+        \\  cljw build app.clj -o app  Build standalone binary
         \\
     ) catch {};
 }
@@ -160,30 +176,43 @@ pub fn main() !void {
     }
 
     // Parse flags
+    const CliMode = enum { normal, alias_repl, main_mode, exec_mode, resolve_only, show_path };
+    var mode: CliMode = .normal;
     var use_vm = true;
     var dump_bytecode = false;
     var expr: ?[]const u8 = null;
     var file: ?[]const u8 = null;
     var nrepl_mode = false;
     var nrepl_port: u16 = 0;
+    var alias_str: ?[]const u8 = null; // raw alias string (e.g. ":dev:test")
+    var main_ns_flag: ?[]const u8 = null; // -m namespace
+    var exec_fn_arg: ?[]const u8 = null; // -X positional fn name
+    var sdeps_str: ?[]const u8 = null; // -Sdeps extra deps EDN
+    var s_verbose = false;
+    var s_force = false;
+    var s_repro = false;
+    // Collect -X extra keyword args: :k v pairs after fn name
+    var exec_extra_args: [32][]const u8 = undefined;
+    var exec_extra_count: usize = 0;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
-        if (std.mem.eql(u8, args[i], "-h") or std.mem.eql(u8, args[i], "--help")) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             printHelp();
             return;
-        } else if (std.mem.eql(u8, args[i], "--version")) {
+        } else if (std.mem.eql(u8, arg, "--version")) {
             const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
             _ = stdout.write("ClojureWasm v0.1.0\n") catch {};
             return;
-        } else if (std.mem.eql(u8, args[i], "--tree-walk")) {
+        } else if (std.mem.eql(u8, arg, "--tree-walk")) {
             use_vm = false;
-        } else if (std.mem.eql(u8, args[i], "--dump-bytecode")) {
+        } else if (std.mem.eql(u8, arg, "--dump-bytecode")) {
             dump_bytecode = true;
-        } else if (std.mem.eql(u8, args[i], "--nrepl-server")) {
+        } else if (std.mem.eql(u8, arg, "--nrepl-server")) {
             nrepl_mode = true;
-        } else if (std.mem.startsWith(u8, args[i], "--port=")) {
-            nrepl_port = std.fmt.parseInt(u16, args[i]["--port=".len..], 10) catch 0;
-        } else if (std.mem.eql(u8, args[i], "-e")) {
+        } else if (std.mem.startsWith(u8, arg, "--port=")) {
+            nrepl_port = std.fmt.parseInt(u16, arg["--port=".len..], 10) catch 0;
+        } else if (std.mem.eql(u8, arg, "-e")) {
             i += 1;
             if (i >= args.len) {
                 const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
@@ -191,8 +220,62 @@ pub fn main() !void {
                 std.process.exit(1);
             }
             expr = args[i];
+        } else if (std.mem.eql(u8, arg, "-m")) {
+            // -m namespace (for -M mode)
+            i += 1;
+            if (i >= args.len) {
+                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+                _ = stderr.write("Error: -m requires a namespace argument\n") catch {};
+                std.process.exit(1);
+            }
+            main_ns_flag = args[i];
+        } else if (std.mem.startsWith(u8, arg, "-A")) {
+            mode = .alias_repl;
+            alias_str = arg["-A".len..];
+        } else if (std.mem.startsWith(u8, arg, "-M")) {
+            mode = .main_mode;
+            alias_str = arg["-M".len..];
+        } else if (std.mem.startsWith(u8, arg, "-X")) {
+            mode = .exec_mode;
+            alias_str = arg["-X".len..];
+            // Remaining positional args: [fn-name] [:key val ...]
+            // fn-name: qualified symbol (no : or - prefix)
+            // :key val: keyword arg pairs
+            i += 1;
+            if (i < args.len and !std.mem.startsWith(u8, args[i], "-") and !std.mem.startsWith(u8, args[i], ":")) {
+                exec_fn_arg = args[i];
+                i += 1;
+            }
+            // Collect :key val pairs
+            while (i < args.len) : (i += 1) {
+                if (std.mem.startsWith(u8, args[i], "-") and !std.mem.startsWith(u8, args[i], ":")) break;
+                if (exec_extra_count < exec_extra_args.len) {
+                    exec_extra_args[exec_extra_count] = args[i];
+                    exec_extra_count += 1;
+                }
+            }
+            // Back up one since the outer loop will increment
+            if (i < args.len) i -= 1;
+        } else if (std.mem.eql(u8, arg, "-P")) {
+            mode = .resolve_only;
+        } else if (std.mem.eql(u8, arg, "-Spath")) {
+            mode = .show_path;
+        } else if (std.mem.startsWith(u8, arg, "-Sdeps")) {
+            // -Sdeps '{:deps {...}}' or -Sdeps='{...}'
+            if (std.mem.indexOf(u8, arg, "=")) |eq_idx| {
+                sdeps_str = arg[eq_idx + 1 ..];
+            } else {
+                i += 1;
+                if (i < args.len) sdeps_str = args[i];
+            }
+        } else if (std.mem.eql(u8, arg, "-Sverbose")) {
+            s_verbose = true;
+        } else if (std.mem.eql(u8, arg, "-Sforce")) {
+            s_force = true;
+        } else if (std.mem.eql(u8, arg, "-Srepro")) {
+            s_repro = true;
         } else {
-            file = args[i];
+            file = arg;
         }
     }
 
@@ -218,10 +301,188 @@ pub fn main() !void {
     const config_alloc = config_arena.allocator();
     const file_dir = if (file) |f| std.fs.path.dirname(f) else null;
     var config_dir: ?[]const u8 = null;
-    const config = if (findDepsEdnFile(config_alloc, file_dir)) |cf| blk: {
-        // deps.edn found — use new parser
+
+    // Parse deps.edn into DepsConfig (for alias resolution) or fall back to ProjectConfig
+    const deps_config_opt: ?deps_mod.DepsConfig = if (findDepsEdnFile(config_alloc, file_dir)) |cf| blk: {
         config_dir = cf.dir;
-        break :blk projectConfigFromDeps(config_alloc, cf.content);
+        break :blk deps_mod.parseDepsEdn(config_alloc, cf.content);
+    } else null;
+
+    // Merge extra -Sdeps if provided
+    if (sdeps_str) |extra| {
+        const extra_config = deps_mod.parseDepsEdn(config_alloc, extra);
+        // Apply extra deps to config (simple path merge for now)
+        for (extra_config.paths) |p| ns_ops.addLoadPath(p) catch {};
+    }
+
+    // Handle deps.edn modes (-A/-M/-X/-P/-Spath)
+    if (mode != .normal) {
+        const deps_config = deps_config_opt orelse {
+            // deps.edn flags used but no deps.edn found
+            if (mode != .resolve_only and mode != .show_path) {
+                const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+                _ = stderr.write("Error: No deps.edn found. -A/-M/-X flags require deps.edn.\n") catch {};
+                std.process.exit(1);
+            }
+            // -P with no deps.edn is a no-op, -Spath shows "."
+            if (mode == .show_path) {
+                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+                _ = stdout.write(".\n") catch {};
+            }
+            return;
+        };
+
+        // Resolve aliases
+        const alias_names = if (alias_str) |s|
+            deps_mod.parseAliasString(config_alloc, s)
+        else
+            @as([]const []const u8, &.{});
+        const resolved = deps_mod.resolveAliases(config_alloc, deps_config, alias_names);
+
+        // Print warnings
+        const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        for (resolved.warnings) |warning| {
+            _ = stderr_file.write(warning) catch {};
+            _ = stderr_file.write("\n") catch {};
+        }
+
+        if (s_verbose) {
+            _ = stderr_file.write("Resolved aliases: ") catch {};
+            if (alias_str) |s| _ = stderr_file.write(s) catch {};
+            _ = stderr_file.write("\n") catch {};
+        }
+
+        // Apply resolved paths
+        for (resolved.paths) |path| {
+            if (config_dir) |dir| {
+                var buf: [4096]u8 = undefined;
+                const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, path }) catch continue;
+                ns_ops.addLoadPath(full) catch {};
+            } else {
+                ns_ops.addLoadPath(path) catch {};
+            }
+        }
+
+        // Apply resolved deps
+        for (resolved.deps) |dep| {
+            if (dep.local_root) |root| {
+                resolveLocalDep(root, config_dir);
+            } else if (dep.git_url != null and dep.git_sha != null) {
+                resolveGitDep(dep.git_url.?, dep.git_sha.?);
+            } else {
+                // Try io.github/io.gitlab URL inference
+                if (deps_mod.inferGitUrl(config_alloc, dep.name)) |inferred_url| {
+                    if (dep.git_sha) |sha| {
+                        resolveGitDep(inferred_url, sha);
+                    }
+                }
+            }
+        }
+
+        // Apply wasm deps
+        for (resolved.wasm_deps) |wd| {
+            var wasm_buf: [4096]u8 = undefined;
+            const wasm_resolved = if (config_dir) |dir|
+                std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+            else
+                wd.path;
+            wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+        }
+
+        switch (mode) {
+            .resolve_only => {
+                // -P: Dependencies resolved above. Done.
+                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+                _ = stdout.write("Dependencies resolved.\n") catch {};
+                return;
+            },
+            .show_path => {
+                // -Spath: Print all load paths
+                const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+                for (resolved.paths, 0..) |path, pi| {
+                    if (pi > 0) _ = stdout.write(":") catch {};
+                    if (config_dir) |dir| {
+                        var buf: [4096]u8 = undefined;
+                        const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, path }) catch continue;
+                        _ = stdout.write(full) catch {};
+                    } else {
+                        _ = stdout.write(path) catch {};
+                    }
+                }
+                _ = stdout.write("\n") catch {};
+                return;
+            },
+            .alias_repl => {
+                // -A: REPL with aliases applied
+                var env = Env.init(allocator);
+                defer env.deinit();
+                bootstrapFromCache(alloc, &env, &gc);
+                if (file) |f| {
+                    // -A:dev file.clj — run file with alias
+                    const dir = std.fs.path.dirname(f) orelse ".";
+                    ns_ops.addLoadPath(dir) catch {};
+                    const max_file_size = 10 * 1024 * 1024;
+                    const file_bytes = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
+                        _ = stderr_file.write("Error: could not read file\n") catch {};
+                        std.process.exit(1);
+                    };
+                    defer allocator.free(file_bytes);
+                    err.setSourceFile(f);
+                    err.setSourceText(file_bytes);
+                    evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+                } else {
+                    runRepl(alloc, &env, &gc);
+                }
+                return;
+            },
+            .main_mode => {
+                // -M: Main mode — run -main from namespace
+                const ns = main_ns_flag orelse resolved.main_ns orelse blk: {
+                    // Check :main-opts for "-m" "ns"
+                    var mi: usize = 0;
+                    while (mi + 1 < resolved.main_opts.len) : (mi += 1) {
+                        if (std.mem.eql(u8, resolved.main_opts[mi], "-m")) {
+                            break :blk resolved.main_opts[mi + 1];
+                        }
+                    }
+                    // Fallback: run file if provided
+                    if (file) |f| {
+                        const dir = std.fs.path.dirname(f) orelse ".";
+                        ns_ops.addLoadPath(dir) catch {};
+                        const max_file_size = 10 * 1024 * 1024;
+                        const file_bytes = std.fs.cwd().readFileAlloc(allocator, f, max_file_size) catch {
+                            _ = stderr_file.write("Error: could not read file\n") catch {};
+                            std.process.exit(1);
+                        };
+                        defer allocator.free(file_bytes);
+                        err.setSourceFile(f);
+                        err.setSourceText(file_bytes);
+                        evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+                        return;
+                    }
+                    _ = stderr_file.write("Error: -M requires -m <namespace> or a file argument\n") catch {};
+                    std.process.exit(1);
+                };
+                runMainNs(alloc, allocator, &gc, ns, use_vm);
+                return;
+            },
+            .exec_mode => {
+                // -X: Exec mode — invoke a function
+                const fn_name = exec_fn_arg orelse resolved.exec_fn orelse {
+                    _ = stderr_file.write("Error: -X requires a function name\n") catch {};
+                    std.process.exit(1);
+                };
+                runExecFn(alloc, allocator, &gc, fn_name, exec_extra_args[0..exec_extra_count], resolved.exec_args, use_vm);
+                return;
+            },
+            .normal => unreachable,
+        }
+    }
+
+    // Standard mode (no deps.edn flags)
+    const config = if (deps_config_opt) |dc| blk: {
+        // deps.edn found but no -A/-M/-X flags — convert to ProjectConfig
+        break :blk projectConfigFromDepsConfig(config_alloc, dc);
     } else if (findConfigFile(config_alloc, file_dir)) |cf| blk: {
         // Fallback to cljw.edn with deprecation warning
         const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
@@ -230,6 +491,17 @@ pub fn main() !void {
         break :blk parseConfig(config_alloc, cf.content);
     } else ProjectConfig{};
     applyConfig(config, config_dir);
+
+    if (s_verbose) {
+        const stderr_out: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+        _ = stderr_out.write("Verbose: standard mode (no alias flags)\n") catch {};
+    }
+    if (s_repro) {
+        // -Srepro: exclude user config (no-op for now, CW has no user config dir yet)
+    }
+    if (s_force) {
+        // -Sforce: ignore cache (no-op for now, cache invalidation in 68.2)
+    }
 
     if (expr) |e| {
         err.setSourceFile(null);
@@ -253,7 +525,7 @@ pub fn main() !void {
         err.setSourceText(file_bytes);
         evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
     } else if (config.main_ns) |main_ns| {
-        // cljw.edn :main — load the main namespace
+        // deps.edn :cljw/main or cljw.edn :main — load the main namespace
         runMainNs(alloc, allocator, &gc, main_ns, use_vm);
     } else {
         // No args, no file, no :main — start REPL
@@ -481,21 +753,112 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
     }
 }
 
-/// Run a main namespace from cljw.edn :main config.
-/// Bootstraps, then requires the namespace (which loads and runs it).
+/// Run a main namespace: require ns then invoke -main.
 fn runMainNs(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, main_ns: []const u8, use_vm: bool) void {
     _ = use_vm;
     var env = Env.init(infra_alloc);
     defer env.deinit();
     bootstrapFromCache(gc_alloc, &env, gc);
 
-    // Generate and evaluate (require 'main-ns)
+    // Require the namespace, then call -main
     var buf: [4096]u8 = undefined;
-    const require_expr = std.fmt.bufPrint(&buf, "(require '{s})", .{main_ns}) catch {
+    const run_expr = std.fmt.bufPrint(&buf, "(do (require '{s}) ({s}/-main))", .{ main_ns, main_ns }) catch {
         std.debug.print("Error: namespace name too long\n", .{});
         std.process.exit(1);
     };
-    _ = bootstrap.evalString(gc_alloc, &env, require_expr) catch |e| {
+    _ = bootstrap.evalString(gc_alloc, &env, run_expr) catch |e| {
+        reportError(e);
+        std.process.exit(1);
+    };
+}
+
+/// Run -X exec mode: require namespace, invoke function with args.
+fn runExecFn(
+    gc_alloc: Allocator,
+    infra_alloc: Allocator,
+    gc: *gc_mod.MarkSweepGc,
+    fn_name: []const u8,
+    cli_args: []const []const u8,
+    alias_args: []const deps_mod.ExecArg,
+    use_vm: bool,
+) void {
+    _ = use_vm;
+    var env = Env.init(infra_alloc);
+    defer env.deinit();
+    bootstrapFromCache(gc_alloc, &env, gc);
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+
+    // Parse fn_name: "ns/fn" → require ns, call ns/fn
+    const slash_idx = std.mem.indexOf(u8, fn_name, "/");
+    if (slash_idx) |idx| {
+        const ns_part = fn_name[0..idx];
+        // Require the namespace
+        var req_buf: [4096]u8 = undefined;
+        const require_expr = std.fmt.bufPrint(&req_buf, "(require '{s})", .{ns_part}) catch {
+            _ = stderr.write("Error: namespace name too long\n") catch {};
+            std.process.exit(1);
+        };
+        _ = bootstrap.evalString(gc_alloc, &env, require_expr) catch |e| {
+            reportError(e);
+            std.process.exit(1);
+        };
+    }
+
+    // Build the invocation expression: (fn-name {:key "val" ...})
+    var call_buf: [8192]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&call_buf);
+    const w = stream.writer();
+    w.print("({s}", .{fn_name}) catch {};
+
+    // Build args map from alias exec-args + CLI override args.
+    // CLI args override alias args with the same key.
+    const has_args = alias_args.len > 0 or cli_args.len > 0;
+    if (has_args) {
+        w.writeAll(" {") catch {};
+        // Collect CLI keys for override checking
+        var cli_keys: [16][]const u8 = undefined;
+        var cli_key_count: usize = 0;
+        {
+            var ci: usize = 0;
+            while (ci < cli_args.len) : (ci += 1) {
+                const carg = cli_args[ci];
+                if (carg.len > 1 and carg[0] == ':' and ci + 1 < cli_args.len) {
+                    if (cli_key_count < cli_keys.len) {
+                        cli_keys[cli_key_count] = carg[1..]; // strip leading ':'
+                        cli_key_count += 1;
+                    }
+                    ci += 1; // skip value
+                }
+            }
+        }
+        // Alias args (skip if overridden by CLI)
+        for (alias_args) |ea| {
+            var overridden = false;
+            for (cli_keys[0..cli_key_count]) |ck| {
+                if (std.mem.eql(u8, ea.key, ck)) {
+                    overridden = true;
+                    break;
+                }
+            }
+            if (!overridden) {
+                w.print(" :{s} \"{s}\"", .{ ea.key, ea.value }) catch {};
+            }
+        }
+        // CLI args: :key val pairs
+        var ci: usize = 0;
+        while (ci < cli_args.len) : (ci += 1) {
+            const carg = cli_args[ci];
+            if (carg.len > 0 and carg[0] == ':' and ci + 1 < cli_args.len) {
+                w.print(" {s} \"{s}\"", .{ carg, cli_args[ci + 1] }) catch {};
+                ci += 1;
+            }
+        }
+        w.writeAll("}") catch {};
+    }
+    w.writeAll(")") catch {};
+
+    const call_expr = stream.getWritten();
+    _ = bootstrap.evalString(gc_alloc, &env, call_expr) catch |e| {
         reportError(e);
         std.process.exit(1);
     };
@@ -703,9 +1066,8 @@ fn readFileFromDir(allocator: Allocator, dir: []const u8, filename: []const u8) 
 }
 
 /// Convert deps.edn (parsed by deps_mod) to ProjectConfig for existing applyConfig.
-fn projectConfigFromDeps(allocator: Allocator, source: []const u8) ProjectConfig {
-    const deps_config = deps_mod.parseDepsEdn(allocator, source);
-
+/// Convert a DepsConfig (from deps.zig parser) to ProjectConfig for applyConfig.
+fn projectConfigFromDepsConfig(allocator: Allocator, deps_config: deps_mod.DepsConfig) ProjectConfig {
     // Print warnings to stderr
     const stderr_file: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
     for (deps_config.warnings) |warning| {
@@ -717,8 +1079,8 @@ fn projectConfigFromDeps(allocator: Allocator, source: []const u8) ProjectConfig
     const dep_count = deps_config.deps.len;
     const deps = if (dep_count > 0) blk: {
         const d = allocator.alloc(Dep, dep_count) catch break :blk @as([]const Dep, &.{});
-        for (deps_config.deps, 0..) |src_dep, i| {
-            d[i] = .{
+        for (deps_config.deps, 0..) |src_dep, idx| {
+            d[idx] = .{
                 .local_root = src_dep.local_root,
                 .git_url = src_dep.git_url orelse inferGitUrlFromName(allocator, src_dep.name),
                 .git_sha = src_dep.git_sha,
@@ -731,8 +1093,8 @@ fn projectConfigFromDeps(allocator: Allocator, source: []const u8) ProjectConfig
     const wasm_count = deps_config.wasm_deps.len;
     const wasm_deps = if (wasm_count > 0) blk: {
         const w = allocator.alloc(WasmDep, wasm_count) catch break :blk @as([]const WasmDep, &.{});
-        for (deps_config.wasm_deps, 0..) |src_wd, i| {
-            w[i] = .{ .name = src_wd.name, .path = src_wd.path };
+        for (deps_config.wasm_deps, 0..) |src_wd, idx| {
+            w[idx] = .{ .name = src_wd.name, .path = src_wd.path };
         }
         break :blk @as([]const WasmDep, w[0..wasm_count]);
     } else @as([]const WasmDep, &.{});
