@@ -100,10 +100,10 @@ Call WebAssembly modules directly from Clojure:
 (add 1 2)  ;=> 3
 ```
 
-- 461 opcodes (225 core + 236 SIMD)
+- 523 opcodes (236 core + 256 SIMD + 31 GC)
+- All Wasm 3.0 proposals (9/9 including GC, function references, exception handling)
 - WASI support (file I/O, clock, random, args, environ)
 - Multi-module linking with cross-module imports
-- v128 SIMD operations
 - Predecoded IR with superinstructions for optimized dispatch
 
 > **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm))
@@ -158,7 +158,7 @@ src/
 ├── builtins/                   Built-in functions (27 modules)
 ├── regex/                      Regex engine
 ├── repl/                       nREPL server, line editor
-└── wasm/                       WebAssembly runtime (461 opcodes)
+└── wasm/                       WebAssembly runtime (523 opcodes)
 
 bench/                          31 benchmarks, multi-language
 test/                           48 Clojure test files (43 upstream ports)

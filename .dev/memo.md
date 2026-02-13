@@ -6,7 +6,7 @@ Session handover document. Read at session start.
 
 - **All phases through 60 COMPLETE**
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
-- Wasm engine: zwasm v0.13.0 (GitHub URL dependency, build.zig.zon). Verified compatible with zwasm main.
+- Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 50 upstream test files, all passing. 6/6 e2e tests pass.
 - Benchmarks: `bench/history.yaml` (60.4 entry = latest baseline)
@@ -22,17 +22,17 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Waiting for zwasm Phase 1-2 to complete. CW work starts at Phase 3.
+v0.1.0 Tag Replace — Phase 4: CW tag operations.
 Requirements: `~/Documents/MyProducts/ClojureWasm/private/my-tag-replace.md`
 
 ## v0.1.0 Tag Replace Queue
 
 Phase 3: CW dependency + docs (after zwasm v0.1.0 tag exists)
-- [ ] 3.1: Switch build.zig.zon to zwasm v0.1.0 tar.gz, test Mac+Ubuntu
-- [ ] 3.2: Full benchmark + record
-- [ ] 3.3: Code comments + YAML cleanup (-alpha refs)
-- [ ] 3.4: Public docs overhaul
-- [ ] 3.5: Commit, push, CI green
+- [x] 3.1: Switch build.zig.zon to zwasm v0.1.0 tar.gz, test Mac
+- [x] 3.2: Full benchmark + record
+- [x] 3.3: Code comments + YAML cleanup (-alpha refs)
+- [x] 3.4: Public docs overhaul
+- [x] 3.5: Commit, push, CI green
 
 Phase 4: CW tag operations (do in one session)
 - [ ] 4.1: Delete old -alpha tags + releases
