@@ -244,7 +244,7 @@
 (defmacro ns
   "Sets *ns* to the namespace named by name (unevaluated), creating it
   if needed. references can include :require, :use, :import,
-  :refer-clojure."
+  :refer-clojure, :import-wasm."
   [name & references]
   (let [docstring (when (string? (first references)) (first references))
         references (if docstring (rest references) references)
@@ -285,6 +285,19 @@
                                             (list `(def ~short '~short)))
                                           (list `(def ~spec '~spec))))))
                                   args)
+
+                          ;; :import-wasm — sugar for (def alias (cljw.wasm/load path opts))
+                          (= kw :import-wasm)
+                          (map (fn [spec]
+                                 (let [path (first spec)
+                                       opts (apply hash-map (rest spec))
+                                       alias (get opts :as)
+                                       imports (get opts :imports)
+                                       load-form (if imports
+                                                   (list 'cljw.wasm/load path {:imports imports})
+                                                   (list 'cljw.wasm/load path))]
+                                   (list 'def alias load-form)))
+                               args)
 
                           :else nil)))
         ref-forms (apply concat (map process-ref references))

@@ -22,9 +22,8 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 63.1: F135 :import-wasm ns macro.
-ns 宣言で `:import-wasm` としてロードしたい。
-`(ns my-app.core (:import-wasm ["math.wasm" :as m]))` → `(def m (wasm/load "math.wasm"))` に展開。
+Phase 64.1: UPSTREAM-DIFF re-evaluation after F138/F99/F135 fixes.
+Review CLJW markers in test/upstream/ to find newly-fixable edge cases.
 
 ## Task Queue
 
@@ -36,7 +35,7 @@ Phase 62 — Edge Cases:
 - [x] 62.1: F99 Iterative lazy-seq realization engine (D96)
 
 Phase 63 — import → wasm mapping:
-- [ ] 63.1: F135 :import-wasm ns macro
+- [x] 63.1: F135 :import-wasm ns macro
 
 Phase 64 — Upstream Alignment 再評価:
 - [ ] 64.1: UPSTREAM-DIFF 再評価 (F138/F99 修正後)
@@ -44,8 +43,9 @@ Phase 64 — Upstream Alignment 再評価:
 
 ## Previous Task
 
-v0.1.0 release complete. zwasm v0.1.0 dependency, docs overhaul, binary size audit,
-benchmark recording (60.4 entry). All CI green.
+Phase 63.1: F135 :import-wasm ns macro. Added `:import-wasm` branch to `ns` macro in
+core.clj. `(:import-wasm ["path.wasm" :as m])` expands to `(def m (cljw.wasm/load "path.wasm"))`.
+Supports `:imports` option for host function mapping.
 
 ## Known Issues
 

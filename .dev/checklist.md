@@ -22,5 +22,5 @@ Check at session start for items that become actionable.
 | F104 | Profile-guided optimization (extend IC)     | Extend inline caching beyond monomorphic                                 |
 | F105 | JIT compilation (expand beyond ARM64 PoC)   | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
-| F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
+| F135 | ~~import → wasm mapping design~~            | RESOLVED: `:import-wasm` ns macro expands to `(def alias (cljw.wasm/load path))`. |
 | F138 | ~~binding *ns* + read-string~~              | RESOLVED: readStringFn (and all read fns) now use resolveCurrentNs() to pass dynamic *ns* to formToValueWithNs. |
