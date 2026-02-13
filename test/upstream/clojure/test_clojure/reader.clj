@@ -10,7 +10,7 @@
 
 ;; Upstream: clojure/test/clojure/test_clojure/reader.cljc
 ;; Upstream lines: 802
-;; CLJW markers: 27
+;; CLJW markers: 26
 
 (ns clojure.test-clojure.reader
   ;; CLJW: removed clojure.instant, clojure.walk, clojure.edn, test.generative,
@@ -238,9 +238,8 @@
   (are [x y] (= x (read-string y))
     :foo ":foo"
     :foo/bar ":foo/bar")
-  ;; CLJW: binding *ns* doesn't affect read-string for auto-resolved keywords
-  ;; (are [x y] (= x (binding [*ns* (the-ns 'user)] (read-string y)))
-  ;;      :user/foo "::foo")
+  (are [x y] (= x (binding [*ns* (the-ns 'user)] (read-string y)))
+    :user/foo "::foo")
   (are [err msg form] (thrown-with-msg? err msg (read-string form))
        ;; CLJW: "foo:" doesn't throw in CW reader, skipped
        ;; Exception #"Invalid token: foo:" "foo:"

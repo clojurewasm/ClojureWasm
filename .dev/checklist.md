@@ -23,4 +23,4 @@ Check at session start for items that become actionable.
 | F105 | JIT compilation (expand beyond ARM64 PoC)   | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
 | F135 | import → wasm mapping design                | Explore ClojureDart-like :import for .wasm                               |
-| F138 | binding *ns* + read-string                  | `(binding [*ns* ...] (read-string "::foo"))` — reader doesn't see runtime *ns*. Needs reader↔runtime dynamic var bridge. |
+| F138 | ~~binding *ns* + read-string~~              | RESOLVED: readStringFn (and all read fns) now use resolveCurrentNs() to pass dynamic *ns* to formToValueWithNs. |

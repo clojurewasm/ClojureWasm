@@ -29,6 +29,7 @@ const Env = @import("../runtime/env.zig").Env;
 const io = @import("io.zig");
 const value_mod = @import("../runtime/value.zig");
 const PersistentVector = value_mod.PersistentVector;
+const Namespace = @import("../runtime/namespace.zig").Namespace;
 
 // ============================================================
 // read-string
@@ -50,7 +51,22 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return error.EvalError;
     };
     const form = form_opt orelse return Value.nil_val;
-    return macro.formToValue(allocator, form);
+    return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
+}
+
+/// Get the current namespace, respecting dynamic bindings of *ns*.
+/// Checks the *ns* Var (which reflects `binding`) first, falls back to env.current_ns.
+fn resolveCurrentNs() ?*const Namespace {
+    const env = bootstrap.macro_eval_env orelse return null;
+    if (env.findNamespace("clojure.core")) |core| {
+        if (core.resolve("*ns*")) |ns_var| {
+            const ns_val = ns_var.deref();
+            if (ns_val.tag() == .symbol) {
+                if (env.findNamespace(ns_val.asSymbol().name)) |ns| return ns;
+            }
+        }
+    }
+    return env.current_ns;
 }
 
 // ============================================================
@@ -204,7 +220,7 @@ pub fn loadStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
             return error.EvalError;
         };
         const form = form_opt orelse break;
-        const val = macro.formToValue(allocator, form) catch {
+        const val = macro.formToValueWithNs(allocator, form, resolveCurrentNs()) catch {
             err.ensureInfoSet(.eval, .internal_error, .{}, "load-string: form conversion error", .{});
             return error.EvalError;
         };
@@ -254,7 +270,7 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
         };
         // Advance input source past consumed bytes
         io.advanceCurrentInput(reader.position());
-        return macro.formToValue(allocator, form);
+        return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
     }
 
     // Read from stdin — read lines and try parsing after each
@@ -312,7 +328,7 @@ fn readFromSource(allocator: Allocator, eof_error: bool, eof_value: Value) anyer
                 continue;
             };
             if (form_opt) |form| {
-                return macro.formToValue(allocator, form);
+                return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
             }
         }
     }
@@ -374,7 +390,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
         const src_text = std.mem.trimLeft(u8, remaining[0..consumed], " \t\n\r,");
         const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
         io.advanceCurrentInput(consumed);
-        const val = try macro.formToValue(allocator, form);
+        const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
         // Return [form string] vector
         const items = try allocator.alloc(Value, 2);
         items[0] = val;
@@ -433,7 +449,7 @@ fn readPlusStringFromSource(allocator: Allocator, eof_error: bool, eof_value: Va
                 const consumed = reader.position();
                 const src_text = std.mem.trimLeft(u8, buf.items[0..consumed], " \t\n\r,");
                 const text_str = Value.initString(allocator, try allocator.dupe(u8, src_text));
-                const val = try macro.formToValue(allocator, form);
+                const val = try macro.formToValueWithNs(allocator, form, resolveCurrentNs());
                 const items = try allocator.alloc(Value, 2);
                 items[0] = val;
                 items[1] = text_str;
@@ -485,7 +501,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
                 return error.EvalError;
             };
             const form = form_opt orelse return Value.nil_val;
-            return macro.formToValue(allocator, form);
+            return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
         },
         2 => {
             // (edn/read-string opts s) — opts map currently ignored
@@ -501,7 +517,7 @@ pub fn ednReadStringFn(allocator: Allocator, args: []const Value) anyerror!Value
                 return error.EvalError;
             };
             const form = form_opt orelse return Value.nil_val;
-            return macro.formToValue(allocator, form);
+            return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
         },
         else => return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clojure.edn/read-string", .{args.len}),
     }

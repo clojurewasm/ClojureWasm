@@ -22,19 +22,14 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 61.1: Fix F138 — binding *ns* + read-string.
-`(binding [*ns* my-ns] (read-string "::foo"))` で reader が runtime の `*ns*` を見ない。
-auto-resolved keyword `::foo` が現在の ns で修飾されない。
-
-修正方針:
-1. `readStringFn` (`src/builtins/eval.zig`) が現在の `*ns*` を取得
-2. `macro.formToValueWithNs()` は既に ns を受け取れる — これに橋渡し
-3. `bootstrap.macro_eval_env` (threadlocal) → `env.current_ns` でアクセス
+Phase 61.2: Fix record hash edge case.
+assoc で record field 変更時、hash が変化する (upstream は不変のはず)。
+test/upstream/data_structures.clj に CLJW マーカー 1 個。
 
 ## Task Queue
 
 Phase 61 — Bug Fixes:
-- [ ] 61.1: F138 binding *ns* + read-string
+- [x] 61.1: F138 binding *ns* + read-string
 - [ ] 61.2: record hash edge case (assoc で field 変更時 hash 不変にする)
 
 Phase 62 — Edge Cases:
@@ -54,7 +49,7 @@ benchmark recording (60.4 entry). All CI green.
 
 ## Known Issues
 
-- binding *ns* doesn't affect read-string for auto-resolved keywords (F138)
+(none)
 
 ## Notes
 
