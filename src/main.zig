@@ -37,6 +37,9 @@ const Form = @import("reader/form.zig").Form;
 const wasm_builtins = @import("wasm/builtins.zig");
 const deps_mod = @import("deps.zig");
 
+const build_options = @import("build_options");
+const version_string = "ClojureWasm v" ++ build_options.version ++ "\n";
+
 /// Magic trailer bytes appended to built binaries.
 const embed_magic = "CLJW";
 /// Trailer size: u64 payload_size (8) + magic (4) = 12 bytes.
@@ -44,8 +47,8 @@ const embed_trailer_size = 12;
 
 fn printHelp() void {
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+    _ = stdout.write(version_string) catch {};
     _ = stdout.write(
-        \\ClojureWasm v0.2.0
         \\
         \\Usage:
         \\  cljw [options] [file.clj]
@@ -202,7 +205,7 @@ pub fn main() !void {
             return;
         } else if (std.mem.eql(u8, arg, "--version")) {
             const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-            _ = stdout.write("ClojureWasm v0.2.0\n") catch {};
+            _ = stdout.write(version_string) catch {};
             return;
         } else if (std.mem.eql(u8, arg, "--tree-walk")) {
             use_vm = false;
@@ -542,7 +545,7 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         return;
     }
 
-    _ = stdout.write("ClojureWasm v0.2.0\n") catch {};
+    _ = stdout.write(version_string) catch {};
 
     var editor = line_editor.LineEditor.init(allocator, env);
     defer editor.deinit();

@@ -8,9 +8,12 @@ pub fn build(b: *std.Build) void {
     const profile_opcodes = b.option(bool, "profile-opcodes", "Enable opcode frequency profiling") orelse false;
     const profile_alloc = b.option(bool, "profile-alloc", "Enable allocation size profiling") orelse false;
 
+    const build_zon = @import("build.zig.zon");
+
     const options = b.addOptions();
     options.addOption(bool, "profile_opcodes", profile_opcodes);
     options.addOption(bool, "profile_alloc", profile_alloc);
+    options.addOption([]const u8, "version", build_zon.version);
     const options_module = options.createModule();
 
     // zwasm dependency (Wasm runtime library)
