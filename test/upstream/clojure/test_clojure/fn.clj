@@ -20,8 +20,9 @@
   (testing "bad arglist"
     (is (thrown? Exception (eval '(fn "a" a)))))
 
-  ;; CLJW: "treat first param as args" skipped — our analyzer accepts (fn "a" []) as named fn
-  ;; In JVM Clojure, spec rejects string in name position; our analyzer treats it as docstring-like
+  (testing "treat first param as args"
+    ;; CLJW: Exception instead of ExceptionInfo (no spec)
+    (is (thrown? Exception (eval '(fn "a" [])))))
 
   (testing "looks like listy signature, but malformed declaration"
     (is (thrown? Exception (eval '(fn (1))))))

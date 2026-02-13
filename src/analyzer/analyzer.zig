@@ -852,8 +852,8 @@ pub const Analyzer = struct {
             return self.analysisError(.arity_error, "fn requires parameter vector", form);
         }
 
-        // Optional docstring (fn forms don't attach docstring metadata, same as JVM)
-        if (items[idx].data == .string) {
+        // Optional docstring (only after name, same as JVM)
+        if (name != null and items[idx].data == .string) {
             idx += 1;
         }
 

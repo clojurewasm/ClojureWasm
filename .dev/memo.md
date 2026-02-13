@@ -22,8 +22,7 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 64 complete. All phases through 64 done.
-Ready for next direction — see roadmap.md for release roadmap.
+Phase 65.4: Implement source-fn (:file metadata on vars).
 
 ## Task Queue
 
@@ -40,6 +39,13 @@ Phase 63 — import → wasm mapping:
 Phase 64 — Upstream Alignment 再評価:
 - [x] 64.1: UPSTREAM-DIFF 再評価 (416 markers — all permanent)
 - [x] 64.2: checklist.md / roadmap.md 最終更新
+
+Phase 65 — Edge Case Cleanup (pre-deps.edn):
+- [x] 65.1: Restore apropos + dir-fn tests (already working)
+- [x] 65.2: Reader duplicate key detection
+- [x] 65.3: Fix (fn "a" []) analyzer
+- [ ] 65.4: Implement source-fn (:file metadata)
+- [ ] 65.5: Implement *print-dup* (basic)
 
 ## Previous Task
 
