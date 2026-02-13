@@ -15,7 +15,7 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
-| F94  | Upstream Alignment pass                     | ~38 UPSTREAM-DIFF markers remain — mostly permanent design diffs (protocol→fn, Java→Zig). No further alignment expected. |
+| F94  | Upstream Alignment pass                     | 36 UPSTREAM-DIFF + 416 CLJW markers — all permanent design diffs (Java→Zig). Phase 64 confirmed no further alignment possible. |
 | F99  | ~~Iterative lazy-seq realization engine~~   | RESOLVED (D96): VM FRAMES_MAX 256→1024, iterative unwrapping in realize. Thunk depth ~1000, Meta path unlimited. |
 | F102 | map/filter chunked processing               | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |

@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 60 COMPLETE**
+- **All phases through 64 COMPLETE**
 - Coverage: 869+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -22,8 +22,8 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 64.1: UPSTREAM-DIFF re-evaluation after F138/F99/F135 fixes.
-Review CLJW markers in test/upstream/ to find newly-fixable edge cases.
+Phase 64 complete. All phases through 64 done.
+Ready for next direction — see roadmap.md for release roadmap.
 
 ## Task Queue
 
@@ -38,14 +38,14 @@ Phase 63 — import → wasm mapping:
 - [x] 63.1: F135 :import-wasm ns macro
 
 Phase 64 — Upstream Alignment 再評価:
-- [ ] 64.1: UPSTREAM-DIFF 再評価 (F138/F99 修正後)
-- [ ] 64.2: checklist.md / roadmap.md 最終更新
+- [x] 64.1: UPSTREAM-DIFF 再評価 (416 markers — all permanent)
+- [x] 64.2: checklist.md / roadmap.md 最終更新
 
 ## Previous Task
 
-Phase 63.1: F135 :import-wasm ns macro. Added `:import-wasm` branch to `ns` macro in
-core.clj. `(:import-wasm ["path.wasm" :as m])` expands to `(def m (cljw.wasm/load "path.wasm"))`.
-Supports `:imports` option for host function mapping.
+Phase 61-64: Bug fixes (F138 binding *ns* + read-string, record hash), edge cases
+(F99 iterative lazy-seq D96), :import-wasm ns macro (F135), upstream alignment review
+(416 CLJW + 36 UPSTREAM-DIFF — all permanent design diffs).
 
 ## Known Issues
 

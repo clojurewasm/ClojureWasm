@@ -94,6 +94,10 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 58     | v0.1.0-alpha Release Prep                   | Tag-replace planning, zwasm v0.1.0 dependency migration     |
 | 59     | zwasm v0.1.0 Integration                    | zwasm v0.1.0 tar.gz dep, benchmark validation               |
 | 60     | v0.1.0 Release                              | Docs overhaul, binary audit, benchmark record (3.7MB)       |
+| 61     | Bug Fixes                                   | F138 binding *ns* + read-string, record hash edge case      |
+| 62     | Edge Cases                                  | F99 iterative lazy-seq realization (D96), FRAMES_MAX 1024   |
+| 63     | import → wasm mapping                       | F135 :import-wasm ns macro                                  |
+| 64     | Upstream Alignment Re-evaluation            | 416 CLJW markers reviewed — all permanent design diffs      |
 ```
 
 ---
@@ -154,35 +158,21 @@ Build the ecosystem foundation. Dependency management, distribution.
 | 50.2 | Wasm module deps                | SHOULD   | .wasm in deps graph                |
 | 50.3 | cljw test command               | SHOULD   | Run tests from project             |
 | 50.4 | Homebrew tap                    | SHOULD   | Easy macOS install                 |
-| 50.5 | import → wasm mapping           | COULD    | F135, ClojureDart-like :import     |
+| 50.5 | import → wasm mapping           | DONE     | F135, :import-wasm ns macro (Phase 63) |
 
 **Exit criteria**: "Can manage multi-file projects with external dependencies"
 
-### Phase 61 — Bug Fixes
+### Phase 61-64 — Bug Fixes, Edge Cases, Wasm Import, Alignment — DONE
 
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 61.1 | F138 binding *ns* + read-string | MUST     | Reader doesn't see runtime *ns*    |
-| 61.2 | Record hash edge case           | SHOULD   | assoc on record field changes hash |
-
-### Phase 62 — Edge Cases
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 62.1 | F99 Iterative lazy-seq realize  | MUST     | Deep lazy chain stack overflow     |
-
-### Phase 63 — import → wasm mapping
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 63.1 | F135 :import-wasm ns macro      | SHOULD   | Declarative wasm module loading    |
-
-### Phase 64 — Upstream Alignment Re-evaluation
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 64.1 | UPSTREAM-DIFF re-evaluation     | SHOULD   | After F138/F99 fixes               |
-| 64.2 | checklist/roadmap final update  | SHOULD   | Document permanent diffs           |
+- F138: binding *ns* + read-string fixed (resolveCurrentNs in all read fns)
+- Record hash: already correct, stale markers removed
+- F99: VM FRAMES_MAX 256→1024, iterative lazy-seq unwrapping (D96)
+- F135: :import-wasm ns macro (expands to cljw.wasm/load)
+- Upstream alignment: 416 CLJW markers, 36 UPSTREAM-DIFF — all permanent design diffs
+  - ~226 JVM interop (class hierarchy, Java types)
+  - ~100 exception adaptation (Throwable→Exception)
+  - ~62 numeric types (BigDecimal not implemented)
+  - ~28 other (lazy-seq limitations, reader diffs)
 
 ### Quality & Alignment (Phase 52) — DONE
 
