@@ -427,11 +427,73 @@ pub const Reader = struct {
         if (items.len % 2 != 0) {
             return self.makeError(.syntax_error, "Map literal must have even number of forms", token);
         }
+        // Check for duplicate keys
+        const num_pairs = items.len / 2;
+        if (num_pairs > 1) {
+            var i: usize = 0;
+            while (i < num_pairs) : (i += 1) {
+                var j: usize = i + 1;
+                while (j < num_pairs) : (j += 1) {
+                    if (formDataEql(items[i * 2].data, items[j * 2].data)) {
+                        return err.setError(.{
+                            .kind = .syntax_error,
+                            .phase = .parse,
+                            .message = "Duplicate key in map literal",
+                            .location = .{ .line = items[j * 2].line, .column = items[j * 2].column },
+                        });
+                    }
+                }
+            }
+        }
         return Form{ .data = .{ .map = items }, .line = token.line, .column = token.column };
+    }
+
+    /// Compare two FormData values for key equality in map literals.
+    /// Covers the common key types: keyword, symbol, string, integer, boolean, nil, char.
+    fn formDataEql(a: FormData, b: FormData) bool {
+        const tag_a = std.meta.activeTag(a);
+        const tag_b = std.meta.activeTag(b);
+        if (tag_a != tag_b) return false;
+        return switch (a) {
+            .nil => true,
+            .boolean => |va| va == b.boolean,
+            .integer => |va| va == b.integer,
+            .char => |va| va == b.char,
+            .string => |va| std.mem.eql(u8, va, b.string),
+            .keyword => |va| symbolRefEql(va, b.keyword),
+            .symbol => |va| symbolRefEql(va, b.symbol),
+            else => false, // collections, float, bigint, etc. — skip
+        };
+    }
+
+    fn symbolRefEql(a: SymbolRef, b: SymbolRef) bool {
+        if (!std.mem.eql(u8, a.name, b.name)) return false;
+        if (a.ns) |ans| {
+            if (b.ns) |bns| return std.mem.eql(u8, ans, bns);
+            return false;
+        }
+        return b.ns == null;
     }
 
     fn readSet(self: *Reader, token: Token) ReadError!Form {
         const items = try self.readDelimited(.rbrace);
+        // Check for duplicate elements
+        if (items.len > 1) {
+            var i: usize = 0;
+            while (i < items.len) : (i += 1) {
+                var j: usize = i + 1;
+                while (j < items.len) : (j += 1) {
+                    if (formDataEql(items[i].data, items[j].data)) {
+                        return err.setError(.{
+                            .kind = .syntax_error,
+                            .phase = .parse,
+                            .message = "Duplicate key in set literal",
+                            .location = .{ .line = items[j].line, .column = items[j].column },
+                        });
+                    }
+                }
+            }
+        }
         return Form{ .data = .{ .set = items }, .line = token.line, .column = token.column };
     }
 

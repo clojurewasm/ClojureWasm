@@ -1,6 +1,6 @@
 ;; Upstream: clojure/test/clojure/test_clojure/data_structures.clj
 ;; Upstream lines: 1363
-;; CLJW markers: 32
+;; CLJW markers: 31
 
 ;   Copyright (c) Rich Hickey. All rights reserved.
 ;   The use and distribution terms for this software are covered by the
@@ -613,8 +613,8 @@
         w5b (with-meta [5] {:me "w5b"})
         w5c (with-meta [5] {:me "w5c"})]
 
-    ;; CLJW: skipped — reader doesn't detect duplicate keys
-    ;; (is (thrown? IllegalArgumentException (read-string "#{1 2 3 4 1 5}")))
+    ;; CLJW: IllegalArgumentException → Exception
+    (is (thrown? Exception (read-string "#{1 2 3 4 1 5}")))
 
     ;; If there are duplicate items when doing (conj #{} x1 x2 ...),
     ;; the behavior is that the metadata of the first item is kept.
@@ -628,8 +628,8 @@
       #{w5b}    [w5b w5a w5c]
       #{z3a x1} [z3a z3b x1])
 
-    ;; CLJW: skipped — reader doesn't detect duplicate keys
-    ;; (is (thrown? IllegalArgumentException (read-string "{:a 1, :b 2, :a -1, :c 3}")))
+    ;; CLJW: IllegalArgumentException → Exception
+    (is (thrown? Exception (read-string "{:a 1, :b 2, :a -1, :c 3}")))
 
     ;; If there are duplicate keys when doing (assoc {} k1 v1 k2 v2
     ;; ...), the behavior is that the metadata of the first duplicate
