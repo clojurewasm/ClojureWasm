@@ -259,8 +259,8 @@ pub fn registerBuiltins(env: *Env) !void {
     };
     // File static fields (Java File.separator, File.pathSeparator)
     const file_consts = [_]struct { name: []const u8, val: Value }{
-        .{ .name = "__file-separator", .val = Value.initString(env.allocator, "/") },
-        .{ .name = "__file-path-separator", .val = Value.initString(env.allocator, ":") },
+        .{ .name = "__file-separator", .val = Value.initString(std.heap.page_allocator, "/") },
+        .{ .name = "__file-path-separator", .val = Value.initString(std.heap.page_allocator, ":") },
         .{ .name = "__file-separator-char", .val = Value.initChar('/') },
         .{ .name = "__file-path-separator-char", .val = Value.initChar(':') },
     };

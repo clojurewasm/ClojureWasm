@@ -348,12 +348,12 @@ cat > "$PROJ12/test/mylib/core_test.clj" << 'CLOJ'
 CLOJ
 run_test "cljw test with deps.edn" \
   "cd $PROJ12 && $CLJW test" \
-  "0 failed, 0 errors"
+  "0 failures, 0 errors"
 
 # --- Test 13: cljw test -A:test with alias paths ---
 run_test "cljw test -A:test alias" \
   "cd $PROJ12 && $CLJW test -A:test" \
-  "0 failed, 0 errors"
+  "0 failures, 0 errors"
 
 # --- Test 14: Leiningen project.clj detection ---
 PROJ14="$TMPDIR_BASE/proj14"
