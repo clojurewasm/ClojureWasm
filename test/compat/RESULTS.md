@@ -8,7 +8,7 @@
 | camel-snake-kebab | Case convert |     98.6% | 2 fails = split edge case    |
 | honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
-| clojure.data.json | JSON         |  Skipped  | Java IO based                |
+| clojure.data.json | JSON         |    100.0% | CW fork, 51 tests, 80 assertions |
 
 ### Key Findings
 
@@ -181,3 +181,63 @@ Phase 72.1:
 - Test suite not yet ported (would need honeysql test dependencies)
 - Loading success validates: macro expansion, protocol dispatch, large
   namespace handling, reader conditionals, GC stability
+
+## clojure.data.json (CW fork)
+
+Source: CW-compatible fork of https://github.com/clojure/data.json
+Type: JSON parser/generator
+Location: `src/clj/clojure/data/json.clj` (embedded in binary, lazy-loaded)
+
+### Results
+
+| Metric     | Value |
+|------------|------:|
+| Tests      |    51 |
+| Assertions |    80 |
+| Pass       |    80 |
+| Fail       |     0 |
+| Error      |     0 |
+| Pass rate  |  100% |
+
+### Approach
+
+Upstream data.json is deeply Java-intertwined (definterface, deftype with mutable
+fields, PushbackReader, StringWriter, char-array, short-array). A CW-compatible
+fork was created replacing:
+
+| Java Construct           | CW Replacement                          |
+|--------------------------|----------------------------------------|
+| definterface + deftype   | defprotocol + reify with volatile!     |
+| StringWriter/Appendable  | Protocol-based string builder (vector) |
+| char-array/short-array   | Seq iteration over codepoints          |
+| Integer/parseInt radix   | Pure Clojure hex digit parser          |
+| Java type extends        | CW type names (Long, String, etc.)     |
+| case with 8+ kw branches | condp = (CW case hash collision bug)   |
+
+### API Coverage
+
+| Function    | Status | Notes                         |
+|-------------|--------|-------------------------------|
+| read-str    | Pass   | Full feature support          |
+| write-str   | Pass   | Full feature support          |
+| read-json   | Pass   | Deprecated compat wrapper     |
+| json-str    | Pass   | Deprecated compat wrapper     |
+| read        | Skip   | Needs java.io.Reader          |
+| write       | Skip   | Needs java.io.Writer          |
+| pprint      | Skip   | Needs PrintWriter             |
+
+### Bugs Fixed During Implementation
+
+| Bug | Fix | Component |
+|-----|-----|-----------|
+| `(int \a)` returns error | Add char→int cast in intCoerceFn | arithmetic.zig |
+| Unicode writer escapes bytes not codepoints | Use `doseq` over `(seq s)` instead of `dotimes`+`.charAt` | json.clj |
+| UUID write produces map JSON | Check `uuid?` before `map?` in Object catch-all | json.clj |
+| `case` macro hash collision with 8+ keywords | Use `condp =` workaround | json.clj |
+
+### Notes
+
+- `(int \a)` → 97 now works (needed by many libraries)
+- CW's `.charAt` returns UTF-8 bytes, not Unicode codepoints; `(seq s)` gives codepoints
+- CW's UUID class has `(map? uuid)` = true; writer checks `uuid?` first
+- `case` macro has a hash collision bug with 8+ keyword branches (tracked, not fixed)

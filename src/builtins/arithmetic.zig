@@ -1235,11 +1235,12 @@ pub fn bitTestFn(_: Allocator, args: []const Value) anyerror!Value {
 // Numeric coercion functions
 // ============================================================
 
-/// (int x) — Coerce to integer (truncate float).
+/// (int x) — Coerce to integer (truncate float). Chars return their codepoint.
 fn intCoerceFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to int", .{args.len});
     return switch (args[0].tag()) {
         .integer => args[0],
+        .char => Value.initInteger(@intCast(args[0].asChar())),
         .float => Value.initInteger(@intFromFloat(args[0].asFloat())),
         .ratio => Value.initInteger(@intFromFloat(args[0].asRatio().toF64())),
         .big_int => blk: {

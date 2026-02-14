@@ -18,13 +18,15 @@ See `babashka-class-compat.md` for reference only (not a roadmap).
 - **Blocked**: Needs CW features not yet implemented
 - **Todo**: Not yet tested
 
+You should clone repo to ~/Documents/OSS if not exists.
+
 ## Batch 1: Already Planned (Phase 71)
 
 | # | Library           | Repo                          | LOC   | Java Deps           | Status | Notes                       |
 |---|-------------------|-------------------------------|-------|---------------------|--------|-----------------------------|
 | 1 | medley            | weavejester/medley            | ~400  | None                | Tested | Utility fns, pure Clojure   |
 | 2 | hiccup            | weavejester/hiccup            | ~300  | URI                 | Tested | HTML gen, URI needed → done |
-| 3 | clojure.data.json | clojure/data.json             | ~500  | StringReader/Writer | Todo   | JSON, may need I/O shim     |
+| 3 | clojure.data.json | clojure/data.json             | ~500  | StringReader/Writer | Pass   | CW fork, 51 tests 80 asserts |
 | 4 | honeysql          | seancorfield/honeysql         | ~2000 | None (spec)         | Tested | SQL DSL, spec.alpha dep     |
 | 5 | camel-snake-kebab | clj-commons/camel-snake-kebab | ~200  | None                | Todo   | String case conversion      |
 
