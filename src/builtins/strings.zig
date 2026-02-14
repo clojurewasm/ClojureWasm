@@ -45,7 +45,13 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var aw: Writer.Allocating = .init(allocator);
     defer aw.deinit();
     for (args) |arg| {
-        try arg.formatStr(&aw.writer);
+        // Class instances: use .toString() instead of default map formatting
+        if ((arg.tag() == .map or arg.tag() == .hash_map) and interop_dispatch.getReifyType(arg) != null) {
+            const s = try interop_dispatch.dispatch(allocator, "toString", arg, &.{});
+            try aw.writer.writeAll(s.asString());
+        } else {
+            try arg.formatStr(&aw.writer);
+        }
     }
     const owned = try aw.toOwnedSlice();
     return Value.initString(allocator, owned);

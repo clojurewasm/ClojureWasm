@@ -109,6 +109,54 @@ pub fn setPrintAllocator(alloc: ?Allocator) void {
     print_allocator = alloc;
 }
 
+/// Get the display string for a class instance map.
+/// Returns the "toString" result by looking up class-specific display fields.
+fn getClassInstanceStr(m: *const collections.PersistentArrayMap) ?[]const u8 {
+    const class_display_fields = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "java.util.UUID", "uuid" },
+        .{ "java.net.URI", "raw" },
+        .{ "java.io.File", "path" },
+    });
+    var reify_type: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i + 1 < m.entries.len) : (i += 2) {
+        if (m.entries[i].tag() == .keyword) {
+            const kw = m.entries[i].asKeyword();
+            if (kw.ns == null and std.mem.eql(u8, kw.name, "__reify_type")) {
+                if (m.entries[i + 1].tag() == .string) reify_type = m.entries[i + 1].asString();
+                break;
+            }
+        }
+    }
+    const class_name = reify_type orelse return null;
+    const display_field = class_display_fields.get(class_name) orelse return null;
+    // Find the display field
+    i = 0;
+    while (i + 1 < m.entries.len) : (i += 2) {
+        if (m.entries[i].tag() == .keyword) {
+            const kw = m.entries[i].asKeyword();
+            if (kw.ns == null and std.mem.eql(u8, kw.name, display_field)) {
+                if (m.entries[i + 1].tag() == .string) return m.entries[i + 1].asString();
+            }
+        }
+    }
+    return null;
+}
+
+/// Get the :__reify_type class name from a map.
+fn getClassInstanceType(m: *const collections.PersistentArrayMap) ?[]const u8 {
+    var i: usize = 0;
+    while (i + 1 < m.entries.len) : (i += 2) {
+        if (m.entries[i].tag() == .keyword) {
+            const kw = m.entries[i].asKeyword();
+            if (kw.ns == null and std.mem.eql(u8, kw.name, "__reify_type")) {
+                if (m.entries[i + 1].tag() == .string) return m.entries[i + 1].asString();
+            }
+        }
+    }
+    return null;
+}
+
 /// Set readable mode for printing. false = print (unquoted strings), true = pr (quoted).
 pub fn setPrintReadably(readably: bool) void {
     print_readably = readably;
@@ -1446,6 +1494,21 @@ pub const Value = enum(u64) {
             },
             .map => {
                 const m = self.asMap();
+                // Class instances: print as toString representation
+                if (getClassInstanceStr(m)) |display| {
+                    if (getPrintReadably()) {
+                        // Readable: check for special tagged literal forms
+                        const class_name = getClassInstanceType(m) orelse "";
+                        if (std.mem.eql(u8, class_name, "java.util.UUID")) {
+                            try w.writeAll("#uuid \"");
+                            try w.writeAll(display);
+                            try w.writeAll("\"");
+                            return;
+                        }
+                    }
+                    try w.writeAll(display);
+                    return;
+                }
                 if (try checkPrintLevel(w)) return;
                 const length = getPrintLength();
                 try w.writeAll("{");

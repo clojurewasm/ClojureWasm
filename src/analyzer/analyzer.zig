@@ -126,9 +126,20 @@ pub const Analyzer = struct {
     fn analyzeTag(self: *Analyzer, t: @import("../reader/form.zig").TaggedLiteral, form: Form) AnalyzeError!*Node {
         const tag_name = t.tag;
 
-        // Built-in tags: #inst and #uuid just pass through the form value
-        if (std.mem.eql(u8, tag_name, "inst") or std.mem.eql(u8, tag_name, "uuid")) {
+        // Built-in tag: #inst passes through the form value
+        if (std.mem.eql(u8, tag_name, "inst")) {
             return self.analyze(t.form.*);
+        }
+
+        // Built-in tag: #uuid "..." → (__uuid-from-string "...")
+        if (std.mem.eql(u8, tag_name, "uuid")) {
+            var rewritten = self.allocator.alloc(Form, 2) catch return error.OutOfMemory;
+            rewritten[0] = .{
+                .data = .{ .symbol = .{ .ns = null, .name = "__uuid-from-string" } },
+                .line = form.line, .column = form.column,
+            };
+            rewritten[1] = t.form.*;
+            return self.analyzeCall(rewritten, form);
         }
 
         // General case: (tagged-literal '<tag-symbol> <form-value>)

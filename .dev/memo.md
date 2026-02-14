@@ -4,13 +4,14 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 70 COMPLETE** (spec.alpha fully implemented)
+- **All phases through 74 COMPLETE** (Java interop architecture)
 - Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 18 namespaces total)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
-- Binary: 3.80MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 3.85MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Java interop: `src/interop/` module with URI, File, UUID classes (D101)
 
 ## Strategic Direction
 
@@ -22,32 +23,28 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 74.5: java.util.UUID + D101 + cleanup
-- Implement UUID class in `src/interop/classes/uuid.zig`
-- UUID/randomUUID, UUID/fromString, .toString
-- Update uuid? predicate
-- D101 decision entry
-- Non-functional regression check
+(none — Phase 74 complete, ready for next phase)
 
 ## Task Queue
 
 ```
-74.5: java.util.UUID + D101 + cleanup
+(empty — read roadmap.md for next phase)
 ```
 
 ## Previous Task
 
-Phase 74.4: java.io.File (complete).
-- Created `src/interop/classes/file.zig` — filesystem operations via std.fs
-- Constructor: (File. path), (File. parent child)
-- Instance methods: .getName, .getPath, .getParent, .getAbsolutePath,
-  .exists, .isDirectory, .isFile, .canRead, .canWrite, .length, .delete,
-  .mkdir, .mkdirs, .list, .lastModified, .toString
-- Static fields: File/separator, File/pathSeparator, separatorChar, pathSeparatorChar
-- Both backends verified
-- All tests pass (unit + e2e)
-- 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)
-- 72.3: GC assessment report (see above)
+Phase 74.5: java.util.UUID + D101 + cleanup (complete).
+- Created `src/interop/classes/uuid.zig` — UUID generation and parsing
+- UUID/randomUUID, UUID/fromString, .toString, .getMostSignificantBits,
+  .getLeastSignificantBits, .version, .variant
+- Constructor: (UUID. msb lsb) — two longs
+- `#uuid "..."` tagged literal → UUID class instance
+- `random-uuid` now returns UUID class instance (was string)
+- `uuid?` predicate updated for class instances
+- Class instances print as toString (println) / `#uuid "..."` (prn)
+- D101 decision entry (Java Interop Architecture)
+- Non-functional: binary 3.85MB, startup 4.4ms, RSS 7.8MB — all pass
+- Both backends verified, all tests pass (unit + e2e)
 
 ## Known Issues
 
@@ -65,7 +62,7 @@ Session resume: read this file → roadmap.md → pick next task.
 |--------------------|--------------------------------------|-----------------------------|
 | Roadmap            | `.dev/roadmap.md`                    | Always — next phases        |
 | Deferred items     | `.dev/checklist.md`                  | When planning next work     |
-| Decisions          | `.dev/decisions.md` (D3-D93)         | On architectural questions  |
+| Decisions          | `.dev/decisions.md` (D3-D101)        | On architectural questions  |
 | Optimizations      | `.dev/optimizations.md`              | Performance work            |
 | Benchmarks         | `bench/history.yaml`                 | After perf changes          |
 | Wasm benchmarks    | `bench/wasm_history.yaml`            | After wasm changes          |

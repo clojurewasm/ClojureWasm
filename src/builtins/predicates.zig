@@ -955,8 +955,7 @@ fn uriPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (uuid? x) — Returns true if x is a java.util.UUID.
 fn uuidPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to uuid?", .{args.len});
-    // No UUID type in ClojureWasm
-    return Value.false_val;
+    return Value.initBoolean(isClassInstance(args[0], "java.util.UUID"));
 }
 
 /// (bounded-count n coll) — If coll is counted? returns its count, else counts up to n.

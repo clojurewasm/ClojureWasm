@@ -55,6 +55,7 @@ pub const interop_dispatch = @import("interop/dispatch.zig");
 pub const interop_constructors = @import("interop/constructors.zig");
 pub const interop_uri = @import("interop/classes/uri.zig");
 pub const interop_file = @import("interop/classes/file.zig");
+pub const interop_uuid = @import("interop/classes/uuid.zig");
 pub const thread_pool = @import("runtime/thread_pool.zig");
 pub const concurrency_test = @import("runtime/concurrency_test.zig");
 pub const deps = @import("deps.zig");
@@ -106,6 +107,7 @@ test {
     _ = interop_constructors;
     _ = interop_uri;
     _ = interop_file;
+    _ = interop_uuid;
     _ = thread_pool;
     _ = concurrency_test;
     _ = deps;

@@ -804,37 +804,11 @@ pub fn hashCombineFn(_: Allocator, args: []const Value) anyerror!Value {
 // random-uuid
 // ============================================================
 
-/// (random-uuid) — returns a random UUID v4 string.
+/// (random-uuid) — returns a random UUID v4 as a java.util.UUID instance.
 pub fn randomUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to random-uuid", .{args.len});
-
-    // Generate 16 random bytes
-    var bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&bytes);
-
-    // Set version 4: byte[6] = (byte[6] & 0x0f) | 0x40
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    // Set variant 10: byte[8] = (byte[8] & 0x3f) | 0x80
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
-    const hex = "0123456789abcdef";
-    var buf: [36]u8 = undefined;
-    var pos: usize = 0;
-    for (bytes, 0..) |b, i| {
-        buf[pos] = hex[b >> 4];
-        pos += 1;
-        buf[pos] = hex[b & 0x0f];
-        pos += 1;
-        // Dashes after bytes 3, 5, 7, 9
-        if (i == 3 or i == 5 or i == 7 or i == 9) {
-            buf[pos] = '-';
-            pos += 1;
-        }
-    }
-
-    const result = try allocator.dupe(u8, &buf);
-    return Value.initString(allocator, result);
+    const uuid_class = @import("../interop/classes/uuid.zig");
+    return uuid_class.randomUUID(allocator);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -1116,8 +1090,17 @@ test "random-uuid - format" {
     const alloc = arena.allocator();
 
     const result = try randomUuidFn(alloc, &[_]Value{});
-    try testing.expect(result.tag() == .string);
-    const uuid = result.asString();
+    // random-uuid now returns a UUID class instance (map with :__reify_type)
+    try testing.expect(result.tag() == .map);
+    const interop_dispatch = @import("../interop/dispatch.zig");
+    const reify_type = interop_dispatch.getReifyType(result);
+    try testing.expect(reify_type != null);
+    try testing.expectEqualStrings("java.util.UUID", reify_type.?);
+
+    // Extract :uuid field from the map
+    const uuid_class = @import("../interop/classes/uuid.zig");
+    const uuid_val = uuid_class.dispatchMethod(alloc, "toString", result, &[_]Value{}) catch return;
+    const uuid = uuid_val.asString();
     // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (36 chars)
     try testing.expectEqual(@as(usize, 36), uuid.len);
     try testing.expectEqual(@as(u8, '-'), uuid[8]);
@@ -1183,7 +1166,10 @@ test "random-uuid - uniqueness" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
+    const uuid_class = @import("../interop/classes/uuid.zig");
     const r1 = try randomUuidFn(alloc, &[_]Value{});
     const r2 = try randomUuidFn(alloc, &[_]Value{});
-    try testing.expect(!std.mem.eql(u8, r1.asString(), r2.asString()));
+    const s1 = try uuid_class.dispatchMethod(alloc, "toString", r1, &[_]Value{});
+    const s2 = try uuid_class.dispatchMethod(alloc, "toString", r2, &[_]Value{});
+    try testing.expect(!std.mem.eql(u8, s1.asString(), s2.asString()));
 }

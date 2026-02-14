@@ -135,6 +135,8 @@ pub fn rewriteInteropCall(ns: []const u8, name: []const u8) ?[]const u8 {
         return pattern_rewrites.get(name);
     } else if (std.mem.eql(u8, ns, "URI") or std.mem.eql(u8, ns, "java.net.URI")) {
         return uri_rewrites.get(name);
+    } else if (std.mem.eql(u8, ns, "UUID") or std.mem.eql(u8, ns, "java.util.UUID")) {
+        return uuid_rewrites.get(name);
     }
     return null;
 }
@@ -205,6 +207,11 @@ const pattern_rewrites = std.StaticStringMap([]const u8).initComptime(.{
 
 const uri_rewrites = std.StaticStringMap([]const u8).initComptime(.{
     .{ "create", "__uri-create" },
+});
+
+const uuid_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+    .{ "randomUUID", "__uuid-random-uuid" },
+    .{ "fromString", "__uuid-from-string" },
 });
 
 // Tests

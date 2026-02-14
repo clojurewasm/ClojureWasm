@@ -20,6 +20,7 @@ const err = @import("../runtime/error.zig");
 const collections = @import("../builtins/collections.zig");
 const uri_class = @import("classes/uri.zig");
 const file_class = @import("classes/file.zig");
+const uuid_class = @import("classes/uuid.zig");
 
 /// Java instance method dispatch.
 /// Called from __java-method builtin. Dispatches based on object tag,
@@ -62,6 +63,9 @@ fn dispatchClass(allocator: Allocator, class_name: []const u8, method: []const u
     }
     if (std.mem.eql(u8, class_name, file_class.class_name)) {
         return file_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
+        return uuid_class.dispatchMethod(allocator, method, obj, rest);
     }
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for class {s}", .{ method, class_name });
 }

@@ -20,6 +20,7 @@ const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../runtime/error.zig");
 const uri_class = @import("classes/uri.zig");
 const file_class = @import("classes/file.zig");
+const uuid_class = @import("classes/uuid.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
@@ -63,6 +64,9 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (std.mem.eql(u8, class_name, file_class.class_name)) {
         return file_class.construct(allocator, ctor_args);
     }
+    if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
+        return uuid_class.construct(allocator, ctor_args);
+    }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});
 }
@@ -91,6 +95,19 @@ fn uriCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return uri_class.construct(allocator, args);
 }
 
+/// UUID/randomUUID — generate random UUID v4.
+fn uuidRandomUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "UUID/randomUUID takes no args, got {d}", .{args.len});
+    return uuid_class.randomUUID(allocator);
+}
+
+/// UUID/fromString — parse UUID from string.
+fn uuidFromStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "UUID/fromString expects 1 arg, got {d}", .{args.len});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "UUID/fromString expects a string arg", .{});
+    return uuid_class.constructFromString(allocator, args[0].asString());
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "__interop-new",
@@ -103,6 +120,20 @@ pub const builtins = [_]BuiltinDef{
         .name = "__uri-create",
         .func = &uriCreateFn,
         .doc = "URI/create — creates a URI from a string.",
+        .arglists = "([s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__uuid-random-uuid",
+        .func = &uuidRandomUuidFn,
+        .doc = "UUID/randomUUID — generate a random UUID v4.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__uuid-from-string",
+        .func = &uuidFromStringFn,
+        .doc = "UUID/fromString — parse UUID from string.",
         .arglists = "([s])",
         .added = "1.0",
     },

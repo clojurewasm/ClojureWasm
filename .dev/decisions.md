@@ -672,3 +672,38 @@ tree size), so memory pressure is acceptable.
 
 **Additionally**: getByStringKey on PersistentArrayMap eliminates all
 temporary HeapString allocations in protocol dispatch hot path.
+
+## D101: Java Interop Architecture
+
+**Problem**: Java interop code was scattered across analyzer.zig (rewrite
+tables), strings.zig (javaMethodFn), predicates.zig, arithmetic.zig,
+system.zig, and registry.zig. Adding a new Java class required changes
+in 3+ files. URI, File, and UUID classes were needed for library
+compatibility (hiccup, web apps, scripts).
+
+**Decision**: Extract interop into a dedicated `src/interop/` module:
+
+```
+src/interop/
+  rewrites.zig       -- Static field + method rewrite tables
+  dispatch.zig       -- Instance method dispatch (__java-method)
+  constructors.zig   -- Constructor dispatch (__interop-new)
+  classes/
+    uri.zig          -- java.net.URI
+    file.zig         -- java.io.File
+    uuid.zig         -- java.util.UUID
+```
+
+**Object model**: Java class instances = PersistentArrayMap with
+`:__reify_type` keyword key (e.g., `{:__reify_type "java.util.UUID"
+:uuid "550e8400-..."}`). No new Value tags needed. Works with GC (maps
+are traced). `type` builtin reads `:__reify_type`. `str` delegates to
+`.toString()` for class instances. `prn` prints tagged literals
+(e.g., `#uuid "..."` for UUID).
+
+**Constructor syntax**: `(ClassName. args...)` and `(new ClassName args...)`
+are analyzer rewrites to `(__interop-new "fqcn" args...)`. `:import`
+stores FQCN: `(:import (java.net URI))` → `(def URI 'java.net.URI)`.
+
+**Adding new classes**: 1 new file in `classes/` + 1 registration in
+constructors.zig + dispatch.zig + rewrites.zig. Down from 3+ files.
