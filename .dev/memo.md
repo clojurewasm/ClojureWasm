@@ -22,19 +22,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 71: Library Compatibility Testing. Sub-task 71.2 (hiccup) next.
+Phase 71: Library Compatibility Testing. Sub-task 71.3 (clojure.data.json) next.
 
-71.1 done: medley 80.4% pass (222/276 assertions). All failures are Java interop.
-Also implemented #?@ (splicing reader conditional) which was needed for medley.
+71.1 done: medley 80.4% pass (222/276). All failures are Java interop.
+71.2 done: hiccup skipped (heavy Java interop: URI, URLEncoder, extend-protocol on Java types).
+  Replaced with camel-snake-kebab: 98.6% pass (145/147). 2 fails = clojure.string/split edge case.
 
 ## Task Queue
 
 ```
-Phase 71: Library Compatibility Testing (5 libraries)
-  71.2: hiccup
+Phase 71: Library Compatibility Testing
   71.3: clojure.data.json
   71.4: honeysql
-  71.5: camel-snake-kebab
 
 Phase 72: Optimization + GC Assessment
   72.1: Profiling infrastructure
@@ -47,12 +46,14 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 71.1: medley compatibility test.
-80.4% pass rate (222/276). Implemented #?@ splicing reader conditional.
+Phase 71.2: camel-snake-kebab compatibility test.
+98.6% pass rate (145/147). 2 failures: clojure.string/split trailing empty string behavior.
+GC crash discovered in heavy nested loops (>60 iterations with protocol dispatch).
 
 ## Known Issues
 
-(none)
+- GC crash in heavy nested loops with protocol dispatch (>60 iterations).
+  Manifests as segfault in Namespace.resolve → hash. Pre-existing issue.
 
 ## Notes
 

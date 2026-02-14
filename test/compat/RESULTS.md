@@ -58,3 +58,55 @@ regexp?, find-in
 - Reader conditionals (#? and #?@) work correctly
 - defrecord works correctly (MyRecord tests pass)
 - Transducer support works for non-Java-interop functions
+
+## camel-snake-kebab 0.12.0+
+
+Source: https://github.com/clj-commons/camel-snake-kebab
+Type: Case conversion library (.cljc)
+
+### Results
+
+| Metric     | Value  |
+|------------|-------:|
+| Tests      |      4 |
+| Assertions |    147 |
+| Pass       |    145 |
+| Fail       |      2 |
+| Error       |      0 |
+| Pass rate  | 98.6%  |
+
+### Failure Details
+
+| Test                     | Reason                                               |
+|--------------------------|------------------------------------------------------|
+| separator-only (2 cases) | clojure.string/split doesn't drop trailing empties   |
+
+`(csk/->kebab-case "a" :separator \a)` returns `"-"` instead of `""`.
+Root cause: CW's `clojure.string/split` returns `["" ""]` for `(split "a" #"a")`
+while upstream Clojure returns `[]` (Java's Pattern.split drops trailing empties).
+
+### Passing Function Groups (100%)
+
+**Type-preserving conversions**: ->PascalCase, ->camelCase, ->SCREAMING_SNAKE_CASE,
+->snake_case, ->kebab-case, ->Camel_Snake_Case, ->HTTP-Header-Case
+(all work correctly on strings, keywords, and symbols)
+
+**Type-converting conversions**: ->PascalCaseKeyword, ->camelCaseString,
+->SCREAMING_SNAKE_CASE_STRING, ->snake_case_keyword, ->kebab-case-symbol, etc.
+
+**Extras**: transform-keys (including metadata preservation)
+
+**Error handling**: Namespaced keyword/symbol rejection via ex-info
+
+### Notes
+
+- All namespaces load successfully (string-separator, misc, alter-name, macros, core, extras)
+- Protocol dispatch (AlterName, StringSeparator) works correctly
+- defconversion macro (macro-generated defns) works correctly
+- reify works correctly (generic-separator)
+- extend with letfn-defined functions works correctly
+- HTTP header special cases (DNT, SSL, XSS, etc.) all correct
+- with-meta preservation through postwalk works
+- GC crash occurs in heavy nested loops (>60 iterations with protocol dispatch);
+  tests split into batches to work around. This is a pre-existing CW GC issue,
+  not a library compatibility problem
