@@ -15,7 +15,7 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                        | Trigger                                                                  |
 |------|---------------------------------------------|--------------------------------------------------------------------------|
-| F94  | Upstream Alignment pass                     | 36 UPSTREAM-DIFF + 416 CLJW markers — all permanent design diffs (Java→Zig). Phase 64 confirmed no further alignment possible. |
+| F94  | Upstream Alignment pass                     | Phase 70.5.4 audit: 87 markers in src/clj/ (P=48, S=12, R=27). R items need: :inline meta (2), IDrop (2), IReduceInit/deftype (3), TransformerIterator (1), seqkvreduce (1), extend-via-metadata (2), deftype (3), ref/multimethod in test (7), spec in repl (1), assert-expr (1), run-test (1), :__reify_type (1). |
 | F99  | ~~Iterative lazy-seq realization engine~~   | RESOLVED (D96): VM FRAMES_MAX 256→1024, iterative unwrapping in realize. Thunk depth ~1000, Meta path unlimited. |
 | F102 | map/filter chunked processing               | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
 | F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |

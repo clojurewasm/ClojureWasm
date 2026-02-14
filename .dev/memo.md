@@ -22,17 +22,16 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.4.
+Phase 70.5 COMPLETE. All 4 sub-tasks done.
 
-70.5.3 done: Removed stale gen stub CLJW marker (gen now implemented). Clarified fspec,
-k-gen, ex-info comments. 36 CLJW + 2 UPSTREAM-DIFF markers remain (all permanent Java→Zig diffs).
+70.5.4 done: Full audit of 87 CLJW/UPSTREAM-DIFF markers across 13 src/clj/ files.
+Categories: P=48 (permanent Java→Zig), S=12 (syntax/bootstrap), R=27 (reducible).
+No actionable workarounds found. R items documented in checklist.md F94 for future phases.
 
 ## Task Queue
 
 ```
 Phase 70.5: spec.gen + CLJW workaround audit
-  70.5.4: CLJW workaround full audit
-
 Phase 71: Library Compatibility Testing (5 libraries)
   71.1: medley
   71.2: hiccup
@@ -51,9 +50,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.5.3: spec UPSTREAM-DIFF reduction.
-Removed 1 stale CLJW marker (gen stub), clarified fspec/k-gen/ex-info comments.
-36 CLJW + 2 UPSTREAM-DIFF markers remain, all permanent Java→Zig diffs.
+Phase 70.5.4: CLJW workaround full audit.
+Audited 87 markers across 13 files. P=48, S=12, R=27. No workarounds found.
+R items documented in checklist.md F94 for future implementation.
 
 ## Known Issues
 
