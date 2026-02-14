@@ -34,7 +34,7 @@ You should clone repo to ~/Documents/OSS if not exists.
 
 | #  | Library          | Repo                  | LOC   | Java Deps     | Status | Notes                           |
 |----|------------------|-----------------------|-------|---------------|--------|---------------------------------|
-| 6  | clojure.data.csv | clojure/data.csv      | ~100  | Reader/Writer | Todo   | CSV, tiny, may need I/O shim    |
+| 6  | clojure.data.csv | clojure/data.csv      | ~100  | Reader/Writer | Pass   | CW fork, 36 tests 36 asserts   |
 | 7  | clojure.data.xml | clojure/data.xml      | ~800  | InputStream   | Todo   | XML, heavier I/O needs          |
 | 8  | instaparse       | Engelberg/instaparse  | ~3000 | None          | Todo   | Parser combinator, pure Clojure |
 | 9  | meander          | noprompt/meander      | ~5000 | None          | Todo   | Pattern matching, pure Clojure  |

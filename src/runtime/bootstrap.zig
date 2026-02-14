@@ -89,6 +89,9 @@ const spec_alpha_clj_source = @embedFile("../clj/clojure/spec/alpha.clj");
 /// Embedded clojure/data/json.clj source (compiled into binary).
 const data_json_clj_source = @embedFile("../clj/clojure/data/json.clj");
 
+/// Embedded clojure/data/csv.clj source (compiled into binary).
+const data_csv_clj_source = @embedFile("../clj/clojure/data/csv.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -683,6 +686,36 @@ pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/data/csv.clj (CSV reader/writer).
+pub fn loadDataCsv(allocator: Allocator, env: *Env) BootstrapError!void {
+    const csv_ns = env.findOrCreateNamespace("clojure.data.csv") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        csv_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Pre-create alias for clojure.string (needed at read time for ns form)
+    if (env.findNamespace("clojure.string")) |str_ns| {
+        csv_ns.setAlias("str", str_ns) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = csv_ns;
+
+    _ = try evalString(allocator, env, data_csv_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/data/json.clj (JSON parser/generator).
 pub fn loadDataJson(allocator: Allocator, env: *Env) BootstrapError!void {
     const json_ns = env.findOrCreateNamespace("clojure.data.json") catch {
@@ -730,6 +763,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.data.json")) {
         try loadDataJson(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.data.csv")) {
+        try loadDataCsv(allocator, env);
         return true;
     }
     return false;

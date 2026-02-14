@@ -9,6 +9,7 @@
 | honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
 | clojure.data.json | JSON         |    100.0% | CW fork, 51 tests, 80 assertions |
+| clojure.data.csv  | CSV          |    100.0% | CW fork, 36 tests, 36 assertions |
 
 ### Key Findings
 
@@ -241,3 +242,52 @@ fork was created replacing:
 - CW's `.charAt` returns UTF-8 bytes, not Unicode codepoints; `(seq s)` gives codepoints
 - CW's UUID class has `(map? uuid)` = true; writer checks `uuid?` first
 - `case` macro has a hash collision bug with 8+ keyword branches (tracked, not fixed)
+
+## clojure.data.csv (CW fork)
+
+Source: CW-compatible fork of https://github.com/clojure/data.csv
+Type: CSV parser/generator
+Location: `src/clj/clojure/data/csv.clj` (embedded in binary, lazy-loaded)
+
+### Results
+
+| Metric     | Value |
+|------------|------:|
+| Tests      |    36 |
+| Assertions |    36 |
+| Pass       |    36 |
+| Fail       |     0 |
+| Error      |     0 |
+| Pass rate  |  100% |
+
+### Approach
+
+Upstream data.csv uses PushbackReader, StringBuilder, Writer (Java I/O).
+CW fork replaces with string-based pushback reader (same approach as data.json)
+and volatile!-based vector string builder.
+
+| Java Construct           | CW Replacement                          |
+|--------------------------|----------------------------------------|
+| PushbackReader + Reader  | defprotocol IPBR + reify with volatile! |
+| StringBuilder            | volatile! vector + apply str            |
+| Writer                   | volatile! vector, returns String        |
+
+### API Coverage
+
+| Function    | Status | Notes                                |
+|-------------|--------|--------------------------------------|
+| read-csv    | Pass   | Takes String, returns lazy-seq       |
+| write-csv   | Pass   | Takes data, returns String (no Writer) |
+
+### Bugs Fixed During Implementation
+
+| Bug | Fix | Component |
+|-----|-----|-----------|
+| `(char int)` returns string not char | Keep write path using char values, not int→char roundtrip | csv.clj |
+
+### Notes
+
+- CW's `(char 34)` returns a string `"\""` (type :string), not a char `\"` (type :char)
+- Write path must keep sep/quote as chars (not convert to int) for str/escape map lookup
+- Upstream write-csv takes a Writer argument; CW version returns a String directly
+- All 4 upstream tests covered + additional write tests

@@ -31,32 +31,26 @@ library. See `.dev/library-port-targets.md` for targets and shim decision guide.
 
 ## Current Task
 
-Phase 75.2: camel-snake-kebab — already tested (98.6% pass, 2 fails = split edge case).
-Skip to 75.3 or address Batch 1 results.
+Phase 75.6: Test clojure.tools.cli (pure Clojure CLI parsing).
+Clone upstream, test on CW, fork if needed.
 
 ## Task Queue
 
 ```
-75.2 camel-snake-kebab — already tested (98.6%), 2 fails = clojure.string/split trailing empties
-75.3 Additional Batch 1 libraries (medley, hiccup, honeysql already tested)
-75.4 Batch 2 planning — pick next libraries based on Batch 1 results
+75.6 Test clojure.tools.cli (pure Clojure CLI parsing)
+75.7 Test instaparse (parser combinator, ~3000 LOC, pure Clojure)
 ```
 
 ## Previous Task
 
-Phase 75.1: clojure.data.json — CW-compatible fork (complete).
-- Created `src/clj/clojure/data/json.clj` — CW fork of upstream data.json
-- Replaced definterface/deftype with defprotocol/reify + volatile!
-- Replaced StringWriter/Appendable with vector-based string builder
-- Pure Clojure hex parser (Integer/parseInt radix not supported)
-- condp workaround for case macro hash collision bug (8+ keywords)
-- Lazy-loaded via `loadEmbeddedLib` in bootstrap.zig
-- Fixed `(int \a)` → 97 (char→int cast in arithmetic.zig)
-- Fixed Unicode writer (seq codepoints, not .charAt UTF-8 bytes)
-- Fixed UUID writer (check uuid? before map?)
-- 51 tests, 80 assertions, 100% pass rate
+Phase 75.5: clojure.data.csv — CW-compatible fork (complete).
+- Created `src/clj/clojure/data/csv.clj` — CW fork of upstream data.csv
+- Replaced PushbackReader/StringBuilder/Writer with string-based equivalents
+- read-csv: String → lazy-seq of vectors. write-csv: data → String
+- Fixed write path: keep sep/quote as chars (CW's `(char int)` returns string, not char)
+- 36 tests, 36 assertions, 100% pass rate
 - Both VM and TreeWalk verified
-- Non-functional: binary 3.87MB, startup 5.3ms, RSS 7.75MB — all pass
+- Non-functional: binary 3.87MB, startup 4.2ms, RSS 7.75MB — all pass
 
 ## Known Issues
 
