@@ -54,8 +54,6 @@ Phase 72.1: GC crash root cause investigation and fixes (complete).
 
 ## Known Issues
 
-- honeysql sql.cljc: "No matching method toString found for char" — char needs
-  Object protocol toString method implementation.
 - clojure.string/split doesn't drop trailing empty strings (Java Pattern.split does).
 
 ## Notes

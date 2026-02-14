@@ -897,10 +897,19 @@ pub const Analyzer = struct {
         var idx: usize = 1;
         var name: ?[]const u8 = null;
 
-        // Optional name
+        // Optional name — plain symbol or (with-meta symbol meta) from defn macros
         if (items[idx].data == .symbol) {
             name = items[idx].data.symbol.name;
             idx += 1;
+        } else if (items[idx].data == .list) {
+            const nm_list = items[idx].data.list;
+            if (nm_list.len == 3 and nm_list[0].data == .symbol and
+                std.mem.eql(u8, nm_list[0].data.symbol.name, "with-meta") and
+                nm_list[1].data == .symbol)
+            {
+                name = nm_list[1].data.symbol.name;
+                idx += 1;
+            }
         }
 
         if (idx >= items.len) {

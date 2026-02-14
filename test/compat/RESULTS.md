@@ -6,7 +6,7 @@
 |-------------------|--------------|----------:|------------------------------|
 | medley            | Utility      |     80.4% | Java interop = all failures  |
 | camel-snake-kebab | Case convert |     98.6% | 2 fails = split edge case    |
-| honeysql          | SQL DSL      |       N/A | GC crash during loading      |
+| honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
 | clojure.data.json | JSON         |  Skipped  | Java IO based                |
 
@@ -14,23 +14,25 @@
 
 1. **Small pure-Clojure/cljc libraries work well** (98.6% CSK, 80% medley)
 2. **Java interop is the primary failure cause** (all medley failures)
-3. **GC crash blocks large namespaces** (honeysql ~1500 lines, CSK nested loops >60 iter)
-4. **clojure.string/split trailing empties** — CW doesn't drop trailing empty strings
+3. **clojure.string/split trailing empties** — CW doesn't drop trailing empty strings
+4. **GC crash resolved** (Phase 72.1) — honeysql loads, CSK nested loops pass 200 iterations
 
 ### Bugs Found and Fixed
 
-| Bug | Fix |
-|-----|-----|
-| `^String []` return type hint on fn arities | `extractParamVector` helper in analyzer |
-| `^:private ^:dynamic` nested metadata on def | Iterative with-meta unwrap loop |
-| `p/Protocol` alias in extend-protocol/reify | `resolveQualified` fallback in VM+TreeWalk |
-| `#?@` splicing reader conditional | `readReaderCondSplicing` in reader |
+| Bug | Fix | Phase |
+|-----|-----|-------|
+| `^String []` return type hint on fn arities | `extractParamVector` helper in analyzer | 71 |
+| `^:private ^:dynamic` nested metadata on def | Iterative with-meta unwrap loop | 71 |
+| `p/Protocol` alias in extend-protocol/reify | `resolveQualified` fallback in VM+TreeWalk | 71 |
+| `#?@` splicing reader conditional | `readReaderCondSplicing` in reader | 71 |
+| GC crash during macro expansion (6 root causes) | D100: string duplication, cache tracing, GC suppression | 72.1 |
+| char `.toString` method not implemented | `javaMethodFn` char handler | 72.1 |
+| fn name with metadata `(with-meta name meta)` | `analyzeFn` name pattern matching | 72.1 |
 
-### Recommended Priority for Phase 72+
+### Recommended Priority
 
-1. GC crash fix (blocks honeysql and heavy loops)
-2. clojure.string/split trailing empty string behavior
-3. Java interop remains out of scope (by design)
+1. clojure.string/split trailing empty string behavior
+2. Java interop remains out of scope (by design)
 
 ---
 
@@ -141,9 +143,8 @@ while upstream Clojure returns `[]` (Java's Pattern.split drops trailing empties
 - extend with letfn-defined functions works correctly
 - HTTP header special cases (DNT, SSL, XSS, etc.) all correct
 - with-meta preservation through postwalk works
-- GC crash occurs in heavy nested loops (>60 iterations with protocol dispatch);
-  tests split into batches to work around. This is a pre-existing CW GC issue,
-  not a library compatibility problem
+- GC crash in heavy nested loops fixed (Phase 72.1, D100). Protocol dispatch
+  stress test now passes 200 iterations cleanly.
 
 ## honeysql 2.6.x
 
@@ -154,27 +155,29 @@ Type: SQL DSL library (.cljc)
 
 | Metric     | Value |
 |------------|------:|
-| Load       |  FAIL |
-| Pass rate  |   N/A |
+| Load       |  PASS |
+| Namespaces |   3/3 |
 
-### Load Failure
+All three namespaces load successfully on both VM and TreeWalk:
+- honey.sql.protocols
+- honey.sql.util
+- honey.sql (main namespace, ~1500 lines)
 
-honeysql's main namespace (honey.sql, ~1500 lines) triggers a GC crash during
-loading. The crash occurs in the analyzer during macro expansion — a symbol name
-string is garbage collected while still referenced.
+### Bugs Fixed During Testing
 
-Three bugs were found and fixed during the attempt:
+Phase 71:
 1. `^String []` return type hints on multi-arity fn (analyzer)
 2. `^:private ^:dynamic *var*` nested metadata on def (analyzer)
 3. `p/Protocol` namespace alias in extend-protocol/reify (runtime)
 
-After these fixes, loading progresses past the first ~400 lines but crashes
-due to GC pressure from heavy macro expansion in the large namespace.
+Phase 72.1:
+4. GC crash during macro expansion (6 root causes, D100)
+5. char `.toString` Java interop method
+6. fn name with `(with-meta name meta)` from defn macro
 
 ### Notes
 
-- honey.sql.protocols loads successfully
-- honey.sql.util loads successfully (after fix #1)
-- honey.sql fails during loading (GC crash in analyzer, pre-existing issue)
-- honey.sql has minimal Java interop (Locale/US for upper-case, UUID extension)
-- Would likely work well once GC issues are resolved (Phase 72/73)
+- honeysql has minimal Java interop (Locale/US for upper-case, UUID extension)
+- Test suite not yet ported (would need honeysql test dependencies)
+- Loading success validates: macro expansion, protocol dispatch, large
+  namespace handling, reader conditionals, GC stability

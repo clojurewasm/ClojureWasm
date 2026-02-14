@@ -434,6 +434,15 @@ fn javaMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    // Char methods (Java Character)
+    if (obj.tag() == .char) {
+        if (std.mem.eql(u8, method, "toString") or std.mem.eql(u8, method, "valueOf")) {
+            var buf: [4]u8 = undefined;
+            const len = std.unicode.utf8Encode(obj.asChar(), &buf) catch return error.ValueError;
+            return Value.initString(allocator, try allocator.dupe(u8, buf[0..len]));
+        }
+    }
+
     // Collection methods
     if (std.mem.eql(u8, method, "size") or std.mem.eql(u8, method, "length")) {
         // count works on any countable
