@@ -22,22 +22,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 71: Library Compatibility Testing. Sub-task 71.3 (clojure.data.json) next.
+Phase 72: Optimization + GC Assessment. Sub-task 72.1 next.
 
-71.1 done: medley 80.4% pass (222/276). All failures are Java interop.
-71.2 done: hiccup skipped (heavy Java interop: URI, URLEncoder, extend-protocol on Java types).
-  Replaced with camel-snake-kebab: 98.6% pass (145/147). 2 fails = clojure.string/split edge case.
+Phase 71 complete. Results in `test/compat/RESULTS.md`.
+- medley 80.4%, CSK 98.6%, honeysql GC crash, hiccup/data.json skipped
+- 4 bugs fixed: return type hints, nested metadata, protocol alias, splicing reader conditional
 
 ## Task Queue
 
 ```
-Phase 71: Library Compatibility Testing
-  71.3: clojure.data.json
-  71.4: honeysql
-
 Phase 72: Optimization + GC Assessment
   72.1: Profiling infrastructure
-  72.2: Targeted optimizations
+  72.2: Targeted optimizations (GC crash is top priority)
   72.3: GC assessment report
 
 Phase 73: Generational GC (conditional on Phase 72 findings)
@@ -46,14 +42,15 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 71.2: camel-snake-kebab compatibility test.
-98.6% pass rate (145/147). 2 failures: clojure.string/split trailing empty string behavior.
-GC crash discovered in heavy nested loops (>60 iterations with protocol dispatch).
+Phase 71: Library Compatibility Testing (complete).
+See `test/compat/RESULTS.md` for full results.
 
 ## Known Issues
 
-- GC crash in heavy nested loops with protocol dispatch (>60 iterations).
-  Manifests as segfault in Namespace.resolve → hash. Pre-existing issue.
+- GC crash under heavy load: large namespace loading (honeysql ~1500 lines),
+  nested loops with protocol dispatch (>60 iterations).
+  Manifests as segfault in wyhash/hash or static_string_map (dangling string pointers).
+- clojure.string/split doesn't drop trailing empty strings (Java Pattern.split does).
 
 ## Notes
 
