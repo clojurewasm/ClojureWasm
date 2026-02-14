@@ -340,6 +340,12 @@ fn conjOne(allocator: Allocator, coll: Value, x: Value) anyerror!Value {
             cell.* = .{ .first = x, .rest = coll };
             return Value.initCons(cell);
         },
+        .lazy_seq => {
+            // (conj lazy-seq x) — prepend to seq (like cons)
+            const cell = try allocator.create(value_mod.Cons);
+            cell.* = .{ .first = x, .rest = coll };
+            return Value.initCons(cell);
+        },
         .nil => {
             // (conj nil x) => (x) — returns a list
             const new_items = try allocator.alloc(Value, 1);

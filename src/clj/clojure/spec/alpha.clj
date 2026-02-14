@@ -1012,27 +1012,33 @@
 
 (declare or-k-gen and-k-gen)
 
-;; CLJW: k-gen, or-k-gen, and-k-gen — gen-related helpers for keys.
-;; Stub: gen operations throw since test.check is unavailable.
-(defn- k-gen [f]
+;; CLJW: k-gen, or-k-gen, and-k-gen — upstream-compatible key generators.
+;; Upstream checks for plain symbols 'or/'and in key forms.
+(defn- k-gen
+  "returns a generator for form f, which can be a keyword or a list
+  starting with 'or or 'and."
+  [f]
   (cond
-    (keyword? f) (gen/return [f])
-    (c/and (seq? f) (#{`c/or `c/and} (first f)))
-    (let [args (rest f)]
-      (if (= (first f) `c/or)
-        (gen/one-of (map k-gen args))
-        (apply gen/tuple (map k-gen args))))
-    :else (gen/return nil)))
+    (keyword? f) (gen/return f)
+    (= 'or  (first f)) (or-k-gen 1 (rest f))
+    (= 'and (first f)) (and-k-gen (rest f))))
 
-(defn- or-k-gen [oks]
-  (if (seq oks)
-    (k-gen `(c/or ~@oks))
-    (gen/return nil)))
+(defn- or-k-gen
+  "returns a tuple generator made up of generators for a random subset
+  of min-count (default 0) to all elements in s."
+  ([s] (or-k-gen 0 s))
+  ([min-count s]
+   (gen/bind (gen/tuple
+              (gen/choose min-count (count s))
+              (gen/shuffle (mapv k-gen s)))
+             (fn [[n gens]]
+               (apply gen/tuple (take n gens))))))
 
-(defn- and-k-gen [aks]
-  (if (seq aks)
-    (k-gen `(c/and ~@aks))
-    (gen/return nil)))
+(defn- and-k-gen
+  "returns a tuple generator made up of generators for every element
+  in s."
+  [s]
+  (apply gen/tuple (mapv k-gen s)))
 
 (defmacro keys
   "Creates and returns a map validating spec. :req and :opt are both

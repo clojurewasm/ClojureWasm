@@ -236,10 +236,10 @@
     (s/coll-of int? :kind vector?)
     '(clojure.spec.alpha/coll-of clojure.core/int? :kind clojure.core/vector?)
 
-    ;; CLJW: gen/return test skipped — gen is a stub, form would differ
-    ;; (s/coll-of int? :gen #(gen/return [1 2]))
-    ;; '(clojure.spec.alpha/coll-of clojure.core/int? :gen (fn* [] (gen/return [1 2])))
-    ))
+    ;; CLJW: gen/return form differs — CW uses alias gen/return not fully qualified
+    ;; UPSTREAM-DIFF: gen/return instead of clojure.spec.gen.alpha/return
+    (s/coll-of int? :gen #(gen/return [1 2]))
+    '(clojure.spec.alpha/coll-of clojure.core/int? :gen (fn* [] (gen/return [1 2])))))
 
 (deftest coll-conform-unform
   (check-conform-unform
@@ -277,8 +277,53 @@
   (is (= ::ABC (s/def ::ABC nil)))
   (is (nil? (s/get-spec ::ABC))))
 
-;; CLJW: map-spec-generators test skipped — uses s/exercise which requires test.check
-;; (deftest map-spec-generators ...)
+(deftest map-spec-generators
+  (s/def ::a nat-int?)
+  (s/def ::b boolean?)
+  (s/def ::c keyword?)
+  (s/def ::d double?)
+  ;; CLJW: inst? not available, skip ::e definition
+  ;; (s/def ::e inst?)
+
+  (is (= #{[::a]
+           [::a ::b]
+           [::a ::b ::c]
+           [::a ::c]}
+         (->> (s/exercise (s/keys :req [::a] :opt [::b ::c]) 100)
+              (map (comp sort keys first))
+              (into #{}))))
+
+  (is (= #{[:a]
+           [:a :b]
+           [:a :b :c]
+           [:a :c]}
+         (->> (s/exercise (s/keys :req-un [::a] :opt-un [::b ::c]) 100)
+              (map (comp sort keys first))
+              (into #{}))))
+
+  ;; CLJW: Tests 3-4 use ::e (inst?) which is not available in CW
+  ;; (is (= #{[::a ::b]
+  ;;          [::a ::b ::c ::d]
+  ;;          [::a ::b ::c ::d ::e]
+  ;;          [::a ::b ::c ::e]
+  ;;          [::a ::c ::d]
+  ;;          [::a ::c ::d ::e]
+  ;;          [::a ::c ::e]}
+  ;;        (->> (s/exercise (s/keys :req [::a (or ::b (and ::c (or ::d ::e)))]) 200)
+  ;;             (map (comp vec sort keys first))
+  ;;             (into #{}))))
+  ;;
+  ;; (is (= #{[:a :b]
+  ;;          [:a :b :c :d]
+  ;;          [:a :b :c :d :e]
+  ;;          [:a :b :c :e]
+  ;;          [:a :c :d]
+  ;;          [:a :c :d :e]
+  ;;          [:a :c :e]}
+  ;;        (->> (s/exercise (s/keys :req-un [::a (or ::b (and ::c (or ::d ::e)))]) 200)
+  ;;             (map (comp vec sort keys first))
+  ;;             (into #{}))))
+  )
 
 (deftest tuple-explain-pred
   (are [val expected]

@@ -22,24 +22,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.2.
+Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.3.
 
-70.5.1 done: Full spec.gen.alpha implementation (~380 LOC). Generator = {:cljw/gen true :gen (fn [size] value)}.
-Layers: foundation (make-gen/generate/return), combinators (fmap/bind/one-of/such-that/tuple/
-frequency/hash-map/vector/vector-distinct), delay (macro + delay-gen helper), collection gens
-(list/map/set/cat/shuffle), primitives (int/string/keyword/symbol/boolean/char/double/ratio),
-gen-for-pred with 45-predicate builtin mapping. s/exercise and s/exercise-fn fully operational.
-
-CW-specific workarounds: (1) clojure.core/array-map for make-gen (CW compiles map literals as
-hash-map calls), (2) manual form construction in delay macro (CW syntax-quote fails across ns),
-(3) clojure.core/hash-map for gen-builtins (>8 entry maps), (4) mapv instead of clojure.core/map
-(CW resolves excluded qualified names incorrectly).
+70.5.2 done: Upstream spec test completion. (1) conj on lazy_seq support added to collections.zig.
+(2) k-gen/or-k-gen/and-k-gen in spec/alpha.clj rewritten to match upstream behavior (random subset
+generation via gen/choose + gen/shuffle, not one-of). (3) map-spec-generators deftest restored
+(tests 1-2 full, tests 3-4 skipped: inst? unavailable). (4) coll-form gen/return sub-test restored
+with UPSTREAM-DIFF marker. All 113 assertions pass on both backends.
 
 ## Task Queue
 
 ```
 Phase 70.5: spec.gen + CLJW workaround audit
-  70.5.2: upstream spec test completion (map-spec-generators, coll-form gen/return)
   70.5.3: spec UPSTREAM-DIFF reduction
   70.5.4: CLJW workaround full audit
 
@@ -61,11 +55,10 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.5.1: spec.gen.alpha basic generator implementation.
-Full generator implementation replacing stubs. ~380 LOC. Exercise/exercise-fn now produce
-real generated values for all spec types (int, string, keyword, s/and, s/or, s/keys,
-s/coll-of, s/nilable, s/tuple). Discovered 4 CW-specific issues with ns :exclude + map
-literal compilation.
+Phase 70.5.2: upstream spec test completion.
+Restored map-spec-generators deftest (2/4 tests, inst? blocks remaining 2).
+Restored coll-form gen/return sub-test. Fixed conj on lazy_seq. Rewrote k-gen/or-k-gen/and-k-gen
+to match upstream subset generation. 113 assertions on both backends.
 
 ## Known Issues
 
