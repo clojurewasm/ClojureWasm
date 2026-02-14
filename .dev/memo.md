@@ -31,25 +31,24 @@ library. See `.dev/library-port-targets.md` for targets and shim decision guide.
 
 ## Current Task
 
-Phase 75.7: Test instaparse (parser combinator, ~3000 LOC, pure Clojure).
-Clone upstream, test on CW, fork if needed.
+Phase 75 direction correction: Remove CW library forks, clarify testing policy.
+Libraries are tested as-is (external), not forked/embedded. CW side gets fixed instead.
 
 ## Task Queue
 
 ```
-75.7 Test instaparse (parser combinator, ~3000 LOC, pure Clojure)
+(paused — awaiting user direction on Phase 75 replanning)
 ```
 
 ## Previous Task
 
-Phase 75.6: clojure.tools.cli — CW-compatible fork (complete).
-- Created `src/clj/clojure/tools/cli.clj` — CW fork of upstream tools.cli
-- .cljc → .clj: resolved reader conditionals for :clj platform
-- Fixed 2 CW runtime bugs: re-seq nil return, s/join lazy-seq→cons
-- Workarounds: regex backtracking (character class), apply map vector (manual transpose)
-- 58 tests, 58 assertions, 100% pass rate
-- Both VM and TreeWalk verified
-- Non-functional: binary 3.90MB, startup 4.4ms, RSS 7.77MB — all pass
+Phase 75.6 course correction:
+- Removed 3 CW fork files (data.json, data.csv, tools.cli) and bootstrap loaders
+- Removed fork-specific test files (run_json/csv/cli_tests.clj)
+- Rewrote RESULTS.md: focus on bugs found, limitations discovered, interop gaps
+- Rewrote library-port-targets.md: clarified "test as-is, don't fork" policy
+- Valid bug fixes kept: re-seq nil return (regex_builtins.zig), s/join cons (strings.zig)
+- Valid earlier fixes kept: (int \a) cast, GC crash fixes, analyzer fixes
 
 ## Known Issues
 

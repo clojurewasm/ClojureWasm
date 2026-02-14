@@ -1,44 +1,51 @@
-# Library Port Targets (Top 20)
+# Library Compatibility Testing Targets
 
-CW compatibility testing targets. Pure or mostly-pure Clojure libraries.
-Java interop in these is handled case-by-case (small shim vs skip vs library fork).
+## Purpose
 
-## Philosophy
+Test real-world Clojure libraries **as-is** on CW. Libraries are NOT forked or
+embedded — they are loaded from their original source, and their original test
+suites are run unmodified.
 
-CW is NOT a JVM reimplementation. We do NOT chase Babashka-level Java class coverage.
-Instead: test real libraries, add minimal shims for high-frequency Java patterns,
-and fork/adapt libraries when their Java deps are unnecessary.
+Goals:
+1. **Bug discovery**: Find CW implementation bugs via real-world usage
+2. **Missing feature discovery**: Identify unimplemented features needed by libraries
+3. **Behavioral difference discovery**: Find where CW differs from upstream Clojure
+4. **Java interop gap analysis**: Determine which Java classes/methods need Zig equivalents
 
-See `babashka-class-compat.md` for reference only (not a roadmap).
+CW is NOT a JVM reimplementation. Java interop shims are added only when:
+- 3+ libraries need the same pattern, AND
+- It's implementable in <100 lines of Zig
+Otherwise, the gap is documented for future consideration.
 
 ## Status Legend
 
-- **Pass**: All/most tests pass on CW
-- **Partial**: Loads, some tests fail (documented)
+- **Pass**: All/most tests pass on CW as-is
+- **Partial**: Loads, some tests fail (documented in RESULTS.md)
+- **Load**: Namespace loads but tests not yet run
 - **Blocked**: Needs CW features not yet implemented
 - **Todo**: Not yet tested
 
 You should clone repo to ~/Documents/OSS if not exists.
 
-## Batch 1: Already Planned (Phase 71)
+## Batch 1: Already Tested (Phase 71-72)
 
-| # | Library           | Repo                          | LOC   | Java Deps           | Status | Notes                       |
-|---|-------------------|-------------------------------|-------|---------------------|--------|-----------------------------|
-| 1 | medley            | weavejester/medley            | ~400  | None                | Tested | Utility fns, pure Clojure   |
-| 2 | hiccup            | weavejester/hiccup            | ~300  | URI                 | Tested | HTML gen, URI needed → done |
-| 3 | clojure.data.json | clojure/data.json             | ~500  | StringReader/Writer | Pass   | CW fork, 51 tests 80 asserts |
-| 4 | honeysql          | seancorfield/honeysql         | ~2000 | None (spec)         | Tested | SQL DSL, spec.alpha dep     |
-| 5 | camel-snake-kebab | clj-commons/camel-snake-kebab | ~200  | None                | Todo   | String case conversion      |
+| # | Library           | Repo                          | LOC   | Java Deps           | Status  | Notes                       |
+|---|-------------------|-------------------------------|-------|---------------------|---------|-----------------------------|
+| 1 | medley            | weavejester/medley            | ~400  | None                | Partial | 80.4% — Java interop = all failures |
+| 2 | hiccup            | weavejester/hiccup            | ~300  | URI                 | Skipped | Heavy Java interop          |
+| 3 | honeysql          | seancorfield/honeysql         | ~2000 | None (spec)         | Load    | All 3 ns load OK            |
+| 4 | camel-snake-kebab | clj-commons/camel-snake-kebab | ~200  | None                | Partial | 98.6% — split edge case     |
 
 ## Batch 2: Data & Transformation
 
-| #  | Library          | Repo                  | LOC   | Java Deps     | Status | Notes                           |
-|----|------------------|-----------------------|-------|---------------|--------|---------------------------------|
-| 6  | clojure.data.csv | clojure/data.csv      | ~100  | Reader/Writer | Pass   | CW fork, 36 tests 36 asserts   |
-| 7  | clojure.data.xml | clojure/data.xml      | ~800  | InputStream   | Todo   | XML, heavier I/O needs          |
-| 8  | instaparse       | Engelberg/instaparse  | ~3000 | None          | Todo   | Parser combinator, pure Clojure |
-| 9  | meander          | noprompt/meander      | ~5000 | None          | Todo   | Pattern matching, pure Clojure  |
-| 10 | specter          | redplanetlabs/specter | ~2500 | None          | Todo   | Data navigation, pure Clojure   |
+| #  | Library          | Repo                  | LOC   | Java Deps     | Status  | Notes                                    |
+|----|------------------|-----------------------|-------|---------------|---------|------------------------------------------|
+| 5  | clojure.data.json| clojure/data.json     | ~500  | PushbackReader, StringWriter | Blocked | Needs Java I/O shims |
+| 6  | clojure.data.csv | clojure/data.csv      | ~100  | PushbackReader, Writer | Blocked | Same shims as data.json |
+| 7  | clojure.data.xml | clojure/data.xml      | ~800  | InputStream   | Todo    | XML, heavier I/O needs     |
+| 8  | instaparse       | Engelberg/instaparse  | ~3000 | None          | Todo    | Parser combinator, pure Clojure |
+| 9  | meander          | noprompt/meander      | ~5000 | None          | Todo    | Pattern matching, pure Clojure |
+| 10 | specter          | redplanetlabs/specter | ~2500 | None          | Todo    | Data navigation, pure Clojure |
 
 ## Batch 3: Validation & Schema
 
@@ -52,40 +59,39 @@ You should clone repo to ~/Documents/OSS if not exists.
 | #  | Library           | Repo                 | LOC   | Java Deps  | Status  | Notes                                              |
 |----|-------------------|----------------------|-------|------------|---------|----------------------------------------------------|
 | 13 | ring-core (codec) | ring-clojure/ring    | ~200  | URLEncoder | Todo    | URL encoding only, not server                      |
-| 14 | clj-yaml          | clj-commons/clj-yaml | ~300  | SnakeYAML  | Blocked | Needs Java YAML parser → skip or write pure parser |
+| 14 | clj-yaml          | clj-commons/clj-yaml | ~300  | SnakeYAML  | Blocked | Needs Java YAML parser                             |
 | 15 | selmer            | yogthos/selmer       | ~2000 | Minimal    | Todo    | Templating, mostly pure                            |
 
 ## Batch 5: Utility & Testing
 
-| #  | Library           | Repo              | LOC   | Java Deps      | Status | Notes                          |
-|----|-------------------|-------------------|-------|----------------|--------|--------------------------------|
-| 16 | clojure.tools.cli | clojure/tools.cli | ~400  | None           | Pass   | CW fork, 58 tests 58 asserts  |
-| 17 | clojure.walk      | (core)            | ~100  | None           | Pass   | Already in CW core             |
-| 18 | clojure.set       | (core)            | ~200  | None           | Pass   | Already in CW core             |
-| 19 | clojure.edn       | (core)            | ~100  | PushbackReader | Todo   | EDN reading, may need I/O shim |
-| 20 | clojure.pprint    | (core)            | ~1500 | Writer         | Pass   | Already in CW (pprint.zig)     |
+| #  | Library           | Repo              | LOC   | Java Deps      | Status  | Notes                                |
+|----|-------------------|-------------------|-------|----------------|---------|--------------------------------------|
+| 16 | clojure.tools.cli | clojure/tools.cli | ~400  | None           | Blocked | Regex backtracking, catch body       |
+| 17 | clojure.walk      | (core)            | ~100  | None           | Pass    | Already in CW core                   |
+| 18 | clojure.set       | (core)            | ~200  | None           | Pass    | Already in CW core                   |
+| 19 | clojure.edn       | (core)            | ~100  | PushbackReader | Todo    | EDN reading, may need I/O shim       |
+| 20 | clojure.pprint    | (core)            | ~1500 | Writer         | Pass    | Already in CW (pprint.zig)           |
 
-## Java Shim Decision Guide
+## Java Interop Shim Decision Guide
 
 When a library needs Java interop, decide:
 
-1. **Frequency**: Is this pattern used by 3+ libraries? → Add shim
-2. **Complexity**: Can we implement in <100 lines of Zig? → Add shim
+1. **Frequency**: Is this pattern used by 3+ libraries? → Add Zig shim
+2. **Complexity**: Can we implement in <100 lines of Zig? → Add Zig shim
 3. **Alternative**: Is there a pure Clojure alternative? → Use that
-4. **Fork**: Is the library worth forking to remove Java deps? → Fork
+4. **Document**: If none of the above → record as gap, move on
 
 ### Likely Shims Needed (from library analysis)
 
 | Java Class               | Libraries      | Decision                                |
 |--------------------------|----------------|-----------------------------------------|
-| StringReader/Writer      | data.json, edn | **Add** — tiny, high frequency          |
-| URLEncoder/Decoder       | ring, web libs | **Add** — small, many libs need it      |
-| Base64                   | auth libs      | **Add** — std.base64 trivial            |
-| PushbackReader           | clojure.edn    | **Add** — read already needs this       |
-| StringBuilder            | various        | **Consider** — mutable str buffer       |
+| PushbackReader           | data.json, data.csv, edn | **High** — needed for I/O-based libs |
+| StringWriter/StringBuilder | data.json, data.csv | **High** — output buffering       |
+| URLEncoder/Decoder       | ring, web libs | **Medium** — small, many libs need it   |
+| Base64                   | auth libs      | **Medium** — std.base64 trivial         |
+| java.util.ArrayList      | medley         | **Low** — only medley partition-* uses it |
 | InputStream/OutputStream | data.xml       | **Defer** — heavy, fork library instead |
 
 ## Tracking
 
-Test results go in `.dev/compat-results.md` (create when first library tested).
-Each entry: library name, CW version, pass/fail count, blockers, shims added.
+Detailed test results: `test/compat/RESULTS.md`

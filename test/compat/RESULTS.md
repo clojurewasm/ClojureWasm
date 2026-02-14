@@ -1,5 +1,11 @@
 # Library Compatibility Test Results
 
+## Purpose
+
+Test real-world Clojure libraries **as-is** on ClojureWasm. Libraries are NOT forked
+or embedded — they are loaded from their original source. Failures reveal CW
+implementation bugs, missing features, and behavioral differences vs upstream Clojure.
+
 ## Summary
 
 | Library           | Type         | Pass Rate | Status                      |
@@ -8,9 +14,6 @@
 | camel-snake-kebab | Case convert |     98.6% | 2 fails = split edge case    |
 | honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
-| clojure.data.json | JSON         |    100.0% | CW fork, 51 tests, 80 assertions |
-| clojure.data.csv  | CSV          |    100.0% | CW fork, 36 tests, 36 assertions |
-| clojure.tools.cli | CLI parsing  |    100.0% | CW fork, 58 tests, 58 assertions |
 
 ### Key Findings
 
@@ -33,10 +36,35 @@
 | `re-seq` returns `()` instead of `nil` for no matches | Return `nil` in `reSeqFn` when results empty | 75.6 |
 | `s/join` fails on lazy-seq realizing to cons | Handle `.cons` in `joinFn` lazy_seq branch | 75.6 |
 
+### Known CW Limitations (discovered via library testing)
+
+| Limitation | Affected Libraries | Severity |
+|------------|-------------------|----------|
+| Regex engine lacks backtracking (`.*`, `.+`, `\S+`) | tools.cli, general | High |
+| `clojure.string/split` doesn't drop trailing empties | CSK | Medium |
+| `(apply map vector colls)` doesn't work | tools.cli | Medium |
+| `Long/parseLong` returns nil instead of throwing on invalid input | tools.cli | Low |
+| `(catch Exception e)` without body fails | tools.cli | Low |
+| `case` macro hash collision with 8+ keyword branches | data.json | Low |
+| `(char int)` returns string, not char type | data.csv | Low |
+| Var name shadowing crash (user ns vs private var via `#'ns/name`) | tools.cli | Medium |
+
+### Java Interop Gaps (blocking library tests)
+
+| Java Class/Method | Libraries Needing It | Priority |
+|-------------------|---------------------|----------|
+| PushbackReader | data.json, data.csv, edn | High — needed for I/O-based libs |
+| StringWriter/StringBuilder | data.json, data.csv | High — output buffering |
+| java.util.ArrayList | medley (partition-*) | Medium |
+| .indexOf on collections | medley | Low |
+| .getMessage on exceptions | medley | Low |
+
 ### Recommended Priority
 
-1. clojure.string/split trailing empty string behavior
-2. Java interop remains out of scope (by design)
+1. Regex backtracking (high impact, many libraries will hit this)
+2. PushbackReader / StringWriter interop shims (unblocks data.json, data.csv)
+3. clojure.string/split trailing empty string behavior
+4. `(apply map f colls)` pattern fix
 
 ---
 
@@ -112,7 +140,7 @@ Type: Case conversion library (.cljc)
 | Assertions |    147 |
 | Pass       |    145 |
 | Fail       |      2 |
-| Error       |      0 |
+| Error      |      0 |
 | Pass rate  | 98.6%  |
 
 ### Failure Details
@@ -186,173 +214,24 @@ Phase 72.1:
 - Loading success validates: macro expansion, protocol dispatch, large
   namespace handling, reader conditionals, GC stability
 
-## clojure.data.json (CW fork)
+## Libraries Tested But Not Yet Loadable
 
-Source: CW-compatible fork of https://github.com/clojure/data.json
-Type: JSON parser/generator
-Location: `src/clj/clojure/data/json.clj` (embedded in binary, lazy-loaded)
+### clojure.data.json
 
-### Results
+Source: https://github.com/clojure/data.json
+Blocker: PushbackReader, StringWriter, definterface, deftype with mutable fields
+Action needed: Implement PushbackReader/StringWriter as Zig interop shims
 
-| Metric     | Value |
-|------------|------:|
-| Tests      |    51 |
-| Assertions |    80 |
-| Pass       |    80 |
-| Fail       |     0 |
-| Error      |     0 |
-| Pass rate  |  100% |
+### clojure.data.csv
 
-### Approach
+Source: https://github.com/clojure/data.csv
+Blocker: PushbackReader, StringBuilder, Writer
+Action needed: Same PushbackReader/StringWriter shims as data.json
 
-Upstream data.json is deeply Java-intertwined (definterface, deftype with mutable
-fields, PushbackReader, StringWriter, char-array, short-array). A CW-compatible
-fork was created replacing:
+### clojure.tools.cli
 
-| Java Construct           | CW Replacement                          |
-|--------------------------|----------------------------------------|
-| definterface + deftype   | defprotocol + reify with volatile!     |
-| StringWriter/Appendable  | Protocol-based string builder (vector) |
-| char-array/short-array   | Seq iteration over codepoints          |
-| Integer/parseInt radix   | Pure Clojure hex digit parser          |
-| Java type extends        | CW type names (Long, String, etc.)     |
-| case with 8+ kw branches | condp = (CW case hash collision bug)   |
-
-### API Coverage
-
-| Function    | Status | Notes                         |
-|-------------|--------|-------------------------------|
-| read-str    | Pass   | Full feature support          |
-| write-str   | Pass   | Full feature support          |
-| read-json   | Pass   | Deprecated compat wrapper     |
-| json-str    | Pass   | Deprecated compat wrapper     |
-| read        | Skip   | Needs java.io.Reader          |
-| write       | Skip   | Needs java.io.Writer          |
-| pprint      | Skip   | Needs PrintWriter             |
-
-### Bugs Fixed During Implementation
-
-| Bug | Fix | Component |
-|-----|-----|-----------|
-| `(int \a)` returns error | Add char→int cast in intCoerceFn | arithmetic.zig |
-| Unicode writer escapes bytes not codepoints | Use `doseq` over `(seq s)` instead of `dotimes`+`.charAt` | json.clj |
-| UUID write produces map JSON | Check `uuid?` before `map?` in Object catch-all | json.clj |
-| `case` macro hash collision with 8+ keywords | Use `condp =` workaround | json.clj |
-
-### Notes
-
-- `(int \a)` → 97 now works (needed by many libraries)
-- CW's `.charAt` returns UTF-8 bytes, not Unicode codepoints; `(seq s)` gives codepoints
-- CW's UUID class has `(map? uuid)` = true; writer checks `uuid?` first
-- `case` macro has a hash collision bug with 8+ keyword branches (tracked, not fixed)
-
-## clojure.data.csv (CW fork)
-
-Source: CW-compatible fork of https://github.com/clojure/data.csv
-Type: CSV parser/generator
-Location: `src/clj/clojure/data/csv.clj` (embedded in binary, lazy-loaded)
-
-### Results
-
-| Metric     | Value |
-|------------|------:|
-| Tests      |    36 |
-| Assertions |    36 |
-| Pass       |    36 |
-| Fail       |     0 |
-| Error      |     0 |
-| Pass rate  |  100% |
-
-### Approach
-
-Upstream data.csv uses PushbackReader, StringBuilder, Writer (Java I/O).
-CW fork replaces with string-based pushback reader (same approach as data.json)
-and volatile!-based vector string builder.
-
-| Java Construct           | CW Replacement                          |
-|--------------------------|----------------------------------------|
-| PushbackReader + Reader  | defprotocol IPBR + reify with volatile! |
-| StringBuilder            | volatile! vector + apply str            |
-| Writer                   | volatile! vector, returns String        |
-
-### API Coverage
-
-| Function    | Status | Notes                                |
-|-------------|--------|--------------------------------------|
-| read-csv    | Pass   | Takes String, returns lazy-seq       |
-| write-csv   | Pass   | Takes data, returns String (no Writer) |
-
-### Bugs Fixed During Implementation
-
-| Bug | Fix | Component |
-|-----|-----|-----------|
-| `(char int)` returns string not char | Keep write path using char values, not int→char roundtrip | csv.clj |
-
-### Notes
-
-- CW's `(char 34)` returns a string `"\""` (type :string), not a char `\"` (type :char)
-- Write path must keep sep/quote as chars (not convert to int) for str/escape map lookup
-- Upstream write-csv takes a Writer argument; CW version returns a String directly
-- All 4 upstream tests covered + additional write tests
-
-## clojure.tools.cli (CW fork)
-
-Source: CW-compatible fork of https://github.com/clojure/tools.cli
-Type: CLI argument parsing library
-Location: `src/clj/clojure/tools/cli.clj` (embedded in binary, lazy-loaded)
-
-### Results
-
-| Metric     | Value |
-|------------|------:|
-| Tests      |    58 |
-| Assertions |    58 |
-| Pass       |    58 |
-| Fail       |     0 |
-| Error      |     0 |
-| Pass rate  |  100% |
-
-### Approach
-
-Upstream tools.cli is a .cljc file with reader conditionals. CW fork resolves
-`:clj` branches, replaces `Throwable` with `Exception`, and works around CW
-regex/apply limitations.
-
-| .cljc Construct              | CW Replacement                                |
-|------------------------------|-----------------------------------------------|
-| Reader conditionals `:clj`   | Resolved to `:clj` branch inline              |
-| `(catch Throwable _)`        | `(catch Exception e nil)` (CW needs body)     |
-| `#"^--\S+="` regex           | `#"^--[^=\s]+"` (no backtracking workaround)  |
-| `(apply map vector colls)`   | Manual transpose via `mapv`+`nth`+`range`     |
-
-### API Coverage
-
-| Function             | Status | Notes                            |
-|----------------------|--------|----------------------------------|
-| parse-opts           | Pass   | Full feature support             |
-| summarize            | Pass   | Full feature support             |
-| get-default-options  | Pass   | Full feature support             |
-| make-summary-part    | Pass   | Public since 1.0                 |
-
-### Bugs Fixed During Implementation
-
-| Bug | Fix | Component |
-|-----|-----|-----------|
-| `re-seq` returns `()` not `nil` for no matches | Check empty results → return nil | regex_builtins.zig |
-| `s/join` fails on lazy-seq→cons chain | Handle `.cons` case in joinFn lazy_seq branch | strings.zig |
-
-### CW Adaptations in Tests
-
-| Test | Adaptation | Reason |
-|------|------------|--------|
-| Long/parseLong validation | Check validation error instead of parse error | CW returns nil on invalid parse |
-| summarize regex check | Use separate `re-find` checks | CW regex lacks `.*`/`.+` backtracking |
-
-### Notes
-
-- Upstream is ~779 lines .cljc; CW fork is ~525 lines .clj
-- All internal functions work: tokenize-args, compile-option-specs, parse-option-tokens
-- Short/long opts, required args, defaults, multi, update-fn, validate all work
-- Error handling (missing required, unknown opts, validation failures) all correct
-- Var shadowing bug found: defining `tokenize-args` in user ns while referencing
-  `#'cli/tokenize-args` causes crash — worked around by renaming test wrappers
+Source: https://github.com/clojure/tools.cli
+Type: .cljc with reader conditionals
+Blocker: Regex backtracking (`\S+` greedily consumes past `=`), `(catch Exception e)` without body
+Bugs found (fixed): re-seq nil return, s/join lazy-seq cons handling
+Action needed: Fix regex backtracking, allow catch without body expression
