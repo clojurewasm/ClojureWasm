@@ -17,7 +17,7 @@ Session handover document. Read at session start.
 
 Native production-grade Clojure runtime. **NOT a JVM reimplementation.**
 CW embodies "you don't really want Java interop" — minimal shims for high-frequency
-patterns only, fork/adapt libraries to remove unnecessary Java deps.
+patterns only. Libraries requiring heavy Java interop are out of scope.
 
 Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
@@ -34,24 +34,34 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75 direction correction: Remove CW library forks, clarify testing policy.
-Libraries are tested as-is (external), not forked/embedded. CW side gets fixed instead.
+Phase 75: Library Compatibility Testing (corrected policy).
+Load real libraries as-is, run their tests unmodified. When CW behavior differs
+from upstream Clojure, trace CW's processing pipeline to find and fix the root cause.
+Do NOT fork or embed libraries.
+
+See `library-port-targets.md` for full target list and `test/compat/RESULTS.md` for results.
 
 ## Task Queue
 
 ```
-(paused — awaiting user direction on Phase 75 replanning)
+75.A  Fix CW limitations found so far (regex backtracking, catch empty body, split trailing empties, apply map vector)
+75.B  Retry tools.cli as-is (should work after 75.A fixes)
+75.C  Test instaparse as-is (pure Clojure, ~3000 LOC)
+75.D  Implement PushbackReader/StringWriter interop shims (unblocks data.json, data.csv)
+75.E  Test data.json as-is (after 75.D)
+75.F  Test data.csv as-is (after 75.D)
+75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
 ```
+
+Note: Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach.
+Results in RESULTS.md. CSK's split issue addressable in 75.A.
 
 ## Previous Task
 
-Phase 75.6 course correction:
+Phase 75 direction correction (complete):
 - Removed 3 CW fork files (data.json, data.csv, tools.cli) and bootstrap loaders
-- Removed fork-specific test files (run_json/csv/cli_tests.clj)
-- Rewrote RESULTS.md: focus on bugs found, limitations discovered, interop gaps
-- Rewrote library-port-targets.md: clarified "test as-is, don't fork" policy
-- Valid bug fixes kept: re-seq nil return (regex_builtins.zig), s/join cons (strings.zig)
-- Valid earlier fixes kept: (int \a) cast, GC crash fixes, analyzer fixes
+- Rewrote RESULTS.md and library-port-targets.md for corrected policy
+- Valid CW bug fixes retained: re-seq nil, s/join cons, (int \a) cast, GC fixes
 
 ## Known Issues
 
