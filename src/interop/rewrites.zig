@@ -38,6 +38,8 @@ pub fn rewriteStaticField(ns: []const u8, name: []const u8) ?StaticFieldRewrite 
         if (boolean_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
     } else if (std.mem.eql(u8, ns, "Character") or std.mem.eql(u8, ns, "java.lang.Character")) {
         if (character_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
+    } else if (std.mem.eql(u8, ns, "File") or std.mem.eql(u8, ns, "java.io.File")) {
+        if (file_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
     }
     return null;
 }
@@ -102,6 +104,13 @@ const character_fields = std.StaticStringMap([]const u8).initComptime(.{
     .{ "MIN_CODE_POINT", "__character-min-code-point" },
     .{ "SIZE", "__character-size" },
     .{ "BYTES", "__character-bytes" },
+});
+
+const file_fields = std.StaticStringMap([]const u8).initComptime(.{
+    .{ "separator", "__file-separator" },
+    .{ "pathSeparator", "__file-path-separator" },
+    .{ "separatorChar", "__file-separator-char" },
+    .{ "pathSeparatorChar", "__file-path-separator-char" },
 });
 
 /// Rewrite Java static method calls to ClojureWasm builtins.

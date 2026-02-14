@@ -19,6 +19,7 @@ const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../runtime/error.zig");
 const uri_class = @import("classes/uri.zig");
+const file_class = @import("classes/file.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
@@ -58,6 +59,9 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     // Class dispatch table
     if (std.mem.eql(u8, class_name, uri_class.class_name)) {
         return uri_class.construct(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, file_class.class_name)) {
+        return file_class.construct(allocator, ctor_args);
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});

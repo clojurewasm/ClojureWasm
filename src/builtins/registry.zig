@@ -257,10 +257,22 @@ pub fn registerBuiltins(env: *Env) !void {
         .{ .name = "__long-size", .val = Value.initInteger(64) },
         .{ .name = "__long-bytes", .val = Value.initInteger(8) },
     };
+    // File static fields (Java File.separator, File.pathSeparator)
+    const file_consts = [_]struct { name: []const u8, val: Value }{
+        .{ .name = "__file-separator", .val = Value.initString(env.allocator, "/") },
+        .{ .name = "__file-path-separator", .val = Value.initString(env.allocator, ":") },
+        .{ .name = "__file-separator-char", .val = Value.initChar('/') },
+        .{ .name = "__file-path-separator-char", .val = Value.initChar(':') },
+    };
     for (java_consts) |jc| {
         const v = try core_ns.intern(jc.name);
         v.bindRoot(jc.val);
         try user_ns.refer(jc.name, v);
+    }
+    for (file_consts) |fc| {
+        const v = try core_ns.intern(fc.name);
+        v.bindRoot(fc.val);
+        try user_ns.refer(fc.name, v);
     }
 
     // Register wasm namespace builtins (Phase 25, D82: renamed wasm -> cljw.wasm)

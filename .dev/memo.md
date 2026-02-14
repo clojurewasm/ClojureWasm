@@ -22,30 +22,28 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 74.4: java.io.File
-- Implement File class in `src/interop/classes/file.zig`
-- Constructor: (File. path), (File. parent child)
-- Instance methods: .getName, .getPath, .getParent, .getAbsolutePath, .exists, .isDirectory, .isFile, etc.
-- Static fields: File/separator, File/pathSeparator
-- Register in dispatch.zig + constructors.zig
+Phase 74.5: java.util.UUID + D101 + cleanup
+- Implement UUID class in `src/interop/classes/uuid.zig`
+- UUID/randomUUID, UUID/fromString, .toString
+- Update uuid? predicate
+- D101 decision entry
+- Non-functional regression check
 
 ## Task Queue
 
 ```
-74.4: java.io.File
 74.5: java.util.UUID + D101 + cleanup
 ```
 
 ## Previous Task
 
-Phase 74.3: java.net.URI (complete).
-- Created `src/interop/classes/uri.zig` — full URI parsing via std.Uri
-- Constructor: (URI. str) → PersistentArrayMap with :__reify_type
-- Instance methods: .getScheme, .getHost, .getPort, .getPath, .getQuery, .getFragment, .toString, .getAuthority
-- Static: URI/create via __uri-create builtin
-- Updated type to return class name for instances
-- Updated uri? predicate to check :__reify_type
-- Updated str to delegate to .toString for class instances
+Phase 74.4: java.io.File (complete).
+- Created `src/interop/classes/file.zig` — filesystem operations via std.fs
+- Constructor: (File. path), (File. parent child)
+- Instance methods: .getName, .getPath, .getParent, .getAbsolutePath,
+  .exists, .isDirectory, .isFile, .canRead, .canWrite, .length, .delete,
+  .mkdir, .mkdirs, .list, .lastModified, .toString
+- Static fields: File/separator, File/pathSeparator, separatorChar, pathSeparatorChar
 - Both backends verified
 - All tests pass (unit + e2e)
 - 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)
