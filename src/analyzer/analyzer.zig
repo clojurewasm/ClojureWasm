@@ -382,8 +382,79 @@ pub const Analyzer = struct {
             }
         }
 
+        // Rewrite (ClassName. args...) to (__interop-new "fqcn" args...)
+        if (items[0].data == .symbol and items[0].data.symbol.ns == null) {
+            const sym_name = items[0].data.symbol.name;
+            if (sym_name.len > 1 and sym_name[sym_name.len - 1] == '.') {
+                const class_short = sym_name[0 .. sym_name.len - 1];
+                if (self.resolveClassFqcn(class_short)) |fqcn| {
+                    return self.rewriteConstructorCall(fqcn, items[1..], form, items[0]);
+                }
+            }
+        }
+
+        // Rewrite (new ClassName args...) to (__interop-new "fqcn" args...)
+        if (items[0].data == .symbol and items[0].data.symbol.ns == null) {
+            if (std.mem.eql(u8, items[0].data.symbol.name, "new")) {
+                if (items.len < 2) {
+                    return self.analysisError(.arity_error, "new requires a class name", form);
+                }
+                if (items[1].data != .symbol) {
+                    return self.analysisError(.type_error, "new requires a symbol as class name", form);
+                }
+                const class_name = items[1].data.symbol.name;
+                if (self.resolveClassFqcn(class_name)) |fqcn| {
+                    return self.rewriteConstructorCall(fqcn, items[2..], form, items[0]);
+                }
+                return self.analysisError(.value_error, "Unknown class in new expression", form);
+            }
+        }
+
         // Function call
         return self.analyzeCall(items, form);
+    }
+
+    const interop_constructors = @import("../interop/constructors.zig");
+
+    /// Resolve a class short name to its FQCN.
+    /// Checks: 1) known_classes comptime table, 2) local Var value matching a FQCN.
+    fn resolveClassFqcn(self: *Analyzer, class_short: []const u8) ?[]const u8 {
+        // Check comptime known classes table
+        if (interop_constructors.resolveClassName(class_short)) |fqcn| return fqcn;
+        // Check if there's a local Var whose value is a FQCN string (from :import)
+        if (self.env) |env| {
+            if (env.current_ns) |ns| {
+                if (ns.resolve(class_short)) |v| {
+                    const root = v.root;
+                    if (root.isNil()) return null;
+                    if (root.tag() == .symbol) {
+                        const sym = root.asSymbol();
+                        if (sym.ns == null) {
+                            // Check if the symbol name is a known FQCN
+                            if (interop_constructors.resolveClassName(sym.name)) |_| return sym.name;
+                            // Check if it looks like a FQCN (contains dots)
+                            if (std.mem.indexOf(u8, sym.name, ".") != null) return sym.name;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Rewrite a constructor call to (__interop-new "fqcn" args...).
+    fn rewriteConstructorCall(self: *Analyzer, fqcn: []const u8, ctor_args: []const Form, form: Form, first_item: Form) AnalyzeError!*Node {
+        var rewritten = self.allocator.alloc(Form, ctor_args.len + 2) catch return error.OutOfMemory;
+        rewritten[0] = .{
+            .data = .{ .symbol = .{ .ns = null, .name = "__interop-new" } },
+            .line = first_item.line, .column = first_item.column,
+        };
+        rewritten[1] = .{
+            .data = .{ .string = fqcn },
+            .line = first_item.line, .column = first_item.column,
+        };
+        @memcpy(rewritten[2..], ctor_args);
+        return self.analyzeCall(rewritten, form);
     }
 
     const rewriteInteropCall = interop_rewrites.rewriteInteropCall;

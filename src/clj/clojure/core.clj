@@ -276,17 +276,22 @@
                                          (quote-vals args))))
 
                           ;; UPSTREAM-DIFF: import registers class short names as symbol vars
+                          ;; storing the FQCN so analyzer can resolve ClassName. constructors
                           (= kw :import)
                           (mapcat (fn [spec]
                                     (if (sequential? spec)
-                                      ;; (:import (package Class1 Class2))
-                                      (map (fn [c] `(def ~c '~c)) (rest spec))
-                                      ;; (:import full.Class) — extract short name
+                                      ;; (:import (java.net URI)) → (def URI 'java.net.URI)
+                                      (let [pkg (str (first spec))]
+                                        (map (fn [c]
+                                               (let [fqcn (symbol (str pkg "." c))]
+                                                 `(def ~c '~fqcn)))
+                                             (rest spec)))
+                                      ;; (:import java.net.URI) → (def URI 'java.net.URI)
                                       (let [s (str spec)
                                             idx (clojure.string/last-index-of s ".")]
                                         (if idx
                                           (let [short (symbol (subs s (inc idx)))]
-                                            (list `(def ~short '~short)))
+                                            (list `(def ~short '~spec)))
                                           (list `(def ~spec '~spec))))))
                                   args)
 

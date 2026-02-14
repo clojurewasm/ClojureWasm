@@ -22,15 +22,16 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 74.2: Constructor + `new` + `ClassName.` + `:import`
-- New builtin: `__interop-new` in `src/interop/constructors.zig`
-- Analyzer: detect `ClassName.` and `(new ClassName)` syntax
-- Improve `:import` in ns macro to store FQ class name
+Phase 74.3: java.net.URI
+- Implement URI class in `src/interop/classes/uri.zig`
+- Constructor: parse URI string, return map with :__reify_type
+- Instance methods: .getScheme, .getHost, .getPort, .getPath, .getQuery, .getFragment, .toString
+- Static: URI/create
+- Register in dispatch.zig + constructors.zig
 
 ## Task Queue
 
 ```
-74.2: Constructor + new + ClassName. + :import
 74.3: java.net.URI
 74.4: java.io.File
 74.5: java.util.UUID + D101 + cleanup
@@ -38,12 +39,12 @@ Phase 74.2: Constructor + `new` + `ClassName.` + `:import`
 
 ## Previous Task
 
-Phase 74.1: Extract interop module (complete).
-- Created `src/interop/rewrites.zig` — static field + method rewrite tables
-- Created `src/interop/dispatch.zig` — instance method dispatch
-- Analyzer delegates to `interop_rewrites`
-- strings.zig `javaMethodFn` delegates to `interop_dispatch.dispatch()`
-- dispatch.zig checks `:__reify_type` on maps for class instances
+Phase 74.2: Constructor + new + ClassName. + :import (complete).
+- Created `src/interop/constructors.zig` — __interop-new builtin
+- Analyzer: ClassName. detection, (new ClassName) syntax
+- :import stores FQCN: `(:import (java.net URI))` → `(def URI 'java.net.URI)`
+- Resolver: comptime known_classes table + Var-based lookup
+- Both backends verified
 - All tests pass (unit + e2e)
 - 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)
 - 72.3: GC assessment report (see above)

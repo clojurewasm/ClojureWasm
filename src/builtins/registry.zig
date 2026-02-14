@@ -44,13 +44,14 @@ const wasm_builtins_mod = @import("../wasm/builtins.zig");
 const shell_mod = @import("shell.zig");
 const pprint_mod = @import("pprint.zig");
 const array_mod = @import("array.zig");
+const constructors_mod = @import("../interop/constructors.zig");
 
 // ============================================================
 // Comptime table aggregation
 // ============================================================
 
 /// All clojure.core builtins (arithmetic + special forms + future domains).
-pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ arithmetic.numeric_builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ io_mod.file_io_builtins ++ system_mod.builtins ++ transient_mod.builtins ++ chunk_mod.builtins ++ lifecycle_mod.builtins ++ array_mod.builtins;
+pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collections_mod.builtins ++ predicates_mod.builtins ++ strings_mod.builtins ++ io_mod.builtins ++ atom_mod.builtins ++ sequences_mod.builtins ++ arithmetic.numeric_builtins ++ metadata_mod.builtins ++ regex_mod.builtins ++ eval_mod.builtins ++ ns_ops_mod.builtins ++ misc_mod.builtins ++ multimethods_mod.builtins ++ io_mod.file_io_builtins ++ system_mod.builtins ++ transient_mod.builtins ++ chunk_mod.builtins ++ lifecycle_mod.builtins ++ array_mod.builtins ++ constructors_mod.builtins;
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
@@ -335,8 +336,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 379 + 2 (error-handler, error-mode) + 12 Java interop methods + 2 (read, read+string)
-    try std.testing.expectEqual(395, builtin_count);
+    // 379 + 2 (error-handler, error-mode) + 12 Java interop methods + 2 (read, read+string) + 1 (__interop-new)
+    try std.testing.expectEqual(396, builtin_count);
 }
 
 test "comptime lookup finds +" {
