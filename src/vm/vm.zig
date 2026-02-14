@@ -699,9 +699,10 @@ pub const VM = struct {
                     .hierarchy_var = hierarchy_var,
                 };
 
-                // Bind to var
+                // Bind to var (dynamic so binding works — upstream allows rebinding multimethods)
                 const v = ns.intern(sym.asSymbol().name) catch return error.OutOfMemory;
                 v.bindRoot(Value.initMultiFn(mf));
+                v.dynamic = true;
                 try self.push(Value.initMultiFn(mf));
             },
             .defmethod => {

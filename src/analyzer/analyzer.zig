@@ -2023,9 +2023,10 @@ pub const Analyzer = struct {
     }
 
     fn analyzeDefmethod(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
-        // (defmethod name dispatch-val [args] body)
-        if (items.len < 5) {
-            return self.analysisError(.arity_error, "defmethod requires name, dispatch-val, args, body", form);
+        // (defmethod name dispatch-val [args] body...)
+        // body is optional — empty body returns nil (like upstream)
+        if (items.len < 4) {
+            return self.analysisError(.arity_error, "defmethod requires name, dispatch-val, and args", form);
         }
         if (items[1].data != .symbol) {
             return self.analysisError(.value_error, "defmethod name must be a symbol", items[1]);

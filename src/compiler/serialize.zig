@@ -90,6 +90,7 @@ pub const ValueTag = enum(u8) {
     protocol = 0x10,
     protocol_fn = 0x11,
     regex = 0x12,
+    multi_fn = 0x13,
 };
 
 // --- Byte encoding helpers (little-endian) ---
@@ -349,6 +350,41 @@ pub const Serializer = struct {
                 const src_idx = try self.internString(allocator, r.source);
                 try self.writeBytes(allocator, &encodeU32(src_idx));
             },
+            .multi_fn => {
+                try self.buf.append(allocator, @intFromEnum(ValueTag.multi_fn));
+                const mf = val.asMultiFn();
+                // Name
+                const name_idx = try self.internString(allocator, mf.name);
+                try self.writeBytes(allocator, &encodeU32(name_idx));
+                // Dispatch function
+                try self.serializeValue(allocator, mf.dispatch_fn);
+                // Methods map (dispatch_val -> method fn)
+                const entries = mf.methods.entries;
+                try self.writeBytes(allocator, &encodeU32(@intCast(entries.len / 2)));
+                for (entries) |entry| {
+                    try self.serializeValue(allocator, entry);
+                }
+                // Prefer table (optional)
+                if (mf.prefer_table) |pt| {
+                    const pt_entries = pt.entries;
+                    try self.writeBytes(allocator, &encodeU32(@intCast(pt_entries.len / 2)));
+                    for (pt_entries) |entry| {
+                        try self.serializeValue(allocator, entry);
+                    }
+                } else {
+                    try self.writeBytes(allocator, &encodeU32(0));
+                }
+                // Hierarchy var (optional, as var_ref or nil)
+                if (mf.hierarchy_var) |hv| {
+                    try self.buf.append(allocator, 1); // has hierarchy
+                    const hv_ns_idx = try self.internString(allocator, hv.ns_name);
+                    try self.writeBytes(allocator, &encodeU32(hv_ns_idx));
+                    const hv_name_idx = try self.internString(allocator, hv.sym.name);
+                    try self.writeBytes(allocator, &encodeU32(hv_name_idx));
+                } else {
+                    try self.buf.append(allocator, 0); // no hierarchy
+                }
+            },
             else => {
                 // Unsupported type — serialize as nil
                 try self.buf.append(allocator, @intFromEnum(ValueTag.nil));
@@ -434,6 +470,19 @@ pub const Serializer = struct {
                             try self.collectFnProtos(allocator, method_entries[j + 1]);
                         }
                     }
+                }
+            }
+            return;
+        }
+        // Walk MultiFn to find method fn_vals and dispatch_fn
+        if (val.tag() == .multi_fn) {
+            const mf = val.asMultiFn();
+            try self.collectFnProtos(allocator, mf.dispatch_fn);
+            const entries = mf.methods.entries;
+            var mi: usize = 0;
+            while (mi < entries.len) : (mi += 2) {
+                if (mi + 1 < entries.len) {
+                    try self.collectFnProtos(allocator, entries[mi + 1]);
                 }
             }
             return;
@@ -1044,6 +1093,59 @@ pub const Deserializer = struct {
                     .group_count = compiled.group_count,
                 };
                 break :blk Value.initRegex(pat);
+            },
+            .multi_fn => blk: {
+                // Name
+                const mf_name_idx = try self.readU32();
+                if (mf_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                const mf_name = self.strings[mf_name_idx];
+                // Dispatch function
+                const dispatch_fn = try self.deserializeValue(allocator);
+                // Methods map
+                const method_count = try self.readU32();
+                const method_entries = try allocator.alloc(Value, method_count * 2);
+                for (method_entries) |*entry| {
+                    entry.* = try self.deserializeValue(allocator);
+                }
+                const methods = try allocator.create(value_mod.PersistentArrayMap);
+                methods.* = .{ .entries = method_entries };
+                // Prefer table (optional)
+                const prefer_count = try self.readU32();
+                var prefer_table: ?*value_mod.PersistentArrayMap = null;
+                if (prefer_count > 0) {
+                    const prefer_entries = try allocator.alloc(Value, prefer_count * 2);
+                    for (prefer_entries) |*entry| {
+                        entry.* = try self.deserializeValue(allocator);
+                    }
+                    const pt = try allocator.create(value_mod.PersistentArrayMap);
+                    pt.* = .{ .entries = prefer_entries };
+                    prefer_table = pt;
+                }
+                // Hierarchy var (optional)
+                const has_hierarchy = try self.readU8();
+                const hierarchy_var: ?*value_mod.Var = null;
+                if (has_hierarchy == 1) {
+                    const hv_ns_idx = try self.readU32();
+                    if (hv_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                    const hv_ns_name = self.strings[hv_ns_idx];
+                    const hv_name_idx = try self.readU32();
+                    if (hv_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                    const hv_var_name = self.strings[hv_name_idx];
+                    // Look up the var in the env — we need the Env reference
+                    // For now, store ns/name and resolve lazily (hierarchy vars are rare)
+                    _ = hv_ns_name;
+                    _ = hv_var_name;
+                    // TODO: resolve hierarchy var from env after restore
+                }
+                const mf = try allocator.create(value_mod.MultiFn);
+                mf.* = .{
+                    .name = mf_name,
+                    .dispatch_fn = dispatch_fn,
+                    .methods = methods,
+                    .prefer_table = prefer_table,
+                    .hierarchy_var = hierarchy_var,
+                };
+                break :blk Value.initMultiFn(mf);
             },
         };
     }

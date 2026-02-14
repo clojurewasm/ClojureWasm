@@ -1,7 +1,6 @@
 ;; clojure.test — test framework for ClojureWasm
 ;;
 ;; UPSTREAM-DIFF: uses atom-based counters/registry instead of ref-based report-counters
-;; UPSTREAM-DIFF: report is a dynamic fn (not multimethod)
 ;; UPSTREAM-DIFF: do-report does not add file/line info (no StackTraceElement)
 ;; UPSTREAM-DIFF: deftest uses register-test atom (not ns metadata)
 
@@ -77,57 +76,46 @@
     (= name :error) (swap! error-count inc)
     (= name :test) (swap! test-count inc)))
 
-;; Default report function — dispatches on (:type m).
-(defn- default-report [m]
-  (let [event (:type m)]
-    (cond
-      (= event :pass)
-      (swap! pass-count inc)
+;; Multimethod report — dispatches on (:type m).
+(defmulti report :type)
 
-      (= event :fail)
-      (do
-        (swap! fail-count inc)
-        (println (str "  FAIL in " (testing-contexts-str)))
-        (when (:message m)
-          (println (str "    message: " (:message m))))
-        (println (str "    expected: " (:expected m)))
-        (when (contains? m :actual)
-          (println (str "    actual: " (:actual m)))))
+(defmethod report :default [m]
+  (with-test-out (prn m)))
 
-      (= event :error)
-      (do
-        (swap! error-count inc)
-        (println (str "  ERROR in " (testing-contexts-str)))
-        (when (:message m)
-          (println (str "    message: " (:message m))))
-        (println (str "    expected: " (:expected m)))
-        (when (contains? m :actual)
-          (println (str "    actual: " (:actual m)))))
+(defmethod report :pass [m]
+  (with-test-out (inc-report-counter :pass)))
 
-      (= event :begin-test-var)
-      (println (str "\nTesting " (:name (meta (:var m)))))
+(defmethod report :fail [m]
+  (with-test-out
+    (inc-report-counter :fail)
+    (println "\nFAIL in" (testing-vars-str m))
+    (when (seq *testing-contexts*) (println (testing-contexts-str)))
+    (when-let [message (:message m)] (println message))
+    (println "expected:" (pr-str (:expected m)))
+    (println "  actual:" (pr-str (:actual m)))))
 
-      (= event :end-test-var) nil
+(defmethod report :error [m]
+  (with-test-out
+    (inc-report-counter :error)
+    (println "\nERROR in" (testing-vars-str m))
+    (when (seq *testing-contexts*) (println (testing-contexts-str)))
+    (when-let [message (:message m)] (println message))
+    (println "expected:" (pr-str (:expected m)))
+    (println "  actual:" (pr-str (:actual m)))))
 
-      (= event :begin-test-ns)
-      nil
+(defmethod report :summary [m]
+  (with-test-out
+    (println "\nRan" (:test m) "tests containing"
+             (+ (:pass m) (:fail m) (:error m)) "assertions.")
+    (println (:fail m) "failures," (:error m) "errors.")))
 
-      (= event :end-test-ns) nil
+(defmethod report :begin-test-ns [m]
+  (with-test-out
+    (println "\nTesting" (ns-name (:ns m)))))
 
-      (= event :summary)
-      (do
-        (println "")
-        (let [total (+ (:pass m 0) (:fail m 0) (:error m 0))]
-          (println (str "Ran " (:test m 0) " tests containing " total " assertions"))
-          (println (str (:pass m 0) " passed, " (:fail m 0) " failed, " (:error m 0) " errors"))
-          (if (= 0 (+ (:fail m 0) (:error m 0)))
-            (println "ALL TESTS PASSED")
-            (println (str (+ (:fail m 0) (:error m 0)) " problem(s) found")))))
-
-      :else nil)))
-
-;; Dynamic report var — can be rebound for custom test reporting.
-(def ^:dynamic report default-report)
+(defmethod report :end-test-ns [m])
+(defmethod report :begin-test-var [m])
+(defmethod report :end-test-var [m])
 
 ;; UPSTREAM-DIFF: does not add file/line info (no StackTraceElement)
 (defn do-report

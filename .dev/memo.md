@@ -22,19 +22,17 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.4 next.
+Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.5 next.
 
-70.6.3 done: Fixed syntax-quote :exclude bug. Root cause: read-all-eval-all model read
-all forms before ns form evaluation set up excludes. Fix: form-by-form reading in
-evalString/evalStringVM/evalStringVMBootstrap, updating reader.current_ns after each eval.
-Removed 8 CLJW workarounds from spec/alpha.clj (L601, L890, L968, L1005, L1011, L1180,
-L1733, L1743). All using upstream syntax-quote form now.
+70.6.4 done: Converted test.clj report from dynamic fn to defmulti/defmethod.
+Also: analyzer now allows empty-body defmethod, MultiFn serialization added to
+bootstrap cache, defmulti vars marked dynamic for binding support.
+Upstream test.clj: 10 tests, 41 assertions pass.
 
 ## Task Queue
 
 ```
 Phase 70.6: Reducible CLJW marker resolution
-  70.6.4: test.clj report multimethod conversion
   70.6.5: test.clj is + assert-expr multimethod
   70.6.6: marker reclassification + cljw-diff.md update
 Phase 71: Library Compatibility Testing (5 libraries)
@@ -55,8 +53,8 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.6.3: syntax-quote :exclude bug fix.
-Fixed form-by-form reading in bootstrap.zig. Removed 8 S markers from spec/alpha.clj.
+Phase 70.6.4: test.clj report multimethod conversion.
+Converted report to defmulti, added MultiFn serialization, empty-body defmethod support.
 
 ## Known Issues
 
