@@ -675,6 +675,17 @@ fn splitWithString(allocator: Allocator, s: []const u8, pattern: []const u8, lim
         }
     }
 
+    // Java's Pattern.split drops trailing empty strings when limit == 0 (default).
+    // Negative limit keeps everything; positive limit caps the count.
+    if (limit == 0) {
+        while (parts.items.len > 0) {
+            const last = parts.items[parts.items.len - 1];
+            if (last.tag() == .string and last.asString().len == 0) {
+                _ = parts.pop();
+            } else break;
+        }
+    }
+
     const vec = try allocator.create(PersistentVector);
     vec.* = .{ .items = try parts.toOwnedSlice(allocator) };
     return Value.initVector(vec);
@@ -701,6 +712,17 @@ fn splitWithRegex(allocator: Allocator, s: []const u8, regex_val: Value, limit: 
         } else {
             try parts.append(allocator, Value.initString(allocator, try allocator.dupe(u8, s[start..])));
             break;
+        }
+    }
+
+    // Java's Pattern.split drops trailing empty strings when limit == 0 (default).
+    // Negative limit keeps everything; positive limit caps the count.
+    if (limit == 0) {
+        while (parts.items.len > 0) {
+            const last = parts.items[parts.items.len - 1];
+            if (last.tag() == .string and last.asString().len == 0) {
+                _ = parts.pop();
+            } else break;
         }
     }
 

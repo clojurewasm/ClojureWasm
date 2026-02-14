@@ -69,7 +69,7 @@ Phase 72: Optimization + GC Assessment (complete).
 
 ## Known Issues
 
-- clojure.string/split doesn't drop trailing empty strings (Java Pattern.split does).
+(none currently)
 
 ## Notes
 
