@@ -22,17 +22,16 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.2 next.
+Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.3 next.
 
-70.6.1 done: Stale marker fix. core.clj L2491 marker removed (def docstring was already
-implemented in analyzer). Added docstring to default-data-readers. spec/alpha.clj L334
-marker updated with accurate reason (def analyzer doesn't propagate arbitrary metadata).
+70.6.2 done: arglists verification (already works via analyzer). Updated core.clj L45
+marker to :inline-only. Added spec support to print-doc (keyword specs, fspec header,
+special form URLs). Resolved repl.clj L67 marker.
 
 ## Task Queue
 
 ```
 Phase 70.6: Reducible CLJW marker resolution
-  70.6.2: arglists verification + print-doc improvement
   70.6.3: syntax-quote :exclude bug investigation
   70.6.4: test.clj report multimethod conversion
   70.6.5: test.clj is + assert-expr multimethod
@@ -55,9 +54,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.6.1: Stale marker fix.
-Removed stale core.clj L2491 marker (def docstring already implemented).
-Added docstring to default-data-readers. Updated spec/alpha.clj L334 comment accuracy.
+Phase 70.6.2: arglists verification + print-doc improvement.
+Arglists already work (analyzer L1138). Updated core.clj L45 to :inline-only.
+Added spec support to print-doc: keyword specs, fspec header, special form URLs.
 
 ## Known Issues
 

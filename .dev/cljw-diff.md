@@ -13,7 +13,7 @@ Marks where CW intentionally diverges from upstream Clojure behavior or API shap
 
 | Line | Cat | Description                                                |
 |-----:|:---:|------------------------------------------------------------|
-|   45 |  R  | No :inline or :arglists metadata support                   |
+|   45 |  -  | RESOLVED: arglists works (analyzer extracts). :inline only  |
 |  246 |  P  | No :gen-class (JVM only)                                   |
 |  278 |  P  | import registers class short names as symbol vars          |
 | 1030 |  R  | Fallback for seq map entries (no seqkvreduce)              |
@@ -179,7 +179,7 @@ Marks CW-specific implementation details, workarounds, and Java->Zig adaptations
 |-----:|:---:|------------------------------------------------------------|
 |    3 |  -  | (header: marker count)                                     |
 |    4 |  S  | Extracted from core.clj (Phase 33.2, D82)                  |
-|   67 |  R  | Simplified print-doc (no spec support)                     |
+|   67 |  -  | RESOLVED: print-doc now has spec support                   |
 |   83 |  S  | Always emit runtime code (macro_eval_env may lag)          |
 |  113 |  P  | (= :regex (type x)) instead of instance? Pattern           |
 |  129 |  S  | vec around vals for sort-by compatibility                  |

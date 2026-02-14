@@ -2,7 +2,7 @@
 ;; Upstream lines: 270
 ;; CLJW markers: 6
 ;; CLJW: Extracted from core.clj (Phase 33.2, D82).
-;; UPSTREAM-DIFF: No spec support, no Java interop (LineNumberReader, Reflector).
+;; UPSTREAM-DIFF: No Java interop (LineNumberReader, Reflector). Spec support added.
 
 (ns clojure.repl
   (:require [clojure.string]))
@@ -64,11 +64,11 @@
 (defn- namespace-doc [nspace]
   (assoc (meta nspace) :name (ns-name nspace)))
 
-;; CLJW: Simplified print-doc — no spec support
 (defn- print-doc [{n :ns nm :name
-                   :keys [forms arglists special-form doc macro]}]
+                   :keys [forms arglists special-form doc url macro spec]
+                   :as m}]
   (println "-------------------------")
-  (println (str (when n (str (ns-name n) "/")) nm))
+  (println (or spec (str (when n (str (ns-name n) "/")) nm)))
   (when forms
     (doseq [f forms]
       (print "  ")
@@ -77,8 +77,20 @@
     (println arglists))
   (cond
     special-form (println "Special Form")
-    macro        (println "Macro"))
-  (when doc (println " " doc)))
+    macro        (println "Macro")
+    spec         (println "Spec"))
+  (when doc (println " " doc))
+  (when special-form
+    (if (contains? m :url)
+      (when url
+        (println (str "\n  Please see http://clojure.org/" url)))
+      (println (str "\n  Please see http://clojure.org/special_forms#" nm))))
+  (when n
+    (when-let [fnspec (clojure.spec.alpha/get-spec (symbol (str (ns-name n)) (name nm)))]
+      (println "Spec")
+      (doseq [role [:args :ret :fn]]
+        (when-let [spec (get fnspec role)]
+          (println " " (str (name role) ":") (clojure.spec.alpha/describe spec)))))))
 
 ;; CLJW: Always emit runtime code to handle recently-defined vars.
 ;; JVM doc uses compile-time resolve, but our macro_eval_env may lag.
@@ -89,12 +101,15 @@
   [name]
   (if-let [special-name ('{& fn catch try finally try} name)]
     `(print-doc (special-doc '~special-name))
-    (if (special-doc-map name)
-      `(print-doc (special-doc '~name))
-      `(if-let [ns# (find-ns '~name)]
-         (print-doc (namespace-doc ns#))
-         (when-let [v# (ns-resolve *ns* '~name)]
-           (print-doc (meta v#)))))))
+    (cond
+      (special-doc-map name) `(print-doc (special-doc '~name))
+      (keyword? name) `(print-doc {:spec '~name :doc '~(clojure.spec.alpha/describe name)})
+      :else `(cond
+               (find-ns '~name)
+               (print-doc (namespace-doc (find-ns '~name)))
+               :else
+               (when-let [v# (ns-resolve *ns* '~name)]
+                 (print-doc (meta v#)))))))
 
 (defn dir-fn
   "Returns a sorted seq of symbols naming public vars in

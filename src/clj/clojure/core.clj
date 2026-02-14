@@ -42,7 +42,7 @@
       nil)))
 
 ;; Full defn: propagates docstring via with-meta on name
-;; UPSTREAM-DIFF: No :inline or :arglists metadata support
+;; UPSTREAM-DIFF: No :inline metadata support (arglists extracted by analyzer)
 (defmacro defn [name & fdecl]
   (let [doc (when (string? (first fdecl)) (first fdecl))
         fdecl (if doc (next fdecl) fdecl)
