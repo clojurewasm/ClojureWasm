@@ -22,19 +22,15 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.3.
+Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.4.
 
-70.5.2 done: Upstream spec test completion. (1) conj on lazy_seq support added to collections.zig.
-(2) k-gen/or-k-gen/and-k-gen in spec/alpha.clj rewritten to match upstream behavior (random subset
-generation via gen/choose + gen/shuffle, not one-of). (3) map-spec-generators deftest restored
-(tests 1-2 full, tests 3-4 skipped: inst? unavailable). (4) coll-form gen/return sub-test restored
-with UPSTREAM-DIFF marker. All 113 assertions pass on both backends.
+70.5.3 done: Removed stale gen stub CLJW marker (gen now implemented). Clarified fspec,
+k-gen, ex-info comments. 36 CLJW + 2 UPSTREAM-DIFF markers remain (all permanent Java→Zig diffs).
 
 ## Task Queue
 
 ```
 Phase 70.5: spec.gen + CLJW workaround audit
-  70.5.3: spec UPSTREAM-DIFF reduction
   70.5.4: CLJW workaround full audit
 
 Phase 71: Library Compatibility Testing (5 libraries)
@@ -55,10 +51,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.5.2: upstream spec test completion.
-Restored map-spec-generators deftest (2/4 tests, inst? blocks remaining 2).
-Restored coll-form gen/return sub-test. Fixed conj on lazy_seq. Rewrote k-gen/or-k-gen/and-k-gen
-to match upstream subset generation. 113 assertions on both backends.
+Phase 70.5.3: spec UPSTREAM-DIFF reduction.
+Removed 1 stale CLJW marker (gen stub), clarified fspec/k-gen/ex-info comments.
+36 CLJW + 2 UPSTREAM-DIFF markers remain, all permanent Java→Zig diffs.
 
 ## Known Issues
 

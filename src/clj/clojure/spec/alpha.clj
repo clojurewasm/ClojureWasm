@@ -73,7 +73,7 @@
   [k]
   (if (ident? k)
     (c/or (reg-resolve k)
-          (throw (ex-info (str "Unable to resolve spec: " k) {:spec k}))) ;; CLJW: ex-info instead of Exception.
+          (throw (ex-info (str "Unable to resolve spec: " k) {:spec k}))) ;; CLJW: ex-info (no Java exceptions)
     k))
 
 (defn spec?
@@ -285,7 +285,6 @@
 
 (defn- gensub
   [spec overrides path rmap form]
-  ;; CLJW: gen depends on test.check — stub to throw
   (let [spec (specize spec)]
     (if-let [g (c/or (when-let [gfn (c/or (get overrides (c/or (spec-name spec) spec))
                                           (get overrides path))]
@@ -1012,8 +1011,7 @@
 
 (declare or-k-gen and-k-gen)
 
-;; CLJW: k-gen, or-k-gen, and-k-gen — upstream-compatible key generators.
-;; Upstream checks for plain symbols 'or/'and in key forms.
+;; CLJW: Upstream checks for plain symbols 'or/'and in key forms.
 (defn- k-gen
   "returns a generator for form f, which can be a keyword or a list
   starting with 'or or 'and."
@@ -1596,8 +1594,8 @@
 
 ;;--- fspec ---
 
-;; CLJW: fspec simplified — gen tests omitted (no test.check), but
-;; conform checks ifn? and optionally validates one call.
+;; CLJW: fspec simplified — conform only checks ifn?, no gen-based testing.
+;; Upstream generates args, calls fn, validates ret + :fn spec.
 (defn fspec-impl
   "Do not call this directly, use 'fspec'"
   [argspec aform retspec rform fnspec fform gfn]
