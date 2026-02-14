@@ -331,7 +331,7 @@
     (sequential? form) (walk/postwalk #(if (symbol? %) (res %) %) (unfn form))
     :else form))
 
-;; CLJW: ^:skip-wiki removed (CW defn doesn't support name metadata)
+;; CLJW: ^:skip-wiki removed (def analyzer doesn't propagate arbitrary metadata to var)
 (defn def-impl
   "Do not call this directly, use 'def'"
   [k form spec]

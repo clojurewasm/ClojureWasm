@@ -22,16 +22,21 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.5 COMPLETE. All 4 sub-tasks done.
+Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.2 next.
 
-70.5.4 done: Full audit of 87 CLJW/UPSTREAM-DIFF markers across 13 src/clj/ files.
-Categories: P=48 (permanent Java→Zig), S=12 (syntax/bootstrap), R=27 (reducible).
-No actionable workarounds found. R items documented in checklist.md F94 for future phases.
+70.6.1 done: Stale marker fix. core.clj L2491 marker removed (def docstring was already
+implemented in analyzer). Added docstring to default-data-readers. spec/alpha.clj L334
+marker updated with accurate reason (def analyzer doesn't propagate arbitrary metadata).
 
 ## Task Queue
 
 ```
-Phase 70.5: spec.gen + CLJW workaround audit
+Phase 70.6: Reducible CLJW marker resolution
+  70.6.2: arglists verification + print-doc improvement
+  70.6.3: syntax-quote :exclude bug investigation
+  70.6.4: test.clj report multimethod conversion
+  70.6.5: test.clj is + assert-expr multimethod
+  70.6.6: marker reclassification + cljw-diff.md update
 Phase 71: Library Compatibility Testing (5 libraries)
   71.1: medley
   71.2: hiccup
@@ -50,9 +55,9 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.5.4: CLJW workaround full audit.
-Audited 87 markers across 13 files. P=48, S=12, R=27. No workarounds found.
-R items documented in checklist.md F94 for future implementation.
+Phase 70.6.1: Stale marker fix.
+Removed stale core.clj L2491 marker (def docstring already implemented).
+Added docstring to default-data-readers. Updated spec/alpha.clj L334 comment accuracy.
 
 ## Known Issues
 

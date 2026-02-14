@@ -2488,8 +2488,9 @@
     `(do ~@(map (fn [entry] `(extend-type ~(key entry) ~p ~@(val entry))) impls))))
 
 ;; Data reader constants
-;; CLJW: def doesn't support docstring form (def name "doc" val)
 (def default-data-readers
+  "Default map of data reader functions provided by Clojure. May be
+  overridden by binding *data-readers*."
   {'inst identity   ; CLJW: returns string (no Date type)
    'uuid identity}) ; CLJW: returns string (no UUID type)
 
