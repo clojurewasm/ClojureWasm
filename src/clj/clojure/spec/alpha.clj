@@ -598,8 +598,6 @@
         (= op ::rep) (alt2 (rep* (deriv p1 x) p2 ret splice forms)
                            (when (accept-nil? p1) (deriv (rep* p2 p2 (add-ret p1 ret nil) splice forms) x)))))))
 
-;; CLJW: explicit symbol literals instead of syntax-quote to avoid
-;; read-time resolution of excluded symbols (cat→core/cat, +→core/+, etc.)
 (defn- op-describe [p]
   (let [{:keys [::op ps ks forms splice p1 rep+ maybe amp] :as p} (reg-resolve! p)]
     (when p
@@ -608,12 +606,12 @@
         (nil? op) p
         (= op ::amp) (list* 'clojure.spec.alpha/& amp forms)
         (= op ::pcat) (if rep+
-                        (list 'clojure.spec.alpha/+ rep+)
-                        (cons 'clojure.spec.alpha/cat (mapcat vector (c/or (seq ks) (repeat :_)) forms)))
+                        (list `+ rep+)
+                        (cons `cat (mapcat vector (c/or (seq ks) (repeat :_)) forms)))
         (= op ::alt) (if maybe
-                       (list 'clojure.spec.alpha/? maybe)
-                       (cons 'clojure.spec.alpha/alt (mapcat vector ks forms)))
-        (= op ::rep) (list (if splice 'clojure.spec.alpha/+ 'clojure.spec.alpha/*) forms)))))
+                       (list `? maybe)
+                       (cons `alt (mapcat vector ks forms)))
+        (= op ::rep) (list (if splice `+ `*) forms)))))
 
 (defn- op-explain [form p path via in input]
   (let [[x :as input] input
@@ -887,8 +885,7 @@
             (when-not (empty? gs)
               (gen/one-of gs)))))
       (with-gen* [_ gfn] (or-spec-impl keys forms preds gfn))
-      ;; CLJW: explicit symbol — 'or' excluded from core, syntax-quote would misresolve
-      (describe* [_] (cons 'clojure.spec.alpha/or (mapcat vector keys forms))))))
+      (describe* [_] `(or ~@(mapcat vector keys forms))))))
 
 ;;--- s/and ---
 
@@ -965,8 +962,7 @@
       (explain* [_ path via in x] (explain-pred-list forms preds path via in x))
       (gen* [_ overrides path rmap] (if gfn (gfn) (gensub (first preds) overrides path rmap (first forms))))
       (with-gen* [_ gfn] (and-spec-impl forms preds gfn))
-      ;; CLJW: explicit symbol — 'and' excluded from core
-      (describe* [_] (cons 'clojure.spec.alpha/and forms)))))
+      (describe* [_] `(and ~@forms)))))
 
 ;;--- s/merge ---
 
@@ -1004,14 +1000,12 @@
          (apply gen/tuple (map #(gensub %1 overrides path rmap %2)
                                preds forms)))))
     (with-gen* [_ gfn] (merge-spec-impl forms preds gfn))
-    ;; CLJW: explicit symbol — 'merge' excluded from core
-    (describe* [_] (cons 'clojure.spec.alpha/merge forms))))
+    (describe* [_] `(merge ~@forms))))
 
 ;;--- s/keys ---
 
 (declare or-k-gen and-k-gen)
 
-;; CLJW: Upstream checks for plain symbols 'or/'and in key forms.
 (defn- k-gen
   "returns a generator for form f, which can be a keyword or a list
   starting with 'or or 'and."
@@ -1180,8 +1174,7 @@
                         (apply concat)
                         (apply gen/hash-map)))))))))
       (with-gen* [_ gfn] (map-spec-impl (assoc argm :gfn gfn)))
-      ;; CLJW: explicit symbol — 'keys' excluded from core
-      (describe* [_] (cons 'clojure.spec.alpha/keys
+      (describe* [_] (cons `keys
                            (cond-> []
                              req (conj :req req)
                              opt (conj :opt opt)
@@ -1736,9 +1729,7 @@ to spec, else throws an ex-info with explain-data plus ::failure of
   "Returns a spec that validates fixed precision integers in the
   range from start (inclusive) to end (exclusive)."
   [start end]
-  ;; CLJW: ~'clojure.spec.alpha/and — explicit qualification needed because
-  ;; CW's read-all-then-eval-all processes syntax-quote before ns :exclude
-  `(spec (~'clojure.spec.alpha/and int? #(int-in-range? ~start ~end %))))
+  `(spec (and int? #(int-in-range? ~start ~end %))))
 
 ;; CLJW: double-in uses CW's double? and math predicates
 (defmacro double-in
@@ -1746,12 +1737,11 @@ to spec, else throws an ex-info with explain-data plus ::failure of
   [& {:keys [infinite? NaN? min max]
       :or {infinite? true NaN? true}
       :as m}]
-  ;; CLJW: ~'clojure.spec.alpha/and — see int-in comment
-  `(spec (~'clojure.spec.alpha/and c/double?
-                                   ~@(when-not infinite? ['#(not (Double/isInfinite %))])
-                                   ~@(when-not NaN? ['#(not (Double/isNaN %))])
-                                   ~@(when max [`#(<= % ~max)])
-                                   ~@(when min [`#(<= ~min %)]))))
+  `(spec (and c/double?
+              ~@(when-not infinite? ['#(not (Double/isInfinite %))])
+              ~@(when-not NaN? ['#(not (Double/isNaN %))])
+              ~@(when max [`#(<= % ~max)])
+              ~@(when min [`#(<= ~min %)]))))
 
 ;; CLJW: inst-in — CW doesn't have java.util.Date, stub for API compat
 (defn inst-in-range?

@@ -759,9 +759,12 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked) so AST Nodes
     // survive GC sweeps. TreeWalk uses allocator (gc_alloc) for Value creation.
     const node_alloc = env.nodeAllocator();
-    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
-    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
-    if (forms.len == 0) return Value.nil_val;
+
+    // Read forms one at a time, updating reader.current_ns after each eval.
+    // This ensures syntax-quote symbol resolution uses the correct namespace
+    // after (ns ...) forms set up :refer-clojure :exclude mappings.
+    var reader = Reader.init(node_alloc, source);
+    reader.current_ns = if (env.current_ns) |ns| ns else null;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -771,12 +774,17 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
     var tw = TreeWalk.initWithEnv(allocator, env);
 
     var last_value: Value = Value.nil_val;
-    for (forms) |form| {
-        const node = try analyzeForm(node_alloc, env, form);
+    while (true) {
+        const form = reader.read() catch return error.ReadError;
+        if (form == null) break;
+        const node = try analyzeForm(node_alloc, env, form.?);
         last_value = tw.run(node) catch {
             err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
             return error.EvalError;
         };
+        // Update reader namespace after eval so subsequent syntax-quote
+        // resolves symbols in the new namespace (e.g. after ns form).
+        reader.current_ns = if (env.current_ns) |ns| ns else null;
     }
     return last_value;
 }
@@ -831,9 +839,12 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked).
     // Compiler/VM use allocator (gc_alloc) for bytecode and Values.
     const node_alloc = env.nodeAllocator();
-    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
-    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
-    if (forms.len == 0) return Value.nil_val;
+
+    // Read forms one at a time, updating reader.current_ns after each eval.
+    // This ensures syntax-quote symbol resolution uses the correct namespace
+    // after (ns ...) forms set up :refer-clojure :exclude mappings.
+    var reader = Reader.init(node_alloc, source);
+    reader.current_ns = if (env.current_ns) |ns| ns else null;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -847,8 +858,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
         const vm = env.allocator.create(VM) catch return error.CompileError;
         defer env.allocator.destroy(vm);
         var last_value: Value = Value.nil_val;
-        for (forms) |form| {
-            const node = try analyzeForm(node_alloc, env, form);
+        while (true) {
+            const form = reader.read() catch return error.ReadError;
+            if (form == null) break;
+            const node = try analyzeForm(node_alloc, env, form.?);
 
             var compiler = Compiler.init(allocator);
             if (env.current_ns) |ns| {
@@ -861,9 +874,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             vm.* = VM.initWithEnv(allocator, env);
             vm.gc = gc;
             last_value = vm.run(&compiler.chunk) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
+                err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+                return error.EvalError;
+            };
+            reader.current_ns = if (env.current_ns) |ns| ns else null;
         }
         return last_value;
     }
@@ -887,8 +901,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
     }
 
     var last_value: Value = Value.nil_val;
-    for (forms) |form| {
-        const node = try analyzeForm(node_alloc, env, form);
+    while (true) {
+        const form = reader.read() catch return error.ReadError;
+        if (form == null) break;
+        const node = try analyzeForm(node_alloc, env, form.?);
 
         var compiler = Compiler.init(allocator);
         defer compiler.deinit();
@@ -917,15 +933,16 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             env.allocator.destroy(vm);
         }
         last_value = vm.run(&compiler.chunk) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
+            err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+            return error.EvalError;
+        };
 
         const vm_fns = vm.detachFnAllocations();
         for (vm_fns) |f| {
             retained_fns.append(allocator, f) catch return error.CompileError;
         }
         if (vm_fns.len > 0) allocator.free(vm_fns);
+        reader.current_ns = if (env.current_ns) |ns| ns else null;
     }
     return last_value;
 }
@@ -937,9 +954,10 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
 /// Values (lists, vectors, maps, fns) may be stored in Vars via def/defn.
 fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
     const node_alloc = env.nodeAllocator();
-    const ns_ptr: ?*const Namespace = if (env.current_ns) |ns| ns else null;
-    const forms = try readFormsWithNs(node_alloc, source, ns_ptr);
-    if (forms.len == 0) return Value.nil_val;
+
+    // Read forms one at a time, updating reader.current_ns after each eval.
+    var reader = Reader.init(node_alloc, source);
+    reader.current_ns = if (env.current_ns) |ns| ns else null;
 
     const prev = setupMacroEnv(env);
     defer restoreMacroEnv(prev);
@@ -950,8 +968,10 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
     defer env.allocator.destroy(vm);
 
     var last_value: Value = Value.nil_val;
-    for (forms) |form| {
-        const node = try analyzeForm(node_alloc, env, form);
+    while (true) {
+        const form = reader.read() catch return error.ReadError;
+        if (form == null) break;
+        const node = try analyzeForm(node_alloc, env, form.?);
 
         // Note: compiler is intentionally NOT deinit'd — closures created during
         // evaluation may be def'd into Vars and must outlive this scope.
@@ -965,9 +985,10 @@ fn evalStringVMBootstrap(allocator: Allocator, env: *Env, source: []const u8) Bo
 
         vm.* = VM.initWithEnv(allocator, env);
         last_value = vm.run(&compiler.chunk) catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
+            err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+            return error.EvalError;
+        };
+        reader.current_ns = if (env.current_ns) |ns| ns else null;
     }
     return last_value;
 }

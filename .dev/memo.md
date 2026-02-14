@@ -22,17 +22,18 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.3 next.
+Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.4 next.
 
-70.6.2 done: arglists verification (already works via analyzer). Updated core.clj L45
-marker to :inline-only. Added spec support to print-doc (keyword specs, fspec header,
-special form URLs). Resolved repl.clj L67 marker.
+70.6.3 done: Fixed syntax-quote :exclude bug. Root cause: read-all-eval-all model read
+all forms before ns form evaluation set up excludes. Fix: form-by-form reading in
+evalString/evalStringVM/evalStringVMBootstrap, updating reader.current_ns after each eval.
+Removed 8 CLJW workarounds from spec/alpha.clj (L601, L890, L968, L1005, L1011, L1180,
+L1733, L1743). All using upstream syntax-quote form now.
 
 ## Task Queue
 
 ```
 Phase 70.6: Reducible CLJW marker resolution
-  70.6.3: syntax-quote :exclude bug investigation
   70.6.4: test.clj report multimethod conversion
   70.6.5: test.clj is + assert-expr multimethod
   70.6.6: marker reclassification + cljw-diff.md update
@@ -54,9 +55,8 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.6.2: arglists verification + print-doc improvement.
-Arglists already work (analyzer L1138). Updated core.clj L45 to :inline-only.
-Added spec support to print-doc: keyword specs, fspec header, special form URLs.
+Phase 70.6.3: syntax-quote :exclude bug fix.
+Fixed form-by-form reading in bootstrap.zig. Removed 8 S markers from spec/alpha.clj.
 
 ## Known Issues
 
