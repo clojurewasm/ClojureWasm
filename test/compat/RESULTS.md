@@ -3,8 +3,10 @@
 ## Purpose
 
 Test real-world Clojure libraries **as-is** on ClojureWasm. Libraries are NOT forked
-or embedded — they are loaded from their original source. Failures reveal CW
-implementation bugs, missing features, and behavioral differences vs upstream Clojure.
+or embedded — they are loaded from their original source, and their tests are run
+unmodified. When CW behavior differs from upstream Clojure, trace CW's processing
+pipeline (reader → analyzer → compiler → VM/TreeWalk → builtins) to find and fix
+the root cause. Library tests serve as a specification of correct Clojure behavior.
 
 ## Summary
 
@@ -216,22 +218,25 @@ Phase 72.1:
 
 ## Libraries Tested But Not Yet Loadable
 
-### clojure.data.json
-
-Source: https://github.com/clojure/data.json
-Blocker: PushbackReader, StringWriter, definterface, deftype with mutable fields
-Action needed: Implement PushbackReader/StringWriter as Zig interop shims
-
-### clojure.data.csv
-
-Source: https://github.com/clojure/data.csv
-Blocker: PushbackReader, StringBuilder, Writer
-Action needed: Same PushbackReader/StringWriter shims as data.json
-
 ### clojure.tools.cli
 
 Source: https://github.com/clojure/tools.cli
 Type: .cljc with reader conditionals
-Blocker: Regex backtracking (`\S+` greedily consumes past `=`), `(catch Exception e)` without body
-Bugs found (fixed): re-seq nil return, s/join lazy-seq cons handling
-Action needed: Fix regex backtracking, allow catch without body expression
+Category: **CW behavioral fixes needed** (no Java interop blocker)
+Bugs found (already fixed): re-seq nil return, s/join lazy-seq cons handling
+Remaining: Regex backtracking (`\S+` greedily consumes past `=`), `(catch Exception e)` without body
+Action: Fix CW regex engine and catch parsing — then this library should load as-is
+
+### clojure.data.json
+
+Source: https://github.com/clojure/data.json
+Category: **Java interop blocker**
+Blocker: PushbackReader, StringWriter, definterface, deftype with mutable fields
+Action: Implement PushbackReader/StringWriter as Zig interop shims (high frequency pattern)
+
+### clojure.data.csv
+
+Source: https://github.com/clojure/data.csv
+Category: **Java interop blocker**
+Blocker: PushbackReader, StringBuilder, Writer
+Action: Same PushbackReader/StringWriter shims as data.json

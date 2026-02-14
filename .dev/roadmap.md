@@ -117,8 +117,12 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 75    | Library Port Testing             | Real-world library compat, minimal Java shims     |
 
 Phase 75 targets: `.dev/library-port-targets.md` (20 libraries in 5 batches).
-Philosophy: NOT JVM reimplementation. Test real libraries, add minimal shims for
-high-frequency patterns (3+ libs need it, <100 LOC Zig), fork libraries otherwise.
+Philosophy: NOT JVM reimplementation. Load real libraries as-is, run their tests
+unmodified. When CW behavior differs from upstream Clojure, trace CW's processing
+pipeline (reader → analyzer → compiler → VM/TreeWalk → builtins) to find and fix
+the root cause. Add Java interop shims only for high-frequency patterns (3+ libs,
+<100 LOC Zig). Libraries requiring heavy Java interop are out of scope — document
+the gap and move on.
 BB class reference: `.dev/babashka-class-compat.md` (reference only, not a roadmap).
 
 ---

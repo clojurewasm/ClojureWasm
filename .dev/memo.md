@@ -25,9 +25,12 @@ Differentiation vs Babashka:
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - deps.edn compatible project model (Clojure CLI subset)
 
-Java interop policy: Library-driven. Test real libraries, add shims only when
-3+ libraries need the same pattern AND it's <100 lines of Zig. Otherwise fork the
-library. See `.dev/library-port-targets.md` for targets and shim decision guide.
+Java interop policy: Library-driven. Test real libraries as-is (no forking/embedding).
+When behavior differs from upstream Clojure, trace CW's processing pipeline to find
+and fix the root cause. Add Java interop shims only when 3+ libraries need the same
+pattern AND it's <100 lines of Zig. If a library requires heavy Java interop that
+CW won't implement, that library is out of scope — document and move on.
+See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 

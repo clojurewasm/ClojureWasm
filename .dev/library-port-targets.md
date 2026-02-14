@@ -4,18 +4,23 @@
 
 Test real-world Clojure libraries **as-is** on CW. Libraries are NOT forked or
 embedded — they are loaded from their original source, and their original test
-suites are run unmodified.
+suites are run unmodified. CW itself gets fixed to pass the tests.
 
 Goals:
-1. **Bug discovery**: Find CW implementation bugs via real-world usage
-2. **Missing feature discovery**: Identify unimplemented features needed by libraries
-3. **Behavioral difference discovery**: Find where CW differs from upstream Clojure
+1. **Behavioral equivalence**: Find where CW differs from upstream Clojure, then
+   trace CW's processing pipeline (reader → analyzer → compiler → VM/TreeWalk →
+   builtins) to find and fix the root cause. Library tests serve as a specification
+   of correct Clojure behavior.
+2. **Bug discovery**: Find CW implementation bugs surfaced by real-world usage patterns
+3. **Missing feature discovery**: Identify unimplemented features needed by libraries
 4. **Java interop gap analysis**: Determine which Java classes/methods need Zig equivalents
 
-CW is NOT a JVM reimplementation. Java interop shims are added only when:
-- 3+ libraries need the same pattern, AND
-- It's implementable in <100 lines of Zig
-Otherwise, the gap is documented for future consideration.
+## Java Interop Decision
+
+CW is NOT a JVM reimplementation. When a library needs Java interop:
+- **High frequency** (3+ libraries need it) AND **small** (<100 lines Zig) → Add Zig interop shim
+- **Otherwise** → That library is **out of scope** for CW. Document the gap and move on.
+  Do NOT fork the library. Do NOT embed modified copies. Accept the limitation.
 
 ## Status Legend
 
@@ -74,12 +79,11 @@ You should clone repo to ~/Documents/OSS if not exists.
 
 ## Java Interop Shim Decision Guide
 
-When a library needs Java interop, decide:
+When a library fails due to Java interop:
 
-1. **Frequency**: Is this pattern used by 3+ libraries? → Add Zig shim
-2. **Complexity**: Can we implement in <100 lines of Zig? → Add Zig shim
-3. **Alternative**: Is there a pure Clojure alternative? → Use that
-4. **Document**: If none of the above → record as gap, move on
+1. **Frequency**: Is this pattern used by 3+ libraries? AND **Complexity**: <100 lines Zig? → Add Zig shim
+2. **Alternative**: Is there a pure Clojure equivalent CW already supports? → Use that
+3. **Otherwise**: That library is **out of scope**. Record the blocker in RESULTS.md and move on. Do NOT fork the library to work around it.
 
 ### Likely Shims Needed (from library analysis)
 
