@@ -22,10 +22,31 @@ CW is NOT a JVM reimplementation. When a library needs Java interop:
 - **Otherwise** → That library is **out of scope** for CW. Document the gap and move on.
   Do NOT fork the library. Do NOT embed modified copies. Accept the limitation.
 
+## Embed vs External Rule
+
+本家 `clojure.jar` に同梱されている namespace = CW に embed (`@embedFile` or Zig builtin)。
+別 Maven artifact (`org.clojure/data.json` 等) = 外部ライブラリ（deps.edn 経由でロード）。
+
 ## Target Libraries
 
 Clone repos to ~/Documents/OSS if not exists.
 Results and status tracking: `test/compat/RESULTS.md` (single source of truth).
+
+### Batch 0: Missing clojure.jar Namespaces
+
+clojure.jar 同梱だが CW 未実装の namespace。embed 対象。
+
+| #  | namespace          | LOC  | Java Deps       | Notes                            |
+|----|--------------------|------|-----------------|----------------------------------|
+| 0a | clojure.test.tap   | ~123 | `.split` only   | TAP test output, nearly pure Clojure |
+| 0b | clojure.uuid       | ~20  | UUID/fromString | UUID reader tag + print. CW has UUID type, verify coverage |
+
+Not implementing (heavy Java interop):
+clojure.instant (Calendar/Date/Timestamp), clojure.main (Compiler/RT/PushbackReader),
+clojure.core.server (Socket/ServerSocket), clojure.xml (SAXParser), clojure.datafy
+(IObj/IRef/Class/reflect), clojure.reflect, clojure.inspector (Swing), clojure.java.browse,
+clojure.java.javadoc, clojure.java.process (1.12), clojure.repl.deps (1.12, DynamicClassLoader),
+clojure.test.junit (JUnit).
 
 ### Batch 1: Utility & Case
 

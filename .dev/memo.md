@@ -34,16 +34,21 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75: Library Compatibility Testing (corrected policy).
-Load real libraries as-is, run their tests unmodified. When CW behavior differs
-from upstream Clojure, trace CW's processing pipeline to find and fix the root cause.
-Do NOT fork or embed libraries.
+Phase 75.0a: Implement clojure.test.tap (~123 LOC, embed).
+TAP output for clojure.test. Nearly pure Clojure (.split only Java dep).
+Upstream: `clojure/src/clj/clojure/test/tap.clj`.
 
+Phase 75 policy: Load real libraries as-is, run their tests unmodified. When CW
+behavior differs from upstream Clojure, trace CW's processing pipeline to find and
+fix the root cause. Do NOT fork or embed external libraries.
+Embed rule: clojure.jar-bundled namespace = embed. Separate Maven artifact = external.
 See `library-port-targets.md` for full target list and `test/compat/RESULTS.md` for results.
 
 ## Task Queue
 
 ```
+75.0a Implement clojure.test.tap (~123 LOC, nearly pure Clojure, embed)
+75.0b Verify clojure.uuid coverage (CW has UUID type, check #uuid reader + print)
 75.A  Fix CW limitations found so far (regex backtracking, catch empty body, split trailing empties, apply map vector)
 75.B  Retry tools.cli as-is (should work after 75.A fixes)
 75.C  Test instaparse as-is (pure Clojure, ~3000 LOC)
@@ -53,7 +58,8 @@ See `library-port-targets.md` for full target list and `test/compat/RESULTS.md` 
 75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
 ```
 
-Note: Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach.
+Note: Batch 0 = missing clojure.jar namespaces (embed). See library-port-targets.md.
+Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach.
 Results in RESULTS.md. CSK's split issue addressable in 75.A.
 
 ## Previous Task
