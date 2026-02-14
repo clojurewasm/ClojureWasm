@@ -373,6 +373,17 @@ pub const PersistentArrayMap = struct {
         }
         return null;
     }
+
+    /// Look up a value by raw string key (matching string-tagged entries).
+    /// Avoids allocating a temporary HeapString Value for the lookup.
+    pub fn getByStringKey(self: PersistentArrayMap, key: []const u8) ?Value {
+        var i: usize = 0;
+        while (i < self.entries.len) : (i += 2) {
+            if (self.entries[i].tag() == .string and std.mem.eql(u8, self.entries[i].asString(), key))
+                return self.entries[i + 1];
+        }
+        return null;
+    }
 };
 
 /// Persistent hash set — array-backed with linear scan.

@@ -22,18 +22,25 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 72: Optimization + GC Assessment. Sub-task 72.1 next.
+Phase 72.1 complete. Sub-task 72.2 next.
 
-Phase 71 complete. Results in `test/compat/RESULTS.md`.
-- medley 80.4%, CSK 98.6%, honeysql GC crash, hiccup/data.json skipped
-- 4 bugs fixed: return type hints, nested metadata, protocol alias, splicing reader conditional
+GC crash root cause analysis and 6 fixes applied:
+1. valueToForm string duplication (macro.zig) — Forms now own all string data
+2. ProtocolFn cache GC tracing (gc.zig) — cached_type_key + cached_method traced
+3. MultiFn cache GC tracing (gc.zig) — cached_dispatch_val + cached_method traced
+4. refer() string safety (ns_ops.zig) — use GPA-owned Var.sym.name, not GC Symbol.name
+5. Protocol dispatch zero-alloc lookup (collections.zig + 4 files) — getByStringKey
+6. GC suppression during macro expansion (gc.zig + analyzer.zig) — prevents
+   sweep of lazy-seq closure-captured Values during syntax-quote expansion
+
+Results: honeysql segfault → real error ("No matching method toString found for char").
+CSK nested loop crash (>60 iters) → passes 200 iterations cleanly.
 
 ## Task Queue
 
 ```
 Phase 72: Optimization + GC Assessment
-  72.1: Profiling infrastructure
-  72.2: Targeted optimizations (GC crash is top priority)
+  72.2: Targeted optimizations
   72.3: GC assessment report
 
 Phase 73: Generational GC (conditional on Phase 72 findings)
@@ -42,14 +49,13 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 71: Library Compatibility Testing (complete).
-See `test/compat/RESULTS.md` for full results.
+Phase 72.1: GC crash root cause investigation and fixes (complete).
+6 correctness fixes across 9 files. All segfaults resolved.
 
 ## Known Issues
 
-- GC crash under heavy load: large namespace loading (honeysql ~1500 lines),
-  nested loops with protocol dispatch (>60 iterations).
-  Manifests as segfault in wyhash/hash or static_string_map (dangling string pointers).
+- honeysql sql.cljc: "No matching method toString found for char" — char needs
+  Object protocol toString method implementation.
 - clojure.string/split doesn't drop trailing empty strings (Java Pattern.split does).
 
 ## Notes

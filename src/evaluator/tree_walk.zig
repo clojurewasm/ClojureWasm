@@ -857,13 +857,14 @@ pub const TreeWalk = struct {
         }
 
         // Cache miss: full lookup (exact type, then "Object" fallback)
+        // Use getByStringKey to avoid allocating temporary HeapString Values
         const protocol = pf.protocol;
-        const method_map_val = protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
-            protocol.impls.get(Value.initString(self.allocator, "Object")) orelse
+        const method_map_val = protocol.impls.getByStringKey(type_key) orelse
+            protocol.impls.getByStringKey("Object") orelse
             return error.TypeError;
         if (method_map_val.tag() != .map) return error.TypeError;
         const method_map = method_map_val.asMap();
-        const fn_val = method_map.get(Value.initString(self.allocator, pf.method_name)) orelse return error.TypeError;
+        const fn_val = method_map.getByStringKey(pf.method_name) orelse return error.TypeError;
 
         // Update cache
         mutable_pf.cached_type_key = type_key;

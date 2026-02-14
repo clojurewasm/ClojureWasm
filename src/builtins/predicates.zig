@@ -404,6 +404,7 @@ fn extendersFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// (extends? protocol atype) — Returns true if atype has been extended to protocol.
 fn extendsPred(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to extends?", .{args.len});
     if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "extends? expects a protocol as first arg, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
@@ -414,25 +415,27 @@ fn extendsPred(allocator: Allocator, args: []const Value) anyerror!Value {
         mapSymbolToTypeKey(args[1].asString())
     else
         return err.setErrorFmt(.eval, .type_error, .{}, "extends? expects a type (symbol or string), got {s}", .{@tagName(args[1].tag())});
-    return Value.initBoolean(protocol.impls.get(Value.initString(allocator, type_key)) != null);
+    return Value.initBoolean(protocol.impls.getByStringKey(type_key) != null);
 }
 
 /// (find-protocol-impl protocol x) — Returns the method map for x's type, or nil.
 fn findProtocolImplFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-protocol-impl", .{args.len});
     if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-impl expects a protocol, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
     const type_key = valueTypeKey(args[1]);
-    return protocol.impls.get(Value.initString(allocator, type_key)) orelse Value.nil_val;
+    return protocol.impls.getByStringKey(type_key) orelse Value.nil_val;
 }
 
 /// (find-protocol-method protocol method-keyword x) — Returns the method fn for x's type, or nil.
 fn findProtocolMethodFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    _ = allocator;
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to find-protocol-method", .{args.len});
     if (args[0].tag() != .protocol) return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-method expects a protocol, got {s}", .{@tagName(args[0].tag())});
     const protocol = args[0].asProtocol();
     const type_key = valueTypeKey(args[2]);
-    const method_map_val = protocol.impls.get(Value.initString(allocator, type_key)) orelse return Value.nil_val;
+    const method_map_val = protocol.impls.getByStringKey(type_key) orelse return Value.nil_val;
     if (method_map_val.tag() != .map) return Value.nil_val;
     // Method key can be keyword or string
     const method_name = if (args[1].tag() == .keyword)
@@ -441,7 +444,7 @@ fn findProtocolMethodFn(allocator: Allocator, args: []const Value) anyerror!Valu
         args[1].asString()
     else
         return err.setErrorFmt(.eval, .type_error, .{}, "find-protocol-method expects a keyword or string method name, got {s}", .{@tagName(args[1].tag())});
-    return method_map_val.asMap().get(Value.initString(allocator, method_name)) orelse Value.nil_val;
+    return method_map_val.asMap().getByStringKey(method_name) orelse Value.nil_val;
 }
 
 /// (extend atype & proto+mmaps) — Extends protocol with implementations for atype.

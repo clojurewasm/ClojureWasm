@@ -193,6 +193,11 @@ pub const MarkSweepGc = struct {
     /// Serializes allocation and collection across threads.
     gc_mutex: std.Thread.Mutex = .{},
 
+    /// When > 0, collectIfNeeded() skips collection.
+    /// Used during valueToForm to prevent GC from collecting the macro
+    /// result Value tree while lazy-seq realization triggers VM execution.
+    suppress_count: u32 = 0,
+
     // --- Free-pool recycling ---
     //
     // Dead allocations from sweep are not immediately freed back to the OS.
@@ -510,6 +515,7 @@ pub const MarkSweepGc = struct {
     pub fn collectIfNeeded(self: *MarkSweepGc, roots: RootSet) void {
         self.gc_mutex.lock();
         defer self.gc_mutex.unlock();
+        if (self.suppress_count > 0) return; // Suppressed (e.g. during valueToForm)
         if (self.bytes_allocated < self.threshold) return;
         traceRoots(self, roots);
         self.sweep();
@@ -517,6 +523,17 @@ pub const MarkSweepGc = struct {
         if (self.bytes_allocated >= self.threshold) {
             self.threshold = self.bytes_allocated * 2;
         }
+    }
+
+    /// Temporarily suppress GC collection (nestable).
+    /// Used during macro expansion's valueToForm to prevent collecting
+    /// the result Value tree while lazy-seq realization triggers VM execution.
+    pub fn suppressCollection(self: *MarkSweepGc) void {
+        self.suppress_count += 1;
+    }
+
+    pub fn unsuppressCollection(self: *MarkSweepGc) void {
+        self.suppress_count -= 1;
     }
 
     // --- Allocation profiling helpers (37.1) ---
@@ -802,10 +819,14 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             if (gc.markAndCheck(pf)) {
                 traceValue(gc, Value.initProtocol(pf.protocol));
                 gc.markSlice(pf.method_name);
+                // Trace monomorphic inline cache (type_key may point to GC-allocated
+                // string from reified object's __reify_type entry)
+                if (pf.cached_type_key) |ck| gc.markSlice(ck);
+                traceValue(gc, pf.cached_method);
             }
         },
 
-        // MultiFn — dispatch_fn, methods, prefer_table, hierarchy_var
+        // MultiFn — dispatch_fn, methods, prefer_table, hierarchy_var, cache
         .multi_fn => {
             const mf = val.asMultiFn();
             if (gc.markAndCheck(mf)) {
@@ -818,6 +839,9 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
                 if (mf.hierarchy_var) |hv| {
                     traceValue(gc, Value.initVarRef(hv));
                 }
+                // Trace 2-level dispatch cache values
+                if (mf.cached_dispatch_val) |dv| traceValue(gc, dv);
+                traceValue(gc, mf.cached_method);
             }
         },
 

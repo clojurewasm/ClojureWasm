@@ -840,7 +840,7 @@ pub const VM = struct {
                 const protocol = proto_val.asProtocol();
 
                 // Get or create method map for this type in protocol.impls
-                const existing = protocol.impls.get(Value.initString(self.allocator, type_key));
+                const existing = protocol.impls.getByStringKey(type_key);
                 if (existing) |ex_val| {
                     // Existing method map for this type — update or add method
                     if (ex_val.tag() != .map) return error.TypeError;
@@ -1377,11 +1377,14 @@ pub const VM = struct {
                     }
                 }
                 // Cache miss: full protocol lookup (exact type, then "Object" fallback)
-                const method_map_val = pf.protocol.impls.get(Value.initString(self.allocator, type_key)) orelse
-                    pf.protocol.impls.get(Value.initString(self.allocator, "Object")) orelse
+                // Use getByStringKey to avoid allocating temporary HeapString Values
+                // (each initString allocates a GC-tracked struct, causing GC pressure
+                // in tight loops with protocol dispatch)
+                const method_map_val = pf.protocol.impls.getByStringKey(type_key) orelse
+                    pf.protocol.impls.getByStringKey("Object") orelse
                     return error.TypeError;
                 if (method_map_val.tag() != .map) return error.TypeError;
-                const method_fn = method_map_val.asMap().get(Value.initString(self.allocator, pf.method_name)) orelse
+                const method_fn = method_map_val.asMap().getByStringKey(pf.method_name) orelse
                     return error.TypeError;
                 // Update cache for next call
                 mutable_pf.cached_type_key = type_key;

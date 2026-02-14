@@ -797,7 +797,9 @@ pub fn referFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     if (v.isPrivate()) {
                         return err.setErrorFmt(.eval, .name_error, .{}, "{s} is not public", .{sym.asSymbol().name});
                     }
-                    current_ns.refer(sym.asSymbol().name, v) catch {};
+                    // Use Var's owned name (GPA-duped in intern) instead of
+                    // Symbol Value's name which may be GC-allocated
+                    current_ns.refer(v.sym.name, v) catch {};
                 } else {
                     return err.setErrorFmt(.eval, .name_error, .{}, "{s} does not exist", .{sym.asSymbol().name});
                 }
@@ -931,7 +933,8 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                                 for (v.items[j + 1].asVector().items) |sym| {
                                     if (sym.tag() == .symbol) {
                                         if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
-                                            current_ns.refer(sym.asSymbol().name, var_ref) catch {};
+                                            // Use Var's owned name (GPA) instead of Symbol's (may be GC-allocated)
+                                            current_ns.refer(var_ref.sym.name, var_ref) catch {};
                                         }
                                     }
                                 }
@@ -1074,7 +1077,8 @@ pub fn useFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     for (syms) |sym| {
                         if (sym.tag() == .symbol) {
                             if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
-                                current_ns.refer(sym.asSymbol().name, var_ref) catch {};
+                                // Use Var's owned name (GPA) instead of Symbol's (may be GC-allocated)
+                                current_ns.refer(var_ref.sym.name, var_ref) catch {};
                             }
                         }
                     }

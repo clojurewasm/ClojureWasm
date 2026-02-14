@@ -648,3 +648,27 @@ original `nth`-based path is preserved for efficiency.
 
 **Matches JVM**: Clojure's `destructure` uses seq/first/next when `&` is
 present. The CW analyzer now does the same.
+
+## D100: GC Suppression During Macro Expansion
+
+**Problem**: Macro expansion via syntax-quote generates lazy sequences
+(concat/list*). During VM execution of the macro function, GC at safe
+points can sweep Values captured in lazy-seq thunk closures. After macro
+return, valueToForm encounters dangling pointers in the result tree.
+
+**Root causes identified** (6 fixes):
+1. valueToForm didn't copy GC-allocated string data to node_arena
+2. ProtocolFn/MultiFn inline caches not traced by GC
+3. refer() stored GC-allocated symbol name pointers
+4. Protocol dispatch created 3 temporary HeapStrings per cache miss
+5. During macro callFnVal, lazy-seq closure-captured Values swept by GC
+6. During valueToForm, lazy-seq realization triggers GC while result tree unrooted
+
+**Decision**: Suppress GC collection during the entire expandMacro scope
+(callFnVal + valueToForm). Added `suppress_count` to MarkSweepGc.
+Collection is deferred, not skipped — next safe point after unsuppress
+will collect normally. Macro expansion allocations are bounded (result
+tree size), so memory pressure is acceptable.
+
+**Additionally**: getByStringKey on PersistentArrayMap eliminates all
+temporary HeapString allocations in protocol dispatch hot path.

@@ -158,6 +158,12 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
 
 /// Convert a runtime Value back to a Form (for re-analysis after macro expansion).
 /// Collections are recursively converted. Source info restored from list/vector fields.
+///
+/// IMPORTANT: All string data is duped into `allocator` (node_arena) to ensure
+/// Forms don't reference GC-tracked memory. Without this, macro expansion output
+/// (allocated via gc_alloc) can be collected by GC during nested macro expansion,
+/// leaving Forms with dangling string pointers. This was the root cause of GC
+/// crashes when loading large namespaces (honeysql) or heavy macro expansion.
 pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
     return switch (val.tag()) {
         .nil => Form{ .data = .nil },
@@ -165,14 +171,21 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         .integer => Form{ .data = .{ .integer = val.asInteger() } },
         .float => Form{ .data = .{ .float = val.asFloat() } },
         .char => Form{ .data = .{ .char = val.asChar() } },
-        .string => Form{ .data = .{ .string = val.asString() } },
+        // Dupe string data to node_arena (source may be GC-allocated)
+        .string => Form{ .data = .{ .string = try allocator.dupe(u8, val.asString()) } },
         .symbol => blk: {
             const sym = val.asSymbol();
-            break :blk Form{ .data = .{ .symbol = .{ .ns = sym.ns, .name = sym.name } } };
+            break :blk Form{ .data = .{ .symbol = .{
+                .ns = if (sym.ns) |ns| try allocator.dupe(u8, ns) else null,
+                .name = try allocator.dupe(u8, sym.name),
+            } } };
         },
         .keyword => blk: {
             const k = val.asKeyword();
-            break :blk Form{ .data = .{ .keyword = .{ .ns = k.ns, .name = k.name } } };
+            break :blk Form{ .data = .{ .keyword = .{
+                .ns = if (k.ns) |ns| try allocator.dupe(u8, ns) else null,
+                .name = try allocator.dupe(u8, k.name),
+            } } };
         },
         .list => {
             const lst = val.asList();
@@ -234,10 +247,13 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         },
         .var_ref => {
             const v = val.asVarRef();
-            // (var ns/name)
+            // (var ns/name) — dupe strings to node_arena
             const items = try allocator.alloc(Form, 2);
             items[0] = Form{ .data = .{ .symbol = .{ .ns = null, .name = "var" } } };
-            items[1] = Form{ .data = .{ .symbol = .{ .ns = v.ns_name, .name = v.sym.name } } };
+            items[1] = Form{ .data = .{ .symbol = .{
+                .ns = try allocator.dupe(u8, v.ns_name),
+                .name = try allocator.dupe(u8, v.sym.name),
+            } } };
             return Form{ .data = .{ .list = items } };
         },
         // Lazy seq / cons — realize to list and convert
@@ -245,7 +261,8 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
             const realized = builtin_collections.realizeValue(allocator, val) catch return Form{ .data = .nil };
             return valueToForm(allocator, realized);
         },
-        .regex => Form{ .data = .{ .regex = val.asRegex().source } },
+        // Dupe regex source to node_arena
+        .regex => Form{ .data = .{ .regex = try allocator.dupe(u8, val.asRegex().source) } },
         .big_int => blk: {
             const bi = val.asBigInt();
             const s = bi.managed.toConst().toStringAlloc(allocator, 10, .lower) catch return Form{ .data = .nil };

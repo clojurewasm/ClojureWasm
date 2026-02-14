@@ -601,6 +601,22 @@ pub const Analyzer = struct {
             arg_vals[i] = macro.formToValueWithNs(self.allocator, af, current_ns_ptr) catch return error.OutOfMemory;
         }
 
+        // Suppress GC during the entire macro expansion (callFnVal + valueToForm).
+        // During macro execution, syntax-quote builds lazy seqs whose internal
+        // Values may be swept by GC if they are only reachable through thunk
+        // closures. Suppressing GC ensures these Values survive until
+        // valueToForm copies all string data to the node_arena.
+        const gc_inst = if (self.env) |e| e.gc else null;
+        const MarkSweepGc = @import("../runtime/gc.zig").MarkSweepGc;
+        if (gc_inst) |g| {
+            const gc: *MarkSweepGc = @ptrCast(@alignCast(g));
+            gc.suppressCollection();
+        }
+        defer if (gc_inst) |g| {
+            const gc: *MarkSweepGc = @ptrCast(@alignCast(g));
+            gc.unsuppressCollection();
+        };
+
         // Call the macro function via unified dispatch
         const result_val: Value = bootstrap.callFnVal(self.allocator, root, arg_vals[0..arg_forms.len]) catch {
             return self.analysisError(.value_error, "macro expansion failed", form);

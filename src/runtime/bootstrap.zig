@@ -1085,9 +1085,9 @@ pub fn callFnVal(allocator: Allocator, fn_val: Value, args: []const Value) anyer
             const pf = fn_val.asProtocolFn();
             if (args.len == 0) return error.ArityError;
             const type_key = TreeWalk.valueTypeKey(args[0]);
-            const method_map_val = pf.protocol.impls.get(Value.initString(allocator, type_key)) orelse return error.TypeError;
+            const method_map_val = pf.protocol.impls.getByStringKey(type_key) orelse return error.TypeError;
             if (method_map_val.tag() != .map) return error.TypeError;
-            const impl_fn = method_map_val.asMap().get(Value.initString(allocator, pf.method_name)) orelse return error.TypeError;
+            const impl_fn = method_map_val.asMap().getByStringKey(pf.method_name) orelse return error.TypeError;
             return callFnVal(allocator, impl_fn, args);
         },
         else => return error.TypeError,
