@@ -103,18 +103,23 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 | 67     | Git Dependencies                            | Tag validation, :deps/root, -Sforce, transitive resolution  |
 | 68     | Integration                                 | test+alias, Leiningen detection, 14 e2e tests               |
 | 69     | deps.edn Design Cleanup                     | Fetch-on-demand, remove cljw.edn                            |
+| 70     | spec.alpha                                  | 87 vars, Spec/Specize protocols, regex ops                   |
+| 71     | Library Compatibility Testing               | medley, hiccup, honeysql tested (Batch 1 partial)            |
+| 72     | Optimization + GC Assessment                | Profiling, targeted opts, GC bottleneck analysis             |
+| 73     | Generational GC (conditional)               | Write barriers, nursery allocator (if warranted)             |
+| 74     | Java Interop Architecture                   | src/interop/ module, URI/File/UUID classes (D101)            |
 ```
 
-### Planned Phases (Phase 70-73)
-
-Full plan: `.dev/next-phases-plan.md`
+### Planned Phases (Phase 75+)
 
 | Phase | Summary                          | Key Deliverables                                  |
 |-------|----------------------------------|---------------------------------------------------|
-| 70    | spec.alpha                       | 87 vars, Spec/Specize protocols, regex ops        |
-| 71    | Library Compatibility Testing    | 5 pure-Clj libs tested (medley, hiccup, etc.)     |
-| 72    | Optimization + GC Assessment     | Profiling, targeted opts, GC bottleneck analysis  |
-| 73    | Generational GC (conditional)    | Write barriers, nursery allocator (if warranted)  |
+| 75    | Library Port Testing             | Real-world library compat, minimal Java shims     |
+
+Phase 75 targets: `.dev/library-port-targets.md` (20 libraries in 5 batches).
+Philosophy: NOT JVM reimplementation. Test real libraries, add minimal shims for
+high-frequency patterns (3+ libs need it, <100 LOC Zig), fork libraries otherwise.
+BB class reference: `.dev/babashka-class-compat.md` (reference only, not a roadmap).
 
 ---
 

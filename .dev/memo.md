@@ -15,20 +15,33 @@ Session handover document. Read at session start.
 
 ## Strategic Direction
 
-Native production-grade Clojure runtime. Differentiation vs Babashka:
+Native production-grade Clojure runtime. **NOT a JVM reimplementation.**
+CW embodies "you don't really want Java interop" — minimal shims for high-frequency
+patterns only, fork/adapt libraries to remove unnecessary Java deps.
+
+Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
-- Tiny single binary (3.7MB macOS, ~14MB Linux static)
+- Tiny single binary (3.85MB macOS, ~14MB Linux static)
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - deps.edn compatible project model (Clojure CLI subset)
 
+Java interop policy: Library-driven. Test real libraries, add shims only when
+3+ libraries need the same pattern AND it's <100 lines of Zig. Otherwise fork the
+library. See `.dev/library-port-targets.md` for targets and shim decision guide.
+
 ## Current Task
 
-(none — Phase 74 complete, ready for next phase)
+Phase 75: Library Port Testing — Batch 1.
+Test real-world pure Clojure libraries on CW, add minimal Java shims as needed.
+See `.dev/library-port-targets.md` for targets, batches, and shim decision guide.
 
 ## Task Queue
 
 ```
-(empty — read roadmap.md for next phase)
+75.1 clojure.data.json — load + test, may need StringReader/Writer shim
+75.2 camel-snake-kebab — load + test, pure Clojure (should just work)
+75.3 Additional Batch 1 libraries (medley, hiccup, honeysql already tested)
+75.4 Batch 2 planning — pick next libraries based on Batch 1 results
 ```
 
 ## Previous Task
@@ -75,5 +88,7 @@ Session resume: read this file → roadmap.md → pick next task.
 | Baselines          | `.dev/baselines.md`                  | Non-functional thresholds   |
 | deps.edn plan      | `.dev/deps-edn-plan.md`              | When implementing deps.edn  |
 | Next phases plan   | `.dev/next-phases-plan.md`           | Phase 70-73 plan            |
+| Library targets    | `.dev/library-port-targets.md`       | Phase 75 — libraries to test|
+| BB class compat    | `.dev/babashka-class-compat.md`      | Java class reference (not roadmap) |
 | spec.alpha upstream| `~/Documents/OSS/spec.alpha/`        | spec.alpha reference source |
 | zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |
