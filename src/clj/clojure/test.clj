@@ -220,76 +220,132 @@
 (defn test-all-vars [ns]
   (test-vars (vals (ns-interns ns))))
 
+;; ========== Assertion helpers ==========
+
+;; Returns true if argument is a function or a symbol that resolves to
+;; a function (not a macro).
+(defn function?
+  "Returns true if argument is a function or a symbol that resolves to
+  a function (not a macro)."
+  {:added "1.1"}
+  [x]
+  (if (symbol? x)
+    (when-let [v (resolve x)]
+      (when-let [value (deref v)]
+        (and (fn? value)
+             (not (:macro (meta v))))))
+    (fn? x)))
+
+;; Returns generic assertion code for any functional predicate.
+(defn assert-predicate
+  "Returns generic assertion code for any functional predicate.  The
+  'expected' argument to 'report' will contains the original form, the
+  'actual' argument will contain the form with all its sub-forms
+  evaluated.  If the predicate returns false, the 'actual' form will
+  be wrapped in (not...)."
+  {:added "1.1"}
+  [msg form]
+  (let [args (rest form)
+        pred (first form)]
+    `(let [values# (list ~@args)
+           result# (apply ~pred values#)]
+       (if result#
+         (do-report {:type :pass, :message ~msg,
+                     :expected '~form, :actual (cons '~pred values#)})
+         (do-report {:type :fail, :message ~msg,
+                     :expected '~form, :actual (list '~'not (cons '~pred values#))}))
+       result#)))
+
+;; Returns generic assertion code for any test.
+(defn assert-any
+  "Returns generic assertion code for any test, including macros, Java
+  method calls, or isolated symbols."
+  {:added "1.1"}
+  [msg form]
+  `(let [value# ~form]
+     (if value#
+       (do-report {:type :pass, :message ~msg,
+                   :expected '~form, :actual value#})
+       (do-report {:type :fail, :message ~msg,
+                   :expected '~form, :actual value#}))
+     value#))
+
+;; ========== assert-expr multimethod ==========
+
+;; Multimethod for assertion expression expansion.
+;; Dispatches on (first form) for seq forms, :always-fail for nil, :default otherwise.
+(defmulti assert-expr
+  (fn [msg form]
+    (cond
+      (nil? form) :always-fail
+      (seq? form) (first form)
+      :else :default)))
+
+(defmethod assert-expr :always-fail [msg form]
+  `(do-report {:type :fail, :message ~msg}))
+
+(defmethod assert-expr :default [msg form]
+  (if (and (sequential? form) (function? (first form)))
+    (assert-predicate msg form)
+    (assert-any msg form)))
+
+(defmethod assert-expr 'instance? [msg form]
+  `(let [klass# ~(nth form 1)
+         object# ~(nth form 2)]
+     (let [result# (instance? klass# object#)]
+       (if result#
+         (do-report {:type :pass, :message ~msg,
+                     :expected '~form, :actual (type object#)})
+         (do-report {:type :fail, :message ~msg,
+                     :expected '~form, :actual (type object#)}))
+       result#)))
+
+(defmethod assert-expr 'thrown? [msg form]
+  (let [klass (second form)
+        body (nthnext form 2)]
+    `(try ~@body
+          (do-report {:type :fail, :message ~msg,
+                      :expected '~form, :actual nil})
+          (catch ~klass e#
+            (do-report {:type :pass, :message ~msg,
+                        :expected '~form, :actual e#})
+            e#))))
+
+;; UPSTREAM-DIFF: uses (str e#) instead of (.getMessage e#) for exception message
+(defmethod assert-expr 'thrown-with-msg? [msg form]
+  (let [klass (nth form 1)
+        re (nth form 2)
+        body (nthnext form 3)]
+    `(try ~@body
+          (do-report {:type :fail, :message ~msg, :expected '~form, :actual nil})
+          (catch ~klass e#
+            (let [m# (str e#)]
+              (if (re-find ~re m#)
+                (do-report {:type :pass, :message ~msg,
+                            :expected '~form, :actual e#})
+                (do-report {:type :fail, :message ~msg,
+                            :expected '~form, :actual e#})))
+            e#))))
+
 ;; ========== Assertion macros ==========
 
-;; Assert macro with pattern dispatch.
-;; (is expr), (is expr msg)
-;; (is (thrown? ExType body...))
-;; (is (thrown-with-msg? ExType re body...))
-;; All forms are wrapped in try/catch Exception (like upstream's try-expr)
-;; so unexpected exceptions report as :error with the original message.
-(defmacro is [& args]
-  (let [expr (first args)
-        msg (second args)]
-    (cond
-      (and (seq? expr) (= (first expr) 'thrown?))
-      ;; thrown? dispatch: try body, catch expected class
-      (let [klass (second expr)
-            body (rest (rest expr))]
-        `(try
-           (try
-             (do ~@body)
-             (clojure.test/report {:type :fail :message ~msg
-                                   :expected '~expr :actual nil})
-             nil
-             (catch ~klass e#
-               (clojure.test/report {:type :pass :message ~msg
-                                     :expected '~expr :actual e#})
-               e#))
-           (catch Exception t#
-             (clojure.test/report {:type :error :message ~msg
-                                   :expected '~expr :actual t#})
-             t#)))
+;; UPSTREAM-DIFF: catches Exception instead of Throwable
+(defmacro try-expr
+  "Used by the 'is' macro to catch unexpected exceptions.
+  You don't call this."
+  {:added "1.1"}
+  [msg form]
+  `(try ~(assert-expr msg form)
+        (catch Exception t#
+          (do-report {:type :error, :message ~msg,
+                      :expected '~form, :actual t#}))))
 
-      (and (seq? expr) (= (first expr) 'thrown-with-msg?))
-      ;; thrown-with-msg? dispatch: catch + message regex match
-      (let [klass (second expr)
-            re (nth expr 2)
-            body (rest (rest (rest expr)))]
-        `(try
-           (try
-             (do ~@body)
-             (clojure.test/report {:type :fail :message ~msg
-                                   :expected '~expr :actual nil})
-             nil
-             (catch ~klass e#
-               (if (re-find ~re (str e#))
-                 (do (clojure.test/report {:type :pass :message ~msg
-                                           :expected '~expr :actual e#})
-                     e#)
-                 (do (clojure.test/report {:type :fail :message ~msg
-                                           :expected '~expr :actual e#})
-                     e#))))
-           (catch Exception t#
-             (clojure.test/report {:type :error :message ~msg
-                                   :expected '~expr :actual t#})
-             t#)))
-
-      :else
-      ;; default: evaluate and check truthiness, wrapped in try-expr
-      `(try
-         (let [result# ~expr]
-           (if result#
-             (do (clojure.test/report {:type :pass :message ~msg
-                                       :expected '~expr :actual result#})
-                 true)
-             (do (clojure.test/report {:type :fail :message ~msg
-                                       :expected '~expr :actual result#})
-                 false)))
-         (catch Exception t#
-           (clojure.test/report {:type :error :message ~msg
-                                 :expected '~expr :actual t#})
-           t#)))))
+(defmacro is
+  "Generic assertion macro.  'form' is any predicate test.
+  'msg' is an optional message to attach to the assertion."
+  {:added "1.1"}
+  ([form] `(is ~form nil))
+  ([form msg] `(try-expr ~msg ~form)))
 
 ;; Group assertions under a descriptive string.
 (defmacro testing [desc & body]
@@ -302,8 +358,7 @@
         groups (partition c args)]
     `(do ~@(map (fn [g] `(is ~(postwalk-replace (zipmap argv g) expr))) groups))))
 
-;; Assert that body throws an exception of the given class.
-;; UPSTREAM-DIFF: standalone macro (upstream uses assert-expr multimethod in is)
+;; Assert that body throws an exception of the given class (standalone utility).
 (defmacro thrown? [klass & body]
   `(try
      (do ~@body)
@@ -414,16 +469,3 @@
       (println (str test-symbol " is not a test.")))
     (println (str "Unable to resolve " test-symbol " to a test function."))))
 
-;; Returns true if argument is a function or a symbol that resolves to
-;; a function (not a macro).
-(defn function?
-  "Returns true if argument is a function or a symbol that resolves to
-  a function (not a macro)."
-  {:added "1.1"}
-  [x]
-  (if (symbol? x)
-    (when-let [v (resolve x)]
-      (when-let [value (deref v)]
-        (and (fn? value)
-             (not (:macro (meta v))))))
-    (fn? x)))

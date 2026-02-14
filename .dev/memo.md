@@ -22,18 +22,19 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.5 next.
+Phase 70.6: Reducible CLJW marker resolution. Sub-task 70.6.6 next.
 
-70.6.4 done: Converted test.clj report from dynamic fn to defmulti/defmethod.
-Also: analyzer now allows empty-body defmethod, MultiFn serialization added to
-bootstrap cache, defmulti vars marked dynamic for binding support.
-Upstream test.clj: 10 tests, 41 assertions pass.
+70.6.5 done: Converted test.clj `is` macro to upstream assert-expr multimethod
+pattern. Added assert-predicate, assert-any helper fns, assert-expr multimethod
+with methods for :default, :always-fail, 'instance?, 'thrown?, 'thrown-with-msg?.
+Added try-expr macro. Simplified `is` to delegate through try-expr → assert-expr.
+Moved function? before assert-expr (ordering dependency).
+Upstream test.clj: 10 tests, 41 assertions pass. No regressions.
 
 ## Task Queue
 
 ```
 Phase 70.6: Reducible CLJW marker resolution
-  70.6.5: test.clj is + assert-expr multimethod
   70.6.6: marker reclassification + cljw-diff.md update
 Phase 71: Library Compatibility Testing (5 libraries)
   71.1: medley
@@ -53,8 +54,8 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.6.4: test.clj report multimethod conversion.
-Converted report to defmulti, added MultiFn serialization, empty-body defmethod support.
+Phase 70.6.5: test.clj is + assert-expr multimethod.
+Converted `is` macro from inline cond dispatch to upstream assert-expr multimethod pattern.
 
 ## Known Issues
 
