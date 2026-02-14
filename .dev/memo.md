@@ -22,16 +22,27 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 71: Library Compatibility Testing — sub-task 71.1 (medley).
-Full plan: `.dev/next-phases-plan.md`
+Phase 70.5: spec.gen implementation + CLJW workaround audit — sub-task 70.5.2.
 
-70.4 done: exercise/exercise-fn stubs, syntax-quote resolution fixes for
-excluded symbols (and/or/cat/keys/merge/+/*/?), macro arg limit 256→512,
-upstream spec.clj test ported (10 tests, 110 assertions, both backends).
+70.5.1 done: Full spec.gen.alpha implementation (~380 LOC). Generator = {:cljw/gen true :gen (fn [size] value)}.
+Layers: foundation (make-gen/generate/return), combinators (fmap/bind/one-of/such-that/tuple/
+frequency/hash-map/vector/vector-distinct), delay (macro + delay-gen helper), collection gens
+(list/map/set/cat/shuffle), primitives (int/string/keyword/symbol/boolean/char/double/ratio),
+gen-for-pred with 45-predicate builtin mapping. s/exercise and s/exercise-fn fully operational.
+
+CW-specific workarounds: (1) clojure.core/array-map for make-gen (CW compiles map literals as
+hash-map calls), (2) manual form construction in delay macro (CW syntax-quote fails across ns),
+(3) clojure.core/hash-map for gen-builtins (>8 entry maps), (4) mapv instead of clojure.core/map
+(CW resolves excluded qualified names incorrectly).
 
 ## Task Queue
 
 ```
+Phase 70.5: spec.gen + CLJW workaround audit
+  70.5.2: upstream spec test completion (map-spec-generators, coll-form gen/return)
+  70.5.3: spec UPSTREAM-DIFF reduction
+  70.5.4: CLJW workaround full audit
+
 Phase 71: Library Compatibility Testing (5 libraries)
   71.1: medley
   71.2: hiccup
@@ -50,10 +61,11 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.4: gen stubs + upstream tests.
-exercise/exercise-fn added. Fixed syntax-quote resolution bug for excluded symbols
-in spec.alpha macros (CW's read-all-then-eval-all model). Ported upstream spec.clj
-(312 lines → 293 lines, 19 CLJW markers). Macro arg limit increased to 512.
+Phase 70.5.1: spec.gen.alpha basic generator implementation.
+Full generator implementation replacing stubs. ~380 LOC. Exercise/exercise-fn now produce
+real generated values for all spec types (int, string, keyword, s/and, s/or, s/keys,
+s/coll-of, s/nilable, s/tuple). Discovered 4 CW-specific issues with ns :exclude + map
+literal compilation.
 
 ## Known Issues
 
