@@ -917,8 +917,11 @@ pub const TreeWalk = struct {
         const env = self.env orelse return error.UndefinedVar;
         const ns = env.current_ns orelse return error.UndefinedVar;
 
-        // Resolve protocol (supports namespace-qualified names like clojure.core.protocols/CollReduce)
+        // Resolve protocol (supports namespace-qualified names and aliases)
         const proto_var = if (et_n.protocol_ns) |pns| blk: {
+            // Try alias resolution first (e.g. p/InlineValue where p is alias for honey.sql.protocols)
+            if (ns.resolveQualified(pns, et_n.protocol_name)) |v| break :blk v;
+            // Fall back to full namespace name lookup
             const proto_ns = env.findNamespace(pns) orelse {
                 err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns});
                 return error.UndefinedVar;
@@ -976,6 +979,9 @@ pub const TreeWalk = struct {
         // Register each protocol's methods under the unique type key
         for (r_n.protocols) |proto_block| {
             const proto_var = if (proto_block.protocol_ns) |pns| blk: {
+                // Try alias resolution first
+                if (ns.resolveQualified(pns, proto_block.protocol_name)) |v| break :blk v;
+                // Fall back to full namespace name lookup
                 const proto_ns = env.findNamespace(pns) orelse {
                     err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns});
                     return error.UndefinedVar;

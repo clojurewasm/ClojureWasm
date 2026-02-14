@@ -856,6 +856,22 @@ pub const Analyzer = struct {
         return new_body.toOwnedSlice(alloc) catch return error.OutOfMemory;
     }
 
+    /// Extract parameter vector from a form, handling (with-meta [params] meta) wrapper.
+    /// Returns the vector items if the form is a vector or a with-meta-wrapped vector, null otherwise.
+    fn extractParamVector(f: Form) ?[]const Form {
+        if (f.data == .vector) return f.data.vector;
+        if (f.data == .list) {
+            const list = f.data.list;
+            if (list.len == 3 and list[0].data == .symbol) {
+                const sym = list[0].data.symbol;
+                if (sym.ns == null and std.mem.eql(u8, sym.name, "with-meta") and list[1].data == .vector) {
+                    return list[1].data.vector;
+                }
+            }
+        }
+        return null;
+    }
+
     fn analyzeFn(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (fn name? docstring? [params] body...) or (fn name? docstring? ([params] body...) ...)
         if (items.len < 2) {
@@ -891,9 +907,9 @@ pub const Analyzer = struct {
             self.locals.append(self.allocator, .{ .name = fn_name, .idx = fn_local_idx }) catch return error.OutOfMemory;
         }
 
-        // Single arity: [params] body...
-        if (items[idx].data == .vector) {
-            const arity = try self.analyzeFnArity(items[idx].data.vector, items[idx + 1 ..], form);
+        // Single arity: [params] body... (including ^Tag [params] body...)
+        if (extractParamVector(items[idx])) |params| {
+            const arity = try self.analyzeFnArity(params, items[idx + 1 ..], form);
             const arities = self.allocator.alloc(node_mod.FnArity, 1) catch return error.OutOfMemory;
             arities[0] = arity;
 
@@ -920,11 +936,12 @@ pub const Analyzer = struct {
             }
 
             const arity_items = items[idx].data.list;
-            if (arity_items.len == 0 or arity_items[0].data != .vector) {
+            const params = if (arity_items.len > 0) extractParamVector(arity_items[0]) else null;
+            if (params == null) {
                 return self.analysisError(.arity_error, "fn arity must start with parameter vector", form);
             }
 
-            const arity = try self.analyzeFnArity(arity_items[0].data.vector, arity_items[1..], form);
+            const arity = try self.analyzeFnArity(params.?, arity_items[1..], form);
             arities_list.append(self.allocator, arity) catch return error.OutOfMemory;
 
             idx += 1;
@@ -1075,48 +1092,50 @@ pub const Analyzer = struct {
         var is_const = false;
         var doc: ?[]const u8 = null;
 
-        if (items[1].data == .symbol) {
-            sym_name = items[1].data.symbol.name;
-        } else if (items[1].data == .list) {
-            // (with-meta sym {:dynamic true, ...}) pattern from reader ^:meta syntax
-            const wm_items = items[1].data.list;
-            if (wm_items.len == 3 and wm_items[0].data == .symbol and
-                std.mem.eql(u8, wm_items[0].data.symbol.name, "with-meta"))
-            {
-                if (wm_items[1].data != .symbol) {
-                    return self.analysisError(.value_error, "def name must be a symbol", items[1]);
-                }
-                sym_name = wm_items[1].data.symbol.name;
-                // Parse metadata map for :dynamic, :private, :const, :doc
-                if (wm_items[2].data == .map) {
-                    const meta_entries = wm_items[2].data.map;
-                    var mi: usize = 0;
-                    while (mi + 1 < meta_entries.len) : (mi += 2) {
-                        if (meta_entries[mi].data == .keyword) {
-                            const kw_name = meta_entries[mi].data.keyword.name;
-                            if (meta_entries[mi + 1].data == .boolean and
-                                meta_entries[mi + 1].data.boolean)
-                            {
-                                if (std.mem.eql(u8, kw_name, "dynamic")) {
-                                    is_dynamic = true;
-                                } else if (std.mem.eql(u8, kw_name, "private")) {
-                                    is_private = true;
-                                } else if (std.mem.eql(u8, kw_name, "const")) {
-                                    is_const = true;
+        // Extract symbol name and metadata from potentially nested (with-meta ...) forms
+        // Supports: sym, (with-meta sym meta), (with-meta (with-meta sym meta1) meta2), etc.
+        {
+            var current = items[1];
+            // Unwrap nested (with-meta ...) forms, collecting metadata at each level
+            while (current.data == .list) {
+                const wm_items = current.data.list;
+                if (wm_items.len == 3 and wm_items[0].data == .symbol and
+                    std.mem.eql(u8, wm_items[0].data.symbol.name, "with-meta"))
+                {
+                    // Parse metadata map for :dynamic, :private, :const, :doc
+                    if (wm_items[2].data == .map) {
+                        const meta_entries = wm_items[2].data.map;
+                        var mi: usize = 0;
+                        while (mi + 1 < meta_entries.len) : (mi += 2) {
+                            if (meta_entries[mi].data == .keyword) {
+                                const kw_name = meta_entries[mi].data.keyword.name;
+                                if (meta_entries[mi + 1].data == .boolean and
+                                    meta_entries[mi + 1].data.boolean)
+                                {
+                                    if (std.mem.eql(u8, kw_name, "dynamic")) {
+                                        is_dynamic = true;
+                                    } else if (std.mem.eql(u8, kw_name, "private")) {
+                                        is_private = true;
+                                    } else if (std.mem.eql(u8, kw_name, "const")) {
+                                        is_const = true;
+                                    }
+                                } else if (std.mem.eql(u8, kw_name, "doc") and
+                                    meta_entries[mi + 1].data == .string)
+                                {
+                                    doc = meta_entries[mi + 1].data.string;
                                 }
-                            } else if (std.mem.eql(u8, kw_name, "doc") and
-                                meta_entries[mi + 1].data == .string)
-                            {
-                                doc = meta_entries[mi + 1].data.string;
                             }
                         }
                     }
+                    current = wm_items[1];
+                } else {
+                    return self.analysisError(.value_error, "def name must be a symbol", items[1]);
                 }
-            } else {
+            }
+            if (current.data != .symbol) {
                 return self.analysisError(.value_error, "def name must be a symbol", items[1]);
             }
-        } else {
-            return self.analysisError(.value_error, "def name must be a symbol", items[1]);
+            sym_name = current.data.symbol.name;
         }
 
         // (def name "doc" value) — inline docstring form

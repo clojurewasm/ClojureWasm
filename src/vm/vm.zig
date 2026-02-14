@@ -815,11 +815,14 @@ pub const VM = struct {
                 const proto_name = proto_name_val.asString();
                 const method_name = method_name_val.asString();
 
-                // Resolve protocol (supports namespace-qualified names)
+                // Resolve protocol (supports namespace-qualified names and aliases)
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
                 const proto_var = if (meta.len >= 4 and meta[3].tag() == .string) blk: {
                     const pns_name = meta[3].asString();
+                    // Try alias resolution first (e.g. p/InlineValue where p is alias)
+                    if (ns.resolveQualified(pns_name, proto_name)) |v| break :blk v;
+                    // Fall back to full namespace name lookup
                     const proto_ns = env.findNamespace(pns_name) orelse {
                         err_mod.setInfoFmt(.eval, .name_error, .{}, "Unable to resolve namespace: {s}", .{pns_name});
                         return error.UndefinedVar;
