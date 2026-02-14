@@ -92,6 +92,9 @@ const data_json_clj_source = @embedFile("../clj/clojure/data/json.clj");
 /// Embedded clojure/data/csv.clj source (compiled into binary).
 const data_csv_clj_source = @embedFile("../clj/clojure/data/csv.clj");
 
+/// Embedded clojure/tools/cli.clj source (compiled into binary).
+const tools_cli_clj_source = @embedFile("../clj/clojure/tools/cli.clj");
+
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
 /// Two-phase bootstrap problem: core.clj is loaded via TreeWalk for fast startup
@@ -746,6 +749,36 @@ pub fn loadDataJson(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/tools/cli.clj (CLI argument parser).
+pub fn loadToolsCli(allocator: Allocator, env: *Env) BootstrapError!void {
+    const cli_ns = env.findOrCreateNamespace("clojure.tools.cli") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        cli_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Pre-create alias for clojure.string (needed at read time for ns form)
+    if (env.findNamespace("clojure.string")) |str_ns| {
+        cli_ns.setAlias("s", str_ns) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = cli_ns;
+
+    _ = try evalString(allocator, env, tools_cli_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load an embedded library lazily (called from ns_ops.requireLib on first require).
 /// Returns true if the namespace was loaded from embedded source.
 pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
@@ -767,6 +800,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.data.csv")) {
         try loadDataCsv(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.tools.cli")) {
+        try loadToolsCli(allocator, env);
         return true;
     }
     return false;

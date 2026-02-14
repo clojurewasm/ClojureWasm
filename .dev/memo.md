@@ -31,26 +31,25 @@ library. See `.dev/library-port-targets.md` for targets and shim decision guide.
 
 ## Current Task
 
-Phase 75.6: Test clojure.tools.cli (pure Clojure CLI parsing).
+Phase 75.7: Test instaparse (parser combinator, ~3000 LOC, pure Clojure).
 Clone upstream, test on CW, fork if needed.
 
 ## Task Queue
 
 ```
-75.6 Test clojure.tools.cli (pure Clojure CLI parsing)
 75.7 Test instaparse (parser combinator, ~3000 LOC, pure Clojure)
 ```
 
 ## Previous Task
 
-Phase 75.5: clojure.data.csv — CW-compatible fork (complete).
-- Created `src/clj/clojure/data/csv.clj` — CW fork of upstream data.csv
-- Replaced PushbackReader/StringBuilder/Writer with string-based equivalents
-- read-csv: String → lazy-seq of vectors. write-csv: data → String
-- Fixed write path: keep sep/quote as chars (CW's `(char int)` returns string, not char)
-- 36 tests, 36 assertions, 100% pass rate
+Phase 75.6: clojure.tools.cli — CW-compatible fork (complete).
+- Created `src/clj/clojure/tools/cli.clj` — CW fork of upstream tools.cli
+- .cljc → .clj: resolved reader conditionals for :clj platform
+- Fixed 2 CW runtime bugs: re-seq nil return, s/join lazy-seq→cons
+- Workarounds: regex backtracking (character class), apply map vector (manual transpose)
+- 58 tests, 58 assertions, 100% pass rate
 - Both VM and TreeWalk verified
-- Non-functional: binary 3.87MB, startup 4.2ms, RSS 7.75MB — all pass
+- Non-functional: binary 3.90MB, startup 4.4ms, RSS 7.77MB — all pass
 
 ## Known Issues
 

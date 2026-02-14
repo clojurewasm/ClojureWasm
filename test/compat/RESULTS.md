@@ -10,6 +10,7 @@
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
 | clojure.data.json | JSON         |    100.0% | CW fork, 51 tests, 80 assertions |
 | clojure.data.csv  | CSV          |    100.0% | CW fork, 36 tests, 36 assertions |
+| clojure.tools.cli | CLI parsing  |    100.0% | CW fork, 58 tests, 58 assertions |
 
 ### Key Findings
 
@@ -29,6 +30,8 @@
 | GC crash during macro expansion (6 root causes) | D100: string duplication, cache tracing, GC suppression | 72.1 |
 | char `.toString` method not implemented | `javaMethodFn` char handler | 72.1 |
 | fn name with metadata `(with-meta name meta)` | `analyzeFn` name pattern matching | 72.1 |
+| `re-seq` returns `()` instead of `nil` for no matches | Return `nil` in `reSeqFn` when results empty | 75.6 |
+| `s/join` fails on lazy-seq realizing to cons | Handle `.cons` in `joinFn` lazy_seq branch | 75.6 |
 
 ### Recommended Priority
 
@@ -291,3 +294,65 @@ and volatile!-based vector string builder.
 - Write path must keep sep/quote as chars (not convert to int) for str/escape map lookup
 - Upstream write-csv takes a Writer argument; CW version returns a String directly
 - All 4 upstream tests covered + additional write tests
+
+## clojure.tools.cli (CW fork)
+
+Source: CW-compatible fork of https://github.com/clojure/tools.cli
+Type: CLI argument parsing library
+Location: `src/clj/clojure/tools/cli.clj` (embedded in binary, lazy-loaded)
+
+### Results
+
+| Metric     | Value |
+|------------|------:|
+| Tests      |    58 |
+| Assertions |    58 |
+| Pass       |    58 |
+| Fail       |     0 |
+| Error      |     0 |
+| Pass rate  |  100% |
+
+### Approach
+
+Upstream tools.cli is a .cljc file with reader conditionals. CW fork resolves
+`:clj` branches, replaces `Throwable` with `Exception`, and works around CW
+regex/apply limitations.
+
+| .cljc Construct              | CW Replacement                                |
+|------------------------------|-----------------------------------------------|
+| Reader conditionals `:clj`   | Resolved to `:clj` branch inline              |
+| `(catch Throwable _)`        | `(catch Exception e nil)` (CW needs body)     |
+| `#"^--\S+="` regex           | `#"^--[^=\s]+"` (no backtracking workaround)  |
+| `(apply map vector colls)`   | Manual transpose via `mapv`+`nth`+`range`     |
+
+### API Coverage
+
+| Function             | Status | Notes                            |
+|----------------------|--------|----------------------------------|
+| parse-opts           | Pass   | Full feature support             |
+| summarize            | Pass   | Full feature support             |
+| get-default-options  | Pass   | Full feature support             |
+| make-summary-part    | Pass   | Public since 1.0                 |
+
+### Bugs Fixed During Implementation
+
+| Bug | Fix | Component |
+|-----|-----|-----------|
+| `re-seq` returns `()` not `nil` for no matches | Check empty results → return nil | regex_builtins.zig |
+| `s/join` fails on lazy-seq→cons chain | Handle `.cons` case in joinFn lazy_seq branch | strings.zig |
+
+### CW Adaptations in Tests
+
+| Test | Adaptation | Reason |
+|------|------------|--------|
+| Long/parseLong validation | Check validation error instead of parse error | CW returns nil on invalid parse |
+| summarize regex check | Use separate `re-find` checks | CW regex lacks `.*`/`.+` backtracking |
+
+### Notes
+
+- Upstream is ~779 lines .cljc; CW fork is ~525 lines .clj
+- All internal functions work: tokenize-args, compile-option-specs, parse-option-tokens
+- Short/long opts, required args, defaults, multi, update-fn, validate all work
+- Error handling (missing required, unknown opts, validation failures) all correct
+- Var shadowing bug found: defining `tokenize-args` in user ns while referencing
+  `#'cli/tokenize-args` causes crash — worked around by renaming test wrappers

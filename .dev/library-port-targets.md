@@ -59,7 +59,7 @@ You should clone repo to ~/Documents/OSS if not exists.
 
 | #  | Library           | Repo              | LOC   | Java Deps      | Status | Notes                          |
 |----|-------------------|-------------------|-------|----------------|--------|--------------------------------|
-| 16 | clojure.tools.cli | clojure/tools.cli | ~400  | None           | Todo   | CLI arg parsing, pure Clojure  |
+| 16 | clojure.tools.cli | clojure/tools.cli | ~400  | None           | Pass   | CW fork, 58 tests 58 asserts  |
 | 17 | clojure.walk      | (core)            | ~100  | None           | Pass   | Already in CW core             |
 | 18 | clojure.set       | (core)            | ~200  | None           | Pass   | Already in CW core             |
 | 19 | clojure.edn       | (core)            | ~100  | PushbackReader | Todo   | EDN reading, may need I/O shim |

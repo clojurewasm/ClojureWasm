@@ -194,6 +194,11 @@ pub fn reSeqFn(allocator: Allocator, args: []const Value) anyerror!Value {
         pos = if (result.end > result.start) result.end else result.end + 1;
     }
 
+    // Return nil when no matches (upstream behavior), not empty list
+    if (results.items.len == 0) {
+        return Value.nil_val;
+    }
+
     const l = try allocator.create(PersistentList);
     l.* = .{ .items = try results.toOwnedSlice(allocator), .meta = null };
     return Value.initList(l);

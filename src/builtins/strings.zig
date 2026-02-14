@@ -499,6 +499,25 @@ pub fn joinFn(allocator: Allocator, args: []const Value) anyerror!Value {
             break :blk switch (realized.tag()) {
                 .list => realized.asList().items,
                 .nil => return Value.initString(allocator, ""),
+                .cons => {
+                    var elems: std.ArrayList(Value) = .empty;
+                    var cur = realized;
+                    while (true) {
+                        if (cur.tag() == .cons) {
+                            try elems.append(allocator, cur.asCons().first);
+                            cur = cur.asCons().rest;
+                        } else if (cur.tag() == .lazy_seq) {
+                            cur = try cur.asLazySeq().realize(allocator);
+                        } else if (cur.tag() == .list) {
+                            for (cur.asList().items) |item| try elems.append(allocator, item);
+                            break;
+                        } else if (cur.tag() == .nil) {
+                            break;
+                        } else break;
+                    }
+                    break :blk elems.items;
+                },
+                .vector => realized.asVector().items,
                 else => return Value.initString(allocator, ""),
             };
         },
