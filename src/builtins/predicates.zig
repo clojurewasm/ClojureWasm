@@ -23,6 +23,14 @@ const collections = @import("../runtime/collections.zig");
 const BigInt = collections.BigInt;
 const misc_mod = @import("misc.zig");
 const Ratio = collections.Ratio;
+const interop_dispatch = @import("../interop/dispatch.zig");
+
+/// Check if a value is a class instance with a given :__reify_type.
+fn isClassInstance(v: Value, class_name: []const u8) bool {
+    if (v.tag() != .map) return false;
+    const reify_type = interop_dispatch.getReifyType(v) orelse return false;
+    return std.mem.eql(u8, reify_type, class_name);
+}
 
 /// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
 /// Per-thread for concurrency (Phase 48).
@@ -241,7 +249,19 @@ pub fn typeFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .keyword => "keyword",
         .list => "list",
         .vector => "vector",
-        .map => "map",
+        .map => blk: {
+            // Check for class instance (map with :__reify_type)
+            const entries = args[0].asMap().entries;
+            var idx: usize = 0;
+            while (idx + 1 < entries.len) : (idx += 2) {
+                if (@import("collections.zig").isReifyTypeKey(entries[idx])) {
+                    if (entries[idx + 1].tag() == .string) {
+                        break :blk entries[idx + 1].asString();
+                    }
+                }
+            }
+            break :blk "map";
+        },
         .hash_map => "map",
         .set => "set",
         .fn_val, .builtin_fn => "function",
@@ -929,8 +949,7 @@ fn decimalPred(_: Allocator, args: []const Value) anyerror!Value {
 /// (uri? x) — Returns true if x is a java.net.URI.
 fn uriPred(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to uri?", .{args.len});
-    // No URI type in ClojureWasm
-    return Value.false_val;
+    return Value.initBoolean(isClassInstance(args[0], "java.net.URI"));
 }
 
 /// (uuid? x) — Returns true if x is a java.util.UUID.

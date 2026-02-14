@@ -18,6 +18,7 @@ const Value = value_mod.Value;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../runtime/error.zig");
+const uri_class = @import("classes/uri.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
@@ -36,7 +37,7 @@ pub fn resolveClassName(name: []const u8) ?[]const u8 {
 
 /// __interop-new — Java class constructor dispatch.
 /// Called as (__interop-new "fqcn" args...).
-fn interopNewFn(_: Allocator, args: []const Value) anyerror!Value {
+fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Constructor requires at least a class name", .{});
     if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "Constructor: first arg must be class name string", .{});
     const class_name = args[0].asString();
@@ -45,18 +46,20 @@ fn interopNewFn(_: Allocator, args: []const Value) anyerror!Value {
     // Exception constructor: (Exception. "message")
     if (std.mem.eql(u8, class_name, "Exception")) {
         if (ctor_args.len == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Exception requires a message", .{});
-        // Just return the message string — throw wraps it in error
         return ctor_args[0];
     }
 
     // ExceptionInfo constructor: (ExceptionInfo. "message" data)
     if (std.mem.eql(u8, class_name, "ExceptionInfo")) {
         if (ctor_args.len < 1) return err.setErrorFmt(.eval, .value_error, .{}, "ExceptionInfo requires at least a message", .{});
-        // Delegate to ex-info builtin behavior
         return err.setErrorFmt(.eval, .value_error, .{}, "Use (ex-info msg map) instead of (ExceptionInfo. msg map)", .{});
     }
 
-    // Class dispatch table — populated in 74.3+
+    // Class dispatch table
+    if (std.mem.eql(u8, class_name, uri_class.class_name)) {
+        return uri_class.construct(allocator, ctor_args);
+    }
+
     return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});
 }
 
@@ -79,12 +82,24 @@ pub fn makeClassInstance(allocator: Allocator, class_name: []const u8, extra_ent
     return Value.initMap(map);
 }
 
+/// URI/create — same as URI constructor (no checked exception).
+fn uriCreateFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    return uri_class.construct(allocator, args);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "__interop-new",
         .func = &interopNewFn,
         .doc = "Java class constructor dispatch. (ClassName. args...) is rewritten to (__interop-new \"fqcn\" args...).",
         .arglists = "([class-name & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__uri-create",
+        .func = &uriCreateFn,
+        .doc = "URI/create — creates a URI from a string.",
+        .arglists = "([s])",
         .added = "1.0",
     },
 };

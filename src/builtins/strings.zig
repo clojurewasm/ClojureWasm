@@ -97,6 +97,17 @@ fn strSingle(allocator: Allocator, val: Value) anyerror!Value {
                 return Value.initString(allocator, owned);
             }
         },
+        .map => {
+            // Class instances: delegate to .toString() via dispatch
+            if (interop_dispatch.getReifyType(v)) |_| {
+                return interop_dispatch.dispatch(allocator, "toString", v, &.{});
+            }
+            var aw: Writer.Allocating = .init(allocator);
+            defer aw.deinit();
+            try v.formatStr(&aw.writer);
+            const owned = try aw.toOwnedSlice();
+            return Value.initString(allocator, owned);
+        },
         else => {
             var aw: Writer.Allocating = .init(allocator);
             defer aw.deinit();

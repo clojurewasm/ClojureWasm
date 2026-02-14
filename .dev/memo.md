@@ -22,28 +22,30 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 74.3: java.net.URI
-- Implement URI class in `src/interop/classes/uri.zig`
-- Constructor: parse URI string, return map with :__reify_type
-- Instance methods: .getScheme, .getHost, .getPort, .getPath, .getQuery, .getFragment, .toString
-- Static: URI/create
+Phase 74.4: java.io.File
+- Implement File class in `src/interop/classes/file.zig`
+- Constructor: (File. path), (File. parent child)
+- Instance methods: .getName, .getPath, .getParent, .getAbsolutePath, .exists, .isDirectory, .isFile, etc.
+- Static fields: File/separator, File/pathSeparator
 - Register in dispatch.zig + constructors.zig
 
 ## Task Queue
 
 ```
-74.3: java.net.URI
 74.4: java.io.File
 74.5: java.util.UUID + D101 + cleanup
 ```
 
 ## Previous Task
 
-Phase 74.2: Constructor + new + ClassName. + :import (complete).
-- Created `src/interop/constructors.zig` — __interop-new builtin
-- Analyzer: ClassName. detection, (new ClassName) syntax
-- :import stores FQCN: `(:import (java.net URI))` → `(def URI 'java.net.URI)`
-- Resolver: comptime known_classes table + Var-based lookup
+Phase 74.3: java.net.URI (complete).
+- Created `src/interop/classes/uri.zig` — full URI parsing via std.Uri
+- Constructor: (URI. str) → PersistentArrayMap with :__reify_type
+- Instance methods: .getScheme, .getHost, .getPort, .getPath, .getQuery, .getFragment, .toString, .getAuthority
+- Static: URI/create via __uri-create builtin
+- Updated type to return class name for instances
+- Updated uri? predicate to check :__reify_type
+- Updated str to delegate to .toString for class instances
 - Both backends verified
 - All tests pass (unit + e2e)
 - 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)

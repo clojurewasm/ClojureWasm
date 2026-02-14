@@ -18,6 +18,7 @@ const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../runtime/error.zig");
 const collections = @import("../builtins/collections.zig");
+const uri_class = @import("classes/uri.zig");
 
 /// Java instance method dispatch.
 /// Called from __java-method builtin. Dispatches based on object tag,
@@ -55,17 +56,15 @@ pub fn dispatch(allocator: Allocator, method: []const u8, obj: Value, rest: []co
 /// Dispatch instance method on a class instance identified by :__reify_type.
 /// Extensible: add new class handlers to the comptime table.
 fn dispatchClass(allocator: Allocator, class_name: []const u8, method: []const u8, obj: Value, rest: []const Value) anyerror!Value {
-    _ = allocator;
-    _ = method;
-    _ = obj;
-    _ = rest;
-    // Class dispatch table — populated in 74.3+
-    return err.setErrorFmt(.eval, .value_error, .{}, "No matching method for class {s}", .{class_name});
+    if (std.mem.eql(u8, class_name, uri_class.class_name)) {
+        return uri_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for class {s}", .{ method, class_name });
 }
 
 /// Extract :__reify_type value from a map by scanning entries directly.
 /// Zero-allocation: iterates map entries looking for :__reify_type keyword key.
-fn getReifyType(obj: Value) ?[]const u8 {
+pub fn getReifyType(obj: Value) ?[]const u8 {
     if (obj.tag() == .map) {
         const entries = obj.asMap().entries;
         var i: usize = 0;

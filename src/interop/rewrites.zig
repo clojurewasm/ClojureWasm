@@ -124,6 +124,8 @@ pub fn rewriteInteropCall(ns: []const u8, name: []const u8) ?[]const u8 {
         return boolean_rewrites.get(name);
     } else if (std.mem.eql(u8, ns, "Pattern") or std.mem.eql(u8, ns, "java.util.regex.Pattern")) {
         return pattern_rewrites.get(name);
+    } else if (std.mem.eql(u8, ns, "URI") or std.mem.eql(u8, ns, "java.net.URI")) {
+        return uri_rewrites.get(name);
     }
     return null;
 }
@@ -190,6 +192,10 @@ const boolean_rewrites = std.StaticStringMap([]const u8).initComptime(.{
 const pattern_rewrites = std.StaticStringMap([]const u8).initComptime(.{
     .{ "compile", "re-pattern" },
     .{ "quote", "__regex-quote" },
+});
+
+const uri_rewrites = std.StaticStringMap([]const u8).initComptime(.{
+    .{ "create", "__uri-create" },
 });
 
 // Tests
