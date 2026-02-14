@@ -22,35 +22,50 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 72.1 complete. Sub-task 72.2 next.
+Phase 72 complete. See GC Assessment below.
 
-GC crash root cause analysis and 6 fixes applied:
-1. valueToForm string duplication (macro.zig) — Forms now own all string data
-2. ProtocolFn cache GC tracing (gc.zig) — cached_type_key + cached_method traced
-3. MultiFn cache GC tracing (gc.zig) — cached_dispatch_val + cached_method traced
-4. refer() string safety (ns_ops.zig) — use GPA-owned Var.sym.name, not GC Symbol.name
-5. Protocol dispatch zero-alloc lookup (collections.zig + 4 files) — getByStringKey
-6. GC suppression during macro expansion (gc.zig + analyzer.zig) — prevents
-   sweep of lazy-seq closure-captured Values during syntax-quote expansion
+### GC Assessment Report (Phase 72.3)
 
-Results: honeysql segfault → real error ("No matching method toString found for char").
-CSK nested loop crash (>60 iters) → passes 200 iterations cleanly.
+**Root causes found and fixed (D100):**
+1. valueToForm string duplication — Forms referenced GC-allocated string data
+2. ProtocolFn/MultiFn inline cache not traced — cached dispatch results swept
+3. refer() string lifetime — GC-allocated Symbol.name stored in non-GC HashMap
+4. Protocol dispatch GC pressure — 3 HeapString allocs per cache miss
+5. Macro expansion GC sweep — lazy-seq closure-captured Values swept during callFnVal
+6. Additional: char toString, fn name with-meta pattern
+
+**Performance impact:**
+- protocol_dispatch: 38ms → 5ms (7.6x) via getByStringKey zero-alloc lookup
+- honeysql loading: crash → success (all 3 namespaces, both backends)
+- CSK nested loops: crash at 60 → passes 200+ iterations
+
+**GC architecture assessment:**
+- Mark-and-sweep GC is functionally correct after fixes
+- suppress_count during macro expansion is a safe workaround but masks
+  a deeper tracing gap (lazy-seq thunk closure captured Values)
+- Free pool recycling can mask use-after-free as data corruption
+- No generational GC needed for current workloads
+- Next priority: investigate the lazy-seq closure tracing gap (why
+  Values captured by thunk closures aren't always reachable during GC)
+
+**Recommendation:** Generational GC (Phase 73) is NOT needed now.
+Current GC with fixes handles honeysql (1500 lines), protocol dispatch
+at scale, and all upstream tests. Investigate closure tracing gap as a
+correctness fix rather than architecture change.
 
 ## Task Queue
 
 ```
-Phase 72: Optimization + GC Assessment
-  72.2: Targeted optimizations
-  72.3: GC assessment report
-
-Phase 73: Generational GC (conditional on Phase 72 findings)
-  73.1-73.4: Design → write barriers → nursery → integration
+Phase 73: deferred (GC is adequate, see assessment)
+Next: User direction needed — see roadmap.md for candidates
 ```
 
 ## Previous Task
 
-Phase 72.1: GC crash root cause investigation and fixes (complete).
-6 correctness fixes across 9 files. All segfaults resolved.
+Phase 72: Optimization + GC Assessment (complete).
+- 72.1: 6 GC crash root causes fixed (D100)
+- 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)
+- 72.3: GC assessment report (see above)
 
 ## Known Issues
 

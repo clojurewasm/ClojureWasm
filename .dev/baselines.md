@@ -49,7 +49,7 @@ Never accept "this feature needs to be slower" — find a way to keep it fast.
 | lazy_chain             | 6         | 7            |
 | transduce              | 7         | 8            |
 | keyword_lookup         | 12        | 14           |
-| protocol_dispatch      | 38        | 46           |
+| protocol_dispatch      | 5         | 6            |
 | nested_update          | 10        | 12           |
 | string_ops             | 24        | 29           |
 | multimethod_dispatch   | 5         | 6            |
