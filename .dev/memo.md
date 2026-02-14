@@ -22,18 +22,15 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 70.6 COMPLETE. All 6 sub-tasks done (70.6.1-70.6.6).
+Phase 71: Library Compatibility Testing. Sub-task 71.2 (hiccup) next.
 
-Summary: 8 S markers resolved (syntax-quote fix), 2 R markers resolved (report
-defmulti, assert-expr multimethod), 5 R markers reclassified to P, 2 new P added.
-R markers reduced from 27 to 13. Full audit updated in cljw-diff.md.
+71.1 done: medley 80.4% pass (222/276 assertions). All failures are Java interop.
+Also implemented #?@ (splicing reader conditional) which was needed for medley.
 
 ## Task Queue
 
 ```
-Phase 70.6: Reducible CLJW marker resolution
 Phase 71: Library Compatibility Testing (5 libraries)
-  71.1: medley
   71.2: hiccup
   71.3: clojure.data.json
   71.4: honeysql
@@ -50,8 +47,8 @@ Phase 73: Generational GC (conditional on Phase 72 findings)
 
 ## Previous Task
 
-Phase 70.6: Reducible CLJW marker resolution (6 sub-tasks).
-Syntax-quote fix, stale marker cleanup, report/assert-expr multimethod, audit update.
+Phase 71.1: medley compatibility test.
+80.4% pass rate (222/276). Implemented #?@ splicing reader conditional.
 
 ## Known Issues
 

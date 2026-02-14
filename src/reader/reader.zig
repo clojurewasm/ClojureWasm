@@ -512,6 +512,14 @@ pub const Reader = struct {
                 return self.makeError(.syntax_error, "EOF while reading collection", tok);
             }
             if (tok.kind == closing) break;
+            if (tok.kind == .reader_cond_splicing) {
+                // #?@(:clj [a b c]) — splice selected branch into parent collection
+                const splice_forms = try self.readReaderCondSplicing(tok);
+                for (splice_forms) |sf| {
+                    items.append(self.allocator, sf) catch return error.OutOfMemory;
+                }
+                continue;
+            }
             const form = try self.readForm(tok);
             items.append(self.allocator, form) catch return error.OutOfMemory;
             if (items.items.len > self.limits.max_collection_count) {
@@ -628,7 +636,34 @@ pub const Reader = struct {
         return self.makeError(.syntax_error, "Unknown symbolic value", next);
     }
 
+    /// Read #?@(:clj [...] :cljs [...]) — returns the elements of the selected branch vector.
+    /// Used by readDelimited to splice elements into the parent collection.
+    fn readReaderCondSplicing(self: *Reader, token: Token) ReadError![]Form {
+        const selected = try self.readReaderCondInner(token);
+        if (selected) |form| {
+            const src = switch (form.data) {
+                .vector => |v| v,
+                .list => |l| l,
+                else => return self.makeError(.syntax_error, "Spliced reader conditional value must be a sequential collection", token),
+            };
+            // Copy elements — source slice is owned by the reader conditional's form
+            const copy = self.allocator.alloc(Form, src.len) catch return error.OutOfMemory;
+            @memcpy(copy, src);
+            return copy;
+        }
+        // No matching branch — splice nothing
+        const empty: []Form = &.{};
+        return empty;
+    }
+
     fn readReaderCond(self: *Reader, token: Token) ReadError!Form {
+        const selected = try self.readReaderCondInner(token);
+        if (selected) |f| return f;
+        return Form{ .data = .nil, .line = token.line, .column = token.column };
+    }
+
+    /// Core logic shared by readReaderCond and readReaderCondSplicing.
+    fn readReaderCondInner(self: *Reader, _: Token) ReadError!?Form {
         const open = self.nextToken();
         if (open.kind != .lparen) {
             return self.makeError(.syntax_error, "Expected ( after #?", open);
@@ -670,7 +705,7 @@ pub const Reader = struct {
         if (cljw_form) |f| return f;
         if (clj_form) |f| return f;
         if (default_form) |f| return f;
-        return Form{ .data = .nil, .line = token.line, .column = token.column };
+        return null;
     }
 
     fn readFnLit(self: *Reader, token: Token) ReadError!Form {
