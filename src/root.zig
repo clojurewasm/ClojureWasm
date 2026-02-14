@@ -50,6 +50,8 @@ pub const wasm_builtins = @import("wasm/builtins.zig");
 pub const wit_parser = @import("wasm/wit_parser.zig");
 pub const builtin_shell = @import("builtins/shell.zig");
 pub const builtin_pprint = @import("builtins/pprint.zig");
+pub const interop_rewrites = @import("interop/rewrites.zig");
+pub const interop_dispatch = @import("interop/dispatch.zig");
 pub const thread_pool = @import("runtime/thread_pool.zig");
 pub const concurrency_test = @import("runtime/concurrency_test.zig");
 pub const deps = @import("deps.zig");
@@ -96,6 +98,8 @@ test {
     _ = wit_parser;
     _ = builtin_shell;
     _ = builtin_pprint;
+    _ = interop_rewrites;
+    _ = interop_dispatch;
     _ = thread_pool;
     _ = concurrency_test;
     _ = deps;

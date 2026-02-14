@@ -33,6 +33,7 @@ const bootstrap = @import("../runtime/bootstrap.zig");
 const value_mod = @import("../runtime/value.zig");
 const regex_matcher = @import("../regex/matcher.zig");
 const keyword_intern = @import("../runtime/keyword_intern.zig");
+const interop_rewrites = @import("../interop/rewrites.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
@@ -289,96 +290,8 @@ pub const Analyzer = struct {
         return self.makeVarRef(sym, form);
     }
 
-    const StaticFieldRewrite = struct { ns: ?[]const u8, name: []const u8 };
-
-    /// Rewrite Java static field access to CW var reference.
-    /// Maps Java Class/FIELD syntax to corresponding CW vars.
-    fn rewriteStaticField(ns: []const u8, name: []const u8) ?StaticFieldRewrite {
-        if (std.mem.eql(u8, ns, "Math") or std.mem.eql(u8, ns, "java.lang.Math") or std.mem.eql(u8, ns, "StrictMath")) {
-            if (std.mem.eql(u8, name, "PI") or std.mem.eql(u8, name, "E")) {
-                return .{ .ns = "clojure.math", .name = name };
-            }
-        } else if (std.mem.eql(u8, ns, "Integer") or std.mem.eql(u8, ns, "java.lang.Integer")) {
-            if (integer_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Long") or std.mem.eql(u8, ns, "java.lang.Long")) {
-            if (long_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Double") or std.mem.eql(u8, ns, "java.lang.Double")) {
-            if (double_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Float") or std.mem.eql(u8, ns, "java.lang.Float")) {
-            if (float_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Short") or std.mem.eql(u8, ns, "java.lang.Short")) {
-            if (short_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Byte") or std.mem.eql(u8, ns, "java.lang.Byte")) {
-            if (byte_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Boolean") or std.mem.eql(u8, ns, "java.lang.Boolean")) {
-            if (boolean_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        } else if (std.mem.eql(u8, ns, "Character") or std.mem.eql(u8, ns, "java.lang.Character")) {
-            if (character_fields.get(name)) |cw| return .{ .ns = null, .name = cw };
-        }
-        return null;
-    }
-
-    // Java static field → CW var name lookup tables
-    const integer_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__integer-max-value" },
-        .{ "MIN_VALUE", "__integer-min-value" },
-        .{ "SIZE", "__integer-size" },
-        .{ "BYTES", "__integer-bytes" },
-    });
-    const long_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__long-max-value" },
-        .{ "MIN_VALUE", "__long-min-value" },
-        .{ "SIZE", "__long-size" },
-        .{ "BYTES", "__long-bytes" },
-    });
-    const double_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__double-max-value" },
-        .{ "MIN_VALUE", "__double-min-value" },
-        .{ "NaN", "__double-nan" },
-        .{ "POSITIVE_INFINITY", "__double-positive-infinity" },
-        .{ "NEGATIVE_INFINITY", "__double-negative-infinity" },
-        .{ "MIN_NORMAL", "__double-min-normal" },
-        .{ "MAX_EXPONENT", "__double-max-exponent" },
-        .{ "MIN_EXPONENT", "__double-min-exponent" },
-        .{ "SIZE", "__double-size" },
-        .{ "BYTES", "__double-bytes" },
-    });
-    const float_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__float-max-value" },
-        .{ "MIN_VALUE", "__float-min-value" },
-        .{ "NaN", "__float-nan" },
-        .{ "POSITIVE_INFINITY", "__float-positive-infinity" },
-        .{ "NEGATIVE_INFINITY", "__float-negative-infinity" },
-        .{ "MIN_NORMAL", "__float-min-normal" },
-        .{ "MAX_EXPONENT", "__float-max-exponent" },
-        .{ "MIN_EXPONENT", "__float-min-exponent" },
-        .{ "SIZE", "__float-size" },
-        .{ "BYTES", "__float-bytes" },
-    });
-    const short_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__short-max-value" },
-        .{ "MIN_VALUE", "__short-min-value" },
-        .{ "SIZE", "__short-size" },
-        .{ "BYTES", "__short-bytes" },
-    });
-    const byte_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__byte-max-value" },
-        .{ "MIN_VALUE", "__byte-min-value" },
-        .{ "SIZE", "__byte-size" },
-        .{ "BYTES", "__byte-bytes" },
-    });
-    const boolean_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "TRUE", "__boolean-true" },
-        .{ "FALSE", "__boolean-false" },
-    });
-    const character_fields = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "MAX_VALUE", "__character-max-value" },
-        .{ "MIN_VALUE", "__character-min-value" },
-        .{ "MAX_CODE_POINT", "__character-max-code-point" },
-        .{ "MIN_CODE_POINT", "__character-min-code-point" },
-        .{ "SIZE", "__character-size" },
-        .{ "BYTES", "__character-bytes" },
-    });
+    const StaticFieldRewrite = interop_rewrites.StaticFieldRewrite;
+    const rewriteStaticField = interop_rewrites.rewriteStaticField;
 
     // === List analysis ===
 
@@ -473,93 +386,7 @@ pub const Analyzer = struct {
         return self.analyzeCall(items, form);
     }
 
-    /// Rewrite Java static method calls to ClojureWasm builtins.
-    fn rewriteInteropCall(ns: []const u8, name: []const u8) ?[]const u8 {
-        if (std.mem.eql(u8, ns, "Math")) {
-            return math_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "System")) {
-            return system_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Thread")) {
-            return thread_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "String")) {
-            return string_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Integer") or std.mem.eql(u8, ns, "Long")) {
-            return integer_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Double") or std.mem.eql(u8, ns, "Float")) {
-            return double_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Character")) {
-            return character_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Boolean")) {
-            return boolean_rewrites.get(name);
-        } else if (std.mem.eql(u8, ns, "Pattern") or std.mem.eql(u8, ns, "java.util.regex.Pattern")) {
-            return pattern_rewrites.get(name);
-        }
-        return null;
-    }
-
-    const math_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "abs", "abs" },
-        .{ "max", "max" },
-        .{ "min", "min" },
-        .{ "pow", "__pow" },
-        .{ "sqrt", "__sqrt" },
-        .{ "round", "__round" },
-        .{ "ceil", "__ceil" },
-        .{ "floor", "__floor" },
-    });
-
-    const system_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "getenv", "__getenv" },
-        .{ "exit", "__exit" },
-        .{ "nanoTime", "__nano-time" },
-        .{ "currentTimeMillis", "__current-time-millis" },
-        .{ "getProperty", "__get-property" },
-    });
-
-    const thread_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "sleep", "__thread-sleep" },
-    });
-
-    const string_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "valueOf", "str" },
-        .{ "format", "format" },
-        .{ "join", "__string-join-static" },
-    });
-
-    const integer_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "parseInt", "parse-long" },
-        .{ "parseLong", "parse-long" },
-        .{ "valueOf", "parse-long" },
-        .{ "toBinaryString", "__int-to-binary-string" },
-        .{ "toHexString", "__int-to-hex-string" },
-        .{ "toOctalString", "__int-to-octal-string" },
-    });
-
-    const double_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "parseDouble", "parse-double" },
-        .{ "parseFloat", "parse-double" },
-        .{ "valueOf", "parse-double" },
-        .{ "isNaN", "__double-is-nan" },
-        .{ "isInfinite", "__double-is-infinite" },
-    });
-
-    const character_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "isDigit", "__char-is-digit" },
-        .{ "isLetter", "__char-is-letter" },
-        .{ "isWhitespace", "__char-is-whitespace" },
-        .{ "isUpperCase", "__char-is-upper-case" },
-        .{ "isLowerCase", "__char-is-lower-case" },
-    });
-
-    const boolean_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "parseBoolean", "__parse-boolean" },
-        .{ "valueOf", "__parse-boolean" },
-    });
-
-    const pattern_rewrites = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "compile", "re-pattern" },
-        .{ "quote", "__regex-quote" },
-    });
+    const rewriteInteropCall = interop_rewrites.rewriteInteropCall;
 
     /// Check if a namespace prefix resolves to clojure.core.
     /// Handles: literal "clojure.core" or an alias pointing to clojure.core.

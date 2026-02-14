@@ -22,48 +22,29 @@ Native production-grade Clojure runtime. Differentiation vs Babashka:
 
 ## Current Task
 
-Phase 72 complete. See GC Assessment below.
-
-### GC Assessment Report (Phase 72.3)
-
-**Root causes found and fixed (D100):**
-1. valueToForm string duplication — Forms referenced GC-allocated string data
-2. ProtocolFn/MultiFn inline cache not traced — cached dispatch results swept
-3. refer() string lifetime — GC-allocated Symbol.name stored in non-GC HashMap
-4. Protocol dispatch GC pressure — 3 HeapString allocs per cache miss
-5. Macro expansion GC sweep — lazy-seq closure-captured Values swept during callFnVal
-6. Additional: char toString, fn name with-meta pattern
-
-**Performance impact:**
-- protocol_dispatch: 38ms → 5ms (7.6x) via getByStringKey zero-alloc lookup
-- honeysql loading: crash → success (all 3 namespaces, both backends)
-- CSK nested loops: crash at 60 → passes 200+ iterations
-
-**GC architecture assessment:**
-- Mark-and-sweep GC is functionally correct after fixes
-- suppress_count during macro expansion is a safe workaround but masks
-  a deeper tracing gap (lazy-seq thunk closure captured Values)
-- Free pool recycling can mask use-after-free as data corruption
-- No generational GC needed for current workloads
-- Next priority: investigate the lazy-seq closure tracing gap (why
-  Values captured by thunk closures aren't always reachable during GC)
-
-**Recommendation:** Generational GC (Phase 73) is NOT needed now.
-Current GC with fixes handles honeysql (1500 lines), protocol dispatch
-at scale, and all upstream tests. Investigate closure tracing gap as a
-correctness fix rather than architecture change.
+Phase 74.2: Constructor + `new` + `ClassName.` + `:import`
+- New builtin: `__interop-new` in `src/interop/constructors.zig`
+- Analyzer: detect `ClassName.` and `(new ClassName)` syntax
+- Improve `:import` in ns macro to store FQ class name
 
 ## Task Queue
 
 ```
-Phase 73: deferred (GC is adequate, see assessment)
-Next: User direction needed — see roadmap.md for candidates
+74.2: Constructor + new + ClassName. + :import
+74.3: java.net.URI
+74.4: java.io.File
+74.5: java.util.UUID + D101 + cleanup
 ```
 
 ## Previous Task
 
-Phase 72: Optimization + GC Assessment (complete).
-- 72.1: 6 GC crash root causes fixed (D100)
+Phase 74.1: Extract interop module (complete).
+- Created `src/interop/rewrites.zig` — static field + method rewrite tables
+- Created `src/interop/dispatch.zig` — instance method dispatch
+- Analyzer delegates to `interop_rewrites`
+- strings.zig `javaMethodFn` delegates to `interop_dispatch.dispatch()`
+- dispatch.zig checks `:__reify_type` on maps for class instances
+- All tests pass (unit + e2e)
 - 72.2: getByStringKey optimization (protocol_dispatch 7.6x improvement)
 - 72.3: GC assessment report (see above)
 
