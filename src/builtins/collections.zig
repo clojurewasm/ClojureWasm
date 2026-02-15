@@ -939,31 +939,41 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
     // For variadic fn_val, avoid realizing infinite seqs (F99).
     // Build a lazy cons chain (like JVM's list*) and peel off only fixed params.
+    // But prefer exact-arity match when total arg count is known (e.g. apply map vector colls).
     if (f.tag() == .fn_val) {
         if (findVariadicFixedCount(f.asFn())) |fixed_count| {
-            // Build arg_seq = list*(middle_args, last_arg) via cons chain
-            var arg_seq = if (last_arg == Value.nil_val) Value.nil_val else last_arg;
-            var i = middle_count;
-            while (i > 0) {
-                i -= 1;
-                const cell = try allocator.create(value_mod.Cons);
-                cell.* = .{ .first = args[1 + i], .rest = arg_seq };
-                arg_seq = Value.initCons(cell);
+            // If the spread collection has a known length and an exact arity matches,
+            // skip the variadic path — the exact arity is the correct dispatch target.
+            const use_variadic = if (knownSeqLength(last_arg)) |spread_len|
+                !hasExactArity(f.asFn(), middle_count + spread_len)
+            else
+                true; // unknown length (lazy seq) → must use variadic path (F99)
+
+            if (use_variadic) {
+                // Build arg_seq = list*(middle_args, last_arg) via cons chain
+                var arg_seq = if (last_arg == Value.nil_val) Value.nil_val else last_arg;
+                var i = middle_count;
+                while (i > 0) {
+                    i -= 1;
+                    const cell = try allocator.create(value_mod.Cons);
+                    cell.* = .{ .first = args[1 + i], .rest = arg_seq };
+                    arg_seq = Value.initCons(cell);
+                }
+
+                // Take exactly fixed_count items from arg_seq
+                const call_args = try allocator.alloc(Value, fixed_count + 1);
+                for (0..fixed_count) |j| {
+                    call_args[j] = try firstFn(allocator, &.{arg_seq});
+                    arg_seq = try restFn(allocator, &.{arg_seq});
+                }
+
+                // Remaining seq is the rest param (lazy!) — convert to seq or nil
+                call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
+
+                // Signal VM/TreeWalk that the rest arg is already a seq (F99)
+                bootstrap.apply_rest_is_seq = true;
+                return bootstrap.callFnVal(allocator, f, call_args);
             }
-
-            // Take exactly fixed_count items from arg_seq
-            const call_args = try allocator.alloc(Value, fixed_count + 1);
-            for (0..fixed_count) |j| {
-                call_args[j] = try firstFn(allocator, &.{arg_seq});
-                arg_seq = try restFn(allocator, &.{arg_seq});
-            }
-
-            // Remaining seq is the rest param (lazy!) — convert to seq or nil
-            call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
-
-            // Signal VM/TreeWalk that the rest arg is already a seq (F99)
-            bootstrap.apply_rest_is_seq = true;
-            return bootstrap.callFnVal(allocator, f, call_args);
         }
     }
 
@@ -1046,6 +1056,42 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
 /// Find the fixed param count of a variadic arity, if any.
 /// Returns null if the function has no variadic arity.
+/// Returns the length of a collection if known without realization (O(1)), or null for lazy seqs.
+fn knownSeqLength(val: Value) ?usize {
+    return switch (val.tag()) {
+        .vector => val.asVector().items.len,
+        .map => val.asMap().count(),
+        .hash_map => val.asHashMap().getCount(),
+        .set => val.asSet().count(),
+        .string => val.asString().len,
+        .nil => 0,
+        else => null, // cons, lazy_seq — can't know without realization
+    };
+}
+
+/// Returns true if the function has an exact (non-variadic) arity matching `count`.
+fn hasExactArity(fn_obj: *const value_mod.Fn, count: usize) bool {
+    const FnProto = @import("../compiler/chunk.zig").FnProto;
+    const FnNode = @import("../analyzer/node.zig").FnNode;
+
+    if (fn_obj.kind == .bytecode) {
+        const primary: *const FnProto = @ptrCast(@alignCast(fn_obj.proto));
+        if (!primary.variadic and primary.arity == count) return true;
+        if (fn_obj.extra_arities) |extras| {
+            for (extras) |extra| {
+                const p: *const FnProto = @ptrCast(@alignCast(extra));
+                if (!p.variadic and p.arity == count) return true;
+            }
+        }
+    } else {
+        const fn_node_ptr: *const *const FnNode = @ptrCast(@alignCast(fn_obj.proto));
+        for (fn_node_ptr.*.arities) |a| {
+            if (!a.variadic and a.params.len == count) return true;
+        }
+    }
+    return false;
+}
+
 fn findVariadicFixedCount(fn_obj: *const value_mod.Fn) ?usize {
     const FnProto = @import("../compiler/chunk.zig").FnProto;
     const FnNode = @import("../analyzer/node.zig").FnNode;
