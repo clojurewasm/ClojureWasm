@@ -1076,23 +1076,23 @@ vars:
   clojure_spec_gen_alpha:
     any: {type: function, status: done}
     "any-printable": {type: function, status: done}
-    bind: {type: function, status: done, note: "stub (needs test.check)"}
+    bind: {type: function, status: done}
     boolean: {type: function, status: done}
-    bytes: {type: function, status: done, note: "stub (needs test.check)"}
-    cat: {type: function, status: done, note: "stub (needs test.check)"}
+    bytes: {type: function, status: done}
+    cat: {type: function, status: done}
     char: {type: function, status: done}
     "char-alpha": {type: function, status: done}
     "char-alphanumeric": {type: function, status: done}
     "char-ascii": {type: function, status: done}
-    choose: {type: function, status: done, note: "stub (needs test.check)"}
+    choose: {type: function, status: done}
     delay: {type: macro, status: done}
     "delay-impl": {type: function, status: done}
     double: {type: function, status: done}
-    "double*": {type: function, status: done, note: "stub (needs test.check)"}
+    "double*": {type: function, status: done}
     elements: {type: function, status: done}
-    fmap: {type: function, status: done, note: "stub (needs test.check)"}
+    fmap: {type: function, status: done}
     "for-all*": {type: function, status: done, note: "stub (needs test.check)"}
-    frequency: {type: function, status: done, note: "stub (needs test.check)"}
+    frequency: {type: function, status: done}
     "gen-for-name": {type: function, status: done}
     "gen-for-pred": {type: function, status: done}
     generate: {type: function, status: done}
@@ -1101,7 +1101,7 @@ vars:
     keyword: {type: function, status: done}
     "keyword-ns": {type: function, status: done}
     "large-integer": {type: function, status: done}
-    "large-integer*": {type: function, status: done, note: "stub (needs test.check)"}
+    "large-integer*": {type: function, status: done}
     "lazy-combinator": {type: macro, status: done, note: "no-op (CW generators are direct)"}
     "lazy-combinators": {type: macro, status: done, note: "no-op (CW generators are direct)"}
     "lazy-prim": {type: macro, status: done, note: "no-op (CW generators are direct)"}
