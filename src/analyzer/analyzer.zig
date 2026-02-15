@@ -1992,11 +1992,38 @@ pub const Analyzer = struct {
         def_map_ctor_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = map_ctor_name } } };
         def_map_ctor_forms[2] = .{ .data = .{ .list = map_fn_forms } };
 
-        // Wrap in (do (def ->Name ...) (def map->Name ...))
-        const do_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        // Parse inline protocol implementations (items[3+])
+        var extend_type_forms: std.ArrayList(Form) = .empty;
+        var pi: usize = 3;
+        while (pi < items.len) {
+            if (items[pi].data != .symbol) {
+                return self.analysisError(.value_error, "defrecord expects protocol name after fields", items[pi]);
+            }
+            const proto_sym = items[pi];
+            pi += 1;
+
+            // Collect method lists until next protocol name or end
+            var method_list: std.ArrayList(Form) = .empty;
+            while (pi < items.len and items[pi].data == .list) {
+                method_list.append(self.allocator, items[pi]) catch return error.OutOfMemory;
+                pi += 1;
+            }
+
+            // Build (extend-type RecName Protocol (method1 ...) (method2 ...))
+            const et_forms = self.allocator.alloc(Form, 3 + method_list.items.len) catch return error.OutOfMemory;
+            et_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "extend-type" } } };
+            et_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = rec_name } } };
+            et_forms[2] = proto_sym;
+            @memcpy(et_forms[3..], method_list.items);
+            extend_type_forms.append(self.allocator, .{ .data = .{ .list = et_forms } }) catch return error.OutOfMemory;
+        }
+
+        // Wrap in (do (def ->Name ...) (def map->Name ...) (extend-type ...) ...)
+        const do_forms = self.allocator.alloc(Form, 3 + extend_type_forms.items.len) catch return error.OutOfMemory;
         do_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "do" } } };
         do_forms[1] = .{ .data = .{ .list = def_ctor_forms } };
         do_forms[2] = .{ .data = .{ .list = def_map_ctor_forms } };
+        @memcpy(do_forms[3..], extend_type_forms.items);
 
         const do_form = Form{ .data = .{ .list = do_forms } };
         return self.analyze(do_form);
