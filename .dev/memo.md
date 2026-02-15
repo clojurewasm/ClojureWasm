@@ -34,26 +34,24 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Upstream test audit + multimethod cache fix — DONE.
-- Fixed multimethod L1 cache bug: was hashing only first arg, caused
-  thrown-with-msg?/thrown? in clojure.test to break after other assertions
-- Ported 3 new upstream test files (clojure_xml, main, server)
-- Added gap documentation to reader.clj, protocols.clj
-- Audit of all 52 test files complete: almost all gaps are JVM-ONLY
-- Portable gaps: read-string 2-arity, namespaced maps, :as-alias (features to implement)
-
-Ready for next phase planning.
+Phase 76: Type System & Reader Enhancements (Commit 2 next)
+- Commit 1 DONE: reify multi-arity method support
+- Next: defrecord inline protocol implementation
 
 ## Task Queue
 
 ```
---- External Library Testing (Phase 75) ---
-75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
-75.C  DONE — instaparse 9/16 modules load, blocked by deftype (out of scope)
-75.D  DONE — PushbackReader, StringReader, StringBuilder, StringWriter, EOFException interop
-75.E  DONE — data.json blocked by definterface/deftype (out of scope for now)
-75.F  DONE — data.csv fully working (read-csv, write-csv, custom sep, quoted fields)
-75.G  DONE — meander 6/18 modules load (blocked by &form, case*), core.match out of scope
+--- Phase 76: Type System & Reader Enhancements ---
+76.1  DONE — reify multi-arity method support
+76.2  TODO — defrecord inline protocol implementation
+76.3  TODO — Fix map->Name to merge __reify_type
+76.4  TODO — instance? for CW record/reify types
+76.5  TODO — deftype implementation
+76.6  TODO — read-string 2-arity
+76.7  TODO — Namespaced map literals #:ns{}
+76.8  TODO — :as-alias in require
+76.9  TODO — *data-readers* dynamic binding override
+76.10 TODO — README coverage tables X/Y format
 ```
 
 Policy:
@@ -68,12 +66,10 @@ Notes:
 
 ## Previous Task
 
-Upstream test audit + multimethod cache fix:
-- Root cause: MultiFn L1 cache hashed only first arg → stale cache hit
-  when dispatch depended on 2nd+ arg (assert-expr dispatches on form, not msg)
-- Fix: combinedArgKey() hashes ALL args with index mixing
-- 3 new test files ported, 2 files updated with comprehensive gap docs
-- All 52 upstream test files pass on both backends
+Phase 76 Commit 1: reify multi-arity method support
+- In analyzeReify(), grouped methods by name using StringHashMap
+- When multiple methods share same name, construct multi-arity fn forms
+- Verified on both VM and TreeWalk backends
 
 ## Known Issues
 

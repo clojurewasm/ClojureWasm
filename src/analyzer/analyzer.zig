@@ -1835,8 +1835,9 @@ pub const Analyzer = struct {
             const protocol_name = items[i].data.symbol.name;
             i += 1;
 
-            // Collect methods until we hit another symbol (next protocol) or end
-            var methods: std.ArrayList(node_mod.ExtendMethodNode) = .empty;
+            // Collect raw method entries, then group by name for multi-arity support
+            const MethodEntry = struct { name: []const u8, m_items: []const Form, form_ref: Form };
+            var raw_methods: std.ArrayList(MethodEntry) = .empty;
             while (i < items.len and items[i].data == .list) {
                 const m_items = items[i].data.list;
                 if (m_items.len < 3) {
@@ -1845,16 +1846,56 @@ pub const Analyzer = struct {
                 if (m_items[0].data != .symbol) {
                     return self.analysisError(.value_error, "method name must be a symbol", m_items[0]);
                 }
-                const method_name = m_items[0].data.symbol.name;
-                const fn_items = self.allocator.alloc(Form, m_items.len) catch return error.OutOfMemory;
-                fn_items[0] = m_items[0];
-                @memcpy(fn_items[1..], m_items[1..]);
-                const fn_node = try self.analyzeFn(fn_items, items[i]);
-                methods.append(self.allocator, .{
-                    .name = method_name,
-                    .fn_node = fn_node.fn_node,
+                raw_methods.append(self.allocator, .{
+                    .name = m_items[0].data.symbol.name,
+                    .m_items = m_items,
+                    .form_ref = items[i],
                 }) catch return error.OutOfMemory;
                 i += 1;
+            }
+
+            // Group by name and build method nodes
+            var methods: std.ArrayList(node_mod.ExtendMethodNode) = .empty;
+            var processed: std.StringHashMapUnmanaged(void) = .empty;
+            for (raw_methods.items) |entry| {
+                if (processed.get(entry.name) != null) continue;
+                processed.put(self.allocator, entry.name, {}) catch return error.OutOfMemory;
+
+                // Count methods with this name
+                var count: usize = 0;
+                for (raw_methods.items) |e| {
+                    if (std.mem.eql(u8, e.name, entry.name)) count += 1;
+                }
+
+                if (count == 1) {
+                    // Single arity — existing logic
+                    const fn_items = self.allocator.alloc(Form, entry.m_items.len) catch return error.OutOfMemory;
+                    fn_items[0] = entry.m_items[0];
+                    @memcpy(fn_items[1..], entry.m_items[1..]);
+                    const fn_node = try self.analyzeFn(fn_items, entry.form_ref);
+                    methods.append(self.allocator, .{
+                        .name = entry.name,
+                        .fn_node = fn_node.fn_node,
+                    }) catch return error.OutOfMemory;
+                } else {
+                    // Multi-arity: construct (fn name ([params1] body1) ([params2] body2) ...)
+                    const fn_items = self.allocator.alloc(Form, 1 + count) catch return error.OutOfMemory;
+                    fn_items[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = entry.name } } };
+                    var arity_idx: usize = 0;
+                    for (raw_methods.items) |e| {
+                        if (!std.mem.eql(u8, e.name, entry.name)) continue;
+                        // Wrap [params] body... as a list form for multi-arity
+                        const arity_forms = self.allocator.alloc(Form, e.m_items.len - 1) catch return error.OutOfMemory;
+                        @memcpy(arity_forms, e.m_items[1..]);
+                        fn_items[1 + arity_idx] = .{ .data = .{ .list = arity_forms } };
+                        arity_idx += 1;
+                    }
+                    const fn_node = try self.analyzeFn(fn_items, entry.form_ref);
+                    methods.append(self.allocator, .{
+                        .name = entry.name,
+                        .fn_node = fn_node.fn_node,
+                    }) catch return error.OutOfMemory;
+                }
             }
 
             protocols.append(self.allocator, .{
