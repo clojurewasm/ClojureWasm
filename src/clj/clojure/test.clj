@@ -1,6 +1,6 @@
 ;; clojure.test — test framework for ClojureWasm
 ;;
-;; UPSTREAM-DIFF: uses atom-based counters/registry instead of ref-based report-counters
+;; UPSTREAM-DIFF: *report-counters* uses atom instead of ref (no STM)
 ;; UPSTREAM-DIFF: do-report does not add file/line info (no StackTraceElement)
 ;; UPSTREAM-DIFF: deftest uses register-test atom (not ns metadata)
 
@@ -8,17 +8,9 @@
 
 ;; Test registry: vector of {:name "test-name" :var var :fn test-fn}
 (def test-registry (atom []))
-;; Assertion counters
-(def pass-count (atom 0))
-(def fail-count (atom 0))
-(def error-count (atom 0))
-;; Test counter (incremented per test-var call)
-(def test-count (atom 0))
-
-;; UPSTREAM-DIFF: *report-counters* aliases atom-based counters for API compat
 (def ^:dynamic *initial-report-counters* {:test 0, :pass 0, :fail 0, :error 0})
 
-;; UPSTREAM-DIFF: not a ref, just returns current atom snapshot
+;; UPSTREAM-DIFF: atom instead of ref (no STM needed, single-threaded reporting)
 (def ^:dynamic *report-counters* nil)
 
 ;; Testing context stack (for nested testing blocks)
@@ -65,16 +57,13 @@
         (str (:name md) " (" (:ns md) ")"))
       "")))
 
-;; UPSTREAM-DIFF: inc-report-counter uses atoms instead of dosync/commute on ref
 (defn inc-report-counter
-  "Increments the named counter in the test counters."
+  "Increments the named counter in *report-counters*, a ref of a map.
+  Does nothing if *report-counters* is nil."
   {:added "1.1"}
   [name]
-  (cond
-    (= name :pass) (swap! pass-count inc)
-    (= name :fail) (swap! fail-count inc)
-    (= name :error) (swap! error-count inc)
-    (= name :test) (swap! test-count inc)))
+  (when *report-counters*
+    (swap! *report-counters* update name (fnil inc 0))))
 
 ;; Multimethod report — dispatches on (:type m).
 (defmulti report :type)
@@ -190,7 +179,7 @@
 ;; Run a single test var. Calls report with :begin-test-var/:end-test-var.
 (defn test-var [v]
   (when-let [t (:test (meta v))]
-    (swap! test-count inc)
+    (inc-report-counter :test)
     (binding [*testing-vars* (conj *testing-vars* v)]
       (clojure.test/report {:type :begin-test-var :var v})
       (try
@@ -220,10 +209,31 @@
 (defn test-all-vars [ns]
   (test-vars (vals (ns-interns ns))))
 
+(defn test-ns
+  "If the namespace defines a function named test-ns-hook, calls that.
+  Otherwise, calls test-all-vars on the namespace. 'ns' is a namespace
+  object or a symbol. Returns a map of test result counts."
+  {:added "1.1"}
+  [ns]
+  (let [ns-obj (the-ns ns)
+        counters (atom *initial-report-counters*)]
+    (binding [*report-counters* counters]
+      (do-report {:type :begin-test-ns :ns ns-obj})
+      (if-let [v (find-var (symbol (str (ns-name ns-obj)) "test-ns-hook"))]
+        ((var-get v))
+        (test-all-vars ns-obj))
+      (do-report {:type :end-test-ns :ns ns-obj}))
+    @counters))
+
+(defn get-possibly-unbound-var
+  "Like var-get but returns nil if the var is unbound."
+  {:added "1.1"}
+  [v]
+  (try (var-get v)
+       (catch Exception e nil)))
+
 ;; ========== Assertion helpers ==========
 
-;; Returns true if argument is a function or a symbol that resolves to
-;; a function (not a macro).
 (defn function?
   "Returns true if argument is a function or a symbol that resolves to
   a function (not a macro)."
@@ -376,44 +386,10 @@
   {:added "1.1"}
   ([] (run-tests *ns*))
   ([& namespaces]
-   ;; Reset counters
-   (reset! pass-count 0)
-   (reset! fail-count 0)
-   (reset! error-count 0)
-   (reset! test-count 0)
-
-   (let [ns-set (set (map #(if (symbol? %) % (ns-name %)) namespaces))]
-     ;; Check for test-ns-hook in first requested namespace
-     (let [hook-sym (symbol (str (first ns-set)) "test-ns-hook")
-           hook-var (resolve hook-sym)]
-       (if (and hook-var (fn? @hook-var))
-         ;; Use test-ns-hook
-         (@hook-var)
-         ;; Collect test vars from registry filtered by namespace
-         (let [tests (filter #(contains? ns-set (:ns %)) @test-registry)
-               vars (map :var tests)]
-           ;; Run through test-vars to apply fixtures
-           (if (seq vars)
-             (test-vars vars)
-             ;; Fallback: run directly if no vars registered
-             (doseq [t tests]
-               (binding [*testing-contexts* (list (:name t))]
-                 (println (str "\nTesting " (:name t)))
-                 (try
-                   ((:fn t))
-                   (catch Exception e
-                     (swap! error-count inc)
-                     (println (str "  ERROR in " (:name t) ": " e)))))))))))
-
-   ;; Print summary via report
-   (clojure.test/report {:type :summary
-                         :test @test-count
-                         :pass @pass-count
-                         :fail @fail-count
-                         :error @error-count})
-
-   ;; Return summary map (upstream compat)
-   {:test @test-count :pass @pass-count :fail @fail-count :error @error-count}))
+   (let [summary (assoc (apply merge-with + (map test-ns namespaces))
+                        :type :summary)]
+     (do-report summary)
+     summary)))
 
 (defn successful?
   "Returns true if the given test summary indicates all tests
@@ -441,21 +417,12 @@
   test, and summary output after."
   {:added "1.11"}
   [v]
-  ;; Reset counters
-  (reset! pass-count 0)
-  (reset! fail-count 0)
-  (reset! error-count 0)
-  (reset! test-count 0)
-  ;; Run single var through test-vars for fixture support
-  (test-vars [v])
-  ;; Report summary
-  (let [summary {:type :summary
-                 :test @test-count
-                 :pass @pass-count
-                 :fail @fail-count
-                 :error @error-count}]
-    (clojure.test/report summary)
-    (dissoc summary :type)))
+  (let [counters (atom *initial-report-counters*)]
+    (binding [*report-counters* counters]
+      (test-vars [v])
+      (let [summary (assoc @counters :type :summary)]
+        (do-report summary)
+        (dissoc summary :type)))))
 
 ;; Run a single test by symbol name.
 ;; UPSTREAM-DIFF: macro in upstream, fn here (resolve works at runtime)

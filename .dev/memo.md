@@ -35,20 +35,19 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 77: Var Coverage Completion
-Sub-phase 77.5: cl-format engine (3 vars)
+Sub-phase 77.9: clojure.data protocol alignment (2 vars)
 
 ## Previous Task
 
-77.4: pprint pretty-writer — 9 vars done (fresh-line, get-pretty-writer, pprint-indent,
-pprint-logical-block, pprint-newline, print-length-loop, simple-dispatch, write, write-out)
-XP algorithm with atom-based state, no ref/proxy needed. Binary size threshold raised to 4.2MB.
+77.8: clojure.test alignment — 6 vars done (assert-expr, assert-any, assert-predicate,
+try-expr, get-possibly-unbound-var, test-ns). Refactored inc-report-counter to use
+*report-counters* atom (upstream alignment). run-tests now delegates to test-ns.
+file-position stays skip (deprecated 1.2, needs StackTraceElement).
 
 ## Task Queue
 
 ```
-77.5 cl-format engine (3 vars) ← CURRENT
-77.8 clojure.test alignment (6 vars)
-77.9 clojure.data protocol alignment (2 vars)
+77.9 clojure.data protocol alignment (2 vars) ← CURRENT
 77.7 clojure.java.io completion (12 vars)
 77.3 STM/Ref system (9 vars)
 77.6 test.check + spec.gen.alpha (27 vars)
