@@ -86,6 +86,9 @@ const uuid_clj_source = @embedFile("../clj/clojure/uuid.clj");
 /// Embedded clojure/test/tap.clj source (compiled into binary).
 const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
 
+/// Embedded clojure/java/browse.clj source (compiled into binary).
+const browse_clj_source = @embedFile("../clj/clojure/java/browse.clj");
+
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
 
@@ -672,6 +675,31 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/java/browse.clj.
+pub fn loadBrowse(allocator: Allocator, env: *Env) BootstrapError!void {
+    const browse_ns = env.findOrCreateNamespace("clojure.java.browse") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        browse_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = browse_ns;
+
+    _ = try evalString(allocator, env, browse_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
@@ -746,6 +774,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.test.tap")) {
         try loadTestTap(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.java.browse")) {
+        try loadBrowse(allocator, env);
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {

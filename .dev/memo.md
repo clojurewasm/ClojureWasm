@@ -34,8 +34,8 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0c: clojure.java.browse — browse-url via shell.
-Shell-based only (`open`/`xdg-open`), skip AWT/Swing fallbacks.
+Phase 75.0d: clojure.datafy — datafy/nav protocols.
+Core datafy/nav, skip Class extension (needs reflect). CLJW markers.
 Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
@@ -45,7 +45,6 @@ Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
 
 ```
 --- Batch 0: Small ---
-75.0c clojure.java.browse — browse-url via shell (89 lines)
 75.0d clojure.datafy — datafy/nav protocols (62 lines)
 --- Batch 0: Medium ---
 75.0e clojure.instant — #inst reader + Zig date type (294 lines, multi-task)
@@ -77,12 +76,10 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0b: clojure.test.tap (complete):
-- Created `src/clj/clojure/test/tap.clj` with CW-adapted TAP formatter
-- CLJW changes: `.split` → `str/split`, `Throwable` → `Exception`
-- Fixed `analyzeDefmulti` to handle metadata on name (`^:dynamic`)
-- Registered in bootstrap.zig for lazy embedFile loading
-- Both VM and TreeWalk produce correct TAP output
+Phase 75.0c: clojure.java.browse (complete):
+- Created `src/clj/clojure/java/browse.clj` — shell-based `browse-url`
+- Uses `open` (macOS) / `xdg-open` (Linux) via clojure.java.shell/sh
+- Skipped AWT Desktop and Swing fallbacks (no GUI in CW)
 
 ## Known Issues
 
