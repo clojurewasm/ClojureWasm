@@ -1407,7 +1407,14 @@ pub const Analyzer = struct {
             return self.analysisError(.value_error, "for requires at least one binding pair", form);
         }
 
-        const sym_form = bindings[0];
+        // Unwrap (with-meta <form> <meta-map>) — reader produces this for ^Type hints
+        const sym_form = if (bindings[0].data == .list) blk: {
+            const wm = bindings[0].data.list;
+            if (wm.len == 3 and wm[0].data == .symbol and
+                std.mem.eql(u8, wm[0].data.symbol.name, "with-meta"))
+                break :blk wm[1]; // unwrap to inner form
+            break :blk bindings[0];
+        } else bindings[0];
         const coll_form = bindings[1];
 
         // Collect modifiers (:when, :let, :while) after this binding pair
@@ -2404,11 +2411,19 @@ pub const Analyzer = struct {
     /// Dispatches on pattern form type: symbol (simple), vector (sequential), map (associative).
     fn expandBindingPattern(
         self: *Analyzer,
-        pattern: Form,
+        raw_pattern: Form,
         init_node: *Node,
         bindings: *std.ArrayList(node_mod.LetBinding),
         form: Form,
     ) AnalyzeError!void {
+        // Unwrap (with-meta <form> <meta-map>) — reader produces this for ^Type hints
+        const pattern = if (raw_pattern.data == .list) blk: {
+            const wm = raw_pattern.data.list;
+            if (wm.len == 3 and wm[0].data == .symbol and
+                std.mem.eql(u8, wm[0].data.symbol.name, "with-meta"))
+                break :blk wm[1]; // unwrap to inner form
+            break :blk raw_pattern;
+        } else raw_pattern;
         switch (pattern.data) {
             .symbol => |sym| {
                 // Simple binding: name = init
