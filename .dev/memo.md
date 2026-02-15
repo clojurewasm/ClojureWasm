@@ -34,14 +34,14 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.C: Test instaparse as-is (pure Clojure, ~3000 LOC).
+Phase 75.D: Implement PushbackReader/StringWriter interop shims.
 
 ## Task Queue
 
 ```
 --- External Library Testing ---
 75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
-75.C  Test instaparse as-is (pure Clojure, ~3000 LOC)
+75.C  DONE — instaparse 9/16 modules load, blocked by deftype (out of scope)
 75.D  Implement PushbackReader/StringWriter interop shims
 75.E  Test data.json as-is (after 75.D)
 75.F  Test data.csv as-is (after 75.D)
@@ -56,16 +56,15 @@ Policy:
 
 Notes:
 - Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
-- CSK's split issue addressable in 75.A
 - clojure.xml deferred until library testing surfaces demand
 
 ## Previous Task
 
-Phase 75.B: tools.cli testing (complete):
-- Loads and basic parse-opts works
-- 2/6 tests fully pass, 3 partial (9 assertion failures), 1 GC crash (F140)
-- Fixed: reader conditional elision, ^Type hints in for/let/doseq bindings
-- Remaining: GC crash in dissocFn (F140), :validate desugaring
+Phase 75.C: instaparse testing (complete):
+- 9/16 modules load OK (util, print, reduction, combinators-source, failure, transform, line-col, macros, viz)
+- Blocked by deftype (permanently skipped) — auto-flatten-seq, gll use heavy deftype+JVM interfaces
+- Fixed: \b/\f string escapes, defrecord field type hints
+- Conclusion: out of scope due to deftype dependency
 
 ## Known Issues
 

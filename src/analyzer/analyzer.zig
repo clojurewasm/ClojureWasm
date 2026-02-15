@@ -1893,8 +1893,17 @@ pub const Analyzer = struct {
         const rec_name = items[1].data.symbol.name;
         const fields = items[2].data.vector;
 
-        for (fields) |field| {
-            if (field.data != .symbol) {
+        // Unwrap type hints on fields: ^int x -> (with-meta x {:tag int}) -> x
+        const unwrapped_fields = self.allocator.alloc(Form, fields.len) catch return error.OutOfMemory;
+        for (fields, 0..) |field, fi| {
+            unwrapped_fields[fi] = if (field.data == .list) blk: {
+                const wm = field.data.list;
+                if (wm.len == 3 and wm[0].data == .symbol and
+                    std.mem.eql(u8, wm[0].data.symbol.name, "with-meta"))
+                    break :blk wm[1];
+                break :blk field;
+            } else field;
+            if (unwrapped_fields[fi].data != .symbol) {
                 return self.analysisError(.value_error, "defrecord field must be a symbol", field);
             }
         }
@@ -1904,12 +1913,12 @@ pub const Analyzer = struct {
 
         // Build (hash-map :__reify_type "Name" :field1 field1 :field2 field2 ...) as Forms
         // The :__reify_type key enables protocol dispatch via extend-type on record types.
-        const hm_form_count = 1 + 2 + fields.len * 2; // hash-map + type tag + pairs
+        const hm_form_count = 1 + 2 + unwrapped_fields.len * 2; // hash-map + type tag + pairs
         const hm_forms = self.allocator.alloc(Form, hm_form_count) catch return error.OutOfMemory;
         hm_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "hash-map" } } };
         hm_forms[1] = .{ .data = .{ .keyword = .{ .ns = null, .name = "__reify_type" } } };
         hm_forms[2] = .{ .data = .{ .string = rec_name } };
-        for (fields, 0..) |field, i| {
+        for (unwrapped_fields, 0..) |field, i| {
             hm_forms[3 + i * 2] = .{ .data = .{ .keyword = .{ .ns = null, .name = field.data.symbol.name } } };
             hm_forms[3 + i * 2 + 1] = field; // symbol ref
         }

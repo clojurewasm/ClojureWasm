@@ -17,6 +17,7 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
 | tools.cli         | CLI parsing  |      4/6  | 2 pass, 3 partial, 1 crash   |
+| instaparse        | Parser gen   |     9/16  | Blocked by deftype           |
 
 ### Key Findings
 
@@ -38,6 +39,8 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | fn name with metadata `(with-meta name meta)` | `analyzeFn` name pattern matching | 72.1 |
 | `re-seq` returns `()` instead of `nil` for no matches | Return `nil` in `reSeqFn` when results empty | 75.6 |
 | `s/join` fails on lazy-seq realizing to cons | Handle `.cons` in `joinFn` lazy_seq branch | 75.6 |
+| `\b` and `\f` string escapes not supported | Added to `unescapeString` in reader | 75.C |
+| `^Type` hints on defrecord fields fails | with-meta unwrap in `analyzeDefrecord` | 75.C |
 
 ### Known CW Limitations (discovered via library testing)
 
@@ -52,6 +55,9 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | `Long/parseLong` returns nil instead of throwing | tools.cli | Low | Open |
 | `case` macro hash collision with 8+ keyword branches | data.json | Low | Open (F139) |
 | `(char int)` returns string, not char type | data.csv | Low | Open |
+| ~~`\b` and `\f` string escapes not supported~~ | instaparse | Low | **FIXED 75.C** |
+| ~~`^Type` hints on defrecord fields~~ | instaparse | Medium | **FIXED 75.C** |
+| `deftype` not implemented (permanently skipped) | instaparse | High | Won't fix |
 | GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Open (F140) |
 
 ### Java Interop Gaps (blocking library tests)
@@ -255,6 +261,67 @@ Phase 75.B: `^Type` hints in for/let/doseq bindings
 - Library loads and basic parse-opts works correctly
 - No Java interop needed — all failures are CW behavioral issues
 - GC crash is pre-existing (keyword pointer freed under allocation pressure)
+
+## instaparse 1.5.x
+
+Source: https://github.com/Engelberg/instaparse
+Type: GLL parser generator (.cljc, ~3000 LOC)
+
+### Results
+
+| Metric      | Value |
+|-------------|------:|
+| Modules     | 16    |
+| Load OK     |     9 |
+| Load FAIL   |     7 |
+| Load rate   | 56.3% |
+
+### Module Loading Status
+
+| Module              | Status | Reason                              |
+|---------------------|--------|-------------------------------------|
+| util                | OK     |                                     |
+| print               | OK     | (after `\b`/`\f` fix)              |
+| auto-flatten-seq    | FAIL   | `deftype` not implemented           |
+| reduction           | OK     |                                     |
+| combinators-source  | OK     |                                     |
+| failure             | OK     |                                     |
+| gll                 | FAIL   | `deftype` not implemented           |
+| transform           | OK     |                                     |
+| line-col            | OK     | (after defrecord type hint fix)     |
+| repeat              | FAIL   | `instaparse.viz` not on require path|
+| cfg                 | FAIL   | Depends on gll (cascading)          |
+| abnf                | FAIL   | Depends on cfg (cascading)          |
+| macros              | OK     |                                     |
+| combinators         | FAIL   | Depends on cfg/abnf (cascading)     |
+| viz                 | OK     |                                     |
+| core                | FAIL   | Depends on everything (cascading)   |
+
+### Primary Blockers
+
+1. **`deftype` (permanently skipped)**: `auto_flatten_seq.cljc` and `gll.cljc` define custom
+   types (`AutoFlattenSeq`, `FlattenOnDemandVector`, `Failure`) using `deftype` with heavy
+   JVM interface implementations (`clojure.lang.ISeq`, `clojure.lang.Counted`, etc.).
+   These are core data structures — the library cannot function without them.
+
+2. **STM (`ref`/`dosync`/`ref-set`)**: Used in `FlattenOnDemandVector` for lazy flattening.
+
+3. **`compile-if` macro**: Uses `(eval test)` at macro expansion time for backwards compatibility.
+
+### Bugs Fixed During Testing
+
+| Bug | Fix |
+|-----|-----|
+| `\b` and `\f` string escapes not recognized | Added to `unescapeString` in reader.zig |
+| `^int`/`^long` type hints on defrecord fields | with-meta unwrap in `analyzeDefrecord` |
+
+### Notes
+
+- The 9 modules that load represent utility, combinators, reduction, and transformation layers
+- The GLL parsing engine (`gll.cljc`) and its core data structures (`auto_flatten_seq.cljc`)
+  are blocked by `deftype` — these are fundamental to the library's operation
+- `deftype` is permanently skipped in CW (design decision: defrecord covers data use cases)
+- Conclusion: **instaparse is out of scope** due to `deftype` dependency
 
 ---
 

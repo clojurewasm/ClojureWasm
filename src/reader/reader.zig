@@ -312,6 +312,8 @@ pub const Reader = struct {
                     'n' => { result.append(self.allocator, '\n') catch return error.OutOfMemory; i += 2; },
                     't' => { result.append(self.allocator, '\t') catch return error.OutOfMemory; i += 2; },
                     'r' => { result.append(self.allocator, '\r') catch return error.OutOfMemory; i += 2; },
+                    'b' => { result.append(self.allocator, 0x08) catch return error.OutOfMemory; i += 2; },
+                    'f' => { result.append(self.allocator, 0x0C) catch return error.OutOfMemory; i += 2; },
                     '\\' => { result.append(self.allocator, '\\') catch return error.OutOfMemory; i += 2; },
                     '"' => { result.append(self.allocator, '"') catch return error.OutOfMemory; i += 2; },
                     'u' => {
