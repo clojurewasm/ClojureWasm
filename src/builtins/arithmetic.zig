@@ -1321,7 +1321,7 @@ fn parseDoubleFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.initFloat(val);
 }
 
-/// (parse-uuid s) — Parses string as UUID, returns the UUID string if valid, nil if not.
+/// (parse-uuid s) — Parses string as UUID, returns a UUID instance if valid, nil if not.
 /// Throws on non-string input. UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 fn parseUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-uuid", .{args.len});
@@ -1330,7 +1330,8 @@ fn parseUuidFn(allocator: Allocator, args: []const Value) anyerror!Value {
         else => return err.setErrorFmt(.eval, .type_error, .{}, "parse-uuid expects a string argument", .{}),
     };
     if (isValidUuid(s)) {
-        return Value.initString(allocator, s);
+        const uuid_class = @import("../interop/classes/uuid.zig");
+        return uuid_class.constructFromString(allocator, s);
     }
     return Value.nil_val;
 }

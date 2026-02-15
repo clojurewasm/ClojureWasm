@@ -152,7 +152,30 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             };
             return Value.initRegex(pat);
         },
-        .tag => Value.nil_val, // tagged literals not supported in macro args
+        .tag => |t| {
+            const form_val = try formToValueWithNs(allocator, t.form.*, ns);
+            // Built-in #uuid → UUID class instance
+            if (std.mem.eql(u8, t.tag, "uuid")) {
+                if (form_val.tag() == .string) {
+                    const uuid_class = @import("../interop/classes/uuid.zig");
+                    return uuid_class.constructFromString(allocator, form_val.asString()) catch Value.nil_val;
+                }
+                return Value.nil_val;
+            }
+            // Built-in #inst → pass through string (no Date type yet)
+            if (std.mem.eql(u8, t.tag, "inst")) {
+                return form_val;
+            }
+            // General case: (tagged-literal 'tag form)
+            const entries = try allocator.alloc(Value, 4);
+            entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "tag" });
+            entries[1] = Value.initSymbol(allocator, .{ .ns = null, .name = t.tag });
+            entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "form" });
+            entries[3] = form_val;
+            const m = try allocator.create(collections.PersistentArrayMap);
+            m.* = .{ .entries = entries };
+            return Value.initMap(m);
+        }
     };
 }
 

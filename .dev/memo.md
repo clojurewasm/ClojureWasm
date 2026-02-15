@@ -34,8 +34,8 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0a: Verify/complete clojure.uuid namespace.
-CW has UUID type. Check #uuid reader tag and print coverage, add clojure.uuid ns.
+Phase 75.0b: clojure.test.tap — TAP output formatter.
+Port with minimal CLJW markers. `.split` → `clojure.string/split`, `Throwable` → `Exception`.
 Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
@@ -45,7 +45,6 @@ Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
 
 ```
 --- Batch 0: Small ---
-75.0a clojure.uuid — verify/complete UUID ns coverage (20 lines)
 75.0b clojure.test.tap — TAP output formatter (123 lines, nearly pure Clojure)
 75.0c clojure.java.browse — browse-url via shell (89 lines)
 75.0d clojure.datafy — datafy/nav protocols (62 lines)
@@ -79,10 +78,12 @@ Notes:
 
 ## Previous Task
 
-Phase 75 direction correction (complete):
-- Removed 3 CW fork files (data.json, data.csv, tools.cli) and bootstrap loaders
-- Rewrote RESULTS.md and library-port-targets.md for corrected policy
-- Valid CW bug fixes retained: re-seq nil, s/join cons, (int \a) cast, GC fixes
+Phase 75.0a: clojure.uuid (complete):
+- Fixed `parse-uuid` to return UUID class instance (was returning plain string)
+- Created `src/clj/clojure/uuid.clj` with CW-adapted `default-uuid-reader`
+- Registered in bootstrap.zig for lazy embedFile loading
+- Fixed `formToValueWithNs` to handle #uuid tagged literals (read-string path)
+- All UUID paths verified: #uuid, parse-uuid, random-uuid, uuid?, print, read-string
 
 ## Known Issues
 
