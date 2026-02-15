@@ -10,7 +10,7 @@ Session handover document. Read at session start.
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
-- Binary: 4.00MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 4.07MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter classes (D101)
 
 ## Strategic Direction
@@ -35,20 +35,19 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 77: Var Coverage Completion
-Sub-phase 77.6: test.check + spec.gen.alpha (27 vars)
+Sub-phase 77.10: Skip recovery (per-var, beep-and-ask)
 
 ## Previous Task
 
-77.3: STM/Ref system — 9 vars done (ref, ref-set, alter, commute, ensure, dosync, sync,
-ref-history-count, ref-min-history, ref-max-history). Full MVCC STM with LockingTransaction,
-retry, commute, ensure, validators, watchers. New: stm.zig (443 lines), RefObj/RefInner/TVal
-in value.zig, GC tracing, io! now checks transaction state. Binary: 4.05MB.
+77.6: spec.gen.alpha completion — 27 TODO vars done. All generators (int, double, char, string,
+keyword, symbol, boolean, uuid, ratio, large-integer, any, simple-type, etc.) now functional.
+Also fixed: analyzer vector literal bug (makeBuiltinCall now qualifies to clojure.core),
+char builtin returns char type not string. Binary: 4.07MB.
 
 ## Task Queue
 
 ```
-77.6 test.check + spec.gen.alpha (27 vars) ← CURRENT
-77.10 Skip recovery (per-var, beep-and-ask)
+77.10 Skip recovery (per-var, beep-and-ask) ← CURRENT
 skip recorvery にくわえて、以下が解消されているかも確認。その場で判断というより、コードベースの実態をチェックしてから進める
 (0) status: todoが0件かどうか
 (1) 本家テストポート
@@ -61,7 +60,7 @@ skip recorvery にくわえて、以下が解消されているかも確認。�
 (7) また、zig run test, run_e2e.sh, run_deps_e2e.shも確実にとおす(/tmpにテスト残骸のこってそう。参考になる？)
 (8) かなり色々と機能が追加されたのでベンチマークに不足がないかチェックして、必要に応じて有用なベンチマークを他言語もアルゴリズム等価で用意して比較に加える
 (9) それでもskipとして残ったものについては、noteが確実に書かれているか
-判断必要な場合は、afplay /System/Library/Sounds/Funk.aiff をならして、止める
+(10) ドキュメント群のvars言及箇所を最新化
 ```
 
 ## Known Issues

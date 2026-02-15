@@ -1293,10 +1293,8 @@ fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
         },
         else => return err.setErrorFmt(.eval, .type_error, .{}, "Cannot cast {s} to char", .{@tagName(args[0].tag())}),
     };
-    var buf: [4]u8 = undefined;
-    const len = std.unicode.utf8Encode(code, &buf) catch return err.setErrorFmt(.eval, .arithmetic_error, .{}, "Invalid Unicode codepoint", .{});
-    const str = allocator.dupe(u8, buf[0..len]) catch return error.OutOfMemory;
-    return Value.initString(allocator, str);
+    _ = allocator;
+    return Value.initChar(code);
 }
 
 /// (parse-long s) — Parses string to integer, returns nil if not valid.

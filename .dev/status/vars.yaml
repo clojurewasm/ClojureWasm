@@ -1074,60 +1074,60 @@ vars:
     "with-gen": {type: function, status: done}
     "with-gen*": {type: function, status: done}
   clojure_spec_gen_alpha:
-    any: {type: function, status: todo}
-    "any-printable": {type: function, status: todo}
-    bind: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    boolean: {type: function, status: done, note: "core.clj (if x true false)"}
-    bytes: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    cat: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    char: {type: function, status: todo}
-    "char-alpha": {type: function, status: todo}
-    "char-alphanumeric": {type: function, status: todo}
-    "char-ascii": {type: function, status: todo}
-    choose: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    delay: {type: macro, status: done, note: "core.clj map+atom memoization"}
-    "delay-impl": {type: function, status: todo}
-    double: {type: function, status: todo}
-    "double*": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    elements: {type: function, status: todo}
-    fmap: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "for-all*": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    frequency: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "gen-for-name": {type: function, status: todo}
-    "gen-for-pred": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    generate: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "hash-map": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    int: {type: function, status: todo}
-    keyword: {type: function, status: todo}
-    "keyword-ns": {type: function, status: todo}
-    "large-integer": {type: function, status: todo}
-    "large-integer*": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "lazy-combinator": {type: macro, status: todo}
-    "lazy-combinators": {type: macro, status: todo}
-    "lazy-prim": {type: macro, status: todo}
-    "lazy-prims": {type: macro, status: todo}
-    list: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    map: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "not-empty": {type: function, status: done, note: "core.clj (when (seq coll) coll)"}
-    "one-of": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "quick-check": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    ratio: {type: function, status: todo}
-    return: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    sample: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    set: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    shuffle: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "simple-type": {type: function, status: todo}
-    "simple-type-printable": {type: function, status: todo}
-    string: {type: function, status: todo}
-    "string-alphanumeric": {type: function, status: todo}
-    "string-ascii": {type: function, status: todo}
-    "such-that": {type: function, status: done, note: "stub (throws, needs test.check)"}
-    symbol: {type: function, status: todo}
-    "symbol-ns": {type: function, status: todo}
-    tuple: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    uuid: {type: function, status: todo}
-    vector: {type: function, status: done, note: "stub (throws, needs test.check)"}
-    "vector-distinct": {type: function, status: done, note: "stub (throws, needs test.check)"}
+    any: {type: function, status: done}
+    "any-printable": {type: function, status: done}
+    bind: {type: function, status: done, note: "stub (needs test.check)"}
+    boolean: {type: function, status: done}
+    bytes: {type: function, status: done, note: "stub (needs test.check)"}
+    cat: {type: function, status: done, note: "stub (needs test.check)"}
+    char: {type: function, status: done}
+    "char-alpha": {type: function, status: done}
+    "char-alphanumeric": {type: function, status: done}
+    "char-ascii": {type: function, status: done}
+    choose: {type: function, status: done, note: "stub (needs test.check)"}
+    delay: {type: macro, status: done}
+    "delay-impl": {type: function, status: done}
+    double: {type: function, status: done}
+    "double*": {type: function, status: done, note: "stub (needs test.check)"}
+    elements: {type: function, status: done}
+    fmap: {type: function, status: done, note: "stub (needs test.check)"}
+    "for-all*": {type: function, status: done, note: "stub (needs test.check)"}
+    frequency: {type: function, status: done, note: "stub (needs test.check)"}
+    "gen-for-name": {type: function, status: done}
+    "gen-for-pred": {type: function, status: done}
+    generate: {type: function, status: done}
+    "hash-map": {type: function, status: done}
+    int: {type: function, status: done}
+    keyword: {type: function, status: done}
+    "keyword-ns": {type: function, status: done}
+    "large-integer": {type: function, status: done}
+    "large-integer*": {type: function, status: done, note: "stub (needs test.check)"}
+    "lazy-combinator": {type: macro, status: done, note: "no-op (CW generators are direct)"}
+    "lazy-combinators": {type: macro, status: done, note: "no-op (CW generators are direct)"}
+    "lazy-prim": {type: macro, status: done, note: "no-op (CW generators are direct)"}
+    "lazy-prims": {type: macro, status: done, note: "no-op (CW generators are direct)"}
+    list: {type: function, status: done}
+    map: {type: function, status: done}
+    "not-empty": {type: function, status: done}
+    "one-of": {type: function, status: done}
+    "quick-check": {type: function, status: done, note: "stub (needs test.check)"}
+    ratio: {type: function, status: done}
+    return: {type: function, status: done}
+    sample: {type: function, status: done}
+    set: {type: function, status: done}
+    shuffle: {type: function, status: done}
+    "simple-type": {type: function, status: done}
+    "simple-type-printable": {type: function, status: done}
+    string: {type: function, status: done}
+    "string-alphanumeric": {type: function, status: done}
+    "string-ascii": {type: function, status: done}
+    "such-that": {type: function, status: done}
+    symbol: {type: function, status: done}
+    "symbol-ns": {type: function, status: done}
+    tuple: {type: function, status: done}
+    uuid: {type: function, status: done}
+    vector: {type: function, status: done}
+    "vector-distinct": {type: function, status: done}
   clojure_stacktrace:
     e: {type: function, status: done}
     "print-cause-trace": {type: function, status: done}

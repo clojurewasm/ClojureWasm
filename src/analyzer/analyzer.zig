@@ -3019,7 +3019,7 @@ pub const Analyzer = struct {
     fn makeBuiltinCall(self: *Analyzer, name: []const u8, args: []*Node) AnalyzeError!*Node {
         const callee = self.allocator.create(Node) catch return error.OutOfMemory;
         callee.* = .{ .var_ref = .{
-            .ns = null,
+            .ns = "clojure.core",
             .name = name,
             .source = .{},
         } };
