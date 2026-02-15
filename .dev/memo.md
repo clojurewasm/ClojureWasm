@@ -8,7 +8,7 @@ Session handover document. Read at session start.
 - Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
+- 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
 - Binary: 3.92MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter classes (D101)
@@ -34,7 +34,15 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Implement clojure.xml — DONE. Ready for next phase planning.
+Upstream test audit + multimethod cache fix — DONE.
+- Fixed multimethod L1 cache bug: was hashing only first arg, caused
+  thrown-with-msg?/thrown? in clojure.test to break after other assertions
+- Ported 3 new upstream test files (clojure_xml, main, server)
+- Added gap documentation to reader.clj, protocols.clj
+- Audit of all 52 test files complete: almost all gaps are JVM-ONLY
+- Portable gaps: read-string 2-arity, namespaced maps, :as-alias (features to implement)
+
+Ready for next phase planning.
 
 ## Task Queue
 
@@ -60,12 +68,12 @@ Notes:
 
 ## Previous Task
 
-Implement clojure.xml namespace:
-- Pure Clojure XML parser replacing Java SAX (upstream uses SAXParser/ContentHandler)
-- Supports: elements, attributes, text, CDATA, comments, entities, processing instructions
-- API: parse (from file), parse-str (from string), emit, emit-element, tag, attrs, content
-- 13/13 tests pass on both VM and TreeWalk backends
-- Binary: 3.92MB (under 4.0MB threshold), startup: 4.5ms (under 5ms)
+Upstream test audit + multimethod cache fix:
+- Root cause: MultiFn L1 cache hashed only first arg → stale cache hit
+  when dispatch depended on 2nd+ arg (assert-expr dispatches on form, not msg)
+- Fix: combinedArgKey() hashes ALL args with index mixing
+- 3 new test files ported, 2 files updated with comprehensive gap docs
+- All 52 upstream test files pass on both backends
 
 ## Known Issues
 
