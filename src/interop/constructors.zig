@@ -21,12 +21,20 @@ const err = @import("../runtime/error.zig");
 const uri_class = @import("classes/uri.zig");
 const file_class = @import("classes/file.zig");
 const uuid_class = @import("classes/uuid.zig");
+const pushback_reader_class = @import("classes/pushback_reader.zig");
+const string_builder_class = @import("classes/string_builder.zig");
+const string_writer_class = @import("classes/string_writer.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
     .{ "URI", "java.net.URI" },
     .{ "File", "java.io.File" },
     .{ "UUID", "java.util.UUID" },
+    .{ "PushbackReader", "java.io.PushbackReader" },
+    .{ "StringReader", "java.io.StringReader" },
+    .{ "StringBuilder", "java.lang.StringBuilder" },
+    .{ "StringWriter", "java.io.StringWriter" },
+    .{ "EOFException", "java.io.EOFException" },
     .{ "Exception", "Exception" },
     .{ "ExceptionInfo", "ExceptionInfo" },
 });
@@ -46,7 +54,11 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const ctor_args = args[1..];
 
     // Exception constructor: (Exception. "message")
-    if (std.mem.eql(u8, class_name, "Exception")) {
+    if (std.mem.eql(u8, class_name, "Exception") or
+        std.mem.eql(u8, class_name, "java.io.EOFException") or
+        std.mem.eql(u8, class_name, "RuntimeException") or
+        std.mem.eql(u8, class_name, "IllegalArgumentException"))
+    {
         if (ctor_args.len == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Exception requires a message", .{});
         return ctor_args[0];
     }
@@ -66,6 +78,18 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
         return uuid_class.construct(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, pushback_reader_class.class_name)) {
+        return pushback_reader_class.construct(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, pushback_reader_class.string_reader_class_name)) {
+        return pushback_reader_class.constructStringReader(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, string_builder_class.class_name)) {
+        return string_builder_class.construct(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
+        return string_writer_class.construct(allocator, ctor_args);
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});

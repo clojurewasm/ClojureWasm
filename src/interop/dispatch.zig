@@ -21,6 +21,9 @@ const collections = @import("../builtins/collections.zig");
 const uri_class = @import("classes/uri.zig");
 const file_class = @import("classes/file.zig");
 const uuid_class = @import("classes/uuid.zig");
+const pushback_reader_class = @import("classes/pushback_reader.zig");
+const string_builder_class = @import("classes/string_builder.zig");
+const string_writer_class = @import("classes/string_writer.zig");
 
 /// Java instance method dispatch.
 /// Called from __java-method builtin. Dispatches based on object tag,
@@ -40,16 +43,16 @@ pub fn dispatch(allocator: Allocator, method: []const u8, obj: Value, rest: []co
         }
     }
 
-    // Collection methods
-    if (std.mem.eql(u8, method, "size") or std.mem.eql(u8, method, "length")) {
-        return collections.countFn(allocator, &.{obj});
+    // Check :__reify_type on maps for class instances (before generic collection methods)
+    if (obj.tag() == .map or obj.tag() == .hash_map) {
+        if (getReifyType(obj)) |rt| {
+            return dispatchClass(allocator, rt, method, obj, rest);
+        }
     }
 
-    // Check :__reify_type on maps for class instances
-    if (obj.tag() == .map or obj.tag() == .hash_map) {
-        if (getReifyType(obj)) |class_name| {
-            return dispatchClass(allocator, class_name, method, obj, rest);
-        }
+    // Collection methods (only for non-class-instance collections)
+    if (std.mem.eql(u8, method, "size") or std.mem.eql(u8, method, "length")) {
+        return collections.countFn(allocator, &.{obj});
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} found for {s}", .{ method, @tagName(obj.tag()) });
@@ -66,6 +69,15 @@ fn dispatchClass(allocator: Allocator, class_name: []const u8, method: []const u
     }
     if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
         return uuid_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    if (std.mem.eql(u8, class_name, pushback_reader_class.class_name)) {
+        return pushback_reader_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    if (std.mem.eql(u8, class_name, string_builder_class.class_name)) {
+        return string_builder_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
+        return string_writer_class.dispatchMethod(allocator, method, obj, rest);
     }
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for class {s}", .{ method, class_name });
 }

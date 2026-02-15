@@ -11,7 +11,7 @@ Session handover document. Read at session start.
 - 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
 - Binary: 3.85MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
-- Java interop: `src/interop/` module with URI, File, UUID classes (D101)
+- Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter classes (D101)
 
 ## Strategic Direction
 
@@ -34,7 +34,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.D: Implement PushbackReader/StringWriter interop shims.
+Phase 75.E: Test data.json as-is (note: blocked by definterface/deftype).
 
 ## Task Queue
 
@@ -42,7 +42,7 @@ Phase 75.D: Implement PushbackReader/StringWriter interop shims.
 --- External Library Testing ---
 75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
 75.C  DONE — instaparse 9/16 modules load, blocked by deftype (out of scope)
-75.D  Implement PushbackReader/StringWriter interop shims
+75.D  DONE — PushbackReader, StringReader, StringBuilder, StringWriter, EOFException interop
 75.E  Test data.json as-is (after 75.D)
 75.F  Test data.csv as-is (after 75.D)
 75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
@@ -60,11 +60,15 @@ Notes:
 
 ## Previous Task
 
-Phase 75.C: instaparse testing (complete):
-- 9/16 modules load OK (util, print, reduction, combinators-source, failure, transform, line-col, macros, viz)
-- Blocked by deftype (permanently skipped) — auto-flatten-seq, gll use heavy deftype+JVM interfaces
-- Fixed: \b/\f string escapes, defrecord field type hints
-- Conclusion: out of scope due to deftype dependency
+Phase 75.D: Implement I/O interop shims (complete):
+- PushbackReader: .read() → int, .unread(int), wraps StringReader
+- StringReader: wraps string for character-by-character reading
+- StringBuilder: .append(char/string), .toString, .length (mutable accumulator)
+- StringWriter: .write(int/string), .append(CharSequence), .toString (in-memory Writer)
+- EOFException: constructor support (thrown by data.csv on premature EOF)
+- instance? checks for all new types + Reader/Writer parent types
+- Mutable state via smp_allocator opaque handles (not GC-tracked)
+- Fixed: class instance method dispatch now takes priority over generic collection methods
 
 ## Known Issues
 

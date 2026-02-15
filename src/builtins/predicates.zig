@@ -1129,6 +1129,37 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
     if (std.mem.eql(u8, class_name, "java.util.UUID"))
         return Value.false_val; // UUID not a distinct type in CW
 
+    // Java I/O types — check :__reify_type on class instances
+    if (tag == .map) {
+        if (interop_dispatch.getReifyType(x)) |rt| {
+            // PushbackReader
+            if (std.mem.eql(u8, class_name, "PushbackReader") or
+                std.mem.eql(u8, class_name, "java.io.PushbackReader"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.PushbackReader"));
+            // Reader (parent of PushbackReader, StringReader)
+            if (std.mem.eql(u8, class_name, "Reader") or
+                std.mem.eql(u8, class_name, "java.io.Reader"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.PushbackReader") or
+                    std.mem.eql(u8, rt, "java.io.StringReader"));
+            // StringReader
+            if (std.mem.eql(u8, class_name, "StringReader") or
+                std.mem.eql(u8, class_name, "java.io.StringReader"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringReader"));
+            // StringWriter
+            if (std.mem.eql(u8, class_name, "StringWriter") or
+                std.mem.eql(u8, class_name, "java.io.StringWriter"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringWriter"));
+            // Writer (parent of StringWriter)
+            if (std.mem.eql(u8, class_name, "Writer") or
+                std.mem.eql(u8, class_name, "java.io.Writer"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringWriter"));
+            // StringBuilder
+            if (std.mem.eql(u8, class_name, "StringBuilder") or
+                std.mem.eql(u8, class_name, "java.lang.StringBuilder"))
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.lang.StringBuilder"));
+        }
+    }
+
     // Unknown class: return false
     return Value.false_val;
 }
