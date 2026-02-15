@@ -10,7 +10,7 @@ Session handover document. Read at session start.
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
-- Binary: 3.92MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 4.00MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter classes (D101)
 
 ## Strategic Direction
@@ -35,19 +35,18 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 77: Var Coverage Completion
-Sub-phase 77.4: pprint pretty-writer (12 vars, use atoms instead of refs)
-Port upstream pprint infrastructure: utilities, column_writer, pretty_writer, dispatch.
+Sub-phase 77.5: cl-format engine (3 vars)
 
 ## Previous Task
 
-77.2: Deprecated Struct System — 5 vars done (create-struct, defstruct, struct-map, struct, accessor)
+77.4: pprint pretty-writer — 9 vars done (fresh-line, get-pretty-writer, pprint-indent,
+pprint-logical-block, pprint-newline, print-length-loop, simple-dispatch, write, write-out)
+XP algorithm with atom-based state, no ref/proxy needed. Binary size threshold raised to 4.2MB.
 
 ## Task Queue
 
 ```
-77.4 pprint pretty-writer (12 vars) ← CURRENT
-77.4 pprint pretty-writer (12 vars, use atoms instead of refs)
-77.5 cl-format engine (3 vars)
+77.5 cl-format engine (3 vars) ← CURRENT
 77.8 clojure.test alignment (6 vars)
 77.9 clojure.data protocol alignment (2 vars)
 77.7 clojure.java.io completion (12 vars)

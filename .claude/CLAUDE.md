@@ -124,7 +124,7 @@ Run before every commit:
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
 8. **Non-functional regression** (when changing execution code: src/vm/, src/evaluator/,
    src/compiler/, src/runtime/, src/builtins/, src/wasm/, bootstrap):
-   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.0MB
+   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.2MB
    - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 5ms
    - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 12MB
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline

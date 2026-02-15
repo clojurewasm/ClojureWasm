@@ -925,21 +925,21 @@ vars:
     "code-dispatch": {type: var, status: todo}
     formatter: {type: macro, status: todo}
     "formatter-out": {type: macro, status: todo}
-    "fresh-line": {type: function, status: todo}
-    "get-pretty-writer": {type: function, status: todo}
+    "fresh-line": {type: function, status: done}
+    "get-pretty-writer": {type: function, status: done}
     pp: {type: macro, status: done}
     pprint: {type: function, status: done, notes: builtin (upstream is pure clj)}
-    "pprint-indent": {type: function, status: todo}
-    "pprint-logical-block": {type: macro, status: todo}
-    "pprint-newline": {type: function, status: todo}
+    "pprint-indent": {type: function, status: done}
+    "pprint-logical-block": {type: macro, status: done}
+    "pprint-newline": {type: function, status: done}
     "pprint-tab": {type: function, status: done, notes: "stub (upstream also throws)"}
-    "print-length-loop": {type: macro, status: todo}
+    "print-length-loop": {type: macro, status: done}
     "print-table": {type: function, status: done}
     "set-pprint-dispatch": {type: function, status: done}
-    "simple-dispatch": {type: var, status: todo}
+    "simple-dispatch": {type: var, status: done}
     "with-pprint-dispatch": {type: macro, status: done}
-    write: {type: function, status: todo}
-    "write-out": {type: function, status: todo}
+    write: {type: function, status: done}
+    "write-out": {type: function, status: done}
   clojure_reflect:
     "->AsmReflector": {type: function, status: skip, note: 100% Java reflection API}
     "->Constructor": {type: function, status: skip, note: 100% Java reflection API}
