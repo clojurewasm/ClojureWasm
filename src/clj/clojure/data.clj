@@ -1,5 +1,5 @@
 ;; clojure.data — Non-core data functions.
-;; UPSTREAM-DIFF: uses type checks instead of protocols (no Java types)
+;; UPSTREAM-DIFF: protocol dispatch uses cond on predicates (CW has no Java type hierarchy)
 
 (ns clojure.data
   (:require [clojure.set :as set]))
@@ -50,27 +50,39 @@
                        (if (vector? b) b (vec b))
                        (range (max (count a) (count b)))))))
 
-(defn- equality-partition
-  [x]
-  (cond
-    (nil? x)        :atom
-    (map? x)        :map
-    (set? x)        :set
-    (sequential? x) :sequential
-    :else           :atom))
+(defprotocol EqualityPartition
+  "Implementation detail. Subject to change."
+  (equality-partition [x] "Implementation detail. Subject to change."))
 
-(defn- diff-similar
-  [a b]
-  (cond
-    (nil? a)        (atom-diff a b)
-    (set? a)        (let [aval (if (set? a) a (into #{} a))
-                          bval (if (set? b) b (into #{} b))]
-                      [(not-empty (set/difference aval bval))
-                       (not-empty (set/difference bval aval))
-                       (not-empty (set/intersection aval bval))])
-    (map? a)        (diff-associative a b (set/union (set (keys a)) (set (keys b))))
-    (sequential? a) (diff-sequential a b)
-    :else           (atom-diff a b)))
+(defprotocol Diff
+  "Implementation detail. Subject to change."
+  (diff-similar [a b] "Implementation detail. Subject to change."))
+
+;; UPSTREAM-DIFF: extend-protocol to Object with cond dispatch
+;; (upstream extends to nil, java.util.Map, java.util.Set, java.util.List, Object)
+(extend-protocol EqualityPartition
+  Object
+  (equality-partition [x]
+    (cond
+      (nil? x)        :atom
+      (map? x)        :map
+      (set? x)        :set
+      (sequential? x) :sequential
+      :else           :atom)))
+
+(extend-protocol Diff
+  Object
+  (diff-similar [a b]
+    (cond
+      (nil? a)        (atom-diff a b)
+      (set? a)        (let [aval (if (set? a) a (into #{} a))
+                            bval (if (set? b) b (into #{} b))]
+                        [(not-empty (set/difference aval bval))
+                         (not-empty (set/difference bval aval))
+                         (not-empty (set/intersection aval bval))])
+      (map? a)        (diff-associative a b (set/union (set (keys a)) (set (keys b))))
+      (sequential? a) (diff-sequential a b)
+      :else           (atom-diff a b))))
 
 (defn diff
   "Recursively compares a and b, returning a tuple of

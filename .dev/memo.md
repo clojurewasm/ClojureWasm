@@ -35,20 +35,17 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 77: Var Coverage Completion
-Sub-phase 77.9: clojure.data protocol alignment (2 vars)
+Sub-phase 77.7: clojure.java.io completion (12 vars)
 
 ## Previous Task
 
-77.8: clojure.test alignment — 6 vars done (assert-expr, assert-any, assert-predicate,
-try-expr, get-possibly-unbound-var, test-ns). Refactored inc-report-counter to use
-*report-counters* atom (upstream alignment). run-tests now delegates to test-ns.
-file-position stays skip (deprecated 1.2, needs StackTraceElement).
+77.9: clojure.data protocol alignment — 2 vars done (Diff, EqualityPartition).
+Converted private functions to defprotocol + extend-protocol Object with cond dispatch.
 
 ## Task Queue
 
 ```
-77.9 clojure.data protocol alignment (2 vars) ← CURRENT
-77.7 clojure.java.io completion (12 vars)
+77.7 clojure.java.io completion (12 vars) ← CURRENT
 77.3 STM/Ref system (9 vars)
 77.6 test.check + spec.gen.alpha (27 vars)
 77.10 Skip recovery (per-var, beep-and-ask)

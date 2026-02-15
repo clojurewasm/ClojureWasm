@@ -770,11 +770,11 @@ vars:
   clojure_core_specs_alpha:
     "even-number-of-forms?": {type: function, status: done}
   clojure_data:
-    Diff: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
-    EqualityPartition: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
-    diff: {type: function, status: done, notes: 'UPSTREAM-DIFF: type checks instead of protocols'}
-    "diff-similar": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
-    "equality-partition": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
+    Diff: {type: var, status: done, notes: "protocol with Object default (cond dispatch)"}
+    EqualityPartition: {type: var, status: done, notes: "protocol with Object default (cond dispatch)"}
+    diff: {type: function, status: done}
+    "diff-similar": {type: function, status: done, notes: "protocol method"}
+    "equality-partition": {type: function, status: done, notes: "protocol method"}
   clojure_datafy:
     datafy: {type: function, status: done}
     nav: {type: function, status: done}
@@ -1176,7 +1176,7 @@ vars:
     deftest: {type: macro, status: done}
     "deftest-": {type: macro, status: done}
     "do-report": {type: function, status: done}
-    "file-position": {type: function, status: skip, notes: "deprecated 1.2, needs Java StackTraceElement"}
+    "file-position": {type: function, status: skip, notes: "deprecated since 1.2, needs Java StackTraceElement for stack introspection"}
     "function?": {type: function, status: done}
     "get-possibly-unbound-var": {type: function, status: done}
     "inc-report-counter": {type: function, status: done}
