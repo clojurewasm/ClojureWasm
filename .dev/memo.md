@@ -34,8 +34,8 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0d: clojure.datafy — datafy/nav protocols.
-Core datafy/nav, skip Class extension (needs reflect). CLJW markers.
+Phase 75.0e: clojure.instant — #inst reader + Zig date type.
+Pure Clojure parser + Zig date type. Multi-task.
 Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
@@ -45,7 +45,6 @@ Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
 
 ```
 --- Batch 0: Small ---
-75.0d clojure.datafy — datafy/nav protocols (62 lines)
 --- Batch 0: Medium ---
 75.0e clojure.instant — #inst reader + Zig date type (294 lines, multi-task)
 75.0f clojure.java.process — process API via Zig std.process (196 lines, multi-task)
@@ -76,10 +75,10 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0c: clojure.java.browse (complete):
-- Created `src/clj/clojure/java/browse.clj` — shell-based `browse-url`
-- Uses `open` (macOS) / `xdg-open` (Linux) via clojure.java.shell/sh
-- Skipped AWT Desktop and Swing fallbacks (no GUI in CW)
+Phase 75.0d: clojure.datafy (complete):
+- Created `src/clj/clojure/datafy.clj` — datafy/nav protocol functions
+- Extended Exception for Datafiable (upstream: Throwable)
+- Skipped IRef, Namespace, Class extensions (CW type system limitations)
 
 ## Known Issues
 
