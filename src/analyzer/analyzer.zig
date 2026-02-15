@@ -1977,14 +1977,19 @@ pub const Analyzer = struct {
         def_ctor_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
         def_ctor_forms[2] = .{ .data = .{ .list = fn_forms } };
 
-        // Build (fn map->Name [m] m) — identity on map arg
+        // Build (fn map->Name [m] (assoc m :__reify_type "Name"))
         const map_param = self.allocator.alloc(Form, 1) catch return error.OutOfMemory;
         map_param[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "m" } } };
+        const assoc_forms = self.allocator.alloc(Form, 4) catch return error.OutOfMemory;
+        assoc_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "assoc" } } };
+        assoc_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = "m" } } };
+        assoc_forms[2] = .{ .data = .{ .keyword = .{ .ns = null, .name = "__reify_type" } } };
+        assoc_forms[3] = .{ .data = .{ .string = rec_name } };
         const map_fn_forms = self.allocator.alloc(Form, 4) catch return error.OutOfMemory;
         map_fn_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
         map_fn_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = map_ctor_name } } };
         map_fn_forms[2] = .{ .data = .{ .vector = map_param } };
-        map_fn_forms[3] = .{ .data = .{ .symbol = .{ .ns = null, .name = "m" } } };
+        map_fn_forms[3] = .{ .data = .{ .list = assoc_forms } };
 
         // Build (def map->Name (fn ...))
         const def_map_ctor_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;

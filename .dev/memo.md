@@ -34,9 +34,9 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements (Commit 3 next)
-- Commits 1-2 DONE
-- Next: Fix map->Name to merge __reify_type
+Phase 76: Type System & Reader Enhancements (Commit 4 next)
+- Commits 1-3 DONE
+- Next: instance? for CW record/reify types
 
 ## Task Queue
 
@@ -44,7 +44,7 @@ Phase 76: Type System & Reader Enhancements (Commit 3 next)
 --- Phase 76: Type System & Reader Enhancements ---
 76.1  DONE — reify multi-arity method support
 76.2  DONE — defrecord inline protocol implementation
-76.3  TODO — Fix map->Name to merge __reify_type
+76.3  DONE — Fix map->Name to merge __reify_type
 76.4  TODO — instance? for CW record/reify types
 76.5  TODO — deftype implementation
 76.6  TODO — read-string 2-arity
