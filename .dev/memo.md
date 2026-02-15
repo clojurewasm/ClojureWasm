@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 74 COMPLETE** (Java interop architecture)
-- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 22 embedded CLJ namespaces)
+- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 24 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
@@ -34,20 +34,12 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0h: clojure.core.server — socket REPL + prepl.
-Detail: `.dev/missing-clj-namespaces.md`
+Phase 75.A: Fix CW limitations for library compatibility.
+Known issues: regex backtracking, catch empty body, split trailing empties, apply map vector.
 
 ## Task Queue
 
-Batch 0: Missing clojure.jar namespaces (embed, CLJW markers OK).
-Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
-
 ```
---- Batch 0: Small ---
---- Batch 0: Medium ---
---- Batch 0: Large ---
-75.0h clojure.core.server — socket REPL + prepl (341 lines, after 0g)
-75.0i clojure.repl.deps — CW-native REPL deps (97 lines, after deps.edn stable)
 --- External Library Testing ---
 75.A  Fix CW limitations (regex backtracking, catch empty body, split trailing empties, apply map vector)
 75.B  Retry tools.cli as-is (should work after 75.A)
@@ -71,13 +63,11 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0g: clojure.main (complete):
-- Created `src/clj/clojure/main.clj` — CW-native main namespace
-- Functions: with-bindings, repl-prompt, repl-read, repl, repl-caught, repl-exception
-- Error analysis: ex-triage, ex-str, err->msg (simplified, no JVM stack traces)
-- Helpers: demunge, root-cause, load-script, with-read-known
-- Discovered case macro bug F139 (mixed body types → shift-mask error)
-- 19 CLJW markers
+Phase 75.0h+0i: Stub namespaces (complete):
+- clojure.core.server: API surface for socket REPL/prepl (start-server, stop-server, prepl, etc.)
+- clojure.repl.deps: API surface for dynamic library loading (add-libs, add-lib, sync-deps)
+- Both throw on actual operations (requires Zig networking / deps.edn resolver)
+- Batch 0 complete: all missing clojure.jar namespaces implemented (24 embedded CLJ namespaces)
 
 ## Known Issues
 

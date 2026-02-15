@@ -101,6 +101,12 @@ const process_clj_source = @embedFile("../clj/clojure/java/process.clj");
 /// Embedded clojure/main.clj source (compiled into binary).
 const main_clj_source = @embedFile("../clj/clojure/main.clj");
 
+/// Embedded clojure/core/server.clj source (compiled into binary).
+const server_clj_source = @embedFile("../clj/clojure/core/server.clj");
+
+/// Embedded clojure/repl/deps.clj source (compiled into binary).
+const repl_deps_clj_source = @embedFile("../clj/clojure/repl/deps.clj");
+
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
 
@@ -812,6 +818,56 @@ pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/core/server.clj (stub namespace).
+pub fn loadCoreServer(allocator: Allocator, env: *Env) BootstrapError!void {
+    const server_ns = env.findOrCreateNamespace("clojure.core.server") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        server_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = server_ns;
+
+    _ = try evalString(allocator, env, server_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load and evaluate clojure/repl/deps.clj (stub namespace).
+pub fn loadReplDeps(allocator: Allocator, env: *Env) BootstrapError!void {
+    const repl_deps_ns = env.findOrCreateNamespace("clojure.repl.deps") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        repl_deps_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = repl_deps_ns;
+
+    _ = try evalString(allocator, env, repl_deps_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
@@ -910,6 +966,18 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.main")) {
         try loadMain(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.core.server")) {
+        // Ensure dependencies are loaded
+        if (env.findNamespace("clojure.main") == null) {
+            try loadMain(allocator, env);
+        }
+        try loadCoreServer(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.repl.deps")) {
+        try loadReplDeps(allocator, env);
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {
