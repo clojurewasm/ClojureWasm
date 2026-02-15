@@ -127,9 +127,22 @@ pub const Matcher = struct {
         const node = nodes[idx];
         const rest = nodes[idx + 1 ..];
 
-        // Non-greedy quantifiers need integration with subsequent nodes
-        if (node == .quantifier and !node.quantifier.greedy) {
-            return self.matchQuantifierLazyWithRest(node.quantifier, rest, pos);
+        // Quantifiers need integration with subsequent nodes for backtracking
+        if (node == .quantifier) {
+            if (node.quantifier.greedy) {
+                return self.matchQuantifierGreedyWithRest(node.quantifier, rest, pos);
+            } else {
+                return self.matchQuantifierLazyWithRest(node.quantifier, rest, pos);
+            }
+        }
+
+        // Groups (capturing/non-capturing): pass outer rest so inner quantifiers
+        // can backtrack correctly (e.g., (.*)a, (\S+)=)
+        if (node == .group) {
+            const g = node.group;
+            if (g.kind == .capturing or g.kind == .non_capturing) {
+                return self.matchGroupWithRest(g, rest, pos);
+            }
         }
 
         if (try self.tryMatchNode(node, pos)) |new_pos| {
@@ -237,6 +250,152 @@ pub const Matcher = struct {
         return if (matches) pos else null; // anchors don't consume input
     }
 
+    /// Match a group with outer rest integration for backtracking.
+    /// This allows quantifiers inside groups (e.g., (.*)X, (\S+)=) to
+    /// backtrack based on whether the outer rest matches.
+    fn matchGroupWithRest(self: *Matcher, g: regex_mod.Group, outer_rest: []const RegexNode, pos: usize) MatchError!?usize {
+        const children = g.children;
+
+        // Find the last quantifier in the group's children (common pattern: (.+), (\S+), etc.)
+        // For groups ending with a quantifier, integrate the quantifier with
+        // a combined rest = remaining_group_children ++ outer_rest.
+        const last_quant_idx = blk: {
+            if (children.len == 0) break :blk null;
+            var i = children.len;
+            while (i > 0) {
+                i -= 1;
+                if (children[i] == .quantifier) break :blk i;
+                break; // only check the last child
+            }
+            break :blk null;
+        };
+
+        if (last_quant_idx) |qi| {
+            const q = children[qi].quantifier;
+            const group_prefix = children[0..qi];
+            const group_suffix = children[qi + 1 ..]; // usually empty
+
+            // Match the prefix (non-quantifier nodes before the quantifier)
+            const prefix_end = if (group_prefix.len > 0)
+                try self.tryMatchNodes(group_prefix, pos)
+            else
+                pos;
+
+            if (prefix_end) |quant_start| {
+                // Build combined rest: group_suffix ++ GroupEndMarker(implicit) ++ outer_rest
+                // Since we can't inject a capture marker, we handle capture separately.
+                // Strategy: for each quantifier backtrack position, set capture and try rest.
+                const saved = try self.allocator.dupe(?Span, self.captures);
+                defer self.allocator.free(saved);
+
+                if (q.greedy) {
+                    // Greedy: accumulate positions, backtrack from max
+                    var positions: std.ArrayList(usize) = .empty;
+                    defer positions.deinit(self.allocator);
+                    positions.append(self.allocator, quant_start) catch return null;
+
+                    var current = quant_start;
+                    var count: u32 = 0;
+                    const max_count = q.max orelse std.math.maxInt(u32);
+
+                    while (count < max_count) {
+                        if (try self.tryMatchNode(q.child.*, current)) |new_pos| {
+                            if (new_pos == current) break;
+                            current = new_pos;
+                            count += 1;
+                            positions.append(self.allocator, current) catch return null;
+                        } else break;
+                    }
+
+                    while (positions.items.len > 0) {
+                        const try_pos = positions.pop().?;
+                        const matched_count = positions.items.len;
+                        if (matched_count >= q.min) {
+                            // Set group capture tentatively
+                            if (g.capture_index > 0 and g.capture_index < self.captures.len) {
+                                self.captures[g.capture_index] = .{ .start = pos, .end = try_pos };
+                            }
+                            // Try group suffix + outer rest
+                            const suffix_ok = if (group_suffix.len > 0)
+                                try self.tryMatchNodes(group_suffix, try_pos)
+                            else
+                                try_pos;
+
+                            if (suffix_ok) |after_suffix| {
+                                if (try self.tryMatchNodesAt(outer_rest, 0, after_suffix)) |end_pos| {
+                                    return end_pos;
+                                }
+                            }
+                            @memcpy(self.captures, saved);
+                        }
+                    }
+                } else {
+                    // Lazy: expand from min
+                    var current = quant_start;
+                    var count: u32 = 0;
+                    const max_count = q.max orelse std.math.maxInt(u32);
+
+                    while (count < q.min) {
+                        if (try self.tryMatchNode(q.child.*, current)) |new_pos| {
+                            if (new_pos == current) break;
+                            current = new_pos;
+                            count += 1;
+                        } else return null;
+                    }
+
+                    while (count <= max_count) {
+                        // Set group capture tentatively
+                        if (g.capture_index > 0 and g.capture_index < self.captures.len) {
+                            self.captures[g.capture_index] = .{ .start = pos, .end = current };
+                        }
+                        // Try group suffix + outer rest
+                        const suffix_ok = if (group_suffix.len > 0)
+                            try self.tryMatchNodes(group_suffix, current)
+                        else
+                            current;
+
+                        if (suffix_ok) |after_suffix| {
+                            if (try self.tryMatchNodesAt(outer_rest, 0, after_suffix)) |end_pos| {
+                                return end_pos;
+                            }
+                        }
+                        @memcpy(self.captures, saved);
+
+                        if (try self.tryMatchNode(q.child.*, current)) |new_pos| {
+                            if (new_pos == current) break;
+                            current = new_pos;
+                            count += 1;
+                        } else break;
+                    }
+                }
+                return null;
+            }
+            return null;
+        }
+
+        // No quantifier in group: use standard matching then try outer rest
+        switch (g.kind) {
+            .capturing => {
+                const result = try self.tryMatchNodes(children, pos);
+                if (result) |end_pos| {
+                    if (g.capture_index > 0 and g.capture_index < self.captures.len) {
+                        self.captures[g.capture_index] = .{ .start = pos, .end = end_pos };
+                    }
+                    return self.tryMatchNodesAt(outer_rest, 0, end_pos);
+                }
+                return null;
+            },
+            .non_capturing => {
+                const result = try self.tryMatchNodes(children, pos);
+                if (result) |end_pos| {
+                    return self.tryMatchNodesAt(outer_rest, 0, end_pos);
+                }
+                return null;
+            },
+            else => unreachable, // lookahead handled by tryMatchNodesAt
+        }
+    }
+
     fn matchGroup(self: *Matcher, g: regex_mod.Group, pos: usize) MatchError!?usize {
         switch (g.kind) {
             .capturing => {
@@ -278,10 +437,12 @@ pub const Matcher = struct {
     }
 
     fn matchQuantifier(self: *Matcher, q: regex_mod.Quantifier, pos: usize) MatchError!?usize {
-        return self.matchQuantifierGreedy(q, pos);
+        // Standalone quantifier (called from tryMatchNode, no rest context).
+        // Use greedy-with-rest with empty rest.
+        return self.matchQuantifierGreedyWithRest(q, &.{}, pos);
     }
 
-    fn matchQuantifierGreedy(self: *Matcher, q: regex_mod.Quantifier, pos: usize) MatchError!?usize {
+    fn matchQuantifierGreedyWithRest(self: *Matcher, q: regex_mod.Quantifier, rest: []const RegexNode, pos: usize) MatchError!?usize {
         var positions: std.ArrayList(usize) = .empty;
         defer positions.deinit(self.allocator);
         positions.append(self.allocator, pos) catch return null;
@@ -290,6 +451,7 @@ pub const Matcher = struct {
         var count: u32 = 0;
         const max_count = q.max orelse std.math.maxInt(u32);
 
+        // Greedily match as many as possible
         while (count < max_count) {
             if (try self.tryMatchNode(q.child.*, current_pos)) |new_pos| {
                 if (new_pos == current_pos) break; // infinite loop prevention
@@ -301,12 +463,19 @@ pub const Matcher = struct {
             }
         }
 
-        // Backtrack from max to min
+        // Backtrack from max to min, trying rest at each position
+        const saved = try self.allocator.dupe(?Span, self.captures);
+        defer self.allocator.free(saved);
+
         while (positions.items.len > 0) {
             const try_pos = positions.pop().?;
             const matched_count = positions.items.len;
             if (matched_count >= q.min) {
-                return try_pos;
+                if (try self.tryMatchNodesAt(rest, 0, try_pos)) |end_pos| {
+                    return end_pos;
+                }
+                // Restore captures on backtrack
+                @memcpy(self.captures, saved);
             }
         }
 
