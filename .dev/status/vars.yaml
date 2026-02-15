@@ -114,7 +114,7 @@ vars:
     alength: {type: function, status: done, note: Phase 43 — Zig array type}
     alias: {type: function, status: done, note: builtin (upstream is pure clj)}
     "all-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    alter: {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
+    alter: {type: function, status: done, note: "builtin (STM ref alter)"}
     "alter-meta!": {type: function, status: done, note: "Zig builtin: mutates atom metadata"}
     "alter-var-root": {type: function, status: done, note: builtin (upstream is pure clj)}
     amap: {type: macro, status: done, note: Phase 43 — Zig array type}
@@ -196,7 +196,7 @@ vars:
     "clojure-version": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "coll?": {type: function, status: done, note: "Zig builtin"}
     comment: {type: macro, status: done, note: "macro in core.clj"}
-    commute: {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
+    commute: {type: function, status: done, note: "builtin (STM ref commute)"}
     comp: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     comparator: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     compare: {type: function, status: done, note: "Zig builtin"}
@@ -255,7 +255,7 @@ vars:
     doall: {type: function, status: done, note: "core.clj dorun+return"}
     dorun: {type: function, status: done, note: "core.clj loop over seq"}
     doseq: {type: macro, status: done, note: "UPSTREAM-DIFF (minor): uses next/next instead of nnext (bootstrap order); nth instead of .nth"}
-    dosync: {type: macro, status: skip, note: OUT OF SCOPE — atom sufficient}
+    dosync: {type: macro, status: done, note: "macro in core.clj (wraps __run-in-transaction)"}
     dotimes: {type: macro, status: done, note: 'UPSTREAM-DIFF (minor): inline validation instead of assert-args (bootstrap order)'}
     doto: {type: macro, status: done, note: "macro in core.clj"}
     double: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -268,7 +268,7 @@ vars:
     eduction: {type: function, status: done, note: 'UPSTREAM-DIFF: eager sequence wrapper (no deftype/IReduceInit)'}
     empty: {type: function, status: done, note: "Zig builtin"}
     "empty?": {type: function, status: done, note: "Zig builtin"}
-    ensure: {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
+    ensure: {type: function, status: done, note: "builtin (STM ref ensure)"}
     "ensure-reduced": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "enumeration-seq": {type: function, status: skip, note: JVM interop}
     "error-handler": {type: function, status: done, note: "builtin"}
@@ -363,7 +363,7 @@ vars:
     into: {type: function, status: done, note: "portable to clj"}
     "into-array": {type: function, status: done, note: Phase 43 — Zig array type}
     ints: {type: function, status: done, note: Phase 43 — Zig array type}
-    "io!": {type: macro, status: done, note: "UPSTREAM-DIFF: no STM, implicit do"}
+    "io!": {type: macro, status: done, note: "macro in core.clj (checks __in-transaction?)"}
     "isa?": {type: function, status: done, note: "core.clj hierarchy-aware"}
     iterate: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     iteration: {type: function, status: done, note: 'UPSTREAM-DIFF: lazy-seq wrapper (no IReduceInit protocol)'}
@@ -531,11 +531,11 @@ vars:
     reduced: {type: function, status: done, note: "Zig builtin"}
     "reduced?": {type: function, status: done, note: "Zig builtin"}
     reductions: {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    ref: {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
-    "ref-history-count": {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
-    "ref-max-history": {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
-    "ref-min-history": {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
-    "ref-set": {type: function, status: skip, note: OUT OF SCOPE — atom sufficient}
+    ref: {type: function, status: done, note: "builtin (STM ref constructor)"}
+    "ref-history-count": {type: function, status: done, note: "builtin"}
+    "ref-max-history": {type: function, status: done, note: "builtin"}
+    "ref-min-history": {type: function, status: done, note: "builtin"}
+    "ref-set": {type: function, status: done, note: "builtin (STM ref-set)"}
     refer: {type: function, status: done, note: builtin (upstream is pure clj)}
     "refer-clojure": {type: macro, status: done}
     reify: {type: macro, status: done, note: "analyzer special form, protocol impl on anonymous objects"}
@@ -628,7 +628,7 @@ vars:
     "swap-vals!": {type: function, status: done, note: "Zig builtin (upstream is pure clj)"}
     symbol: {type: function, status: done, note: "Zig builtin"}
     "symbol?": {type: function, status: done, note: "Zig builtin"}
-    sync: {type: macro, status: skip, note: OUT OF SCOPE — atom sufficient}
+    sync: {type: macro, status: done, note: "macro in core.clj (wraps dosync)"}
     "tagged-literal": {type: function, status: done, note: "UPSTREAM-DIFF: returns map instead of TaggedLiteral type"}
     "tagged-literal?": {type: function, status: done, note: "UPSTREAM-DIFF: checks map shape instead of type"}
     take: {type: function, status: done, note: "core.clj (upstream is pure clj)"}

@@ -2401,15 +2401,35 @@
   [x & body]
   `(do ~x ~@body))
 
-;; CLJW: no STM, so io! is just an implicit do (upstream checks LockingTransaction/isRunning)
+(defmacro dosync
+  "Runs the exprs (in an implicit do) in a transaction that encompasses
+  exprs and any nested calls. Starts a transaction if none is already
+  running on this thread. Any uncaught exception will abort the
+  transaction and flow out of dosync."
+  {:added "1.0"}
+  [& exprs]
+  `(__run-in-transaction (fn [] ~@exprs)))
+
+(defmacro sync
+  "transaction-flags => TBD, currently ignored.
+  Runs the exprs (in an implicit do) in a transaction that encompasses
+  exprs and any nested calls."
+  {:added "1.0"}
+  [flags-ignored-for-now & body]
+  `(dosync ~@body))
+
 (defmacro io!
   "If an io! block occurs in a transaction, throws an
   IllegalStateException, else runs body in an implicit do. If the
   first expression in body is a literal string, will use that as the
   exception message."
+  {:added "1.0"}
   [& body]
-  (let [body (if (string? (first body)) (next body) body)]
-    `(do ~@body)))
+  (let [message (if (string? (first body)) (first body) "I/O in transaction")
+        body (if (string? (first body)) (next body) body)]
+    `(if (__in-transaction?)
+       (throw (ex-info ~message {}))
+       (do ~@body))))
 
 ;; requiring-resolve
 (defn requiring-resolve

@@ -1301,6 +1301,13 @@ fn writeValue(w: anytype, val: Value) void {
             writeValue(w, inner.state);
             w.print("]", .{}) catch {};
         },
+        .ref => {
+            const r = val.asRef();
+            const inner: *clj.value.RefInner = @ptrCast(@alignCast(r.inner));
+            w.print("#ref[", .{}) catch {};
+            writeValue(w, inner.currentVal());
+            w.print("]", .{}) catch {};
+        },
         .reduced => writeValue(w, val.asReduced().value),
         .transient_vector => w.print("#<TransientVector>", .{}) catch {},
         .transient_map => w.print("#<TransientMap>", .{}) catch {},

@@ -955,6 +955,28 @@ pub fn traceValue(gc: *MarkSweepGc, val: Value) void {
             }
         },
 
+        // Ref — transactional reference. Inner is smp_allocator but values need tracing.
+        .ref => {
+            const r = val.asRef();
+            if (gc.markAndCheck(r)) {
+                const inner: *value_mod.RefInner = @ptrCast(@alignCast(r.inner));
+                // Trace all TVal values in the history chain
+                var tval = inner.tvals;
+                while (tval) |tv| {
+                    traceValue(gc, tv.val);
+                    tval = tv.prior;
+                }
+                if (inner.validator) |v| traceValue(gc, v);
+                traceValue(gc, inner.meta_val);
+                if (inner.watch_fns) |fns| {
+                    for (fns) |fn_val| traceValue(gc, fn_val);
+                }
+                if (inner.watch_keys) |keys| {
+                    for (keys) |key| traceValue(gc, key);
+                }
+            }
+        },
+
         // Reduced — wrapped value
         .reduced => {
             const r = val.asReduced();

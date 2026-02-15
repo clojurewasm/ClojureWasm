@@ -319,7 +319,7 @@ pub const Reduced = struct {
 };
 
 /// Discriminator for types sharing the delay NanHeapTag slot.
-pub const DeferredKind = enum(u8) { delay, future, promise, agent };
+pub const DeferredKind = enum(u8) { delay, future, promise, agent, ref };
 
 // Sentinel value for "no Value" in extern structs (where ?Value is not allowed).
 pub const NO_VALUE: Value = @enumFromInt(0xDEAD_DEAD_DEAD_DEAD);
@@ -442,6 +442,48 @@ pub const AgentAction = struct {
     func: Value,
     args: []const Value, // additional args beyond current state
     next: ?*AgentAction = null,
+};
+
+/// TVal — a single versioned snapshot in a Ref's history chain.
+/// Singly-linked list, newest first.
+pub const TVal = struct {
+    val: Value,
+    point: i64,
+    prior: ?*TVal,
+};
+
+/// Ref — STM transactional reference type.
+/// Supports MVCC reads and transactional writes via LockingTransaction.
+/// extern struct for guaranteed field order (kind must be at offset 0).
+pub const RefObj = extern struct {
+    kind: DeferredKind = .ref, // MUST be at offset 0 (tag discriminator)
+    inner: *anyopaque = undefined, // *RefInner (contains mutex, can't be extern)
+};
+
+/// RefInner — mutable internals of a Ref, protected by mutex.
+/// Allocated via smp_allocator (not GC-traced).
+pub const RefInner = struct {
+    tvals: ?*TVal, // newest TVal (head of history chain)
+    faults: u32, // read fault counter (triggers history growth)
+    min_history: u32,
+    max_history: u32,
+    lock: std.Thread.Mutex,
+    tinfo: ?*anyopaque, // *TxInfo if write-locked by a transaction
+    validator: ?Value,
+    meta_val: Value, // metadata map
+    watch_keys: ?[]Value,
+    watch_fns: ?[]Value,
+    watch_count: usize,
+
+    pub fn currentVal(self: *const RefInner) Value {
+        if (self.tvals) |tv| return tv.val;
+        return Value.nil_val;
+    }
+
+    pub fn currentPoint(self: *const RefInner) i64 {
+        if (self.tvals) |tv| return tv.point;
+        return 0;
+    }
 };
 
 /// Compiled regex pattern.
@@ -871,7 +913,7 @@ pub const Value = enum(u64) {
         fn_val, builtin_fn,
         atom, volatile_ref, regex,
         protocol, protocol_fn, multi_fn,
-        lazy_seq, cons, var_ref, delay, future, promise, agent, reduced,
+        lazy_seq, cons, var_ref, delay, future, promise, agent, ref, reduced,
         transient_vector, transient_map, transient_set,
         chunked_cons, chunk_buffer, array_chunk,
         wasm_module, wasm_fn, matcher,
@@ -924,6 +966,7 @@ pub const Value = enum(u64) {
                     .promise => .promise,
                     .delay => .delay,
                     .agent => .agent,
+                    .ref => .ref,
                 };
             },
             .reduced => .reduced,
@@ -1256,6 +1299,14 @@ pub const Value = enum(u64) {
 
     pub fn asAgent(self: Value) *AgentObj {
         return decodePtr(self, *AgentObj);
+    }
+
+    pub fn initRef(r: *RefObj) Value {
+        return encodeHeapPtr(.delay, r); // shares delay slot
+    }
+
+    pub fn asRef(self: Value) *RefObj {
+        return decodePtr(self, *RefObj);
     }
 
     pub fn asReduced(self: Value) *const Reduced {
@@ -1713,6 +1764,13 @@ pub const Value = enum(u64) {
                 try inner.state.formatPrStr(w);
                 try w.writeAll("]");
             },
+            .ref => {
+                const r = self.asRef();
+                const inner: *const RefInner = @ptrCast(@alignCast(r.inner));
+                try w.writeAll("#ref[");
+                try inner.currentVal().formatPrStr(w);
+                try w.writeAll("]");
+            },
             .reduced => {
                 const r = self.asReduced();
                 try r.value.formatPrStr(w);
@@ -1925,6 +1983,7 @@ pub const Value = enum(u64) {
             .future => self.asFuture() == other.asFuture(), // identity equality
             .promise => self.asPromise() == other.asPromise(), // identity equality
             .agent => self.asAgent() == other.asAgent(), // identity equality
+            .ref => self.asRef() == other.asRef(), // identity equality
             .reduced => self.asReduced().value.eqlImpl(other.asReduced().value, allocator),
             .map, .hash_map => unreachable, // handled by eqlMaps above
             .set => {

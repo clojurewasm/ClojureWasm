@@ -73,6 +73,7 @@ pub const Error = error{
     IoError,
     InternalError,
     OutOfMemory,
+    STMRetry,
 };
 
 // --- Threadlocal error state ---

@@ -20,7 +20,8 @@ const Env = @import("runtime/env.zig").Env;
 const registry = @import("builtins/registry.zig");
 const bootstrap = @import("runtime/bootstrap.zig");
 const bootstrap_cache = @import("bootstrap_cache");
-const Value = @import("runtime/value.zig").Value;
+const value_mod = @import("runtime/value.zig");
+const Value = value_mod.Value;
 const collections = @import("runtime/collections.zig");
 const nrepl = @import("repl/nrepl.zig");
 const line_editor = @import("repl/line_editor.zig");
@@ -1946,6 +1947,13 @@ fn writeValue(w: anytype, val: Value) void {
                 w.print("#agent[", .{}) catch {};
             }
             writeValue(w, inner.state);
+            w.print("]", .{}) catch {};
+        },
+        .ref => {
+            const r = val.asRef();
+            const inner: *value_mod.RefInner = @ptrCast(@alignCast(r.inner));
+            w.print("#ref[", .{}) catch {};
+            writeValue(w, inner.currentVal());
             w.print("]", .{}) catch {};
         },
         .reduced => writeValue(w, val.asReduced().value),

@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
-- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
+- Coverage: 880+ vars (651/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
@@ -35,20 +35,19 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 77: Var Coverage Completion
-Sub-phase 77.3: STM/Ref system (9 vars)
+Sub-phase 77.6: test.check + spec.gen.alpha (27 vars)
 
 ## Previous Task
 
-77.7: clojure.java.io completion — 12 vars done. Created io.clj with Coercions/IOFactory
-protocols, BufferedWriter interop class, PushbackReader .readLine/.ready methods. Fixed
-close() to dispatch .close via __java-method. Fixed serializer to walk collections for
-FnProto collection. Binary: 4.02MB.
+77.3: STM/Ref system — 9 vars done (ref, ref-set, alter, commute, ensure, dosync, sync,
+ref-history-count, ref-min-history, ref-max-history). Full MVCC STM with LockingTransaction,
+retry, commute, ensure, validators, watchers. New: stm.zig (443 lines), RefObj/RefInner/TVal
+in value.zig, GC tracing, io! now checks transaction state. Binary: 4.05MB.
 
 ## Task Queue
 
 ```
-77.3 STM/Ref system (9 vars) ← CURRENT
-77.6 test.check + spec.gen.alpha (27 vars)
+77.6 test.check + spec.gen.alpha (27 vars) ← CURRENT
 77.10 Skip recovery (per-var, beep-and-ask)
 skip recorvery にくわえて、以下が解消されているかも確認。その場で判断というより、コードベースの実態をチェックしてから進める
 (0) status: todoが0件かどうか
@@ -57,9 +56,11 @@ skip recorvery にくわえて、以下が解消されているかも確認。�
 (3) UPSTREAM-DIFF:
 (4) 各種ベンチマーク・バイナリサイズが許容範囲内
 (5) stub実装が残ってないか
-(6) . や ..などのメソッドコール機能の対応範囲を確認(要するにpanicになるのだけは避けたく、特定のClass以外は未対応的なユーザーへの親切メッセージが欲しい)
+(6) . や ..などのメソッドコール, URI. などインスタンス機能の対応範囲を確認(要するにpanicになるのだけは避けたく、特定のClass以外は未対応的なユーザーへの親切メッセージが欲しい)
 現時点で確認すると、すでに実装済みのものがあったりするはずなのでそちらを使って解消できるものもあるはず
-また、zig run test, run_e2e.sh, run_deps_e2e.shも確実にとおす
+(7) また、zig run test, run_e2e.sh, run_deps_e2e.shも確実にとおす(/tmpにテスト残骸のこってそう。参考になる？)
+(8) かなり色々と機能が追加されたのでベンチマークに不足がないかチェックして、必要に応じて有用なベンチマークを他言語もアルゴリズム等価で用意して比較に加える
+(9) それでもskipとして残ったものについては、noteが確実に書かれているか
 判断必要な場合は、afplay /System/Library/Sounds/Funk.aiff をならして、止める
 ```
 

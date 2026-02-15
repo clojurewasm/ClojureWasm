@@ -45,6 +45,7 @@ pub fn derefFn(allocator: Allocator, args: []const Value) anyerror!Value {
             .future => derefFuture(args[0].asFuture()),
             .promise => derefPromise(args[0].asPromise()),
             .agent => derefAgent(args[0].asAgent()),
+            .ref => derefRef(args[0].asRef()),
             else => err.setErrorFmt(.eval, .type_error, .{}, "deref expects an atom or volatile, got {s}", .{@tagName(args[0].tag())}),
         };
     }
@@ -144,6 +145,18 @@ fn derefPromiseWithTimeout(p: *value_mod.PromiseObj, timeout_ms: u64, timeout_va
 fn derefAgent(a: *value_mod.AgentObj) Value {
     const inner = a.getInner();
     return inner.state;
+}
+
+/// Deref a Ref: return current value.
+/// If inside a transaction, delegates to transaction's doGet for snapshot isolation.
+/// Outside a transaction, returns the newest TVal value.
+fn derefRef(r: *value_mod.RefObj) anyerror!Value {
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(r.inner));
+    const stm_mod = @import("../runtime/stm.zig");
+    if (stm_mod.getCurrentTransaction()) |tx| {
+        return tx.doGet(inner);
+    }
+    return inner.currentVal();
 }
 
 /// (__delay-create thunk-fn) => delay value
@@ -343,79 +356,119 @@ fn notifyWatchers(allocator: Allocator, a: *Atom, atom_val: Value, old: Value, n
     }
 }
 
-/// (add-watch atom key fn)
+/// (add-watch reference key fn)
 pub fn addWatchFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to add-watch", .{args.len});
-    const a = switch (args[0].tag()) {
-        .atom => args[0].asAtom(),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "add-watch expects an atom, got {s}", .{@tagName(args[0].tag())}),
-    };
     const max_watches = 16;
-    if (a.watch_keys == null) {
-        a.watch_keys = try allocator.alloc(Value, max_watches);
-        a.watch_fns = try allocator.alloc(Value, max_watches);
-        a.watch_count = 0;
+    switch (args[0].tag()) {
+        .atom => {
+            const a = args[0].asAtom();
+            if (a.watch_keys == null) {
+                a.watch_keys = try allocator.alloc(Value, max_watches);
+                a.watch_fns = try allocator.alloc(Value, max_watches);
+                a.watch_count = 0;
+            }
+            for (0..a.watch_count) |i| {
+                if (a.watch_keys.?[i].eql(args[1])) {
+                    a.watch_fns.?[i] = args[2];
+                    return args[0];
+                }
+            }
+            if (a.watch_count >= max_watches) return err.setErrorFmt(.eval, .value_error, .{}, "Too many watchers on atom (max 16)", .{});
+            a.watch_keys.?[a.watch_count] = args[1];
+            a.watch_fns.?[a.watch_count] = args[2];
+            a.watch_count += 1;
+        },
+        .ref => {
+            const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+            if (inner.watch_keys == null) {
+                inner.watch_keys = std.heap.smp_allocator.alloc(Value, max_watches) catch return error.OutOfMemory;
+                inner.watch_fns = std.heap.smp_allocator.alloc(Value, max_watches) catch return error.OutOfMemory;
+                inner.watch_count = 0;
+            }
+            for (0..inner.watch_count) |i| {
+                if (inner.watch_keys.?[i].eql(args[1])) {
+                    inner.watch_fns.?[i] = args[2];
+                    return args[0];
+                }
+            }
+            if (inner.watch_count >= max_watches) return err.setErrorFmt(.eval, .value_error, .{}, "Too many watchers on ref (max 16)", .{});
+            inner.watch_keys.?[inner.watch_count] = args[1];
+            inner.watch_fns.?[inner.watch_count] = args[2];
+            inner.watch_count += 1;
+        },
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "add-watch expects an atom or ref, got {s}", .{@tagName(args[0].tag())}),
     }
-    // Replace existing watcher with same key
-    for (0..a.watch_count) |i| {
-        if (a.watch_keys.?[i].eql(args[1])) {
-            a.watch_fns.?[i] = args[2];
-            return args[0];
-        }
-    }
-    if (a.watch_count >= max_watches) return err.setErrorFmt(.eval, .value_error, .{}, "Too many watchers on atom (max 16)", .{});
-    a.watch_keys.?[a.watch_count] = args[1];
-    a.watch_fns.?[a.watch_count] = args[2];
-    a.watch_count += 1;
     return args[0];
 }
 
-/// (remove-watch atom key)
+/// (remove-watch reference key)
 pub fn removeWatchFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-watch", .{args.len});
-    const a = switch (args[0].tag()) {
-        .atom => args[0].asAtom(),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-watch expects an atom, got {s}", .{@tagName(args[0].tag())}),
-    };
-    if (a.watch_keys == null or a.watch_count == 0) return args[0];
-    for (0..a.watch_count) |i| {
-        if (a.watch_keys.?[i].eql(args[1])) {
-            // Shift remaining watchers
-            var j = i;
-            while (j + 1 < a.watch_count) : (j += 1) {
-                a.watch_keys.?[j] = a.watch_keys.?[j + 1];
-                a.watch_fns.?[j] = a.watch_fns.?[j + 1];
+    switch (args[0].tag()) {
+        .atom => {
+            const a = args[0].asAtom();
+            if (a.watch_keys == null or a.watch_count == 0) return args[0];
+            for (0..a.watch_count) |i| {
+                if (a.watch_keys.?[i].eql(args[1])) {
+                    var j = i;
+                    while (j + 1 < a.watch_count) : (j += 1) {
+                        a.watch_keys.?[j] = a.watch_keys.?[j + 1];
+                        a.watch_fns.?[j] = a.watch_fns.?[j + 1];
+                    }
+                    a.watch_count -= 1;
+                    break;
+                }
             }
-            a.watch_count -= 1;
-            break;
-        }
+        },
+        .ref => {
+            const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+            if (inner.watch_keys == null or inner.watch_count == 0) return args[0];
+            for (0..inner.watch_count) |i| {
+                if (inner.watch_keys.?[i].eql(args[1])) {
+                    var j = i;
+                    while (j + 1 < inner.watch_count) : (j += 1) {
+                        inner.watch_keys.?[j] = inner.watch_keys.?[j + 1];
+                        inner.watch_fns.?[j] = inner.watch_fns.?[j + 1];
+                    }
+                    inner.watch_count -= 1;
+                    break;
+                }
+            }
+        },
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "remove-watch expects an atom or ref, got {s}", .{@tagName(args[0].tag())}),
     }
     return args[0];
 }
 
-/// (set-validator! atom fn)
+/// (set-validator! reference fn)
 pub fn setValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-validator!", .{args.len});
-    const a = switch (args[0].tag()) {
-        .atom => args[0].asAtom(),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-validator! expects an atom, got {s}", .{@tagName(args[0].tag())}),
-    };
-    if (args[1].tag() == .nil) {
-        a.validator = null;
-    } else {
-        a.validator = args[1];
+    const new_val = if (args[1].tag() == .nil) @as(?Value, null) else args[1];
+    switch (args[0].tag()) {
+        .atom => {
+            args[0].asAtom().validator = new_val;
+        },
+        .ref => {
+            const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+            inner.validator = new_val;
+        },
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-validator! expects an atom or ref, got {s}", .{@tagName(args[0].tag())}),
     }
     return Value.nil_val;
 }
 
-/// (get-validator atom)
+/// (get-validator reference)
 pub fn getValidatorFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-validator", .{args.len});
-    const a = switch (args[0].tag()) {
-        .atom => args[0].asAtom(),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "get-validator expects an atom, got {s}", .{@tagName(args[0].tag())}),
+    return switch (args[0].tag()) {
+        .atom => args[0].asAtom().validator orelse Value.nil_val,
+        .ref => blk: {
+            const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+            break :blk inner.validator orelse Value.nil_val;
+        },
+        else => err.setErrorFmt(.eval, .type_error, .{}, "get-validator expects an atom or ref, got {s}", .{@tagName(args[0].tag())}),
     };
-    return a.validator orelse Value.nil_val;
 }
 
 // ============================================================
@@ -673,6 +726,76 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.1",
     },
     .{
+        .name = "ref",
+        .func = &refFn,
+        .doc = "Creates and returns a Ref with an initial value of x and zero or more options.",
+        .arglists = "([x] [x & options])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ref-set",
+        .func = &refSetFn,
+        .doc = "Must be called in a transaction. Sets the value of ref. Returns val.",
+        .arglists = "([ref val])",
+        .added = "1.0",
+    },
+    .{
+        .name = "alter",
+        .func = &alterFn,
+        .doc = "Must be called in a transaction. Sets the in-transaction-value of ref to (apply fun in-transaction-value-of-ref args).",
+        .arglists = "([ref fun & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "commute",
+        .func = &commuteFn,
+        .doc = "Must be called in a transaction. Sets the in-transaction-value of ref to (apply fun in-transaction-value-of-ref args).",
+        .arglists = "([ref fun & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ensure",
+        .func = &ensureFn,
+        .doc = "Must be called in a transaction. Protects the ref from modification by other transactions.",
+        .arglists = "([ref])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__run-in-transaction",
+        .func = &runInTransactionFn,
+        .doc = "Internal: runs body-fn in an STM transaction.",
+        .arglists = "([body-fn])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__in-transaction?",
+        .func = &inTransactionPredFn,
+        .doc = "Internal: returns true if current thread is in an STM transaction.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ref-history-count",
+        .func = &refHistoryCountFn,
+        .doc = "Returns the history count of a ref.",
+        .arglists = "([ref])",
+        .added = "1.1",
+    },
+    .{
+        .name = "ref-min-history",
+        .func = &refMinHistoryFn,
+        .doc = "Gets or sets the minimum history count for a ref.",
+        .arglists = "([ref] [ref n])",
+        .added = "1.1",
+    },
+    .{
+        .name = "ref-max-history",
+        .func = &refMaxHistoryFn,
+        .doc = "Gets or sets the maximum history count for a ref.",
+        .arglists = "([ref] [ref n])",
+        .added = "1.1",
+    },
+    .{
         .name = "agent",
         .func = &agentFn,
         .doc = "Creates and returns an agent with an initial value of state and zero or more options.",
@@ -785,6 +908,132 @@ pub const builtins = [_]BuiltinDef{
         .added = "1.0",
     },
 };
+
+// === Ref / STM builtins ===
+
+const stm = @import("../runtime/stm.zig");
+
+/// (ref x) or (ref x & options)
+/// Options: :meta metadata-map, :validator validate-fn, :min-history, :max-history
+pub fn refFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref", .{args.len});
+    var opts = stm.RefOptions{};
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        if (args[i].tag() != .keyword) return err.setError(.{ .kind = .type_error, .phase = .eval, .message = "ref options must be keyword-value pairs" });
+        const kw = args[i].asKeyword();
+        if (kw.ns == null) {
+            if (std.mem.eql(u8, kw.name, "meta")) {
+                opts.meta = args[i + 1];
+            } else if (std.mem.eql(u8, kw.name, "validator")) {
+                opts.validator = if (args[i + 1].tag() == .nil) null else args[i + 1];
+            } else if (std.mem.eql(u8, kw.name, "min-history")) {
+                opts.min_history = @intCast(@max(0, args[i + 1].asInteger()));
+            } else if (std.mem.eql(u8, kw.name, "max-history")) {
+                opts.max_history = @intCast(@max(0, args[i + 1].asInteger()));
+            }
+        }
+    }
+    return stm.createRef(allocator, args[0], opts);
+}
+
+/// (ref-set ref val) — must be called in a transaction
+pub fn refSetFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref-set", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ref-set expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const tx = stm.getCurrentTransaction() orelse
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "No transaction running (ref-set)" });
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    try tx.doSet(inner, args[1]);
+    return args[1];
+}
+
+/// (alter ref fun & args) — must be called in a transaction
+pub fn alterFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to alter", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "alter expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const tx = stm.getCurrentTransaction() orelse
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "No transaction running (alter)" });
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    const current = try tx.doGet(inner);
+    // Call (fun current-val extra-args...)
+    const call_args = try allocator.alloc(Value, 1 + (args.len - 2));
+    call_args[0] = current;
+    if (args.len > 2) @memcpy(call_args[1..], args[2..]);
+    const new_val = try bootstrap.callFnVal(allocator, args[1], call_args);
+    try tx.doSet(inner, new_val);
+    return new_val;
+}
+
+/// (commute ref fun & args) — must be called in a transaction
+pub fn commuteFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to commute", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "commute expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const tx = stm.getCurrentTransaction() orelse
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "No transaction running (commute)" });
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    return tx.doCommute(allocator, inner, args[1], args[2..]);
+}
+
+/// (ensure ref) — must be called in a transaction
+pub fn ensureFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ensure", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ensure expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const tx = stm.getCurrentTransaction() orelse
+        return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "No transaction running (ensure)" });
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    try tx.doEnsure(inner);
+    // Return the current in-tx value
+    return tx.doGet(inner);
+}
+
+/// (__run-in-transaction body-fn) — internal builtin called by dosync macro
+pub fn runInTransactionFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __run-in-transaction", .{args.len});
+    return stm.LockingTransaction.runInTransaction(allocator, args[0]);
+}
+
+/// (__in-transaction?) — internal: check if current thread is in a transaction
+pub fn inTransactionPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __in-transaction?", .{args.len});
+    return if (stm.isInTransaction()) Value.true_val else Value.false_val;
+}
+
+/// (ref-history-count ref)
+pub fn refHistoryCountFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref-history-count", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ref-history-count expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    inner.lock.lock();
+    defer inner.lock.unlock();
+    var count: i64 = 0;
+    var tval = inner.tvals;
+    while (tval) |tv| {
+        count += 1;
+        tval = tv.prior;
+    }
+    return Value.initInteger(count);
+}
+
+/// (ref-min-history ref) or (ref-min-history ref n)
+pub fn refMinHistoryFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref-min-history", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ref-min-history expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    if (args.len == 1) return Value.initInteger(@intCast(inner.min_history));
+    inner.min_history = @intCast(@max(0, args[1].asInteger()));
+    return args[0];
+}
+
+/// (ref-max-history ref) or (ref-max-history ref n)
+pub fn refMaxHistoryFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ref-max-history", .{args.len});
+    if (args[0].tag() != .ref) return err.setErrorFmt(.eval, .type_error, .{}, "ref-max-history expects a ref, got {s}", .{@tagName(args[0].tag())});
+    const inner: *value_mod.RefInner = @ptrCast(@alignCast(args[0].asRef().inner));
+    if (args.len == 1) return Value.initInteger(@intCast(inner.max_history));
+    inner.max_history = @intCast(@max(0, args[1].asInteger()));
+    return args[0];
+}
 
 // === Agent builtins ===
 
