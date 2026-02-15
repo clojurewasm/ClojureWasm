@@ -78,17 +78,22 @@ pub fn compareAndSetFn(_: Allocator, args: []const Value) anyerror!Value {
 /// Formats a string using java.lang.String/format-style placeholders.
 /// Supported: %s (string), %d (integer), %f (float), %% (literal %).
 fn writePadded(w: anytype, s: []const u8, width: ?usize, left_align: bool) !void {
+    return writePaddedEx(w, s, width, left_align, false);
+}
+
+fn writePaddedEx(w: anytype, s: []const u8, width: ?usize, left_align: bool, zero_fill: bool) !void {
     const min_width = width orelse 0;
     if (s.len >= min_width) {
         try w.writeAll(s);
         return;
     }
     const pad = min_width - s.len;
+    const fill_char: u8 = if (zero_fill and !left_align) '0' else ' ';
     if (left_align) {
         try w.writeAll(s);
         for (0..pad) |_| try w.writeByte(' ');
     } else {
-        for (0..pad) |_| try w.writeByte(' ');
+        for (0..pad) |_| try w.writeByte(fill_char);
         try w.writeAll(s);
     }
 }
@@ -150,8 +155,13 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
 
             // Parse optional flags, width, precision
             var left_align = false;
+            var zero_fill = false;
             if (i < fmt_str.len and fmt_str[i] == '-') {
                 left_align = true;
+                i += 1;
+            }
+            if (i < fmt_str.len and fmt_str[i] == '0') {
+                zero_fill = true;
                 i += 1;
             }
 
@@ -193,7 +203,7 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
                         .float => try tmp.writer.print("{d}", .{@as(i64, @intFromFloat(fmt_args[arg_idx].asFloat()))}),
                         else => return error.FormatError,
                     }
-                    try writePadded(w, tmp.writer.buffered(), width, left_align);
+                    try writePaddedEx(w, tmp.writer.buffered(), width, left_align, zero_fill);
                     arg_idx += 1;
                 },
                 'f' => {
@@ -207,7 +217,7 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
                         else => return error.FormatError,
                     };
                     try formatFloat(&tmp.writer, fval, prec);
-                    try writePadded(w, tmp.writer.buffered(), width, left_align);
+                    try writePaddedEx(w, tmp.writer.buffered(), width, left_align, zero_fill);
                     arg_idx += 1;
                 },
                 else => {
@@ -1147,6 +1157,42 @@ test "format - width %3d" {
         Value.initInteger(1),
     });
     try testing.expectEqualStrings("  1", result.asString());
+}
+
+test "format - zero-fill %02d" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%02d"),
+        Value.initInteger(5),
+    });
+    try testing.expectEqualStrings("05", result.asString());
+}
+
+test "format - zero-fill %04d" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%04d"),
+        Value.initInteger(42),
+    });
+    try testing.expectEqualStrings("0042", result.asString());
+}
+
+test "format - zero-fill %03d" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%03d"),
+        Value.initInteger(1000),
+    });
+    try testing.expectEqualStrings("1000", result.asString());
 }
 
 test "format - precision %.2f" {

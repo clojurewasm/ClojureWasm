@@ -108,6 +108,18 @@ fn uuidFromStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return uuid_class.constructFromString(allocator, args[0].asString());
 }
 
+/// __inst-from-string — create a Date instance from an RFC3339 string.
+/// Used by construct-date in clojure.instant and the #inst reader tag.
+fn instFromStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "__inst-from-string expects 1 arg, got {d}", .{args.len});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "__inst-from-string expects a string arg", .{});
+    const s = args[0].asString();
+    const extra = try allocator.alloc(Value, 2);
+    extra[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "inst" });
+    extra[1] = Value.initString(allocator, try allocator.dupe(u8, s));
+    return makeClassInstance(allocator, "java.util.Date", extra);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "__interop-new",
@@ -134,6 +146,13 @@ pub const builtins = [_]BuiltinDef{
         .name = "__uuid-from-string",
         .func = &uuidFromStringFn,
         .doc = "UUID/fromString — parse UUID from string.",
+        .arglists = "([s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "__inst-from-string",
+        .func = &instFromStringFn,
+        .doc = "Create a Date instance from an RFC3339 timestamp string.",
         .arglists = "([s])",
         .added = "1.0",
     },

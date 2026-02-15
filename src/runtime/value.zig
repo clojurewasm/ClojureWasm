@@ -114,6 +114,7 @@ pub fn setPrintAllocator(alloc: ?Allocator) void {
 fn getClassInstanceStr(m: *const collections.PersistentArrayMap) ?[]const u8 {
     const class_display_fields = std.StaticStringMap([]const u8).initComptime(.{
         .{ "java.util.UUID", "uuid" },
+        .{ "java.util.Date", "inst" },
         .{ "java.net.URI", "raw" },
         .{ "java.io.File", "path" },
     });
@@ -1501,6 +1502,12 @@ pub const Value = enum(u64) {
                         const class_name = getClassInstanceType(m) orelse "";
                         if (std.mem.eql(u8, class_name, "java.util.UUID")) {
                             try w.writeAll("#uuid \"");
+                            try w.writeAll(display);
+                            try w.writeAll("\"");
+                            return;
+                        }
+                        if (std.mem.eql(u8, class_name, "java.util.Date")) {
+                            try w.writeAll("#inst \"");
                             try w.writeAll(display);
                             try w.writeAll("\"");
                             return;

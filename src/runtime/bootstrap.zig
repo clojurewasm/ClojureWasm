@@ -92,6 +92,9 @@ const browse_clj_source = @embedFile("../clj/clojure/java/browse.clj");
 /// Embedded clojure/datafy.clj source (compiled into binary).
 const datafy_clj_source = @embedFile("../clj/clojure/datafy.clj");
 
+/// Embedded clojure/instant.clj source (compiled into binary).
+const instant_clj_source = @embedFile("../clj/clojure/instant.clj");
+
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
 
@@ -728,6 +731,31 @@ pub fn loadDatafy(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/instant.clj.
+pub fn loadInstant(allocator: Allocator, env: *Env) BootstrapError!void {
+    const instant_ns = env.findOrCreateNamespace("clojure.instant") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        instant_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = instant_ns;
+
+    _ = try evalString(allocator, env, instant_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
@@ -810,6 +838,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.datafy")) {
         try loadDatafy(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.instant")) {
+        try loadInstant(allocator, env);
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {

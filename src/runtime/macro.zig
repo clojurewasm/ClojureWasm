@@ -162,8 +162,15 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 }
                 return Value.nil_val;
             }
-            // Built-in #inst → pass through string (no Date type yet)
+            // Built-in #inst → create Date class instance
             if (std.mem.eql(u8, t.tag, "inst")) {
+                if (form_val.tag() == .string) {
+                    const constructors = @import("../interop/constructors.zig");
+                    return constructors.makeClassInstance(allocator, "java.util.Date", &.{
+                        Value.initKeyword(allocator, .{ .ns = null, .name = "inst" }),
+                        form_val,
+                    }) catch Value.nil_val;
+                }
                 return form_val;
             }
             // General case: (tagged-literal 'tag form)

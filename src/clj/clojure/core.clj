@@ -2496,8 +2496,8 @@
 (def default-data-readers
   "Default map of data reader functions provided by Clojure. May be
   overridden by binding *data-readers*."
-  {'inst identity   ; CLJW: returns string (no Date type)
-   'uuid identity}) ; CLJW: returns string (no UUID type)
+  {'inst __inst-from-string  ; CLJW: creates java.util.Date instance
+   'uuid __uuid-from-string}) ; CLJW: creates java.util.UUID instance
 
 (defn tagged-literal
   "Constructs a data representation of a tagged literal from a
