@@ -1160,6 +1160,13 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
         }
     }
 
+    // CW record/reify types: check __reify_type on maps
+    if (tag == .map or tag == .hash_map) {
+        if (interop_dispatch.getReifyType(x)) |rt| {
+            if (std.mem.eql(u8, rt, class_name)) return Value.true_val;
+        }
+    }
+
     // Unknown class: return false
     return Value.false_val;
 }
