@@ -161,26 +161,11 @@ zig build test -- "X"  # Specific test only
 All measurement uses hyperfine (warmup + multiple runs).
 
 ```bash
-# Run all benchmarks
-bash bench/run_bench.sh
-# Single benchmark
-bash bench/run_bench.sh --bench=fib_recursive
-# Fast check (1 run, no warmup)
-bash bench/run_bench.sh --quick
-
-# Record to history (hyperfine 5 runs + 2 warmup)
-bash bench/record.sh --id="36.7" --reason="Wasm optimization"
-bash bench/record.sh --id="36.7" --reason="test" --bench=fib_recursive
-bash bench/record.sh --id="36.7" --reason="re-measure" --overwrite
-bash bench/record.sh --delete="36.7"
-
-# Cross-language comparison (supports: cw, c, bb, python, ruby, zig, java, tgo)
-bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb
-
-# Wasm runtime benchmark: CW interpreter vs wasmtime JIT
-bash bench/wasm_bench.sh              # 5 runs + 2 warmup
-bash bench/wasm_bench.sh --quick      # Single run, no warmup
-bash bench/wasm_bench.sh --bench=fib  # Specific benchmark (fib/tak/arith/sieve)
+bash bench/run_bench.sh              # All benchmarks (3 runs + 1 warmup)
+bash bench/run_bench.sh --quick      # Fast check (1 run, no warmup)
+bash bench/record.sh --id="X" --reason="description"  # Record to history
+bash bench/compare_langs.sh --bench=fib_recursive --lang=cw,c,bb  # Cross-language
+bash bench/wasm_bench.sh --quick     # CW interpreter vs wasmtime JIT
 ```
 
 History: `bench/history.yaml` — CW native benchmark progression.
@@ -243,15 +228,10 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Test porting      | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
 | Roadmap           | `.dev/roadmap.md`                    | Phase planning — always read for next task |
 | Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
-| Decisions         | `.dev/decisions.md` (D3-D92)         | Architectural decisions reference          |
+| Decisions         | `.dev/decisions.md` (D3-D101+)       | Architectural decisions reference          |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | Optimizations     | `.dev/optimizations.md`              | Completed + future optimization catalog    |
 | Skip recovery     | `.dev/skip-recovery.md`              | When implementing skip vars                |
-| Bench history     | `bench/history.yaml`                 | Benchmark progression across optimizations |
-| Wasm bench history| `bench/wasm_history.yaml`            | Wasm CW vs wasmtime progression            |
-| Cross-lang        | `bench/cross-lang-results.yaml`      | Cross-language comparison                  |
-| Alpha plans       | `private/alpha_plan/`                | Multi-perspective Alpha planning docs      |
 | Test porting plan | `.dev/test-porting-plan.md`          | When porting upstream tests                |
 | Baselines         | `.dev/baselines.md`                  | Non-functional regression thresholds       |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |
-

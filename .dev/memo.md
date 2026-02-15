@@ -4,7 +4,7 @@ Session handover document. Read at session start.
 
 ## Current State
 
-- **All phases through 74 COMPLETE** (Java interop architecture)
+- **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
 - Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -34,48 +34,13 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements — COMPLETE
-- All 10 commits done
+(none — ready for next phase)
 
 ## Task Queue
 
 ```
---- Phase 76: Type System & Reader Enhancements ---
-76.1  DONE — reify multi-arity method support
-76.2  DONE — defrecord inline protocol implementation
-76.3  DONE — Fix map->Name to merge __reify_type
-76.4  DONE — instance? for CW record/reify types
-76.5  DONE — deftype implementation
-76.6  DONE — read-string 2-arity
-76.7  DONE — Namespaced map literals #:ns{}
-76.8  DONE — :as-alias in require
-76.9  DONE — *data-readers* dynamic binding override
-76.10 DONE — README coverage tables X/Y format
+(empty — plan next phase from roadmap.md)
 ```
-
-Policy:
-- Batch 0 = clojure.jar-bundled → embed in CW, UPSTREAM-DIFF/CLJW markers OK
-- Batch 1+ = external libraries → test as-is, fix CW side, do NOT fork
-- When CW behavior differs from upstream, trace processing pipeline to fix root cause
-- See `library-port-targets.md` for targets, `test/compat/RESULTS.md` for results
-
-Notes:
-- Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
-- clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
-
-## Previous Task
-
-Phase 76: Type System & Reader Enhancements — 10 commits:
-1. reify multi-arity method support
-2. defrecord inline protocol implementation
-3. Fix map->Name to assoc __reify_type
-4. instance? for CW record/reify types
-5. deftype with inline protocol support
-6. read-string 2-arity with :eof option
-7. Namespaced map literals #:ns{}
-8. :as-alias in require
-9. *data-readers* dynamic binding override
-10. README coverage tables X/Y format
 
 ## Known Issues
 
@@ -84,30 +49,7 @@ Phase 76: Type System & Reader Enhancements — 10 commits:
 ## Notes
 
 - CONTRIBUTING.md at `.dev/CONTRIBUTING.md` — restore to repo root when accepting contributions
-
-## Reference Chain
-
-Session resume: read this file → roadmap.md → pick next task.
-
-| Topic              | Location                             | When to read                |
-|--------------------|--------------------------------------|-----------------------------|
-| Roadmap            | `.dev/roadmap.md`                    | Always — next phases        |
-| Deferred items     | `.dev/checklist.md`                  | When planning next work     |
-| Decisions          | `.dev/decisions.md` (D3-D101)        | On architectural questions  |
-| Optimizations      | `.dev/optimizations.md`              | Performance work            |
-| Benchmarks         | `bench/history.yaml`                 | After perf changes          |
-| Wasm benchmarks    | `bench/wasm_history.yaml`            | After wasm changes          |
-| Cross-language     | `bench/cross-lang-results.yaml`      | Comparison context          |
-| Skip recovery      | `.dev/skip-recovery.md`              | When implementing skips     |
-| Test porting       | `.dev/test-porting-plan.md`          | When porting tests          |
-| Design document    | `.dev/future.md`                     | Major feature design        |
-| Zig tips           | `.claude/references/zig-tips.md`     | Before writing Zig          |
-| Concurrency tests  | `.dev/concurrency-test-plan.md`      | Phase 57 task details       |
-| Baselines          | `.dev/baselines.md`                  | Non-functional thresholds   |
-| deps.edn plan      | `.dev/deps-edn-plan.md`              | When implementing deps.edn  |
-| Next phases plan   | `.dev/next-phases-plan.md`           | Phase 70-73 plan            |
-| Library targets    | `.dev/library-port-targets.md`       | Phase 75 — libraries to test|
-| Missing clj ns     | `.dev/missing-clj-namespaces.md`     | Batch 0 — embed ns details  |
-| BB class compat    | `.dev/babashka-class-compat.md`      | Java class reference (not roadmap) |
-| spec.alpha upstream| `~/Documents/OSS/spec.alpha/`        | spec.alpha reference source |
-| zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |
+- Batch 0 = clojure.jar-bundled → embed in CW, UPSTREAM-DIFF/CLJW markers OK
+- Batch 1+ = external libraries → test as-is, fix CW side, do NOT fork
+- Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
+- clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)

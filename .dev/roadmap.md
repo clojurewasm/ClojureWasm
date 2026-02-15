@@ -15,12 +15,13 @@ Goal: Babashka-competitive startup, single binary distribution, behavioral compa
 
 ## Current Stats
 
-- **869+ vars** implemented (637/706 core, 18 namespaces, deps.edn support)
+- **871+ vars** implemented (637/706 core, 25 embedded CLJ namespaces, deps.edn support)
 - **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
-- **50 upstream test files**, all passing
+- **52 upstream test files**, all passing
 - **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
 - **Wasm engine**: zwasm v0.2.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.3x of wasmtime)
-- **Binary**: 3.9MB ReleaseSafe (Mac ARM64)
+- **Binary**: 3.92MB ReleaseSafe (Mac ARM64)
+- **Phases**: 76 complete (through Type System & Reader Enhancements)
 
 ## Completed Phases
 
@@ -211,7 +212,7 @@ Pre-deps.edn cleanup: fix small correctness issues and restore skipped tests.
 
 ### Phase 66-68: deps.edn Support — DONE
 
-Full plan: `.dev/deps-edn-plan.md`
+Full plan: `.dev/archive/deps-edn-plan.md`
 
 - **Phase 66**: deps.edn Foundation — parser, alias resolution, CLI flags (-A/-M/-X/-P/-S*)
 - **Phase 67**: Git Dependencies — tag validation, :deps/root, -Sforce, transitive resolution
