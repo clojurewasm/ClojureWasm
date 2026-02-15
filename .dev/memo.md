@@ -34,9 +34,9 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements (Commit 6 next)
-- Commits 1-5 DONE
-- Next: read-string 2-arity
+Phase 76: Type System & Reader Enhancements (Commit 7 next)
+- Commits 1-6 DONE
+- Next: Namespaced map literals #:ns{}
 
 ## Task Queue
 
@@ -47,7 +47,7 @@ Phase 76: Type System & Reader Enhancements (Commit 6 next)
 76.3  DONE — Fix map->Name to merge __reify_type
 76.4  DONE — instance? for CW record/reify types
 76.5  DONE — deftype implementation
-76.6  TODO — read-string 2-arity
+76.6  DONE — read-string 2-arity
 76.7  TODO — Namespaced map literals #:ns{}
 76.8  TODO — :as-alias in require
 76.9  TODO — *data-readers* dynamic binding override

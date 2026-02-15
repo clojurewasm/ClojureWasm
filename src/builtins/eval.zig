@@ -35,15 +35,35 @@ const Namespace = @import("../runtime/namespace.zig").Namespace;
 // read-string
 // ============================================================
 
-/// (read-string s)
+/// (read-string s) or (read-string opts s)
 /// Reads one object from the string s. Returns nil if string is empty.
+/// opts map supports :eof (value to return on EOF instead of nil).
 pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
-    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-string", .{args.len});
-    const s = switch (args[0].tag()) {
-        .string => args[0].asString(),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "read-string expects a string, got {s}", .{@tagName(args[0].tag())}),
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to read-string", .{args.len});
+
+    var eof_val: ?Value = null;
+    const str_arg = if (args.len == 2) blk: {
+        // 2-arity: (read-string opts s) — parse opts map for :eof
+        const opts = args[0];
+        if (opts.tag() == .map) {
+            const entries = opts.asMap().entries;
+            var i: usize = 0;
+            while (i + 1 < entries.len) : (i += 2) {
+                if (entries[i].tag() == .keyword and std.mem.eql(u8, entries[i].asKeyword().name, "eof"))
+                    eof_val = entries[i + 1];
+            }
+        } else if (opts.tag() == .hash_map) {
+            const eof_key = Value.initKeyword(allocator, .{ .ns = null, .name = "eof" });
+            if (opts.asHashMap().get(eof_key)) |v| eof_val = v;
+        }
+        break :blk args[1];
+    } else args[0];
+
+    const s = switch (str_arg.tag()) {
+        .string => str_arg.asString(),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "read-string expects a string, got {s}", .{@tagName(str_arg.tag())}),
     };
-    if (s.len == 0) return Value.nil_val;
+    if (s.len == 0) return eof_val orelse Value.nil_val;
 
     var reader = Reader.init(allocator, s);
     reader.current_ns = resolveCurrentNs();
@@ -51,7 +71,7 @@ pub fn readStringFn(allocator: Allocator, args: []const Value) anyerror!Value {
         err.ensureInfoSet(.eval, .syntax_error, .{}, "read-string: reader error", .{});
         return error.EvalError;
     };
-    const form = form_opt orelse return Value.nil_val;
+    const form = form_opt orelse return eof_val orelse Value.nil_val;
     return macro.formToValueWithNs(allocator, form, resolveCurrentNs());
 }
 
