@@ -1047,7 +1047,17 @@ pub const TreeWalk = struct {
         if (std.mem.eql(u8, type_name, "Volatile")) return "volatile";
         if (std.mem.eql(u8, type_name, "Pattern")) return "regex";
         if (std.mem.eql(u8, type_name, "Character")) return "char";
-        // Default: use as-is (for custom record types)
+        // Java class short names → FQCN (for extend-type with imported classes)
+        if (std.mem.eql(u8, type_name, "PushbackReader")) return "java.io.PushbackReader";
+        if (std.mem.eql(u8, type_name, "StringReader")) return "java.io.StringReader";
+        if (std.mem.eql(u8, type_name, "Reader")) return "java.io.Reader";
+        if (std.mem.eql(u8, type_name, "Writer")) return "java.io.Writer";
+        if (std.mem.eql(u8, type_name, "StringWriter")) return "java.io.StringWriter";
+        if (std.mem.eql(u8, type_name, "StringBuilder")) return "java.lang.StringBuilder";
+        if (std.mem.eql(u8, type_name, "File")) return "java.io.File";
+        if (std.mem.eql(u8, type_name, "URI")) return "java.net.URI";
+        if (std.mem.eql(u8, type_name, "UUID")) return "java.util.UUID";
+        // Default: use as-is (for custom record types and FQCNs)
         return type_name;
     }
 

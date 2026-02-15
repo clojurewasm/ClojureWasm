@@ -950,6 +950,67 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     }
                 }
             },
+            .list => {
+                // Prefix-list format: (prefix [lib :as alias] [lib2 :refer [x]])
+                // e.g., (clojure [string :as str]) → [clojure.string :as str]
+                const list = arg.asList();
+                const items = list.items;
+                if (items.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "require prefix list must have at least 2 elements", .{});
+                if (items[0].tag() != .symbol) return err.setErrorFmt(.eval, .type_error, .{}, "require prefix must be a symbol", .{});
+                const prefix = items[0].asSymbol().name;
+
+                for (items[1..]) |sub| {
+                    if (sub.tag() == .symbol) {
+                        // (prefix lib) → require prefix.lib
+                        const full_name = std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, sub.asSymbol().name }) catch return error.OutOfMemory;
+                        try requireLib(allocator, env, full_name, reload);
+                    } else if (sub.tag() == .vector) {
+                        // (prefix [lib :as alias]) → require [prefix.lib :as alias]
+                        const sv = sub.asVector();
+                        if (sv.items.len < 1 or sv.items[0].tag() != .symbol)
+                            return err.setErrorFmt(.eval, .type_error, .{}, "require prefix sub-spec must start with symbol", .{});
+                        const full_name = std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, sv.items[0].asSymbol().name }) catch return error.OutOfMemory;
+                        try requireLib(allocator, env, full_name, reload);
+                        const source_ns = env.findNamespace(full_name) orelse
+                            return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{full_name});
+                        const current_ns = env.current_ns orelse {
+                            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+                            return error.EvalError;
+                        };
+                        // Process :as/:refer options
+                        var k: usize = 1;
+                        while (k + 1 < sv.items.len) : (k += 2) {
+                            if (sv.items[k].tag() == .keyword) {
+                                const kw = sv.items[k].asKeyword().name;
+                                if (std.mem.eql(u8, kw, "as")) {
+                                    if (sv.items[k + 1].tag() == .symbol) {
+                                        try current_ns.setAlias(sv.items[k + 1].asSymbol().name, source_ns);
+                                    }
+                                } else if (std.mem.eql(u8, kw, "refer")) {
+                                    if (sv.items[k + 1].tag() == .vector) {
+                                        for (sv.items[k + 1].asVector().items) |sym| {
+                                            if (sym.tag() == .symbol) {
+                                                if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
+                                                    current_ns.refer(var_ref.sym.name, var_ref) catch {};
+                                                }
+                                            }
+                                        }
+                                    } else if (sv.items[k + 1].tag() == .keyword) {
+                                        if (std.mem.eql(u8, sv.items[k + 1].asKeyword().name, "all")) {
+                                            var iter = source_ns.mappings.iterator();
+                                            while (iter.next()) |entry| {
+                                                current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        return err.setErrorFmt(.eval, .type_error, .{}, "require prefix sub-spec must be symbol or vector", .{});
+                    }
+                }
+            },
             else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol or vector, got {s}", .{@tagName(arg.tag())}),
         }
     }

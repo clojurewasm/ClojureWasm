@@ -18,6 +18,8 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
 | tools.cli         | CLI parsing  |      4/6  | 2 pass, 3 partial, 1 crash   |
 | instaparse        | Parser gen   |     9/16  | Blocked by deftype           |
+| data.csv          | CSV I/O      |     100%  | Full read/write working      |
+| data.json         | JSON I/O     |  Blocked  | Needs definterface/deftype   |
 
 ### Key Findings
 
@@ -41,6 +43,8 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | `s/join` fails on lazy-seq realizing to cons | Handle `.cons` in `joinFn` lazy_seq branch | 75.6 |
 | `\b` and `\f` string escapes not supported | Added to `unescapeString` in reader | 75.C |
 | `^Type` hints on defrecord fields fails | with-meta unwrap in `analyzeDefrecord` | 75.C |
+| Prefix-list require `(:require (prefix [lib]))` | `.list` case in `requireFn` | 75.F |
+| Protocol dispatch fails on class instances | `mapTypeKey` FQCN mapping for Java classes | 75.F |
 
 ### Known CW Limitations (discovered via library testing)
 
@@ -58,14 +62,17 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | ~~`\b` and `\f` string escapes not supported~~ | instaparse | Low | **FIXED 75.C** |
 | ~~`^Type` hints on defrecord fields~~ | instaparse | Medium | **FIXED 75.C** |
 | `deftype` not implemented (permanently skipped) | instaparse | High | Won't fix |
+| ~~Protocol dispatch on class instances~~ | data.csv | High | **FIXED 75.F** |
+| ~~Prefix-list require format~~ | data.csv | Medium | **FIXED 75.F** |
+| `definterface` not implemented | data.json | High | Open |
 | GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Open (F140) |
 
 ### Java Interop Gaps (blocking library tests)
 
 | Java Class/Method | Libraries Needing It | Priority |
 |-------------------|---------------------|----------|
-| PushbackReader | data.json, data.csv, edn | High — needed for I/O-based libs |
-| StringWriter/StringBuilder | data.json, data.csv | High — output buffering |
+| ~~PushbackReader~~ | ~~data.json, data.csv, edn~~ | **DONE 75.D** |
+| ~~StringWriter/StringBuilder~~ | ~~data.json, data.csv~~ | **DONE 75.D** |
 | java.util.ArrayList | medley (partition-*) | Medium |
 | .indexOf on collections | medley | Low |
 | .getMessage on exceptions | medley | Low |
@@ -325,18 +332,49 @@ Type: GLL parser generator (.cljc, ~3000 LOC)
 
 ---
 
+## data.csv 1.1.x
+
+Source: https://github.com/clojure/data.csv
+Type: CSV reader/writer (.clj)
+
+### Results
+
+| Metric   | Value |
+|----------|------:|
+| Load     |  PASS |
+| read-csv |  PASS |
+| write-csv|  PASS |
+
+All features working:
+- Basic CSV parsing (comma-separated)
+- Custom separators (`;`, `\t`, etc.)
+- Quoted fields with embedded commas and escaped quotes
+- Multi-row parsing with lazy sequences
+- write-csv to StringWriter
+- Empty field handling
+
+### Bugs Fixed During Testing
+
+| Bug | Fix |
+|-----|-----|
+| Prefix-list require `(:require (clojure [string :as str]))` | `.list` case in `requireFn` (ns_ops.zig) |
+| Protocol dispatch on class instances (PushbackReader) | `mapTypeKey` short→FQCN mapping (vm.zig, tree_walk.zig) |
+
+### Notes
+
+- Library uses `extend-protocol` on `PushbackReader` and `String` — requires Phase 75.D interop shims + Phase 75.F protocol dispatch fix
+- Both read and write APIs work on both VM and TreeWalk backends
+- No modifications needed to the library source
+
+---
+
 ## Libraries Tested But Not Yet Loadable
 
 ### clojure.data.json
 
 Source: https://github.com/clojure/data.json
-Category: **Java interop blocker**
-Blocker: PushbackReader, StringWriter, definterface, deftype with mutable fields
-Action: Implement PushbackReader/StringWriter as Zig interop shims (high frequency pattern)
-
-### clojure.data.csv
-
-Source: https://github.com/clojure/data.csv
-Category: **Java interop blocker**
-Blocker: PushbackReader, StringBuilder, Writer
-Action: Same PushbackReader/StringWriter shims as data.json
+Category: **Blocked by definterface/deftype**
+Blocker: `definterface` (JSONWriter), `deftype` with mutable fields
+Notes: PushbackReader/StringWriter shims now available (75.D), but library requires
+`definterface` which CW does not implement. `definterface` is simpler than `deftype`
+and could potentially be added in a future phase.

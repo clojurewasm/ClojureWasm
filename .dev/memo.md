@@ -34,7 +34,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.E: Test data.json as-is (note: blocked by definterface/deftype).
+Phase 75.G: Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
 
 ## Task Queue
 
@@ -43,8 +43,8 @@ Phase 75.E: Test data.json as-is (note: blocked by definterface/deftype).
 75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
 75.C  DONE — instaparse 9/16 modules load, blocked by deftype (out of scope)
 75.D  DONE — PushbackReader, StringReader, StringBuilder, StringWriter, EOFException interop
-75.E  Test data.json as-is (after 75.D)
-75.F  Test data.csv as-is (after 75.D)
+75.E  DONE — data.json blocked by definterface/deftype (out of scope for now)
+75.F  DONE — data.csv fully working (read-csv, write-csv, custom sep, quoted fields)
 75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
 ```
 
@@ -60,15 +60,13 @@ Notes:
 
 ## Previous Task
 
-Phase 75.D: Implement I/O interop shims (complete):
-- PushbackReader: .read() → int, .unread(int), wraps StringReader
-- StringReader: wraps string for character-by-character reading
-- StringBuilder: .append(char/string), .toString, .length (mutable accumulator)
-- StringWriter: .write(int/string), .append(CharSequence), .toString (in-memory Writer)
-- EOFException: constructor support (thrown by data.csv on premature EOF)
-- instance? checks for all new types + Reader/Writer parent types
-- Mutable state via smp_allocator opaque handles (not GC-tracked)
-- Fixed: class instance method dispatch now takes priority over generic collection methods
+Phase 75.E/75.F: Test data.json + data.csv:
+- data.json: Blocked by definterface (JSONWriter) and deftype with mutable fields
+- data.csv: Fully working! Fixed 2 bugs:
+  1. Prefix-list require format `(:require (prefix [lib]))` — new `.list` case in requireFn
+  2. Protocol dispatch on class instances — `mapTypeKey` needs short→FQCN mappings
+     (e.g., "PushbackReader" → "java.io.PushbackReader") for extend-type to match valueTypeKey
+- All CSV features working: read-csv, write-csv, custom separators, quoted fields, empty fields
 
 ## Known Issues
 
