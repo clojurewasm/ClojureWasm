@@ -34,8 +34,8 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0b: clojure.test.tap — TAP output formatter.
-Port with minimal CLJW markers. `.split` → `clojure.string/split`, `Throwable` → `Exception`.
+Phase 75.0c: clojure.java.browse — browse-url via shell.
+Shell-based only (`open`/`xdg-open`), skip AWT/Swing fallbacks.
 Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
@@ -45,7 +45,6 @@ Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
 
 ```
 --- Batch 0: Small ---
-75.0b clojure.test.tap — TAP output formatter (123 lines, nearly pure Clojure)
 75.0c clojure.java.browse — browse-url via shell (89 lines)
 75.0d clojure.datafy — datafy/nav protocols (62 lines)
 --- Batch 0: Medium ---
@@ -78,12 +77,12 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0a: clojure.uuid (complete):
-- Fixed `parse-uuid` to return UUID class instance (was returning plain string)
-- Created `src/clj/clojure/uuid.clj` with CW-adapted `default-uuid-reader`
+Phase 75.0b: clojure.test.tap (complete):
+- Created `src/clj/clojure/test/tap.clj` with CW-adapted TAP formatter
+- CLJW changes: `.split` → `str/split`, `Throwable` → `Exception`
+- Fixed `analyzeDefmulti` to handle metadata on name (`^:dynamic`)
 - Registered in bootstrap.zig for lazy embedFile loading
-- Fixed `formToValueWithNs` to handle #uuid tagged literals (read-string path)
-- All UUID paths verified: #uuid, parse-uuid, random-uuid, uuid?, print, read-string
+- Both VM and TreeWalk produce correct TAP output
 
 ## Known Issues
 

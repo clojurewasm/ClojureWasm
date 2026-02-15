@@ -1941,14 +1941,26 @@ pub const Analyzer = struct {
 
     fn analyzeDefmulti(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (defmulti name dispatch-fn & options)
+        // Supports metadata on name: (defmulti ^:dynamic name dispatch-fn)
         if (items.len < 3) {
             return self.analysisError(.arity_error, "defmulti requires name and dispatch-fn", form);
         }
-        if (items[1].data != .symbol) {
+
+        // Unwrap metadata from name (e.g. ^:dynamic)
+        var name_form = items[1];
+        while (name_form.data == .list) {
+            const wm_items = name_form.data.list;
+            if (wm_items.len == 3 and wm_items[0].data == .symbol and
+                std.mem.eql(u8, wm_items[0].data.symbol.name, "with-meta"))
+            {
+                name_form = wm_items[1];
+            } else break;
+        }
+        if (name_form.data != .symbol) {
             return self.analysisError(.value_error, "defmulti name must be a symbol", items[1]);
         }
 
-        const name = items[1].data.symbol.name;
+        const name = name_form.data.symbol.name;
         const dispatch_node = try self.analyze(items[2]);
 
         // Parse keyword options: :hierarchy var-ref
