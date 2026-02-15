@@ -527,8 +527,9 @@ pub const MultiFn = struct {
     /// Optional custom hierarchy Var (from :hierarchy option).
     /// When set, deref'd to get the hierarchy map instead of global-hierarchy.
     hierarchy_var: ?*Var = null,
-    // Level 1 cache: arg identity (pointer/value hash)
+    // Level 1 cache: combined identity hash of ALL args
     cached_arg_key: usize = 0,
+    cached_arg_count: u8 = 0,
     cached_arg_valid: bool = false,
     // Level 2 cache: dispatch value -> method
     cached_dispatch_val: ?Value = null,
@@ -538,8 +539,22 @@ pub const MultiFn = struct {
     pub fn invalidateCache(self: *MultiFn) void {
         self.cached_arg_valid = false;
         self.cached_arg_key = 0;
+        self.cached_arg_count = 0;
         self.cached_dispatch_val = null;
         self.cached_method = Value.nil_val;
+    }
+
+    /// Compute combined identity key for ALL args.
+    /// Returns null if any arg is not identity-cacheable.
+    pub fn combinedArgKey(args: []const Value) ?usize {
+        if (args.len == 0) return null;
+        var combined: usize = 0;
+        for (args, 0..) |arg, i| {
+            const key = argIdentityKey(arg) orelse return null;
+            // Mix with index to avoid order-insensitive collisions
+            combined ^= key *% (0x9e3779b97f4a7c15 +% i);
+        }
+        return combined;
     }
 
     /// Get identity key for a Value (pointer for heap types, hash for value types).

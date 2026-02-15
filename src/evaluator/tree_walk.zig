@@ -1206,9 +1206,9 @@ pub const TreeWalk = struct {
             args[i] = try self.run(arg_node);
         }
 
-        // Level 1: Arg identity cache — skip dispatch fn call entirely
-        if (arg_nodes.len >= 1 and mf.cached_arg_valid) {
-            if (value_mod.MultiFn.argIdentityKey(args[0])) |key| {
+        // Level 1: Combined arg identity cache — skip dispatch fn call entirely
+        if (args.len >= 1 and mf.cached_arg_valid and mf.cached_arg_count == @as(u8, @intCast(args.len))) {
+            if (value_mod.MultiFn.combinedArgKey(args)) |key| {
                 if (key == mf.cached_arg_key) {
                     return self.callValue(mf.cached_method, args);
                 }
@@ -1217,7 +1217,7 @@ pub const TreeWalk = struct {
 
         // Get dispatch value (fast path for keyword dispatch fn)
         const dispatch_val = if (mf.dispatch_fn.tag() == .keyword) blk: {
-            if (arg_nodes.len >= 1 and args[0].tag() == .map) {
+            if (args.len >= 1 and args[0].tag() == .map) {
                 break :blk args[0].asMap().get(mf.dispatch_fn) orelse Value.nil_val;
             }
             break :blk Value.nil_val;
@@ -1237,11 +1237,12 @@ pub const TreeWalk = struct {
             break :blk m;
         };
 
-        // Update arg identity cache
+        // Update combined arg identity cache
         const mf_mut: *value_mod.MultiFn = @constCast(mf);
-        if (arg_nodes.len >= 1) {
-            if (value_mod.MultiFn.argIdentityKey(args[0])) |key| {
+        if (args.len >= 1) {
+            if (value_mod.MultiFn.combinedArgKey(args)) |key| {
                 mf_mut.cached_arg_key = key;
+                mf_mut.cached_arg_count = @intCast(args.len);
                 mf_mut.cached_arg_valid = true;
             }
         }

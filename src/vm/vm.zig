@@ -1415,17 +1415,17 @@ pub const VM = struct {
                 // Result: 2053ms -> 14ms (147x speedup).
                 const mf_mut: *value_mod.MultiFn = @constCast(mf);
 
-                // Level 1: Arg identity cache — skip dispatch fn call entirely
-                if (arg_count >= 1 and mf_mut.cached_arg_valid) {
-                    if (value_mod.MultiFn.argIdentityKey(self.stack[fn_idx + 1])) |key| {
+                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
+
+                // Level 1: Combined arg identity cache — skip dispatch fn call entirely
+                if (arg_count >= 1 and mf_mut.cached_arg_valid and mf_mut.cached_arg_count == @as(u8, @intCast(arg_count))) {
+                    if (value_mod.MultiFn.combinedArgKey(args)) |key| {
                         if (key == mf_mut.cached_arg_key) {
                             self.stack[fn_idx] = mf_mut.cached_method;
                             return self.performCall(arg_count);
                         }
                     }
                 }
-
-                const args = self.stack[fn_idx + 1 .. fn_idx + 1 + arg_count];
 
                 // Get dispatch value
                 const dispatch_val = blk: {
@@ -1456,10 +1456,11 @@ pub const VM = struct {
                     break :blk m;
                 };
 
-                // Update arg identity cache
+                // Update combined arg identity cache
                 if (arg_count >= 1) {
-                    if (value_mod.MultiFn.argIdentityKey(self.stack[fn_idx + 1])) |key| {
+                    if (value_mod.MultiFn.combinedArgKey(args)) |key| {
                         mf_mut.cached_arg_key = key;
+                        mf_mut.cached_arg_count = @intCast(arg_count);
                         mf_mut.cached_arg_valid = true;
                     }
                 }
