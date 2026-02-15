@@ -5,12 +5,12 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 74 COMPLETE** (Java interop architecture)
-- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 24 embedded CLJ namespaces)
+- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v0.2.0 entry = latest baseline)
-- Binary: 3.85MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 3.92MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter classes (D101)
 
 ## Strategic Direction
@@ -34,7 +34,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75 complete. Ready for next phase planning.
+Implement clojure.xml — DONE. Ready for next phase planning.
 
 ## Task Queue
 
@@ -56,16 +56,16 @@ Policy:
 
 Notes:
 - Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
-- clojure.xml deferred until library testing surfaces demand
+- clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
 
 ## Previous Task
 
-Phase 75 Library Compatibility Testing (complete):
-- 9 libraries tested, 4 fully/mostly working (medley 80%, CSK 98.6%, honeysql load, data.csv 100%)
-- 5 blocked (instaparse/core.match by deftype, data.json by definterface, meander by &form/case*)
-- 12 CW bugs found and fixed across all phases
-- New interop: PushbackReader, StringReader, StringBuilder, StringWriter, EOFException
-- Key gaps identified: &form macro binding, case* F139, definterface, GC crash F140
+Implement clojure.xml namespace:
+- Pure Clojure XML parser replacing Java SAX (upstream uses SAXParser/ContentHandler)
+- Supports: elements, attributes, text, CDATA, comments, entities, processing instructions
+- API: parse (from file), parse-str (from string), emit, emit-element, tag, attrs, content
+- 13/13 tests pass on both VM and TreeWalk backends
+- Binary: 3.92MB (under 4.0MB threshold), startup: 4.5ms (under 5ms)
 
 ## Known Issues
 

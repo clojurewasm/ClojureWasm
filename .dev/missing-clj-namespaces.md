@@ -97,11 +97,11 @@ where CW adaptation is needed.
 - Not a port — a CW-native reimplementation of the concept
 - **Action**: Design CW-native REPL deps. After deps.edn stabilization.
 
-#### clojure.xml
+#### clojure.xml (DONE)
 - XML parsing via SAXParser (Java)
-- No Zig stdlib XML parser. Would need pure Zig XML parser or pure Clojure parser.
-- Scope is significant. Low priority unless a tested library needs it.
-- **Action**: Defer. Implement only if library testing surfaces demand.
+- CW: Pure Clojure XML parser replacing SAX. Supports parse, parse-str, emit, emit-element.
+- Handles elements, attributes, text, CDATA, comments, entities, processing instructions.
+- **Status**: Implemented. 13/13 tests pass on both backends.
 
 ### Skip (not implementing)
 
@@ -128,4 +128,4 @@ Small items first (quick wins, unblock testing), then medium, then large:
 0i  clojure.repl.deps — REPL deps (large, after deps.edn stable)
 ```
 
-clojure.xml deferred until library testing surfaces demand.
+All 10 namespaces (0a-0i + clojure.xml) now implemented.

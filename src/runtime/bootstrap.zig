@@ -107,6 +107,9 @@ const server_clj_source = @embedFile("../clj/clojure/core/server.clj");
 /// Embedded clojure/repl/deps.clj source (compiled into binary).
 const repl_deps_clj_source = @embedFile("../clj/clojure/repl/deps.clj");
 
+/// Embedded clojure/xml.clj source (compiled into binary).
+const xml_clj_source = @embedFile("../clj/clojure/xml.clj");
+
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
 
@@ -768,6 +771,31 @@ pub fn loadInstant(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/xml.clj.
+pub fn loadXml(allocator: Allocator, env: *Env) BootstrapError!void {
+    const xml_ns = env.findOrCreateNamespace("clojure.xml") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        xml_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = xml_ns;
+
+    _ = try evalString(allocator, env, xml_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/java/process.clj.
 pub fn loadProcess(allocator: Allocator, env: *Env) BootstrapError!void {
     const process_ns = env.findOrCreateNamespace("clojure.java.process") catch {
@@ -954,6 +982,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     }
     if (std.mem.eql(u8, ns_name, "clojure.instant")) {
         try loadInstant(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.xml")) {
+        try loadXml(allocator, env);
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.java.process")) {
