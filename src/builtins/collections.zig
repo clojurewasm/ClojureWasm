@@ -1065,7 +1065,23 @@ fn knownSeqLength(val: Value) ?usize {
         .set => val.asSet().count(),
         .string => val.asString().len,
         .nil => 0,
-        else => null, // cons, lazy_seq — can't know without realization
+        .list => val.asList().count(),
+        .cons => blk: {
+            // Walk cons chain to count (finite lists from butlast etc.)
+            var count: usize = 0;
+            var cur = val;
+            while (cur.tag() == .cons) {
+                count += 1;
+                cur = cur.asCons().rest;
+                if (count > 256) break :blk null; // safety limit
+            }
+            if (cur == Value.nil_val or cur.tag() == .list) {
+                if (cur.tag() == .list) count += cur.asList().count();
+                break :blk count;
+            }
+            break :blk null; // lazy tail
+        },
+        else => null, // lazy_seq — can't know without realization
     };
 }
 

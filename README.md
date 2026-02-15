@@ -24,7 +24,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
-- **1050+ vars** across 30+ namespaces (637/706 clojure.core)
+- **1100+ vars** across 30+ namespaces (651/706 clojure.core)
 
 ## Getting Started
 
@@ -94,7 +94,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace              | Vars   | Description                          |
 |------------------------|--------|--------------------------------------|
-| clojure.core           | 637/706| Core language functions              |
+| clojure.core           | 651/706| Core language functions              |
 | clojure.core.protocols | 10/11  | CollReduce, IKVReduce, Datafiable    |
 | clojure.core.reducers  | 22/22  | Parallel fold, monoid, reducers      |
 
@@ -107,7 +107,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 | clojure.set        | 12/12  | Set operations                 |
 | clojure.walk       | 10/10  | Tree walking                   |
 | clojure.zip        | 28/28  | Zipper data structure          |
-| clojure.data       | 3/5    | Data diff                      |
+| clojure.data       | 5/5    | Data diff                      |
 | clojure.edn        | 2/2    | EDN reader                     |
 | clojure.template   | 2/2    | Code templates                 |
 | clojure.xml        | 7/9    | XML parsing (pure Clojure)     |
@@ -120,16 +120,17 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 | Namespace              | Vars   | Description                    |
 |------------------------|--------|--------------------------------|
 | clojure.spec.alpha     | 87/87  | Spec validation, s/def, s/valid?|
-| clojure.spec.gen.alpha | 27/54  | Spec generators                |
+| clojure.spec.gen.alpha | 54/54  | Spec generators                |
+| clojure.core.specs.alpha| 1/1   | Spec for core macros           |
 
 **Dev & Test**
 
 | Namespace          | Vars   | Description                    |
 |--------------------|--------|--------------------------------|
-| clojure.test       | 32/39  | Test framework                 |
+| clojure.test       | 38/39  | Test framework                 |
 | clojure.test.tap   | 7/7    | TAP output formatter           |
 | clojure.repl       | 11/13  | doc, dir, apropos, source, pst |
-| clojure.pprint     | 9/26   | Pretty printing, print-table   |
+| clojure.pprint     | 22/26  | Pretty printing, print-table   |
 | clojure.stacktrace | 6/6    | Stack trace utilities          |
 | clojure.main       | 16/20  | REPL, script loading, ex-triage|
 
@@ -137,7 +138,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace              | Vars   | Description                    |
 |------------------------|--------|--------------------------------|
-| clojure.java.io        | 7/19   | File I/O (Zig-native)         |
+| clojure.java.io        | 19/19  | File I/O (Zig-native)         |
 | clojure.java.shell     | 5/5    | Shell commands (sh)            |
 | clojure.java.browse    | 2/2    | Open URL in browser            |
 | clojure.java.process   | 5/9    | Process API (Clojure 1.12)     |
@@ -146,7 +147,7 @@ Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
 | Namespace              | Vars   | Description                    |
 |------------------------|--------|--------------------------------|
-| clojure.core.server    | 7/11   | Socket REPL, prepl (stub)      |
+| clojure.core.server    | 7/11   | Socket REPL, prepl (partial)   |
 | clojure.repl.deps      | 3/3    | Dynamic lib addition (stub)    |
 
 **ClojureWasm Extensions**
