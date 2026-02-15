@@ -34,9 +34,9 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements (Commit 9 next)
-- Commits 1-8 DONE
-- Next: *data-readers* dynamic binding override
+Phase 76: Type System & Reader Enhancements (Commit 10 next)
+- Commits 1-9 DONE
+- Next: README coverage tables X/Y format
 
 ## Task Queue
 
@@ -50,7 +50,7 @@ Phase 76: Type System & Reader Enhancements (Commit 9 next)
 76.6  DONE — read-string 2-arity
 76.7  DONE — Namespaced map literals #:ns{}
 76.8  DONE — :as-alias in require
-76.9  TODO — *data-readers* dynamic binding override
+76.9  DONE — *data-readers* dynamic binding override
 76.10 TODO — README coverage tables X/Y format
 ```
 

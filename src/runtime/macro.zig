@@ -24,6 +24,47 @@ const Value = value_mod.Value;
 const collections = @import("collections.zig");
 const builtin_collections = @import("../builtins/collections.zig");
 const Namespace = @import("namespace.zig").Namespace;
+const bootstrap = @import("bootstrap.zig");
+const Var = @import("var.zig").Var;
+
+/// Look up a tag name in *data-readers* dynamic binding.
+/// Returns the reader fn if found, null otherwise.
+fn lookupDataReader(allocator: Allocator, tag_name: []const u8) ?Value {
+    const env = bootstrap.macro_eval_env orelse return null;
+    const core_ns = env.findNamespace("clojure.core") orelse return null;
+    const dr_var = core_ns.resolve("*data-readers*") orelse return null;
+    const dr_val = dr_var.deref();
+    if (dr_val.tag() == .nil) return null;
+
+    // Parse tag name: "foo/bar" → ns="foo", name="bar"; "bar" → ns=null, name="bar"
+    var tag_ns: ?[]const u8 = null;
+    var tag_local: []const u8 = tag_name;
+    if (std.mem.indexOf(u8, tag_name, "/")) |slash| {
+        tag_ns = tag_name[0..slash];
+        tag_local = tag_name[slash + 1 ..];
+    }
+
+    // *data-readers* should be a map of symbol→fn
+    if (dr_val.tag() == .map) {
+        const entries = dr_val.asMap().entries;
+        var i: usize = 0;
+        while (i + 1 < entries.len) : (i += 2) {
+            if (entries[i].tag() == .symbol) {
+                const sym = entries[i].asSymbol();
+                const ns_match = if (tag_ns) |tns|
+                    (sym.ns != null and std.mem.eql(u8, sym.ns.?, tns))
+                else
+                    sym.ns == null;
+                if (ns_match and std.mem.eql(u8, sym.name, tag_local))
+                    return entries[i + 1];
+            }
+        }
+    } else if (dr_val.tag() == .hash_map) {
+        const tag_sym = Value.initSymbol(allocator, .{ .ns = tag_ns, .name = tag_local });
+        if (dr_val.asHashMap().get(tag_sym)) |v| return v;
+    }
+    return null;
+}
 
 /// Convert a Form to a runtime Value (for passing to macro functions).
 /// Collections are recursively converted. Source info preserved on lists/vectors.
@@ -154,6 +195,12 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
         },
         .tag => |t| {
             const form_val = try formToValueWithNs(allocator, t.form.*, ns);
+
+            // Check *data-readers* for custom tag reader
+            if (lookupDataReader(allocator, t.tag)) |reader_fn| {
+                return bootstrap.callFnVal(allocator, reader_fn, &.{form_val}) catch Value.nil_val;
+            }
+
             // Built-in #uuid → UUID class instance
             if (std.mem.eql(u8, t.tag, "uuid")) {
                 if (form_val.tag() == .string) {
