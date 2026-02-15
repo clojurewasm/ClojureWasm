@@ -24,7 +24,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
-- **869+ vars** across 17 namespaces (637/706 clojure.core)
+- **853+ vars** across 17 namespaces (637/706 clojure.core)
 
 ## Getting Started
 
@@ -90,25 +90,25 @@ info, stacktrace, eldoc, etc.).
 Each namespace targets behavioral equivalence with its Clojure JVM counterpart.
 Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
-| Namespace          | Vars | Description                    |
-|--------------------|------|--------------------------------|
-| clojure.core       | 637  | Core language functions        |
-| clojure.string     | 21   | String manipulation            |
-| clojure.math       | 45   | Math functions                 |
-| clojure.set        | 12   | Set operations                 |
-| clojure.walk       | 10   | Tree walking                   |
-| clojure.zip        | 28   | Zipper data structure          |
-| clojure.test       | 32   | Test framework                 |
-| clojure.repl       | 11   | doc, dir, apropos, source, pst |
-| clojure.pprint     | 9    | Pretty printing, print-table   |
-| clojure.data       | 3    | Data diff                      |
-| clojure.edn        | 1    | EDN reader                     |
-| clojure.template   | 2    | Code templates                 |
-| clojure.stacktrace | 6    | Stack trace utilities          |
-| clojure.java.io    | 7    | File I/O (Zig-native)          |
-| clojure.java.shell | 5    | Shell commands (sh)            |
-| cljw.http          | 6    | HTTP server/client             |
-| cljw.wasm          | 17   | WebAssembly FFI                |
+| Namespace          | Vars   | Description                    |
+|--------------------|--------|--------------------------------|
+| clojure.core       | 637/706| Core language functions        |
+| clojure.string     | 21/21  | String manipulation            |
+| clojure.math       | 45/45  | Math functions                 |
+| clojure.set        | 12/12  | Set operations                 |
+| clojure.walk       | 10/10  | Tree walking                   |
+| clojure.zip        | 28/28  | Zipper data structure          |
+| clojure.test       | 32/39  | Test framework                 |
+| clojure.repl       | 11/13  | doc, dir, apropos, source, pst |
+| clojure.pprint     | 9/26   | Pretty printing, print-table   |
+| clojure.data       | 3/5    | Data diff                      |
+| clojure.edn        | 2/2    | EDN reader                     |
+| clojure.template   | 2/2    | Code templates                 |
+| clojure.stacktrace | 6/6    | Stack trace utilities          |
+| clojure.java.io    | 7/19   | File I/O (Zig-native)          |
+| clojure.java.shell | 5/5    | Shell commands (sh)            |
+| cljw.http          | 6/6    | HTTP server/client             |
+| cljw.wasm          | 17/17  | WebAssembly FFI                |
 
 ### Wasm FFI
 

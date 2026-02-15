@@ -34,9 +34,8 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements (Commit 10 next)
-- Commits 1-9 DONE
-- Next: README coverage tables X/Y format
+Phase 76: Type System & Reader Enhancements — COMPLETE
+- All 10 commits done
 
 ## Task Queue
 
@@ -51,7 +50,7 @@ Phase 76: Type System & Reader Enhancements (Commit 10 next)
 76.7  DONE — Namespaced map literals #:ns{}
 76.8  DONE — :as-alias in require
 76.9  DONE — *data-readers* dynamic binding override
-76.10 TODO — README coverage tables X/Y format
+76.10 DONE — README coverage tables X/Y format
 ```
 
 Policy:
@@ -66,10 +65,17 @@ Notes:
 
 ## Previous Task
 
-Phase 76 Commit 1: reify multi-arity method support
-- In analyzeReify(), grouped methods by name using StringHashMap
-- When multiple methods share same name, construct multi-arity fn forms
-- Verified on both VM and TreeWalk backends
+Phase 76: Type System & Reader Enhancements — 10 commits:
+1. reify multi-arity method support
+2. defrecord inline protocol implementation
+3. Fix map->Name to assoc __reify_type
+4. instance? for CW record/reify types
+5. deftype with inline protocol support
+6. read-string 2-arity with :eof option
+7. Namespaced map literals #:ns{}
+8. :as-alias in require
+9. *data-readers* dynamic binding override
+10. README coverage tables X/Y format
 
 ## Known Issues
 
