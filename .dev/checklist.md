@@ -21,5 +21,6 @@ Check at session start for items that become actionable.
 | F104 | Profile-guided optimization (extend IC)     | Extend inline caching beyond monomorphic                                 |
 | F105 | JIT compilation (expand beyond ARM64 PoC)   | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
+| F141 | cljw.xxx aliases for clojure.java.xxx       | `(require '[cljw.io])` should map to `clojure.java.io`. Targets: cljw.io, cljw.shell, cljw.browse, cljw.process. Needs ns alias mapping in require/resolve path. |
 | F139 | case macro fails with mixed body types      | `(case x :a 1 :b (cond-> ...))` — shift-mask error. Related to case hash computation when body exprs mix integer literals and complex forms. Workaround: use `cond`. |
 | F140 | GC crash in dissocFn (keyword pointer freed) | Segfault in keyword name comparison under heavy allocation pressure (tools.cli test-summarize). Pre-existing GC root tracking issue. |

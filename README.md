@@ -24,7 +24,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
 - **Dual backend** — bytecode VM (default) + TreeWalk interpreter (reference)
 - **deps.edn compatible** — Clojure CLI subset (-A/-M/-X/-P, git deps, local deps)
-- **853+ vars** across 17 namespaces (637/706 clojure.core)
+- **1050+ vars** across 30+ namespaces (637/706 clojure.core)
 
 ## Getting Started
 
@@ -90,25 +90,73 @@ info, stacktrace, eldoc, etc.).
 Each namespace targets behavioral equivalence with its Clojure JVM counterpart.
 Known divergences are documented in [DIFFERENCES.md](DIFFERENCES.md).
 
+**Core Language**
+
+| Namespace              | Vars   | Description                          |
+|------------------------|--------|--------------------------------------|
+| clojure.core           | 637/706| Core language functions              |
+| clojure.core.protocols | 10/11  | CollReduce, IKVReduce, Datafiable    |
+| clojure.core.reducers  | 22/22  | Parallel fold, monoid, reducers      |
+
+**Standard Library**
+
 | Namespace          | Vars   | Description                    |
 |--------------------|--------|--------------------------------|
-| clojure.core       | 637/706| Core language functions        |
 | clojure.string     | 21/21  | String manipulation            |
 | clojure.math       | 45/45  | Math functions                 |
 | clojure.set        | 12/12  | Set operations                 |
 | clojure.walk       | 10/10  | Tree walking                   |
 | clojure.zip        | 28/28  | Zipper data structure          |
-| clojure.test       | 32/39  | Test framework                 |
-| clojure.repl       | 11/13  | doc, dir, apropos, source, pst |
-| clojure.pprint     | 9/26   | Pretty printing, print-table   |
 | clojure.data       | 3/5    | Data diff                      |
 | clojure.edn        | 2/2    | EDN reader                     |
 | clojure.template   | 2/2    | Code templates                 |
+| clojure.xml        | 7/9    | XML parsing (pure Clojure)     |
+| clojure.datafy     | 2/2    | datafy/nav protocols           |
+| clojure.instant    | 3/5    | #inst reader, RFC3339 parser   |
+| clojure.uuid       | —      | #uuid data reader (reader only)|
+
+**Spec**
+
+| Namespace              | Vars   | Description                    |
+|------------------------|--------|--------------------------------|
+| clojure.spec.alpha     | 87/87  | Spec validation, s/def, s/valid?|
+| clojure.spec.gen.alpha | 27/54  | Spec generators                |
+
+**Dev & Test**
+
+| Namespace          | Vars   | Description                    |
+|--------------------|--------|--------------------------------|
+| clojure.test       | 32/39  | Test framework                 |
+| clojure.test.tap   | 7/7    | TAP output formatter           |
+| clojure.repl       | 11/13  | doc, dir, apropos, source, pst |
+| clojure.pprint     | 9/26   | Pretty printing, print-table   |
 | clojure.stacktrace | 6/6    | Stack trace utilities          |
-| clojure.java.io    | 7/19   | File I/O (Zig-native)          |
-| clojure.java.shell | 5/5    | Shell commands (sh)            |
-| cljw.http          | 6/6    | HTTP server/client             |
+| clojure.main       | 16/20  | REPL, script loading, ex-triage|
+
+**IO & System**
+
+| Namespace              | Vars   | Description                    |
+|------------------------|--------|--------------------------------|
+| clojure.java.io        | 7/19   | File I/O (Zig-native)         |
+| clojure.java.shell     | 5/5    | Shell commands (sh)            |
+| clojure.java.browse    | 2/2    | Open URL in browser            |
+| clojure.java.process   | 5/9    | Process API (Clojure 1.12)     |
+
+**Infrastructure (stubs — requireable, API surface for compatibility)**
+
+| Namespace              | Vars   | Description                    |
+|------------------------|--------|--------------------------------|
+| clojure.core.server    | 7/11   | Socket REPL, prepl (stub)      |
+| clojure.repl.deps      | 3/3    | Dynamic lib addition (stub)    |
+
+**ClojureWasm Extensions**
+
+| Namespace          | Vars   | Description                    |
+|--------------------|--------|--------------------------------|
 | cljw.wasm          | 17/17  | WebAssembly FFI                |
+| cljw.http          | 6/6    | HTTP server/client             |
+
+**Not implemented** (JVM-only): clojure.reflect, clojure.inspector, clojure.java.javadoc, clojure.test.junit
 
 ### Wasm FFI
 
@@ -183,7 +231,7 @@ src/
 └── wasm/                       WebAssembly runtime (523 opcodes)
 
 bench/                          31 benchmarks, multi-language
-test/                           74 Clojure test files (50 upstream ports)
+test/                           81 Clojure test files (54 upstream ports)
 ```
 
 The [`.dev/`](.dev/) directory contains design decisions, optimization logs,
@@ -210,7 +258,7 @@ bash test/e2e/run_e2e.sh       # End-to-end tests (6 wasm)
 bash test/e2e/deps/run_deps_e2e.sh  # deps.edn E2E tests (14)
 ```
 
-74 Clojure test files including 50 upstream test ports with 600+ deftests.
+81 Clojure test files including 54 upstream test ports with 600+ deftests.
 All tests verified on both VM and TreeWalk backends.
 
 ## Future Plans

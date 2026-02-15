@@ -756,17 +756,17 @@ vars:
     take: {type: function, status: done}
     "take-while": {type: function, status: done}
   clojure_core_server:
-    "*session*": {type: dynamic-var, status: todo}
-    "io-prepl": {type: function, status: todo}
-    prepl: {type: function, status: todo}
-    "remote-prepl": {type: function, status: todo}
-    repl: {type: function, status: todo}
-    "repl-init": {type: function, status: todo}
-    "repl-read": {type: function, status: todo}
-    "start-server": {type: function, status: todo}
-    "start-servers": {type: function, status: todo}
-    "stop-server": {type: function, status: todo}
-    "stop-servers": {type: function, status: todo}
+    "*session*": {type: dynamic-var, status: done}
+    "io-prepl": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    prepl: {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "remote-prepl": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    repl: {type: function, status: skip, note: "JVM socket REPL loop, CW has native Zig REPL"}
+    "repl-init": {type: function, status: skip, note: "JVM REPL init helper"}
+    "repl-read": {type: function, status: skip, note: "JVM LineNumberingPushbackReader-based read"}
+    "start-server": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "start-servers": {type: function, status: skip, note: "JVM property-based server startup"}
+    "stop-server": {type: function, status: done}
+    "stop-servers": {type: function, status: done}
   clojure_core_specs_alpha:
     "even-number-of-forms?": {type: function, status: todo}
   clojure_data:
@@ -776,34 +776,34 @@ vars:
     "diff-similar": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
     "equality-partition": {type: function, status: done, notes: 'UPSTREAM-DIFF: fn instead of protocol'}
   clojure_datafy:
-    datafy: {type: function, status: todo}
-    nav: {type: function, status: todo}
+    datafy: {type: function, status: done}
+    nav: {type: function, status: done}
   clojure_edn:
     read: {type: function, status: done, notes: "builtin (reads from *in*/stdin)"}
     "read-string": {type: function, status: done, notes: builtin (Zig)}
   clojure_inspector:
-    "atom?": {type: function, status: todo}
-    "collection-tag": {type: function, status: todo}
-    "get-child": {type: var, status: todo}
-    "get-child-count": {type: var, status: todo}
-    inspect: {type: function, status: todo}
-    "inspect-table": {type: function, status: todo}
-    "inspect-tree": {type: function, status: todo}
-    "is-leaf": {type: var, status: todo}
-    "list-model": {type: function, status: todo}
-    "list-provider": {type: var, status: todo}
-    "old-table-model": {type: function, status: todo}
-    "table-model": {type: var, status: todo}
-    "tree-model": {type: function, status: todo}
+    "atom?": {type: function, status: skip, note: 100% Swing GUI}
+    "collection-tag": {type: function, status: skip, note: 100% Swing GUI}
+    "get-child": {type: var, status: skip, note: 100% Swing GUI}
+    "get-child-count": {type: var, status: skip, note: 100% Swing GUI}
+    inspect: {type: function, status: skip, note: 100% Swing GUI}
+    "inspect-table": {type: function, status: skip, note: 100% Swing GUI}
+    "inspect-tree": {type: function, status: skip, note: 100% Swing GUI}
+    "is-leaf": {type: var, status: skip, note: 100% Swing GUI}
+    "list-model": {type: function, status: skip, note: 100% Swing GUI}
+    "list-provider": {type: var, status: skip, note: 100% Swing GUI}
+    "old-table-model": {type: function, status: skip, note: 100% Swing GUI}
+    "table-model": {type: var, status: skip, note: 100% Swing GUI}
+    "tree-model": {type: function, status: skip, note: 100% Swing GUI}
   clojure_instant:
-    "parse-timestamp": {type: function, status: todo}
-    "read-instant-calendar": {type: function, status: todo}
-    "read-instant-date": {type: function, status: todo}
-    "read-instant-timestamp": {type: function, status: todo}
-    validated: {type: function, status: todo}
+    "parse-timestamp": {type: function, status: done}
+    "read-instant-calendar": {type: function, status: skip, note: "Java Calendar type"}
+    "read-instant-date": {type: function, status: done}
+    "read-instant-timestamp": {type: function, status: skip, note: "Java Timestamp type"}
+    validated: {type: function, status: done}
   clojure_java_browse:
-    "*open-url-script*": {type: dynamic-var, status: todo}
-    "browse-url": {type: function, status: todo}
+    "*open-url-script*": {type: dynamic-var, status: done}
+    "browse-url": {type: function, status: done}
   clojure_java_io:
     Coercions: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
     IOFactory: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
@@ -825,14 +825,14 @@ vars:
     resource: {type: function, status: done, notes: builtin (Zig)}
     writer: {type: function, status: skip, notes: Needs handle/resource type system}
   clojure_java_javadoc:
-    "*core-java-api*": {type: dynamic-var, status: todo}
-    "*feeling-lucky*": {type: dynamic-var, status: todo}
-    "*feeling-lucky-url*": {type: dynamic-var, status: todo}
-    "*local-javadocs*": {type: dynamic-var, status: todo}
-    "*remote-javadocs*": {type: dynamic-var, status: todo}
-    "add-local-javadoc": {type: function, status: todo}
-    "add-remote-javadoc": {type: function, status: todo}
-    javadoc: {type: function, status: todo}
+    "*core-java-api*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "*feeling-lucky*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "*feeling-lucky-url*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "*local-javadocs*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "*remote-javadocs*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "add-local-javadoc": {type: function, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    "add-remote-javadoc": {type: function, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
+    javadoc: {type: function, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
   cljw_http:
     "run-server": {type: function, status: done, notes: "builtin (Zig), Ring-compatible HTTP server"}
     get: {type: function, status: done, notes: "builtin (Zig), HTTP GET client"}
@@ -847,26 +847,26 @@ vars:
     "with-sh-dir": {type: macro, status: done}
     "with-sh-env": {type: macro, status: done}
   clojure_main:
-    demunge: {type: function, status: todo}
-    "err->msg": {type: function, status: todo}
-    "ex-str": {type: function, status: todo}
-    "ex-triage": {type: function, status: todo}
-    "load-script": {type: function, status: todo}
-    main: {type: function, status: todo}
-    "renumbering-read": {type: function, status: todo}
-    repl: {type: function, status: todo}
-    "repl-caught": {type: function, status: todo}
-    "repl-exception": {type: function, status: todo}
-    "repl-prompt": {type: function, status: todo}
-    "repl-read": {type: function, status: todo}
-    "repl-requires": {type: var, status: todo}
-    "report-error": {type: function, status: todo}
-    "root-cause": {type: function, status: todo}
-    "skip-if-eol": {type: function, status: todo}
-    "skip-whitespace": {type: function, status: todo}
-    "stack-element-str": {type: function, status: todo}
-    "with-bindings": {type: macro, status: todo}
-    "with-read-known": {type: macro, status: todo}
+    demunge: {type: function, status: done}
+    "err->msg": {type: function, status: done}
+    "ex-str": {type: function, status: done}
+    "ex-triage": {type: function, status: done}
+    "load-script": {type: function, status: done}
+    main: {type: function, status: done, note: "declared only (nil value)"}
+    "renumbering-read": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
+    repl: {type: function, status: done}
+    "repl-caught": {type: function, status: done}
+    "repl-exception": {type: function, status: done}
+    "repl-prompt": {type: function, status: done}
+    "repl-read": {type: function, status: done}
+    "repl-requires": {type: var, status: done}
+    "report-error": {type: function, status: skip, note: "JVM error reporting"}
+    "root-cause": {type: function, status: done}
+    "skip-if-eol": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
+    "skip-whitespace": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
+    "stack-element-str": {type: function, status: done}
+    "with-bindings": {type: macro, status: done}
+    "with-read-known": {type: macro, status: done}
   clojure_math:
     E: {type: var, status: done, notes: builtin (Zig)}
     "IEEE-remainder": {type: function, status: done, notes: builtin (Zig)}
@@ -941,23 +941,23 @@ vars:
     write: {type: function, status: todo}
     "write-out": {type: function, status: todo}
   clojure_reflect:
-    "->AsmReflector": {type: function, status: todo}
-    "->Constructor": {type: function, status: todo}
-    "->Field": {type: function, status: todo}
-    "->JavaReflector": {type: function, status: todo}
-    "->Method": {type: function, status: todo}
-    ClassResolver: {type: var, status: todo}
-    Reflector: {type: var, status: todo}
-    TypeReference: {type: var, status: todo}
-    "do-reflect": {type: function, status: todo}
-    "flag-descriptors": {type: var, status: todo}
-    "map->Constructor": {type: function, status: todo}
-    "map->Field": {type: function, status: todo}
-    "map->Method": {type: function, status: todo}
-    reflect: {type: function, status: todo}
-    "resolve-class": {type: function, status: todo}
-    "type-reflect": {type: function, status: todo}
-    typename: {type: function, status: todo}
+    "->AsmReflector": {type: function, status: skip, note: 100% Java reflection API}
+    "->Constructor": {type: function, status: skip, note: 100% Java reflection API}
+    "->Field": {type: function, status: skip, note: 100% Java reflection API}
+    "->JavaReflector": {type: function, status: skip, note: 100% Java reflection API}
+    "->Method": {type: function, status: skip, note: 100% Java reflection API}
+    ClassResolver: {type: var, status: skip, note: 100% Java reflection API}
+    Reflector: {type: var, status: skip, note: 100% Java reflection API}
+    TypeReference: {type: var, status: skip, note: 100% Java reflection API}
+    "do-reflect": {type: function, status: skip, note: 100% Java reflection API}
+    "flag-descriptors": {type: var, status: skip, note: 100% Java reflection API}
+    "map->Constructor": {type: function, status: skip, note: 100% Java reflection API}
+    "map->Field": {type: function, status: skip, note: 100% Java reflection API}
+    "map->Method": {type: function, status: skip, note: 100% Java reflection API}
+    reflect: {type: function, status: skip, note: 100% Java reflection API}
+    "resolve-class": {type: function, status: skip, note: 100% Java reflection API}
+    "type-reflect": {type: function, status: skip, note: 100% Java reflection API}
+    typename: {type: function, status: skip, note: 100% Java reflection API}
   clojure_repl:
     apropos: {type: function, status: done, notes: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
     demunge: {type: function, status: done, notes: "UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
@@ -1241,3 +1241,53 @@ vars:
     "vector-zip": {type: function, status: done}
     "xml-zip": {type: function, status: done}
     zipper: {type: function, status: done}
+  clojure_xml:
+    tag: {type: var, status: done}
+    attrs: {type: var, status: done}
+    content: {type: var, status: done}
+    parse: {type: function, status: done}
+    "parse-str": {type: function, status: done, note: "CLJW-ADD: convenience fn, not in upstream"}
+    "emit-element": {type: function, status: done}
+    emit: {type: function, status: done}
+    "startparse-sax": {type: function, status: skip, note: "Java SAX parser"}
+    "content-handler": {type: function, status: skip, note: "Java SAX ContentHandler"}
+  clojure_test_tap:
+    "print-tap-plan": {type: function, status: done}
+    "print-tap-diagnostic": {type: function, status: done}
+    "print-tap-pass": {type: function, status: done}
+    "print-tap-fail": {type: function, status: done}
+    "tap-report": {type: function, status: done}
+    "print-diagnostics": {type: function, status: done}
+    "with-tap-output": {type: macro, status: done}
+  clojure_java_process:
+    start: {type: function, status: done, note: "synchronous via clojure.java.shell/sh"}
+    stdout: {type: function, status: done}
+    stderr: {type: function, status: done}
+    stdin: {type: function, status: skip, note: "requires async process (CW uses synchronous sh)"}
+    "exit-ref": {type: function, status: done}
+    exec: {type: function, status: done}
+    "from-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
+    "to-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
+    "null-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
+  clojure_repl_deps:
+    "add-libs": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "add-lib": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "sync-deps": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+  cljw_wasm:
+    load: {type: function, status: done}
+    fn: {type: function, status: done}
+    "fn-ref": {type: function, status: done}
+    "memory-size": {type: function, status: done}
+    "memory-read": {type: function, status: done}
+    "memory-write": {type: function, status: done}
+    "memory-read-string": {type: function, status: done}
+    "memory-write-string": {type: function, status: done}
+    global: {type: function, status: done}
+    "global-set": {type: function, status: done}
+    table: {type: function, status: done}
+    "host-fn": {type: function, status: done}
+    "host-memory": {type: function, status: done}
+    exports: {type: function, status: done}
+    "module-info": {type: function, status: done}
+    validate: {type: function, status: done}
+    instantiate: {type: function, status: done}

@@ -193,6 +193,12 @@ Always verify on **both VM + TreeWalk** when porting tests or fixing bugs.
 
 ## vars.yaml
 
+**CRITICAL: Always update vars.yaml when implementing new vars or namespaces.**
+Every new `defn`, `def`, `defmacro` in any `.clj` file or Zig builtin must be
+reflected in vars.yaml. When adding a new namespace, add the full section.
+When marking vars done/skip, also update `note:` with the reason (especially for skip).
+README.md namespace tables are derived from vars.yaml — keep it the source of truth.
+
 ```bash
 # Coverage summary (use at Orient)
 yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | length' .dev/status/vars.yaml
@@ -200,7 +206,7 @@ yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | len
 ```
 
 Status values: `done`, `todo`, `skip`.
-Notes: `"JVM interop"`, `"builtin (upstream is pure clj)"`, `"UPSTREAM-DIFF: ..."`.
+Notes: `"JVM interop"`, `"builtin (upstream is pure clj)"`, `"stub"`, `"UPSTREAM-DIFF: ..."`.
 
 ## Clojure Implementation Rule
 

@@ -18,12 +18,14 @@
     clojure.java.browse
     clojure.java.io
     clojure.java.javadoc
+    clojure.java.process
     clojure.java.shell
     clojure.main
     clojure.math
     clojure.pprint
     clojure.reflect
     clojure.repl
+    clojure.repl.deps
     clojure.set
     clojure.spec.alpha
     clojure.spec.gen.alpha
@@ -31,9 +33,12 @@
     clojure.string
     clojure.template
     clojure.test
+    clojure.test.tap
     clojure.uuid
     clojure.walk
+    clojure.xml
     clojure.zip])
+;; Note: cljw.wasm and cljw.http are CW-specific — add manually to vars.yaml
 
 (defn ns->yaml-key [ns-sym]
   (-> (str ns-sym)
