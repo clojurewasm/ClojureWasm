@@ -315,9 +315,33 @@
   ;; CLJW: second part skipped — requires eval with ns
   )
 
-;; CLJW: Instants, UUID, unknown-tag, roundtrip, defspec, preserve-read-cond,
-;; reader-conditionals, eof-option, namespaced-maps, namespaced-map-errors,
-;; namespaced-map-edn skipped — require JVM classes or unsupported features
+;; CLJW: Skipped upstream tests and reasons:
+;; - Strings (lines 73-121): JVM-ONLY — temp-file, load-file with Java file I/O
+;; - t-Characters (lines 293-329): JVM-ONLY — temp-file, Java file I/O
+;; - t-line-column-numbers (lines 407-441): JVM-ONLY — LineNumberingPushbackReader
+;; - set-line-number (lines 443-446): JVM-ONLY — LineNumberingPushbackReader
+;; - t-Metadata (lines 448-449): reader metadata merge semantics differ in CW
+;; - Instants (lines 502-571): JVM-ONLY — java.util.Date/Calendar/Timestamp/TimeZone
+;; - unknown-tag (lines 586-614): *data-readers*/*default-data-reader-fn* binding not yet effective
+;; - roundtrip/roundtrip-dup (lines 617-649): JVM-ONLY — defspec, test.generative
+;; - preserve-read-cond-test (lines 653-680): read-string 2-arity (opts map) not implemented
+;; - reader-conditionals (lines 682-736): read-string 2-arity not implemented
+;; - eof-option (lines 738-741): JVM-ONLY — LineNumberingPushbackReader
+;; - namespaced-maps (lines 744-756): #:ns{} map syntax not implemented in CW reader
+;; - namespaced-map-errors (lines 758-766): #:ns{} map syntax not implemented
+;; - namespaced-map-edn (lines 768-771): edn/read-string not implemented
+;; - test-read+string (lines 783-790): JVM-ONLY — LineNumberingPushbackReader
+;; - t-Explicit-line-column-numbers (lines 792-802): JVM-ONLY — LineNumberingPushbackReader
+
+;; CLJW-ADD: UUID reader tag test (portable subset of upstream UUID test)
+(deftest UUID-reader-tag
+  (is (uuid? #uuid "550e8400-e29b-41d4-a716-446655440000"))
+  (is (= (pr-str #uuid "550e8400-e29b-41d4-a716-446655440000")
+         "#uuid \"550e8400-e29b-41d4-a716-446655440000\""))
+  (is (= #uuid "550e8400-e29b-41d4-a716-446655440000"
+         #uuid "550e8400-e29b-41d4-a716-446655440000"))
+  (is (not (identical? #uuid "550e8400-e29b-41d4-a716-446655440000"
+                       #uuid "550e8400-e29b-41d4-a716-446655440000"))))
 
 (deftest invalid-symbol-value
   ;; CLJW: error message slightly different for ##5

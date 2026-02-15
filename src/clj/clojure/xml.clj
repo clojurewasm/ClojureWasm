@@ -146,9 +146,16 @@
                   (recur ni (conj children text)))
 
                 ;; DOCTYPE or other declarations: skip
+                ;; DOCTYPE may contain internal subset: <!DOCTYPE foo [ ... ]>
                 (= next-c \!)
-                (let [end (clojure.string/index-of s ">" i)]
-                  (recur (inc end) children))
+                (let [bracket (clojure.string/index-of s "[" i)
+                      gt (clojure.string/index-of s ">" i)
+                      end (if (and bracket (< bracket gt))
+                            ;; Has internal subset — find ]>
+                            (+ (clojure.string/index-of s "]>" bracket) 2)
+                            ;; Simple declaration
+                            (inc gt))]
+                  (recur end children))
 
                 ;; Processing instruction: <? ... ?>
                 (= next-c \?)

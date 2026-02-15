@@ -19,9 +19,18 @@
 (ns clojure.test-clojure.protocols
   (:use clojure.test))
 
-;; CLJW: skipped protocols-test — requires external protocol examples ns,
-;; proxy, reify, var metadata, interface generation (JVM interop).
-;; Ported subset: error conditions (below)
+;; CLJW: Skipped upstream tests (25/29 — all require deftype/defrecord/reify/proxy):
+;; - protocols-test: external protocol ns, proxy, reify, interface generation
+;; - marker-tests: defrecord, MarkerProtocol
+;; - extend-test, illegal-extending, extends?-test, extenders-test: deftype
+;; - satisifies?-test, re-extending-test: deftype
+;; - defrecord-*: 8 tests all require defrecord
+;; - deftype-factory-fn, test-record-and-type-field-names, hinting-test: deftype
+;; - test-ctor-literals, exercise-literals: Java class literals
+;; - test-leading-dashes, test-longs-hinted-proto: deftype/reify
+;; - test-resolve-type-hints-in-protocol-methods: import, extend-protocol at ns level
+;; - test-prim-ret-hints-ignored, test-no-ns-capture, reify-test: reify
+;; Ported: test-base-reduce-kv (upstream), error conditions + basic protocol tests (CLJW-ADD)
 
 ;; CLJW: uses thrown-with-msg? instead of thrown-with-cause-msg? (no cause chains)
 (deftest test-protocol-error-conditions
