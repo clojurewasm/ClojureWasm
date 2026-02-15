@@ -2679,6 +2679,50 @@
   [& exprs]
   `(pcalls ~@(map (fn [e] (list 'fn [] e)) exprs)))
 
+;; Deprecated struct system (needed by clojure.pprint's pretty-writer)
+;; UPSTREAM-DIFF: uses plain maps instead of PersistentStructMap
+
+(defn create-struct
+  "Returns a structure basis object."
+  {:added "1.0"}
+  [& keys]
+  (vec keys))
+
+(defmacro defstruct
+  "Same as (def name (create-struct keys...))"
+  {:added "1.0"}
+  [name & keys]
+  `(def ~name (create-struct ~@keys)))
+
+(defn struct-map
+  "Returns a new structmap instance with the keys of the
+  structure-basis. keyvals may contain all, some or none of the basis
+  keys - where values are not supplied they will default to nil.
+  keyvals can also contain keys not in the basis."
+  {:added "1.0"}
+  [s & inits]
+  (let [basis-map (zipmap s (repeat nil))
+        init-map (apply hash-map inits)]
+    (merge basis-map init-map)))
+
+(defn struct
+  "Returns a new structmap instance with the keys of the
+  structure-basis. vals must be supplied for basis keys in order -
+  where values are not supplied they will default to nil."
+  {:added "1.0"}
+  [s & vals]
+  (zipmap s (concat vals (repeat nil))))
+
+(defn accessor
+  "Returns a fn that, given an instance of a structmap with the basis,
+  returns the value at the key. The key must be in the basis. The
+  returned function should be (slightly) more efficient than using
+  get, but such use of accessors should be limited to known
+  performance-critical areas."
+  {:added "1.0"}
+  [s key]
+  (fn [m] (get m key)))
+
 ;; REPL result vars
 (def *1 nil)
 (def *2 nil)

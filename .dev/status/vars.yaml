@@ -101,7 +101,7 @@ vars:
     "StackTraceElement->vec": {type: function, status: skip, note: "JVM interop"}
     "Throwable->map": {type: function, status: done, note: "builtin (Zig equivalent)"}
     abs: {type: function, status: done, note: "Zig builtin"}
-    accessor: {type: function, status: skip, note: deprecated struct system}
+    accessor: {type: function, status: done, note: "UPSTREAM-DIFF: plain map impl"}
     aclone: {type: function, status: done, note: Phase 43 — Zig array type}
     "add-classpath": {type: function, status: skip, note: JVM interop}
     "add-shutdown-hook!": {type: function, status: done, note: "cljw extension"}
@@ -218,7 +218,7 @@ vars:
     count: {type: function, status: done, note: "Zig builtin"}
     "counted?": {type: function, status: done, note: builtin (upstream is pure clj)}
     "create-ns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "create-struct": {type: function, status: skip, note: deprecated struct system}
+    "create-struct": {type: function, status: done, note: "UPSTREAM-DIFF: plain map impl"}
     cycle: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     dec: {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "dec'": {type: function, status: done, note: "VM intrinsic opcode (auto-promoting, overflow → BigInt)"}
@@ -236,7 +236,7 @@ vars:
     defonce: {type: macro, status: done, note: "Macro in core.clj using bound?"}
     defprotocol: {type: macro, status: done, note: "analyzer special form in CW"}
     defrecord: {type: macro, status: done, note: "analyzer special form in CW"}
-    defstruct: {type: macro, status: skip, note: deprecated struct system}
+    defstruct: {type: macro, status: done, note: "UPSTREAM-DIFF: plain map impl"}
     deftype: {type: macro, status: skip, note: "no JVM class generation — defrecord covers data use cases"}
     delay: {type: macro, status: done, note: "builtin Delay type (D66)"}
     "delay?": {type: function, status: done, note: "builtin __delay? predicate"}
@@ -618,8 +618,8 @@ vars:
     "stream-seq!": {type: function, status: skip, note: "JVM interop"}
     "stream-transduce!": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "string?": {type: function, status: done, note: "Zig builtin"}
-    struct: {type: function, status: skip, note: deprecated struct system}
-    "struct-map": {type: function, status: skip, note: deprecated struct system}
+    struct: {type: function, status: done, note: "UPSTREAM-DIFF: plain map impl"}
+    "struct-map": {type: function, status: done, note: "UPSTREAM-DIFF: plain map impl"}
     subs: {type: function, status: done, note: "Zig builtin"}
     subseq: {type: function, status: done, note: builtin (upstream uses Java Sorted interface)}
     subvec: {type: function, status: done, note: "Zig builtin"}
