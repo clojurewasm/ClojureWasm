@@ -925,27 +925,53 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     .symbol => v.items[0].asSymbol().name,
                     else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0].tag())}),
                 };
-                try requireLib(allocator, env, ns_name, reload);
-                const source_ns = env.findNamespace(ns_name) orelse
-                    return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
+
+                // Check for :as-alias (don't load the namespace)
+                var has_as_alias = false;
+                {
+                    var scan: usize = 1;
+                    while (scan + 1 < v.items.len) : (scan += 2) {
+                        if (v.items[scan].tag() == .keyword and
+                            std.mem.eql(u8, v.items[scan].asKeyword().name, "as-alias"))
+                        {
+                            has_as_alias = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!has_as_alias) {
+                    try requireLib(allocator, env, ns_name, reload);
+                }
+
                 const current_ns = env.current_ns orelse {
-            err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
-            return error.EvalError;
-        };
+                    err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
+                    return error.EvalError;
+                };
 
                 var j: usize = 1;
                 while (j + 1 < v.items.len) : (j += 2) {
                     if (v.items[j].tag() == .keyword) {
                         const kw = v.items[j].asKeyword().name;
                         if (std.mem.eql(u8, kw, "as")) {
+                            const source_ns = env.findNamespace(ns_name) orelse
+                                return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
                             if (v.items[j + 1].tag() == .symbol) {
                                 try current_ns.setAlias(v.items[j + 1].asSymbol().name, source_ns);
                             }
+                        } else if (std.mem.eql(u8, kw, "as-alias")) {
+                            // Create namespace stub if needed, set alias without loading
+                            const target_ns = try env.findOrCreateNamespace(ns_name);
+                            if (v.items[j + 1].tag() == .symbol) {
+                                try current_ns.setAlias(v.items[j + 1].asSymbol().name, target_ns);
+                            }
                         } else if (std.mem.eql(u8, kw, "refer")) {
+                            const refer_ns = env.findNamespace(ns_name) orelse
+                                return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{ns_name});
                             if (v.items[j + 1].tag() == .vector) {
                                 for (v.items[j + 1].asVector().items) |sym| {
                                     if (sym.tag() == .symbol) {
-                                        if (source_ns.resolve(sym.asSymbol().name)) |var_ref| {
+                                        if (refer_ns.resolve(sym.asSymbol().name)) |var_ref| {
                                             // Use Var's owned name (GPA) instead of Symbol's (may be GC-allocated)
                                             current_ns.refer(var_ref.sym.name, var_ref) catch {};
                                         }
@@ -953,7 +979,7 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                                 }
                             } else if (v.items[j + 1].tag() == .keyword) {
                                 if (std.mem.eql(u8, v.items[j + 1].asKeyword().name, "all")) {
-                                    var iter = source_ns.mappings.iterator();
+                                    var iter = refer_ns.mappings.iterator();
                                     while (iter.next()) |entry| {
                                         current_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
                                     }
@@ -983,23 +1009,48 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
                         if (sv.items.len < 1 or sv.items[0].tag() != .symbol)
                             return err.setErrorFmt(.eval, .type_error, .{}, "require prefix sub-spec must start with symbol", .{});
                         const full_name = std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, sv.items[0].asSymbol().name }) catch return error.OutOfMemory;
-                        try requireLib(allocator, env, full_name, reload);
-                        const source_ns = env.findNamespace(full_name) orelse
-                            return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{full_name});
+
+                        // Check for :as-alias
+                        var sub_has_as_alias = false;
+                        {
+                            var scan: usize = 1;
+                            while (scan + 1 < sv.items.len) : (scan += 2) {
+                                if (sv.items[scan].tag() == .keyword and
+                                    std.mem.eql(u8, sv.items[scan].asKeyword().name, "as-alias"))
+                                {
+                                    sub_has_as_alias = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!sub_has_as_alias) {
+                            try requireLib(allocator, env, full_name, reload);
+                        }
+
                         const current_ns = env.current_ns orelse {
                             err.setInfoFmt(.eval, .internal_error, .{}, "no current namespace set", .{});
                             return error.EvalError;
                         };
-                        // Process :as/:refer options
+                        // Process :as/:as-alias/:refer options
                         var k: usize = 1;
                         while (k + 1 < sv.items.len) : (k += 2) {
                             if (sv.items[k].tag() == .keyword) {
                                 const kw = sv.items[k].asKeyword().name;
                                 if (std.mem.eql(u8, kw, "as")) {
+                                    const source_ns = env.findNamespace(full_name) orelse
+                                        return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{full_name});
                                     if (sv.items[k + 1].tag() == .symbol) {
                                         try current_ns.setAlias(sv.items[k + 1].asSymbol().name, source_ns);
                                     }
+                                } else if (std.mem.eql(u8, kw, "as-alias")) {
+                                    const target_ns = try env.findOrCreateNamespace(full_name);
+                                    if (sv.items[k + 1].tag() == .symbol) {
+                                        try current_ns.setAlias(sv.items[k + 1].asSymbol().name, target_ns);
+                                    }
                                 } else if (std.mem.eql(u8, kw, "refer")) {
+                                    const source_ns = env.findNamespace(full_name) orelse
+                                        return err.setErrorFmt(.eval, .io_error, .{}, "Could not locate {s} on load path", .{full_name});
                                     if (sv.items[k + 1].tag() == .vector) {
                                         for (sv.items[k + 1].asVector().items) |sym| {
                                             if (sym.tag() == .symbol) {
