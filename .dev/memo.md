@@ -34,12 +34,30 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-(none — ready for next phase)
+Phase 77: Var Coverage Completion
+Sub-phase 77.2: Deprecated Struct System (5 vars)
+- [ ] `create-struct` — creates a StructMap basis
+- [ ] `defstruct` — macro over create-struct
+- [ ] `struct-map` — creates StructMap instance
+- [ ] `struct` — creates StructMap with positional args
+- [ ] `accessor` — fast field accessor for StructMap
+
+## Previous Task
+
+77.1: Quick Wins — 5 vars done (pp, set-pprint-dispatch, with-pprint-dispatch, pprint-tab, even-number-of-forms?)
 
 ## Task Queue
 
 ```
-(empty — plan next phase from roadmap.md)
+77.2 Deprecated Struct System (5 vars) ← CURRENT
+77.4 pprint pretty-writer (12 vars, use atoms instead of refs)
+77.5 cl-format engine (3 vars)
+77.8 clojure.test alignment (6 vars)
+77.9 clojure.data protocol alignment (2 vars)
+77.7 clojure.java.io completion (12 vars)
+77.3 STM/Ref system (9 vars)
+77.6 test.check + spec.gen.alpha (27 vars)
+77.10 Skip recovery (per-var, beep-and-ask)
 ```
 
 ## Known Issues

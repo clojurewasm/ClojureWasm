@@ -768,7 +768,7 @@ vars:
     "stop-server": {type: function, status: done}
     "stop-servers": {type: function, status: done}
   clojure_core_specs_alpha:
-    "even-number-of-forms?": {type: function, status: todo}
+    "even-number-of-forms?": {type: function, status: done}
   clojure_data:
     Diff: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
     EqualityPartition: {type: var, status: skip, notes: protocol - CW uses fn dispatch}
@@ -927,17 +927,17 @@ vars:
     "formatter-out": {type: macro, status: todo}
     "fresh-line": {type: function, status: todo}
     "get-pretty-writer": {type: function, status: todo}
-    pp: {type: macro, status: todo}
+    pp: {type: macro, status: done}
     pprint: {type: function, status: done, notes: builtin (upstream is pure clj)}
     "pprint-indent": {type: function, status: todo}
     "pprint-logical-block": {type: macro, status: todo}
     "pprint-newline": {type: function, status: todo}
-    "pprint-tab": {type: function, status: todo}
+    "pprint-tab": {type: function, status: done, notes: "stub (upstream also throws)"}
     "print-length-loop": {type: macro, status: todo}
     "print-table": {type: function, status: done}
-    "set-pprint-dispatch": {type: function, status: todo}
+    "set-pprint-dispatch": {type: function, status: done}
     "simple-dispatch": {type: var, status: todo}
-    "with-pprint-dispatch": {type: macro, status: todo}
+    "with-pprint-dispatch": {type: macro, status: done}
     write: {type: function, status: todo}
     "write-out": {type: function, status: todo}
   clojure_reflect:

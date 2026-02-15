@@ -116,6 +116,9 @@ const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj"
 /// Embedded clojure/spec/alpha.clj source (compiled into binary).
 const spec_alpha_clj_source = @embedFile("../clj/clojure/spec/alpha.clj");
 
+/// Embedded clojure/core/specs/alpha.clj source (compiled into binary).
+const core_specs_alpha_clj_source = @embedFile("../clj/clojure/core/specs/alpha.clj");
+
 
 /// Hot core function definitions re-evaluated via VM compiler after bootstrap (24C.5b, D73).
 ///
@@ -961,6 +964,31 @@ pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/core/specs/alpha.clj (core.specs.alpha).
+pub fn loadCoreSpecsAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
+    const ns = env.findOrCreateNamespace("clojure.core.specs.alpha") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = ns;
+
+    _ = try evalString(allocator, env, core_specs_alpha_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load an embedded library lazily (called from ns_ops.requireLib on first require).
 /// Returns true if the namespace was loaded from embedded source.
 pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
@@ -1022,6 +1050,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
             try loadSpecGenAlpha(allocator, env);
         }
         try loadSpecAlpha(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.core.specs.alpha")) {
+        try loadCoreSpecsAlpha(allocator, env);
         return true;
     }
     return false;
