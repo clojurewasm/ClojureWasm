@@ -229,6 +229,8 @@ pub const Analyzer = struct {
         .{ "extend-type", analyzeExtendType },
         .{ "reify", analyzeReify },
         .{ "defrecord", analyzeDefrecord },
+        .{ "deftype", analyzeDeftype },
+        .{ "deftype*", analyzeDeftype },
         .{ "defmulti", analyzeDefmulti },
         .{ "defmethod", analyzeDefmethod },
         .{ "lazy-seq", analyzeLazySeq },
@@ -2029,6 +2031,97 @@ pub const Analyzer = struct {
         do_forms[1] = .{ .data = .{ .list = def_ctor_forms } };
         do_forms[2] = .{ .data = .{ .list = def_map_ctor_forms } };
         @memcpy(do_forms[3..], extend_type_forms.items);
+
+        const do_form = Form{ .data = .{ .list = do_forms } };
+        return self.analyze(do_form);
+    }
+
+    fn analyzeDeftype(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
+        // (deftype Name [fields] Protocol (method [args] body) ...)
+        // Like defrecord but: no map->Name, mutable field hints accepted (stripped)
+        if (items.len < 3) {
+            return self.analysisError(.arity_error, "deftype requires name and fields", form);
+        }
+        if (items[1].data != .symbol) {
+            return self.analysisError(.value_error, "deftype name must be a symbol", items[1]);
+        }
+        if (items[2].data != .vector) {
+            return self.analysisError(.value_error, "deftype fields must be a vector", items[2]);
+        }
+
+        const type_name = items[1].data.symbol.name;
+        const fields = items[2].data.vector;
+
+        // Unwrap type hints / mutable hints on fields
+        const unwrapped_fields = self.allocator.alloc(Form, fields.len) catch return error.OutOfMemory;
+        for (fields, 0..) |field, fi| {
+            unwrapped_fields[fi] = if (field.data == .list) blk: {
+                const wm = field.data.list;
+                if (wm.len == 3 and wm[0].data == .symbol and
+                    std.mem.eql(u8, wm[0].data.symbol.name, "with-meta"))
+                    break :blk wm[1];
+                break :blk field;
+            } else field;
+            if (unwrapped_fields[fi].data != .symbol) {
+                return self.analysisError(.value_error, "deftype field must be a symbol", field);
+            }
+        }
+
+        const ctor_name = std.fmt.allocPrint(self.allocator, "->{s}", .{type_name}) catch return error.OutOfMemory;
+
+        // Build (hash-map :__reify_type "Name" :field1 field1 :field2 field2 ...)
+        const hm_form_count = 1 + 2 + unwrapped_fields.len * 2;
+        const hm_forms = self.allocator.alloc(Form, hm_form_count) catch return error.OutOfMemory;
+        hm_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "hash-map" } } };
+        hm_forms[1] = .{ .data = .{ .keyword = .{ .ns = null, .name = "__reify_type" } } };
+        hm_forms[2] = .{ .data = .{ .string = type_name } };
+        for (unwrapped_fields, 0..) |field, i| {
+            hm_forms[3 + i * 2] = .{ .data = .{ .keyword = .{ .ns = null, .name = field.data.symbol.name } } };
+            hm_forms[3 + i * 2 + 1] = field;
+        }
+
+        // Build (fn ->Name [fields...] (hash-map ...))
+        const fn_forms = self.allocator.alloc(Form, 4) catch return error.OutOfMemory;
+        fn_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "fn" } } };
+        fn_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
+        fn_forms[2] = items[2];
+        fn_forms[3] = .{ .data = .{ .list = hm_forms } };
+
+        // Build (def ->Name (fn ...))
+        const def_ctor_forms = self.allocator.alloc(Form, 3) catch return error.OutOfMemory;
+        def_ctor_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "def" } } };
+        def_ctor_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = ctor_name } } };
+        def_ctor_forms[2] = .{ .data = .{ .list = fn_forms } };
+
+        // Parse inline protocol implementations (items[3+])
+        var extend_type_forms: std.ArrayList(Form) = .empty;
+        var pi: usize = 3;
+        while (pi < items.len) {
+            if (items[pi].data != .symbol) {
+                return self.analysisError(.value_error, "deftype expects protocol name after fields", items[pi]);
+            }
+            const proto_sym = items[pi];
+            pi += 1;
+
+            var method_list: std.ArrayList(Form) = .empty;
+            while (pi < items.len and items[pi].data == .list) {
+                method_list.append(self.allocator, items[pi]) catch return error.OutOfMemory;
+                pi += 1;
+            }
+
+            const et_forms = self.allocator.alloc(Form, 3 + method_list.items.len) catch return error.OutOfMemory;
+            et_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "extend-type" } } };
+            et_forms[1] = .{ .data = .{ .symbol = .{ .ns = null, .name = type_name } } };
+            et_forms[2] = proto_sym;
+            @memcpy(et_forms[3..], method_list.items);
+            extend_type_forms.append(self.allocator, .{ .data = .{ .list = et_forms } }) catch return error.OutOfMemory;
+        }
+
+        // Wrap in (do (def ->Name ...) (extend-type ...) ...)
+        const do_forms = self.allocator.alloc(Form, 2 + extend_type_forms.items.len) catch return error.OutOfMemory;
+        do_forms[0] = .{ .data = .{ .symbol = .{ .ns = null, .name = "do" } } };
+        do_forms[1] = .{ .data = .{ .list = def_ctor_forms } };
+        @memcpy(do_forms[2..], extend_type_forms.items);
 
         const do_form = Form{ .data = .{ .list = do_forms } };
         return self.analyze(do_form);
