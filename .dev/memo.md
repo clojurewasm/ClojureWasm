@@ -34,33 +34,48 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0a: Implement clojure.test.tap (~123 LOC, embed).
-TAP output for clojure.test. Nearly pure Clojure (.split only Java dep).
-Upstream: `clojure/src/clj/clojure/test/tap.clj`.
-
-Phase 75 policy: Load real libraries as-is, run their tests unmodified. When CW
-behavior differs from upstream Clojure, trace CW's processing pipeline to find and
-fix the root cause. Do NOT fork or embed external libraries.
-Embed rule: clojure.jar-bundled namespace = embed. Separate Maven artifact = external.
-See `library-port-targets.md` for full target list and `test/compat/RESULTS.md` for results.
+Phase 75.0a: Verify/complete clojure.uuid namespace.
+CW has UUID type. Check #uuid reader tag and print coverage, add clojure.uuid ns.
+Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
 
+Batch 0: Missing clojure.jar namespaces (embed, CLJW markers OK).
+Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
+
 ```
-75.0a Implement clojure.test.tap (~123 LOC, nearly pure Clojure, embed)
-75.0b Verify clojure.uuid coverage (CW has UUID type, check #uuid reader + print)
-75.A  Fix CW limitations found so far (regex backtracking, catch empty body, split trailing empties, apply map vector)
-75.B  Retry tools.cli as-is (should work after 75.A fixes)
+--- Batch 0: Small ---
+75.0a clojure.uuid — verify/complete UUID ns coverage (20 lines)
+75.0b clojure.test.tap — TAP output formatter (123 lines, nearly pure Clojure)
+75.0c clojure.java.browse — browse-url via shell (89 lines)
+75.0d clojure.datafy — datafy/nav protocols (62 lines)
+--- Batch 0: Medium ---
+75.0e clojure.instant — #inst reader + Zig date type (294 lines, multi-task)
+75.0f clojure.java.process — process API via Zig std.process (196 lines, multi-task)
+--- Batch 0: Large ---
+75.0g clojure.main — CW-native main ns (676 lines, map existing CW features)
+75.0h clojure.core.server — socket REPL + prepl (341 lines, after 0g)
+75.0i clojure.repl.deps — CW-native REPL deps (97 lines, after deps.edn stable)
+--- External Library Testing ---
+75.A  Fix CW limitations (regex backtracking, catch empty body, split trailing empties, apply map vector)
+75.B  Retry tools.cli as-is (should work after 75.A)
 75.C  Test instaparse as-is (pure Clojure, ~3000 LOC)
-75.D  Implement PushbackReader/StringWriter interop shims (unblocks data.json, data.csv)
+75.D  Implement PushbackReader/StringWriter interop shims
 75.E  Test data.json as-is (after 75.D)
 75.F  Test data.csv as-is (after 75.D)
 75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
 ```
 
-Note: Batch 0 = missing clojure.jar namespaces (embed). See library-port-targets.md.
-Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach.
-Results in RESULTS.md. CSK's split issue addressable in 75.A.
+Policy:
+- Batch 0 = clojure.jar-bundled → embed in CW, UPSTREAM-DIFF/CLJW markers OK
+- Batch 1+ = external libraries → test as-is, fix CW side, do NOT fork
+- When CW behavior differs from upstream, trace processing pipeline to fix root cause
+- See `library-port-targets.md` for targets, `test/compat/RESULTS.md` for results
+
+Notes:
+- Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
+- CSK's split issue addressable in 75.A
+- clojure.xml deferred until library testing surfaces demand
 
 ## Previous Task
 
@@ -99,6 +114,7 @@ Session resume: read this file → roadmap.md → pick next task.
 | deps.edn plan      | `.dev/deps-edn-plan.md`              | When implementing deps.edn  |
 | Next phases plan   | `.dev/next-phases-plan.md`           | Phase 70-73 plan            |
 | Library targets    | `.dev/library-port-targets.md`       | Phase 75 — libraries to test|
+| Missing clj ns     | `.dev/missing-clj-namespaces.md`     | Batch 0 — embed ns details  |
 | BB class compat    | `.dev/babashka-class-compat.md`      | Java class reference (not roadmap) |
 | spec.alpha upstream| `~/Documents/OSS/spec.alpha/`        | spec.alpha reference source |
 | zwasm (archived)   | `.dev/wasm-opt-plan.md`              | Historical only             |

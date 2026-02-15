@@ -34,19 +34,23 @@ Results and status tracking: `test/compat/RESULTS.md` (single source of truth).
 
 ### Batch 0: Missing clojure.jar Namespaces
 
-clojure.jar 同梱だが CW 未実装の namespace。embed 対象。
+clojure.jar 同梱だが CW 未実装の namespace。embed 対象（CLJW markers OK）。
+Detail: `.dev/missing-clj-namespaces.md`
 
-| #  | namespace          | LOC  | Java Deps       | Notes                            |
-|----|--------------------|------|-----------------|----------------------------------|
-| 0a | clojure.test.tap   | ~123 | `.split` only   | TAP test output, nearly pure Clojure |
-| 0b | clojure.uuid       | ~20  | UUID/fromString | UUID reader tag + print. CW has UUID type, verify coverage |
+| #  | namespace             | LOC  | Difficulty | Notes                             |
+|----|-----------------------|------|------------|-----------------------------------|
+| 0a | clojure.uuid          | ~20  | Small      | Verify UUID coverage              |
+| 0b | clojure.test.tap      | ~123 | Small      | TAP output, nearly pure Clojure   |
+| 0c | clojure.java.browse   | ~89  | Small      | browse-url via shell              |
+| 0d | clojure.datafy        | ~62  | Small      | datafy/nav protocols              |
+| 0e | clojure.instant       | ~294 | Medium     | #inst reader + Zig date type      |
+| 0f | clojure.java.process  | ~196 | Medium     | Process API, Zig std.process      |
+| 0g | clojure.main          | ~676 | Large      | CW-native main ns                 |
+| 0h | clojure.core.server   | ~341 | Large      | Socket REPL + prepl               |
+| 0i | clojure.repl.deps     | ~97  | Large      | CW-native REPL deps               |
 
-Not implementing (heavy Java interop):
-clojure.instant (Calendar/Date/Timestamp), clojure.main (Compiler/RT/PushbackReader),
-clojure.core.server (Socket/ServerSocket), clojure.xml (SAXParser), clojure.datafy
-(IObj/IRef/Class/reflect), clojure.reflect, clojure.inspector (Swing), clojure.java.browse,
-clojure.java.javadoc, clojure.java.process (1.12), clojure.repl.deps (1.12, DynamicClassLoader),
-clojure.test.junit (JUnit).
+Skip: clojure.reflect, clojure.inspector, clojure.java.javadoc, clojure.test.junit.
+Defer: clojure.xml (implement if library testing surfaces demand).
 
 ### Batch 1: Utility & Case
 
