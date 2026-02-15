@@ -98,6 +98,9 @@ const instant_clj_source = @embedFile("../clj/clojure/instant.clj");
 /// Embedded clojure/java/process.clj source (compiled into binary).
 const process_clj_source = @embedFile("../clj/clojure/java/process.clj");
 
+/// Embedded clojure/main.clj source (compiled into binary).
+const main_clj_source = @embedFile("../clj/clojure/main.clj");
+
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
 
@@ -784,6 +787,31 @@ pub fn loadProcess(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
+/// Load and evaluate clojure/main.clj.
+pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
+    const main_ns = env.findOrCreateNamespace("clojure.main") catch {
+        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
+        return error.EvalError;
+    };
+
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        main_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = main_ns;
+
+    _ = try evalString(allocator, env, main_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
 /// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
@@ -878,6 +906,10 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
             try loadShell(allocator, env);
         }
         try loadProcess(allocator, env);
+        return true;
+    }
+    if (std.mem.eql(u8, ns_name, "clojure.main")) {
+        try loadMain(allocator, env);
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {

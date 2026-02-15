@@ -5,7 +5,7 @@ Session handover document. Read at session start.
 ## Current State
 
 - **All phases through 74 COMPLETE** (Java interop architecture)
-- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 21 embedded CLJ namespaces)
+- Coverage: 871+ vars (637/706 core, 10/11 protocols, 22/22 reducers, 22 embedded CLJ namespaces)
 - Wasm engine: zwasm v0.2.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 51 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
@@ -34,7 +34,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.0g: clojure.main — CW-native main ns.
+Phase 75.0h: clojure.core.server — socket REPL + prepl.
 Detail: `.dev/missing-clj-namespaces.md`
 
 ## Task Queue
@@ -46,7 +46,6 @@ Read `.dev/missing-clj-namespaces.md` for detailed analysis per namespace.
 --- Batch 0: Small ---
 --- Batch 0: Medium ---
 --- Batch 0: Large ---
-75.0g clojure.main — CW-native main ns (676 lines, map existing CW features)
 75.0h clojure.core.server — socket REPL + prepl (341 lines, after 0g)
 75.0i clojure.repl.deps — CW-native REPL deps (97 lines, after deps.edn stable)
 --- External Library Testing ---
@@ -72,11 +71,13 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0f: clojure.java.process (complete):
-- Created `src/clj/clojure/java/process.clj` — CW-native process API
-- Synchronous via clojure.java.shell/sh (no async/threads)
-- Functions: start, exec, stdout, stderr, exit-ref
-- 7 CLJW markers (no ProcessBuilder, streams, thread pools)
+Phase 75.0g: clojure.main (complete):
+- Created `src/clj/clojure/main.clj` — CW-native main namespace
+- Functions: with-bindings, repl-prompt, repl-read, repl, repl-caught, repl-exception
+- Error analysis: ex-triage, ex-str, err->msg (simplified, no JVM stack traces)
+- Helpers: demunge, root-cause, load-script, with-read-known
+- Discovered case macro bug F139 (mixed body types → shift-mask error)
+- 19 CLJW markers
 
 ## Known Issues
 

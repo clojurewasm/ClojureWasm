@@ -24,3 +24,4 @@ Check at session start for items that become actionable.
 | F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
 | F135 | ~~import → wasm mapping design~~            | RESOLVED: `:import-wasm` ns macro expands to `(def alias (cljw.wasm/load path))`. |
 | F138 | ~~binding *ns* + read-string~~              | RESOLVED: readStringFn (and all read fns) now use resolveCurrentNs() to pass dynamic *ns* to formToValueWithNs. |
+| F139 | case macro fails with mixed body types      | `(case x :a 1 :b (cond-> ...))` — shift-mask error. Related to case hash computation when body exprs mix integer literals and complex forms. Workaround: use `cond`. |
