@@ -2209,8 +2209,8 @@ pub const Analyzer = struct {
                     const name = sub_items[0].data.symbol.name;
 
                     if (std.mem.eql(u8, name, "catch")) {
-                        // (catch ExType name body*)
-                        if (sub_items.len < 4) {
+                        // (catch ExType name body*) — body is optional (returns nil)
+                        if (sub_items.len < 3) {
                             return self.analysisError(.arity_error, "catch requires (catch ExceptionType name body*)", item);
                         }
                         // sub_items[1] = ExType (class name for exception matching)
