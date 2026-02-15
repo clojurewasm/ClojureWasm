@@ -123,7 +123,8 @@ pub const Reader = struct {
             .tag => self.readTag(token),
             .rparen, .rbracket, .rbrace => self.unmatchedError(token),
             .eof => unreachable,
-            .invalid, .reader_cond_splicing, .ns_map => self.invalidError(token),
+            .ns_map => self.readNamespacedMap(token),
+            .invalid, .reader_cond_splicing => self.invalidError(token),
         };
     }
 
@@ -1056,6 +1057,60 @@ pub const Reader = struct {
         items[1] = Form{ .data = .{ .symbol = .{ .ns = null, .name = fn_name } } };
         items[2] = inner;
         return Form{ .data = .{ .list = items } };
+    }
+
+    fn readNamespacedMap(self: *Reader, token: Token) ReadError!Form {
+        // Token text is "#:ns", "#::alias", or "#::" (current ns)
+        const text = token.text(self.source);
+        const is_auto_resolve = text.len >= 3 and text[2] == ':';
+        const ns_name = if (is_auto_resolve) text[3..] else text[2..];
+
+        // Resolve the namespace name
+        const resolved_ns: []const u8 = if (is_auto_resolve and ns_name.len == 0) blk: {
+            // #::{} — use current namespace
+            if (self.current_ns) |ns| break :blk ns.name else break :blk "user";
+        } else if (is_auto_resolve) blk: {
+            // #::alias{} — resolve alias to full namespace name
+            if (self.current_ns) |ns| {
+                if (ns.getAlias(ns_name)) |target_ns| break :blk target_ns.name;
+            }
+            break :blk ns_name; // fallback: use alias as-is
+        } else ns_name;
+
+        // Next form must be a map literal
+        const map_tok = self.nextToken();
+        if (map_tok.kind != .lbrace) {
+            return self.makeError(.syntax_error, "Namespaced map must be followed by a map literal", map_tok);
+        }
+        const map_form = try self.readMap(map_tok);
+        const items = map_form.data.map;
+
+        // Prefix unqualified keyword keys with the namespace
+        const new_items = self.allocator.alloc(Form, items.len) catch return error.OutOfMemory;
+        var i: usize = 0;
+        while (i < items.len) : (i += 2) {
+            if (items[i].data == .keyword and items[i].data.keyword.ns == null) {
+                // Unqualified keyword: add namespace prefix
+                new_items[i] = .{
+                    .data = .{ .keyword = .{ .ns = resolved_ns, .name = items[i].data.keyword.name } },
+                    .line = items[i].line,
+                    .column = items[i].column,
+                };
+            } else if (items[i].data == .symbol and items[i].data.symbol.ns == null) {
+                // Unqualified symbol: add namespace prefix
+                new_items[i] = .{
+                    .data = .{ .symbol = .{ .ns = resolved_ns, .name = items[i].data.symbol.name } },
+                    .line = items[i].line,
+                    .column = items[i].column,
+                };
+            } else {
+                // Already qualified or non-keyword/symbol: keep as-is
+                new_items[i] = items[i];
+            }
+            if (i + 1 < items.len) new_items[i + 1] = items[i + 1]; // value unchanged
+        }
+
+        return Form{ .data = .{ .map = new_items }, .line = token.line, .column = token.column };
     }
 
     fn readTag(self: *Reader, token: Token) ReadError!Form {

@@ -34,9 +34,9 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 76: Type System & Reader Enhancements (Commit 7 next)
-- Commits 1-6 DONE
-- Next: Namespaced map literals #:ns{}
+Phase 76: Type System & Reader Enhancements (Commit 8 next)
+- Commits 1-7 DONE
+- Next: :as-alias in require
 
 ## Task Queue
 
@@ -48,7 +48,7 @@ Phase 76: Type System & Reader Enhancements (Commit 7 next)
 76.4  DONE — instance? for CW record/reify types
 76.5  DONE — deftype implementation
 76.6  DONE — read-string 2-arity
-76.7  TODO — Namespaced map literals #:ns{}
+76.7  DONE — Namespaced map literals #:ns{}
 76.8  TODO — :as-alias in require
 76.9  TODO — *data-readers* dynamic binding override
 76.10 TODO — README coverage tables X/Y format

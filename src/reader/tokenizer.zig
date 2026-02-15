@@ -197,7 +197,18 @@ pub const Tokenizer = struct {
                 }
                 break :blk .reader_cond;
             },
-            ':' => blk: { self.advance(); break :blk .ns_map; },
+            ':' => blk: {
+                self.advance(); // skip past first `:`
+                // Check for auto-resolve `#::`
+                if (self.pos < self.source.len and self.source[self.pos] == ':') {
+                    self.advance();
+                }
+                // Read namespace name (symbol chars)
+                while (self.pos < self.source.len and isSymbolChar(self.source[self.pos])) {
+                    self.advance();
+                }
+                break :blk .ns_map;
+            },
             '!' => {
                 // #! shebang/comment — skip to end of line
                 while (self.pos < self.source.len and self.source[self.pos] != '\n') {
@@ -704,9 +715,15 @@ test "shebang comment" {
 }
 
 test "ns-map dispatch" {
-    var t = Tokenizer.init("#:foo");
+    var t = Tokenizer.init("#:foo{:a 1}");
     const tok = t.next();
     try testing.expectEqual(.ns_map, tok.kind);
+    try testing.expectEqualStrings("#:foo", tok.text(t.source));
+    // auto-resolve variant
+    var t2 = Tokenizer.init("#::bar{:a 1}");
+    const tok2 = t2.next();
+    try testing.expectEqual(.ns_map, tok2.kind);
+    try testing.expectEqualStrings("#::bar", tok2.text(t2.source));
 }
 
 test "multiple eof calls are safe" {
