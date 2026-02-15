@@ -520,6 +520,15 @@ pub const Reader = struct {
                 }
                 continue;
             }
+            if (tok.kind == .reader_cond) {
+                // #?(:clj x :cljs y) — select matching branch, elide if no match
+                const selected = try self.readReaderCondInner(tok);
+                if (selected) |f| {
+                    items.append(self.allocator, f) catch return error.OutOfMemory;
+                }
+                // else: no platform match — elide from collection
+                continue;
+            }
             const form = try self.readForm(tok);
             items.append(self.allocator, form) catch return error.OutOfMemory;
             if (items.items.len > self.limits.max_collection_count) {
