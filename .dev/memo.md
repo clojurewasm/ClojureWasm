@@ -34,18 +34,18 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.G: Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
+Phase 75 complete. Ready for next phase planning.
 
 ## Task Queue
 
 ```
---- External Library Testing ---
+--- External Library Testing (Phase 75) ---
 75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
 75.C  DONE — instaparse 9/16 modules load, blocked by deftype (out of scope)
 75.D  DONE — PushbackReader, StringReader, StringBuilder, StringWriter, EOFException interop
 75.E  DONE — data.json blocked by definterface/deftype (out of scope for now)
 75.F  DONE — data.csv fully working (read-csv, write-csv, custom sep, quoted fields)
-75.G  Test remaining pure Clojure libraries (meander, specter, core.match, etc.)
+75.G  DONE — meander 6/18 modules load (blocked by &form, case*), core.match out of scope
 ```
 
 Policy:
@@ -60,13 +60,12 @@ Notes:
 
 ## Previous Task
 
-Phase 75.E/75.F: Test data.json + data.csv:
-- data.json: Blocked by definterface (JSONWriter) and deftype with mutable fields
-- data.csv: Fully working! Fixed 2 bugs:
-  1. Prefix-list require format `(:require (prefix [lib]))` — new `.list` case in requireFn
-  2. Protocol dispatch on class instances — `mapTypeKey` needs short→FQCN mappings
-     (e.g., "PushbackReader" → "java.io.PushbackReader") for extend-type to match valueTypeKey
-- All CSV features working: read-csv, write-csv, custom separators, quoted fields, empty fields
+Phase 75 Library Compatibility Testing (complete):
+- 9 libraries tested, 4 fully/mostly working (medley 80%, CSK 98.6%, honeysql load, data.csv 100%)
+- 5 blocked (instaparse/core.match by deftype, data.json by definterface, meander by &form/case*)
+- 12 CW bugs found and fixed across all phases
+- New interop: PushbackReader, StringReader, StringBuilder, StringWriter, EOFException
+- Key gaps identified: &form macro binding, case* F139, definterface, GC crash F140
 
 ## Known Issues
 

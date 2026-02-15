@@ -439,9 +439,22 @@ pub fn createNsFn(allocator: Allocator, args: []const Value) anyerror!Value {
 /// Sets the docstring on the named namespace.
 fn setNsDocFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to set-ns-doc", .{args.len});
-    const name = switch (args[0].tag()) {
-        .symbol => args[0].asSymbol().name,
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a symbol, got {s}", .{@tagName(args[0].tag())}),
+    // Handle (with-meta sym meta-map) from reader ^:meta syntax on ns name
+    const arg = blk: {
+        if (args[0].tag() == .list) {
+            const items = args[0].asList().items;
+            if (items.len == 3 and items[0].tag() == .symbol) {
+                const sym = items[0].asSymbol();
+                if (std.mem.eql(u8, sym.name, "with-meta") and sym.ns == null) {
+                    break :blk items[1]; // unwrap to inner symbol
+                }
+            }
+        }
+        break :blk args[0];
+    };
+    const name = switch (arg.tag()) {
+        .symbol => arg.asSymbol().name,
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "set-ns-doc expects a symbol, got {s}", .{@tagName(arg.tag())}),
     };
     const doc = switch (args[1].tag()) {
         .string => args[1].asString(),

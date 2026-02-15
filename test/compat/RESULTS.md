@@ -20,6 +20,8 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | instaparse        | Parser gen   |     9/16  | Blocked by deftype           |
 | data.csv          | CSV I/O      |     100%  | Full read/write working      |
 | data.json         | JSON I/O     |  Blocked  | Needs definterface/deftype   |
+| meander           | Pattern match|     6/18  | &form, case*, macro issues   |
+| core.match        | Pattern match|  Blocked  | deftype + clojure.lang       |
 
 ### Key Findings
 
@@ -45,6 +47,7 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | `^Type` hints on defrecord fields fails | with-meta unwrap in `analyzeDefrecord` | 75.C |
 | Prefix-list require `(:require (prefix [lib]))` | `.list` case in `requireFn` | 75.F |
 | Protocol dispatch fails on class instances | `mapTypeKey` FQCN mapping for Java classes | 75.F |
+| `ns` with `^:no-doc` + docstring fails set-ns-doc | with-meta unwrap in `setNsDocFn` | 75.G |
 
 ### Known CW Limitations (discovered via library testing)
 
@@ -65,6 +68,7 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | ~~Protocol dispatch on class instances~~ | data.csv | High | **FIXED 75.F** |
 | ~~Prefix-list require format~~ | data.csv | Medium | **FIXED 75.F** |
 | `definterface` not implemented | data.json | High | Open |
+| `&form` implicit macro binding not available | meander | Medium | Open |
 | GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Open (F140) |
 
 ### Java Interop Gaps (blocking library tests)
@@ -365,6 +369,72 @@ All features working:
 - Library uses `extend-protocol` on `PushbackReader` and `String` — requires Phase 75.D interop shims + Phase 75.F protocol dispatch fix
 - Both read and write APIs work on both VM and TreeWalk backends
 - No modifications needed to the library source
+
+## meander (epsilon)
+
+Source: https://github.com/noprompt/meander
+Type: Pattern matching / term rewriting (.cljc, ~5000 LOC)
+
+### Results
+
+| Metric      | Value |
+|-------------|------:|
+| Modules     | 18    |
+| Load OK     |     6 |
+| Load FAIL   |    12 |
+| Load rate   | 33.3% |
+
+### Module Loading Status
+
+| Module                     | Status | Reason                              |
+|----------------------------|--------|-------------------------------------|
+| environment.epsilon        | OK     |                                     |
+| protocols.epsilon          | OK     |                                     |
+| util.epsilon               | FAIL   | Macro expansion failure (cascading) |
+| syntax.epsilon             | FAIL   | Depends on util.epsilon             |
+| match.syntax.epsilon       | FAIL   | `case*` map key integer issue (F139)|
+| substitute.syntax.epsilon  | FAIL   | `&form` not available               |
+| pattern-factory.epsilon    | FAIL   | `&form` not available               |
+| matrix.epsilon             | OK     |                                     |
+| match.ir.epsilon           | FAIL   | `&form` not available               |
+| match.runtime.epsilon      | FAIL   | `&form` not available               |
+| match.check.epsilon        | OK     |                                     |
+| substitute.runtime.epsilon | FAIL   | `&form` not available               |
+| substitute.epsilon         | FAIL   | `&form` not available               |
+| strategy.epsilon           | FAIL   | `&form` not available               |
+| interpreter.epsilon        | OK     |                                     |
+| match.epsilon              | FAIL   | Macro expansion failure (cascading) |
+| rewrite.epsilon            | OK     |                                     |
+| meander.epsilon            | FAIL   | Macro expansion failure (cascading) |
+
+### Primary Blockers
+
+1. **`&form` implicit macro binding**: Many meander macros reference `&form` (the
+   original form passed to the macro). CW does not provide this implicit binding.
+2. **`case*` F139**: `case` macro with non-integer keys fails (known issue).
+3. **util.epsilon macro expansion**: Root cause unknown — the function `set-k-permutations-with-unselected`
+   fails to macroexpand when loaded via `load-string` in the meander namespace context.
+
+### Bugs Fixed During Testing
+
+| Bug | Fix |
+|-----|-----|
+| `ns` with `^:no-doc` metadata + docstring | with-meta unwrap in `setNsDocFn` |
+
+### Notes
+
+- No deftype/definterface used — all blockers are macro system gaps
+- No Java interop beyond `cljs.tagged_literals.JSValue` import (benign)
+- Implementing `&form` would unblock most modules (7/12 failures)
+
+---
+
+## core.match
+
+Source: https://github.com/clojure/core.match
+Type: Pattern matching (.clj, ~2000 LOC)
+Status: **Out of scope** — heavy deftype, definterface, and clojure.lang internals
+(Compiler/LOOP_LOCALS, clojure.lang.ILookup/IPersistentVector/ISeq protocol extensions)
 
 ---
 
