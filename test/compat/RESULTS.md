@@ -16,6 +16,7 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | camel-snake-kebab | Case convert |     98.6% | 2 fails = split edge case    |
 | honeysql          | SQL DSL      |      Load | All 3 namespaces load OK     |
 | hiccup            | HTML         |  Skipped  | Heavy Java interop (URI etc) |
+| tools.cli         | CLI parsing  |      4/6  | 2 pass, 3 partial, 1 crash   |
 
 ### Key Findings
 
@@ -40,16 +41,18 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 
 ### Known CW Limitations (discovered via library testing)
 
-| Limitation | Affected Libraries | Severity |
-|------------|-------------------|----------|
-| Regex engine lacks backtracking (`.*`, `.+`, `\S+`) | tools.cli, general | High |
-| `clojure.string/split` doesn't drop trailing empties | CSK | Medium |
-| `(apply map vector colls)` doesn't work | tools.cli | Medium |
-| `Long/parseLong` returns nil instead of throwing on invalid input | tools.cli | Low |
-| `(catch Exception e)` without body fails | tools.cli | Low |
-| `case` macro hash collision with 8+ keyword branches | data.json | Low |
-| `(char int)` returns string, not char type | data.csv | Low |
-| Var name shadowing crash (user ns vs private var via `#'ns/name`) | tools.cli | Medium |
+| Limitation | Affected Libraries | Severity | Status |
+|------------|-------------------|----------|--------|
+| ~~Regex engine lacks backtracking~~ | tools.cli, general | High | **FIXED 75.A.3** |
+| ~~`clojure.string/split` trailing empties~~ | CSK | Medium | **Already correct** |
+| ~~`(apply map vector colls)` doesn't work~~ | tools.cli | Medium | **FIXED 75.A.2** |
+| ~~`(catch Exception e)` without body fails~~ | tools.cli | Low | **FIXED 75.A.1** |
+| ~~Reader conditional elision in collections~~ | tools.cli | Medium | **FIXED 75.B** |
+| ~~`^Type` hints in for/let/doseq bindings~~ | tools.cli | Medium | **FIXED 75.B** |
+| `Long/parseLong` returns nil instead of throwing | tools.cli | Low | Open |
+| `case` macro hash collision with 8+ keyword branches | data.json | Low | Open (F139) |
+| `(char int)` returns string, not char type | data.csv | Low | Open |
+| GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Open (F140) |
 
 ### Java Interop Gaps (blocking library tests)
 
@@ -216,16 +219,46 @@ Phase 72.1:
 - Loading success validates: macro expansion, protocol dispatch, large
   namespace handling, reader conditionals, GC stability
 
-## Libraries Tested But Not Yet Loadable
-
-### clojure.tools.cli
+## tools.cli
 
 Source: https://github.com/clojure/tools.cli
 Type: .cljc with reader conditionals
-Category: **CW behavioral fixes needed** (no Java interop blocker)
-Bugs found (already fixed): re-seq nil return, s/join lazy-seq cons handling
-Remaining: Regex backtracking (`\S+` greedily consumes past `=`), `(catch Exception e)` without body
-Action: Fix CW regex engine and catch parsing — then this library should load as-is
+
+### Results
+
+| Test                     | Status  | Fails |
+|--------------------------|---------|------:|
+| test-tokenize-args       | PASS    |     0 |
+| test-get-default-options | PASS    |     0 |
+| test-compile-option-specs| Partial |     1 |
+| test-parse-option-tokens | Partial |     5 |
+| test-summarize           | CRASH   |     - |
+| test-parse-opts          | Partial |     3 |
+
+### Bugs Fixed During Testing
+
+Phase 75 (previous): re-seq nil return, s/join lazy-seq cons handling
+Phase 75.A.1: `(catch Exception e)` empty body
+Phase 75.A.2: `(apply map vector colls)` exact-arity dispatch
+Phase 75.A.3: Regex greedy backtracking (`(.*)a`, `(\S+)=(.+)`, etc.)
+Phase 75.B: Reader conditional elision in collections (`#?(:cljs x)` → nil)
+Phase 75.B: `^Type` hints in for/let/doseq bindings
+
+### Remaining Issues
+
+- `test-summarize` GC crash: segfault in `dissocFn` keyword comparison (F140)
+- `:validate` desugaring: `[seq "msg"]` pairs resolve to nil
+- Some parse-fn/validate-fn interactions fail
+
+### Notes
+
+- Library loads and basic parse-opts works correctly
+- No Java interop needed — all failures are CW behavioral issues
+- GC crash is pre-existing (keyword pointer freed under allocation pressure)
+
+---
+
+## Libraries Tested But Not Yet Loadable
 
 ### clojure.data.json
 

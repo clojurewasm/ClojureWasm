@@ -34,15 +34,13 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 75.A: Fix CW limitations for library compatibility.
-Known issues: regex backtracking, catch empty body, split trailing empties, apply map vector.
+Phase 75.C: Test instaparse as-is (pure Clojure, ~3000 LOC).
 
 ## Task Queue
 
 ```
 --- External Library Testing ---
-75.A  Fix CW limitations (regex backtracking, catch empty body, split trailing empties, apply map vector)
-75.B  Retry tools.cli as-is (should work after 75.A)
+75.B  DONE — tools.cli loads, 2/6 pass, 3 partial, 1 GC crash (F140)
 75.C  Test instaparse as-is (pure Clojure, ~3000 LOC)
 75.D  Implement PushbackReader/StringWriter interop shims
 75.E  Test data.json as-is (after 75.D)
@@ -63,11 +61,11 @@ Notes:
 
 ## Previous Task
 
-Phase 75.0h+0i: Stub namespaces (complete):
-- clojure.core.server: API surface for socket REPL/prepl (start-server, stop-server, prepl, etc.)
-- clojure.repl.deps: API surface for dynamic library loading (add-libs, add-lib, sync-deps)
-- Both throw on actual operations (requires Zig networking / deps.edn resolver)
-- Batch 0 complete: all missing clojure.jar namespaces implemented (24 embedded CLJ namespaces)
+Phase 75.B: tools.cli testing (complete):
+- Loads and basic parse-opts works
+- 2/6 tests fully pass, 3 partial (9 assertion failures), 1 GC crash (F140)
+- Fixed: reader conditional elision, ^Type hints in for/let/doseq bindings
+- Remaining: GC crash in dissocFn (F140), :validate desugaring
 
 ## Known Issues
 
