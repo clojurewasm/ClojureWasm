@@ -805,25 +805,25 @@ vars:
     "*open-url-script*": {type: dynamic-var, status: done}
     "browse-url": {type: function, status: done}
   clojure_java_io:
-    Coercions: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
-    IOFactory: {type: var, status: skip, notes: 'Java protocol, no equivalent'}
+    Coercions: {type: protocol, status: done, notes: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
+    IOFactory: {type: protocol, status: done, notes: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
     "as-file": {type: function, status: done, notes: builtin (Zig)}
     "as-relative-path": {type: function, status: done, notes: builtin (Zig)}
-    "as-url": {type: function, status: skip, notes: Needs URL type}
+    "as-url": {type: function, status: done, notes: 'UPSTREAM-DIFF: returns URI, not URL'}
     copy: {type: function, status: done, notes: builtin (Zig)}
-    "default-streams-impl": {type: var, status: skip, notes: 'Java protocol, no equivalent'}
+    "default-streams-impl": {type: var, status: done, notes: 'UPSTREAM-DIFF: map of fns with CW reader/writer dispatch'}
     "delete-file": {type: function, status: done, notes: builtin (Zig)}
     file: {type: function, status: done, notes: builtin (Zig)}
-    "input-stream": {type: function, status: skip, notes: Needs handle/resource type system}
-    "make-input-stream": {type: function, status: skip, notes: Needs handle/resource type system}
-    "make-output-stream": {type: function, status: skip, notes: Needs handle/resource type system}
+    "input-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-reader'}
+    "make-input-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-reader'}
+    "make-output-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-writer'}
     "make-parents": {type: function, status: done, notes: builtin (Zig)}
-    "make-reader": {type: function, status: skip, notes: Needs handle/resource type system}
-    "make-writer": {type: function, status: skip, notes: Needs handle/resource type system}
-    "output-stream": {type: function, status: skip, notes: Needs handle/resource type system}
-    reader: {type: function, status: skip, notes: Needs handle/resource type system}
+    "make-reader": {type: function, status: done, notes: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
+    "make-writer": {type: function, status: done, notes: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
+    "output-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-writer'}
+    reader: {type: function, status: done, notes: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
     resource: {type: function, status: done, notes: builtin (Zig)}
-    writer: {type: function, status: skip, notes: Needs handle/resource type system}
+    writer: {type: function, status: done, notes: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
   clojure_java_javadoc:
     "*core-java-api*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
     "*feeling-lucky*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}

@@ -65,6 +65,9 @@ const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
 /// Embedded clojure/java/shell.clj source (compiled into binary).
 const shell_clj_source = @embedFile("../clj/clojure/java/shell.clj");
 
+/// Embedded clojure/java/io.clj source (compiled into binary).
+const io_clj_source = @embedFile("../clj/clojure/java/io.clj");
+
 /// Embedded clojure/pprint.clj source (compiled into binary).
 const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 
@@ -515,6 +518,43 @@ pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = shell_ns;
 
     _ = try evalString(allocator, env, shell_clj_source);
+
+    env.current_ns = saved_ns;
+    syncNsVar(env);
+}
+
+/// Load and evaluate clojure/java/io.clj in the given Env.
+/// Defines Coercions, IOFactory protocols and reader/writer/input-stream/output-stream.
+/// The namespace already exists (builtins registered in registry.zig); this adds CLJ-level vars.
+pub fn loadJavaIo(allocator: Allocator, env: *Env) BootstrapError!void {
+    // Namespace already created by registry.zig with builtins
+    const io_ns = env.findNamespace("clojure.java.io") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: clojure.java.io namespace not found", .{});
+        return error.EvalError;
+    };
+
+    // Refer clojure.core bindings
+    const core_ns = env.findNamespace("clojure.core") orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
+        return error.EvalError;
+    };
+    var core_iter = core_ns.mappings.iterator();
+    while (core_iter.next()) |entry| {
+        io_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    }
+
+    // Refer clojure.string bindings (used in io.clj)
+    if (env.findNamespace("clojure.string")) |str_ns| {
+        var str_iter = str_ns.mappings.iterator();
+        while (str_iter.next()) |entry| {
+            io_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+        }
+    }
+
+    const saved_ns = env.current_ns;
+    env.current_ns = io_ns;
+
+    _ = try evalString(allocator, env, io_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -1598,6 +1638,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadData(allocator, env);
     try loadRepl(allocator, env);
     try loadShell(allocator, env);
+    try loadJavaIo(allocator, env);
     try loadPprint(allocator, env);
     try loadStacktrace(allocator, env);
     try loadZip(allocator, env);
@@ -1667,6 +1708,12 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.java.shell")) |shell_ns| {
         env.current_ns = shell_ns;
         _ = try evalStringVMBootstrap(allocator, env, shell_clj_source);
+    }
+
+    // Re-compile java/io.clj
+    if (env.findNamespace("clojure.java.io")) |io_ns| {
+        env.current_ns = io_ns;
+        _ = try evalStringVMBootstrap(allocator, env, io_clj_source);
     }
 
     // Re-compile pprint.clj

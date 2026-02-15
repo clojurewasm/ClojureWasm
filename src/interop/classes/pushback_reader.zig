@@ -151,7 +151,6 @@ fn getState(obj: Value) ?*State {
 
 /// Dispatch instance method on a PushbackReader.
 pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest: []const Value) anyerror!Value {
-    _ = allocator;
     const state = getState(obj) orelse
         return err.setErrorFmt(.eval, .value_error, .{}, "Invalid PushbackReader instance", .{});
 
@@ -169,6 +168,36 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
         };
         state.unread(c) catch return err.setErrorFmt(.eval, .value_error, .{}, "Pushback buffer overflow", .{});
         return Value.nil_val;
+    }
+
+    if (std.mem.eql(u8, method, "readLine")) {
+        if (rest.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, ".readLine expects 0 args", .{});
+        // Read until \n or EOF. Returns nil on EOF (no more data).
+        var line = std.ArrayList(u8).empty;
+        var saw_any = false;
+        while (true) {
+            const c = state.read();
+            if (c == -1) break;
+            saw_any = true;
+            if (c == '\n') break;
+            if (c == '\r') {
+                // Peek next char for \r\n
+                const next = state.read();
+                if (next != -1 and next != '\n') {
+                    state.unread(@intCast(@as(u64, @bitCast(next)) & 0xFF)) catch {};
+                }
+                break;
+            }
+            line.append(allocator, @intCast(@as(u64, @bitCast(c)) & 0xFF)) catch return error.OutOfMemory;
+        }
+        if (!saw_any) return Value.nil_val;
+        return Value.initString(allocator, line.items);
+    }
+
+    if (std.mem.eql(u8, method, "ready")) {
+        if (rest.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, ".ready expects 0 args", .{});
+        const has_data = state.pushback_len > 0 or state.pos < state.source.len;
+        return if (has_data) Value.true_val else Value.false_val;
     }
 
     if (std.mem.eql(u8, method, "close")) {

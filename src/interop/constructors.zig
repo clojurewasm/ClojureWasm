@@ -24,6 +24,7 @@ const uuid_class = @import("classes/uuid.zig");
 const pushback_reader_class = @import("classes/pushback_reader.zig");
 const string_builder_class = @import("classes/string_builder.zig");
 const string_writer_class = @import("classes/string_writer.zig");
+const buffered_writer_class = @import("classes/buffered_writer.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
@@ -34,6 +35,7 @@ pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
     .{ "StringReader", "java.io.StringReader" },
     .{ "StringBuilder", "java.lang.StringBuilder" },
     .{ "StringWriter", "java.io.StringWriter" },
+    .{ "BufferedWriter", "java.io.BufferedWriter" },
     .{ "EOFException", "java.io.EOFException" },
     .{ "Exception", "Exception" },
     .{ "ExceptionInfo", "ExceptionInfo" },
@@ -90,6 +92,9 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     }
     if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
         return string_writer_class.construct(allocator, ctor_args);
+    }
+    if (std.mem.eql(u8, class_name, buffered_writer_class.class_name)) {
+        return buffered_writer_class.construct(allocator, ctor_args);
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});

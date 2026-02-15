@@ -24,6 +24,7 @@ const uuid_class = @import("classes/uuid.zig");
 const pushback_reader_class = @import("classes/pushback_reader.zig");
 const string_builder_class = @import("classes/string_builder.zig");
 const string_writer_class = @import("classes/string_writer.zig");
+const buffered_writer_class = @import("classes/buffered_writer.zig");
 
 /// Java instance method dispatch.
 /// Called from __java-method builtin. Dispatches based on object tag,
@@ -78,6 +79,9 @@ fn dispatchClass(allocator: Allocator, class_name: []const u8, method: []const u
     }
     if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
         return string_writer_class.dispatchMethod(allocator, method, obj, rest);
+    }
+    if (std.mem.eql(u8, class_name, buffered_writer_class.class_name)) {
+        return buffered_writer_class.dispatchMethod(allocator, method, obj, rest);
     }
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for class {s}", .{ method, class_name });
 }

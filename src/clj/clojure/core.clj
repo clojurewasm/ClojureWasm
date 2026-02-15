@@ -1818,11 +1818,15 @@
        ~@body)))
 
 ;; CLJW: .close Java interop replaced with (close x) function call.
-;; No-op for now; will dispatch on type when file IO types are added.
+;; UPSTREAM-DIFF: upstream uses (.close x) directly; CW dispatches via __java-method.
 (defn close
-  "Closes a resource. No-op for types without close semantics."
+  "Closes a resource. Calls .close on objects that support it, no-op otherwise."
   {:added "1.0"}
-  [x] nil)
+  [x]
+  (when x
+    (try
+      (.close x)
+      (catch Exception e nil))))
 
 (defmacro with-open
   "bindings => [name init ...]

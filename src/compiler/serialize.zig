@@ -487,6 +487,40 @@ pub const Serializer = struct {
             }
             return;
         }
+        // Walk collections to find nested fn_vals
+        if (val.tag() == .map) {
+            const entries = val.asMap().entries;
+            for (entries) |entry| {
+                try self.collectFnProtos(allocator, entry);
+            }
+            return;
+        }
+        if (val.tag() == .vector) {
+            for (val.asVector().items) |item| {
+                try self.collectFnProtos(allocator, item);
+            }
+            return;
+        }
+        if (val.tag() == .list) {
+            for (val.asList().items) |item| {
+                try self.collectFnProtos(allocator, item);
+            }
+            return;
+        }
+        if (val.tag() == .set) {
+            for (val.asSet().items) |item| {
+                try self.collectFnProtos(allocator, item);
+            }
+            return;
+        }
+        if (val.tag() == .atom) {
+            try self.collectFnProtos(allocator, val.asAtom().value);
+            return;
+        }
+        if (val.tag() == .volatile_ref) {
+            try self.collectFnProtos(allocator, val.asVolatile().value);
+            return;
+        }
         if (val.tag() != .fn_val) return;
         const fn_obj = val.asFn();
         // TreeWalk closures store Closure*, not FnProto* — cannot be serialized.
