@@ -39,7 +39,9 @@ git log --oneline -3 && git status --short
 
 Read: `.dev/memo.md` (current state, next task pointer)
 
-If memo.md has no active task: read `.dev/roadmap.md` → pick first pending phase sub-task.
+If memo.md has no active task:
+1. Check `## Next Phase Queue` in memo.md — if populated, promote it
+2. Otherwise: read `.dev/roadmap.md` **Phase Tracker** → find first PENDING → read that phase section only
 
 If implementing functions, check coverage:
 ```bash
@@ -56,7 +58,7 @@ yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | len
 
 - TDD cycle: Red → Green → Refactor
 - Run tests: `zig build test`
-- Run e2e tests: `bash test/e2e/run_e2e.sh`
+- Run e2e tests: `bash test/e2e/run_e2e.sh` + `bash test/e2e/deps/run_deps_e2e.sh`
 - **Upstream test porting** (Phase 42+): Follow `.dev/test-porting-plan.md`
   - Port relevant upstream tests for each sub-task
   - Run full upstream regression suite before committing
@@ -108,7 +110,9 @@ Run before every commit:
 1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 2. **checklist.md**: Remove resolved F##, add new F##
 3. **vars.yaml**: Mark implemented vars `done` (when implementing vars)
-4. **e2e tests**: `bash test/e2e/run_e2e.sh` passes (when changing execution code)
+4. **e2e tests** (when changing execution code):
+   - `bash test/e2e/run_e2e.sh` — core e2e (6 tests)
+   - `bash test/e2e/deps/run_deps_e2e.sh` — deps.edn e2e (14 tests)
 5. **memo.md**: Advance to next task
    - Update `## Current Task` with next task details
    - Remove completed task from Task Queue
@@ -124,7 +128,7 @@ Run before every commit:
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
 8. **Non-functional regression** (when changing execution code: src/vm/, src/evaluator/,
    src/compiler/, src/runtime/, src/builtins/, src/wasm/, bootstrap):
-   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.2MB
+   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.3MB
    - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 5ms
    - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 12MB
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
@@ -136,11 +140,12 @@ Run before every commit:
 
 When Task Queue empty:
 
-1. If next phase exists in `roadmap.md`: create Task Queue in memo.md
-2. If not: plan new phase:
-   - Read `roadmap.md` Phase Notes, `.dev/future.md`, `checklist.md`
-   - Priority: bugs > blockers > deferred items > features
-   - Update memo.md with new Task Queue
+1. Check memo.md `## Next Phase Queue` — if populated, promote to Task Queue
+2. If Next Phase Queue empty: read `roadmap.md` **Phase Tracker table only** (top of file)
+   - Find first PENDING phase
+   - Read **only that phase's section** (not the whole file — save context)
+   - Copy sub-tasks to memo.md Task Queue
+   - Update Phase Tracker: mark current phase DONE, next phase IN-PROGRESS
    - Commit: `Plan Phase X: [name]`
 3. Continue to first task
 
@@ -232,7 +237,7 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Impl tiers        | `.claude/references/impl-tiers.md`   | When implementing a new function           |
 | Java interop      | `.claude/rules/java-interop.md`      | Auto-loads on .clj/analyzer/builtin edits  |
 | Test porting      | `.claude/rules/test-porting.md`      | Auto-loads on test file edits              |
-| Roadmap           | `.dev/roadmap.md`                    | Phase planning — always read for next task |
+| Roadmap           | `.dev/roadmap.md`                    | Phase Tracker (top) for next task; phase section for details |
 | Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Decisions         | `.dev/decisions.md` (D3-D101+)       | Architectural decisions reference          |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |

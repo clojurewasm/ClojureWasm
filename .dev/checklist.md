@@ -13,14 +13,16 @@ Check at session start for items that become actionable.
 
 ## Blocked until needed
 
-| ID   | Item                                        | Trigger                                                                  |
-|------|---------------------------------------------|--------------------------------------------------------------------------|
-| F94  | Upstream Alignment pass                     | Phase 70.5.4 audit: 87 markers in src/clj/ (P=48, S=12, R=27). R items need: :inline meta (2), IDrop (2), IReduceInit/deftype (3), TransformerIterator (1), seqkvreduce (1), extend-via-metadata (2), deftype (3), ref/multimethod in test (7), spec in repl (1), assert-expr (1), run-test (1), :__reify_type (1). |
-| F102 | map/filter chunked processing               | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
-| F103 | Escape analysis (local scope skip GC)       | Compiler detects local-only Values, skip GC tracking                     |
-| F104 | Profile-guided optimization (extend IC)     | Extend inline caching beyond monomorphic                                 |
-| F105 | JIT compilation (expand beyond ARM64 PoC)   | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
-| F120 | Native SIMD optimization (CW internals)     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
-| F141 | cljw.xxx aliases for clojure.java.xxx       | `(require '[cljw.io])` should map to `clojure.java.io`. Targets: cljw.io, cljw.shell, cljw.browse, cljw.process. Needs ns alias mapping in require/resolve path. |
-| F139 | case macro fails with mixed body types      | `(case x :a 1 :b (cond-> ...))` — shift-mask error. Related to case hash computation when body exprs mix integer literals and complex forms. Workaround: use `cond`. |
-| F140 | GC crash in dissocFn (keyword pointer freed) | Segfault in keyword name comparison under heavy allocation pressure (tools.cli test-summarize). Pre-existing GC root tracking issue. |
+Target Phase references: see `.dev/roadmap.md` Phase Tracker + Open Checklist Items table.
+
+| ID   | Item                                        | Target | Trigger                                                                  |
+|------|---------------------------------------------|--------|--------------------------------------------------------------------------|
+| F94  | Upstream Alignment pass                     | 78.3   | Phase 70.5.4 audit: 87 markers in src/clj/ (P=48, S=12, R=27). R items need: :inline meta (2), IDrop (2), IReduceInit/deftype (3), TransformerIterator (1), seqkvreduce (1), extend-via-metadata (2), deftype (3), ref/multimethod in test (7), spec in repl (1), assert-expr (1), run-test (1), :__reify_type (1). |
+| F102 | map/filter chunked processing               | 89.1   | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
+| F103 | Escape analysis (local scope skip GC)       | 89.3   | Compiler detects local-only Values, skip GC tracking                     |
+| F104 | Profile-guided optimization (extend IC)     | 89     | Extend inline caching beyond monomorphic                                 |
+| F105 | JIT compilation (expand beyond ARM64 PoC)   | 90     | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
+| F120 | Native SIMD optimization (CW internals)     | 89     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
+| F139 | case macro fails with mixed body types      | 78.2   | `(case x :a 1 :b (cond-> ...))` — shift-mask error. Related to case hash computation when body exprs mix integer literals and complex forms. Workaround: use `cond`. |
+| F140 | GC crash in dissocFn (keyword pointer freed) | 78.1   | Segfault in keyword name comparison under heavy allocation pressure (tools.cli test-summarize). Pre-existing GC root tracking issue. |
+| F141 | cljw.xxx aliases for clojure.java.xxx       | 85.4   | `(require '[cljw.io])` should map to `clojure.java.io`. Targets: cljw.io, cljw.shell, cljw.browse, cljw.process. Needs ns alias mapping in require/resolve path. |

@@ -65,7 +65,20 @@ skip recorvery にくわえて、以下が解消されているかも確認。�
 
 ## Known Issues
 
-(none currently)
+- F140: GC crash in dissocFn (keyword pointer freed under heavy allocation pressure)
+- F139: case macro fails with mixed body types (shift-mask error)
+
+## Next Phase Queue
+
+After Phase 77 completes, proceed to Phase 78 (Bug Fixes & Correctness).
+Read `.dev/roadmap.md` Phase 78 section for sub-tasks.
+
+```
+78.1 Fix F140: GC crash in dissocFn
+78.2 Fix F139: case macro with mixed body types
+78.3 F94 upstream alignment pass (87 markers in src/clj/)
+78.4 Audit unreachable in production paths
+```
 
 ## Notes
 

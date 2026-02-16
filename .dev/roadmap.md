@@ -1,312 +1,434 @@
 # ClojureWasm Roadmap
 
-## Overview
+> **Context-efficient reading**: Read Phase Tracker to find the next pending phase,
+> then read only that phase's detail section. Do NOT read the entire file every session.
 
-Full-scratch Clojure implementation in Zig 0.15.2. Dual backend (TreeWalk + VM).
-Goal: Babashka-competitive startup, single binary distribution, behavioral compatibility.
+## Phase Tracker
 
-**References**:
+Status: DONE / IN-PROGRESS / PENDING
 
-- `.dev/future.md` — Design document (SS sections)
-- `.dev/memo.md` — Session handover memo
-- `.dev/checklist.md` — Deferred items (F## entries)
-- `.dev/status/vars.yaml` — Var implementation tracking
-- `private/alpha_plan/` — Multi-perspective Alpha planning docs
+| Phase | Name | Tier | Status |
+|-------|------|------|--------|
+| 1-76 | (see Completed Phases below) | — | DONE |
+| 77 | Var Coverage Completion | 0 | IN-PROGRESS |
+| 78 | Bug Fixes & Correctness | 1 | PENDING |
+| 79 | cl-format Implementation | 1 | PENDING |
+| 80 | Crash Hardening & Fuzzing | 1 | PENDING |
+| 81 | Error System Maturity | 1 | PENDING |
+| 82 | CI/CD Foundation | 2 | PENDING |
+| 83 | Documentation | 2 | PENDING |
+| 84 | Upstream Test Expansion | 2 | PENDING |
+| 85 | Library Compatibility Expansion | 2 | PENDING |
+| 86 | Distribution | 3 | PENDING |
+| 87 | Developer Experience | 3 | PENDING |
+| 88 | v0.2.0 Release | 3 | PENDING |
+| 89 | Performance Optimization | 4 | PENDING |
+| 90 | JIT Expansion | 4 | PENDING |
+| 91 | wasm_rt Track | 4 | PENDING |
+| 92 | Security Hardening | 4 | PENDING |
+| 93 | LSP Foundation | 4 | PENDING |
+| 94 | API Stabilization | 5 | PENDING |
+| 95 | Community Preparation | 5 | PENDING |
+| 96 | v1.0.0 Release | 5 | PENDING |
 
-## Current Stats
+### Tier Summary
 
-- **871+ vars** implemented (637/706 core, 25 embedded CLJ namespaces, deps.edn support)
-- **71 skip vars** remaining (70+ permanently JVM, ~1 implementable)
-- **52 upstream test files**, all passing
-- **31 benchmarks** (20 native + 5 wasm legacy + 4 wasm TinyGo + 2 GC)
-- **Wasm engine**: zwasm v0.2.0 (Register IR + ARM64/x86_64 JIT, 1.3-2.3x of wasmtime)
-- **Binary**: 3.92MB ReleaseSafe (Mac ARM64)
-- **Phases**: 76 complete (through Type System & Reader Enhancements)
-
-## Completed Phases
-
-```
-| Phase  | Summary                                     | Key Deliverables                                            |
-|--------|---------------------------------------------|-------------------------------------------------------------|
-| 1      | Reader + Analyzer                           | Value types, Tokenizer, Reader, Form, Node, Analyzer        |
-| 2      | Native VM                                   | Env, Namespace, Var, Compiler, VM, TreeWalk, --compare      |
-| 3      | Builtins + core.clj                         | 110 builtins, core.clj bootstrap, defmacro                  |
-| 4      | Production readiness                        | Multi-arity, destructuring, REPL, Wasm target               |
-| 5      | Benchmark system                            | Benchmark suite, multi-language comparison                  |
-| 6      | Core library I                              | lazy-seq, apply, mapcat, concat, 40+ builtins               |
-| 7      | Robustness + nREPL                          | Error recovery, nREPL server, CIDER-compatible              |
-| 8      | Refactoring                                 | Directory restructure, code cleanup                         |
-| 9      | Core library II                             | peek, pop, update, merge, juxt, partial, 50+ fns            |
-| 9.5    | Infrastructure fixes                        | VM loop/recur, fn_val dispatch, data model fixes            |
-| 10     | VM correctness                              | VM-CoreClj interop, bytecodeCallBridge                      |
-| 11     | Metadata system                             | meta, with-meta, vary-meta, Var metadata                    |
-| 12     | Zig foundation + SCI test port              | Tier 1 builtins complete, SCI tests (70/74 pass)            |
-| 13     | clojure.string + core expansion             | 14 string fns, protocols, defrecord, lazy-cat               |
-| 14     | Clojure upstream test foundation            | clojure.test, walk, 8 test files ported (72 tests)          |
-| 14.5   | Bug fix round                               | assoc vector, seq set, empty list eval, pop nil             |
-| 15     | Test-driven core expansion                  | TDD, port upstream test → fail → implement → pass           |
-| 15.5   | Dual-backend test re-port                   | Both VM + TreeWalk verified, root cause fixes               |
-| 16     | Test Batch 1 + VM bug fix                   | clojure_set, string, keywords, metadata tests               |
-| 16.5   | Test Batch 2                                | multimethods, vars, volatiles, delays                       |
-| 17     | IO / System namespace                       | slurp, spit, *in*/*out*/*err*, System/getenv                |
-| 17.5   | Infrastructure fix                          | try/catch/throw, destructuring fixes, VM defmulti           |
-| 18     | Test Batch 3                                | numbers, def, fn, ns_libs tests                             |
-| 18.5   | Upstream alignment                          | defn, doseq, condp, case macro alignment                    |
-| 19     | Foundation reset                            | vars.yaml audit, faithful test porting (C1-C12+)            |
-| R      | require / load / ns system                  | File-based loading, :as/:refer, circular detection          |
-| D      | Parallel expansion                          | Var coverage 412 → 500+                                     |
-| 20     | Infrastructure expansion                    | Transient collections, chunked sequences                    |
-| 21     | Upstream alignment (F94)                    | UPSTREAM-DIFF → verbatim upstream                           |
-| 22     | Test porting expansion                      | multimethods, protocols, transducers tests                  |
-| 23     | Production GC                               | MarkSweepGc (D69), three-allocator architecture (D70)       |
-| 22b    | Test porting round 2                        | Post-GC test expansion                                      |
-| 22c    | Test gap resolution                         | Revive skipped tests, port remaining test files             |
-| 24     | Optimization                                | 20 benchmarks, CW wins 19/20 vs Babashka                    |
-| 24.5   | Mini-refactor                               | Dead code, naming, D3 audit                                 |
-| 25     | Wasm InterOp (FFI)                          | wasm/load, wasm/fn, memory interop, host fns, WASI          |
-| 26.R   | wasm_rt research                            | Research complete, implementation DEFERRED (D79)            |
-| 30     | Production robustness                       | Error reporting, nREPL/CIDER, project model, clojure.repl   |
-| 31     | AOT compilation                             | Bytecode serialization, env snapshot/restore                |
-| 32     | Build system + startup                      | Bootstrap cache (D81), ~6x startup, cljw build              |
-| 33     | Namespace design                            | clojure.* + cljw.* convention (D82)                         |
-| 34     | Server mode + networking                    | cljw.http, Ring handler, nREPL in built binaries (D83)      |
-| 35W    | Custom Wasm runtime                         | Replace zware, switch dispatch, 5300 LOC (D84)              |
-| 35X    | Cross-platform                              | Linux x86_64/aarch64, CI, LICENSE (D85 NaN boxing)          |
-| 36     | Wasm FFI Deep                               | SIMD 236 opcodes, multi-module, interpreter opt (D86)       |
-| 37     | VM Optimization + JIT PoC                   | Superinstrs, branch fusion, ARM64 JIT (D87), 17.7x         |
-| 38     | Core Library Completeness                   | Exception handling (D88), Matcher, ns macro, defn align     |
-| 39     | Real-World Usability                        | shell, pprint, line-seq, stacktrace                         |
-| 40     | Library Expansion                           | zip (28), test (18), walk/math/repl remaining               |
-| 41     | Polish & Hardening                          | Bug fixes, upstream test porting, edge cases                |
-| 42     | Quick Wins + Protocol Extension             | uri?, uuid?, extend, extenders, bound-fn (skip recovery)    |
-| 43     | Numeric Types + Arrays                      | Array, BigInt, BigDecimal, Ratio (D89), 34 array builtins   |
-| 44     | OSS Release Prep                            | Lazy range, repo cleanup, docs, license, README             |
-| 45     | Wasm Runtime Optimization                   | Predecoded IR, superinstrs, cached memory (2-3x)            |
-| 46     | Correctness & Cleanup                       | F95 VM intrinsic ns, checklist cleanup                      |
-| —      | zwasm Integration (D92)                     | External wasm engine, -9300 LOC, Register IR + ARM64 JIT    |
-| 47-50B | Alpha DX + Compat + Bug fixes               | REPL, errors, case*, PushbackReader, upstream align, agents |
-| 51     | Agent Subsystem                             | AgentObj, send/send-off, await, error modes, *agent*        |
-| 52     | Quality & Alignment                         | println fix, catch types, is macro, test/reader port        |
-| 53     | Hardening & pprint Tests                    | Loop destr, BigDec exp, colon symbols, pprint tests         |
-| 54     | Upstream Fidelity II                        | fn pre/post, Java static fields + 12 utility methods        |
-| 55     | Upstream Test Recovery                      | Restore Java constant refs in 5 test files, reduce markers  |
-| 56     | Bug Fixes & read                            | pprint lazy fix, read/read+string/edn-read, 637/706 core   |
-| 57     | Concurrency Test Suite                      | 4 Zig + 10 Clj tests, swap! CAS fix, atomic atom ops       |
-| 58     | v0.1.0-alpha Release Prep                   | Tag-replace planning, zwasm v0.1.0 dependency migration     |
-| 59     | zwasm v0.1.0 Integration                    | zwasm v0.1.0 tar.gz dep, benchmark validation               |
-| 60     | v0.1.0 Release                              | Docs overhaul, binary audit, benchmark record (3.7MB)       |
-| 61     | Bug Fixes                                   | F138 binding *ns* + read-string, record hash edge case      |
-| 62     | Edge Cases                                  | F99 iterative lazy-seq realization (D96), FRAMES_MAX 1024   |
-| 63     | import → wasm mapping                       | F135 :import-wasm ns macro                                  |
-| 64     | Upstream Alignment Re-evaluation            | 416 CLJW markers reviewed — all permanent design diffs      |
-| 65     | Edge Case Cleanup                           | apropos/dir, dup keys, fn docstr, regex cache, *print-dup*  |
-| 66     | deps.edn Foundation                         | Parser (deps.zig), alias resolution, CLI flags -A/-M/-X/-P  |
-| 67     | Git Dependencies                            | Tag validation, :deps/root, -Sforce, transitive resolution  |
-| 68     | Integration                                 | test+alias, Leiningen detection, 14 e2e tests               |
-| 69     | deps.edn Design Cleanup                     | Fetch-on-demand, remove cljw.edn                            |
-| 70     | spec.alpha                                  | 87 vars, Spec/Specize protocols, regex ops                   |
-| 71     | Library Compatibility Testing               | medley, hiccup, honeysql tested (Batch 1 partial)            |
-| 72     | Optimization + GC Assessment                | Profiling, targeted opts, GC bottleneck analysis             |
-| 73     | Generational GC (conditional)               | Write barriers, nursery allocator (if warranted)             |
-| 74     | Java Interop Architecture                   | src/interop/ module, URI/File/UUID classes (D101)            |
-```
-
-### Planned Phases (Phase 75+)
-
-| Phase | Summary                          | Key Deliverables                                  |
-|-------|----------------------------------|---------------------------------------------------|
-| 75    | Library Port Testing             | Real-world library compat, minimal Java shims     |
-
-Phase 75 targets: `.dev/library-port-targets.md` (20 libraries in 5 batches).
-Philosophy: NOT JVM reimplementation. Load real libraries as-is, run their tests
-unmodified. When CW behavior differs from upstream Clojure, trace CW's processing
-pipeline (reader → analyzer → compiler → VM/TreeWalk → builtins) to find and fix
-the root cause. Add Java interop shims only for high-frequency patterns (3+ libs,
-<100 LOC Zig). Libraries requiring heavy Java interop are out of scope — document
-the gap and move on.
-BB class reference: `.dev/babashka-class-compat.md` (reference only, not a roadmap).
+| Tier | Goal | Phases |
+|------|------|--------|
+| 0 | Current work | 77 |
+| 1 | Stabilize & Harden | 78-81 |
+| 2 | Production Quality | 82-85 |
+| 3 | Ecosystem & Distribution | 86-88 |
+| 4 | Advanced Features | 89-93 |
+| 5 | Toward v1.0 | 94-96 |
 
 ---
 
-## Release Roadmap
+## Completed Phases (1-76)
 
-### v0.1.0-alpha — Developer Experience (Phase 47)
-
-First public Alpha. Focus: make ClojureWasm pleasant to use for scripting.
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 47.1 | REPL improvements               | MUST     | Multiline, color, ns prompt        |
-| 47.2 | Error message improvements      | MUST     | Source context, better formatting  |
-| 47.3 | case* compiler special form     | MUST     | Deferred from 38.4, compatibility  |
-| 47.4 | with-in-str, io!, with-precision| SHOULD   | Missing quick-win vars             |
-| 47.5 | Upstream test expansion         | SHOULD   | 5+ additional test files ported    |
-| 47.6 | Reader validation hardening     | SHOULD   | Edge cases, malformed input        |
-
-**Exit criteria**: "A Clojure developer can write non-trivial scripts comfortably"
-
-### v0.2.0-alpha — Concurrency (Phase 48)
-
-Enable parallel processing. Prerequisite: GC thread safety.
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 48.1 | GC thread safety (D## needed)  | MUST     | Pin values across thread boundary  |
-| 48.2 | Thread pool infrastructure      | MUST     | Zig std.Thread pool                |
-| 48.3 | future, future-call, deref      | MUST     | 6 vars from skip-recovery Cat 5   |
-| 48.4 | pmap, pcalls, pvalues           | MUST     | Parallel collection processing     |
-| 48.5 | Multi-thread dynamic bindings   | SHOULD   | F6 — binding frame per thread      |
-| 48.6 | nREPL ops expansion             | SHOULD   | test, macroexpand                  |
-
-**Exit criteria**: `(pmap f coll)` works correctly, no GC crashes under concurrency
-
-### v0.3.0-alpha — Compatibility (Phase 49)
-
-Maximize Clojure code compatibility. Library testing.
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 49.1 | PushbackReader + read           | SHOULD   | Enables clojure.edn/read, read    |
-| 49.2 | Upstream alignment pass (F94)   | SHOULD   | Replace UPSTREAM-DIFF with verbatim|
-| 49.3 | Pure Clojure library compat     | MUST     | Test 5+ popular libraries          |
-| 49.4 | Additional upstream tests       | SHOULD   | Expand from 38 to 45+ test files   |
-| 49.5 | Agent subsystem (partial)       | COULD    | If GC thread safety proves solid   |
-
-**Exit criteria**: "Most pure Clojure code runs without modification"
-
-### v0.4.0-beta — Ecosystem (Phase 50)
-
-Build the ecosystem foundation. Dependency management, distribution.
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 50.1 | deps.edn basic support          | MUST     | git/sha deps, :paths, :deps       |
-| 50.2 | Wasm module deps                | SHOULD   | .wasm in deps graph                |
-| 50.3 | cljw test command               | SHOULD   | Run tests from project             |
-| 50.4 | Homebrew tap                    | SHOULD   | Easy macOS install                 |
-| 50.5 | import → wasm mapping           | DONE     | F135, :import-wasm ns macro (Phase 63) |
-
-**Exit criteria**: "Can manage multi-file projects with external dependencies"
-
-### Phase 61-64 — Bug Fixes, Edge Cases, Wasm Import, Alignment — DONE
-
-- F138: binding *ns* + read-string fixed (resolveCurrentNs in all read fns)
-- Record hash: already correct, stale markers removed
-- F99: VM FRAMES_MAX 256→1024, iterative lazy-seq unwrapping (D96)
-- F135: :import-wasm ns macro (expands to cljw.wasm/load)
-- Upstream alignment: 416 CLJW markers, 36 UPSTREAM-DIFF — all permanent design diffs
-  - ~226 JVM interop (class hierarchy, Java types)
-  - ~100 exception adaptation (Throwable→Exception)
-  - ~62 numeric types (BigDecimal not implemented)
-  - ~28 other (lazy-seq limitations, reader diffs)
-
-### Edge Case Cleanup (Phase 65) — DONE
-
-Pre-deps.edn cleanup: fix small correctness issues and restore skipped tests.
-
-- 65.1: Restored apropos + dir-fn tests in repl.clj (already working)
-- 65.2: Reader duplicate key detection for map/set literals
-- 65.3: Fix `(fn "a" [])` analyzer — reject docstring without name
-- 65.4: Fix regex serialization in bootstrap cache (source-fn now works)
-- 65.5: Implement `*print-dup*` basic support (print-str respects binding)
-
-### Phase 66-68: deps.edn Support — DONE
-
-Full plan: `.dev/archive/deps-edn-plan.md`
-
-- **Phase 66**: deps.edn Foundation — parser, alias resolution, CLI flags (-A/-M/-X/-P/-S*)
-- **Phase 67**: Git Dependencies — tag validation, :deps/root, -Sforce, transitive resolution
-- **Phase 68**: Integration — test+alias, Leiningen detection, 14 e2e tests
-- Key features: deps.edn parser (deps.zig, 750+ lines), alias resolution, io.github inference,
-  git bare clone + archive extraction, ~/.cljw/gitlibs/ cache, depth-limited transitive deps
-
-### Quality & Alignment (Phase 52) — DONE
-
-Test framework hardening, upstream alignment, and bug fixes.
-
-- Fixed println/print/pr/prn/str/pr-str hang on infinite lazy seqs
-- Implemented exception type checking in catch clauses
-- Fixed `is` macro: try-expr pattern, test-ns-hook support
-- Ported test.clj (10 tests, 41 assertions) and reader.cljc (22 tests, 117 assertions)
-- Audited 32 UPSTREAM-DIFF markers
-- 48 upstream test files, all passing on both backends
-
-### v0.5.0-beta — Advanced Features (Phase 51)
-
-Polish for production use.
-
-| Sub  | Content                         | Priority | Notes                              |
-|------|---------------------------------|----------|------------------------------------|
-| 51.1 | spec.alpha (basic)              | SHOULD   | Core spec predicates, s/def, s/valid?|
-| 51.2 | Generational GC                 | COULD    | Write barriers, nursery/tenured    |
-| 51.3 | x86_64 JIT                      | COULD    | ARM64 JIT → x86_64 port           |
-| 51.4 | Windows basic support           | COULD    | Cross-compile + CI                 |
-| 51.5 | LSP foundation                  | COULD    | Completion, go-to-def              |
-
-### v1.0.0 — Stable (Future)
-
-- API freeze
-- All platforms verified
-- Comprehensive documentation
-- Security audit
-- Release cycle established
+Phases 1-76 cover: Reader, Analyzer, VM, TreeWalk, GC, builtins, core.clj bootstrap,
+nREPL, CIDER compat, Wasm FFI, NaN boxing, JIT PoC, spec.alpha, deps.edn,
+library compatibility testing, Java interop architecture, type system, reader enhancements.
+See git history or `private/cw-report-2026-02-16.md` for full per-phase details.
 
 ---
 
-## Skip Var Summary
+## Phase 77: Var Coverage Completion (Tier 0, IN-PROGRESS)
 
-112 skip vars remaining in clojure.core:
+77.10: Skip recovery audit — verify all skip/stub/todo vars have correct status and notes.
+Includes: upstream test check, CLJW marker audit, benchmark coverage, documentation sync.
 
-| Category                 | Count | Status                                |
-|--------------------------|-------|---------------------------------------|
-| Permanently JVM          | ~70   | Never implement (class system, etc.)  |
-| Future/pmap/pvalues      | 9     | Phase 48 — DONE                       |
-| Agent                    | 17    | Phase 51 — DONE (13 impl, 4 JVM skip)|
-| STM/Ref                  | 9     | OUT OF SCOPE (atom sufficient)        |
-| read/PushbackReader      | 2     | Phase 49.1                            |
-| import                   | 2     | Phase 50.5                            |
-| Quick wins remaining     | 3     | Phase 47.4 (with-in-str, io!, etc.)   |
+**Exit**: All vars have accurate status. No hidden TODO or broken stubs.
 
-See `.dev/skip-recovery.md` for detailed breakdown.
+---
+
+## Phase 78: Bug Fixes & Correctness (Tier 1)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 78.1 | Fix F140: GC crash in dissocFn (keyword pointer freed) | MUST |
+| 78.2 | Fix F139: case macro with mixed body types | MUST |
+| 78.3 | F94 upstream alignment pass (87 markers in src/clj/) | SHOULD |
+| 78.4 | Audit all `unreachable` in production paths — convert to error returns | SHOULD |
+
+**Exit**: Zero known crash bugs. F140/F139 resolved. F94 markers reduced.
+
+---
+
+## Phase 79: cl-format Implementation (Tier 1)
+
+The 4 remaining TODO vars. Large single task (~1,950 lines upstream).
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 79.1 | cl-format core engine (directives, dispatch) | MUST |
+| 79.2 | formatter macro | MUST |
+| 79.3 | formatter-out macro | MUST |
+| 79.4 | code-dispatch (pprint, uses formatter-out in ~30 places) | MUST |
+
+**Exit**: 0 TODO vars. pprint fully functional with code formatting.
+
+---
+
+## Phase 80: Crash Hardening & Fuzzing (Tier 1)
+
+Goal: "User code must never trigger a Zig panic."
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 80.1 | Coverage-guided fuzzing harness for Reader | MUST |
+| 80.2 | Coverage-guided fuzzing harness for Analyzer | MUST |
+| 80.3 | Coverage-guided fuzzing harness for Compiler + VM | SHOULD |
+| 80.4 | Structure-aware input generation (Clojure form generator) | SHOULD |
+| 80.5 | Differential testing harness (CW vs JVM Clojure) | SHOULD |
+| 80.6 | Resource limits: nesting depth, string size, collection count | MUST |
+| 80.7 | Audit `Internal Error` / `bootstrap evaluation error` — must never reach users | MUST |
+
+**Approach**: Zig `zig build fuzz` + LLVM sanitizer. Phase-by-phase fuzzing
+(Reader, Analyzer, Compiler, VM separately). All panics found -> proper error returns.
+
+**Exit**: Fuzzing runs 24h+ without panic. Resource limits enforced. No Internal Error in user paths.
+
+---
+
+## Phase 81: Error System Maturity (Tier 1)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 81.1 | Catalog all error types and ensure consistent error messages | MUST |
+| 81.2 | Unknown class/method calls -> clear user-friendly messages (not panic) | MUST |
+| 81.3 | Interop error messages: list supported classes when unknown class used | SHOULD |
+| 81.4 | Stack trace quality: source file + line for user code errors | SHOULD |
+
+**Exit**: Every error path produces a clear, actionable message. No raw Zig error leaks.
+
+---
+
+## Phase 82: CI/CD Foundation (Tier 2)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 82.1 | GitHub Actions: test matrix (macOS ARM64 + Linux x86_64) | MUST |
+| 82.2 | ReleaseSafe build enforcement in CI | MUST |
+| 82.3 | Benchmark regression detection (compare against baselines) | MUST |
+| 82.4 | Binary size check in CI | SHOULD |
+| 82.5 | Upstream test suite in CI | SHOULD |
+| 82.6 | Sanitizer CI job (ASan/UBSan) — periodic | COULD |
+| 82.7 | Continuous fuzzing (nightly) | COULD |
+
+**Exit**: Every push tested on 2 platforms. Performance regressions caught automatically.
+
+---
+
+## Phase 83: Documentation (Tier 2)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83.1 | Getting Started (install, Hello World, REPL) | MUST |
+| 83.2 | Compatibility Matrix (namespaces, vars, known diffs) | MUST |
+| 83.3 | Spec Differences doc (concrete JVM Clojure diffs) | MUST |
+| 83.4 | CLI Reference (all cljw flags and options) | MUST |
+| 83.5 | Java Interop Reference (supported classes/methods/fields) | MUST |
+| 83.6 | Wasm FFI Guide (wasm/load, wasm/fn, host functions) | SHOULD |
+| 83.7 | deps.edn Guide (project setup, git deps, aliases) | SHOULD |
+| 83.8 | Architecture Overview (compiler pipeline, dual backend, GC) | SHOULD |
+| 83.9 | Contributor Guide (build, test, PR process) | SHOULD |
+| 83.10 | FAQ / Troubleshooting | COULD |
+
+**Format**: Markdown in `docs/`. No build step. GitHub renders directly.
+
+**Exit**: A new user can install, run, and understand CW's scope from documentation alone.
+
+---
+
+## Phase 84: Upstream Test Expansion (Tier 2)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 84.1 | Port remaining high-value upstream test files (target: 60+) | MUST |
+| 84.2 | Golden output tests for REPL sessions | SHOULD |
+| 84.3 | Property-based tests for Reader round-trip | SHOULD |
+| 84.4 | Stress tests: long-running REPL, large file processing | SHOULD |
+
+**Exit**: 60+ upstream test files passing. Reader round-trip property verified.
+
+---
+
+## Phase 85: Library Compatibility Expansion (Tier 2)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 85.1 | Batch 2 libraries (clojure.data.json, clojure.data.csv, etc.) | MUST |
+| 85.2 | Batch 3 libraries (ring-core subset, compojure subset, etc.) | SHOULD |
+| 85.3 | Document library compatibility results in docs/ | MUST |
+| 85.4 | F141: cljw.xxx aliases for clojure.java.xxx namespaces | SHOULD |
+
+**Exit**: 10+ real libraries tested. Compatibility matrix updated with results.
+
+---
+
+## Phase 86: Distribution (Tier 3)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 86.1 | Homebrew tap (macOS) | MUST |
+| 86.2 | Binary releases (GitHub Releases, multi-platform) | MUST |
+| 86.3 | Signed releases | SHOULD |
+| 86.4 | Docker image | COULD |
+| 86.5 | Nix package | COULD |
+
+**Exit**: `brew install clojurewasm/tap/cljw` works. GitHub Releases has macOS + Linux binaries.
+
+---
+
+## Phase 87: Developer Experience (Tier 3)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 87.1 | `cljw test` command (run clojure.test from project) | MUST |
+| 87.2 | Project template (`cljw new my-app`) | SHOULD |
+| 87.3 | nREPL ops expansion (test, macroexpand, stacktrace) | SHOULD |
+| 87.4 | REPL polish (multiline improvements, tab completion) | SHOULD |
+| 87.5 | Migration Guide: from JVM Clojure | COULD |
+| 87.6 | Migration Guide: from Babashka | COULD |
+| 87.7 | Examples collection (CLI tool, data processing, Wasm interop) | SHOULD |
+
+**Exit**: End-to-end project workflow: create -> develop -> test -> run.
+
+---
+
+## Phase 88: v0.2.0 Release (Tier 3)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 88.1 | Version bump + CHANGELOG | MUST |
+| 88.2 | Release notes | MUST |
+| 88.3 | Benchmark record (full history entry) | MUST |
+| 88.4 | Binary audit (no debug symbols, no embedded secrets) | MUST |
+| 88.5 | README update with current stats | MUST |
+
+**Exit**: Tagged v0.2.0 on GitHub with binaries, docs, and changelog.
+
+---
+
+## Phase 89: Performance Optimization (Tier 4)
+
+| Sub | Task | Expected Impact | Effort |
+|-----|------|-----------------|--------|
+| 89.1 | F102: map/filter chunked processing | Lazy-seq alloc reduction | Medium |
+| 89.2 | Generational GC (nursery + tenured) | 2-5x allocation throughput | High |
+| 89.3 | F103: Escape analysis (compiler-level) | Skip GC for local values | High |
+| 89.4 | Closure stack allocation (small closures) | Avoid heap for 1-2 captures | Medium |
+| 89.5 | Benchmark + record after each optimization | — | Low |
+
+**Gate**: Full benchmark suite, no regression, record to history.yaml.
+
+---
+
+## Phase 90: JIT Expansion (Tier 4)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 90.1 | x86_64 JIT backend (port ARM64 patterns) | SHOULD |
+| 90.2 | Expand JIT beyond integer loops (float, collection ops) | COULD |
+| 90.3 | JIT warmup analysis + adaptive compilation threshold | COULD |
+
+**Exit**: JIT on both ARM64 and x86_64. Hot loops consistently JIT-compiled.
+
+---
+
+## Phase 91: wasm_rt Track (Tier 4)
+
+The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 91.1 | PoC: `zig build -Dtarget=wasm32-wasi` with full CW runtime | MUST |
+| 91.2 | WASI integration (preopened dirs, env, args) | MUST |
+| 91.3 | Bundle user .clj + core.clj + runtime into single .wasm | MUST |
+| 91.4 | `cljw build --target wasm` command | SHOULD |
+| 91.5 | Test on Wasmtime, WasmEdge, Deno Deploy | SHOULD |
+| 91.6 | Startup optimization for .wasm (AOT bytecode embedding) | COULD |
+
+**Exit**: `cljw build --target wasm` produces a .wasm that runs on Wasmtime.
+**Reference**: `.dev/future.md` SS1, SS7, SS21.
+
+---
+
+## Phase 92: Security Hardening (Tier 4)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 92.1 | Threat model document (CW + zwasm) | MUST |
+| 92.2 | Sandbox mode: `--allow-read`, `--allow-write`, `--allow-net` | SHOULD |
+| 92.3 | Deterministic mode (reproducible execution) | COULD |
+| 92.4 | W^X enforcement verification for JIT | SHOULD |
+| 92.5 | SBOM generation | COULD |
+| 92.6 | Security disclosure policy (SECURITY.md) | MUST |
+
+**Reference**: `.dev/future.md` SS14, `private/production_ready/02_vulnerability.md`
+
+---
+
+## Phase 93: LSP Foundation (Tier 4)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 93.1 | LSP server basics: textDocument/didOpen, didChange | MUST |
+| 93.2 | Go-to-definition (var resolution) | MUST |
+| 93.3 | Completion (namespace vars, keywords) | SHOULD |
+| 93.4 | Diagnostics (syntax errors, unresolved symbols) | SHOULD |
+| 93.5 | VSCode extension packaging | COULD |
+
+---
+
+## Phase 94: API Stabilization (Tier 5)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 94.1 | Public API boundary definition (embedding, CLI, nREPL) | MUST |
+| 94.2 | Stability annotations (stable / experimental / internal) | MUST |
+| 94.3 | Deprecation policy | MUST |
+| 94.4 | SemVer commitment | MUST |
+
+---
+
+## Phase 95: Community Preparation (Tier 5)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 95.1 | Code of Conduct | MUST |
+| 95.2 | CONTRIBUTING.md (move from .dev/ to repo root) | MUST |
+| 95.3 | Issue templates (bug report, feature request) | SHOULD |
+| 95.4 | Public roadmap on GitHub | SHOULD |
+
+---
+
+## Phase 96: v1.0.0 Release (Tier 5)
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 96.1 | Full test suite pass (upstream + e2e + deps + fuzz) | MUST |
+| 96.2 | Performance baseline freeze | MUST |
+| 96.3 | Documentation complete | MUST |
+| 96.4 | Security audit (self-audit with vulnerability checklist) | MUST |
+| 96.5 | Cross-platform verification (macOS ARM64, Linux x86_64, Linux aarch64) | MUST |
+| 96.6 | Tag + release + announcement | MUST |
+
+---
+
+## Phase Dependencies
+
+```
+77 ──► 78 ──► 79 ──► 80 ──► 81
+              │      │
+              ▼      ▼
+             82     84
+              │      │
+              ▼      ▼
+             83     85 ──► 88 (v0.2.0)
+              │             ▲
+              ▼             │
+             86 ────────────┘
+              │
+             87
+
+88 ──► 89 ──► 90
+       │
+88 ──► 91 (wasm_rt, independent)
+80 ──► 92 (security, builds on fuzzing)
+83 ──► 93 (LSP, needs stable API docs)
+
+88 ──► 94 ──► 95 ──► 96 (v1.0)
+```
 
 ---
 
 ## Phase Notes
 
-Notes for future phases. Read these when planning that phase.
-
 ### Implementation Tier Reference
 
-When implementing new functions, see `.claude/references/impl-tiers.md`.
+See `.claude/references/impl-tiers.md`.
 
-| Tier | Location    | Criteria                               |
-|------|-------------|----------------------------------------|
-| 1    | Zig builtin | Low-level, hot path, perf-critical     |
-| 2    | core.clj    | Pure Clojure, existing fn combinations |
-| 3    | Skip        | JVM-specific (threading, reflection)   |
-| 4    | Zig stub    | Dynamic vars, config                   |
+| Tier | Location | Criteria |
+|------|----------|----------|
+| 1 | Zig builtin | Low-level, hot path, perf-critical |
+| 2 | core.clj | Pure Clojure, existing fn combinations |
+| 3 | Skip | JVM-specific (threading, reflection) |
+| 4 | Zig stub | Dynamic vars, config |
 
-### Test Porting Policy
+### zwasm Dependencies
 
-When porting upstream Clojure tests, follow dual-backend policy:
-run all tests on both VM and TreeWalk, SKIP only for JVM-specific features.
-See `.claude/rules/test-porting.md` for full rules.
+zwasm is a separate project (`../zwasm/`). Key milestones affecting CW:
 
-### IO / System Namespace Strategy
+| Item | Impact on CW | When |
+|------|-------------|------|
+| Security audit | CW sandbox depends on zwasm safety | Before CW v1.0 |
+| x86_64 JIT in zwasm | CW Wasm perf on Linux | Tier 4 |
+| Wasm spec test full pass | Confidence in correctness | Before CW v1.0 |
 
-When implementing IO/system functionality:
+**Rule**: Wasm engine changes go in zwasm repo, not CW. CW bridge: `src/wasm/types.zig`.
 
-- **Java interop exclusion**: `proxy`/`reify`/`gen-class` are JVM-specific — skip
-- **Native aliases**: `slurp`/`spit` via Zig `std.fs`, `Thread/sleep` via `std.time.sleep`
-- **`clojure.java.io`**: Provided as `clojure.java.io` (compatible, Babashka model)
-- **System**: `System/getenv`, `System/nanoTime` via `tryJavaInterop` routing
-- **Reference**: .dev/future.md SS11
+### Open Checklist Items (checklist.md)
 
-### Concurrency Strategy (Phase 48)
+| ID | Item | Target Phase |
+|----|------|-------------|
+| F94 | Upstream alignment pass | 78.3 |
+| F102 | map/filter chunked processing | 89.1 |
+| F103 | Escape analysis | 89.3 |
+| F104 | Profile-guided IC extension | 89 (stretch) |
+| F105 | JIT expansion | 90 |
+| F120 | Native SIMD optimization | 89 (stretch) |
+| F139 | case macro mixed body types | 78.2 |
+| F140 | GC crash in dissocFn | 78.1 |
+| F141 | cljw.xxx aliases | 85.4 |
 
-- Zig `std.Thread` for thread pool — no need for green threads
-- GC safety is the prerequisite: must pin roots across thread boundaries
-- Dynamic bindings need per-thread binding frames (F6)
-- Start with future/pmap (most useful), defer agent (complex error model)
-- Reference: `.dev/skip-recovery.md` Category 2, 5
-- Reference: `private/alpha_plan/10_concurrency.md`
+### Stub Resolution Strategy (27 stubs)
+
+| Category | Count | Resolution |
+|----------|-------|------------|
+| Dynamic var defaults (*in*, *out*, *err*, etc.) | 15 | Acceptable — CW I/O pipeline covers functionality |
+| Socket REPL (start-server, prepl, etc.) | 4 | Defer — CW has nREPL |
+| Library management (add-lib, add-libs, sync-deps) | 3 | Defer — needs Maven/Clojars |
+| inst range (inst-in, inst-in-range?) | 2 | Defer — needs Date type |
+| test.check (quick-check, for-all*) | 2 | Consider in Phase 80 (useful for fuzzing) |
+| pprint-tab | 1 | Acceptable — upstream also "not yet implemented" |
+
+### Success Metrics
+
+**v0.2.0 (End of Tier 3)**:
+- Zero known crash bugs
+- 0 TODO vars (cl-format done)
+- 60+ upstream test files passing
+- 10+ real libraries tested with documented results
+- Homebrew installable
+- Documentation covers Getting Started + Compatibility + CLI Reference
+- CI running on macOS + Linux
+
+**v1.0.0 (End of Tier 5)**:
+- 24h+ fuzz run without panic
+- Security audit complete
+- wasm_rt track functional (user .clj -> .wasm)
+- LSP with go-to-def + completion
+- Cross-platform verified
+- Public API frozen with stability guarantees

@@ -1,6 +1,6 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-14 (v0.2.0)
+Measured on: 2026-02-16 (post-Phase 77)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
 
@@ -11,7 +11,7 @@ Fix the regression first. No exceptions without explicit user approval.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.00 MB    | 4.2 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
+| Binary size         | 4.07 MB    | 4.3 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
 | Startup time        | 4.2 ms     | 5 ms       | 1.19x  | `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` |
 | RSS (light)         | 8.0 MB     | 12 MB      | +50%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
