@@ -4,7 +4,7 @@
     .dependencies = .{
         .zwasm = .{
             .url = "https://github.com/clojurewasm/zwasm/archive/v1.0.0.tar.gz",
-            .hash = "zwasm-1.0.0-IBbzF4MmHgD8Yzpmy5kErs7ejKRs4BgfZsAWyqY6PasN",
+            .hash = "zwasm-1.0.0-IBbzF-knHgCyIG-GPT_voBlbSHIejDrRQ6FQ7_z8R0kX",
         },
     },
     .fingerprint = 0x62a7be489d633543,
