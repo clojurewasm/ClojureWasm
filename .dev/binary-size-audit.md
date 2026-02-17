@@ -1,7 +1,7 @@
 # Binary Size Audit — v0.2.0
 
 Date: 2026-02-14
-zwasm: v0.2.0 (GitHub URL dependency)
+zwasm: v1.0.0 (GitHub URL dependency)
 Platform: macOS ARM64 (Apple Silicon)
 
 ## Binary Size Summary
