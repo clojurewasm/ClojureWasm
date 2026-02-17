@@ -79,7 +79,9 @@ pub const WasmModule = struct {
         const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
         @memcpy(owned, wasm_bytes);
         errdefer wasm_alloc.free(owned);
-        const inner = try zwasm.WasmModule.loadWasi(wasm_alloc, owned);
+        const inner = try zwasm.WasmModule.loadWasiWithOptions(wasm_alloc, owned, .{
+            .caps = zwasm.Capabilities.all,
+        });
         return wrapInner(inner, owned);
     }
 

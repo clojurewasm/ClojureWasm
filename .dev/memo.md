@@ -2,6 +2,11 @@
 
 Session handover document. Read at session start.
 
+## Note: zwasm v1.0.0 API Change (APPLIED)
+
+zwasm `loadWasi()` default changed to `Capabilities.cli_default`.
+CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/types.zig:82`.
+
 ## Current State
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
