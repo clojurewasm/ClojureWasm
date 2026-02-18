@@ -2,7 +2,7 @@
 
 Session handover document. Read at session start.
 
-## Note: zwasm v1.0.0 API Change (APPLIED)
+## Note: zwasm v1.1.0 API Change (APPLIED)
 
 zwasm `loadWasi()` default changed to `Capabilities.cli_default`.
 CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/types.zig:82`.
@@ -11,10 +11,10 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
 - Coverage: 880+ vars (651/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
-- Wasm engine: zwasm v1.0.0 (GitHub URL dependency, build.zig.zon).
+- Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
-- Benchmarks: `bench/history.yaml` (v1.0.0 entry = latest baseline)
+- Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
 - Binary: 4.07MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter classes (D101)
 

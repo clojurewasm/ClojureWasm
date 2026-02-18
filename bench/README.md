@@ -243,7 +243,7 @@ Full Wasm 3.0 support (all 9 proposals including GC) in 1.1 MB.
 
 ## Latest Wasm Runtime Results (2026-02-14)
 
-CW's built-in Wasm runtime (zwasm v1.0.0, Register IR + ARM64/x86_64 JIT)
+CW's built-in Wasm runtime (zwasm v1.1.0, Register IR + ARM64/x86_64 JIT)
 vs 4 other Wasm runtimes. Apple M4 Pro, 48GB RAM.
 21 benchmarks (WAT 5, TinyGo 11, Shootout 5), hyperfine 3 runs + 1 warmup.
 

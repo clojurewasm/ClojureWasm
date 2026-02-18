@@ -958,3 +958,30 @@ entries:
       string_ops: {time_ms: 26, mem_mb: 23.3}
       multimethod_dispatch: {time_ms: 6, mem_mb: 12.0}
       real_workload: {time_ms: 10, mem_mb: 19.2}
+  - id: "zwasm-v1.1.0"
+    date: "2026-02-18"
+    reason: "zwasm v1.1.0 release"
+    commit: "518fef2"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 17, mem_mb: 11.9}
+      fib_loop: {time_ms: 4, mem_mb: 11.9}
+      tak: {time_ms: 7, mem_mb: 11.9}
+      arith_loop: {time_ms: 5, mem_mb: 11.8}
+      map_filter_reduce: {time_ms: 6, mem_mb: 12.9}
+      vector_ops: {time_ms: 5, mem_mb: 17.2}
+      map_ops: {time_ms: 4, mem_mb: 15.9}
+      list_build: {time_ms: 6, mem_mb: 12.9}
+      sieve: {time_ms: 6, mem_mb: 15.4}
+      nqueens: {time_ms: 17, mem_mb: 22.9}
+      atom_swap: {time_ms: 6, mem_mb: 11.9}
+      gc_stress: {time_ms: 29, mem_mb: 17.2}
+      lazy_chain: {time_ms: 7, mem_mb: 11.9}
+      transduce: {time_ms: 6, mem_mb: 11.9}
+      keyword_lookup: {time_ms: 13, mem_mb: 11.9}
+      protocol_dispatch: {time_ms: 6, mem_mb: 12.0}
+      nested_update: {time_ms: 12, mem_mb: 16.8}
+      string_ops: {time_ms: 28, mem_mb: 23.2}
+      multimethod_dispatch: {time_ms: 6, mem_mb: 12.0}
+      real_workload: {time_ms: 10, mem_mb: 19.1}

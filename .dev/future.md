@@ -26,7 +26,7 @@
 | GC               | MarkSweepGc (D69, D70)               |
 | Benchmark suite  | 31 benchmarks (20 native + 11 wasm)  |
 | Backends         | VM (bytecode) + TreeWalk              |
-| Wasm engine      | zwasm v1.0.0 (external dependency)    |
+| Wasm engine      | zwasm v1.1.0 (external dependency)    |
 
 ---
 
