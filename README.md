@@ -180,7 +180,7 @@ Call WebAssembly modules directly from Clojure:
 > **Performance note**: The Wasm runtime ([zwasm](https://github.com/clojurewasm/zwasm))
 > uses Register IR with ARM64/x86_64 JIT. Full Wasm 3.0 support (all 9 proposals
 > including GC, function references, SIMD, exception handling).
-> zwasm wins 13/21 benchmarks vs wasmtime, with ~50x smaller binary.
+> zwasm wins 14/23 benchmarks vs wasmtime, with ~43x smaller binary.
 
 ### Server & Networking
 

@@ -75,7 +75,7 @@ bash bench/wasm_bench.sh --bench=fib
 
 Compares CW's built-in Wasm runtime (zwasm) against wasmtime JIT.
 Both execute the same TinyGo-compiled `.wasm` modules.
-For full multi-runtime comparison (5 runtimes, 21 benchmarks), see zwasm's
+For full multi-runtime comparison (4 runtimes, 23 benchmarks), see zwasm's
 `bench/record_comparison.sh`.
 
 | Option         | Effect                                |
@@ -232,7 +232,7 @@ Measured as ReleaseSafe builds on ARM64 macOS.
 
 | Runtime        | Version      | Binary Size |
 |----------------|--------------|-------------|
-| **zwasm**      | 1.0.0        | **1.3 MB**  |
+| **zwasm**      | 1.1.0        | **1.3 MB**  |
 | wasmtime       | 41.0.1       | 56.3 MB     |
 | bun            | 1.3.8        | 57.1 MB     |
 | node           | v24.13.0     | 61.7 MB     |
@@ -241,58 +241,65 @@ Measured as ReleaseSafe builds on ARM64 macOS.
 zwasm is **1/50th** the size of wasmtime and **1/100th** of wasmer.
 Full Wasm 3.0 support (all 9 proposals including GC) in 1.1 MB.
 
-## Latest Wasm Runtime Results (2026-02-14)
+## Latest Wasm Runtime Results (2026-02-18)
 
 CW's built-in Wasm runtime (zwasm v1.1.0, Register IR + ARM64/x86_64 JIT)
-vs 4 other Wasm runtimes. Apple M4 Pro, 48GB RAM.
-21 benchmarks (WAT 5, TinyGo 11, Shootout 5), hyperfine 3 runs + 1 warmup.
+vs 3 other Wasm runtimes. Apple M4 Pro, 48GB RAM.
+23 benchmarks (WAT 5, TinyGo 11, Shootout 5, GC 2), hyperfine 3 runs + 1 warmup.
 
 ### WAT Benchmarks (handwritten)
 
-| Benchmark | zwasm (ms) | wasmtime | wasmer | bun    | node   |
-|-----------|------------|----------|--------|--------|--------|
-| fib       | 92.4       | 52.8     | 51.3   | **37.3** | 48.8 |
-| tak       | **10.6**   | 10.7     | 13.8   | 18.6   | 25.3   |
-| sieve     | **3.6**    | 7.1      | 11.5   | 16.7   | 29.1   |
-| nbody     | 51.7       | 24.5     | **27.7** | 32.3 | 38.1   |
-| nqueens   | **2.5**    | 8.4      | 8.2    | 14.7   | 23.9   |
+| Benchmark | zwasm (ms) | wasmtime | bun      | node   |
+|-----------|------------|----------|----------|--------|
+| fib       | 50.6       | 48.6     | **31.2** | 45.5   |
+| tak       | **7.4**    | 9.6      | 16.9     | 25.3   |
+| sieve     | **4.1**    | 6.6      | 15.7     | 26.0   |
+| nbody     | **10.5**   | 20.9     | 31.8     | 36.1   |
+| nqueens   | **2.1**    | 4.8      | 14.3     | 21.7   |
 
 ### TinyGo Benchmarks (compiled .wasm)
 
-| Benchmark   | zwasm (ms) | wasmtime | wasmer   | bun    | node   |
-|-------------|------------|----------|----------|--------|--------|
-| tgo_fib     | 52.0       | 27.5     | **9.9**  | 42.5   | 47.0   |
-| tgo_tak     | 9.6        | 9.6      | **5.0**  | 18.0   | 25.0   |
-| tgo_arith   | **2.4**    | 6.5      | 9.0      | 14.6   | 21.6   |
-| tgo_sieve   | **3.5**    | 6.4      | 11.5     | 16.3   | 27.6   |
-| tgo_fib_loop| **2.8**    | 5.3      | 10.7     | 15.1   | 23.6   |
-| tgo_gcd     | **1.5**    | 5.3      | 11.5     | 14.5   | 27.5   |
-| tgo_nqueens | 44.1       | 41.6     | **9.2**  | 47.6   | 99.0   |
-| tgo_mfr     | 71.8       | 35.1     | **9.7**  | 43.8   | 84.2   |
-| tgo_list    | 56.0       | 56.6     | **10.9** | 41.7   | 159.7  |
-| tgo_rwork   | 8.1        | **7.1**  | 11.1     | 18.6   | 30.2   |
-| tgo_strops  | 36.7       | 31.5     | **11.8** | 33.5   | 96.5   |
+| Benchmark   | zwasm (ms) | wasmtime | bun    | node   |
+|-------------|------------|----------|--------|--------|
+| tgo_fib     | 35.9       | **27.6** | 41.2   | 45.9   |
+| tgo_tak     | **7.4**    | 8.3      | 16.7   | 24.8   |
+| tgo_arith   | **1.8**    | 4.3      | 13.6   | 21.7   |
+| tgo_sieve   | **4.5**    | 5.8      | 16.2   | 29.5   |
+| tgo_fib_loop| **2.7**    | 6.0      | 20.3   | 23.2   |
+| tgo_gcd     | **2.0**    | 4.4      | 15.2   | 22.3   |
+| tgo_nqueens | 41.4       | **37.9** | 52.5   | 98.0   |
+| tgo_mfr     | 47.2       | **30.8** | 40.3   | 81.7   |
+| tgo_list    | **37.2**   | 66.7     | 40.6   | 151.5  |
+| tgo_rwork   | **5.8**    | 7.8      | 18.7   | 24.5   |
+| tgo_strops  | 34.7       | **27.5** | 32.4   | 89.1   |
 
 ### Shootout Benchmarks (WASI)
 
-| Benchmark     | zwasm (ms) | wasmtime | wasmer  | bun      | node    |
-|---------------|------------|----------|---------|----------|---------|
-| st_fib2       | 1361.2     | 683.3    | 684.7   | **371.3** | 397.1 |
-| st_sieve      | 232.5      | 200.2    | 198.0   | **177.5** | 627.0 |
-| st_nestedloop | 5.3        | **4.3**  | 10.3    | 15.8     | 25.7   |
-| st_ackermann  | **7.0**    | 8.6      | 14.6    | 17.5     | 28.5   |
-| st_matrix     | 312.7      | 92.1     | 93.8    | **85.2** | 168.9  |
+| Benchmark     | zwasm (ms) | wasmtime | bun       | node    |
+|---------------|------------|----------|-----------|---------|
+| st_fib2       | 1014.1     | 656.2    | **345.2** | 375.0   |
+| st_sieve      | **169.1**  | 192.1    | 178.1     | 618.8   |
+| st_nestedloop | **2.8**    | 4.4      | 17.0      | 25.3    |
+| st_ackermann  | **4.5**    | 6.7      | 16.7      | 25.6    |
+| st_matrix     | 280.9      | 85.7     | **81.1**  | 160.3   |
+
+### GC Benchmarks (Wasm GC proposal)
+
+| Benchmark | zwasm (ms) | wasmtime | bun    | node   |
+|-----------|------------|----------|--------|--------|
+| gc_alloc  | 17.5       | **7.9**  | 14.6   | 26.7   |
+| gc_tree   | 124.0      | 28.9     | **18.5** | 29.5 |
 
 ### Summary
 
-**zwasm wins (fastest)**: 9/21 benchmarks — dominant on short-running tasks
+**zwasm wins (fastest)**: 14/23 benchmarks — dominant on short-running tasks
 where startup overhead matters (sieve, nqueens, arith, gcd, fib_loop, etc.)
 
-**vs wasmtime**: zwasm wins 10/21, tie 2, wasmtime wins 9.
-zwasm excels at fast startup (1.1 MB vs 56 MB binary, 3 MB vs 12 MB RSS).
+**vs wasmtime**: zwasm wins 14/23, wasmtime wins 9.
+zwasm excels at fast startup (1.3 MB vs 56 MB binary, 3 MB vs 12 MB RSS).
 wasmtime excels at heavy compute (optimizing JIT with Cranelift backend).
 
 **Memory usage**: zwasm consistently uses 3-5 MB RSS vs 12-13 MB (wasmtime),
-30-33 MB (wasmer), 31-34 MB (bun), 41-44 MB (node).
+31-36 MB (bun), 41-44 MB (node).
 
 Data source: `zwasm/bench/runtime_comparison.yaml`. History tracked in `wasm_history.yaml`.

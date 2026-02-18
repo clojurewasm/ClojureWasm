@@ -8,8 +8,8 @@ Platform: macOS ARM64 (Apple Silicon)
 
 | Build mode   | Size  |
 |-------------|-------|
-| ReleaseSafe | 3.9MB |
-| Debug       | 12MB  |
+| ReleaseSafe | 4.07MB |
+| Debug       | 12MB   |
 
 ## ReleaseSafe Segment Breakdown
 
@@ -29,7 +29,7 @@ Platform: macOS ARM64 (Apple Silicon)
 | __DATA_CONST  | <1KB      | GOT entries                   |
 | __LINKEDIT    | 492KB     | Symbol tables, relocations    |
 
-Total on-disk: ~3.9MB (3,923KB segments)
+Total on-disk: ~4.07MB
 
 ## Bootstrap Cache
 

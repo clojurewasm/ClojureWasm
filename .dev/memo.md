@@ -26,7 +26,7 @@ patterns only. Libraries requiring heavy Java interop are out of scope.
 
 Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
-- Tiny single binary (3.85MB macOS, ~14MB Linux static)
+- Tiny single binary (4.07MB macOS, ~14MB Linux static)
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - deps.edn compatible project model (Clojure CLI subset)
 
