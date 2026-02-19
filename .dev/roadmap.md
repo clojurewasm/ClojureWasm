@@ -5,7 +5,7 @@
 
 ## Phase Tracker
 
-Status: DONE / IN-PROGRESS / PENDING
+Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 
 | Phase | Name | Tier | Status |
 |-------|------|------|--------|
@@ -16,17 +16,17 @@ Status: DONE / IN-PROGRESS / PENDING
 | 80 | Crash Hardening & Fuzzing | 1 | PENDING |
 | 81 | Error System Maturity | 1 | PENDING |
 | 82 | CI/CD Foundation | 2 | PENDING |
-| 83 | Documentation | 2 | PENDING |
-| 84 | Upstream Test Expansion | 2 | PENDING |
+| 83 | Essential Documentation | 2 | PENDING |
+| 84 | Testing Expansion | 2 | PENDING |
 | 85 | Library Compatibility Expansion | 2 | PENDING |
-| 86 | Distribution | 3 | PENDING |
 | 87 | Developer Experience | 3 | PENDING |
 | 88 | v0.2.0 Release | 3 | PENDING |
+| 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
-| 91 | wasm_rt Track | 4 | PENDING |
 | 92 | Security Hardening | 4 | PENDING |
 | 93 | LSP Foundation | 4 | PENDING |
+| 91 | wasm_rt Track | — | DEFERRED |
 | 94 | API Stabilization | 5 | PENDING |
 | 95 | Community Preparation | 5 | PENDING |
 | 96 | v1.0.0 Release | 5 | PENDING |
@@ -38,9 +38,10 @@ Status: DONE / IN-PROGRESS / PENDING
 | 0 | Current work | 77 |
 | 1 | Stabilize & Harden | 78-81 |
 | 2 | Production Quality | 82-85 |
-| 3 | Ecosystem & Distribution | 86-88 |
-| 4 | Advanced Features | 89-93 |
+| 3 | DX & Release | 87-88 |
+| 4 | Advanced Features & Distribution | 86, 89-90, 92-93 |
 | 5 | Toward v1.0 | 94-96 |
+| — | Deferred | 91 (wasm_rt) |
 
 ---
 
@@ -94,33 +95,68 @@ The 4 remaining TODO vars. Large single task (~1,950 lines upstream).
 
 Goal: "User code must never trigger a Zig panic."
 
+**Methodology** (adopted from zwasm Stage 33 experience):
+Phase-by-phase fuzzing — Reader, Analyzer, Compiler, VM individually.
+Seed corpus from existing test files (52 upstream + e2e + deps tests).
+Structure-aware generation for deeper coverage.
+zwasm's approach found 3 bugs in 10K+ iterations that manual testing missed.
+
 | Sub | Task | Priority |
 |-----|------|----------|
 | 80.1 | Coverage-guided fuzzing harness for Reader | MUST |
 | 80.2 | Coverage-guided fuzzing harness for Analyzer | MUST |
 | 80.3 | Coverage-guided fuzzing harness for Compiler + VM | SHOULD |
 | 80.4 | Structure-aware input generation (Clojure form generator) | SHOULD |
-| 80.5 | Differential testing harness (CW vs JVM Clojure) | SHOULD |
+| 80.5 | Differential testing harness (CW vs JVM Clojure) | MUST |
 | 80.6 | Resource limits: nesting depth, string size, collection count | MUST |
 | 80.7 | Audit `Internal Error` / `bootstrap evaluation error` — must never reach users | MUST |
+| 80.8 | Vulnerability audit using CW-adapted checklist | MUST |
+| 80.9 | Threat model document (CW trust boundaries) | SHOULD |
 
-**Approach**: Zig `zig build fuzz` + LLVM sanitizer. Phase-by-phase fuzzing
-(Reader, Analyzer, Compiler, VM separately). All panics found -> proper error returns.
+**Approach**: Zig `zig build fuzz` + LLVM sanitizer. All panics found → proper error returns.
 
-**Exit**: Fuzzing runs 24h+ without panic. Resource limits enforced. No Internal Error in user paths.
+**Vulnerability Audit Checklist** (derived from zwasm `02_vulnerability.md`):
+- GC: use-after-free, double free, dangling pointer, GC memory corruption
+- VM: stack overflow/underflow, unchecked bytecode jump, type confusion
+- Clojure layer: eval injection, require path traversal, namespace poisoning,
+  unbounded recursion, serialization bomb, infinite lazy sequence
+- Interop: FFI memory escape, host function privilege, sandbox boundary
+- Build: ReleaseSafe safety (bounds check, overflow detect preserved)
+
+**Differential Testing**: Generate random Clojure expressions, run on both CW and
+JVM Clojure (via clojure.jar), compare outputs. Automated regression — any
+divergence = potential bug. zwasm used this vs wasmtime to find 3 spec violations.
+
+**Exit**: Fuzzing runs 24h+ without panic. Resource limits enforced.
+No Internal Error in user paths. Vulnerability audit complete. Threat model documented.
 
 ---
 
 ## Phase 81: Error System Maturity (Tier 1)
 
+**Error Catalog Structure** (following zwasm `docs/errors.md` model):
+Organize all CW errors by processing layer:
+
+```
+Reader → Analyzer → Compiler → VM → TreeWalk → Builtins → Interop
+  EOF     Unresolved  ByteLimit   StackOvfl   EvalErr    ArityErr   ClassNotFound
+  Syntax  ArityErr    CompileErr  Trap        TypeErr    TypeErr    MethodNotFound
+  ...     ...         ...         OOM         ...        CastErr    ...
+```
+
 | Sub | Task | Priority |
 |-----|------|----------|
-| 81.1 | Catalog all error types and ensure consistent error messages | MUST |
-| 81.2 | Unknown class/method calls -> clear user-friendly messages (not panic) | MUST |
-| 81.3 | Interop error messages: list supported classes when unknown class used | SHOULD |
+| 81.1 | Build layered error catalog (Reader→Analyzer→Compiler→VM→Builtins→Interop) | MUST |
+| 81.2 | Unknown class/method calls → clear user-friendly messages (not panic) | MUST |
+| 81.3 | Interop error messages: list supported classes when unknown class used | MUST |
 | 81.4 | Stack trace quality: source file + line for user code errors | SHOULD |
+| 81.5 | Ensure no raw Zig error (error.Foo) leaks to user — all have human message | MUST |
 
-**Exit**: Every error path produces a clear, actionable message. No raw Zig error leaks.
+**Reference**: zwasm `docs/errors.md` for catalog structure.
+zwasm lesson: error layers clearly separated → faster debugging, better user messages.
+
+**Exit**: Every error path produces a clear, actionable message.
+Error catalog document in `docs/errors.md`. No raw Zig error leaks.
 
 ---
 
@@ -131,73 +167,85 @@ Goal: "User code must never trigger a Zig panic."
 | 82.1 | GitHub Actions: test matrix (macOS ARM64 + Linux x86_64) | MUST |
 | 82.2 | ReleaseSafe build enforcement in CI | MUST |
 | 82.3 | Benchmark regression detection (compare against baselines) | MUST |
-| 82.4 | Binary size check in CI | SHOULD |
-| 82.5 | Upstream test suite in CI | SHOULD |
-| 82.6 | Sanitizer CI job (ASan/UBSan) — periodic | COULD |
-| 82.7 | Continuous fuzzing (nightly) | COULD |
+| 82.4 | Binary size check in CI | MUST |
+| 82.5 | Upstream test suite in CI | MUST |
+| 82.6 | e2e + deps e2e tests in CI | MUST |
+| 82.7 | Sanitizer CI job (ASan/UBSan) — periodic | SHOULD |
+| 82.8 | Continuous fuzzing (nightly, from Phase 80 harness) | SHOULD |
+
+**zwasm CI learnings**: zwasm runs full spec test (62K tests) + ReleaseSafe + both
+platforms in CI. CW should similarly run full upstream suite + e2e + benchmarks.
+ASan caught 2 memory bugs in zwasm that normal testing missed.
 
 **Exit**: Every push tested on 2 platforms. Performance regressions caught automatically.
+All e2e and upstream tests in CI.
 
 ---
 
-## Phase 83: Documentation (Tier 2)
+## Phase 83: Essential Documentation (Tier 2)
+
+Minimal viable documentation. No book, no README enrichment, no tutorial content.
+Reference documents only — things users need to look up.
 
 | Sub | Task | Priority |
 |-----|------|----------|
-| 83.1 | Getting Started (install, Hello World, REPL) | MUST |
-| 83.2 | Compatibility Matrix (namespaces, vars, known diffs) | MUST |
-| 83.3 | Spec Differences doc (concrete JVM Clojure diffs) | MUST |
-| 83.4 | CLI Reference (all cljw flags and options) | MUST |
-| 83.5 | Java Interop Reference (supported classes/methods/fields) | MUST |
-| 83.6 | Wasm FFI Guide (wasm/load, wasm/fn, host functions) | SHOULD |
-| 83.7 | deps.edn Guide (project setup, git deps, aliases) | SHOULD |
-| 83.8 | Architecture Overview (compiler pipeline, dual backend, GC) | SHOULD |
-| 83.9 | Contributor Guide (build, test, PR process) | SHOULD |
-| 83.10 | FAQ / Troubleshooting | COULD |
+| 83.1 | Compatibility Matrix (namespaces, vars, known diffs vs JVM Clojure) | MUST |
+| 83.2 | Spec Differences doc (concrete behavioral diffs from JVM Clojure) | MUST |
+| 83.3 | CLI Reference (all cljw flags and options) | MUST |
+| 83.4 | Java Interop Reference (supported classes/methods/fields) | MUST |
+| 83.5 | Error Reference (from Phase 81 catalog, user-facing version) | MUST |
+| 83.6 | Wasm FFI Reference (wasm/load, wasm/fn, host functions) | SHOULD |
 
 **Format**: Markdown in `docs/`. No build step. GitHub renders directly.
+**Deferred**: Getting Started guide, Architecture Overview, Contributor Guide,
+deps.edn guide, FAQ, Book-style tutorial — all deferred to later tiers.
 
-**Exit**: A new user can install, run, and understand CW's scope from documentation alone.
+**Exit**: A user can look up CW's capabilities, limitations, and API from docs.
 
 ---
 
-## Phase 84: Upstream Test Expansion (Tier 2)
+## Phase 84: Testing Expansion (Tier 2)
 
 | Sub | Task | Priority |
 |-----|------|----------|
 | 84.1 | Port remaining high-value upstream test files (target: 60+) | MUST |
-| 84.2 | Golden output tests for REPL sessions | SHOULD |
-| 84.3 | Property-based tests for Reader round-trip | SHOULD |
-| 84.4 | Stress tests: long-running REPL, large file processing | SHOULD |
+| 84.2 | Differential testing campaign: CW vs JVM on upstream test expressions | MUST |
+| 84.3 | Property-based tests for Reader round-trip: `print(read(x)) == normalize(x)` | SHOULD |
+| 84.4 | Long-run stability: REPL session 1000+ evaluations, large file processing | SHOULD |
+| 84.5 | Golden output tests for REPL sessions | SHOULD |
+| 84.6 | Stress tests: heavy allocation + GC pressure scenarios | SHOULD |
+
+**Differential Testing** (from zwasm Stage 33 methodology):
+Expand Phase 80.5 harness into continuous regression suite.
+Generate expressions (arithmetic, collection ops, string ops, lazy seqs),
+run on CW + JVM Clojure, compare. Track divergence count over time.
+
+**Long-run Stability** (from zwasm production readiness list):
+Run CW REPL with 1000+ sequential evaluations including GC-heavy workloads.
+Monitor: RSS growth, response time degradation, GC pause distribution.
+Goal: no memory leak, no progressive slowdown.
 
 **Exit**: 60+ upstream test files passing. Reader round-trip property verified.
+Differential testing automated. Long-run stability confirmed.
 
 ---
 
 ## Phase 85: Library Compatibility Expansion (Tier 2)
 
+Target list: `.dev/library-port-targets.md` (Batch 2-5).
+Batch 1 (medley, CSK, honeysql) already tested and passing.
+
 | Sub | Task | Priority |
 |-----|------|----------|
-| 85.1 | Batch 2 libraries (clojure.data.json, clojure.data.csv, etc.) | MUST |
-| 85.2 | Batch 3 libraries (ring-core subset, compojure subset, etc.) | SHOULD |
-| 85.3 | Document library compatibility results in docs/ | MUST |
+| 85.1 | Batch 2: clojure.data.json, clojure.data.csv, instaparse | MUST |
+| 85.2 | Batch 3: malli, clojure.core.match | SHOULD |
+| 85.3 | Document library compatibility results in `docs/compatibility.md` | MUST |
 | 85.4 | F141: cljw.xxx aliases for clojure.java.xxx namespaces | SHOULD |
 
+**Approach**: Test libraries as-is (no forking). Fix CW when tests fail.
+Each library test run uncovers CW implementation gaps — fix in CW, not the library.
+
 **Exit**: 10+ real libraries tested. Compatibility matrix updated with results.
-
----
-
-## Phase 86: Distribution (Tier 3)
-
-| Sub | Task | Priority |
-|-----|------|----------|
-| 86.1 | Homebrew tap (macOS) | MUST |
-| 86.2 | Binary releases (GitHub Releases, multi-platform) | MUST |
-| 86.3 | Signed releases | SHOULD |
-| 86.4 | Docker image | COULD |
-| 86.5 | Nix package | COULD |
-
-**Exit**: `brew install clojurewasm/tap/cljw` works. GitHub Releases has macOS + Linux binaries.
 
 ---
 
@@ -206,14 +254,11 @@ Goal: "User code must never trigger a Zig panic."
 | Sub | Task | Priority |
 |-----|------|----------|
 | 87.1 | `cljw test` command (run clojure.test from project) | MUST |
-| 87.2 | Project template (`cljw new my-app`) | SHOULD |
-| 87.3 | nREPL ops expansion (test, macroexpand, stacktrace) | SHOULD |
-| 87.4 | REPL polish (multiline improvements, tab completion) | SHOULD |
-| 87.5 | Migration Guide: from JVM Clojure | COULD |
-| 87.6 | Migration Guide: from Babashka | COULD |
-| 87.7 | Examples collection (CLI tool, data processing, Wasm interop) | SHOULD |
+| 87.2 | nREPL ops expansion (test, macroexpand, stacktrace) | SHOULD |
+| 87.3 | REPL polish (multiline improvements, tab completion) | SHOULD |
+| 87.4 | Project template (`cljw new my-app`) | COULD |
 
-**Exit**: End-to-end project workflow: create -> develop -> test -> run.
+**Exit**: End-to-end project workflow: develop → test → run.
 
 ---
 
@@ -225,9 +270,25 @@ Goal: "User code must never trigger a Zig panic."
 | 88.2 | Release notes | MUST |
 | 88.3 | Benchmark record (full history entry) | MUST |
 | 88.4 | Binary audit (no debug symbols, no embedded secrets) | MUST |
-| 88.5 | README update with current stats | MUST |
+| 88.5 | GitHub Release with pre-built binaries (macOS ARM64 + Linux x86_64) | MUST |
+| 88.6 | Cross-platform smoke test before release | MUST |
 
-**Exit**: Tagged v0.2.0 on GitHub with binaries, docs, and changelog.
+**Exit**: Tagged v0.2.0 on GitHub with binaries, release notes, and changelog.
+
+---
+
+## Phase 86: Distribution (Tier 4)
+
+Deferred from Tier 3. Tackle when user base justifies distribution infrastructure.
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 86.1 | Homebrew tap (macOS) | MUST |
+| 86.2 | Signed releases | SHOULD |
+| 86.3 | Docker image | COULD |
+| 86.4 | Nix package | COULD |
+
+**Exit**: `brew install clojurewasm/tap/cljw` works.
 
 ---
 
@@ -257,9 +318,11 @@ Goal: "User code must never trigger a Zig panic."
 
 ---
 
-## Phase 91: wasm_rt Track (Tier 4)
+## Phase 91: wasm_rt Track (DEFERRED)
 
-The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
+Compile CW runtime to .wasm, run on Wasm edge runtimes.
+Key differentiator but not priority for current development cycle.
+Revisit after v0.2.0 when distribution and DX are solid.
 
 | Sub | Task | Priority |
 |-----|------|----------|
@@ -279,14 +342,18 @@ The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
 
 | Sub | Task | Priority |
 |-----|------|----------|
-| 92.1 | Threat model document (CW + zwasm) | MUST |
+| 92.1 | Expand Phase 80.9 threat model (CW + zwasm combined) | MUST |
 | 92.2 | Sandbox mode: `--allow-read`, `--allow-write`, `--allow-net` | SHOULD |
-| 92.3 | Deterministic mode (reproducible execution) | COULD |
+| 92.3 | Leverage zwasm `--sandbox` mode for Wasm FFI isolation | SHOULD |
 | 92.4 | W^X enforcement verification for JIT | SHOULD |
-| 92.5 | SBOM generation | COULD |
-| 92.6 | Security disclosure policy (SECURITY.md) | MUST |
+| 92.5 | Security disclosure policy (SECURITY.md) | MUST |
+| 92.6 | Deterministic mode (reproducible execution) | COULD |
+| 92.7 | SBOM generation | COULD |
 
-**Reference**: `.dev/future.md` SS14, `private/production_ready/02_vulnerability.md`
+**Reference**: zwasm `docs/security.md` (threat model), `07_security_analysis_report.md`.
+zwasm already has deny-by-default WASI, fuel limits, W^X, `--sandbox` flag.
+CW inherits these for Wasm FFI. CW-specific threats: eval injection, require path
+traversal, namespace poisoning — addressed in Phase 80.8.
 
 ---
 
@@ -311,6 +378,8 @@ The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
 | 94.3 | Deprecation policy | MUST |
 | 94.4 | SemVer commitment | MUST |
 
+**Reference**: zwasm `docs/api-boundary.md` as model (stable/experimental/internal classification).
+
 ---
 
 ## Phase 95: Community Preparation (Tier 5)
@@ -328,9 +397,9 @@ The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
 
 | Sub | Task | Priority |
 |-----|------|----------|
-| 96.1 | Full test suite pass (upstream + e2e + deps + fuzz) | MUST |
+| 96.1 | Full test suite pass (upstream + e2e + deps + fuzz + differential) | MUST |
 | 96.2 | Performance baseline freeze | MUST |
-| 96.3 | Documentation complete | MUST |
+| 96.3 | Documentation complete (expand Phase 83 to full coverage) | MUST |
 | 96.4 | Security audit (self-audit with vulnerability checklist) | MUST |
 | 96.5 | Cross-platform verification (macOS ARM64, Linux x86_64, Linux aarch64) | MUST |
 | 96.6 | Tag + release + announcement | MUST |
@@ -341,25 +410,23 @@ The key differentiator: compile CW runtime to .wasm, run on Wasm edge runtimes.
 
 ```
 77 ──► 78 ──► 79 ──► 80 ──► 81
-              │      │
-              ▼      ▼
-             82     84
-              │      │
-              ▼      ▼
-             83     85 ──► 88 (v0.2.0)
-              │             ▲
-              ▼             │
-             86 ────────────┘
-              │
-             87
+                      │
+                      ▼
+                     82 ──► 83
+                      │      │
+                      ▼      ▼
+                     84     85 ──► 87 ──► 88 (v0.2.0)
+                      │                    │
+                      └────────────────────┘
 
+88 ──► 86 (distribution, deferred)
 88 ──► 89 ──► 90
-       │
-88 ──► 91 (wasm_rt, independent)
 80 ──► 92 (security, builds on fuzzing)
-83 ──► 93 (LSP, needs stable API docs)
+83 ──► 93 (LSP, needs stable docs)
 
 88 ──► 94 ──► 95 ──► 96 (v1.0)
+
+91 (wasm_rt) — DEFERRED, no dependencies blocking
 ```
 
 ---
@@ -379,13 +446,18 @@ See `.claude/references/impl-tiers.md`.
 
 ### zwasm Dependencies
 
-zwasm is a separate project (`../zwasm/`). Key milestones affecting CW:
+zwasm is a separate project (`../zwasm/`). Current: v1.1.0, 62,158/62,158 spec (100%).
 
-| Item | Impact on CW | When |
-|------|-------------|------|
-| Security audit | CW sandbox depends on zwasm safety | Before CW v1.0 |
-| x86_64 JIT in zwasm | CW Wasm perf on Linux | Tier 4 |
-| Wasm spec test full pass | Confidence in correctness | Before CW v1.0 |
+| Item | Impact on CW | When | zwasm Status |
+|------|-------------|------|-------------|
+| Security audit | CW sandbox depends on zwasm safety | Before CW v1.0 | Stage 36 done |
+| x86_64 JIT | CW Wasm perf on Linux | Tier 4 | Stage 13 done |
+| Wasm spec 100% | Confidence in correctness | Before CW v1.0 | Stage 32 done (100%) |
+| `--sandbox` mode | CW Wasm FFI isolation | Phase 92 | v1.0.0 done |
+| Deny-by-default API | CW bridge safety | Applied | v1.1.0 (`cli_default`) |
+| Fuzz testing | CW Wasm layer confidence | Phase 80 | Stage 33 done (10K+, 0 crashes) |
+| Threat model | CW security doc reference | Phase 80/92 | `docs/security.md` done |
+| Error catalog | CW error system reference | Phase 81 | `docs/errors.md` done |
 
 **Rule**: Wasm engine changes go in zwasm repo, not CW. CW bridge: `src/wasm/types.zig`.
 
@@ -421,14 +493,16 @@ zwasm is a separate project (`../zwasm/`). Key milestones affecting CW:
 - 0 TODO vars (cl-format done)
 - 60+ upstream test files passing
 - 10+ real libraries tested with documented results
-- Homebrew installable
-- Documentation covers Getting Started + Compatibility + CLI Reference
+- Differential testing automated (CW vs JVM)
 - CI running on macOS + Linux
+- Essential reference docs (Compatibility Matrix, CLI Reference, Error Reference)
+- GitHub Release with pre-built binaries
 
 **v1.0.0 (End of Tier 5)**:
 - 24h+ fuzz run without panic
-- Security audit complete
-- wasm_rt track functional (user .clj -> .wasm)
+- Security audit complete (CW + zwasm combined threat model)
 - LSP with go-to-def + completion
+- Distribution: Homebrew + signed releases
 - Cross-platform verified
 - Public API frozen with stability guarantees
+- Full documentation (expand beyond essential reference)

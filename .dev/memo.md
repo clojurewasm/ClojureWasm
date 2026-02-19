@@ -7,6 +7,16 @@ Session handover document. Read at session start.
 zwasm `loadWasi()` default changed to `Capabilities.cli_default`.
 CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/types.zig:82`.
 
+## Note: Roadmap Restructured (2026-02-19)
+
+- Phase 83 reduced to "Essential Documentation" (no book, no README enrichment)
+- Phase 86 (Distribution/Homebrew) deferred to Tier 4
+- Phase 91 (wasm_rt) marked DEFERRED
+- Phases 80, 81, 84 enhanced with zwasm production learnings (fuzzing, error catalog, differential testing)
+- v0.2.0 scope: GitHub Release with binaries (no Homebrew)
+- Tier 3 = Phases 87-88 (DX + Release), not 86-88
+- zwasm dependencies table updated (v1.1.0, 100% spec, security done)
+
 ## Current State
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
