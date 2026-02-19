@@ -50,25 +50,17 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 79A: Binary Optimization & Startup Acceleration.
-Sub-task 79A.4: cljw build integration verification.
+Sub-task 79A.9b: Final docs update.
 
 ## Previous Task
 
-Phase 79A.3 COMPLETE (lazy bootstrap: deferred NS deserialization + require integration).
-- Essential NS: core, core.protocols, user (restored at startup)
-- 12 deferred NS restored on-demand via require
-- Cross-NS dependency resolution (recursive)
-- Global deferred var_ref + protocol_fn resolution
-- RSS reduced ~18% (9.3MB → 7.6MB)
+Phase 79A.4-8 COMPLETE (build verification, benchmarks, measurements).
+Final measurements: wasm=true 4.25MB/4.6ms/7.4MB, wasm=false 3.68MB/4.3ms/7.4MB.
+bench/build_bench.sh created for cljw build artifact measurement.
 
 ## Task Queue
 
 ```
-79A.4: cljw build integration verification
-79A.5: bench/build_bench.sh measurement infrastructure
-79A.6: Cross-language benchmark full run
-79A.7: All-profile final measurement
-79A.8: Test verification (both profiles)
 79A.9b: Final docs (baselines, decisions, audit)
 ```
 
