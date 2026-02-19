@@ -23,6 +23,18 @@ Fix the regression first. No exceptions without explicit user approval.
 | RSS (light)         | 7.4 MB     | 10 MB      | +35%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
 
+## `cljw build` Artifact Baselines (2026-02-20)
+
+Measured with `bash bench/build_bench.sh`. Test program: fib_recursive.
+
+| Metric | Result | Notes |
+|--------|--------|-------|
+| Build time (`cljw build`) | 17.7ms | Source → single binary |
+| Artifact size | 4.23MB | ≈ cljw binary + user source bytes |
+| Artifact startup (fib) | 17.6ms | bootstrap + fib execution |
+| Artifact vs direct execution | 1.00x | No overhead from embedding |
+| Artifact startup (require pprint) | 6.4ms | Lazy bootstrap effective |
+
 ## Benchmark Regression Policy
 
 **Performance must not regress.** The 1.2x margin exists only for measurement noise.
