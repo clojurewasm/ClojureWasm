@@ -1174,24 +1174,17 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// Check if an exception value matches a catch class name.
 /// Used by try/catch to determine if a catch clause should handle an exception.
-/// Implements Java exception hierarchy: Throwable > Exception > RuntimeException > specific types.
+/// Uses the exception hierarchy (D105/83A) for subclass-aware matching.
 pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
-    // Throwable/Exception/RuntimeException/Error: catch ALL thrown values (including non-map raw values).
-    // CW has a flat exception hierarchy — Error is treated as catch-all like Throwable.
-    if (std.mem.eql(u8, class_name, "Throwable") or
-        std.mem.eql(u8, class_name, "java.lang.Throwable") or
-        std.mem.eql(u8, class_name, "Exception") or
-        std.mem.eql(u8, class_name, "java.lang.Exception") or
-        std.mem.eql(u8, class_name, "RuntimeException") or
-        std.mem.eql(u8, class_name, "java.lang.RuntimeException") or
-        std.mem.eql(u8, class_name, "Error") or
-        std.mem.eql(u8, class_name, "java.lang.Error") or
-        std.mem.eql(u8, class_name, "AssertionError") or
-        std.mem.eql(u8, class_name, "java.lang.AssertionError"))
-        return true;
+    const exception_hierarchy = @import("../interop/exception_hierarchy.zig");
+    const catch_class = exception_hierarchy.normalizeClassName(class_name);
 
-    // For specific exception types, value must be an exception map (with __ex_info key)
-    const is_exception = switch (ex_val.tag()) {
+    // Throwable catches everything (including non-map raw values)
+    if (std.mem.eql(u8, catch_class, "Throwable")) return true;
+
+    // Non-map values (raw strings, etc.): treat as generic Exception for backward compat.
+    // Exception and its ancestors catch them. Error and specific types don't.
+    const is_exception_map = switch (ex_val.tag()) {
         .map => blk: {
             const m = ex_val.asMap();
             const key = Value.initKeyword(std.heap.page_allocator, .{ .ns = null, .name = "__ex_info" });
@@ -1204,9 +1197,13 @@ pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
         },
         else => false,
     };
-    if (!is_exception) return false;
+    if (!is_exception_map) {
+        // Non-map thrown values: treat as generic RuntimeException for backward compat.
+        // This allows (catch Exception e ...) to catch raw thrown values.
+        return exception_hierarchy.isSubclassOf("RuntimeException", catch_class);
+    }
 
-    // Get the __ex_type from the exception (set by runtime errors)
+    // Get the __ex_type from the exception (set by runtime errors and Exception constructors)
     const ex_type: ?[]const u8 = switch (ex_val.tag()) {
         .map => blk: {
             const m = ex_val.asMap();
@@ -1223,18 +1220,18 @@ pub fn exceptionMatchesClass(ex_val: Value, class_name: []const u8) bool {
         else => null,
     };
 
-    // ExceptionInfo: matches ex-info exceptions (no __ex_type)
-    if (std.mem.eql(u8, class_name, "ExceptionInfo") or
-        std.mem.eql(u8, class_name, "clojure.lang.ExceptionInfo"))
-        return ex_type == null;
+    // ExceptionInfo: matches ex-info exceptions (those without __ex_type).
+    // In Clojure, ExceptionInfo extends RuntimeException, so Exception also catches it.
+    if (std.mem.eql(u8, catch_class, "ExceptionInfo")) return ex_type == null;
 
-    // Specific exception type: exact match against __ex_type
+    // Exception maps with __ex_type: use hierarchy for matching
     if (ex_type) |et| {
-        return std.mem.eql(u8, et, class_name);
+        return exception_hierarchy.isSubclassOf(et, catch_class);
     }
 
-    // No __ex_type means ex-info — doesn't match specific exception classes
-    return false;
+    // No __ex_type = ex-info. ExceptionInfo is conceptually under RuntimeException.
+    // Exception, RuntimeException catch ex-info exceptions too.
+    return exception_hierarchy.isSubclassOf("RuntimeException", catch_class);
 }
 
 // ============================================================

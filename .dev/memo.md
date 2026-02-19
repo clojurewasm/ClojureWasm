@@ -59,23 +59,30 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83A: Exception System Unification
-Read `.dev/roadmap.md` Phase 83A section and `.dev/interop-v2-design.md`.
+Phase 83B: InterOp Architecture v2 — ClassDef Registry
+Read `.dev/roadmap.md` Phase 83B section and `.dev/interop-v2-design.md`.
 
 ## Previous Task
 
-Phase 83 COMPLETE (Essential Documentation).
-Phase 84 paused at 84.1 (compilation.clj partial port, 7/8 tests pass).
+Phase 83A COMPLETE (Exception System Unification).
+- Exception. now returns map (not raw string)
+- Exception hierarchy table with comptime isSubclassOf
+- catch dispatch uses hierarchy-based matching
+- .getMessage/.getCause/.getData/.toString on exception maps
+- Unknown .method → proper error (already was working)
 
 ## Task Queue
 
 ```
-83A.1: Exception. returns map (not raw string)
-83A.2: Exception hierarchy table (comptime isSubclassOf)
-83A.3: catch dispatch uses hierarchy
-83A.4: .getMessage support
-83A.5: Unknown .method → error
-83A.6: Verify all tests
+83B.1: Design ClassDef struct and class_registry.zig
+83B.2: Migrate URI class to ClassDef (proof of concept)
+83B.3: Migrate remaining classes (File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter)
+83B.4: String methods as "virtual" ClassDef
+83B.5: Unify instance? to use ClassDef registry
+83B.6: Protocol integration: .method dispatch via protocol-like mechanism
+83B.7: Method Missing → error as protocol fallback
+83B.8: Source location preservation: error messages show original Java syntax
+83B.9: Verify all tests + e2e + deps_e2e + upstream
 ```
 
 ## Known Issues
@@ -85,8 +92,8 @@ Phase 84 paused at 84.1 (compilation.clj partial port, 7/8 tests pass).
 
 ## Next Phase Queue
 
-After 83A, proceed to 83B (InterOp Architecture v2).
-Read `.dev/roadmap.md` Phase 83B section.
+After 83B, proceed to 83C (UTF-8 Codepoint Correctness).
+Read `.dev/roadmap.md` Phase 83C section.
 
 ## Notes
 

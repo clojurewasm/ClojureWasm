@@ -49,6 +49,10 @@ pub fn dispatch(allocator: Allocator, method: []const u8, obj: Value, rest: []co
         if (getReifyType(obj)) |rt| {
             return dispatchClass(allocator, rt, method, obj, rest);
         }
+        // Exception maps: maps with :__ex_info key (no __reify_type)
+        if (isExceptionMap(obj)) {
+            return dispatchException(allocator, method, obj);
+        }
     }
 
     // Collection methods (only for non-class-instance collections)
@@ -101,6 +105,61 @@ pub fn getReifyType(obj: Value) ?[]const u8 {
     // hash_map: use get() with keyword
     // For now, class instances are always small maps (PersistentArrayMap)
     return null;
+}
+
+/// Check if a map is an exception map (has :__ex_info key).
+fn isExceptionMap(obj: Value) bool {
+    if (obj.tag() == .map) {
+        const entries = obj.asMap().entries;
+        var i: usize = 0;
+        while (i + 1 < entries.len) : (i += 2) {
+            if (entries[i].tag() == .keyword) {
+                const kw = entries[i].asKeyword();
+                if (kw.ns == null and std.mem.eql(u8, kw.name, "__ex_info")) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Get a keyword value from a map by scanning entries.
+fn getMapKeywordValue(obj: Value, key_name: []const u8) ?Value {
+    if (obj.tag() == .map) {
+        const entries = obj.asMap().entries;
+        var i: usize = 0;
+        while (i + 1 < entries.len) : (i += 2) {
+            if (entries[i].tag() == .keyword) {
+                const kw = entries[i].asKeyword();
+                if (kw.ns == null and std.mem.eql(u8, kw.name, key_name)) return entries[i + 1];
+            }
+        }
+    }
+    return null;
+}
+
+/// Dispatch instance methods on exception maps.
+/// Supports: .getMessage, .getCause, .getData, .toString, .getLocalizedMessage
+fn dispatchException(allocator: Allocator, method: []const u8, obj: Value) anyerror!Value {
+    if (std.mem.eql(u8, method, "getMessage") or std.mem.eql(u8, method, "getLocalizedMessage")) {
+        const msg = getMapKeywordValue(obj, "message") orelse return Value.nil_val;
+        return msg;
+    } else if (std.mem.eql(u8, method, "getCause")) {
+        return getMapKeywordValue(obj, "cause") orelse Value.nil_val;
+    } else if (std.mem.eql(u8, method, "getData")) {
+        return getMapKeywordValue(obj, "data") orelse Value.nil_val;
+    } else if (std.mem.eql(u8, method, "toString")) {
+        // Format: "ExType: message" (like Java)
+        const ex_type = getMapKeywordValue(obj, "__ex_type");
+        const msg = getMapKeywordValue(obj, "message");
+        const type_str = if (ex_type) |et| (if (et.tag() == .string) et.asString() else "Exception") else "Exception";
+        const msg_str = if (msg) |m| (if (m.tag() == .string) m.asString() else "") else "";
+        if (msg_str.len > 0) {
+            const buf = try std.fmt.allocPrint(allocator, "{s}: {s}", .{ type_str, msg_str });
+            return Value.initString(allocator, buf);
+        }
+        return Value.initString(allocator, try allocator.dupe(u8, type_str));
+    }
+    return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} found for exception", .{method});
 }
 
 // String method dispatch — extracted from strings.zig
@@ -184,4 +243,59 @@ fn dispatchString(allocator: Allocator, method: []const u8, s: []const u8, rest:
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} found for string", .{method});
+}
+
+// Tests
+const testing = std.testing;
+
+test "dispatchException — getMessage" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const msg = Value.initString(alloc, try alloc.dupe(u8, "boom"));
+    const ex = try constructors.makeExceptionMap(alloc, "Exception", &.{msg});
+    const result = try dispatchException(alloc, "getMessage", ex);
+    try testing.expectEqualStrings("boom", result.asString());
+}
+
+test "dispatchException — getCause" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const ex = try constructors.makeExceptionMap(alloc, "RuntimeException", &.{});
+    const result = try dispatchException(alloc, "getCause", ex);
+    try testing.expect(result.isNil());
+}
+
+test "dispatchException — toString" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const msg = Value.initString(alloc, try alloc.dupe(u8, "/ by zero"));
+    const ex = try constructors.makeExceptionMap(alloc, "ArithmeticException", &.{msg});
+    const result = try dispatchException(alloc, "toString", ex);
+    try testing.expectEqualStrings("ArithmeticException: / by zero", result.asString());
+}
+
+test "dispatchException — unknown method errors" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const ex = try constructors.makeExceptionMap(alloc, "Exception", &.{});
+    const result = dispatchException(alloc, "nonexistent", ex);
+    try testing.expectError(error.ValueError, result);
+}
+
+test "isExceptionMap" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const msg = Value.initString(alloc, try alloc.dupe(u8, "test"));
+    const ex = try constructors.makeExceptionMap(alloc, "Exception", &.{msg});
+    try testing.expect(isExceptionMap(ex));
+    try testing.expect(!isExceptionMap(Value.nil_val));
+}
+
+test "dispatch — .getMessage on exception map" {
+    const alloc = std.heap.page_allocator;
+    const constructors = @import("constructors.zig");
+    const msg = Value.initString(alloc, try alloc.dupe(u8, "hello"));
+    const ex = try constructors.makeExceptionMap(alloc, "Exception", &.{msg});
+    const result = try dispatch(alloc, "getMessage", ex, &.{});
+    try testing.expectEqualStrings("hello", result.asString());
 }

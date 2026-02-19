@@ -37,7 +37,21 @@ pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
     .{ "StringWriter", "java.io.StringWriter" },
     .{ "BufferedWriter", "java.io.BufferedWriter" },
     .{ "EOFException", "java.io.EOFException" },
+    .{ "IOException", "java.io.IOException" },
+    .{ "FileNotFoundException", "java.io.FileNotFoundException" },
     .{ "Exception", "Exception" },
+    .{ "RuntimeException", "RuntimeException" },
+    .{ "IllegalArgumentException", "IllegalArgumentException" },
+    .{ "IllegalStateException", "IllegalStateException" },
+    .{ "ArithmeticException", "ArithmeticException" },
+    .{ "NumberFormatException", "NumberFormatException" },
+    .{ "IndexOutOfBoundsException", "IndexOutOfBoundsException" },
+    .{ "UnsupportedOperationException", "UnsupportedOperationException" },
+    .{ "ClassCastException", "ClassCastException" },
+    .{ "NullPointerException", "NullPointerException" },
+    .{ "StackOverflowError", "StackOverflowError" },
+    .{ "AssertionError", "AssertionError" },
+    .{ "Error", "Error" },
     .{ "ExceptionInfo", "ExceptionInfo" },
 });
 
@@ -45,6 +59,75 @@ pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
 /// Returns the input if already fully qualified or if it's a known short name.
 pub fn resolveClassName(name: []const u8) ?[]const u8 {
     return known_classes.get(name);
+}
+
+/// Map FQCN or short name to simple exception type name.
+/// Returns null if the class is not an exception type.
+fn isExceptionClass(class_name: []const u8) ?[]const u8 {
+    const map = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "Exception", "Exception" },
+        .{ "java.lang.Exception", "Exception" },
+        .{ "RuntimeException", "RuntimeException" },
+        .{ "java.lang.RuntimeException", "RuntimeException" },
+        .{ "IllegalArgumentException", "IllegalArgumentException" },
+        .{ "java.lang.IllegalArgumentException", "IllegalArgumentException" },
+        .{ "IllegalStateException", "IllegalStateException" },
+        .{ "java.lang.IllegalStateException", "IllegalStateException" },
+        .{ "ArithmeticException", "ArithmeticException" },
+        .{ "java.lang.ArithmeticException", "ArithmeticException" },
+        .{ "NumberFormatException", "NumberFormatException" },
+        .{ "java.lang.NumberFormatException", "NumberFormatException" },
+        .{ "IndexOutOfBoundsException", "IndexOutOfBoundsException" },
+        .{ "java.lang.IndexOutOfBoundsException", "IndexOutOfBoundsException" },
+        .{ "UnsupportedOperationException", "UnsupportedOperationException" },
+        .{ "java.lang.UnsupportedOperationException", "UnsupportedOperationException" },
+        .{ "ClassCastException", "ClassCastException" },
+        .{ "java.lang.ClassCastException", "ClassCastException" },
+        .{ "NullPointerException", "NullPointerException" },
+        .{ "java.lang.NullPointerException", "NullPointerException" },
+        .{ "IOException", "IOException" },
+        .{ "java.io.IOException", "IOException" },
+        .{ "FileNotFoundException", "FileNotFoundException" },
+        .{ "java.io.FileNotFoundException", "FileNotFoundException" },
+        .{ "EOFException", "EOFException" },
+        .{ "java.io.EOFException", "EOFException" },
+        .{ "StackOverflowError", "StackOverflowError" },
+        .{ "java.lang.StackOverflowError", "StackOverflowError" },
+        .{ "AssertionError", "AssertionError" },
+        .{ "java.lang.AssertionError", "AssertionError" },
+        .{ "Error", "Error" },
+        .{ "java.lang.Error", "Error" },
+    });
+    return map.get(class_name);
+}
+
+/// Build an exception map: {:__ex_info true :message msg :data {} :cause cause :__ex_type type}
+/// Follows the same format as VM's createRuntimeException (vm.zig).
+/// ctor_args: 0 args (no message), 1 arg (message), 2 args (message + cause).
+pub fn makeExceptionMap(allocator: Allocator, ex_type_name: []const u8, ctor_args: []const Value) anyerror!Value {
+    const msg_val: Value = if (ctor_args.len >= 1) ctor_args[0] else Value.nil_val;
+    const cause_val: Value = if (ctor_args.len >= 2) ctor_args[1] else Value.nil_val;
+
+    const runtime_collections = @import("../runtime/collections.zig");
+    const entries = try allocator.alloc(Value, 10);
+
+    const empty_map = try allocator.create(runtime_collections.PersistentArrayMap);
+    empty_map.* = .{ .entries = &.{} };
+
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
+    entries[1] = Value.true_val;
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    entries[3] = msg_val;
+    entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+    entries[5] = Value.initMap(empty_map);
+    entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
+    entries[7] = cause_val;
+    entries[8] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_type" });
+    entries[9] = Value.initString(allocator, try allocator.dupe(u8, ex_type_name));
+
+    const map = try allocator.create(runtime_collections.PersistentArrayMap);
+    map.* = .{ .entries = entries };
+    return Value.initMap(map);
 }
 
 /// __interop-new — Java class constructor dispatch.
@@ -55,14 +138,10 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
     const class_name = args[0].asString();
     const ctor_args = args[1..];
 
-    // Exception constructor: (Exception. "message")
-    if (std.mem.eql(u8, class_name, "Exception") or
-        std.mem.eql(u8, class_name, "java.io.EOFException") or
-        std.mem.eql(u8, class_name, "RuntimeException") or
-        std.mem.eql(u8, class_name, "IllegalArgumentException"))
-    {
-        if (ctor_args.len == 0) return err.setErrorFmt(.eval, .value_error, .{}, "Exception requires a message", .{});
-        return ctor_args[0];
+    // Exception constructor: (Exception. "message") or (Exception. "message" cause)
+    // Returns exception map: {:__ex_info true :message msg :data {} :cause nil :__ex_type type}
+    if (isExceptionClass(class_name)) |ex_type_name| {
+        return makeExceptionMap(allocator, ex_type_name, ctor_args);
     }
 
     // ExceptionInfo constructor: (ExceptionInfo. "message" data)
@@ -205,4 +284,61 @@ test "resolveClassName — known classes" {
 
 test "resolveClassName — unknown class" {
     try testing.expect(resolveClassName("Foo") == null);
+}
+
+test "Exception constructor returns exception map" {
+    const allocator = std.heap.page_allocator;
+    const args = [_]Value{
+        Value.initString(allocator, "Exception"),
+        Value.initString(allocator, "boom"),
+    };
+    const result = try interopNewFn(allocator, &args);
+
+    // Must be a map, not a raw string
+    try testing.expect(result.tag() == .map);
+
+    // Must have :__ex_info key
+    const ex_info_key = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
+    const ex_info_val = result.asMap().get(ex_info_key);
+    try testing.expect(ex_info_val != null);
+
+    // Must have :message "boom"
+    const msg_key = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    const msg_val = result.asMap().get(msg_key).?;
+    try testing.expect(msg_val.tag() == .string);
+    try testing.expectEqualStrings("boom", msg_val.asString());
+
+    // Must have :__ex_type "Exception"
+    const type_key = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_type" });
+    const type_val = result.asMap().get(type_key).?;
+    try testing.expect(type_val.tag() == .string);
+    try testing.expectEqualStrings("Exception", type_val.asString());
+}
+
+test "RuntimeException constructor returns exception map with correct type" {
+    const allocator = std.heap.page_allocator;
+    const args = [_]Value{
+        Value.initString(allocator, "RuntimeException"),
+        Value.initString(allocator, "oops"),
+    };
+    const result = try interopNewFn(allocator, &args);
+    try testing.expect(result.tag() == .map);
+
+    const type_key = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_type" });
+    const type_val = result.asMap().get(type_key).?;
+    try testing.expectEqualStrings("RuntimeException", type_val.asString());
+}
+
+test "Exception constructor with no message" {
+    const allocator = std.heap.page_allocator;
+    const args = [_]Value{
+        Value.initString(allocator, "Exception"),
+    };
+    const result = try interopNewFn(allocator, &args);
+    try testing.expect(result.tag() == .map);
+
+    // Message should be nil or empty
+    const msg_key = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    const msg_val = result.asMap().get(msg_key).?;
+    try testing.expect(msg_val.tag() == .nil);
 }
