@@ -27,6 +27,7 @@ pub const class_name = "java.lang.StringBuilder";
 /// Mutable state for StringBuilder.
 const State = struct {
     buf: std.ArrayList(u8),
+    closed: bool = false,
 
     fn init() State {
         return .{ .buf = std.ArrayList(u8).empty };
@@ -40,6 +41,7 @@ const State = struct {
 
     fn deinit(self: *State) void {
         self.buf.deinit(std.heap.smp_allocator);
+        self.closed = true;
     }
 
     fn appendChar(self: *State, c: u8) !void {
@@ -103,6 +105,16 @@ fn getState(obj: Value) ?*State {
 pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest: []const Value) anyerror!Value {
     const state = getState(obj) orelse
         return err.setErrorFmt(.eval, .value_error, .{}, "Invalid StringBuilder instance", .{});
+
+    // .close() — release resources
+    if (std.mem.eql(u8, method, "close")) {
+        if (!state.closed) state.deinit();
+        return Value.nil_val;
+    }
+
+    // Check closed state for all other operations
+    if (state.closed)
+        return err.setErrorFmt(.eval, .value_error, .{}, "StringBuilder is closed", .{});
 
     if (std.mem.eql(u8, method, "append")) {
         if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".append expects 1 arg", .{});

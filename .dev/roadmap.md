@@ -21,8 +21,8 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 83A | Exception System Unification | 2.5 | DONE |
 | 83B | InterOp Architecture v2 (ClassDef Registry) | 2.5 | DONE |
 | 83C | UTF-8 Codepoint Correctness | 2.5 | DONE |
-| 83D | Handle Memory Safety | 2.5 | IN-PROGRESS |
-| 83E | Core All-Zig Migration | 2.5 | PENDING |
+| 83D | Handle Memory Safety | 2.5 | DONE |
+| 83E | Core All-Zig Migration | 2.5 | IN-PROGRESS |
 | 84 | Testing Expansion | 2 | PENDING |
 | 85 | Library Compatibility Expansion | 2 | PENDING |
 | 87 | Developer Experience | 3 | PENDING |

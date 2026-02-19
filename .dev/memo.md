@@ -59,26 +59,26 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83D: Handle Memory Safety
-Read `.dev/roadmap.md` Phase 83D section and `.dev/interop-v2-design.md`.
+Phase 83E: Core All-Zig Migration
+Read `.dev/roadmap.md` Phase 83E section and `.dev/interop-v2-design.md`.
 
 ## Previous Task
 
-Phase 83C COMPLETE (UTF-8 Codepoint Correctness).
-- codepoint.zig: codepointCount, codepointAt, codepointSlice, codepointIndexOf
-- .length, .charAt, .substring, .indexOf now use codepoints
-- count, nth, subs on strings now use codepoints
-- Japanese, emoji, mixed script tests all pass
-- No ASCII performance regression (string_ops 29ms→25ms)
+Phase 83D COMPLETE (Handle Memory Safety).
+- Added closed flag to StringBuilder, StringWriter, PushbackReader
+- All operations check closed state → clear error message
+- .close() properly releases resources, double close is safe
+- GC finalization deferred (tiny structs, not worth complexity now)
+- Shared handle semantics correct (like Java references)
 
 ## Task Queue
 
 ```
-83D.1: Add closed flag to handle state. All operations check → error if closed.
-83D.2: GC finalization: destructor callback for handle-bearing maps
-83D.3: Audit shared handle semantics (map copy = shared handle?)
-83D.4: with-open support
-83D.5: Verify all tests
+83E.1: Identify all .clj bootstrap functions that can become Zig builtins
+83E.2: Migrate highest-impact functions first (startup reduction)
+83E.3: Verify bootstrap elimination does not break functionality
+83E.4: Performance benchmark (startup time reduction)
+83E.5: Verify all tests
 ```
 
 ## Known Issues
@@ -88,8 +88,8 @@ Phase 83C COMPLETE (UTF-8 Codepoint Correctness).
 
 ## Next Phase Queue
 
-After 83D, proceed to 83E (Core All-Zig Migration).
-Read `.dev/roadmap.md` Phase 83E section.
+After 83E, proceed to Phase 84 (Testing Expansion).
+Read `.dev/roadmap.md` Phase 84 section.
 
 ## Notes
 

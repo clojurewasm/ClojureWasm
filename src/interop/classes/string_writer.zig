@@ -26,6 +26,7 @@ pub const class_name = "java.io.StringWriter";
 /// Mutable state for StringWriter (same structure as StringBuilder).
 const State = struct {
     buf: std.ArrayList(u8),
+    closed: bool = false,
 
     fn init() State {
         return .{ .buf = std.ArrayList(u8).empty };
@@ -33,6 +34,7 @@ const State = struct {
 
     fn deinit(self: *State) void {
         self.buf.deinit(std.heap.smp_allocator);
+        self.closed = true;
     }
 
     fn writeChar(self: *State, c: u8) !void {
@@ -87,6 +89,16 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
     const state = getState(obj) orelse
         return err.setErrorFmt(.eval, .value_error, .{}, "Invalid StringWriter instance", .{});
 
+    // .close() — release resources
+    if (std.mem.eql(u8, method, "close")) {
+        if (!state.closed) state.deinit();
+        return Value.nil_val;
+    }
+
+    // Check closed state for all other operations
+    if (state.closed)
+        return err.setErrorFmt(.eval, .value_error, .{}, "StringWriter is closed", .{});
+
     if (std.mem.eql(u8, method, "write")) {
         if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".write expects 1 arg", .{});
         if (rest[0].tag() == .integer) {
@@ -124,10 +136,6 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
     if (std.mem.eql(u8, method, "toString")) {
         const s = state.toString();
         return Value.initString(allocator, try allocator.dupe(u8, s));
-    }
-
-    if (std.mem.eql(u8, method, "close")) {
-        return Value.nil_val; // No-op
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for StringWriter", .{method});

@@ -34,6 +34,7 @@ const State = struct {
     pos: usize,
     pushback_buf: [64]u8,
     pushback_len: usize,
+    closed: bool = false,
 
     fn init(source: []const u8) State {
         return .{
@@ -154,6 +155,16 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
     const state = getState(obj) orelse
         return err.setErrorFmt(.eval, .value_error, .{}, "Invalid PushbackReader instance", .{});
 
+    // .close() — mark as closed and release state
+    if (std.mem.eql(u8, method, "close")) {
+        state.closed = true;
+        return Value.nil_val;
+    }
+
+    // Check closed state for all other operations
+    if (state.closed)
+        return err.setErrorFmt(.eval, .value_error, .{}, "PushbackReader is closed", .{});
+
     if (std.mem.eql(u8, method, "read")) {
         if (rest.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, ".read expects 0 args", .{});
         return Value.initInteger(state.read());
@@ -198,10 +209,6 @@ pub fn dispatchMethod(allocator: Allocator, method: []const u8, obj: Value, rest
         if (rest.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, ".ready expects 0 args", .{});
         const has_data = state.pushback_len > 0 or state.pos < state.source.len;
         return if (has_data) Value.true_val else Value.false_val;
-    }
-
-    if (std.mem.eql(u8, method, "close")) {
-        return Value.nil_val; // No-op for in-memory reader
     }
 
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for PushbackReader", .{method});
