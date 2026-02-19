@@ -49,19 +49,21 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 78 complete. Advancing to Phase 79: cl-format Implementation.
-Read `.dev/roadmap.md` Phase 79 section for sub-tasks.
+Phase 79: cl-format Implementation
+Sub-task 79.1: cl-format core engine (directives, dispatch)
 
 ## Previous Task
 
 78.4: Unreachable audit. 103 total (96 SAFE, 4 RISK, 3 test-only).
 Fixed: BigDecimal toStringAlloc (2 in value.zig), regex GroupKind (1 in matcher.zig).
-nREPL bencode decode was test-only, not production risk.
 
 ## Task Queue
 
 ```
-(Phase 78 complete — read roadmap Phase 79 for next tasks)
+79.1 cl-format core engine (directives, dispatch) ← CURRENT
+79.2 formatter macro
+79.3 formatter-out macro
+79.4 code-dispatch (pprint, uses formatter-out)
 ```
 
 ## Known Issues
