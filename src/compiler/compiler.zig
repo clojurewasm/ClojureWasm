@@ -1768,3 +1768,175 @@ test "fuzz compiler and vm" {
         },
     );
 }
+
+test "fuzz compiler and vm structured" {
+    // Structure-aware fuzzing: consumes fuzz bytes to generate valid Clojure
+    // source, then runs through the full pipeline. Reaches deeper code paths
+    // than raw byte fuzzing because the input is always syntactically valid.
+    const Reader = @import("../reader/reader.zig").Reader;
+    const Analyzer = @import("../analyzer/analyzer.zig").Analyzer;
+    const VM = @import("../vm/vm.zig").VM;
+
+    try std.testing.fuzz(
+        {},
+        struct {
+            const symbols = [_][]const u8{ "x", "y", "z", "f", "g", "a", "b", "n", "i", "acc" };
+            const keywords = [_][]const u8{ ":a", ":b", ":c", ":key", ":val" };
+
+            fn consume(input: *[]const u8) u8 {
+                if (input.len == 0) return 0;
+                const b = input.*[0];
+                input.* = input.*[1..];
+                return b;
+            }
+
+            fn genAtom(input: *[]const u8, alloc: std.mem.Allocator, buf: *std.ArrayList(u8)) void {
+                const b = consume(input) % 8;
+                switch (b) {
+                    0 => buf.appendSlice(alloc, "nil") catch {},
+                    1 => buf.appendSlice(alloc, "true") catch {},
+                    2 => buf.appendSlice(alloc, "false") catch {},
+                    3 => { // integer
+                        const n = @as(i8, @bitCast(consume(input)));
+                        var num_buf: [12]u8 = undefined;
+                        const s = std.fmt.bufPrint(&num_buf, "{d}", .{n}) catch return;
+                        buf.appendSlice(alloc, s) catch {};
+                    },
+                    4 => buf.appendSlice(alloc, symbols[consume(input) % symbols.len]) catch {},
+                    5 => buf.appendSlice(alloc, keywords[consume(input) % keywords.len]) catch {},
+                    6 => buf.appendSlice(alloc, "\"str\"") catch {},
+                    7 => buf.appendSlice(alloc, "3.14") catch {},
+                    else => buf.appendSlice(alloc, "nil") catch {},
+                }
+            }
+
+            fn genExpr(input: *[]const u8, alloc: std.mem.Allocator, buf: *std.ArrayList(u8), depth: u8) void {
+                if (depth > 6 or input.len == 0) {
+                    genAtom(input, alloc, buf);
+                    return;
+                }
+                const b = consume(input) % 12;
+                switch (b) {
+                    0...3 => genAtom(input, alloc, buf),
+                    4 => { // (if test then else)
+                        buf.appendSlice(alloc, "(if ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, " ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, " ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, ")") catch {};
+                    },
+                    5 => { // (do exprs...)
+                        const n = (consume(input) % 3) + 1;
+                        buf.appendSlice(alloc, "(do") catch {};
+                        for (0..n) |_| {
+                            buf.appendSlice(alloc, " ") catch {};
+                            genExpr(input, alloc, buf, depth + 1);
+                        }
+                        buf.appendSlice(alloc, ")") catch {};
+                    },
+                    6 => { // (let [x expr] body)
+                        const sym = symbols[consume(input) % symbols.len];
+                        buf.appendSlice(alloc, "(let [") catch {};
+                        buf.appendSlice(alloc, sym) catch {};
+                        buf.appendSlice(alloc, " ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, "] ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, ")") catch {};
+                    },
+                    7 => { // (fn [x] body)
+                        const sym = symbols[consume(input) % symbols.len];
+                        buf.appendSlice(alloc, "(fn [") catch {};
+                        buf.appendSlice(alloc, sym) catch {};
+                        buf.appendSlice(alloc, "] ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, ")") catch {};
+                    },
+                    8 => { // [expr expr ...]
+                        const n = (consume(input) % 4);
+                        buf.appendSlice(alloc, "[") catch {};
+                        for (0..n) |j| {
+                            if (j > 0) buf.appendSlice(alloc, " ") catch {};
+                            genExpr(input, alloc, buf, depth + 1);
+                        }
+                        buf.appendSlice(alloc, "]") catch {};
+                    },
+                    9 => { // {:k v ...}
+                        const n = (consume(input) % 3);
+                        buf.appendSlice(alloc, "{") catch {};
+                        for (0..n) |j| {
+                            if (j > 0) buf.appendSlice(alloc, " ") catch {};
+                            buf.appendSlice(alloc, keywords[consume(input) % keywords.len]) catch {};
+                            buf.appendSlice(alloc, " ") catch {};
+                            genExpr(input, alloc, buf, depth + 1);
+                        }
+                        buf.appendSlice(alloc, "}") catch {};
+                    },
+                    10 => { // (quote expr)
+                        buf.appendSlice(alloc, "'") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                    },
+                    11 => { // ((fn [x] body) arg)
+                        const sym = symbols[consume(input) % symbols.len];
+                        buf.appendSlice(alloc, "((fn [") catch {};
+                        buf.appendSlice(alloc, sym) catch {};
+                        buf.appendSlice(alloc, "] ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, ") ") catch {};
+                        genExpr(input, alloc, buf, depth + 1);
+                        buf.appendSlice(alloc, ")") catch {};
+                    },
+                    else => genAtom(input, alloc, buf),
+                }
+            }
+
+            fn testOne(_: @TypeOf({}), input_raw: []const u8) anyerror!void {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
+                const alloc = arena.allocator();
+
+                // Generate structured Clojure source from fuzz bytes
+                var buf: std.ArrayList(u8) = .empty;
+                var input = input_raw;
+                const expr_count = (@as(usize, if (input.len > 0) input[0] else 0) % 3) + 1;
+                if (input.len > 0) input = input[1..];
+                for (0..expr_count) |j| {
+                    if (j > 0) buf.appendSlice(alloc, " ") catch {};
+                    genExpr(&input, alloc, &buf, 0);
+                }
+                const source = buf.items;
+
+                // Run through full pipeline
+                var reader = Reader.initWithLimits(alloc, source, .{
+                    .max_depth = 64,
+                    .max_string_size = 4096,
+                    .max_collection_count = 256,
+                });
+                while (true) {
+                    const form = reader.read() catch break;
+                    if (form == null) break;
+
+                    var analyzer = Analyzer.init(alloc);
+                    defer analyzer.deinit();
+                    const node = analyzer.analyze(form.?) catch break;
+
+                    var compiler = Compiler.init(alloc);
+                    defer compiler.deinit();
+                    compiler.compile(node) catch break;
+                    compiler.chunk.emitOp(.ret) catch break;
+
+                    const vm = alloc.create(VM) catch break;
+                    defer {
+                        vm.deinit();
+                        alloc.destroy(vm);
+                    }
+                    vm.* = VM.init(alloc);
+                    _ = vm.run(&compiler.chunk) catch break;
+                }
+            }
+        }.testOne,
+        .{},
+    );
+}
