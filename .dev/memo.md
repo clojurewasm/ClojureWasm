@@ -50,27 +50,25 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 78: Bug Fixes & Correctness
-Sub-task 78.2: Fix F139 — case macro with mixed body types
+Sub-task 78.3: F94 upstream alignment pass (87 markers in src/clj/)
 
 ## Previous Task
 
-78.1: F140 investigation — GC crash in dissocFn no longer reproducible.
-Tested with tools.cli summarize, heavy allocation pressure (2000 iterations, 50-key
-runtime keyword maps, 200 garbage strings per iteration), both VM and TreeWalk.
-All output correct, no crashes. Likely fixed by prior GC improvements (Phases 37-48).
-Removed F140 from checklist.
+78.1-78.2: F140 (GC crash) and F139 (case macro) — both no longer reproducible.
+Tested F140: tools.cli summarize + 2000-iter stress test, both backends.
+Tested F139: case + cond->, case + let, case + ->, case with symbols, both backends.
+Both bugs likely fixed by prior phases. Removed from checklist.
 
 ## Task Queue
 
 ```
-78.2 Fix F139: case macro with mixed body types ← CURRENT
-78.3 F94 upstream alignment pass (87 markers in src/clj/)
+78.3 F94 upstream alignment pass (87 markers in src/clj/) ← CURRENT
 78.4 Audit unreachable in production paths
 ```
 
 ## Known Issues
 
-- F139: case macro fails with mixed body types (shift-mask error)
+(none)
 
 ## Next Phase Queue
 
