@@ -72,7 +72,7 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 
 ## Known Issues
 
-- `some` returns element instead of predicate result (CW core.clj L431-437 uses `(first s)` instead of upstream's `(pred (first s))`)
+- Lazy seq display: CW prints `#<lazy-seq>` in -e/REPL, JVM realizes and prints elements. Target: Phase 81+ or 85.
 
 ## Next Phase Queue
 

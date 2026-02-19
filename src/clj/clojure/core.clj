@@ -429,12 +429,8 @@
 ;; Predicates and search
 
 (defn some [pred coll]
-  (loop [s (seq coll)]
-    (if s
-      (if (pred (first s))
-        (first s)
-        (recur (next s)))
-      nil)))
+  (when (seq coll)
+    (or (pred (first coll)) (recur pred (next coll)))))
 
 (defn every? [pred coll]
   (loop [s (seq coll)]

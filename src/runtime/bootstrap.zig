@@ -3217,7 +3217,7 @@ test "core.clj - some" {
     try registry.registerBuiltins(&env);
     try loadCore(alloc, &env);
 
-    try expectEvalInt(alloc, &env, "(some even? [1 2 3])", 2);
+    try expectEvalBool(alloc, &env, "(some even? [1 2 3])", true);
     try expectEvalNil(alloc, &env, "(some even? [1 3 5])");
 }
 
