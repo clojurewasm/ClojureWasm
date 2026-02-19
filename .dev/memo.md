@@ -52,7 +52,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
+Sub-task 80.1: Coverage-guided fuzzing harness for Reader.
 
 ## Previous Task
 
@@ -60,12 +60,19 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 - D103: `-Dwasm=false` build option (-570KB, -13%)
 - D104: Lazy bootstrap — deferred NS deserialization (startup -12%, RSS -20%)
 - Final: wasm=true 4.25MB/4.6ms/7.4MB, wasm=false 3.68MB/4.3ms/7.4MB
-- bench/build_bench.sh created for cljw build artifact measurement
 
 ## Task Queue
 
 ```
-(read roadmap Phase 80 section to populate)
+80.1: Coverage-guided fuzzing harness for Reader
+80.2: Coverage-guided fuzzing harness for Analyzer
+80.3: Coverage-guided fuzzing harness for Compiler + VM
+80.4: Structure-aware input generation (Clojure form generator)
+80.5: Differential testing harness (CW vs JVM Clojure)
+80.6: Resource limits: nesting depth, string size, collection count
+80.7: Audit Internal Error / bootstrap evaluation error — must never reach users
+80.8: Vulnerability audit using CW-adapted checklist
+80.9: Threat model document (CW trust boundaries)
 ```
 
 ## Known Issues

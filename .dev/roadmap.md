@@ -14,7 +14,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 78 | Bug Fixes & Correctness | 1 | DONE |
 | 79 | cl-format Implementation | 1 | DONE |
 | 79A | Binary Optimization & Startup Acceleration | 1 | DONE |
-| 80 | Crash Hardening & Fuzzing | 1 | PENDING |
+| 80 | Crash Hardening & Fuzzing | 1 | IN-PROGRESS |
 | 81 | Error System Maturity | 1 | PENDING |
 | 82 | CI/CD Foundation | 2 | PENDING |
 | 83 | Essential Documentation | 2 | PENDING |
