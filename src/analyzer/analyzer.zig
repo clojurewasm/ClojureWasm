@@ -3912,3 +3912,56 @@ test "analyze empty list -> empty list" {
     try std.testing.expect(result.constant.value.tag() == .list);
     try std.testing.expectEqual(@as(usize, 0), result.constant.value.asList().items.len);
 }
+
+test "fuzz analyzer" {
+    // Coverage-guided fuzzing: Analyzer must never panic on any Reader output.
+    // AnalyzeError is expected and fine — only crashes/UB are bugs.
+    // Run: zig build test --fuzz
+    const reader_mod = @import("../reader/reader.zig");
+    try std.testing.fuzz(
+        {},
+        struct {
+            fn testOne(_: @TypeOf({}), input: []const u8) anyerror!void {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
+                const alloc = arena.allocator();
+
+                // Parse input through Reader first
+                var reader = reader_mod.Reader.initWithLimits(alloc, input, .{
+                    .max_depth = 64,
+                    .max_string_size = 4096,
+                    .max_collection_count = 256,
+                });
+
+                // Analyze each form — errors are expected, panics are bugs
+                while (true) {
+                    const form = reader.read() catch break;
+                    if (form == null) break;
+
+                    var a = Analyzer.init(alloc);
+                    defer a.deinit();
+                    _ = a.analyze(form.?) catch continue;
+                }
+            }
+        }.testOne,
+        .{
+            .corpus = &.{
+                // Simple expressions
+                "nil", "42", "\"hello\"", ":kw", "sym",
+                // Special forms
+                "(if true 1 2)", "(do 1 2 3)", "(let [x 1] x)",
+                "(fn [x] x)", "(def x 42)", "(quote (1 2 3))",
+                "(loop [i 0] (if (< i 10) (recur (inc i)) i))",
+                "(try (/ 1 0) (catch Exception e e))",
+                "(throw (Exception. \"err\"))",
+                // Collections
+                "[1 2 3]", "{:a 1}", "#{1 2 3}",
+                // Nested
+                "(defn f [x] (if (> x 0) (recur (dec x)) x))",
+                "((fn [x y] (+ x y)) 1 2)",
+                // Edge cases
+                "()", "[]", "{}", "#{}", "(((())))",
+            },
+        },
+    );
+}

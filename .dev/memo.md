@@ -52,7 +52,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.2: Coverage-guided fuzzing harness for Analyzer.
+Sub-task 80.3: Coverage-guided fuzzing harness for Compiler + VM.
 
 ## Previous Task
 
@@ -64,7 +64,6 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 ## Task Queue
 
 ```
-80.2: Coverage-guided fuzzing harness for Analyzer
 80.3: Coverage-guided fuzzing harness for Compiler + VM
 80.4: Structure-aware input generation (Clojure form generator)
 80.5: Differential testing harness (CW vs JVM Clojure)
