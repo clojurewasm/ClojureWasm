@@ -20,12 +20,12 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 ## Current State
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
-- Coverage: 1,126/1,243 vars done (90.6%), 113 skip, 4 TODO (cl-format), 27 stubs
+- Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO (cl-format complete), 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
-- Binary: 4.07MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 4.44MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter classes (D101)
 
 ## Strategic Direction
@@ -49,17 +49,17 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 79: cl-format Implementation
-Sub-task 79.4: code-dispatch (pprint, uses formatter-out)
+Phase 79 COMPLETE. Awaiting user instructions before Phase 80.
 
 ## Previous Task
 
-79.2+79.3: formatter and formatter-out macros. Direct fn refs instead of ns-interns lookup.
+79.4: code-dispatch + Clojure pprint override + cl-format raw-string fix.
+Also fixed: pprint-list reader-macro removal (upstream compliance), baselines update.
 
 ## Task Queue
 
 ```
-79.4 code-dispatch (pprint, uses formatter-out) ← CURRENT
+(empty — Phase 79 complete, Phase 80 pending user input)
 ```
 
 ## Known Issues
@@ -68,7 +68,7 @@ Sub-task 79.4: code-dispatch (pprint, uses formatter-out)
 
 ## Next Phase Queue
 
-After Phase 79 completes, proceed to Phase 80 (Crash Hardening & Fuzzing).
+After user provides startup strategy instructions, proceed to Phase 80 (Crash Hardening & Fuzzing).
 Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
 
 ## Notes

@@ -557,6 +557,23 @@ recursive calls). Returns the string result if :stream is nil or nil otherwise."
                    (when (nil? optval)
                      nil)))))
 
+;; UPSTREAM-DIFF: Override Zig builtin pprint with Clojure implementation
+;; that dispatches through *print-pprint-dispatch* (enables code-dispatch etc.)
+(defn pprint
+  "Pretty print object to the optional output writer. If the writer is not provided,
+print the object to the currently bound value of *out*."
+  {:added "1.2"}
+  ([object] (pprint object *out*))
+  ([object writer]
+   (let [pw (make-pretty-writer writer *print-right-margin* *print-miser-width*)]
+     (binding [*print-pretty* true
+               *pw* pw]
+       (write-out object))
+     (pw-ppflush pw)
+     ;; Add trailing newline
+     (println))
+   nil))
+
 (defn- level-exceeded []
   (and *print-level* (>= *current-level* *print-level*)))
 
@@ -656,14 +673,9 @@ THIS FUNCTION IS NOT YET IMPLEMENTED."
                                                (recur (next alis)))))))
 
 (defn- pprint-list [alis]
-  (let [reader-macros {'quote "'" 'clojure.core/deref "@"
-                       'var "#'" 'clojure.core/unquote "~"}
-        macro-char (reader-macros (first alis))]
-    (if (and macro-char (= 2 (count alis)))
-      (do
-        (cw-write macro-char)
-        (write-out (second alis)))
-      (pprint-simple-list alis))))
+  ;; UPSTREAM-DIFF: simple-dispatch prints lists literally (no reader macro expansion).
+  ;; Reader macro expansion is only in code-dispatch's pprint-code-list.
+  (pprint-simple-list alis))
 
 (defn- pprint-vector [avec]
   (pprint-logical-block :prefix "[" :suffix "]"
@@ -2177,7 +2189,8 @@ exactly equivalent to (pprint *1)."
        [remainder offset])]))
 
 (defn- compile-raw-string [s offset]
-  (struct compiled-directive (fn [_ a _] (print s) a) nil {:string s} offset))
+  ;; UPSTREAM-DIFF: use cw-write instead of print to route through *pw* pretty-writer
+  (struct compiled-directive (fn [_ a _] (cw-write s) a) nil {:string s} offset))
 
 (defn- right-bracket [this] (:right (:bracket-info (:def this))))
 (defn- separator? [this] (:separator (:bracket-info (:def this))))
@@ -2396,6 +2409,300 @@ format-in can be either a control string or a previously compiled format."
      (fn [& args#]
        (let [navigator# (init-navigator args#)]
          (execute-format cf# navigator#)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; code-dispatch — pretty print dispatch for Clojure code
+;;; UPSTREAM-DIFF: CW port of dispatch.clj (code-dispatch portions)
+;;; Adaptations: predicate-based dispatch instead of multimethod on class,
+;;;   cw-write instead of .write ^java.io.Writer, no Java array/IDeref support
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare pprint-simple-code-list)
+
+;;; code-dispatch helper: format binding forms like let, loop, etc.
+(defn- pprint-binding-form [binding-vec]
+  (pprint-logical-block :prefix "[" :suffix "]"
+                        (print-length-loop [binding binding-vec]
+                                           (when (seq binding)
+                                             (pprint-logical-block binding
+                                                                   (write-out (first binding))
+                                                                   (when (next binding)
+                                                                     (cw-write " ")
+                                                                     (pprint-newline :miser)
+                                                                     (write-out (second binding))))
+                                             (when (next (rest binding))
+                                               (cw-write " ")
+                                               (pprint-newline :linear)
+                                               (recur (next (rest binding))))))))
+
+;;; code-dispatch: hold-first form (def, defonce, ->, .., locking, struct, struct-map)
+(defn- pprint-hold-first [alis]
+  (pprint-logical-block :prefix "(" :suffix ")"
+                        (pprint-indent :block 1)
+                        (write-out (first alis))
+                        (when (next alis)
+                          (cw-write " ")
+                          (pprint-newline :miser)
+                          (write-out (second alis))
+                          (when (next (rest alis))
+                            (cw-write " ")
+                            (pprint-newline :linear)
+                            (print-length-loop [alis (next (rest alis))]
+                                               (when alis
+                                                 (write-out (first alis))
+                                                 (when (next alis)
+                                                   (cw-write " ")
+                                                   (pprint-newline :linear)
+                                                   (recur (next alis)))))))))
+
+;;; code-dispatch: defn/defmacro/fn
+(defn- single-defn [alis has-doc-str?]
+  (when (seq alis)
+    (if has-doc-str?
+      ((formatter-out " ~_"))
+      ((formatter-out " ~@_")))
+    ((formatter-out "~{~w~^ ~_~}") alis)))
+
+(defn- multi-defn [alis has-doc-str?]
+  (when (seq alis)
+    ((formatter-out " ~_~{~w~^ ~_~}") alis)))
+
+(defn- pprint-defn [alis]
+  (if (next alis)
+    (let [[defn-sym defn-name & stuff] alis
+          [doc-str stuff] (if (string? (first stuff))
+                            [(first stuff) (next stuff)]
+                            [nil stuff])
+          [attr-map stuff] (if (map? (first stuff))
+                             [(first stuff) (next stuff)]
+                             [nil stuff])]
+      (pprint-logical-block :prefix "(" :suffix ")"
+                            ((formatter-out "~w ~1I~@_~w") defn-sym defn-name)
+                            (when doc-str
+                              ((formatter-out " ~_~w") doc-str))
+                            (when attr-map
+                              ((formatter-out " ~_~w") attr-map))
+                            (cond
+                              (vector? (first stuff)) (single-defn stuff (or doc-str attr-map))
+                              :else (multi-defn stuff (or doc-str attr-map)))))
+    (pprint-simple-code-list alis)))
+
+;;; code-dispatch: let/loop/binding/with-open/when-let/if-let/doseq/dotimes
+(defn- pprint-let [alis]
+  (let [base-sym (first alis)]
+    (pprint-logical-block :prefix "(" :suffix ")"
+                          (if (and (next alis) (vector? (second alis)))
+                            (do
+                              ((formatter-out "~w ~1I~@_") base-sym)
+                              (pprint-binding-form (second alis))
+                              ((formatter-out " ~_~{~w~^ ~_~}") (next (rest alis))))
+                            (pprint-simple-code-list alis)))))
+
+;;; code-dispatch: if/if-not/when/when-not
+(defn- pprint-if [alis]
+  (pprint-logical-block :prefix "(" :suffix ")"
+                        (pprint-indent :block 1)
+                        (write-out (first alis))
+                        (when (next alis)
+                          (cw-write " ")
+                          (pprint-newline :miser)
+                          (write-out (second alis))
+                          (doseq [clause (next (rest alis))]
+                            (cw-write " ")
+                            (pprint-newline :linear)
+                            (write-out clause)))))
+
+;;; code-dispatch: cond
+(defn- pprint-cond [alis]
+  (pprint-logical-block :prefix "(" :suffix ")"
+                        (pprint-indent :block 1)
+                        (write-out (first alis))
+                        (when (next alis)
+                          (cw-write " ")
+                          (pprint-newline :linear)
+                          (print-length-loop [alis (next alis)]
+                                             (when alis
+                                               (pprint-logical-block alis
+                                                                     (write-out (first alis))
+                                                                     (when (next alis)
+                                                                       (cw-write " ")
+                                                                       (pprint-newline :miser)
+                                                                       (write-out (second alis))))
+                                               (when (next (rest alis))
+                                                 (cw-write " ")
+                                                 (pprint-newline :linear)
+                                                 (recur (next (rest alis)))))))))
+
+;;; code-dispatch: condp
+(defn- pprint-condp [alis]
+  (if (> (count alis) 3)
+    (pprint-logical-block :prefix "(" :suffix ")"
+                          (pprint-indent :block 1)
+                          (apply (formatter-out "~w ~@_~w ~@_~w ~_") alis)
+                          (print-length-loop [alis (seq (drop 3 alis))]
+                                             (when alis
+                                               (pprint-logical-block alis
+                                                                     (write-out (first alis))
+                                                                     (when (next alis)
+                                                                       (cw-write " ")
+                                                                       (pprint-newline :miser)
+                                                                       (write-out (second alis))))
+                                               (when (next (rest alis))
+                                                 (cw-write " ")
+                                                 (pprint-newline :linear)
+                                                 (recur (next (rest alis)))))))
+    (pprint-simple-code-list alis)))
+
+;;; code-dispatch: #() anonymous functions
+(def ^:dynamic ^{:private true} *symbol-map* {})
+
+(defn- pprint-anon-func [alis]
+  (let [args (second alis)
+        nlis (first (rest (rest alis)))]
+    (if (vector? args)
+      (binding [*symbol-map* (if (= 1 (count args))
+                               {(first args) "%"}
+                               (into {}
+                                     (map
+                                      #(vector %1 (str \% %2))
+                                      args
+                                      (range 1 (inc (count args))))))]
+        ((formatter-out "~<#(~;~@{~w~^ ~_~}~;)~:>") nlis))
+      (pprint-simple-code-list alis))))
+
+;;; code-dispatch: ns macro
+(defn- brackets [form]
+  (if (vector? form) ["[" "]"] ["(" ")"]))
+
+(defn- pprint-ns-reference [reference]
+  (if (sequential? reference)
+    (let [[start end] (brackets reference)
+          [keyw & args] reference]
+      (pprint-logical-block :prefix start :suffix end
+                            ((formatter-out "~w~:i") keyw)
+                            (loop [args args]
+                              (when (seq args)
+                                ((formatter-out " "))
+                                (let [arg (first args)]
+                                  (if (sequential? arg)
+                                    (let [[start end] (brackets arg)]
+                                      (pprint-logical-block :prefix start :suffix end
+                                                            (if (and (= (count arg) 3) (keyword? (second arg)))
+                                                              (let [[ns kw lis] arg]
+                                                                ((formatter-out "~w ~w ") ns kw)
+                                                                (if (sequential? lis)
+                                                                  ((formatter-out (if (vector? lis)
+                                                                                    "~<[~;~@{~w~^ ~:_~}~;]~:>"
+                                                                                    "~<(~;~@{~w~^ ~:_~}~;)~:>"))
+                                                                   lis)
+                                                                  (write-out lis)))
+                                                              (apply (formatter-out "~w ~:i~@{~w~^ ~:_~}") arg)))
+                                      (when (next args) ((formatter-out "~_"))))
+                                    (do
+                                      (write-out arg)
+                                      (when (next args) ((formatter-out "~:_"))))))
+                                (recur (next args))))))
+    (when reference (write-out reference))))
+
+(defn- pprint-ns [alis]
+  (if (next alis)
+    (let [[ns-sym ns-name & stuff] alis
+          [doc-str stuff] (if (string? (first stuff))
+                            [(first stuff) (next stuff)]
+                            [nil stuff])
+          [attr-map references] (if (map? (first stuff))
+                                  [(first stuff) (next stuff)]
+                                  [nil stuff])]
+      (pprint-logical-block :prefix "(" :suffix ")"
+                            ((formatter-out "~w ~1I~@_~w") ns-sym ns-name)
+                            (when (or doc-str attr-map (seq references))
+                              ((formatter-out "~@:_")))
+                            (when doc-str
+                              (cl-format true "\"~a\"~:[~;~:@_~]" doc-str (or attr-map (seq references))))
+                            (when attr-map
+                              ((formatter-out "~w~:[~;~:@_~]") attr-map (seq references)))
+                            (loop [references references]
+                              (pprint-ns-reference (first references))
+                              (when-let [references (next references)]
+                                (pprint-newline :linear)
+                                (recur references)))))
+    (write-out alis)))
+
+;;; Master code-dispatch list
+(defn- pprint-simple-code-list [alis]
+  (pprint-logical-block :prefix "(" :suffix ")"
+                        (pprint-indent :block 1)
+                        (print-length-loop [alis (seq alis)]
+                                           (when alis
+                                             (write-out (first alis))
+                                             (when (next alis)
+                                               (cw-write " ")
+                                               (pprint-newline :linear)
+                                               (recur (next alis)))))))
+
+(defn- two-forms [amap]
+  (into {}
+        (mapcat
+         identity
+         (for [x amap]
+           [x [(symbol (name (first x))) (second x)]]))))
+
+(defn- add-core-ns [amap]
+  (let [core "clojure.core"]
+    (into {}
+          (map #(let [[s f] %]
+                  (if (not (or (namespace s) (special-symbol? s)))
+                    [(symbol core (name s)) f]
+                    %))
+               amap))))
+
+(def ^:dynamic ^{:private true} *code-table*
+  (two-forms
+   (add-core-ns
+    {'def pprint-hold-first, 'defonce pprint-hold-first,
+     'defn pprint-defn, 'defn- pprint-defn, 'defmacro pprint-defn, 'fn pprint-defn,
+     'let pprint-let, 'loop pprint-let, 'binding pprint-let,
+     'with-local-vars pprint-let, 'with-open pprint-let, 'when-let pprint-let,
+     'if-let pprint-let, 'doseq pprint-let, 'dotimes pprint-let,
+     'when-first pprint-let,
+     'if pprint-if, 'if-not pprint-if, 'when pprint-if, 'when-not pprint-if,
+     'cond pprint-cond, 'condp pprint-condp,
+     'fn* pprint-anon-func,
+     '. pprint-hold-first, '.. pprint-hold-first, '-> pprint-hold-first,
+     'locking pprint-hold-first, 'struct pprint-hold-first,
+     'struct-map pprint-hold-first, 'ns pprint-ns})))
+
+(defn- pprint-code-list [alis]
+  (if-not (let [reader-macros {'quote "'" 'clojure.core/deref "@"
+                               'var "#'" 'clojure.core/unquote "~"}
+                macro-char (reader-macros (first alis))]
+            (when (and macro-char (= 2 (count alis)))
+              (cw-write macro-char)
+              (write-out (second alis))
+              true))
+    (if-let [special-form (get *code-table* (first alis))]
+      (special-form alis)
+      (pprint-simple-code-list alis))))
+
+(defn- pprint-code-symbol [sym]
+  (if-let [arg-num (get *symbol-map* sym)]
+    (cw-write (str arg-num))
+    (if *print-suppress-namespaces*
+      (cw-write (name sym))
+      (cw-write (pr-str sym)))))
+
+(defn code-dispatch
+  "The pretty print dispatch function for pretty printing Clojure code."
+  {:added "1.2"}
+  [object]
+  (cond
+    (nil? object) (cw-write (pr-str nil))
+    (seq? object) (pprint-code-list object)
+    (symbol? object) (pprint-code-symbol object)
+    (vector? object) (pprint-vector object)
+    (map? object) (pprint-map object)
+    (set? object) (pprint-set object)
+    :else (pprint-simple-default object)))
 
 ;; print-table
 

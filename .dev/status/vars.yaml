@@ -922,7 +922,7 @@ vars:
     "*print-right-margin*": {type: dynamic-var, status: done}
     "*print-suppress-namespaces*": {type: dynamic-var, status: done}
     "cl-format": {type: function, status: done}
-    "code-dispatch": {type: var, status: todo}
+    "code-dispatch": {type: function, status: done}
     formatter: {type: macro, status: done}
     "formatter-out": {type: macro, status: done}
     "fresh-line": {type: function, status: done}

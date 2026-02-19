@@ -12,7 +12,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 1-76 | (see Completed Phases below) | — | DONE |
 | 77 | Var Coverage Completion | 0 | DONE |
 | 78 | Bug Fixes & Correctness | 1 | DONE |
-| 79 | cl-format Implementation | 1 | IN-PROGRESS |
+| 79 | cl-format Implementation | 1 | DONE |
 | 80 | Crash Hardening & Fuzzing | 1 | PENDING |
 | 81 | Error System Maturity | 1 | PENDING |
 | 82 | CI/CD Foundation | 2 | PENDING |
@@ -88,6 +88,10 @@ The 4 remaining TODO vars. Large single task (~1,950 lines upstream).
 | 79.4 | code-dispatch (pprint, uses formatter-out in ~30 places) | MUST |
 
 **Exit**: 0 TODO vars. pprint fully functional with code formatting.
+
+---
+
+STOP and ask user for binary size / startup loading strategy before tackle to Phase 80.
 
 ---
 

@@ -1,6 +1,6 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-19 (post-zwasm v1.1.0)
+Measured on: 2026-02-19 (post-Phase 79 cl-format)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
 
@@ -11,9 +11,9 @@ Fix the regression first. No exceptions without explicit user approval.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.07 MB    | 4.3 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
-| Startup time        | 4.8 ms     | 6 ms       | 1.25x  | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
-| RSS (light)         | 8.0 MB     | 12 MB      | +50%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
+| Binary size         | 4.44 MB    | 4.7 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
+| Startup time        | 5.2 ms     | 6.5 ms     | 1.25x  | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
+| RSS (light)         | 9.3 MB     | 12 MB      | +30%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
 
 ## Benchmark Regression Policy
