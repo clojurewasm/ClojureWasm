@@ -52,24 +52,21 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.8: Vulnerability audit using CW-adapted checklist.
+Sub-task 80.9: Threat model document (CW trust boundaries).
 
 ## Previous Task
 
-Phase 80.7 COMPLETE (Internal Error Audit).
-- Replaced 4 @panic calls in value.zig with graceful exit (user-friendly OOM message)
-- Improved bootstrap cache restore to show actual error message on failure
-- Audit confirmed: all "internal_error" uses are truly internal (not user-triggerable)
-  - "eval environment not initialized" (20 sites): macro_eval_env is always set before user code
-  - "bootstrap evaluation error" (31 sites): exits process via bootstrapFromCache, never reaches user
-- 80+ unreachable assertions reviewed: most are exhaustive switch/valid-by-construction invariants
-  - arithmetic.zig toFloat: correct — only called after type check
-  - nrepl.zig parseIp: correct — literal "127.0.0.1" never fails
+Phase 80.8 COMPLETE (Vulnerability Audit).
+Full audit across all categories:
+- **GC**: All secure — mark-and-sweep with HashMap tracking, mutex protection, no use-after-free/double-free
+- **VM**: Hardened — added pop/peek underflow assertions, jump bounds checks, try_begin catch_ip validation
+- **Clojure layer**: All secure — eval injection (expected), path traversal (sanitized), namespace poisoning (standard), serialization bomb (reader limits), lazy-seq OOM (lazy evaluation)
+- **Interop/FFI**: All secure — opaque wasm wrapper, WASI capability flags, sandbox integrity
+- **Build**: All secure — ReleaseSafe preserves bounds/overflow checks, zwasm pinned+hashed
 
 ## Task Queue
 
 ```
-80.8: Vulnerability audit using CW-adapted checklist
 80.9: Threat model document (CW trust boundaries)
 ```
 

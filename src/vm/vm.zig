@@ -466,18 +466,23 @@ pub const VM = struct {
             .jump => {
                 const offset = instr.signedOperand();
                 if (offset < 0) {
-                    frame.ip -= @intCast(-offset);
+                    const neg: usize = @intCast(-offset);
+                    if (neg > frame.ip) return error.InvalidInstruction;
+                    frame.ip -= neg;
                 } else {
                     frame.ip += @intCast(offset);
                 }
+                if (frame.ip > frame.code.len) return error.InvalidInstruction;
             },
             .jump_if_false => {
                 const val = self.pop();
                 if (!val.isTruthy()) {
                     frame.ip += instr.operand;
+                    if (frame.ip > frame.code.len) return error.InvalidInstruction;
                 }
             },
             .jump_back => {
+                if (instr.operand > frame.ip) return error.InvalidInstruction;
                 frame.ip -= instr.operand;
             },
 
@@ -914,6 +919,7 @@ pub const VM = struct {
                 // Register exception handler
                 if (self.handler_count >= HANDLERS_MAX) return error.StackOverflow;
                 const catch_ip = frame.ip + instr.operand;
+                if (catch_ip > frame.code.len) return error.InvalidInstruction;
                 self.handlers[self.handler_count] = .{
                     .catch_ip = catch_ip,
                     .saved_sp = self.sp,
@@ -1177,11 +1183,13 @@ pub const VM = struct {
     }
 
     fn pop(self: *VM) Value {
+        std.debug.assert(self.sp > 0); // stack underflow: compiler bug
         self.sp -= 1;
         return self.stack[self.sp];
     }
 
     fn peek(self: *VM, distance: usize) Value {
+        std.debug.assert(self.sp > 0 and distance < self.sp); // stack underflow: compiler bug
         return self.stack[self.sp - 1 - distance];
     }
 
