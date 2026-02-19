@@ -2364,6 +2364,39 @@ returns nil."
         navigator (init-navigator args)]
     (execute-format writer compiled-format navigator)))
 
+(defmacro formatter
+  "Makes a function which can directly run format-in. The function is
+fn [stream & args] ... and returns nil unless the stream is nil (meaning
+output to a string) in which case it returns the resulting string.
+
+format-in can be either a control string or a previously compiled format."
+  {:added "1.2"}
+  [format-in]
+  `(let [format-in# ~format-in
+         ;; UPSTREAM-DIFF: direct fn refs instead of ns-interns lookup
+         my-c-c# cached-compile
+         my-e-f# execute-format
+         my-i-n# init-navigator
+         cf# (if (string? format-in#) (my-c-c# format-in#) format-in#)]
+     (fn [stream# & args#]
+       (let [navigator# (my-i-n# args#)]
+         (my-e-f# stream# cf# navigator#)))))
+
+(defmacro formatter-out
+  "Makes a function which can directly run format-in. The function is
+fn [& args] ... and returns nil. This version of the formatter macro is
+designed to be used with *out* set to an appropriate Writer. In particular,
+this is meant to be used as part of a pretty printer dispatch method.
+
+format-in can be either a control string or a previously compiled format."
+  {:added "1.2"}
+  [format-in]
+  `(let [format-in# ~format-in
+         cf# (if (string? format-in#) (cached-compile format-in#) format-in#)]
+     (fn [& args#]
+       (let [navigator# (init-navigator args#)]
+         (execute-format cf# navigator#)))))
+
 ;; print-table
 
 (defn print-table

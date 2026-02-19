@@ -50,22 +50,16 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 79: cl-format Implementation
-Sub-task 79.2: formatter macro
+Sub-task 79.4: code-dispatch (pprint, uses formatter-out)
 
 ## Previous Task
 
-79.1: cl-format core engine. Ported full cl-format from upstream (~1600 lines).
-All directives: ~A, ~S, ~D, ~B, ~O, ~X, ~R (cardinal/ordinal/roman), ~P, ~C, ~%, ~~,
-~[conditional], ~{iteration}, ~*, ~?, ~^, ~F, ~E, ~$, ~(case), ~T, ~W, ~_newline, ~I, ~<justify>.
-Fixed: merge-with closure support (collections.zig), bootstrap cache forward-reference bug (serialize.zig).
-CW adaptations: char-upper/char-lower helpers, predicate-based type checks, contains? for flag checks.
+79.2+79.3: formatter and formatter-out macros. Direct fn refs instead of ns-interns lookup.
 
 ## Task Queue
 
 ```
-79.2 formatter macro ← CURRENT
-79.3 formatter-out macro
-79.4 code-dispatch (pprint, uses formatter-out)
+79.4 code-dispatch (pprint, uses formatter-out) ← CURRENT
 ```
 
 ## Known Issues

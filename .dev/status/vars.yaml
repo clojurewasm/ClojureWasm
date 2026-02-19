@@ -923,8 +923,8 @@ vars:
     "*print-suppress-namespaces*": {type: dynamic-var, status: done}
     "cl-format": {type: function, status: done}
     "code-dispatch": {type: var, status: todo}
-    formatter: {type: macro, status: todo}
-    "formatter-out": {type: macro, status: todo}
+    formatter: {type: macro, status: done}
+    "formatter-out": {type: macro, status: done}
     "fresh-line": {type: function, status: done}
     "get-pretty-writer": {type: function, status: done}
     pp: {type: macro, status: done}
