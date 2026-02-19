@@ -69,7 +69,7 @@ the root cause. Library tests serve as a specification of correct Clojure behavi
 | ~~Prefix-list require format~~ | data.csv | Medium | **FIXED 75.F** |
 | `definterface` not implemented | data.json | High | Open |
 | `&form` implicit macro binding not available | meander | Medium | Open |
-| GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Open (F140) |
+| GC crash under heavy allocation (keyword pointer freed) | tools.cli | High | Resolved (no longer reproducible) |
 
 ### Java Interop Gaps (blocking library tests)
 

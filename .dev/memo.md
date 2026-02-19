@@ -50,28 +50,26 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 78: Bug Fixes & Correctness
-Sub-task 78.1: Fix F140 — GC crash in dissocFn
+Sub-task 78.2: Fix F139 — case macro with mixed body types
 
 ## Previous Task
 
-77.10: Skip recovery audit — comprehensive 11-item audit complete.
-- 4 TODO vars (cl-format, Phase 79), 27 stubs documented, 55 skip vars all with notes
-- vars.yaml field name fix (notes: → note:), baselines.md updated to zwasm v1.1.0
-- All tests pass, all baselines within thresholds, 31 benchmarks comprehensive
-- Interop error messages clean (no panics), memo.md/README.md var counts updated
+78.1: F140 investigation — GC crash in dissocFn no longer reproducible.
+Tested with tools.cli summarize, heavy allocation pressure (2000 iterations, 50-key
+runtime keyword maps, 200 garbage strings per iteration), both VM and TreeWalk.
+All output correct, no crashes. Likely fixed by prior GC improvements (Phases 37-48).
+Removed F140 from checklist.
 
 ## Task Queue
 
 ```
-78.1 Fix F140: GC crash in dissocFn ← CURRENT
-78.2 Fix F139: case macro with mixed body types
+78.2 Fix F139: case macro with mixed body types ← CURRENT
 78.3 F94 upstream alignment pass (87 markers in src/clj/)
 78.4 Audit unreachable in production paths
 ```
 
 ## Known Issues
 
-- F140: GC crash in dissocFn (keyword pointer freed under heavy allocation pressure)
 - F139: case macro fails with mixed body types (shift-mask error)
 
 ## Next Phase Queue
