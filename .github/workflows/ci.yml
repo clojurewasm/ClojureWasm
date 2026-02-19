@@ -16,14 +16,50 @@ jobs:
           version: 0.15.2
       - name: Run tests
         run: zig build test
-      - name: Build native
+      - name: Build ReleaseSafe
         run: zig build -Doptimize=ReleaseSafe
       - name: Smoke test
         run: |
           ./zig-out/bin/cljw -e '(+ 1 2 3)'
           ./zig-out/bin/cljw -e '(println "CI pass")'
+      - name: Binary size check
+        run: |
+          SIZE=$(stat -f%z zig-out/bin/cljw)
+          SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
+          echo "Binary size: ${SIZE_MB}MB ($SIZE bytes)"
+          # Threshold: 4.5MB (baseline 4.25MB + 5% margin)
+          if [ "$SIZE" -gt 4718592 ]; then
+            echo "FAIL: Binary size ${SIZE_MB}MB exceeds 4.5MB threshold"
+            exit 1
+          fi
       - name: E2E tests
         run: bash test/e2e/run_e2e.sh
+      - name: Deps E2E tests
+        run: bash test/e2e/deps/run_deps_e2e.sh
+      - name: Benchmark smoke test
+        run: |
+          echo "Running benchmark smoke tests (10s timeout per benchmark)..."
+          PASS=0
+          FAIL=0
+          for dir in bench/benchmarks/*/; do
+            [ -f "$dir/bench.clj" ] || continue
+            name=$(basename "$dir" | sed 's/^[0-9]*_//')
+            # Skip wasm benchmarks (require wasm test files)
+            case "$name" in wasm_*) continue ;; esac
+            printf "  %-24s " "$name"
+            if timeout 10 ./zig-out/bin/cljw "$dir/bench.clj" >/dev/null 2>&1; then
+              echo "OK"
+              PASS=$((PASS + 1))
+            else
+              echo "FAIL"
+              FAIL=$((FAIL + 1))
+            fi
+          done
+          echo ""
+          echo "Benchmarks: $PASS passed, $FAIL failed"
+          if [ "$FAIL" -gt 0 ]; then
+            exit 1
+          fi
 
   test-linux:
     runs-on: ubuntu-24.04
@@ -34,14 +70,26 @@ jobs:
           version: 0.15.2
       - name: Run tests
         run: zig build test
-      - name: Build native
+      - name: Build ReleaseSafe
         run: zig build -Doptimize=ReleaseSafe
       - name: Smoke test
         run: |
           ./zig-out/bin/cljw -e '(+ 1 2 3)'
           ./zig-out/bin/cljw -e '(println "CI pass")'
+      - name: Binary size check
+        run: |
+          SIZE=$(stat -c%s zig-out/bin/cljw)
+          SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
+          echo "Binary size: ${SIZE_MB}MB ($SIZE bytes)"
+          # Linux binary may differ from macOS; use generous 5MB threshold
+          if [ "$SIZE" -gt 5242880 ]; then
+            echo "FAIL: Binary size ${SIZE_MB}MB exceeds 5MB threshold"
+            exit 1
+          fi
       - name: E2E tests
         run: bash test/e2e/run_e2e.sh
+      - name: Deps E2E tests
+        run: bash test/e2e/deps/run_deps_e2e.sh
 
   cross-compile:
     runs-on: ubuntu-24.04

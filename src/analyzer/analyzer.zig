@@ -51,6 +51,9 @@ pub const Analyzer = struct {
     /// Recursion depth for analysis (prevents stack overflow on deeply nested forms).
     analysis_depth: u32 = 0,
 
+    /// Whether we're inside a recur-able context (fn body or loop).
+    in_recur_context: bool = false,
+
     /// Maximum analysis recursion depth.
     const MAX_ANALYSIS_DEPTH: u32 = 1024;
 
@@ -925,6 +928,11 @@ pub const Analyzer = struct {
         // Detect :pre/:post condition map: {:pre [...] :post [...]} as first body form
         const body_forms = try self.transformPrePost(body_forms_raw);
 
+        // fn body is a valid recur target
+        const prev_recur_context = self.in_recur_context;
+        self.in_recur_context = true;
+        defer self.in_recur_context = prev_recur_context;
+
         var params: std.ArrayList([]const u8) = .empty;
         var variadic = false;
 
@@ -1258,6 +1266,11 @@ pub const Analyzer = struct {
         if (items.len < 2) {
             return self.analysisError(.arity_error, "loop requires binding vector", form);
         }
+
+        // loop body is a valid recur target
+        const prev_recur_context = self.in_recur_context;
+        self.in_recur_context = true;
+        defer self.in_recur_context = prev_recur_context;
 
         if (items[1].data != .vector) {
             return self.analysisError(.value_error, "loop bindings must be a vector", items[1]);
@@ -2352,7 +2365,9 @@ pub const Analyzer = struct {
 
     fn analyzeRecur(self: *Analyzer, items: []const Form, form: Form) AnalyzeError!*Node {
         // (recur arg1 arg2 ...)
-        _ = form;
+        if (!self.in_recur_context) {
+            return self.analysisError(.value_error, "Can only recur from tail position in fn or loop", form);
+        }
         var args = self.allocator.alloc(*Node, items.len - 1) catch return error.OutOfMemory;
         for (items[1..], 0..) |item, i| {
             args[i] = try self.analyze(item);
@@ -3653,6 +3668,7 @@ test "analyze (recur 1 2)" {
     defer arena.deinit();
     var a = Analyzer.init(arena.allocator());
     defer a.deinit();
+    a.in_recur_context = true; // simulate being inside fn/loop
 
     const items = [_]Form{
         .{ .data = .{ .symbol = .{ .ns = null, .name = "recur" } } },
@@ -3662,6 +3678,19 @@ test "analyze (recur 1 2)" {
     const result = try a.analyze(.{ .data = .{ .list = &items } });
     try std.testing.expectEqualStrings("recur", result.kindName());
     try std.testing.expectEqual(@as(usize, 2), result.recur_node.args.len);
+}
+
+test "analyze (recur) outside fn/loop — error" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var a = Analyzer.init(arena.allocator());
+    defer a.deinit();
+
+    const items = [_]Form{
+        .{ .data = .{ .symbol = .{ .ns = null, .name = "recur" } } },
+    };
+    const result = a.analyze(.{ .data = .{ .list = &items } });
+    try std.testing.expectError(error.ValueError, result);
 }
 
 test "analyze (throw \"error\")" {

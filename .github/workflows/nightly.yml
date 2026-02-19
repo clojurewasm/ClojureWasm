@@ -1,0 +1,154 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC daily
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Tests (Debug — full safety checks)
+        run: zig build test
+      - name: Tests (ReleaseSafe — optimized + safety)
+        run: zig build test -Doptimize=ReleaseSafe
+      - name: Build ReleaseSafe
+        run: zig build -Doptimize=ReleaseSafe
+      - name: E2E under safety checks
+        run: bash test/e2e/run_e2e.sh
+      - name: Deps E2E under safety checks
+        run: bash test/e2e/deps/run_deps_e2e.sh
+      - name: Stress test — GC pressure
+        run: |
+          cat > /tmp/gc_stress.clj << 'EOF'
+          ;; Allocate many objects to stress GC
+          (dotimes [_ 100]
+            (doall (map (fn [x] (vec (range x))) (range 100))))
+          (println "GC stress: OK")
+          EOF
+          timeout 60 ./zig-out/bin/cljw /tmp/gc_stress.clj
+      - name: Stress test — deep recursion
+        run: |
+          cat > /tmp/deep_recurse.clj << 'EOF'
+          (defn deep [n acc]
+            (if (zero? n) acc (recur (dec n) (inc acc))))
+          (println "Deep recursion:" (deep 100000 0))
+          EOF
+          timeout 30 ./zig-out/bin/cljw /tmp/deep_recurse.clj
+      - name: Stress test — large collections
+        run: |
+          cat > /tmp/large_coll.clj << 'EOF'
+          (let [v (vec (range 50000))
+                m (zipmap (range 10000) (range 10000))
+                s (set (range 10000))]
+            (println "vec:" (count v) "map:" (count m) "set:" (count s)))
+          EOF
+          timeout 30 ./zig-out/bin/cljw /tmp/large_coll.clj
+
+  fuzz:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Build ReleaseSafe
+        run: zig build -Doptimize=ReleaseSafe
+      - name: Fuzz — random expressions (no crash = pass)
+        run: |
+          echo "Fuzzing with random expressions..."
+          PASS=0
+          CRASH=0
+          for i in $(seq 1 200); do
+            # Generate random expression
+            case $((RANDOM % 12)) in
+              0)  expr="(+ $((RANDOM % 1000)) $((RANDOM % 1000)))" ;;
+              1)  expr="(* $((RANDOM % 100)) $((RANDOM % 100)))" ;;
+              2)  expr="(- $((RANDOM % 1000)) $((RANDOM % 1000)))" ;;
+              3)  expr="(count (range $((RANDOM % 1000))))" ;;
+              4)  expr="(reduce + (range $((RANDOM % 100 + 1))))" ;;
+              5)  expr="(vec (take $((RANDOM % 50)) (range $((RANDOM % 100)))))" ;;
+              6)  expr="(let [x $((RANDOM % 100))] (* x x))" ;;
+              7)  expr="(apply str (repeat $((RANDOM % 100 + 1)) \"x\"))" ;;
+              8)  expr="(nth (range 100) $((RANDOM % 100)))" ;;
+              9)  expr="(mapv inc (range $((RANDOM % 100))))" ;;
+              10) expr="(filterv odd? (range $((RANDOM % 100))))" ;;
+              11) expr="(assoc {} :a $((RANDOM % 1000)) :b $((RANDOM % 1000)))" ;;
+            esac
+            # Run with timeout — errors are fine, crashes/hangs are not
+            if timeout 5 ./zig-out/bin/cljw -e "$expr" >/dev/null 2>&1; then
+              PASS=$((PASS + 1))
+            else
+              rc=$?
+              if [ "$rc" -eq 124 ]; then
+                echo "TIMEOUT: $expr"
+                CRASH=$((CRASH + 1))
+              elif [ "$rc" -gt 128 ]; then
+                echo "CRASH (signal $((rc - 128))): $expr"
+                CRASH=$((CRASH + 1))
+              else
+                # Normal error exit (e.g. division by zero) — acceptable
+                PASS=$((PASS + 1))
+              fi
+            fi
+          done
+          echo ""
+          echo "Fuzz results: $PASS ok, $CRASH crashes/timeouts (of 200)"
+          if [ "$CRASH" -gt 0 ]; then
+            exit 1
+          fi
+      - name: Fuzz — malformed input (no crash = pass)
+        run: |
+          echo "Fuzzing with malformed input..."
+          CRASH=0
+          EXPRS=(
+            "("
+            ")"
+            "(("
+            "))"
+            "(+ 1"
+            "(defn)"
+            "(let)"
+            "(let [x])"
+            "(fn)"
+            "(if)"
+            "(try)"
+            "(catch)"
+            "[[[[[[[[[["
+            "(quote quote quote)"
+            "(def)"
+            "(do)"
+            "(loop)"
+            "(recur)"
+            "#{"
+            "#{{"
+            "@"
+            "@@@@"
+            "(deref)"
+            "(/ 1 0)"
+            "(nth [] 999)"
+            "(throw (Exception. \"test\"))"
+            "(assert false)"
+            ""
+          )
+          for expr in "${EXPRS[@]}"; do
+            if [ -z "$expr" ]; then continue; fi
+            if timeout 5 ./zig-out/bin/cljw -e "$expr" >/dev/null 2>&1; then
+              : # ok
+            else
+              rc=$?
+              if [ "$rc" -eq 124 ] || [ "$rc" -gt 128 ]; then
+                echo "CRASH/TIMEOUT on: $expr (rc=$rc)"
+                CRASH=$((CRASH + 1))
+              fi
+            fi
+          done
+          echo "Malformed input: $CRASH crashes"
+          if [ "$CRASH" -gt 0 ]; then
+            exit 1
+          fi

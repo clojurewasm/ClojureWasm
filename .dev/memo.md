@@ -51,21 +51,24 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 81 COMPLETE. Proceed to Phase 82 (CI/CD Foundation).
-Read `.dev/roadmap.md` Phase 82 section for sub-tasks.
+Phase 82 COMPLETE (CI/CD Foundation).
 
 ## Previous Task
 
-Phase 81 COMPLETE (Error System Maturity).
-- 81.1: Error catalog at docs/errors.md — ~850 unique messages across 7 layers
-- 81.2+81.3: Unknown class/method errors now list supported classes
-- 81.4: Stack traces already have file:line, ns/fn names (verified quality)
-- 81.5: Raw Zig error fallback replaced with human-friendly labels via errorToLabel()
+Phase 82 COMPLETE (CI/CD Foundation).
+- 82.1+82.2: Already had test matrix (macOS ARM64 + Linux x86_64) and ReleaseSafe builds
+- 82.3: Benchmark smoke test in CI (10s timeout per benchmark, catches catastrophic regressions)
+- 82.4: Binary size check (macOS ≤4.5MB, Linux ≤5MB)
+- 82.5: Already had upstream test suite via `zig build test`
+- 82.6: Added deps e2e tests to both platforms
+- 82.7: Nightly sanitizer job (Debug + ReleaseSafe tests, stress tests for GC/recursion/collections)
+- 82.8: Nightly fuzzing (200 random expressions + 27 malformed inputs, crash/timeout detection)
+- Bug fix: `(recur)` at top level caused SIGABRT → now properly rejected by analyzer
 
 ## Task Queue
 
 ```
-(empty — read roadmap Phase 82 for next tasks)
+(empty — Phase 82 complete, proceed to Phase 83)
 ```
 
 ## Known Issues
@@ -74,8 +77,8 @@ Phase 81 COMPLETE (Error System Maturity).
 
 ## Next Phase Queue
 
-After Phase 80, proceed to Phase 81 (Error System Maturity).
-Read `.dev/roadmap.md` Phase 81 section for sub-tasks.
+After Phase 82, proceed to Phase 83 (Essential Documentation).
+Read `.dev/roadmap.md` Phase 83 section for sub-tasks.
 
 ## Notes
 
