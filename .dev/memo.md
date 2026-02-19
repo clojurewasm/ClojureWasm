@@ -51,24 +51,22 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 82 COMPLETE (CI/CD Foundation).
+Phase 83 COMPLETE (Essential Documentation).
 
 ## Previous Task
 
-Phase 82 COMPLETE (CI/CD Foundation).
-- 82.1+82.2: Already had test matrix (macOS ARM64 + Linux x86_64) and ReleaseSafe builds
-- 82.3: Benchmark smoke test in CI (10s timeout per benchmark, catches catastrophic regressions)
-- 82.4: Binary size check (macOS ≤4.5MB, Linux ≤5MB)
-- 82.5: Already had upstream test suite via `zig build test`
-- 82.6: Added deps e2e tests to both platforms
-- 82.7: Nightly sanitizer job (Debug + ReleaseSafe tests, stress tests for GC/recursion/collections)
-- 82.8: Nightly fuzzing (200 random expressions + 27 malformed inputs, crash/timeout detection)
-- Bug fix: `(recur)` at top level caused SIGABRT → now properly rejected by analyzer
+Phase 83 COMPLETE (Essential Documentation).
+- 83.1: docs/compatibility.md — namespace coverage matrix, skip categories, stubs
+- 83.2: docs/differences.md — concrete behavioral diffs from JVM Clojure
+- 83.3: docs/cli.md — all cljw flags, modes, deps.edn format
+- 83.4: docs/interop.md — supported classes/methods/fields, static rewrites
+- 83.5: docs/error-guide.md — user-facing error reference with examples
+- 83.6: docs/wasm-ffi.md — complete Wasm FFI API reference
 
 ## Task Queue
 
 ```
-(empty — Phase 82 complete, proceed to Phase 83)
+(empty — Phase 83 complete, proceed to Phase 84)
 ```
 
 ## Known Issues
@@ -77,8 +75,8 @@ Phase 82 COMPLETE (CI/CD Foundation).
 
 ## Next Phase Queue
 
-After Phase 82, proceed to Phase 83 (Essential Documentation).
-Read `.dev/roadmap.md` Phase 83 section for sub-tasks.
+After Phase 83, proceed to Phase 84 (Testing Expansion).
+Read `.dev/roadmap.md` Phase 84 section for sub-tasks.
 
 ## Notes
 
