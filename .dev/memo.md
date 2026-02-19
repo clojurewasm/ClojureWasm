@@ -52,7 +52,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.5: Differential testing harness (CW vs JVM Clojure).
+Sub-task 80.6: Resource limits: nesting depth, string size, collection count.
 
 ## Previous Task
 
@@ -64,7 +64,6 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 ## Task Queue
 
 ```
-80.5: Differential testing harness (CW vs JVM Clojure)
 80.6: Resource limits: nesting depth, string size, collection count
 80.7: Audit Internal Error / bootstrap evaluation error — must never reach users
 80.8: Vulnerability audit using CW-adapted checklist
@@ -73,7 +72,7 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 
 ## Known Issues
 
-(none)
+- `some` returns element instead of predicate result (CW core.clj L431-437 uses `(first s)` instead of upstream's `(pred (first s))`)
 
 ## Next Phase Queue
 
