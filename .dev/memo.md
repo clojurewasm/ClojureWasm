@@ -51,13 +51,13 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 80 COMPLETE. Proceed to Phase 81 (Error System Maturity).
-Read `.dev/roadmap.md` Phase 81 section for sub-tasks.
+Phase 81: Error System Maturity.
+Sub-task 81.1: Build layered error catalog (Reader→Analyzer→Compiler→VM→Builtins→Interop).
 
 ## Previous Task
 
 Phase 80 COMPLETE (Crash Hardening & Fuzzing).
-- 80.1-80.5: Fuzzing harnesses, structure-aware generation, differential testing (already done)
+- 80.1-80.5: Fuzzing harnesses, structure-aware generation, differential testing
 - 80.6: Resource limits — format width/precision (10K), str output (10MB), analyzer depth (1024)
 - 80.7: Internal error audit — @panic→graceful exit, all internal_error non-user-reachable
 - 80.8: Vulnerability audit — GC/VM/Clojure/interop/build all secure; VM hardened
@@ -66,7 +66,11 @@ Phase 80 COMPLETE (Crash Hardening & Fuzzing).
 ## Task Queue
 
 ```
-(empty — read roadmap Phase 81 for next tasks)
+81.1: Build layered error catalog (Reader→Analyzer→Compiler→VM→Builtins→Interop)
+81.2: Unknown class/method calls → clear user-friendly messages (not panic)
+81.3: Interop error messages: list supported classes when unknown class used
+81.4: Stack trace quality: source file + line for user code errors
+81.5: Ensure no raw Zig error (error.Foo) leaks to user — all have human message
 ```
 
 ## Known Issues
