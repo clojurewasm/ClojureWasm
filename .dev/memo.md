@@ -59,29 +59,26 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83C: UTF-8 Codepoint Correctness
-Read `.dev/roadmap.md` Phase 83C section and `.dev/interop-v2-design.md`.
+Phase 83D: Handle Memory Safety
+Read `.dev/roadmap.md` Phase 83D section and `.dev/interop-v2-design.md`.
 
 ## Previous Task
 
-Phase 83B COMPLETE (InterOp Architecture v2 — ClassDef Registry).
-- ClassDef struct: fqcn, aliases, constructor, dispatch_method, instance_check
-- class_registry.zig: unified registry for all map-backed classes
-- Constructor dispatch via registry (eliminated if-chain in constructors.zig)
-- Method dispatch via registry (eliminated if-chain in dispatch.zig)
-- instance? for map-backed classes uses registry (fixed UUID instance? bug)
-- 83B.4 (String virtual ClassDef) skipped: string dispatch is clean tag-based
-- 83B.6 (Protocol integration) deferred: not needed until user-extensible types
+Phase 83C COMPLETE (UTF-8 Codepoint Correctness).
+- codepoint.zig: codepointCount, codepointAt, codepointSlice, codepointIndexOf
+- .length, .charAt, .substring, .indexOf now use codepoints
+- count, nth, subs on strings now use codepoints
+- Japanese, emoji, mixed script tests all pass
+- No ASCII performance regression (string_ops 29ms→25ms)
 
 ## Task Queue
 
 ```
-83C.1: Codepoint utilities module: codepointCount, codepointAt, codepointSlice
-83C.2: .length → codepoint count, .charAt → codepoint at index
-83C.3: .substring → codepoint-based, .indexOf → codepoint-aware
-83C.4: count on string → codepoints. subs → codepoint-based. nth on string.
-83C.5: Multilingual test suite: Japanese, emoji, mixed scripts
-83C.6: Performance benchmark: ASCII workloads no regression
+83D.1: Add closed flag to handle state. All operations check → error if closed.
+83D.2: GC finalization: destructor callback for handle-bearing maps
+83D.3: Audit shared handle semantics (map copy = shared handle?)
+83D.4: with-open support
+83D.5: Verify all tests
 ```
 
 ## Known Issues
@@ -91,8 +88,8 @@ Phase 83B COMPLETE (InterOp Architecture v2 — ClassDef Registry).
 
 ## Next Phase Queue
 
-After 83C, proceed to 83D (Handle Memory Safety).
-Read `.dev/roadmap.md` Phase 83D section.
+After 83D, proceed to 83E (Core All-Zig Migration).
+Read `.dev/roadmap.md` Phase 83E section.
 
 ## Notes
 

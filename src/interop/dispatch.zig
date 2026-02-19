@@ -139,34 +139,35 @@ fn dispatchException(allocator: Allocator, method: []const u8, obj: Value) anyer
 }
 
 // String method dispatch — extracted from strings.zig
+const cp = @import("../runtime/codepoint.zig");
+
 fn dispatchString(allocator: Allocator, method: []const u8, s: []const u8, rest: []const Value) anyerror!Value {
     if (std.mem.eql(u8, method, "length")) {
-        return Value.initInteger(@intCast(s.len));
+        return Value.initInteger(@intCast(cp.codepointCount(s)));
     } else if (std.mem.eql(u8, method, "substring")) {
         if (rest.len == 1) {
             const begin: usize = @intCast(rest[0].asInteger());
-            if (begin > s.len) return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{begin});
-            return Value.initString(allocator, try allocator.dupe(u8, s[begin..]));
+            const slice = cp.codepointSliceFrom(s, begin) orelse
+                return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{begin});
+            return Value.initString(allocator, try allocator.dupe(u8, slice));
         } else if (rest.len == 2) {
             const begin: usize = @intCast(rest[0].asInteger());
             const end: usize = @intCast(rest[1].asInteger());
-            if (begin > s.len or end > s.len or begin > end)
+            const slice = cp.codepointSlice(s, begin, end) orelse
                 return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range", .{});
-            return Value.initString(allocator, try allocator.dupe(u8, s[begin..end]));
+            return Value.initString(allocator, try allocator.dupe(u8, slice));
         }
         return err.setErrorFmt(.eval, .arity_error, .{}, ".substring expects 1 or 2 args", .{});
     } else if (std.mem.eql(u8, method, "charAt")) {
         if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".charAt expects 1 arg", .{});
         const idx: usize = @intCast(rest[0].asInteger());
-        if (idx >= s.len) return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{idx});
-        return Value.initChar(@intCast(s[idx]));
+        const codepoint_val = cp.codepointAt(s, idx) orelse
+            return err.setErrorFmt(.eval, .value_error, .{}, "String index out of range: {d}", .{idx});
+        return Value.initChar(codepoint_val);
     } else if (std.mem.eql(u8, method, "indexOf")) {
         if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".indexOf expects 1 arg", .{});
         const needle = rest[0].asString();
-        if (std.mem.indexOf(u8, s, needle)) |pos| {
-            return Value.initInteger(@intCast(pos));
-        }
-        return Value.initInteger(-1);
+        return Value.initInteger(cp.codepointIndexOf(s, needle));
     } else if (std.mem.eql(u8, method, "contains")) {
         if (rest.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, ".contains expects 1 arg", .{});
         const needle = rest[0].asString();

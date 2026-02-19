@@ -53,6 +53,7 @@ pub const builtin_pprint = @import("builtins/pprint.zig");
 pub const interop_rewrites = @import("interop/rewrites.zig");
 pub const interop_dispatch = @import("interop/dispatch.zig");
 pub const interop_constructors = @import("interop/constructors.zig");
+pub const codepoint = @import("runtime/codepoint.zig");
 pub const interop_exception_hierarchy = @import("interop/exception_hierarchy.zig");
 pub const interop_class_registry = @import("interop/class_registry.zig");
 pub const interop_uri = @import("interop/classes/uri.zig");
@@ -108,6 +109,7 @@ test {
     _ = interop_rewrites;
     _ = interop_dispatch;
     _ = interop_constructors;
+    _ = codepoint;
     _ = interop_exception_hierarchy;
     _ = interop_class_registry;
     _ = interop_uri;

@@ -158,22 +158,25 @@ pub fn subsFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .integer => args[1].asInteger(),
         else => return err.setErrorFmt(.eval, .type_error, .{}, "subs expects an integer start, got {s}", .{@tagName(args[1].tag())}),
     };
-    if (start_i < 0 or @as(usize, @intCast(start_i)) > s.len) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{start_i});
+    if (start_i < 0) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{start_i});
     const start: usize = @intCast(start_i);
+    const cp = @import("../runtime/codepoint.zig");
 
-    const end: usize = if (args.len == 3) blk: {
+    if (args.len == 3) {
         const end_i = switch (args[2].tag()) {
             .integer => args[2].asInteger(),
             else => return err.setErrorFmt(.eval, .type_error, .{}, "subs expects an integer end, got {s}", .{@tagName(args[2].tag())}),
         };
-        if (end_i < start_i or @as(usize, @intCast(end_i)) > s.len) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{end_i});
-        break :blk @intCast(end_i);
-    } else s.len;
-
-    const slice = s[start..end];
-    const owned = try allocator.alloc(u8, slice.len);
-    @memcpy(owned, slice);
-    return Value.initString(allocator, owned);
+        if (end_i < start_i) return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{end_i});
+        const end: usize = @intCast(end_i);
+        const slice = cp.codepointSlice(s, start, end) orelse
+            return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{end_i});
+        return Value.initString(allocator, try allocator.dupe(u8, slice));
+    } else {
+        const slice = cp.codepointSliceFrom(s, start) orelse
+            return err.setErrorFmt(.eval, .index_error, .{}, "String index out of range: {d}", .{start_i});
+        return Value.initString(allocator, try allocator.dupe(u8, slice));
+    }
 }
 
 /// (name x) — returns the name part of a string, symbol, or keyword.

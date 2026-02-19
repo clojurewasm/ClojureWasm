@@ -625,10 +625,11 @@ fn nthSeq(allocator: Allocator, coll: Value, idx: usize, not_found: ?Value) anye
 
 /// nth on string returns character at index.
 fn nthString(s: []const u8, idx: usize, not_found: ?Value) anyerror!Value {
-    if (idx >= s.len) {
-        return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for string of length {d}", .{ idx, s.len });
-    }
-    return Value.initChar(s[idx]);
+    const codepoint_mod = @import("../runtime/codepoint.zig");
+    const cp_val = codepoint_mod.codepointAt(s, idx) orelse {
+        return not_found orelse err.setErrorFmt(.eval, .index_error, .{}, "nth index {d} out of bounds for string of length {d}", .{ idx, codepoint_mod.codepointCount(s) });
+    };
+    return Value.initChar(cp_val);
 }
 
 /// (count coll) — number of elements.
@@ -701,7 +702,7 @@ pub fn countFn(allocator: Allocator, args: []const Value) anyerror!Value {
         .hash_map => args[0].asHashMap().getCount(),
         .set => args[0].asSet().count(),
         .nil => @as(usize, 0),
-        .string => args[0].asString().len,
+        .string => @import("../runtime/codepoint.zig").codepointCount(args[0].asString()),
         .transient_vector => args[0].asTransientVector().count(),
         .transient_map => args[0].asTransientMap().count(),
         .transient_set => args[0].asTransientSet().count(),
