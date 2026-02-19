@@ -13,6 +13,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 77 | Var Coverage Completion | 0 | DONE |
 | 78 | Bug Fixes & Correctness | 1 | DONE |
 | 79 | cl-format Implementation | 1 | DONE |
+| 79A | Binary Optimization & Startup Acceleration | 1 | IN-PROGRESS |
 | 80 | Crash Hardening & Fuzzing | 1 | PENDING |
 | 81 | Error System Maturity | 1 | PENDING |
 | 82 | CI/CD Foundation | 2 | PENDING |
@@ -91,7 +92,33 @@ The 4 remaining TODO vars. Large single task (~1,950 lines upstream).
 
 ---
 
-STOP and ask user for binary size / startup loading strategy before tackle to Phase 80.
+## Phase 79A: Binary Optimization & Startup Acceleration (Tier 1)
+
+Goal: Maximize CW's differentiation — lightweight, ultra-fast startup, small binary.
+
+Three axes:
+1. `-Dwasm=false`: Remove zwasm for <3MB binary
+2. Lazy bootstrap: Defer non-essential NS deserialization to require time
+3. Measurement infrastructure: `cljw build` artifacts + cross-language benchmarks
+
+Sub-tasks:
+- 79A.1: build.zig `-Dwasm=false` build option
+- 79A.2: Wasm module conditional compilation
+- 79A.3: Lazy bootstrap — cache format change + require integration
+- 79A.4: `cljw build` integration verification
+- 79A.5: `bench/build_bench.sh` measurement infrastructure
+- 79A.6: Cross-language benchmark full run + recording
+- 79A.7: All-profile final measurement
+- 79A.8: Test verification (both profiles)
+- 79A.9: Documentation updates (roadmap, memo, baselines, decisions)
+
+Target metrics:
+| Profile | Binary | Startup | RSS |
+|---------|--------|---------|-----|
+| Default (wasm=true) | ≤ 4.0MB | ≤ 3ms | ≤ 10MB |
+| `-Dwasm=false` | < 3.0MB | ≤ 3ms | ≤ 8MB |
+
+**Exit**: Both profiles measured, baselines updated, cross-language benchmarks recorded.
 
 ---
 

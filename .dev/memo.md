@@ -49,17 +49,25 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 79 COMPLETE. Awaiting user instructions before Phase 80.
+Phase 79A: Binary Optimization & Startup Acceleration.
+Sub-task 79A.1: build.zig `-Dwasm=false` build option.
 
 ## Previous Task
 
-79.4: code-dispatch + Clojure pprint override + cl-format raw-string fix.
-Also fixed: pprint-list reader-macro removal (upstream compliance), baselines update.
+Phase 79 COMPLETE (cl-format: core engine, formatter macros, code-dispatch + pprint override).
 
 ## Task Queue
 
 ```
-(empty — Phase 79 complete, Phase 80 pending user input)
+79A.1: build.zig -Dwasm=false option
+79A.2: Wasm conditional compilation (all wasm modules)
+79A.3: Lazy bootstrap (cache format change + require integration)
+79A.4: cljw build integration verification
+79A.5: bench/build_bench.sh measurement infrastructure
+79A.6: Cross-language benchmark full run
+79A.7: All-profile final measurement
+79A.8: Test verification (both profiles)
+79A.9b: Final docs (baselines, decisions, audit)
 ```
 
 ## Known Issues
@@ -68,7 +76,7 @@ Also fixed: pprint-list reader-macro removal (upstream compliance), baselines up
 
 ## Next Phase Queue
 
-After user provides startup strategy instructions, proceed to Phase 80 (Crash Hardening & Fuzzing).
+After Phase 79A, proceed to Phase 80 (Crash Hardening & Fuzzing).
 Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
 
 ## Notes
