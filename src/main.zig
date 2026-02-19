@@ -39,6 +39,7 @@ const wasm_builtins = @import("wasm/builtins.zig");
 const deps_mod = @import("deps.zig");
 
 const build_options = @import("build_options");
+const enable_wasm = build_options.enable_wasm;
 const version_string = "ClojureWasm v" ++ build_options.version ++ "\n";
 
 /// Magic trailer bytes appended to built binaries.
@@ -384,13 +385,15 @@ pub fn main() !void {
         }
 
         // Apply wasm deps
-        for (resolved.wasm_deps) |wd| {
-            var wasm_buf: [4096]u8 = undefined;
-            const wasm_resolved = if (config_dir) |dir|
-                std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
-            else
-                wd.path;
-            wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+        if (enable_wasm) {
+            for (resolved.wasm_deps) |wd| {
+                var wasm_buf: [4096]u8 = undefined;
+                const wasm_resolved = if (config_dir) |dir|
+                    std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+                else
+                    wd.path;
+                wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+            }
         }
 
         switch (mode) {
@@ -992,13 +995,15 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
         }
 
         // Apply wasm deps
-        for (resolved.wasm_deps) |wd| {
-            var wasm_buf: [4096]u8 = undefined;
-            const wasm_resolved = if (test_config_dir) |dir|
-                std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
-            else
-                wd.path;
-            wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+        if (enable_wasm) {
+            for (resolved.wasm_deps) |wd| {
+                var wasm_buf: [4096]u8 = undefined;
+                const wasm_resolved = if (test_config_dir) |dir|
+                    std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+                else
+                    wd.path;
+                wasm_builtins.registerWasmDep(wd.name, wasm_resolved);
+            }
         }
 
         test_paths_from_config = resolved.test_paths;
@@ -1169,13 +1174,15 @@ fn projectConfigFromDepsConfig(allocator: Allocator, deps_config: deps_mod.DepsC
     } else @as([]const Dep, &.{});
 
     // Convert wasm deps
-    const wasm_count = deps_config.wasm_deps.len;
-    const wasm_deps = if (wasm_count > 0) blk: {
-        const w = allocator.alloc(WasmDep, wasm_count) catch break :blk @as([]const WasmDep, &.{});
-        for (deps_config.wasm_deps, 0..) |src_wd, idx| {
-            w[idx] = .{ .name = src_wd.name, .path = src_wd.path };
-        }
-        break :blk @as([]const WasmDep, w[0..wasm_count]);
+    const wasm_deps = if (enable_wasm) blk: {
+        const wasm_count = deps_config.wasm_deps.len;
+        if (wasm_count > 0) {
+            const w = allocator.alloc(WasmDep, wasm_count) catch break :blk @as([]const WasmDep, &.{});
+            for (deps_config.wasm_deps, 0..) |src_wd, idx| {
+                w[idx] = .{ .name = src_wd.name, .path = src_wd.path };
+            }
+            break :blk @as([]const WasmDep, w[0..wasm_count]);
+        } else break :blk @as([]const WasmDep, &.{});
     } else @as([]const WasmDep, &.{});
 
     return .{
@@ -1239,13 +1246,15 @@ fn applyConfig(config: ProjectConfig, config_dir: ?[]const u8) void {
         }
     }
     // Register wasm module deps
-    for (config.wasm_deps) |wd| {
-        var wasm_buf: [4096]u8 = undefined;
-        const resolved = if (config_dir) |dir|
-            std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
-        else
-            wd.path;
-        wasm_builtins.registerWasmDep(wd.name, resolved);
+    if (enable_wasm) {
+        for (config.wasm_deps) |wd| {
+            var wasm_buf: [4096]u8 = undefined;
+            const resolved = if (config_dir) |dir|
+                std.fmt.bufPrint(&wasm_buf, "{s}/{s}", .{ dir, wd.path }) catch continue
+            else
+                wd.path;
+            wasm_builtins.registerWasmDep(wd.name, resolved);
+        }
     }
 }
 

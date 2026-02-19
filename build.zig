@@ -4,31 +4,36 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // --- Build options (37.1: profiling infrastructure) ---
+    // --- Build options ---
     const profile_opcodes = b.option(bool, "profile-opcodes", "Enable opcode frequency profiling") orelse false;
     const profile_alloc = b.option(bool, "profile-alloc", "Enable allocation size profiling") orelse false;
+    const enable_wasm = b.option(bool, "wasm", "Enable Wasm FFI support (default: true)") orelse true;
 
     const build_zon = @import("build.zig.zon");
 
     const options = b.addOptions();
     options.addOption(bool, "profile_opcodes", profile_opcodes);
     options.addOption(bool, "profile_alloc", profile_alloc);
+    options.addOption(bool, "enable_wasm", enable_wasm);
     options.addOption([]const u8, "version", build_zon.version);
     const options_module = options.createModule();
 
-    // zwasm dependency (Wasm runtime library)
-    const zwasm_dep = b.dependency("zwasm", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const zwasm_mod = zwasm_dep.module("zwasm");
+    // zwasm dependency (Wasm runtime library) — only when wasm enabled
+    const zwasm_mod = if (enable_wasm) blk: {
+        const zwasm_dep = b.dependency("zwasm", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        break :blk zwasm_dep.module("zwasm");
+    } else null;
 
-    // zwasm for native target (build-time tools like cache_gen run on the host)
-    const zwasm_native_dep = b.dependency("zwasm", .{
-        .target = b.graph.host,
-        .optimize = .ReleaseSafe,
-    });
-    const zwasm_native_mod = zwasm_native_dep.module("zwasm");
+    const zwasm_native_mod = if (enable_wasm) blk: {
+        const zwasm_native_dep = b.dependency("zwasm", .{
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+        });
+        break :blk zwasm_native_dep.module("zwasm");
+    } else null;
 
     // Library module (test root)
     const mod = b.addModule("ClojureWasm", .{
@@ -36,7 +41,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     mod.addImport("build_options", options_module);
-    mod.addImport("zwasm", zwasm_mod);
+    if (zwasm_mod) |m| mod.addImport("zwasm", m);
 
     // --- Bootstrap cache generation (D81) ---
     // Build-time tool that bootstraps from .clj sources, serializes the env
@@ -51,7 +56,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     cache_gen.root_module.addImport("build_options", options_module);
-    cache_gen.root_module.addImport("zwasm", zwasm_native_mod);
+    if (zwasm_native_mod) |m| cache_gen.root_module.addImport("zwasm", m);
     cache_gen.stack_size = 512 * 1024 * 1024;
 
     const run_cache_gen = b.addRunArtifact(cache_gen);
@@ -76,7 +81,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addImport("build_options", options_module);
-    exe.root_module.addImport("zwasm", zwasm_mod);
+    if (zwasm_mod) |m| exe.root_module.addImport("zwasm", m);
     exe.root_module.addAnonymousImport("bootstrap_cache", .{
         .root_source_file = wrapper,
     });

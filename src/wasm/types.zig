@@ -15,13 +15,15 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const wit_parser = @import("wit_parser.zig");
-const zwasm = @import("zwasm");
+const build_options = @import("build_options");
+pub const enable_wasm = build_options.enable_wasm;
+const zwasm = if (enable_wasm) @import("zwasm") else struct {};
 
 /// Non-GC allocator for all Wasm internals. Wasm modules and their
 /// children (zwasm VM, store, instance, etc.) must not be GC-managed
 /// because the GC cannot trace into opaque zwasm data structures.
 /// Without this, GC sweeps the ~1MB zwasm VM causing segfaults.
-const wasm_alloc = std.heap.smp_allocator;
+const wasm_alloc = if (enable_wasm) std.heap.smp_allocator else std.heap.page_allocator;
 
 // ============================================================
 // CW-specific types
@@ -34,7 +36,8 @@ pub const WasmValType = enum {
     f32,
     f64,
 
-    pub fn fromZwasm(vt: zwasm.WasmValType) ?WasmValType {
+    pub fn fromZwasm(vt: if (enable_wasm) zwasm.WasmValType else noreturn) ?WasmValType {
+        if (comptime !enable_wasm) unreachable;
         return switch (vt) {
             .i32 => .i32,
             .i64 => .i64,
@@ -59,7 +62,7 @@ pub const ExportInfo = struct {
 /// A loaded and instantiated Wasm module.
 /// Wraps zwasm.WasmModule with CW-specific bookkeeping.
 pub const WasmModule = struct {
-    inner: *zwasm.WasmModule,
+    inner: if (enable_wasm) *zwasm.WasmModule else *anyopaque,
     allocator: Allocator,
     export_fns: []const ExportInfo,
     cached_fns: []WasmFn,
@@ -67,6 +70,7 @@ pub const WasmModule = struct {
     owned_bytes: []const u8, // wasm binary copy (zwasm stores reference, not copy)
 
     pub fn load(_: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        if (comptime !enable_wasm) @compileError("wasm support not enabled");
         // Copy bytes to non-GC allocator (zwasm Module stores a reference)
         const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
         @memcpy(owned, wasm_bytes);
@@ -76,6 +80,7 @@ pub const WasmModule = struct {
     }
 
     pub fn loadWasi(_: Allocator, wasm_bytes: []const u8) !*WasmModule {
+        if (comptime !enable_wasm) @compileError("wasm support not enabled");
         const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
         @memcpy(owned, wasm_bytes);
         errdefer wasm_alloc.free(owned);
@@ -86,6 +91,7 @@ pub const WasmModule = struct {
     }
 
     pub fn loadWithImports(allocator: Allocator, wasm_bytes: []const u8, imports_map: Value) !*WasmModule {
+        if (comptime !enable_wasm) @compileError("wasm support not enabled");
         const owned = try wasm_alloc.alloc(u8, wasm_bytes.len);
         @memcpy(owned, wasm_bytes);
         errdefer wasm_alloc.free(owned);
@@ -102,7 +108,7 @@ pub const WasmModule = struct {
         return wrapInner(inner, owned);
     }
 
-    fn wrapInner(inner: *zwasm.WasmModule, owned_bytes: []const u8) !*WasmModule {
+    fn wrapInner(inner: if (enable_wasm) *zwasm.WasmModule else *anyopaque, owned_bytes: []const u8) !*WasmModule {
         const self = try wasm_alloc.create(WasmModule);
         errdefer wasm_alloc.destroy(self);
         self.inner = inner;
@@ -115,6 +121,7 @@ pub const WasmModule = struct {
     }
 
     pub fn deinit(self: *WasmModule) void {
+        if (comptime !enable_wasm) return;
         const allocator = self.allocator;
         if (self.cached_fns.len > 0) allocator.free(self.cached_fns);
         for (self.export_fns) |ei| {
@@ -128,18 +135,22 @@ pub const WasmModule = struct {
     }
 
     pub fn invoke(self: *WasmModule, name: []const u8, args: []u64, results: []u64) !void {
+        if (comptime !enable_wasm) return error.WasmAllocError;
         try self.inner.invoke(name, args, results);
     }
 
     pub fn memoryRead(self: *WasmModule, allocator: Allocator, offset: u32, length: u32) ![]const u8 {
+        if (comptime !enable_wasm) return error.WasmAllocError;
         return self.inner.memoryRead(allocator, offset, length);
     }
 
     pub fn memoryWrite(self: *WasmModule, offset: u32, data: []const u8) !void {
+        if (comptime !enable_wasm) return error.WasmAllocError;
         return self.inner.memoryWrite(offset, data);
     }
 
     pub fn setWitInfo(self: *WasmModule, funcs: []const wit_parser.WitFunc) void {
+        if (comptime !enable_wasm) return;
         self.wit_funcs = funcs;
         for (self.cached_fns) |*cf| {
             for (funcs) |wf| {
@@ -153,6 +164,7 @@ pub const WasmModule = struct {
     }
 
     pub fn getWitFunc(self: *const WasmModule, name: []const u8) ?wit_parser.WitFunc {
+        if (comptime !enable_wasm) return null;
         for (self.wit_funcs) |wf| {
             if (std.mem.eql(u8, wf.name, name)) return wf;
         }
@@ -160,6 +172,7 @@ pub const WasmModule = struct {
     }
 
     pub fn getExportInfo(self: *const WasmModule, name: []const u8) ?ExportInfo {
+        if (comptime !enable_wasm) return null;
         for (self.export_fns) |ei| {
             if (std.mem.eql(u8, ei.name, name)) return ei;
         }
@@ -167,6 +180,7 @@ pub const WasmModule = struct {
     }
 
     pub fn getExportFn(self: *const WasmModule, name: []const u8) ?*const WasmFn {
+        if (comptime !enable_wasm) return null;
         for (self.cached_fns) |*wf| {
             if (std.mem.eql(u8, wf.name, name)) return wf;
         }
@@ -187,6 +201,7 @@ pub const WasmFn = struct {
     wit_result: ?wit_parser.WitType = null,
 
     pub fn call(self: *const WasmFn, allocator: Allocator, args: []const Value) !Value {
+        if (comptime !enable_wasm) return error.TypeError;
         if (self.wit_params) |wps| {
             return self.callWithWitMarshalling(allocator, args, wps);
         }
@@ -351,6 +366,7 @@ fn allocContext(ctx: HostContext) !usize {
 
 /// Trampoline: called by zwasm VM, invokes the Clojure function.
 fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
+    if (comptime !enable_wasm) unreachable;
     const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
     context_mutex.lock();
     const ctx = host_contexts[context_id] orelse {
@@ -565,6 +581,7 @@ fn buildCachedFns(allocator: Allocator, wasm_mod: *WasmModule) ![]WasmFn {
 const testing = std.testing;
 
 test "smoke test — load and call add(3, 4)" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -577,6 +594,7 @@ test "smoke test — load and call add(3, 4)" {
 }
 
 test "smoke test — fibonacci(10) = 55" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/02_fibonacci.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -589,6 +607,7 @@ test "smoke test — fibonacci(10) = 55" {
 }
 
 test "memory read/write round-trip" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -605,6 +624,7 @@ test "memory read/write round-trip" {
 }
 
 test "memory write then call store/load" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -625,6 +645,7 @@ test "memory write then call store/load" {
 }
 
 test "allocContext — allocate and reclaim slots" {
+    if (!enable_wasm) return;
     const saved_contexts = host_contexts;
     const saved_next = next_context_id;
     defer {
@@ -655,6 +676,7 @@ test "allocContext — allocate and reclaim slots" {
 }
 
 test "buildExportInfo — add module exports" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -671,6 +693,7 @@ test "buildExportInfo — add module exports" {
 }
 
 test "buildExportInfo — fibonacci module exports" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/02_fibonacci.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -685,6 +708,7 @@ test "buildExportInfo — fibonacci module exports" {
 }
 
 test "buildExportInfo — memory module exports" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/03_memory.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -701,6 +725,7 @@ test "buildExportInfo — memory module exports" {
 }
 
 test "getExportInfo — nonexistent name returns null" {
+    if (!enable_wasm) return;
     const wasm_bytes = @embedFile("testdata/01_add.wasm");
     var wasm_mod = try WasmModule.load(testing.allocator, wasm_bytes);
     defer wasm_mod.deinit();
@@ -709,6 +734,7 @@ test "getExportInfo — nonexistent name returns null" {
 }
 
 test "multi-module — two modules, function import" {
+    if (!enable_wasm) return;
     const collections = @import("../runtime/collections.zig");
 
     const math_bytes = @embedFile("testdata/20_math_export.wasm");
@@ -739,6 +765,7 @@ test "multi-module — two modules, function import" {
 }
 
 test "multi-module — three module chain" {
+    if (!enable_wasm) return;
     const collections = @import("../runtime/collections.zig");
 
     const base_bytes = @embedFile("testdata/22_base.wasm");

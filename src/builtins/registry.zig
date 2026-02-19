@@ -276,12 +276,14 @@ pub fn registerBuiltins(env: *Env) !void {
     }
 
     // Register wasm namespace builtins (Phase 25, D82: renamed wasm -> cljw.wasm)
-    const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
-    for (wasm_builtins_mod.builtins) |b| {
-        const v = try wasm_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
+    if (@import("../wasm/types.zig").enable_wasm) {
+        const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
+        for (wasm_builtins_mod.builtins) |b| {
+            const v = try wasm_ns.intern(b.name);
+            v.applyBuiltinDef(b);
+            if (b.func) |f| {
+                v.bindRoot(Value.initBuiltinFn(f));
+            }
         }
     }
 

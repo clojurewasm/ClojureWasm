@@ -19,6 +19,7 @@ const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../runtime/error.zig");
 const wasm_types = @import("types.zig");
+const enable_wasm = wasm_types.enable_wasm;
 const WasmModule = wasm_types.WasmModule;
 const WasmFn = wasm_types.WasmFn;
 const WasmValType = wasm_types.WasmValType;
@@ -486,7 +487,7 @@ fn witTypeToKeyword(wt: wit_parser.WitType) []const u8 {
     };
 }
 
-pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
+pub const builtins: []const BuiltinDef = if (enable_wasm) &[_]BuiltinDef{
     .{
         .name = "load",
         .func = wasmLoadFn,
@@ -529,7 +530,7 @@ pub const builtins: []const BuiltinDef = &[_]BuiltinDef{
         .doc = "Returns WIT-level type info for a module's exports. Requires :wit option on wasm/load.",
         .arglists = "([module])",
     },
-};
+} else &[_]BuiltinDef{};
 
 // === Tests ===
 

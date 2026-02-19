@@ -50,7 +50,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 79A: Binary Optimization & Startup Acceleration.
-Sub-task 79A.1: build.zig `-Dwasm=false` build option.
+Sub-task 79A.3: Lazy bootstrap — deferred NS deserialization.
 
 ## Previous Task
 
@@ -59,8 +59,6 @@ Phase 79 COMPLETE (cl-format: core engine, formatter macros, code-dispatch + ppr
 ## Task Queue
 
 ```
-79A.1: build.zig -Dwasm=false option
-79A.2: Wasm conditional compilation (all wasm modules)
 79A.3: Lazy bootstrap (cache format change + require integration)
 79A.4: cljw build integration verification
 79A.5: bench/build_bench.sh measurement infrastructure
