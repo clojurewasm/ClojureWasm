@@ -1,8 +1,15 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-19 (post-Phase 79 cl-format)
+Measured on: 2026-02-19 (post-Phase 79A lazy bootstrap)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
+
+## Profiles
+
+| Profile | Binary | Startup | RSS | Notes |
+|---------|--------|---------|-----|-------|
+| wasm=true (default) | 4.25MB | 4.6ms | 7.4MB | Full feature set |
+| wasm=false | 3.68MB | 4.3ms | 7.4MB | No zwasm dependency |
 
 ## Thresholds
 
@@ -11,9 +18,9 @@ Fix the regression first. No exceptions without explicit user approval.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.44 MB    | 4.7 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
-| Startup time        | 5.2 ms     | 6.5 ms     | 1.25x  | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
-| RSS (light)         | 9.3 MB     | 12 MB      | +30%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
+| Binary size         | 4.25 MB    | 4.5 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
+| Startup time        | 4.6 ms     | 6.0 ms     | 1.3x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
+| RSS (light)         | 7.4 MB     | 10 MB      | +35%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
 
 ## Benchmark Regression Policy

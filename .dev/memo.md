@@ -19,13 +19,15 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 
 ## Current State
 
-- **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
-- Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO (cl-format complete), 27 stubs
+- **All phases through 79A COMPLETE** (Binary Optimization & Startup Acceleration)
+- Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
-- Binary: 4.44MB ReleaseSafe (Mac ARM64). See `.dev/binary-size-audit.md`.
+- Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
+- Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
+- Lazy bootstrap: D104. `-Dwasm=false`: D103.
 - Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter classes (D101)
 
 ## Strategic Direction
@@ -36,7 +38,7 @@ patterns only. Libraries requiring heavy Java interop are out of scope.
 
 Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
-- Tiny single binary (4.07MB macOS, ~14MB Linux static)
+- Tiny single binary (4.25MB macOS default, 3.68MB wasm=false)
 - Wasm FFI (unique: call .wasm modules from Clojure)
 - deps.edn compatible project model (Clojure CLI subset)
 
@@ -49,19 +51,21 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 79A: Binary Optimization & Startup Acceleration.
-Sub-task 79A.9b: Final docs update.
+Phase 80: Crash Hardening & Fuzzing.
+Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
 
 ## Previous Task
 
-Phase 79A.4-8 COMPLETE (build verification, benchmarks, measurements).
-Final measurements: wasm=true 4.25MB/4.6ms/7.4MB, wasm=false 3.68MB/4.3ms/7.4MB.
-bench/build_bench.sh created for cljw build artifact measurement.
+Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
+- D103: `-Dwasm=false` build option (-570KB, -13%)
+- D104: Lazy bootstrap — deferred NS deserialization (startup -12%, RSS -20%)
+- Final: wasm=true 4.25MB/4.6ms/7.4MB, wasm=false 3.68MB/4.3ms/7.4MB
+- bench/build_bench.sh created for cljw build artifact measurement
 
 ## Task Queue
 
 ```
-79A.9b: Final docs (baselines, decisions, audit)
+(read roadmap Phase 80 section to populate)
 ```
 
 ## Known Issues
@@ -70,8 +74,8 @@ bench/build_bench.sh created for cljw build artifact measurement.
 
 ## Next Phase Queue
 
-After Phase 79A, proceed to Phase 80 (Crash Hardening & Fuzzing).
-Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
+After Phase 80, proceed to Phase 81 (Error System Maturity).
+Read `.dev/roadmap.md` Phase 81 section for sub-tasks.
 
 ## Notes
 

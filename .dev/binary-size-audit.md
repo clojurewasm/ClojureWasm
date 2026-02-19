@@ -1,17 +1,25 @@
 # Binary Size Audit — v0.2.0
 
-Date: 2026-02-14
+Date: 2026-02-19 (post-Phase 79A)
 zwasm: v1.1.0 (GitHub URL dependency)
-Platform: macOS ARM64 (Apple Silicon)
+Platform: macOS ARM64 (Apple Silicon), Zig 0.15.2
 
 ## Binary Size Summary
 
-| Build mode   | Size  |
-|-------------|-------|
-| ReleaseSafe | 4.07MB |
-| Debug       | 12MB   |
+| Build mode   | wasm=true (default) | wasm=false |
+|-------------|---------------------|------------|
+| ReleaseSafe | 4.25MB              | 3.68MB     |
+| Debug       | ~12MB               | ~11MB      |
 
-## ReleaseSafe Segment Breakdown
+## Profile Comparison
+
+| Metric       | wasm=true | wasm=false | Delta  |
+|-------------|-----------|------------|--------|
+| Binary size | 4.25MB    | 3.68MB     | -570KB (-13%) |
+| Startup     | 4.6ms     | 4.3ms      | -0.3ms |
+| RSS (light) | 7.4MB     | 7.4MB      | same   |
+
+## ReleaseSafe Segment Breakdown (wasm=true)
 
 | Segment       | Size      | Notes                         |
 |--------------|-----------|-------------------------------|
@@ -29,23 +37,13 @@ Platform: macOS ARM64 (Apple Silicon)
 | __DATA_CONST  | <1KB      | GOT entries                   |
 | __LINKEDIT    | 492KB     | Symbol tables, relocations    |
 
-Total on-disk: ~4.07MB
-
 ## Bootstrap Cache
 
 Size: 466KB (serialized Clojure runtime state)
 Embedded at compile time via `@embedFile`.
 
-## Comparison with Previous
-
-| Metric           | v0.11.0 (memo) | Current (main) | Delta   |
-|-----------------|----------------|----------------|---------|
-| ReleaseSafe Mac | 2.9MB          | 3.7MB          | +800KB  |
-| Debug Mac       | ~10MB          | 12MB           | +2MB    |
-| Bootstrap cache | ~400KB         | 466KB          | +66KB   |
-
-Growth is expected: zwasm gained GC (+3500 LOC), function_references,
-relaxed SIMD, multi-memory, and x86_64 JIT backend since v0.11.0.
+Lazy bootstrap (D104): Only core + core.protocols + user restored at startup.
+Remaining 12 NSes deferred to require time.
 
 ## Size Attribution (estimated)
 
@@ -58,6 +56,9 @@ relaxed SIMD, multi-memory, and x86_64 JIT backend since v0.11.0.
 | Clojure runtime  | ~500KB           | compiler, reader, core fns      |
 | SIMD (256 ops)   | ~200KB           | Vector instruction handlers     |
 | Other            | ~77KB            | CLI, WASI, WAT parser, etc.     |
+
+wasm=false removes: Wasm interpreter + JIT + GC module + SIMD + module decoder
+= ~1,700KB estimated, actual saving ~570KB (DCE is conservative with dispatch tables).
 
 ## Optimization Candidates
 
@@ -74,7 +75,7 @@ relaxed SIMD, multi-memory, and x86_64 JIT backend since v0.11.0.
 3. **eh_frame reduction**: 164KB of exception handling frames. Zig's
    `-fno-unwind-tables` could eliminate this but breaks stack traces.
 
-4. **Compile-time feature flags**: Already have `-Dwat=false` for WAT parser.
+4. **Compile-time feature flags**: Already have `-Dwasm=false` (D103).
    Could add `-Djit=false`, `-Dsimd=false`, `-Dgc=false` for embedded use.
    Estimated savings: JIT ~400KB, SIMD ~200KB.
 
@@ -84,17 +85,17 @@ relaxed SIMD, multi-memory, and x86_64 JIT backend since v0.11.0.
    well. Risk of miscompilation.
 
 6. **Compressing bootstrap.cache**: 466KB → ~200KB with zstd. But adds
-   decompression time to startup. Current 5.3ms startup is already excellent.
+   decompression time to startup. Current 4.6ms startup is already excellent.
 
 ## Conclusion
 
-3.7MB ReleaseSafe is reasonable for a runtime with:
-- Full Wasm 3.0 support (9 proposals, 523 opcodes)
-- Dual-arch JIT (ARM64 + x86_64)
-- GC with struct/array/i31
-- SIMD (256 + 20 relaxed)
+4.25MB ReleaseSafe (default) / 3.68MB (wasm=false) is reasonable for a runtime with:
+- Full Wasm 3.0 support (9 proposals, 523 opcodes) [wasm=true only]
+- Dual-arch JIT (ARM64 + x86_64) [wasm=true only]
+- GC with struct/array/i31 [wasm=true only]
+- SIMD (256 + 20 relaxed) [wasm=true only]
 - WAT parser
 - WASI P1
+- Lazy bootstrap with deferred NS loading
 
-No immediate action needed. Feature flags (-Djit, -Dsimd) are the best
-path for size-constrained deployment if needed in future.
+Feature flag `-Dwasm=false` is the primary path for size-constrained deployment.

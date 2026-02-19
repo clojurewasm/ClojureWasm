@@ -722,3 +722,46 @@ closures to the pprint namespace.
 structs and populate the pointer array. Pass 2: deserialize content
 into pre-allocated structs. All proto pointers are now valid before
 any constant pool deserialization begins.
+
+---
+
+## D103: `-Dwasm=false` Build Option
+
+**Decision**: Add `-Dwasm=false` compile-time feature flag to exclude zwasm
+dependency entirely, producing a smaller binary for users who don't need Wasm FFI.
+
+**Implementation**: Zig `comptime` branching in 8 files (types.zig, builtins.zig,
+wit_parser.zig, registry.zig, main.zig, deps.zig, root.zig, nrepl.zig). When
+`enable_wasm=false`, zwasm is never `@import`'d (lazy analysis ensures no linker
+dependency). Value enum tags (wasm_module=26, wasm_fn=27) are retained for
+serialization compatibility. DCE handles unreachable dispatch paths in vm.zig,
+tree_walk.zig, gc.zig automatically.
+
+**Result**: Default 4.25MB → wasm=false 3.68MB (-570KB, -13%).
+
+---
+
+## D104: Lazy Bootstrap — Deferred NS Deserialization
+
+**Decision**: Defer deserialization of non-essential namespaces from startup to
+`require` time. Only `clojure.core`, `clojure.core.protocols`, and `user` are
+restored eagerly. The remaining 12 eager namespaces (walk, template, test, set,
+data, repl, java.shell, java.io, pprint, stacktrace, zip, core.reducers) are
+recorded as deferred entries with byte offsets into the bootstrap cache.
+
+**Cache format**: Unchanged binary format. The Deserializer scans each NS at
+startup but only fully restores essential ones — non-essential ones are skipped
+via `skipNamespaceData()` (which parses binary structure to advance the offset)
+and their start positions recorded in a module-level `deferred_ns_entries` map.
+
+**Key design choices**:
+- Module-level globals for deferred state (Deserializer is stack-local, goes out of scope)
+- `@embedFile` data has static lifetime — no copy needed for deferred reads
+- FnProto table fully deserialized at startup (shared across all NS); unresolvable
+  var_refs moved to `global_deferred_var_refs` list via `resolveOrDeferVarRefs()`
+- Recursive dependency resolution: `restoreDeferredNs` calls `restoreFromDeferredCache`
+  when a refer/alias target NS is itself deferred. Entry removed before call to prevent cycles.
+- `resolveGlobalDeferredRefs()` called after each deferred NS restoration to resolve
+  newly-available var_refs and protocol fns.
+
+**Result**: Startup 5.2ms → 4.6ms (-12%). RSS 9.3MB → 7.4MB (-20%).
