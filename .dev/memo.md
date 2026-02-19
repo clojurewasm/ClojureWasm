@@ -52,21 +52,23 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.7: Audit Internal Error / bootstrap evaluation error — must never reach users.
+Sub-task 80.8: Vulnerability audit using CW-adapted checklist.
 
 ## Previous Task
 
-Phase 80.6 COMPLETE (Resource limits).
-- Format width/precision capped at 10,000 (was unbounded — DoS vector)
-- str concat output capped at 10MB
-- Analyzer recursion depth capped at 1,024
-- Pre-existing limits confirmed: reader (depth=1024, string=1MB, collection=100K),
-  VM stack (32K), TreeWalk call depth (512), regex (10K), repeat (1M), file I/O (10MB)
+Phase 80.7 COMPLETE (Internal Error Audit).
+- Replaced 4 @panic calls in value.zig with graceful exit (user-friendly OOM message)
+- Improved bootstrap cache restore to show actual error message on failure
+- Audit confirmed: all "internal_error" uses are truly internal (not user-triggerable)
+  - "eval environment not initialized" (20 sites): macro_eval_env is always set before user code
+  - "bootstrap evaluation error" (31 sites): exits process via bootstrapFromCache, never reaches user
+- 80+ unreachable assertions reviewed: most are exhaustive switch/valid-by-construction invariants
+  - arithmetic.zig toFloat: correct — only called after type check
+  - nrepl.zig parseIp: correct — literal "127.0.0.1" never fails
 
 ## Task Queue
 
 ```
-80.7: Audit Internal Error / bootstrap evaluation error — must never reach users
 80.8: Vulnerability audit using CW-adapted checklist
 80.9: Threat model document (CW trust boundaries)
 ```

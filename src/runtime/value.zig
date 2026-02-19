@@ -922,12 +922,21 @@ pub const Value = enum(u64) {
 
     // --- Encoding helpers ---
 
+    /// Fatal OOM handler for Value constructors that cannot return errors.
+    /// Prints a user-friendly message and exits cleanly instead of panicking
+    /// with a raw stack trace.
+    fn oom() noreturn {
+        std.debug.print("Error: out of memory\n", .{});
+        std.process.exit(1);
+    }
+
     fn encodeHeapPtr(ht: NanHeapTag, ptr: anytype) Value {
         const addr: u64 = @intFromPtr(ptr);
         std.debug.assert(addr & 0x7 == 0); // 8-byte aligned required
         const shifted = addr >> NB_ADDR_ALIGN_SHIFT;
         if (shifted > NB_ADDR_SHIFTED_MASK) {
-            @panic("heap address exceeds 48-bit NaN boxing range");
+            std.debug.print("Error: heap address exceeds 48-bit NaN boxing range\n", .{});
+            std.process.exit(1);
         }
         const type_val = @intFromEnum(ht);
         const group = type_val / NB_HEAP_GROUP_SIZE;
@@ -1042,19 +1051,19 @@ pub const Value = enum(u64) {
     }
 
     pub fn initString(allocator: Allocator, s: []const u8) Value {
-        const heap = allocator.create(HeapString) catch @panic("OOM");
+        const heap = allocator.create(HeapString) catch oom();
         heap.* = .{ .data = s };
         return encodeHeapPtr(.string, heap);
     }
 
     pub fn initSymbol(allocator: Allocator, s: Symbol) Value {
-        const heap = allocator.create(Symbol) catch @panic("OOM");
+        const heap = allocator.create(Symbol) catch oom();
         heap.* = s;
         return encodeHeapPtr(.symbol, heap);
     }
 
     pub fn initKeyword(allocator: Allocator, k: Keyword) Value {
-        const heap = allocator.create(Keyword) catch @panic("OOM");
+        const heap = allocator.create(Keyword) catch oom();
         heap.* = k;
         return encodeHeapPtr(.keyword, heap);
     }

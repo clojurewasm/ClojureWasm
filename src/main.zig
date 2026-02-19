@@ -878,7 +878,11 @@ fn bootstrapFromCache(gc_alloc: Allocator, env: *Env, gc: ?*gc_mod.MarkSweepGc) 
         std.process.exit(1);
     };
     bootstrap.restoreFromBootstrapCache(gc_alloc, env, bootstrap_cache.data) catch {
-        std.debug.print("Error: failed to restore bootstrap cache\n", .{});
+        if (err.getLastError()) |e| {
+            std.debug.print("Error: failed to restore bootstrap cache: {s}\n", .{e.message});
+        } else {
+            std.debug.print("Error: failed to restore bootstrap cache\n", .{});
+        }
         std.process.exit(1);
     };
     markBootstrapLibs();
