@@ -1623,9 +1623,10 @@ fn reportError(eval_err: anyerror) void {
             showSourceContext(w, info.location, info.message, c);
         }
     } else {
-        // No detailed error info — make fallback as helpful as possible
-        w.print("{s}{s}Error{s}\n", .{ c.bold, c.red, c.reset }) catch {};
-        w.print("  {s}\n", .{@errorName(eval_err)}) catch {};
+        // No detailed error info — map raw Zig error to user-friendly label
+        const fallback_label = errorToLabel(eval_err);
+        w.print("{s}{s}{s}{s}\n", .{ c.bold, c.red, fallback_label, c.reset }) catch {};
+        w.print("  An error occurred during evaluation\n", .{}) catch {};
         if (err.getSourceFile()) |file| {
             w.print("{s}  in {s}{s}\n", .{ c.dim, file, c.reset }) catch {};
         }
@@ -1662,6 +1663,27 @@ fn kindToLabel(kind: err.Kind) []const u8 {
         .io_error => "IO error",
         .internal_error => "Internal error",
         .out_of_memory => "Out of memory",
+    };
+}
+
+fn errorToLabel(e: anyerror) []const u8 {
+    return switch (e) {
+        error.SyntaxError => "Syntax error",
+        error.NumberError => "Number format error",
+        error.StringError => "String format error",
+        error.NameError => "Name error",
+        error.ArityError => "Arity error",
+        error.ValueError => "Value error",
+        error.TypeError => "Type error",
+        error.ArithmeticError => "Arithmetic error",
+        error.IndexError => "Index error",
+        error.IoError => "IO error",
+        error.InternalError => "Internal error",
+        error.OutOfMemory => "Out of memory",
+        error.StackOverflow => "Stack overflow",
+        error.UserException => "Exception",
+        error.EvalError => "Evaluation error",
+        else => "Error",
     };
 }
 

@@ -51,23 +51,21 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 81: Error System Maturity.
-Sub-task 81.4: Stack trace quality: source file + line for user code errors.
+Phase 81 COMPLETE. Proceed to Phase 82 (CI/CD Foundation).
+Read `.dev/roadmap.md` Phase 82 section for sub-tasks.
 
 ## Previous Task
 
-Phase 80 COMPLETE (Crash Hardening & Fuzzing).
-- 80.1-80.5: Fuzzing harnesses, structure-aware generation, differential testing
-- 80.6: Resource limits — format width/precision (10K), str output (10MB), analyzer depth (1024)
-- 80.7: Internal error audit — @panic→graceful exit, all internal_error non-user-reachable
-- 80.8: Vulnerability audit — GC/VM/Clojure/interop/build all secure; VM hardened
-- 80.9: Threat model documented at `.dev/threat-model.md`
+Phase 81 COMPLETE (Error System Maturity).
+- 81.1: Error catalog at docs/errors.md — ~850 unique messages across 7 layers
+- 81.2+81.3: Unknown class/method errors now list supported classes
+- 81.4: Stack traces already have file:line, ns/fn names (verified quality)
+- 81.5: Raw Zig error fallback replaced with human-friendly labels via errorToLabel()
 
 ## Task Queue
 
 ```
-81.4: Stack trace quality: source file + line for user code errors
-81.5: Ensure no raw Zig error (error.Foo) leaks to user — all have human message
+(empty — read roadmap Phase 82 for next tasks)
 ```
 
 ## Known Issues
