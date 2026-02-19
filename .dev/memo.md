@@ -50,20 +50,19 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 78: Bug Fixes & Correctness
-Sub-task 78.3: F94 upstream alignment pass (87 markers in src/clj/)
+Sub-task 78.4: Audit unreachable in production paths
 
 ## Previous Task
 
-78.1-78.2: F140 (GC crash) and F139 (case macro) — both no longer reproducible.
-Tested F140: tools.cli summarize + 2000-iter stress test, both backends.
-Tested F139: case + cond->, case + let, case + ->, case with symbols, both backends.
-Both bugs likely fixed by prior phases. Removed from checklist.
+78.3: F94 upstream alignment audit. 201 markers (P=71, S=107, R=23).
+P/S items are correct by design. 23 R items mostly blocked on future infra
+(ForkJoin, socket server, GUI, ProcessBuilder). 3 achievable now but non-blocking:
+extend-via-metadata(2), Throwable->map(1). Updated F94 checklist entry.
 
 ## Task Queue
 
 ```
-78.3 F94 upstream alignment pass (87 markers in src/clj/) ← CURRENT
-78.4 Audit unreachable in production paths
+78.4 Audit unreachable in production paths ← CURRENT
 ```
 
 ## Known Issues

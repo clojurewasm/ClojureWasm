@@ -17,7 +17,7 @@ Target Phase references: see `.dev/roadmap.md` Phase Tracker + Open Checklist It
 
 | ID   | Item                                        | Target | Trigger                                                                  |
 |------|---------------------------------------------|--------|--------------------------------------------------------------------------|
-| F94  | Upstream Alignment pass                     | 78.3   | Phase 70.5.4 audit: 87 markers in src/clj/ (P=48, S=12, R=27). R items need: :inline meta (2), IDrop (2), IReduceInit/deftype (3), TransformerIterator (1), seqkvreduce (1), extend-via-metadata (2), deftype (3), ref/multimethod in test (7), spec in repl (1), assert-expr (1), run-test (1), :__reify_type (1). |
+| F94  | Upstream Alignment pass                     | 78.3   | 201 markers in src/clj/ (P=71, S=107, R=23). P/S resolved by design. R items: ForkJoin(5), socket server(3), dynamic deps(2), GUI(2), ProcessBuilder(4), extend-via-metadata(2), test.check(1), Throwable-map(1), BigDecimal(1), Long/Integer(1), runtime-compile(1). Most blocked on future infra. Achievable now: extend-via-metadata(2), Throwable-map(1). |
 | F102 | map/filter chunked processing               | 89.1   | Chunked types exist, range is lazy. Optimization: use chunks in map/filter pipelines. |
 | F103 | Escape analysis (local scope skip GC)       | 89.3   | Compiler detects local-only Values, skip GC tracking                     |
 | F104 | Profile-guided optimization (extend IC)     | 89     | Extend inline caching beyond monomorphic                                 |
