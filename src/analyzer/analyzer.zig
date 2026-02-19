@@ -435,7 +435,11 @@ pub const Analyzer = struct {
                 if (self.resolveClassFqcn(class_name)) |fqcn| {
                     return self.rewriteConstructorCall(fqcn, items[2..], form, items[0]);
                 }
-                return self.analysisError(.value_error, "Unknown class in new expression", form);
+                return err.setErrorFmt(.analysis, .value_error, .{
+                    .file = self.source_file,
+                    .line = form.line,
+                    .column = form.column,
+                }, "Unknown class '{s}' in new expression. Supported: URI, File, UUID, PushbackReader, StringReader, StringBuilder, StringWriter, BufferedWriter, Exception, ExceptionInfo", .{class_name});
             }
         }
 

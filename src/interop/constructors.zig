@@ -97,7 +97,13 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return buffered_writer_class.construct(allocator, ctor_args);
     }
 
-    return err.setErrorFmt(.eval, .value_error, .{}, "Unknown class: {s}", .{class_name});
+    return err.setErrorFmt(
+        .eval,
+        .value_error,
+        .{},
+        "Unknown class: {s}. Supported: URI, File, UUID, PushbackReader, StringReader, StringBuilder, StringWriter, BufferedWriter, Exception, ExceptionInfo",
+        .{class_name},
+    );
 }
 
 /// Build a class instance map with :__reify_type metadata.
