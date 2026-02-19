@@ -392,7 +392,7 @@ pub const Matcher = struct {
                 }
                 return null;
             },
-            else => unreachable, // lookahead handled by tryMatchNodesAt
+            .lookahead, .negative_lookahead, .flag_group => return null, // handled by tryMatchNodesAt
         }
     }
 

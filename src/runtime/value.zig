@@ -1842,7 +1842,7 @@ pub const Value = enum(u64) {
             },
             .big_decimal => {
                 const bd = self.asBigDecimal();
-                const s = bd.toStringAlloc(std.heap.page_allocator) catch unreachable;
+                const s = bd.toStringAlloc(std.heap.page_allocator) catch return error.WriteFailed;
                 try w.writeAll(s);
                 try w.writeAll("M");
             },
@@ -1896,7 +1896,7 @@ pub const Value = enum(u64) {
             .big_decimal => {
                 // str on BigDecimal: no M suffix (unlike pr-str)
                 const bd = self.asBigDecimal();
-                const s = bd.toStringAlloc(std.heap.page_allocator) catch unreachable;
+                const s = bd.toStringAlloc(std.heap.page_allocator) catch return error.WriteFailed;
                 try w.writeAll(s);
             },
             else => try self.formatPrStr(w),

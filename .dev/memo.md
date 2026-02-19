@@ -49,20 +49,19 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 78: Bug Fixes & Correctness
-Sub-task 78.4: Audit unreachable in production paths
+Phase 78 complete. Advancing to Phase 79: cl-format Implementation.
+Read `.dev/roadmap.md` Phase 79 section for sub-tasks.
 
 ## Previous Task
 
-78.3: F94 upstream alignment audit. 201 markers (P=71, S=107, R=23).
-P/S items are correct by design. 23 R items mostly blocked on future infra
-(ForkJoin, socket server, GUI, ProcessBuilder). 3 achievable now but non-blocking:
-extend-via-metadata(2), Throwable->map(1). Updated F94 checklist entry.
+78.4: Unreachable audit. 103 total (96 SAFE, 4 RISK, 3 test-only).
+Fixed: BigDecimal toStringAlloc (2 in value.zig), regex GroupKind (1 in matcher.zig).
+nREPL bencode decode was test-only, not production risk.
 
 ## Task Queue
 
 ```
-78.4 Audit unreachable in production paths ← CURRENT
+(Phase 78 complete — read roadmap Phase 79 for next tasks)
 ```
 
 ## Known Issues
