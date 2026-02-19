@@ -52,7 +52,7 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 81: Error System Maturity.
-Sub-task 81.1: Build layered error catalog (Reader→Analyzer→Compiler→VM→Builtins→Interop).
+Sub-task 81.2: Unknown class/method calls → clear user-friendly messages (not panic).
 
 ## Previous Task
 
@@ -66,7 +66,6 @@ Phase 80 COMPLETE (Crash Hardening & Fuzzing).
 ## Task Queue
 
 ```
-81.1: Build layered error catalog (Reader→Analyzer→Compiler→VM→Builtins→Interop)
 81.2: Unknown class/method calls → clear user-friendly messages (not panic)
 81.3: Interop error messages: list supported classes when unknown class used
 81.4: Stack trace quality: source file + line for user code errors
