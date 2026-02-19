@@ -921,7 +921,7 @@ vars:
     "*print-radix*": {type: dynamic-var, status: done}
     "*print-right-margin*": {type: dynamic-var, status: done}
     "*print-suppress-namespaces*": {type: dynamic-var, status: done}
-    "cl-format": {type: function, status: todo}
+    "cl-format": {type: function, status: done}
     "code-dispatch": {type: var, status: todo}
     formatter: {type: macro, status: todo}
     "formatter-out": {type: macro, status: todo}

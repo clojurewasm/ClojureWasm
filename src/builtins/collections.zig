@@ -1368,10 +1368,8 @@ pub fn mergeWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
             while (j < entries.items.len) : (j += 2) {
                 if (entries.items[j].eql(key)) {
                     // Key conflict: call f(old_val, new_val)
-                    entries.items[j + 1] = switch (f.tag()) {
-                        .builtin_fn => try f.asBuiltinFn()(allocator, &.{ entries.items[j + 1], val }),
-                        else => return err.setErrorFmt(.eval, .type_error, .{}, "merge-with expects a function, got {s}", .{@tagName(f.tag())}),
-                    };
+                    const call_args = [_]Value{ entries.items[j + 1], val };
+                    entries.items[j + 1] = try bootstrap.callFnVal(allocator, f, &call_args);
                     found = true;
                     break;
                 }

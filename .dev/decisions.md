@@ -707,3 +707,18 @@ stores FQCN: `(:import (java.net URI))` → `(def URI 'java.net.URI)`.
 
 **Adding new classes**: 1 new file in `classes/` + 1 registration in
 constructors.zig + dispatch.zig + rewrites.zig. Down from 3+ files.
+
+## D102: Bootstrap Cache FnProto Forward-Reference Fix
+
+**Problem**: `readFnProtoTable` in serialize.zig assigned an uninitialized
+pointer array to `self.fn_protos` before populating it. When a FnProto's
+constant pool contained a fn_val referencing a higher-indexed proto
+(forward reference), the fn_val got an uninitialized proto pointer
+(0xaaaaaaaaaaaaaaaa). This caused GC crashes under heavy allocation
+pressure when tracing fn_val chains. Triggered by cl-format adding ~50
+closures to the pprint namespace.
+
+**Fix**: Two-pass deserialization. Pass 1: pre-allocate all FnProto
+structs and populate the pointer array. Pass 2: deserialize content
+into pre-allocated structs. All proto pointers are now valid before
+any constant pool deserialization begins.

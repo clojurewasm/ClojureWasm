@@ -50,18 +50,20 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 79: cl-format Implementation
-Sub-task 79.1: cl-format core engine (directives, dispatch)
+Sub-task 79.2: formatter macro
 
 ## Previous Task
 
-78.4: Unreachable audit. 103 total (96 SAFE, 4 RISK, 3 test-only).
-Fixed: BigDecimal toStringAlloc (2 in value.zig), regex GroupKind (1 in matcher.zig).
+79.1: cl-format core engine. Ported full cl-format from upstream (~1600 lines).
+All directives: ~A, ~S, ~D, ~B, ~O, ~X, ~R (cardinal/ordinal/roman), ~P, ~C, ~%, ~~,
+~[conditional], ~{iteration}, ~*, ~?, ~^, ~F, ~E, ~$, ~(case), ~T, ~W, ~_newline, ~I, ~<justify>.
+Fixed: merge-with closure support (collections.zig), bootstrap cache forward-reference bug (serialize.zig).
+CW adaptations: char-upper/char-lower helpers, predicate-based type checks, contains? for flag checks.
 
 ## Task Queue
 
 ```
-79.1 cl-format core engine (directives, dispatch) ← CURRENT
-79.2 formatter macro
+79.2 formatter macro ← CURRENT
 79.3 formatter-out macro
 79.4 code-dispatch (pprint, uses formatter-out)
 ```
@@ -72,8 +74,8 @@ Fixed: BigDecimal toStringAlloc (2 in value.zig), regex GroupKind (1 in matcher.
 
 ## Next Phase Queue
 
-After Phase 78 completes, proceed to Phase 79 (cl-format).
-Read `.dev/roadmap.md` Phase 79 section for sub-tasks.
+After Phase 79 completes, proceed to Phase 80 (Crash Hardening & Fuzzing).
+Read `.dev/roadmap.md` Phase 80 section for sub-tasks.
 
 ## Notes
 

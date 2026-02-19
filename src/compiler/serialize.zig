@@ -1257,17 +1257,26 @@ pub const Deserializer = struct {
     }
 
     /// Read the FnProto table and populate fn_protos for fn_val resolution.
+    /// Two-pass approach: first allocate all FnProto structs (so pointers are valid),
+    /// then deserialize content (which may reference any proto by index).
     pub fn readFnProtoTable(self: *Deserializer, allocator: std.mem.Allocator) !void {
         const count = try self.readU32();
         const protos = try allocator.alloc(*const anyopaque, count);
-        // Set early so fn_vals in constants can resolve during deserialization.
-        // Inner-first ordering guarantees proto[j] is populated before proto[i] (j < i) references it.
+
+        // Pass 1: Pre-allocate all FnProto structs so fn_vals in constant pools
+        // can reference any proto by index (including forward references).
+        for (0..count) |i| {
+            const proto_ptr = try allocator.create(FnProto);
+            proto_ptr.* = std.mem.zeroes(FnProto);
+            protos[i] = proto_ptr;
+        }
         self.fn_protos = protos;
+
+        // Pass 2: Deserialize content into pre-allocated structs.
         for (0..count) |i| {
             const proto = try self.deserializeFnProto(allocator);
-            const proto_ptr = try allocator.create(FnProto);
+            const proto_ptr: *FnProto = @constCast(@ptrCast(@alignCast(protos[i])));
             proto_ptr.* = proto;
-            protos[i] = proto_ptr;
         }
     }
 
