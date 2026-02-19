@@ -1698,3 +1698,73 @@ test "F95: core intrinsic still emits add when not excluded" {
     try std.testing.expectEqual(OpCode.const_load, code[1].op);
     try std.testing.expectEqual(OpCode.add, code[2].op);
 }
+
+test "fuzz compiler and vm" {
+    // Coverage-guided fuzzing: Compiler + VM must never panic on any input.
+    // Compile/runtime errors are expected — only crashes/UB are bugs.
+    // Run: zig build test --fuzz
+    const Reader = @import("../reader/reader.zig").Reader;
+    const Analyzer = @import("../analyzer/analyzer.zig").Analyzer;
+    const VM = @import("../vm/vm.zig").VM;
+
+    try std.testing.fuzz(
+        {},
+        struct {
+            fn testOne(_: @TypeOf({}), input: []const u8) anyerror!void {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
+                const alloc = arena.allocator();
+
+                // Read input
+                var reader = Reader.initWithLimits(alloc, input, .{
+                    .max_depth = 32,
+                    .max_string_size = 2048,
+                    .max_collection_count = 128,
+                });
+
+                // Process each form through the full pipeline
+                while (true) {
+                    const form = reader.read() catch break;
+                    if (form == null) break;
+
+                    // Analyze (without env — tests pure compilation)
+                    var analyzer = Analyzer.init(alloc);
+                    defer analyzer.deinit();
+                    const node = analyzer.analyze(form.?) catch break;
+
+                    // Compile to bytecode
+                    var compiler = Compiler.init(alloc);
+                    defer compiler.deinit();
+                    compiler.compile(node) catch break;
+                    compiler.chunk.emitOp(.ret) catch break;
+
+                    // Execute in VM
+                    const vm = alloc.create(VM) catch break;
+                    defer {
+                        vm.deinit();
+                        alloc.destroy(vm);
+                    }
+                    vm.* = VM.init(alloc);
+                    _ = vm.run(&compiler.chunk) catch break;
+                }
+            }
+        }.testOne,
+        .{
+            .corpus = &.{
+                // Literals
+                "nil", "true", "false", "42", "3.14", "\"hello\"",
+                ":kw", "[1 2 3]", "{:a 1}", "#{1 2}",
+                // Expressions
+                "(if true 1 2)", "(do 1 2 3)",
+                "(let [x 1] x)", "(fn [x] x)",
+                "(loop [i 0] i)", "(quote foo)",
+                // Nested
+                "((fn [x y] x) 1 2)",
+                "(let [v [1 2 3]] v)",
+                "(do (def x 42) x)",
+                // Edge cases
+                "()", "[]", "{}", "#{}", "",
+            },
+        },
+    );
+}
