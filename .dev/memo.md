@@ -2,6 +2,22 @@
 
 Session handover document. Read at session start.
 
+## Note: Architecture v2 Plan (2026-02-20)
+
+Major roadmap restructuring. Phases 83A-83E inserted before Phase 84.
+Read `.dev/interop-v2-design.md` for full design rationale and approach.
+Decision: D105. Roadmap: `.dev/roadmap.md` Phase Tracker.
+
+Key changes:
+- 83A: Exception System Unification (Exception. returns map, hierarchy, .getMessage)
+- 83B: InterOp Architecture v2 (ClassDef registry, protocol dispatch)
+- 83C: UTF-8 Codepoint Correctness (string ops use codepoints, not bytes)
+- 83D: Handle Memory Safety (use-after-close detection, GC finalization)
+- 83E: Core All-Zig Migration (all std-lib → Zig builtins, eliminate .clj bootstrap)
+
+Phase 84 (Testing Expansion) paused at 84.1 (compilation.clj 7/8 pass,
+1 fail due to eval/defn returning symbol not var). Resume after 83E.
+
 ## Note: zwasm v1.1.0 API Change (APPLIED)
 
 zwasm `loadWasi()` default changed to `Capabilities.cli_default`.
@@ -12,14 +28,11 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Phase 83 reduced to "Essential Documentation" (no book, no README enrichment)
 - Phase 86 (Distribution/Homebrew) deferred to Tier 4
 - Phase 91 (wasm_rt) marked DEFERRED
-- Phases 80, 81, 84 enhanced with zwasm production learnings (fuzzing, error catalog, differential testing)
 - v0.2.0 scope: GitHub Release with binaries (no Homebrew)
-- Tier 3 = Phases 87-88 (DX + Release), not 86-88
-- zwasm dependencies table updated (v1.1.0, 100% spec, security done)
 
 ## Current State
 
-- **All phases through 79A COMPLETE** (Binary Optimization & Startup Acceleration)
+- **All phases through 83 COMPLETE** (Essential Documentation)
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
@@ -28,7 +41,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
 - Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
 - Lazy bootstrap: D104. `-Dwasm=false`: D103.
-- Java interop: `src/interop/` module with URI, File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter classes (D101)
+- Java interop: `src/interop/` module (D101, to be superseded by D105/83B)
 
 ## Strategic Direction
 
@@ -43,40 +56,37 @@ Differentiation vs Babashka:
 - deps.edn compatible project model (Clojure CLI subset)
 
 Java interop policy: Library-driven. Test real libraries as-is (no forking/embedding).
-When behavior differs from upstream Clojure, trace CW's processing pipeline to find
-and fix the root cause. Add Java interop shims only when 3+ libraries need the same
-pattern AND it's <100 lines of Zig. If a library requires heavy Java interop that
-CW won't implement, that library is out of scope — document and move on.
-See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 83 COMPLETE (Essential Documentation).
+Phase 83A: Exception System Unification
+Read `.dev/roadmap.md` Phase 83A section and `.dev/interop-v2-design.md`.
 
 ## Previous Task
 
 Phase 83 COMPLETE (Essential Documentation).
-- 83.1: docs/compatibility.md — namespace coverage matrix, skip categories, stubs
-- 83.2: docs/differences.md — concrete behavioral diffs from JVM Clojure
-- 83.3: docs/cli.md — all cljw flags, modes, deps.edn format
-- 83.4: docs/interop.md — supported classes/methods/fields, static rewrites
-- 83.5: docs/error-guide.md — user-facing error reference with examples
-- 83.6: docs/wasm-ffi.md — complete Wasm FFI API reference
+Phase 84 paused at 84.1 (compilation.clj partial port, 7/8 tests pass).
 
 ## Task Queue
 
 ```
-(empty — Phase 83 complete, proceed to Phase 84)
+83A.1: Exception. returns map (not raw string)
+83A.2: Exception hierarchy table (comptime isSubclassOf)
+83A.3: catch dispatch uses hierarchy
+83A.4: .getMessage support
+83A.5: Unknown .method → error
+83A.6: Verify all tests
 ```
 
 ## Known Issues
 
-(none)
+- eval/defn returns symbol instead of var (found during 84.1, fix needed)
+- compilation.clj 1/8 test failure (related to above)
 
 ## Next Phase Queue
 
-After Phase 83, proceed to Phase 84 (Testing Expansion).
-Read `.dev/roadmap.md` Phase 84 section for sub-tasks.
+After 83A, proceed to 83B (InterOp Architecture v2).
+Read `.dev/roadmap.md` Phase 83B section.
 
 ## Notes
 
@@ -85,3 +95,5 @@ Read `.dev/roadmap.md` Phase 84 section for sub-tasks.
 - Batch 1+ = external libraries → test as-is, fix CW side, do NOT fork
 - Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
 - clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
+- Design document for Architecture v2: `.dev/interop-v2-design.md`
+- Phase 84 partial work: `test/upstream/clojure/test_clojure/compilation.clj` (7/8 pass)

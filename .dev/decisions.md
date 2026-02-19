@@ -765,3 +765,45 @@ and their start positions recorded in a module-level `deferred_ns_entries` map.
   newly-available var_refs and protocol fns.
 
 **Result**: Startup 5.2ms → 4.6ms (-12%). RSS 9.3MB → 7.4MB (-20%).
+
+**Note**: D104 will be removed in Phase 83E when all core NS are Zig builtins
+and bytecode deserialization is eliminated entirely.
+
+---
+
+## D105: Architecture v2 — InterOp Unification & All-Zig Core
+
+**Decision**: Major architectural evolution across 5 phases (83A-83E).
+Full design: `.dev/interop-v2-design.md`.
+
+**Motivation**: D101 Java InterOp works but has structural issues:
+fragmented registration (5+ files per class), silent nil on unknown methods,
+Exception. returning raw string, byte-level string ops, handle safety gaps.
+Additionally, .clj bootstrap adds startup cost and CLJW marker maintenance.
+
+**Changes**:
+
+1. **Exception Unification (83A)**: `(Exception. "msg")` → map with `:__ex_info`.
+   Comptime exception hierarchy table. `isSubclassOf` for catch dispatch.
+   Unknown methods → error.
+
+2. **ClassDef Registry (83B)**: Single `ClassDef` struct per Java class.
+   One registry, consulted by analyzer + dispatcher + instance? + constructors.
+   Protocol-based method dispatch. Method Missing → error.
+   Supersedes D101's 5-file registration pattern.
+
+3. **UTF-8 Codepoint (83C)**: String index operations use codepoint semantics.
+   Internal UTF-8 representation unchanged. `std.unicode.Utf8Iterator` for indexing.
+
+4. **Handle Safety (83D)**: Closed flag, use-after-close detection, GC finalization.
+
+5. **All-Zig Core (83E)**: All standard-library functions → Zig builtins.
+   .clj loading reserved for user code and libraries only. Eliminates bytecode
+   deserialization (D104 becomes unnecessary), CLJW markers, VM interpretation
+   overhead for core functions.
+
+**Object model**: Unchanged — class instances remain PersistentArrayMap with
+`:__reify_type`. The change is in how classes are defined and dispatched.
+
+**Migration invariant**: All tests pass after every sub-task. Incremental,
+defensive migration with benchmarks recorded at milestones.

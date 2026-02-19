@@ -18,6 +18,11 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 81 | Error System Maturity | 1 | DONE |
 | 82 | CI/CD Foundation | 2 | DONE |
 | 83 | Essential Documentation | 2 | DONE |
+| 83A | Exception System Unification | 2.5 | PENDING |
+| 83B | InterOp Architecture v2 (ClassDef Registry) | 2.5 | PENDING |
+| 83C | UTF-8 Codepoint Correctness | 2.5 | PENDING |
+| 83D | Handle Memory Safety | 2.5 | PENDING |
+| 83E | Core All-Zig Migration | 2.5 | PENDING |
 | 84 | Testing Expansion | 2 | PENDING |
 | 85 | Library Compatibility Expansion | 2 | PENDING |
 | 87 | Developer Experience | 3 | PENDING |
@@ -38,7 +43,9 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 |------|------|--------|
 | 0 | Current work | 77 |
 | 1 | Stabilize & Harden | 78-81 |
-| 2 | Production Quality | 82-85 |
+| 2 | Production Quality | 82-83 |
+| 2.5 | Architecture v2 & All-Zig | 83A-83E |
+| 2→ | Production Quality (cont.) | 84-85 |
 | 3 | DX & Release | 87-88 |
 | 4 | Advanced Features & Distribution | 86, 89-90, 92-93 |
 | 5 | Toward v1.0 | 94-96 |
@@ -232,6 +239,113 @@ Reference documents only — things users need to look up.
 deps.edn guide, FAQ, Book-style tutorial — all deferred to later tiers.
 
 **Exit**: A user can look up CW's capabilities, limitations, and API from docs.
+
+---
+
+## Phase 83A: Exception System Unification (Tier 2.5)
+
+Goal: Consistent exception creation, catching, and method dispatch.
+Design: `.dev/interop-v2-design.md` (Problem 1, 2, 5 + Exception Hierarchy Table).
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83A.1 | `(Exception. "msg")` returns `{:__ex_info true, :message "msg"}` (not raw string) | MUST |
+| 83A.2 | Exception hierarchy table (`src/interop/exception_hierarchy.zig`), comptime `isSubclassOf` | MUST |
+| 83A.3 | `catch` dispatch uses hierarchy — `(catch RuntimeException e)` catches ArithmeticException etc. | MUST |
+| 83A.4 | `.getMessage` support — dispatch on exception maps, return `:message` value | MUST |
+| 83A.5 | Unknown `.method` → error "No method .X for type Y" (not silent nil) | MUST |
+| 83A.6 | Verify all tests (zig build test + e2e + deps_e2e + upstream). Fix regressions. | MUST |
+
+**Exit**: `(instance? Exception (Exception. "msg"))` → true. `.getMessage` works.
+Exception hierarchy dispatches correctly. Unknown methods error. All tests green.
+
+---
+
+## Phase 83B: InterOp Architecture v2 — ClassDef Registry (Tier 2.5)
+
+Goal: Unified per-class definition. One file per class, one registry for all.
+Protocol-based dispatch. Design: `.dev/interop-v2-design.md` (ClassDef + Protocol sections).
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83B.1 | Design `ClassDef` struct and `class_registry.zig` | MUST |
+| 83B.2 | Migrate URI class to ClassDef (proof of concept) | MUST |
+| 83B.3 | Migrate remaining classes (File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter) | MUST |
+| 83B.4 | String methods as "virtual" ClassDef | MUST |
+| 83B.5 | Unify `instance?` to use ClassDef registry | MUST |
+| 83B.6 | Protocol integration: `.method` dispatch via protocol-like mechanism | SHOULD |
+| 83B.7 | Method Missing → error as protocol fallback | MUST |
+| 83B.8 | Source location preservation: error messages show original Java syntax | SHOULD |
+| 83B.9 | Verify all tests + e2e + deps_e2e + upstream | MUST |
+
+**Exit**: New class = 1 file + 1 registry line. dispatch.zig simplified.
+D101 superseded by new architecture. Update decisions.md.
+
+---
+
+## Phase 83C: UTF-8 Codepoint Correctness (Tier 2.5)
+
+Goal: String index operations use Unicode codepoints, not bytes.
+Design: `.dev/interop-v2-design.md` (Problem 3).
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83C.1 | Codepoint utilities module: `codepointCount`, `codepointAt`, `codepointSlice` | MUST |
+| 83C.2 | `.length` → codepoint count, `.charAt` → codepoint at index | MUST |
+| 83C.3 | `.substring` → codepoint-based, `.indexOf` → codepoint-aware | MUST |
+| 83C.4 | `count` on string → codepoints. `subs` → codepoint-based. `nth` on string. | MUST |
+| 83C.5 | Multilingual test suite: Japanese, emoji, mixed scripts | MUST |
+| 83C.6 | Performance benchmark: ASCII workloads no regression | MUST |
+
+**Exit**: `(.charAt "あいう" 0)` → `\あ`. `(.length "あいう")` → 3. All tests green.
+
+---
+
+## Phase 83D: Handle Memory Safety (Tier 2.5)
+
+Goal: No dangling pointers, no use-after-close, no handle leaks.
+Design: `.dev/interop-v2-design.md` (Problem 4).
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83D.1 | Add `closed` flag to handle state. All operations check → error if closed. | MUST |
+| 83D.2 | GC finalization: destructor callback for handle-bearing maps | SHOULD |
+| 83D.3 | Audit shared handle semantics (map copy = shared handle?) | MUST |
+| 83D.4 | Test: close-then-use, GC-collected handle, concurrent access | MUST |
+
+**Exit**: Use-after-close → clear error. GC-collected handles don't leak.
+
+---
+
+## Phase 83E: Core All-Zig Migration (Tier 2.5)
+
+Goal: All standard-library core functions as Zig builtins.
+.clj loading reserved for user code and libraries only.
+Design: `.dev/interop-v2-design.md` (Core All-Zig Migration section).
+
+**Key invariant**: All tests pass after every sub-task. The system is always a working
+hybrid of Zig builtins and .clj functions during migration.
+
+| Sub | Task | Priority |
+|-----|------|----------|
+| 83E.1 | Audit: inventory .clj-defined functions, categorize by tier, count per NS | MUST |
+| 83E.2 | Infrastructure: bulk Zig builtin registration, NS auto-creation | MUST |
+| 83E.3 | Tier 1: Hot-path seq/collection functions → Zig (map, filter, reduce, assoc, get, into, etc.) | MUST |
+| 83E.4 | Tier 2: Macros → Zig analyzer transforms (when, cond, ->, ->>, if-let, etc.) | MUST |
+| 83E.5 | Tier 3: Standard library NS → Zig (set, string, walk, template, edn, data) | MUST |
+| 83E.6 | Tier 4: Complex macros/functions → Zig (ns, defmulti, for, doseq, defprotocol, deftype, etc.) | MUST |
+| 83E.7 | Remove .clj bootstrap files for fully-migrated NS | MUST |
+| 83E.8 | Remove bytecode cache + lazy bootstrap (D104) when all NS are Zig | SHOULD |
+| 83E.9 | Final measurement: startup, binary size, RSS, full benchmark. Record to history. | MUST |
+
+**Testing at each tier boundary**:
+- `zig build test` + e2e + deps_e2e + all upstream tests
+- `bash bench/run_bench.sh --quick` — no regression
+- `bash bench/record.sh --id="83E.N" --reason="..."` — record at milestones
+- Binary size, startup, RSS checks
+
+**Exit**: Zero .clj bootstrap for standard library. Startup near-instant.
+Binary size stable or reduced. All tests green. Benchmarks recorded.
 
 ---
 
@@ -444,11 +558,23 @@ traversal, namespace poisoning — addressed in Phase 80.8.
                       │
                       ▼
                      82 ──► 83
-                      │      │
-                      ▼      ▼
-                     84     85 ──► 87 ──► 88 (v0.2.0)
-                      │                    │
-                      └────────────────────┘
+                             │
+                             ▼
+                            83A (Exception) ──► 83B (InterOp v2)
+                                                  │
+                                            ┌─────┴─────┐
+                                            ▼           ▼
+                                          83C (UTF-8) 83D (Handle)
+                                            │           │
+                                            └─────┬─────┘
+                                                  ▼
+                                                83E (All-Zig Core)
+                                                  │
+                                            ┌─────┴─────┐
+                                            ▼           ▼
+                                           84          85 ──► 87 ──► 88 (v0.2.0)
+                                            │                         │
+                                            └─────────────────────────┘
 
 88 ──► 86 (distribution, deferred)
 88 ──► 89 ──► 90
@@ -474,6 +600,9 @@ See `.claude/references/impl-tiers.md`.
 | 2 | core.clj | Pure Clojure, existing fn combinations |
 | 3 | Skip | JVM-specific (threading, reflection) |
 | 4 | Zig stub | Dynamic vars, config |
+
+**After Phase 83E**: Tier 2 (core.clj) will be eliminated. All core functions
+become Tier 1 (Zig builtin). `.clj` loading remains for user code and libraries.
 
 ### zwasm Dependencies
 
@@ -518,6 +647,15 @@ zwasm is a separate project (`../zwasm/`). Current: v1.1.0, 62,158/62,158 spec (
 | pprint-tab | 1 | Acceptable — upstream also "not yet implemented" |
 
 ### Success Metrics
+
+**End of Tier 2.5 (Phase 83E complete)**:
+- All core functions = Zig builtins (zero .clj bootstrap for standard library)
+- Exception system: hierarchy, `.getMessage`, `instance?` all consistent
+- String operations: codepoint-correct (multilingual safe)
+- InterOp: ClassDef registry (new class = 1 file)
+- Handle safety: use-after-close → error, GC cleanup
+- Startup ≤ 3ms (target: near-instant without bytecode deserialization)
+- Binary size ≤ 4.5MB (target: reduced from current 4.25MB)
 
 **v0.2.0 (End of Tier 3)**:
 - Zero known crash bugs
