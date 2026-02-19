@@ -17,6 +17,15 @@ Reference: ClojureWasmBeta (via add-dir). Design: `.dev/future.md`. Memo: `.dev/
 - Progress: "Fake It" → "Triangulate" → "Obvious Implementation"
 - Zig file layout: imports → pub types/fns → private helpers → tests at bottom
 
+## Implementation Quality
+
+- **Root-cause fixes only.** Never patch symptoms. Trace the real cause, fix it cleanly.
+- **Understand before changing.** Read the full call chain before modifying. Know why the
+  current code exists and what invariants it maintains.
+- **Minimal, correct diffs.** Change only what's needed. Don't scatter unrelated changes.
+- **Prototype → discard → implement.** For non-trivial changes, spike first to understand
+  the problem space, then revert and implement cleanly with the knowledge gained.
+
 ## Critical Rules
 
 - **One task = one commit**. Never batch multiple tasks.

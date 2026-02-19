@@ -72,7 +72,7 @@ Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
 
 ## Known Issues
 
-- Lazy seq display: CW prints `#<lazy-seq>` in -e/REPL, JVM realizes and prints elements. Target: Phase 81+ or 85.
+(none)
 
 ## Next Phase Queue
 

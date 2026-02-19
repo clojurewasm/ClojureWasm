@@ -1126,12 +1126,12 @@ fn readFormsWithNs(allocator: Allocator, source: []const u8, current_ns: ?*const
 
 /// Save and set macro expansion / lazy-seq realization / fn_val dispatch globals.
 /// Returns previous state for restoration via defer.
-const MacroEnvState = struct {
+pub const MacroEnvState = struct {
     env: ?*Env,
     pred_env: ?*Env,
 };
 
-fn setupMacroEnv(env: *Env) MacroEnvState {
+pub fn setupMacroEnv(env: *Env) MacroEnvState {
     const prev = MacroEnvState{
         .env = macro_eval_env,
         .pred_env = predicates_mod.current_env,
@@ -1141,7 +1141,7 @@ fn setupMacroEnv(env: *Env) MacroEnvState {
     return prev;
 }
 
-fn restoreMacroEnv(prev: MacroEnvState) void {
+pub fn restoreMacroEnv(prev: MacroEnvState) void {
     macro_eval_env = prev.env;
     predicates_mod.current_env = prev.pred_env;
 }

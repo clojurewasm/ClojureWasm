@@ -572,7 +572,7 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
 
         if (result) |val| {
             var buf: [65536]u8 = undefined;
-            const output = formatValue(&buf, val);
+            const output = formatValue(&buf, val, allocator, env);
             if (is_tty) {
                 // Colored output for result values
                 var color_buf: [65536 + 32]u8 = undefined;
@@ -610,7 +610,7 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
                 const result = bootstrap.evalString(allocator, env, source);
                 if (result) |val| {
                     var buf: [65536]u8 = undefined;
-                    const output = formatValue(&buf, val);
+                    const output = formatValue(&buf, val, allocator, env);
                     _ = stdout.write(output) catch {};
                     _ = stdout.write("\n") catch {};
                 } else |eval_err| {
@@ -645,7 +645,7 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
 
         if (result) |val| {
             var buf: [65536]u8 = undefined;
-            const output = formatValue(&buf, val);
+            const output = formatValue(&buf, val, allocator, env);
             _ = stdout.write(output) catch {};
             _ = stdout.write("\n") catch {};
         } else |eval_err| {
@@ -745,7 +745,7 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
 
     // Print result to stdout
     var buf: [65536]u8 = undefined;
-    const output = formatValue(&buf, result);
+    const output = formatValue(&buf, result, gc_alloc, &env);
     const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     _ = stdout.write(output) catch {};
     _ = stdout.write("\n") catch {};
@@ -1752,11 +1752,15 @@ fn readFileForError(path: []const u8) ?[]const u8 {
 
 // === Value formatting ===
 
-fn formatValue(buf: []u8, val: Value) []const u8 {
-    var stream = std.io.fixedBufferStream(buf);
-    const w = stream.writer();
-    writeValue(w, val);
-    return stream.getWritten();
+fn formatValue(buf: []u8, val: Value, allocator: Allocator, env: *Env) []const u8 {
+    // Set up eval context so lazy-seq realization works (needs macro_eval_env)
+    const prev = bootstrap.setupMacroEnv(env);
+    defer bootstrap.restoreMacroEnv(prev);
+    value_mod.setPrintAllocator(allocator);
+    defer value_mod.setPrintAllocator(null);
+    var w: std.Io.Writer = .fixed(buf);
+    val.formatPrStr(&w) catch {};
+    return w.buffered();
 }
 
 /// Wrap pre-formatted value text with ANSI color based on value type.
@@ -1781,219 +1785,6 @@ fn colorizeValue(buf: []u8, text: []const u8, val: Value) []const u8 {
     w.writeAll(text) catch {};
     w.writeAll(reset) catch {};
     return stream.getWritten();
-}
-
-fn writeValue(w: anytype, val: Value) void {
-    switch (val.tag()) {
-        .nil => w.print("nil", .{}) catch {},
-        .boolean => w.print("{}", .{val.asBoolean()}) catch {},
-        .integer => w.print("{d}", .{val.asInteger()}) catch {},
-        .float => w.print("{d}", .{val.asFloat()}) catch {},
-        .string => w.print("\"{s}\"", .{val.asString()}) catch {},
-        .keyword => {
-            const k = val.asKeyword();
-            if (k.ns) |ns| {
-                w.print(":{s}/{s}", .{ ns, k.name }) catch {};
-            } else {
-                w.print(":{s}", .{k.name}) catch {};
-            }
-        },
-        .symbol => {
-            const s = val.asSymbol();
-            if (s.ns) |ns| {
-                w.print("{s}/{s}", .{ ns, s.name }) catch {};
-            } else {
-                w.print("{s}", .{s.name}) catch {};
-            }
-        },
-        .list => {
-            const lst = val.asList();
-            w.print("(", .{}) catch {};
-            for (lst.items, 0..) |item, i| {
-                if (i > 0) w.print(" ", .{}) catch {};
-                writeValue(w, item);
-            }
-            w.print(")", .{}) catch {};
-        },
-        .vector => {
-            const vec = val.asVector();
-            w.print("[", .{}) catch {};
-            for (vec.items, 0..) |item, i| {
-                if (i > 0) w.print(" ", .{}) catch {};
-                writeValue(w, item);
-            }
-            w.print("]", .{}) catch {};
-        },
-        .map => {
-            const m = val.asMap();
-            w.print("{{", .{}) catch {};
-            var i: usize = 0;
-            while (i < m.entries.len) : (i += 2) {
-                if (i > 0) w.print(", ", .{}) catch {};
-                writeValue(w, m.entries[i]);
-                w.print(" ", .{}) catch {};
-                writeValue(w, m.entries[i + 1]);
-            }
-            w.print("}}", .{}) catch {};
-        },
-        .hash_map => {
-            const hm = val.asHashMap();
-            w.print("{{", .{}) catch {};
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-            const entries = hm.toEntries(arena.allocator()) catch &[_]Value{};
-            var i: usize = 0;
-            while (i < entries.len) : (i += 2) {
-                if (i > 0) w.print(", ", .{}) catch {};
-                writeValue(w, entries[i]);
-                w.print(" ", .{}) catch {};
-                writeValue(w, entries[i + 1]);
-            }
-            w.print("}}", .{}) catch {};
-        },
-        .set => {
-            const s = val.asSet();
-            w.print("#{{", .{}) catch {};
-            for (s.items, 0..) |item, i| {
-                if (i > 0) w.print(" ", .{}) catch {};
-                writeValue(w, item);
-            }
-            w.print("}}", .{}) catch {};
-        },
-        .fn_val => w.print("#<fn>", .{}) catch {},
-        .builtin_fn => w.print("#<builtin>", .{}) catch {},
-        .atom => {
-            const a = val.asAtom();
-            w.print("(atom ", .{}) catch {};
-            writeValue(w, a.value);
-            w.print(")", .{}) catch {};
-        },
-        .volatile_ref => {
-            const v = val.asVolatile();
-            w.print("#<volatile ", .{}) catch {};
-            writeValue(w, v.value);
-            w.print(">", .{}) catch {};
-        },
-        .regex => {
-            const p = val.asRegex();
-            w.print("#\"{s}\"", .{p.source}) catch {};
-        },
-        .char => {
-            const c = val.asChar();
-            var char_buf: [4]u8 = undefined;
-            const len = std.unicode.utf8Encode(c, &char_buf) catch 0;
-            _ = w.write("\\") catch {};
-            _ = w.write(char_buf[0..len]) catch {};
-        },
-        .protocol => w.print("#<protocol {s}>", .{val.asProtocol().name}) catch {},
-        .protocol_fn => {
-            const pf = val.asProtocolFn();
-            w.print("#<protocol-fn {s}/{s}>", .{ pf.protocol.name, pf.method_name }) catch {};
-        },
-        .multi_fn => w.print("#<multifn {s}>", .{val.asMultiFn().name}) catch {},
-        .lazy_seq => {
-            const ls = val.asLazySeq();
-            if (ls.realized) |r| {
-                writeValue(w, r);
-            } else {
-                w.print("#<lazy-seq>", .{}) catch {};
-            }
-        },
-        .cons => {
-            const c = val.asCons();
-            w.print("(", .{}) catch {};
-            writeValue(w, c.first);
-            w.print(" . ", .{}) catch {};
-            writeValue(w, c.rest);
-            w.print(")", .{}) catch {};
-        },
-        .var_ref => {
-            const v = val.asVarRef();
-            w.print("#'{s}/{s}", .{ v.ns_name, v.sym.name }) catch {};
-        },
-        .delay => {
-            const d = val.asDelay();
-            if (d.realized) {
-                w.print("#delay[", .{}) catch {};
-                if (d.getCached()) |v| writeValue(w, v) else w.print("nil", .{}) catch {};
-                w.print("]", .{}) catch {};
-            } else {
-                w.print("#delay[pending]", .{}) catch {};
-            }
-        },
-        .future => {
-            const f = val.asFuture();
-            const thread_pool = @import("runtime/thread_pool.zig");
-            const result: *thread_pool.FutureResult = @ptrCast(@alignCast(f.result));
-            if (f.cancelled) {
-                w.print("#future[cancelled]", .{}) catch {};
-            } else if (result.isDone()) {
-                w.print("#future[", .{}) catch {};
-                writeValue(w, result.value);
-                w.print("]", .{}) catch {};
-            } else {
-                w.print("#future[pending]", .{}) catch {};
-            }
-        },
-        .promise => {
-            const p = val.asPromise();
-            const thread_pool = @import("runtime/thread_pool.zig");
-            const sync: *thread_pool.FutureResult = @ptrCast(@alignCast(p.sync));
-            if (sync.isDone()) {
-                w.print("#promise[", .{}) catch {};
-                writeValue(w, sync.value);
-                w.print("]", .{}) catch {};
-            } else {
-                w.print("#promise[pending]", .{}) catch {};
-            }
-        },
-        .agent => {
-            const a = val.asAgent();
-            const inner = a.getInner();
-            if (inner.isInErrorState()) {
-                w.print("#agent[FAILED ", .{}) catch {};
-            } else {
-                w.print("#agent[", .{}) catch {};
-            }
-            writeValue(w, inner.state);
-            w.print("]", .{}) catch {};
-        },
-        .ref => {
-            const r = val.asRef();
-            const inner: *value_mod.RefInner = @ptrCast(@alignCast(r.inner));
-            w.print("#ref[", .{}) catch {};
-            writeValue(w, inner.currentVal());
-            w.print("]", .{}) catch {};
-        },
-        .reduced => writeValue(w, val.asReduced().value),
-        .transient_vector => w.print("#<TransientVector>", .{}) catch {},
-        .transient_map => w.print("#<TransientMap>", .{}) catch {},
-        .transient_set => w.print("#<TransientSet>", .{}) catch {},
-        .chunked_cons => {
-            const cc = val.asChunkedCons();
-            w.print("(", .{}) catch {};
-            var i: usize = 0;
-            while (i < cc.chunk.count()) : (i += 1) {
-                if (i > 0) w.print(" ", .{}) catch {};
-                const elem = cc.chunk.nth(i) orelse Value.nil_val;
-                writeValue(w, elem);
-            }
-            if (cc.more.tag() != .nil) w.print(" ...", .{}) catch {};
-            w.print(")", .{}) catch {};
-        },
-        .chunk_buffer => w.print("#<ChunkBuffer>", .{}) catch {},
-        .array_chunk => w.print("#<ArrayChunk>", .{}) catch {},
-        .wasm_module => w.print("#<WasmModule>", .{}) catch {},
-        .wasm_fn => w.print("#<WasmFn {s}>", .{val.asWasmFn().name}) catch {},
-        .matcher => w.print("#<Matcher>", .{}) catch {},
-        .array => {
-            const arr = val.asArray();
-            w.print("#<{s}[{d}]>", .{ @tagName(arr.element_type), arr.items.len }) catch {};
-        },
-        .big_int => w.print("#<BigInt>", .{}) catch {},
-        .big_decimal => w.print("#<BigDecimal>", .{}) catch {},
-        .ratio => w.print("#<Ratio>", .{}) catch {},
-    }
 }
 
 // === Single Binary Builder (Phase 28) ===
