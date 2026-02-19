@@ -1777,7 +1777,7 @@ pub fn generateBootstrapCache(allocator: Allocator, env: *Env) BootstrapError![]
 /// and *print-level* var caches for correct print behavior.
 pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: []const u8) BootstrapError!void {
     var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
-    de.restoreEnvSnapshot(allocator, env) catch {
+    de.restoreEnvSnapshotLazy(allocator, env) catch {
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
     };
@@ -4472,10 +4472,13 @@ test "bootstrap cache - round-trip: generate and restore" {
 
     const cache_bytes = try generateBootstrapCache(alloc, &env1);
 
-    // Phase 2: Restore from cache into fresh env
+    // Phase 2: Restore from cache into fresh env (use eager restore for round-trip test)
     var env2 = Env.init(alloc);
     try registry.registerBuiltins(&env2);
-    try restoreFromBootstrapCache(alloc, &env2, cache_bytes);
+    {
+        var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
+        try de.restoreEnvSnapshot(alloc, &env2);
+    }
 
     // Verify: basic arithmetic via builtins
     const r1 = try evalStringVM(alloc, &env2, "(+ 1 2)");

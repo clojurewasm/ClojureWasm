@@ -1093,6 +1093,18 @@ fn requireLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_
         return;
     }
 
+    // Check deferred bootstrap cache (lazy NS from serialize)
+    {
+        const serialize_mod = @import("../compiler/serialize.zig");
+        if (serialize_mod.hasDeferredNs(ns_name)) {
+            serialize_mod.restoreFromDeferredCache(allocator, env, ns_name) catch {
+                return err.setErrorFmt(.eval, .io_error, .{}, "Failed to restore deferred namespace {s}", .{ns_name});
+            };
+            try markLibLoaded(ns_name);
+            return;
+        }
+    }
+
     // Circular dependency detection: if this lib is currently being loaded
     // (i.e., we're in a nested require from within its own source file),
     // skip loading. The namespace was already created by (ns ...) at the

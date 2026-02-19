@@ -821,6 +821,68 @@ const DeferredVarRef = struct {
     var_name: []const u8,
 };
 
+// --- Deferred NS Cache (lazy bootstrap) ---
+
+/// Global cache for deferred namespace restoration.
+/// Populated during restoreEnvSnapshotLazy(), consumed by restoreFromDeferredCache().
+/// The cache_data slice points into the embedded bootstrap.cache (@embedFile),
+/// so it lives for the entire process lifetime — no need to copy.
+var deferred_ns_entries: std.StringHashMapUnmanaged(usize) = .empty;
+var deferred_cache_data: []const u8 = &.{};
+var deferred_cache_strings: []const []const u8 = &.{};
+var deferred_cache_fn_protos: []const *const anyopaque = &.{};
+var deferred_cache_initialized: bool = false;
+
+/// Unresolved var_ref fixups from FnProto table deserialization.
+/// These are var_refs that couldn't be resolved during startup because
+/// they belong to deferred namespaces. Resolved when deferred NSes are restored.
+var global_deferred_var_refs: std.ArrayListUnmanaged(DeferredVarRef) = .empty;
+var global_deferred_protocol_fns: std.ArrayListUnmanaged(DeferredProtocolFn) = .empty;
+
+fn recordDeferredNs(allocator: std.mem.Allocator, ns_name: []const u8, start_offset: usize) !void {
+    try deferred_ns_entries.put(allocator, ns_name, start_offset);
+}
+
+fn initDeferredCacheState(data: []const u8, strings: []const []const u8, fn_protos: []const *const anyopaque) void {
+    deferred_cache_data = data;
+    deferred_cache_strings = strings;
+    deferred_cache_fn_protos = fn_protos;
+    deferred_cache_initialized = true;
+}
+
+fn resetDeferredCacheState() void {
+    deferred_ns_entries = .empty;
+    deferred_cache_data = &.{};
+    deferred_cache_strings = &.{};
+    deferred_cache_fn_protos = &.{};
+    deferred_cache_initialized = false;
+    global_deferred_var_refs = .empty;
+    global_deferred_protocol_fns = .empty;
+}
+
+/// Check if a namespace is available in the deferred cache.
+pub fn hasDeferredNs(ns_name: []const u8) bool {
+    if (!deferred_cache_initialized) return false;
+    return deferred_ns_entries.contains(ns_name);
+}
+
+/// Restore a deferred namespace from the bootstrap cache.
+/// Called from requireLib when a cached NS is first required.
+pub fn restoreFromDeferredCache(allocator: std.mem.Allocator, env: *Env, ns_name: []const u8) anyerror!void {
+    if (!deferred_cache_initialized) return error.InvalidStringIndex;
+    const start_offset = deferred_ns_entries.get(ns_name) orelse return error.InvalidStringIndex;
+
+    // Remove early to prevent cycles in recursive dependency resolution
+    _ = deferred_ns_entries.remove(ns_name);
+
+    var de: Deserializer = .{
+        .data = deferred_cache_data,
+        .strings = deferred_cache_strings,
+        .fn_protos = deferred_cache_fn_protos,
+    };
+    try de.restoreDeferredNs(allocator, env, start_offset);
+}
+
 pub const Deserializer = struct {
     data: []const u8,
     pos: usize = 0,
@@ -1471,6 +1533,276 @@ pub const Deserializer = struct {
         try self.resolveDeferredProtocolFns(env);
     }
 
+    /// Restore env snapshot with lazy NS loading.
+    /// Only restores essential namespaces (core, core.protocols) at startup.
+    /// Other namespaces are deferred — their byte ranges are recorded for
+    /// later restoration via restoreDeferredNs().
+    pub fn restoreEnvSnapshotLazy(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        // Reset global deferred state from any previous invocation
+        resetDeferredCacheState();
+
+        try self.readHeader();
+        try self.readStringTable(allocator);
+        try self.readFnProtoTable(allocator);
+
+        // Make env available for var_ref resolution during deserialization.
+        self.env = env;
+        const ns_count = try self.readU32();
+
+        // Temporary storage for deferred refer/alias setup (essential only)
+        const ReferEntry = struct { ns_name: []const u8, refer_name: []const u8, source_ns: []const u8 };
+        const AliasEntry = struct { ns_name: []const u8, alias_name: []const u8, target_ns: []const u8 };
+        var refers = std.ArrayListUnmanaged(ReferEntry).empty;
+        var aliases = std.ArrayListUnmanaged(AliasEntry).empty;
+
+        for (0..ns_count) |_| {
+            const ns_offset = self.pos;
+            const ns_name_idx = try self.readU32();
+            if (ns_name_idx >= self.strings.len) return error.InvalidStringIndex;
+            const ns_name = self.strings[ns_name_idx];
+
+            const is_essential = std.mem.eql(u8, ns_name, "clojure.core") or
+                std.mem.eql(u8, ns_name, "clojure.core.protocols") or
+                std.mem.eql(u8, ns_name, "user");
+
+            if (is_essential) {
+                // Restore this NS normally
+                const ns = try env.findOrCreateNamespace(ns_name);
+                const var_count = try self.readU32();
+                for (0..var_count) |_| {
+                    try self.restoreVar(allocator, ns);
+                }
+                // Refers
+                const refer_count = try self.readU32();
+                for (0..refer_count) |_| {
+                    const ref_name_idx = try self.readU32();
+                    const src_ns_idx = try self.readU32();
+                    if (ref_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                    if (src_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                    try refers.append(allocator, .{
+                        .ns_name = ns_name,
+                        .refer_name = self.strings[ref_name_idx],
+                        .source_ns = self.strings[src_ns_idx],
+                    });
+                }
+                // Aliases
+                const alias_count = try self.readU32();
+                for (0..alias_count) |_| {
+                    const alias_name_idx = try self.readU32();
+                    const target_ns_idx = try self.readU32();
+                    if (alias_name_idx >= self.strings.len) return error.InvalidStringIndex;
+                    if (target_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+                    try aliases.append(allocator, .{
+                        .ns_name = ns_name,
+                        .alias_name = self.strings[alias_name_idx],
+                        .target_ns = self.strings[target_ns_idx],
+                    });
+                }
+            } else {
+                // Skip and record for lazy restoration
+                try self.skipNamespaceData();
+                try recordDeferredNs(allocator, ns_name, ns_offset);
+            }
+        }
+
+        // Save shared state for later deferred NS restoration
+        initDeferredCacheState(self.data, self.strings, self.fn_protos);
+
+        // Connect refers for essential namespaces
+        for (refers.items) |ref| {
+            const ns = env.findNamespace(ref.ns_name) orelse continue;
+            const source_ns = env.findNamespace(ref.source_ns) orelse continue;
+            if (source_ns.mappings.get(ref.refer_name)) |source_var| {
+                try ns.refer(ref.refer_name, source_var);
+            }
+        }
+        // Connect aliases for essential namespaces
+        for (aliases.items) |al| {
+            const ns = env.findNamespace(al.ns_name) orelse continue;
+            const target = env.findNamespace(al.target_ns) orelse continue;
+            try ns.setAlias(al.alias_name, target);
+        }
+
+        // Resolve what we can, move unresolvable entries to global deferred lists
+        try self.resolveOrDeferVarRefs(allocator, env);
+        try self.resolveOrDeferProtocolFns(allocator, env);
+    }
+
+    /// Skip over a namespace's data in the cache without restoring it.
+    fn skipNamespaceData(self: *Deserializer) !void {
+        // Skip vars
+        const var_count = try self.readU32();
+        for (0..var_count) |_| {
+            try self.skipVar();
+        }
+        // Skip refers
+        const refer_count = try self.readU32();
+        self.pos += refer_count * 8; // each refer: 2 x u32
+        // Skip aliases
+        const alias_count = try self.readU32();
+        self.pos += alias_count * 8; // each alias: 2 x u32
+    }
+
+    /// Skip a single var in the cache (for deferred namespace skipping).
+    fn skipVar(self: *Deserializer) !void {
+        _ = try self.readU32(); // name_idx
+        _ = try self.readU8(); // flags
+        _ = try self.readI32(); // doc
+        _ = try self.readI32(); // arglists
+        _ = try self.readI32(); // added
+        _ = try self.readI32(); // file
+        _ = try self.readU32(); // line
+        _ = try self.readU32(); // column
+        const root_kind = try self.readU8();
+        if (root_kind == 0) {
+            // value — need to skip a variable-length Value
+            try self.skipValue();
+        }
+        // has_meta
+        const has_meta = try self.readU8();
+        if (has_meta == 1) {
+            try self.skipValue();
+        }
+    }
+
+    /// Skip a serialized Value without constructing it.
+    fn skipValue(self: *Deserializer) !void {
+        const tag = try self.readU8();
+        switch (tag) {
+            0x00 => {}, // nil
+            0x01 => self.pos += 1, // boolean
+            0x02 => self.pos += 8, // integer
+            0x03 => self.pos += 8, // float
+            0x04 => self.pos += 4, // char
+            0x05 => self.pos += 4, // string (index)
+            0x06 => self.pos += 8, // symbol (i32 + u32)
+            0x07 => self.pos += 8, // keyword (i32 + u32)
+            0x08 => { // fn_val
+                _ = try self.readU32(); // proto_idx
+                const extra_count = try self.readU32();
+                self.pos += extra_count * 4; // extra proto indices
+                _ = try self.readI32(); // defining_ns
+                const bindings_count = try self.readU32();
+                for (0..bindings_count) |_| {
+                    try self.skipValue();
+                }
+            },
+            0x09, 0x0A, 0x0C => { // list, vector, set
+                const count = try self.readU32();
+                for (0..count) |_| {
+                    try self.skipValue();
+                }
+            },
+            0x0B => { // map
+                const pair_count = try self.readU32();
+                for (0..pair_count * 2) |_| {
+                    try self.skipValue();
+                }
+            },
+            0x0D => self.pos += 8, // var_ref (u32 + u32)
+            0x0E, 0x0F => try self.skipValue(), // atom, volatile_ref (Value)
+            0x10 => { // protocol
+                _ = try self.readU32(); // name
+                const sig_count = try self.readU32();
+                self.pos += sig_count * 5; // each sig: u32 name + u8 arity
+                const pair_count = try self.readU32();
+                for (0..pair_count * 2) |_| {
+                    try self.skipValue();
+                }
+            },
+            0x11 => self.pos += 12, // protocol_fn (3 x u32)
+            0x12 => self.pos += 4, // regex (u32 source index)
+            0x13 => { // multi_fn
+                _ = try self.readU32(); // name
+                try self.skipValue(); // dispatch_fn
+                // methods map
+                const method_count = try self.readU32();
+                for (0..method_count * 2) |_| {
+                    try self.skipValue();
+                }
+                // prefer table
+                const prefer_count = try self.readU32();
+                for (0..prefer_count * 2) |_| {
+                    try self.skipValue();
+                }
+                // hierarchy var (optional)
+                const has_hierarchy = try self.readU8();
+                if (has_hierarchy == 1) {
+                    self.pos += 8; // ns_idx + name_idx (2 x u32)
+                }
+            },
+            else => return error.UnknownTag,
+        }
+    }
+
+    /// Restore a single deferred namespace from cached data.
+    /// Called from requireLib when a cached NS is first required.
+    pub fn restoreDeferredNs(self: *Deserializer, allocator: std.mem.Allocator, env: *Env, ns_start: usize) anyerror!void {
+        self.env = env;
+        self.pos = ns_start;
+
+        const ns_name_idx = try self.readU32();
+        if (ns_name_idx >= self.strings.len) return error.InvalidStringIndex;
+        const ns_name = self.strings[ns_name_idx];
+        const ns = try env.findOrCreateNamespace(ns_name);
+
+        // Vars
+        const var_count = try self.readU32();
+        for (0..var_count) |_| {
+            try self.restoreVar(allocator, ns);
+        }
+
+        // Refers — restore dependency NS from deferred cache if needed
+        const refer_count = try self.readU32();
+        for (0..refer_count) |_| {
+            const ref_name_idx = try self.readU32();
+            const src_ns_idx = try self.readU32();
+            if (ref_name_idx >= self.strings.len) return error.InvalidStringIndex;
+            if (src_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+            const source_ns_name = self.strings[src_ns_idx];
+
+            // If source NS is deferred, restore it first (recursive)
+            var source_ns = env.findNamespace(source_ns_name);
+            if (source_ns == null and hasDeferredNs(source_ns_name)) {
+                try restoreFromDeferredCache(allocator, env, source_ns_name);
+                source_ns = env.findNamespace(source_ns_name);
+            }
+
+            if (source_ns) |src| {
+                if (src.mappings.get(self.strings[ref_name_idx])) |source_var| {
+                    try ns.refer(self.strings[ref_name_idx], source_var);
+                }
+            }
+        }
+
+        // Aliases — restore dependency NS from deferred cache if needed
+        const alias_count = try self.readU32();
+        for (0..alias_count) |_| {
+            const alias_name_idx = try self.readU32();
+            const target_ns_idx = try self.readU32();
+            if (alias_name_idx >= self.strings.len) return error.InvalidStringIndex;
+            if (target_ns_idx >= self.strings.len) return error.InvalidStringIndex;
+            const target_ns_name = self.strings[target_ns_idx];
+
+            var target = env.findNamespace(target_ns_name);
+            if (target == null and hasDeferredNs(target_ns_name)) {
+                try restoreFromDeferredCache(allocator, env, target_ns_name);
+                target = env.findNamespace(target_ns_name);
+            }
+
+            if (target) |t| {
+                try ns.setAlias(self.strings[alias_name_idx], t);
+            }
+        }
+
+        // Resolve var_refs created during this NS's deserialization
+        try self.resolveDeferredVarRefs(env);
+        try self.resolveDeferredProtocolFns(env);
+
+        // Also try to resolve any global deferred refs that may now be resolvable
+        resolveGlobalDeferredRefs(env);
+    }
+
     /// Resolve var_refs that were deferred during FnProto deserialization.
     /// Called after restoreEnvState when all namespaces and vars are available.
     fn resolveDeferredVarRefs(self: *Deserializer, env: *Env) !void {
@@ -1491,7 +1823,74 @@ pub const Deserializer = struct {
             entry.protocol_fn.protocol = v.root.asProtocol();
         }
     }
+
+    /// Resolve var_refs that can be resolved now, move the rest to global deferred list.
+    /// Used by restoreEnvSnapshotLazy where not all namespaces are available yet.
+    fn resolveOrDeferVarRefs(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        for (self.deferred_var_refs.items) |entry| {
+            const ns = env.findNamespace(entry.ns_name);
+            const v = if (ns) |n| n.resolve(entry.var_name) else null;
+            if (v) |var_ref| {
+                entry.constants[entry.index] = Value.initVarRef(var_ref);
+            } else {
+                try global_deferred_var_refs.append(allocator, entry);
+            }
+        }
+    }
+
+    /// Resolve protocol_fns that can be resolved now, move the rest to global deferred list.
+    fn resolveOrDeferProtocolFns(self: *Deserializer, allocator: std.mem.Allocator, env: *Env) !void {
+        for (self.deferred_protocol_fns.items) |entry| {
+            const ns = env.findNamespace(entry.ns_name);
+            const v = if (ns) |n| n.resolve(entry.var_name) else null;
+            if (v) |var_val| {
+                if (var_val.root.tag() == .protocol) {
+                    entry.protocol_fn.protocol = var_val.root.asProtocol();
+                } else {
+                    try global_deferred_protocol_fns.append(allocator, entry);
+                }
+            } else {
+                try global_deferred_protocol_fns.append(allocator, entry);
+            }
+        }
+    }
 };
+
+/// Try to resolve global deferred var_refs and protocol_fns.
+/// Called after a deferred NS is restored, since new vars may now be available.
+fn resolveGlobalDeferredRefs(env: *Env) void {
+    // Resolve var_refs
+    var i: usize = 0;
+    while (i < global_deferred_var_refs.items.len) {
+        const entry = global_deferred_var_refs.items[i];
+        const ns = env.findNamespace(entry.ns_name);
+        const v = if (ns) |n| n.resolve(entry.var_name) else null;
+        if (v) |var_ref| {
+            entry.constants[entry.index] = Value.initVarRef(var_ref);
+            _ = global_deferred_var_refs.swapRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    // Resolve protocol_fns
+    var j: usize = 0;
+    while (j < global_deferred_protocol_fns.items.len) {
+        const entry = global_deferred_protocol_fns.items[j];
+        const ns = env.findNamespace(entry.ns_name);
+        const v = if (ns) |n| n.resolve(entry.var_name) else null;
+        if (v) |var_val| {
+            if (var_val.root.tag() == .protocol) {
+                entry.protocol_fn.protocol = var_val.root.asProtocol();
+                _ = global_deferred_protocol_fns.swapRemove(j);
+            } else {
+                j += 1;
+            }
+        } else {
+            j += 1;
+        }
+    }
+}
 
 // ============================================================
 // Tests

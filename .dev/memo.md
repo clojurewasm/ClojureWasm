@@ -50,16 +50,20 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 79A: Binary Optimization & Startup Acceleration.
-Sub-task 79A.3: Lazy bootstrap — deferred NS deserialization.
+Sub-task 79A.4: cljw build integration verification.
 
 ## Previous Task
 
-Phase 79 COMPLETE (cl-format: core engine, formatter macros, code-dispatch + pprint override).
+Phase 79A.3 COMPLETE (lazy bootstrap: deferred NS deserialization + require integration).
+- Essential NS: core, core.protocols, user (restored at startup)
+- 12 deferred NS restored on-demand via require
+- Cross-NS dependency resolution (recursive)
+- Global deferred var_ref + protocol_fn resolution
+- RSS reduced ~18% (9.3MB → 7.6MB)
 
 ## Task Queue
 
 ```
-79A.3: Lazy bootstrap (cache format change + require integration)
 79A.4: cljw build integration verification
 79A.5: bench/build_bench.sh measurement infrastructure
 79A.6: Cross-language benchmark full run
