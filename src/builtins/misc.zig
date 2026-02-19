@@ -19,6 +19,9 @@ const Value = value_mod.Value;
 const err = @import("../runtime/error.zig");
 const bootstrap = @import("../runtime/bootstrap.zig");
 
+/// Maximum width/precision for format specifiers to prevent DoS via huge padding.
+const MAX_FORMAT_WIDTH: usize = 10_000;
+
 // ============================================================
 // gensym
 // ============================================================
@@ -170,6 +173,8 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 width = (width orelse 0) * 10 + @as(usize, fmt_str[i] - '0');
                 i += 1;
             }
+            if (width != null and width.? > MAX_FORMAT_WIDTH)
+                return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "format width exceeds maximum (10000)" });
 
             var precision: ?usize = null;
             if (i < fmt_str.len and fmt_str[i] == '.') {
@@ -179,6 +184,8 @@ pub fn formatFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     precision = precision.? * 10 + @as(usize, fmt_str[i] - '0');
                     i += 1;
                 }
+                if (precision.? > MAX_FORMAT_WIDTH)
+                    return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "format precision exceeds maximum (10000)" });
             }
 
             if (i >= fmt_str.len) return error.FormatError;
@@ -1205,6 +1212,43 @@ test "format - precision %.2f" {
         Value.initFloat(3.14159),
     });
     try testing.expectEqualStrings("3.14", result.asString());
+}
+
+test "format - width limit exceeded" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%99999999s"),
+        Value.initString(alloc, "x"),
+    });
+    try testing.expectError(error.ValueError, result);
+}
+
+test "format - precision limit exceeded" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const result = formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%.99999999f"),
+        Value.initFloat(3.14),
+    });
+    try testing.expectError(error.ValueError, result);
+}
+
+test "format - width at limit succeeds" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // Width exactly at MAX_FORMAT_WIDTH (10000) should succeed
+    const result = try formatFn(alloc, &[_]Value{
+        Value.initString(alloc, "%10000s"),
+        Value.initString(alloc, "x"),
+    });
+    try testing.expectEqual(@as(usize, 10000), result.asString().len);
 }
 
 test "random-uuid - uniqueness" {

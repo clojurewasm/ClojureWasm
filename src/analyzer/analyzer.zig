@@ -48,6 +48,12 @@ pub const Analyzer = struct {
     /// Source file name (for error reporting).
     source_file: ?[]const u8 = null,
 
+    /// Recursion depth for analysis (prevents stack overflow on deeply nested forms).
+    analysis_depth: u32 = 0,
+
+    /// Maximum analysis recursion depth.
+    const MAX_ANALYSIS_DEPTH: u32 = 1024;
+
     pub const LocalBinding = struct {
         name: []const u8,
         idx: u32,
@@ -244,6 +250,10 @@ pub const Analyzer = struct {
 
     /// Analyze a Form, producing a Node.
     pub fn analyze(self: *Analyzer, form: Form) AnalyzeError!*Node {
+        if (self.analysis_depth >= MAX_ANALYSIS_DEPTH)
+            return self.analysisError(.value_error, "expression nesting exceeds maximum depth (1024)", form);
+        self.analysis_depth += 1;
+        defer self.analysis_depth -= 1;
         return switch (form.data) {
             .nil => self.makeConstantFrom(Value.nil_val, form),
             .boolean => |b| self.makeConstantFrom(Value.initBoolean(b), form),
@@ -3964,4 +3974,25 @@ test "fuzz analyzer" {
             },
         },
     );
+}
+
+test "analyze - depth limit exceeded" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var a = Analyzer.init(alloc);
+    defer a.deinit();
+
+    // Build a deeply nested vector: [[[...[42]...]]]
+    // Depth = MAX_ANALYSIS_DEPTH + 1 to trigger the limit
+    const depth = Analyzer.MAX_ANALYSIS_DEPTH + 1;
+    var inner: Form = .{ .data = .{ .integer = 42 } };
+    for (0..depth) |_| {
+        const items = alloc.alloc(Form, 1) catch unreachable;
+        items[0] = inner;
+        inner = .{ .data = .{ .vector = items } };
+    }
+
+    const result = a.analyze(inner);
+    try std.testing.expectError(error.ValueError, result);
 }

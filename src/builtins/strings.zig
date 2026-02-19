@@ -30,6 +30,9 @@ const CompiledRegex = @import("../regex/regex.zig").CompiledRegex;
 const bootstrap = @import("../runtime/bootstrap.zig");
 const interop_dispatch = @import("../interop/dispatch.zig");
 
+/// Maximum output size for str concatenation (10 MB).
+const MAX_STR_OUTPUT: usize = 10 * 1024 * 1024;
+
 /// (str) => ""
 /// (str x) => string representation of x (non-readable)
 /// (str x y ...) => concatenation of all args (no separator)
@@ -52,6 +55,8 @@ pub fn strFn(allocator: Allocator, args: []const Value) anyerror!Value {
         } else {
             try arg.formatStr(&aw.writer);
         }
+        if (aw.writer.end > MAX_STR_OUTPUT)
+            return err.setError(.{ .kind = .value_error, .phase = .eval, .message = "str output exceeds maximum size (10MB)" });
     }
     const owned = try aw.toOwnedSlice();
     return Value.initString(allocator, owned);

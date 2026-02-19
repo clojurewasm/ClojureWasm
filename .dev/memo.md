@@ -52,19 +52,20 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 ## Current Task
 
 Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.6: Resource limits: nesting depth, string size, collection count.
+Sub-task 80.7: Audit Internal Error / bootstrap evaluation error — must never reach users.
 
 ## Previous Task
 
-Phase 79A COMPLETE (Binary Optimization & Startup Acceleration).
-- D103: `-Dwasm=false` build option (-570KB, -13%)
-- D104: Lazy bootstrap — deferred NS deserialization (startup -12%, RSS -20%)
-- Final: wasm=true 4.25MB/4.6ms/7.4MB, wasm=false 3.68MB/4.3ms/7.4MB
+Phase 80.6 COMPLETE (Resource limits).
+- Format width/precision capped at 10,000 (was unbounded — DoS vector)
+- str concat output capped at 10MB
+- Analyzer recursion depth capped at 1,024
+- Pre-existing limits confirmed: reader (depth=1024, string=1MB, collection=100K),
+  VM stack (32K), TreeWalk call depth (512), regex (10K), repeat (1M), file I/O (10MB)
 
 ## Task Queue
 
 ```
-80.6: Resource limits: nesting depth, string size, collection count
 80.7: Audit Internal Error / bootstrap evaluation error — must never reach users
 80.8: Vulnerability audit using CW-adapted checklist
 80.9: Threat model document (CW trust boundaries)
