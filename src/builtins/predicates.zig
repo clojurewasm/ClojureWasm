@@ -1127,44 +1127,24 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
     // Java utility types
     if (std.mem.eql(u8, class_name, "java.util.regex.Pattern"))
         return Value.initBoolean(tag == .regex);
-    if (std.mem.eql(u8, class_name, "java.util.UUID"))
-        return Value.false_val; // UUID not a distinct type in CW
 
-    // Java I/O types — check :__reify_type on class instances
-    if (tag == .map) {
+    // Map-backed class instances: check __reify_type via ClassDef registry + direct match
+    if (tag == .map or tag == .hash_map) {
         if (interop_dispatch.getReifyType(x)) |rt| {
-            // PushbackReader
-            if (std.mem.eql(u8, class_name, "PushbackReader") or
-                std.mem.eql(u8, class_name, "java.io.PushbackReader"))
-                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.PushbackReader"));
-            // Reader (parent of PushbackReader, StringReader)
+            // Direct __reify_type match (covers CW record/reify types too)
+            if (std.mem.eql(u8, rt, class_name)) return Value.true_val;
+            // Registry-based check: (instance? ClassName x)
+            const interop_class_registry = @import("../interop/class_registry.zig");
+            if (interop_class_registry.isInstance(class_name, x)) return Value.true_val;
+            // Parent class checks (Reader is parent of PushbackReader/StringReader, etc.)
             if (std.mem.eql(u8, class_name, "Reader") or
                 std.mem.eql(u8, class_name, "java.io.Reader"))
                 return Value.initBoolean(std.mem.eql(u8, rt, "java.io.PushbackReader") or
                     std.mem.eql(u8, rt, "java.io.StringReader"));
-            // StringReader
-            if (std.mem.eql(u8, class_name, "StringReader") or
-                std.mem.eql(u8, class_name, "java.io.StringReader"))
-                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringReader"));
-            // StringWriter
-            if (std.mem.eql(u8, class_name, "StringWriter") or
-                std.mem.eql(u8, class_name, "java.io.StringWriter"))
-                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringWriter"));
-            // Writer (parent of StringWriter)
             if (std.mem.eql(u8, class_name, "Writer") or
                 std.mem.eql(u8, class_name, "java.io.Writer"))
-                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringWriter"));
-            // StringBuilder
-            if (std.mem.eql(u8, class_name, "StringBuilder") or
-                std.mem.eql(u8, class_name, "java.lang.StringBuilder"))
-                return Value.initBoolean(std.mem.eql(u8, rt, "java.lang.StringBuilder"));
-        }
-    }
-
-    // CW record/reify types: check __reify_type on maps
-    if (tag == .map or tag == .hash_map) {
-        if (interop_dispatch.getReifyType(x)) |rt| {
-            if (std.mem.eql(u8, rt, class_name)) return Value.true_val;
+                return Value.initBoolean(std.mem.eql(u8, rt, "java.io.StringWriter") or
+                    std.mem.eql(u8, rt, "java.io.BufferedWriter"));
         }
     }
 

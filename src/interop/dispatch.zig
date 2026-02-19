@@ -18,13 +18,7 @@ const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const err = @import("../runtime/error.zig");
 const collections = @import("../builtins/collections.zig");
-const uri_class = @import("classes/uri.zig");
-const file_class = @import("classes/file.zig");
-const uuid_class = @import("classes/uuid.zig");
-const pushback_reader_class = @import("classes/pushback_reader.zig");
-const string_builder_class = @import("classes/string_builder.zig");
-const string_writer_class = @import("classes/string_writer.zig");
-const buffered_writer_class = @import("classes/buffered_writer.zig");
+const class_registry = @import("class_registry.zig");
 
 /// Java instance method dispatch.
 /// Called from __java-method builtin. Dispatches based on object tag,
@@ -64,28 +58,10 @@ pub fn dispatch(allocator: Allocator, method: []const u8, obj: Value, rest: []co
 }
 
 /// Dispatch instance method on a class instance identified by :__reify_type.
-/// Extensible: add new class handlers to the comptime table.
+/// Uses ClassDef registry for extensible dispatch.
 fn dispatchClass(allocator: Allocator, class_name: []const u8, method: []const u8, obj: Value, rest: []const Value) anyerror!Value {
-    if (std.mem.eql(u8, class_name, uri_class.class_name)) {
-        return uri_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, file_class.class_name)) {
-        return file_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
-        return uuid_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, pushback_reader_class.class_name)) {
-        return pushback_reader_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, string_builder_class.class_name)) {
-        return string_builder_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
-        return string_writer_class.dispatchMethod(allocator, method, obj, rest);
-    }
-    if (std.mem.eql(u8, class_name, buffered_writer_class.class_name)) {
-        return buffered_writer_class.dispatchMethod(allocator, method, obj, rest);
+    if (class_registry.dispatchMethod(allocator, class_name, method, obj, rest)) |result| {
+        return result;
     }
     return err.setErrorFmt(.eval, .value_error, .{}, "No matching method {s} for class {s}", .{ method, class_name });
 }

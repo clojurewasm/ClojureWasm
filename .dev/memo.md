@@ -59,30 +59,29 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83B: InterOp Architecture v2 — ClassDef Registry
-Read `.dev/roadmap.md` Phase 83B section and `.dev/interop-v2-design.md`.
+Phase 83C: UTF-8 Codepoint Correctness
+Read `.dev/roadmap.md` Phase 83C section and `.dev/interop-v2-design.md`.
 
 ## Previous Task
 
-Phase 83A COMPLETE (Exception System Unification).
-- Exception. now returns map (not raw string)
-- Exception hierarchy table with comptime isSubclassOf
-- catch dispatch uses hierarchy-based matching
-- .getMessage/.getCause/.getData/.toString on exception maps
-- Unknown .method → proper error (already was working)
+Phase 83B COMPLETE (InterOp Architecture v2 — ClassDef Registry).
+- ClassDef struct: fqcn, aliases, constructor, dispatch_method, instance_check
+- class_registry.zig: unified registry for all map-backed classes
+- Constructor dispatch via registry (eliminated if-chain in constructors.zig)
+- Method dispatch via registry (eliminated if-chain in dispatch.zig)
+- instance? for map-backed classes uses registry (fixed UUID instance? bug)
+- 83B.4 (String virtual ClassDef) skipped: string dispatch is clean tag-based
+- 83B.6 (Protocol integration) deferred: not needed until user-extensible types
 
 ## Task Queue
 
 ```
-83B.1: Design ClassDef struct and class_registry.zig
-83B.2: Migrate URI class to ClassDef (proof of concept)
-83B.3: Migrate remaining classes (File, UUID, PushbackReader, StringBuilder, StringWriter, BufferedWriter)
-83B.4: String methods as "virtual" ClassDef
-83B.5: Unify instance? to use ClassDef registry
-83B.6: Protocol integration: .method dispatch via protocol-like mechanism
-83B.7: Method Missing → error as protocol fallback
-83B.8: Source location preservation: error messages show original Java syntax
-83B.9: Verify all tests + e2e + deps_e2e + upstream
+83C.1: Codepoint utilities module: codepointCount, codepointAt, codepointSlice
+83C.2: .length → codepoint count, .charAt → codepoint at index
+83C.3: .substring → codepoint-based, .indexOf → codepoint-aware
+83C.4: count on string → codepoints. subs → codepoint-based. nth on string.
+83C.5: Multilingual test suite: Japanese, emoji, mixed scripts
+83C.6: Performance benchmark: ASCII workloads no regression
 ```
 
 ## Known Issues
@@ -92,8 +91,8 @@ Phase 83A COMPLETE (Exception System Unification).
 
 ## Next Phase Queue
 
-After 83B, proceed to 83C (UTF-8 Codepoint Correctness).
-Read `.dev/roadmap.md` Phase 83C section.
+After 83C, proceed to 83D (Handle Memory Safety).
+Read `.dev/roadmap.md` Phase 83D section.
 
 ## Notes
 

@@ -18,13 +18,9 @@ const Value = value_mod.Value;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const err = @import("../runtime/error.zig");
+const class_registry = @import("class_registry.zig");
 const uri_class = @import("classes/uri.zig");
-const file_class = @import("classes/file.zig");
 const uuid_class = @import("classes/uuid.zig");
-const pushback_reader_class = @import("classes/pushback_reader.zig");
-const string_builder_class = @import("classes/string_builder.zig");
-const string_writer_class = @import("classes/string_writer.zig");
-const buffered_writer_class = @import("classes/buffered_writer.zig");
 
 /// Known class name mappings: short name -> fully qualified name.
 pub const known_classes = std.StaticStringMap([]const u8).initComptime(.{
@@ -150,30 +146,9 @@ fn interopNewFn(allocator: Allocator, args: []const Value) anyerror!Value {
         return err.setErrorFmt(.eval, .value_error, .{}, "Use (ex-info msg map) instead of (ExceptionInfo. msg map)", .{});
     }
 
-    // Class dispatch table
-    if (std.mem.eql(u8, class_name, uri_class.class_name)) {
-        return uri_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, file_class.class_name)) {
-        return file_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, uuid_class.class_name)) {
-        return uuid_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, pushback_reader_class.class_name)) {
-        return pushback_reader_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, pushback_reader_class.string_reader_class_name)) {
-        return pushback_reader_class.constructStringReader(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, string_builder_class.class_name)) {
-        return string_builder_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, string_writer_class.class_name)) {
-        return string_writer_class.construct(allocator, ctor_args);
-    }
-    if (std.mem.eql(u8, class_name, buffered_writer_class.class_name)) {
-        return buffered_writer_class.construct(allocator, ctor_args);
+    // Class dispatch via registry
+    if (class_registry.construct(allocator, class_name, ctor_args)) |result| {
+        return result;
     }
 
     return err.setErrorFmt(

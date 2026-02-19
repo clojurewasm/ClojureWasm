@@ -19,8 +19,8 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 82 | CI/CD Foundation | 2 | DONE |
 | 83 | Essential Documentation | 2 | DONE |
 | 83A | Exception System Unification | 2.5 | DONE |
-| 83B | InterOp Architecture v2 (ClassDef Registry) | 2.5 | IN-PROGRESS |
-| 83C | UTF-8 Codepoint Correctness | 2.5 | PENDING |
+| 83B | InterOp Architecture v2 (ClassDef Registry) | 2.5 | DONE |
+| 83C | UTF-8 Codepoint Correctness | 2.5 | IN-PROGRESS |
 | 83D | Handle Memory Safety | 2.5 | PENDING |
 | 83E | Core All-Zig Migration | 2.5 | PENDING |
 | 84 | Testing Expansion | 2 | PENDING |
