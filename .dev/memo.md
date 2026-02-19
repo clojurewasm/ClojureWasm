@@ -20,7 +20,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 ## Current State
 
 - **All phases through 76 COMPLETE** (Type System & Reader Enhancements)
-- Coverage: 880+ vars (651/706 core, 10/11 protocols, 22/22 reducers, 25 embedded CLJ namespaces)
+- Coverage: 1,126/1,243 vars done (90.6%), 113 skip, 4 TODO (cl-format), 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
 - 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
@@ -49,33 +49,24 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 77: Var Coverage Completion
-Sub-phase 77.10: Skip recovery (per-var, beep-and-ask)
+Phase 78: Bug Fixes & Correctness
+Sub-task 78.1: Fix F140 — GC crash in dissocFn
 
 ## Previous Task
 
-77.6: spec.gen.alpha completion — 27 TODO vars done. All generators (int, double, char, string,
-keyword, symbol, boolean, uuid, ratio, large-integer, any, simple-type, etc.) now functional.
-Also fixed: analyzer vector literal bug (makeBuiltinCall now qualifies to clojure.core),
-char builtin returns char type not string. Binary: 4.07MB.
+77.10: Skip recovery audit — comprehensive 11-item audit complete.
+- 4 TODO vars (cl-format, Phase 79), 27 stubs documented, 55 skip vars all with notes
+- vars.yaml field name fix (notes: → note:), baselines.md updated to zwasm v1.1.0
+- All tests pass, all baselines within thresholds, 31 benchmarks comprehensive
+- Interop error messages clean (no panics), memo.md/README.md var counts updated
 
 ## Task Queue
 
 ```
-77.10 Skip recovery (per-var, beep-and-ask) ← CURRENT
-skip recorvery にくわえて、以下が解消されているかも確認。その場で判断というより、コードベースの実態をチェックしてから進める
-(0) status: todoが0件かどうか
-(1) 本家テストポート
-(2) CLJW:
-(3) UPSTREAM-DIFF:
-(4) 各種ベンチマーク・バイナリサイズが許容範囲内
-(5) stub実装が残ってないか
-(6) . や ..などのメソッドコール, URI. などインスタンス機能の対応範囲を確認(要するにpanicになるのだけは避けたく、特定のClass以外は未対応的なユーザーへの親切メッセージが欲しい)
-現時点で確認すると、すでに実装済みのものがあったりするはずなのでそちらを使って解消できるものもあるはず
-(7) また、zig run test, run_e2e.sh, run_deps_e2e.shも確実にとおす(/tmpにテスト残骸のこってそう。参考になる？)
-(8) かなり色々と機能が追加されたのでベンチマークに不足がないかチェックして、必要に応じて有用なベンチマークを他言語もアルゴリズム等価で用意して比較に加える
-(9) それでもskipとして残ったものについては、noteが確実に書かれているか
-(10) ドキュメント群のvars言及箇所を最新化
+78.1 Fix F140: GC crash in dissocFn ← CURRENT
+78.2 Fix F139: case macro with mixed body types
+78.3 F94 upstream alignment pass (87 markers in src/clj/)
+78.4 Audit unreachable in production paths
 ```
 
 ## Known Issues
@@ -85,15 +76,8 @@ skip recorvery にくわえて、以下が解消されているかも確認。�
 
 ## Next Phase Queue
 
-After Phase 77 completes, proceed to Phase 78 (Bug Fixes & Correctness).
-Read `.dev/roadmap.md` Phase 78 section for sub-tasks.
-
-```
-78.1 Fix F140: GC crash in dissocFn
-78.2 Fix F139: case macro with mixed body types
-78.3 F94 upstream alignment pass (87 markers in src/clj/)
-78.4 Audit unreachable in production paths
-```
+After Phase 78 completes, proceed to Phase 79 (cl-format).
+Read `.dev/roadmap.md` Phase 79 section for sub-tasks.
 
 ## Notes
 

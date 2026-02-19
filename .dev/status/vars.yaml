@@ -282,7 +282,7 @@ vars:
     "ex-info": {type: function, status: done, note: "Zig builtin"}
     "ex-message": {type: function, status: done, note: "Zig builtin"}
     extend: {type: function, status: done, note: 'Zig builtin, accepts quoted symbol or string type'}
-    "extend-protocol": {type: macro, status: done, notes: macro expanding to extend-type forms}
+    "extend-protocol": {type: macro, status: done, note: macro expanding to extend-type forms}
     "extend-type": {type: macro, status: done, note: "analyzer special form in CW"}
     extenders: {type: function, status: done, note: Phase 42 — protocol extension API}
     "extends?": {type: function, status: done, note: Phase 42 — protocol extension API}
@@ -380,7 +380,7 @@ vars:
     "lazy-seq": {type: macro, status: done, note: "analyzer special form in CW"}
     let: {type: special-form, status: done, note: special form (analyzes as let*)}
     letfn: {type: macro, status: done, note: "macro -> letfn* special form"}
-    "line-seq": {type: function, status: done, note: needs BufferedReader type, notes: 'UPSTREAM-DIFF: takes filename string instead of BufferedReader'}
+    "line-seq": {type: function, status: done, note: "UPSTREAM-DIFF: takes filename string instead of BufferedReader"}
     list: {type: function, status: done, note: "Zig builtin"}
     "list*": {type: function, status: done, note: "Zig builtin"}
     "list?": {type: function, status: done, note: "Zig builtin"}
@@ -435,14 +435,14 @@ vars:
     "not-every?": {type: function, status: done, note: "core.clj (upstream is pure clj)"}
     "not=": {type: function, status: done, note: "VM intrinsic opcode"}
     ns: {type: macro, status: done, note: 'dynamic var, synced with env.current_ns'}
-    "ns-aliases": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
+    "ns-aliases": {type: function, status: done, note: "builtin (upstream is pure clj)"}
     "ns-imports": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "ns-interns": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-map": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-name": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
     "ns-publics": {type: function, status: done, note: "dynamic var, synced with env.current_ns"}
-    "ns-refers": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
-    "ns-resolve": {type: function, status: done, note: 'dynamic var, synced with env.current_ns', notes: builtin (upstream is pure clj)}
+    "ns-refers": {type: function, status: done, note: "builtin (upstream is pure clj)"}
+    "ns-resolve": {type: function, status: done, note: "builtin (upstream is pure clj)"}
     "ns-unalias": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     "ns-unmap": {type: function, status: done, note: 'dynamic var, synced with env.current_ns'}
     nth: {type: function, status: done, note: "Zig builtin"}
@@ -706,7 +706,7 @@ vars:
     "with-bindings*": {type: function, status: done}
     "with-in-str": {type: macro, status: done, note: "UPSTREAM-DIFF: push/pop-input-source builtins"}
     "with-loading-context": {type: macro, status: skip, note: JVM classloader}
-    "with-local-vars": {type: macro, status: done, note: needs Var.create(), notes: 'UPSTREAM-DIFF: create-local-var builtin instead of Var.create'}
+    "with-local-vars": {type: macro, status: done, note: "UPSTREAM-DIFF: create-local-var builtin instead of Var.create"}
     "with-meta": {type: function, status: done, note: 'Zig builtin: returns copy with new metadata'}
     "with-open": {type: macro, status: done, note: "UPSTREAM-DIFF: (close x) instead of (.close x)"}
     "with-out-str": {type: macro, status: done}
@@ -729,7 +729,7 @@ vars:
     "coll-reduce": {type: function, status: done}
     datafy: {type: function, status: done}
     "internal-reduce": {type: function, status: done}
-    "iterator-reduce!": {type: function, status: skip, notes: "Java iterator interop"}
+    "iterator-reduce!": {type: function, status: skip, note: "Java iterator interop"}
     "kv-reduce": {type: function, status: done}
     nav: {type: function, status: done}
   clojure_core_reducers:
@@ -740,16 +740,16 @@ vars:
     "coll-fold": {type: function, status: done}
     drop: {type: function, status: done}
     filter: {type: function, status: done}
-    fjtask: {type: function, status: done, notes: "UPSTREAM-DIFF: identity (no ForkJoin)"}
+    fjtask: {type: function, status: done, note: "UPSTREAM-DIFF: identity (no ForkJoin)"}
     flatten: {type: function, status: done}
-    fold: {type: function, status: done, notes: "UPSTREAM-DIFF: sequential fold (no ForkJoin)"}
+    fold: {type: function, status: done, note: "UPSTREAM-DIFF: sequential fold (no ForkJoin)"}
     foldcat: {type: function, status: done}
     folder: {type: function, status: done}
     map: {type: function, status: done}
     "map->Cat": {type: function, status: done}
     mapcat: {type: function, status: done}
     monoid: {type: function, status: done}
-    pool: {type: var, status: done, notes: "UPSTREAM-DIFF: nil (no ForkJoinPool)"}
+    pool: {type: var, status: done, note: "UPSTREAM-DIFF: nil (no ForkJoinPool)"}
     reduce: {type: function, status: done}
     reducer: {type: function, status: done}
     remove: {type: function, status: done}
@@ -770,17 +770,17 @@ vars:
   clojure_core_specs_alpha:
     "even-number-of-forms?": {type: function, status: done}
   clojure_data:
-    Diff: {type: var, status: done, notes: "protocol with Object default (cond dispatch)"}
-    EqualityPartition: {type: var, status: done, notes: "protocol with Object default (cond dispatch)"}
+    Diff: {type: var, status: done, note: "protocol with Object default (cond dispatch)"}
+    EqualityPartition: {type: var, status: done, note: "protocol with Object default (cond dispatch)"}
     diff: {type: function, status: done}
-    "diff-similar": {type: function, status: done, notes: "protocol method"}
-    "equality-partition": {type: function, status: done, notes: "protocol method"}
+    "diff-similar": {type: function, status: done, note: "protocol method"}
+    "equality-partition": {type: function, status: done, note: "protocol method"}
   clojure_datafy:
     datafy: {type: function, status: done}
     nav: {type: function, status: done}
   clojure_edn:
-    read: {type: function, status: done, notes: "builtin (reads from *in*/stdin)"}
-    "read-string": {type: function, status: done, notes: builtin (Zig)}
+    read: {type: function, status: done, note: "builtin (reads from *in*/stdin)"}
+    "read-string": {type: function, status: done, note: builtin (Zig)}
   clojure_inspector:
     "atom?": {type: function, status: skip, note: 100% Swing GUI}
     "collection-tag": {type: function, status: skip, note: 100% Swing GUI}
@@ -805,25 +805,25 @@ vars:
     "*open-url-script*": {type: dynamic-var, status: done}
     "browse-url": {type: function, status: done}
   clojure_java_io:
-    Coercions: {type: protocol, status: done, notes: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
-    IOFactory: {type: protocol, status: done, notes: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
-    "as-file": {type: function, status: done, notes: builtin (Zig)}
-    "as-relative-path": {type: function, status: done, notes: builtin (Zig)}
-    "as-url": {type: function, status: done, notes: 'UPSTREAM-DIFF: returns URI, not URL'}
-    copy: {type: function, status: done, notes: builtin (Zig)}
-    "default-streams-impl": {type: var, status: done, notes: 'UPSTREAM-DIFF: map of fns with CW reader/writer dispatch'}
-    "delete-file": {type: function, status: done, notes: builtin (Zig)}
-    file: {type: function, status: done, notes: builtin (Zig)}
-    "input-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-reader'}
-    "make-input-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-reader'}
-    "make-output-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-writer'}
-    "make-parents": {type: function, status: done, notes: builtin (Zig)}
-    "make-reader": {type: function, status: done, notes: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
-    "make-writer": {type: function, status: done, notes: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
-    "output-stream": {type: function, status: done, notes: 'UPSTREAM-DIFF: delegates to make-writer'}
-    reader: {type: function, status: done, notes: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
-    resource: {type: function, status: done, notes: builtin (Zig)}
-    writer: {type: function, status: done, notes: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
+    Coercions: {type: protocol, status: done, note: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
+    IOFactory: {type: protocol, status: done, note: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
+    "as-file": {type: function, status: done, note: builtin (Zig)}
+    "as-relative-path": {type: function, status: done, note: builtin (Zig)}
+    "as-url": {type: function, status: done, note: 'UPSTREAM-DIFF: returns URI, not URL'}
+    copy: {type: function, status: done, note: builtin (Zig)}
+    "default-streams-impl": {type: var, status: done, note: 'UPSTREAM-DIFF: map of fns with CW reader/writer dispatch'}
+    "delete-file": {type: function, status: done, note: builtin (Zig)}
+    file: {type: function, status: done, note: builtin (Zig)}
+    "input-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-reader'}
+    "make-input-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-reader'}
+    "make-output-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-writer'}
+    "make-parents": {type: function, status: done, note: builtin (Zig)}
+    "make-reader": {type: function, status: done, note: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
+    "make-writer": {type: function, status: done, note: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
+    "output-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-writer'}
+    reader: {type: function, status: done, note: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
+    resource: {type: function, status: done, note: builtin (Zig)}
+    writer: {type: function, status: done, note: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
   clojure_java_javadoc:
     "*core-java-api*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
     "*feeling-lucky*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
@@ -834,12 +834,12 @@ vars:
     "add-remote-javadoc": {type: function, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
     javadoc: {type: function, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
   cljw_http:
-    "run-server": {type: function, status: done, notes: "builtin (Zig), Ring-compatible HTTP server"}
-    get: {type: function, status: done, notes: "builtin (Zig), HTTP GET client"}
-    post: {type: function, status: done, notes: "builtin (Zig), HTTP POST client"}
-    put: {type: function, status: done, notes: "builtin (Zig), HTTP PUT client"}
-    delete: {type: function, status: done, notes: "builtin (Zig), HTTP DELETE client"}
-    "set-handler!": {type: function, status: done, notes: "builtin (Zig), cljw extension — live reload handler"}
+    "run-server": {type: function, status: done, note: "builtin (Zig), Ring-compatible HTTP server"}
+    get: {type: function, status: done, note: "builtin (Zig), HTTP GET client"}
+    post: {type: function, status: done, note: "builtin (Zig), HTTP POST client"}
+    put: {type: function, status: done, note: "builtin (Zig), HTTP PUT client"}
+    delete: {type: function, status: done, note: "builtin (Zig), HTTP DELETE client"}
+    "set-handler!": {type: function, status: done, note: "builtin (Zig), cljw extension — live reload handler"}
   clojure_java_shell:
     "*sh-dir*": {type: dynamic-var, status: done}
     "*sh-env*": {type: dynamic-var, status: done}
@@ -868,51 +868,51 @@ vars:
     "with-bindings": {type: macro, status: done}
     "with-read-known": {type: macro, status: done}
   clojure_math:
-    E: {type: var, status: done, notes: builtin (Zig)}
-    "IEEE-remainder": {type: function, status: done, notes: builtin (Zig)}
-    PI: {type: var, status: done, notes: builtin (Zig)}
-    acos: {type: function, status: done, notes: builtin (Zig)}
-    "add-exact": {type: function, status: done, notes: builtin (Zig)}
-    asin: {type: function, status: done, notes: builtin (Zig)}
-    atan: {type: function, status: done, notes: builtin (Zig)}
-    atan2: {type: function, status: done, notes: builtin (Zig)}
-    cbrt: {type: function, status: done, notes: builtin (Zig)}
-    ceil: {type: function, status: done, notes: builtin (Zig)}
-    "copy-sign": {type: function, status: done, notes: builtin (Zig)}
-    cos: {type: function, status: done, notes: builtin (Zig)}
-    cosh: {type: function, status: done, notes: builtin (Zig)}
-    "decrement-exact": {type: function, status: done, notes: builtin (Zig)}
-    exp: {type: function, status: done, notes: builtin (Zig)}
-    expm1: {type: function, status: done, notes: builtin (Zig)}
-    floor: {type: function, status: done, notes: builtin (Zig)}
-    "floor-div": {type: function, status: done, notes: builtin (Zig)}
-    "floor-mod": {type: function, status: done, notes: builtin (Zig)}
-    "get-exponent": {type: function, status: done, notes: builtin (Zig)}
-    hypot: {type: function, status: done, notes: builtin (Zig)}
-    "increment-exact": {type: function, status: done, notes: builtin (Zig)}
-    log: {type: function, status: done, notes: builtin (Zig)}
-    log10: {type: function, status: done, notes: builtin (Zig)}
-    log1p: {type: function, status: done, notes: builtin (Zig)}
-    "multiply-exact": {type: function, status: done, notes: builtin (Zig)}
-    "negate-exact": {type: function, status: done, notes: builtin (Zig)}
-    "next-after": {type: function, status: done, notes: builtin (Zig)}
-    "next-down": {type: function, status: done, notes: builtin (Zig)}
-    "next-up": {type: function, status: done, notes: builtin (Zig)}
-    pow: {type: function, status: done, notes: builtin (Zig)}
-    random: {type: function, status: done, notes: builtin (Zig)}
-    rint: {type: function, status: done, notes: builtin (Zig)}
-    round: {type: function, status: done, notes: builtin (Zig)}
-    scalb: {type: function, status: done, notes: builtin (Zig)}
-    signum: {type: function, status: done, notes: builtin (Zig)}
-    sin: {type: function, status: done, notes: builtin (Zig)}
-    sinh: {type: function, status: done, notes: builtin (Zig)}
-    sqrt: {type: function, status: done, notes: builtin (Zig)}
-    "subtract-exact": {type: function, status: done, notes: builtin (Zig)}
-    tan: {type: function, status: done, notes: builtin (Zig)}
-    tanh: {type: function, status: done, notes: builtin (Zig)}
-    "to-degrees": {type: function, status: done, notes: builtin (Zig)}
-    "to-radians": {type: function, status: done, notes: builtin (Zig)}
-    ulp: {type: function, status: done, notes: builtin (Zig)}
+    E: {type: var, status: done, note: builtin (Zig)}
+    "IEEE-remainder": {type: function, status: done, note: builtin (Zig)}
+    PI: {type: var, status: done, note: builtin (Zig)}
+    acos: {type: function, status: done, note: builtin (Zig)}
+    "add-exact": {type: function, status: done, note: builtin (Zig)}
+    asin: {type: function, status: done, note: builtin (Zig)}
+    atan: {type: function, status: done, note: builtin (Zig)}
+    atan2: {type: function, status: done, note: builtin (Zig)}
+    cbrt: {type: function, status: done, note: builtin (Zig)}
+    ceil: {type: function, status: done, note: builtin (Zig)}
+    "copy-sign": {type: function, status: done, note: builtin (Zig)}
+    cos: {type: function, status: done, note: builtin (Zig)}
+    cosh: {type: function, status: done, note: builtin (Zig)}
+    "decrement-exact": {type: function, status: done, note: builtin (Zig)}
+    exp: {type: function, status: done, note: builtin (Zig)}
+    expm1: {type: function, status: done, note: builtin (Zig)}
+    floor: {type: function, status: done, note: builtin (Zig)}
+    "floor-div": {type: function, status: done, note: builtin (Zig)}
+    "floor-mod": {type: function, status: done, note: builtin (Zig)}
+    "get-exponent": {type: function, status: done, note: builtin (Zig)}
+    hypot: {type: function, status: done, note: builtin (Zig)}
+    "increment-exact": {type: function, status: done, note: builtin (Zig)}
+    log: {type: function, status: done, note: builtin (Zig)}
+    log10: {type: function, status: done, note: builtin (Zig)}
+    log1p: {type: function, status: done, note: builtin (Zig)}
+    "multiply-exact": {type: function, status: done, note: builtin (Zig)}
+    "negate-exact": {type: function, status: done, note: builtin (Zig)}
+    "next-after": {type: function, status: done, note: builtin (Zig)}
+    "next-down": {type: function, status: done, note: builtin (Zig)}
+    "next-up": {type: function, status: done, note: builtin (Zig)}
+    pow: {type: function, status: done, note: builtin (Zig)}
+    random: {type: function, status: done, note: builtin (Zig)}
+    rint: {type: function, status: done, note: builtin (Zig)}
+    round: {type: function, status: done, note: builtin (Zig)}
+    scalb: {type: function, status: done, note: builtin (Zig)}
+    signum: {type: function, status: done, note: builtin (Zig)}
+    sin: {type: function, status: done, note: builtin (Zig)}
+    sinh: {type: function, status: done, note: builtin (Zig)}
+    sqrt: {type: function, status: done, note: builtin (Zig)}
+    "subtract-exact": {type: function, status: done, note: builtin (Zig)}
+    tan: {type: function, status: done, note: builtin (Zig)}
+    tanh: {type: function, status: done, note: builtin (Zig)}
+    "to-degrees": {type: function, status: done, note: builtin (Zig)}
+    "to-radians": {type: function, status: done, note: builtin (Zig)}
+    ulp: {type: function, status: done, note: builtin (Zig)}
   clojure_pprint:
     "*print-base*": {type: dynamic-var, status: done}
     "*print-miser-width*": {type: dynamic-var, status: done}
@@ -928,11 +928,11 @@ vars:
     "fresh-line": {type: function, status: done}
     "get-pretty-writer": {type: function, status: done}
     pp: {type: macro, status: done}
-    pprint: {type: function, status: done, notes: builtin (upstream is pure clj)}
+    pprint: {type: function, status: done, note: builtin (upstream is pure clj)}
     "pprint-indent": {type: function, status: done}
     "pprint-logical-block": {type: macro, status: done}
     "pprint-newline": {type: function, status: done}
-    "pprint-tab": {type: function, status: done, notes: "stub (upstream also throws)"}
+    "pprint-tab": {type: function, status: done, note: "stub (upstream also throws)"}
     "print-length-loop": {type: macro, status: done}
     "print-table": {type: function, status: done}
     "set-pprint-dispatch": {type: function, status: done}
@@ -959,19 +959,19 @@ vars:
     "type-reflect": {type: function, status: skip, note: 100% Java reflection API}
     typename: {type: function, status: skip, note: 100% Java reflection API}
   clojure_repl:
-    apropos: {type: function, status: done, notes: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
-    demunge: {type: function, status: done, notes: "UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
+    apropos: {type: function, status: done, note: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
+    demunge: {type: function, status: done, note: "UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
     dir: {type: macro, status: done}
     "dir-fn": {type: function, status: done}
     doc: {type: macro, status: done}
     "find-doc": {type: function, status: done}
-    pst: {type: function, status: done, notes: "UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
-    "root-cause": {type: function, status: done, notes: "UPSTREAM-DIFF: walks ex-cause chain"}
-    "set-break-handler!": {type: function, status: skip, notes: "JVM interop (sun.misc.Signal)"}
+    pst: {type: function, status: done, note: "UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
+    "root-cause": {type: function, status: done, note: "UPSTREAM-DIFF: walks ex-cause chain"}
+    "set-break-handler!": {type: function, status: skip, note: "JVM interop (sun.misc.Signal)"}
     source: {type: macro, status: done}
-    "source-fn": {type: function, status: done, notes: "UPSTREAM-DIFF: paren-counting instead of reader-based"}
-    "stack-element-str": {type: function, status: done, notes: "UPSTREAM-DIFF: uses map format instead of StackTraceElement"}
-    "thread-stopper": {type: function, status: skip, notes: "JVM interop (Thread/currentThread)"}
+    "source-fn": {type: function, status: done, note: "UPSTREAM-DIFF: paren-counting instead of reader-based"}
+    "stack-element-str": {type: function, status: done, note: "UPSTREAM-DIFF: uses map format instead of StackTraceElement"}
+    "thread-stopper": {type: function, status: skip, note: "JVM interop (Thread/currentThread)"}
   clojure_set:
     difference: {type: function, status: done}
     index: {type: function, status: done}
@@ -1176,7 +1176,7 @@ vars:
     deftest: {type: macro, status: done}
     "deftest-": {type: macro, status: done}
     "do-report": {type: function, status: done}
-    "file-position": {type: function, status: skip, notes: "deprecated since 1.2, needs Java StackTraceElement for stack introspection"}
+    "file-position": {type: function, status: skip, note: "deprecated since 1.2, needs Java StackTraceElement for stack introspection"}
     "function?": {type: function, status: done}
     "get-possibly-unbound-var": {type: function, status: done}
     "inc-report-counter": {type: function, status: done}

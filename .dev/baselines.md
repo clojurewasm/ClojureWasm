@@ -1,6 +1,6 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-16 (post-Phase 77)
+Measured on: 2026-02-19 (post-zwasm v1.1.0)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
 
@@ -12,7 +12,7 @@ Fix the regression first. No exceptions without explicit user approval.
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
 | Binary size         | 4.07 MB    | 4.3 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
-| Startup time        | 4.2 ms     | 5 ms       | 1.19x  | `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` |
+| Startup time        | 4.8 ms     | 6 ms       | 1.25x  | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
 | RSS (light)         | 8.0 MB     | 12 MB      | +50%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
 
@@ -30,29 +30,31 @@ If any benchmark exceeds 1.2x baseline:
 
 Never accept "this feature needs to be slower" — find a way to keep it fast.
 
-## Benchmark Baselines (2026-02-14, v0.2.0, hyperfine 5 runs)
+## Benchmark Baselines (2026-02-18, zwasm v1.1.0, hyperfine 5 runs)
+
+Source: `bench/history.yaml` entry `zwasm-v1.1.0` (commit 518fef2).
 
 | Benchmark              | Time (ms) | Ceiling (ms) |
 |------------------------|-----------|--------------|
-| fib_recursive          | 18        | 22           |
-| fib_loop               | 5         | 6            |
-| tak                    | 8         | 10           |
+| fib_recursive          | 17        | 20           |
+| fib_loop               | 4         | 5            |
+| tak                    | 7         | 8            |
 | arith_loop             | 5         | 6            |
 | map_filter_reduce      | 6         | 7            |
-| vector_ops             | 6         | 7            |
-| map_ops                | 5         | 6            |
-| list_build             | 4         | 5            |
-| sieve                  | 5         | 6            |
-| nqueens                | 15        | 18           |
-| atom_swap              | 5         | 6            |
-| gc_stress              | 26        | 31           |
-| lazy_chain             | 6         | 7            |
-| transduce              | 7         | 8            |
-| keyword_lookup         | 12        | 14           |
-| protocol_dispatch      | 5         | 6            |
-| nested_update          | 10        | 12           |
-| string_ops             | 24        | 29           |
-| multimethod_dispatch   | 5         | 6            |
+| vector_ops             | 5         | 6            |
+| map_ops                | 4         | 5            |
+| list_build             | 6         | 7            |
+| sieve                  | 6         | 7            |
+| nqueens                | 17        | 20           |
+| atom_swap              | 6         | 7            |
+| gc_stress              | 29        | 35           |
+| lazy_chain             | 7         | 8            |
+| transduce              | 6         | 7            |
+| keyword_lookup         | 13        | 16           |
+| protocol_dispatch      | 6         | 7            |
+| nested_update          | 12        | 14           |
+| string_ops             | 28        | 34           |
+| multimethod_dispatch   | 6         | 7            |
 | real_workload          | 10        | 12           |
 
 Wasm benchmarks excluded from regression gate (higher variance, dominated by zwasm).

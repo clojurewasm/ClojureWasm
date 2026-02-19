@@ -18,7 +18,7 @@ a native implementation targeting behavioral compatibility with Clojure.
 
 ## Highlights
 
-- **Fast startup** — ~4ms to evaluate an expression (ReleaseSafe)
+- **Fast startup** — ~5ms to evaluate an expression (ReleaseSafe)
 - **Small binary** — ~4MB single executable (ReleaseSafe)
 - **Single binary distribution** — `cljw build app.clj -o app`, runs without cljw installed
 - **Wasm FFI** — call WebAssembly modules from Clojure (523 opcodes including SIMD + GC)
