@@ -1542,3 +1542,60 @@ test "Reader - depth tracks reader macros" {
     const result = readOneWithLimits(source, .{ .max_depth = 2 });
     try testing.expectError(error.SyntaxError, result);
 }
+
+test "fuzz reader" {
+    // Coverage-guided fuzzing: Reader must never panic on any input.
+    // ReadError is expected and fine — only crashes/UB are bugs.
+    // Run: zig build test --fuzz
+    try std.testing.fuzz(
+        {},
+        struct {
+            fn testOne(_: @TypeOf({}), input: []const u8) anyerror!void {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
+                const alloc = arena.allocator();
+
+                // Test with strict limits to exercise limit-checking paths
+                var r = Reader.initWithLimits(alloc, input, .{
+                    .max_depth = 64,
+                    .max_string_size = 4096,
+                    .max_collection_count = 256,
+                });
+
+                // Read all forms until EOF or error — both are acceptable outcomes
+                while (true) {
+                    const form = r.read() catch break;
+                    if (form == null) break;
+                }
+            }
+        }.testOne,
+        .{
+            .corpus = &.{
+                // Atoms
+                "nil", "true", "false", "42", "-1", "3.14", "1/3", "1N", "1M",
+                "\"hello\"", "\\a", "\\newline", "\\u0041",
+                ":keyword", "::auto-resolved", ":ns/qualified",
+                "symbol", "ns/sym",
+                // Collections
+                "(1 2 3)", "[a b c]", "{:a 1 :b 2}", "#{1 2 3}",
+                // Reader macros
+                "'x", "`x", "~x", "~@xs", "@atom", "^:meta sym",
+                "#'var", "#(+ % 1)", "#_(ignored)", "#\"regex\"",
+                "#:ns{:a 1}", "#::auto{:a 1}",
+                // Nested structures
+                "((()))", "[{:a [1 2]} #{3}]",
+                "(defn f [x] (if (> x 0) (recur (dec x)) x))",
+                // Edge cases
+                "", " ", "\n", ";comment\n", ",,,",
+                "(", ")", "[", "]", "{", "}", "#{",
+                "\"unterminated", "\\", "#",
+                // Tagged literals
+                "#inst \"2024-01-01\"", "#uuid \"550e8400-e29b-41d4-a716-446655440000\"",
+                // Strings with escapes
+                "\"\\n\\t\\r\\\\\\\"\"",
+                // Large number formats
+                "0xff", "0xFF", "036", "2r1010", "16rFF",
+            },
+        },
+    );
+}
