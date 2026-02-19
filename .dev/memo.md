@@ -51,23 +51,22 @@ See `.dev/library-port-targets.md` for targets and decision guide.
 
 ## Current Task
 
-Phase 80: Crash Hardening & Fuzzing.
-Sub-task 80.9: Threat model document (CW trust boundaries).
+Phase 80 COMPLETE. Proceed to Phase 81 (Error System Maturity).
+Read `.dev/roadmap.md` Phase 81 section for sub-tasks.
 
 ## Previous Task
 
-Phase 80.8 COMPLETE (Vulnerability Audit).
-Full audit across all categories:
-- **GC**: All secure — mark-and-sweep with HashMap tracking, mutex protection, no use-after-free/double-free
-- **VM**: Hardened — added pop/peek underflow assertions, jump bounds checks, try_begin catch_ip validation
-- **Clojure layer**: All secure — eval injection (expected), path traversal (sanitized), namespace poisoning (standard), serialization bomb (reader limits), lazy-seq OOM (lazy evaluation)
-- **Interop/FFI**: All secure — opaque wasm wrapper, WASI capability flags, sandbox integrity
-- **Build**: All secure — ReleaseSafe preserves bounds/overflow checks, zwasm pinned+hashed
+Phase 80 COMPLETE (Crash Hardening & Fuzzing).
+- 80.1-80.5: Fuzzing harnesses, structure-aware generation, differential testing (already done)
+- 80.6: Resource limits — format width/precision (10K), str output (10MB), analyzer depth (1024)
+- 80.7: Internal error audit — @panic→graceful exit, all internal_error non-user-reachable
+- 80.8: Vulnerability audit — GC/VM/Clojure/interop/build all secure; VM hardened
+- 80.9: Threat model documented at `.dev/threat-model.md`
 
 ## Task Queue
 
 ```
-80.9: Threat model document (CW trust boundaries)
+(empty — read roadmap Phase 81 for next tasks)
 ```
 
 ## Known Issues
