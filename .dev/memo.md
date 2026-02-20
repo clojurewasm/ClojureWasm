@@ -59,22 +59,21 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 84: Testing Expansion
-Phase 85 COMPLETE: Library Compatibility Expansion
-- 85.1-85.2: data.csv 100%, medley 82.5%, CSK 98.6%, honeysql load OK
-  data.json/instaparse/core.match/malli blocked by deftype
-- 85.3: docs/compatibility.md updated with 10+ library matrix
-- 85.4: F141 resolved — cljw.io, cljw.shell, cljw.browse, cljw.process aliases work
-- Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
+Phase 87: Developer Experience
+87.3: REPL polish (multiline improvements, tab completion)
+- Improve multiline editing in interactive REPL
+- Add tab completion in REPL (prefix-based, like nREPL completions)
 
 ## Previous Task
 
-Phase 83A-83E COMPLETE (Architecture v2).
+87.2: nREPL macroexpand op + cons rendering fix + shutdown panic fix.
+87.1: cljw test already implemented.
 
 ## Task Queue
 
 ```
-(Phase 85 complete — proceed to Phase 87: Developer Experience)
+87.3: REPL polish (multiline improvements, tab completion)
+87.4: Project template (cljw new my-app)
 ```
 
 ## 83E Audit Results & Scope Reduction

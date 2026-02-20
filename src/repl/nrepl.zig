@@ -130,8 +130,10 @@ fn runServerLoop(gpa_allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc, p
         // Shutdown client sockets to unblock read() (returns 0/EOF), then join threads.
         // Using shutdown() instead of close() avoids double-close — handleClient
         // will close() the fd after messageLoop exits.
+        // Use raw syscall because std.posix.shutdown maps BADF to unreachable/panic,
+        // but the client may have already disconnected and closed the fd.
         for (state.client_streams.items) |s| {
-            std.posix.shutdown(s.handle, .both) catch {};
+            _ = std.posix.system.shutdown(s.handle, 2); // SHUT_RDWR = 2
         }
         state.client_streams.deinit(gpa_allocator);
         for (state.client_threads.items) |t| {
@@ -267,6 +269,7 @@ const op_table = [_]OpEntry{
     .{ .name = "interrupt", .handler = opInterrupt },
     .{ .name = "stacktrace", .handler = opStacktrace },
     .{ .name = "analyze-last-stacktrace", .handler = opStacktrace },
+    .{ .name = "macroexpand", .handler = opMacroexpand },
 };
 
 /// Route incoming message to the appropriate op handler.
@@ -637,6 +640,68 @@ fn opLoadFile(
     }
 
     opEval(state, eval_msg_buf[0..eval_msg_len], stream, allocator);
+}
+
+/// macroexpand: expand macros in a form.
+/// Supports "expander" key: "macroexpand-1" or "macroexpand" (default).
+fn opMacroexpand(
+    state: *ServerState,
+    msg: []const BencodeValue.DictEntry,
+    stream: std.net.Stream,
+    allocator: Allocator,
+) void {
+    const code = bencode.dictGetString(msg, "code") orelse {
+        sendError(stream, msg, "macroexpand-error", "No code provided", allocator);
+        return;
+    };
+
+    const expander = bencode.dictGetString(msg, "expander") orelse "macroexpand";
+
+    // Build expression: (<expander> '<code>)
+    const expr = std.fmt.allocPrint(allocator, "({s} '{s})", .{ expander, code }) catch {
+        sendError(stream, msg, "macroexpand-error", "Out of memory", allocator);
+        return;
+    };
+
+    state.mutex.lock();
+    defer state.mutex.unlock();
+
+    // Resolve session namespace
+    const ns_name = if (bencode.dictGetString(msg, "ns")) |n|
+        n
+    else if (bencode.dictGetString(msg, "session")) |sid|
+        if (state.sessions.get(sid)) |s| s.ns_name else "user"
+    else
+        "user";
+
+    if (state.env.findNamespace(ns_name)) |ns| {
+        state.env.current_ns = ns;
+    }
+
+    const eval_alloc = if (state.gc) |gc| gc.allocator() else state.gpa;
+    const expr_persistent = eval_alloc.dupe(u8, expr) catch {
+        sendError(stream, msg, "macroexpand-error", "Out of memory", allocator);
+        return;
+    };
+
+    const result = bootstrap.evalString(eval_alloc, state.env, expr_persistent);
+
+    if (result) |val| {
+        var val_buf: [65536]u8 = undefined;
+        var val_stream = std.io.fixedBufferStream(&val_buf);
+        writeValue(val_stream.writer(), val);
+        const expansion = val_stream.getWritten();
+
+        const entries = [_]BencodeValue.DictEntry{
+            idEntry(msg),
+            sessionEntry(msg),
+            .{ .key = "expansion", .value = .{ .string = expansion } },
+            statusDone(),
+        };
+        sendBencode(stream, &entries, allocator);
+    } else |_| {
+        sendError(stream, msg, "macroexpand-error", "Macroexpansion failed", allocator);
+    }
 }
 
 /// ls-sessions: list active sessions.
@@ -1243,11 +1308,46 @@ fn writeValue(w: anytype, val: Value) void {
             }
         },
         .cons => {
-            const c = val.asCons();
             w.print("(", .{}) catch {};
-            writeValue(w, c.first);
-            w.print(" . ", .{}) catch {};
-            writeValue(w, c.rest);
+            var current = val;
+            var first = true;
+            while (true) {
+                if (current.tag() == .cons) {
+                    const c = current.asCons();
+                    if (!first) w.print(" ", .{}) catch {};
+                    writeValue(w, c.first);
+                    first = false;
+                    current = c.rest;
+                } else if (current.tag() == .nil) {
+                    break;
+                } else if (current.tag() == .list) {
+                    // Rest is a regular list — inline its elements
+                    const lst = current.asList();
+                    for (lst.items) |item| {
+                        if (!first) w.print(" ", .{}) catch {};
+                        writeValue(w, item);
+                        first = false;
+                    }
+                    break;
+                } else if (current.tag() == .lazy_seq) {
+                    const ls = current.asLazySeq();
+                    if (ls.realized) |r| {
+                        if (!first) w.print(" ", .{}) catch {};
+                        // Realized lazy-seq: continue traversal
+                        if (r.tag() == .cons or r.tag() == .list or r.tag() == .nil) {
+                            current = r;
+                            continue;
+                        }
+                        writeValue(w, r);
+                    }
+                    break;
+                } else {
+                    // Non-nil, non-seq rest (shouldn't happen in Clojure)
+                    if (!first) w.print(" ", .{}) catch {};
+                    writeValue(w, current);
+                    break;
+                }
+            }
             w.print(")", .{}) catch {};
         },
         .var_ref => {
@@ -1454,10 +1554,11 @@ test "nrepl - writeValue keyword" {
 test "nrepl - dispatch table covers all expected ops" {
     // Verify key ops are in the dispatch table
     const expected_ops = [_][]const u8{
-        "clone",     "close",     "describe",    "eval",
-        "load-file", "ls-sessions", "completions", "complete",
-        "info",      "lookup",    "eldoc",       "ns-list",
-        "stdin",     "interrupt", "stacktrace",  "analyze-last-stacktrace",
+        "clone",     "close",        "describe",    "eval",
+        "load-file", "ls-sessions",  "completions", "complete",
+        "info",      "lookup",       "eldoc",       "ns-list",
+        "stdin",     "interrupt",    "stacktrace",  "analyze-last-stacktrace",
+        "macroexpand",
     };
     for (expected_ops) |expected| {
         var found = false;
@@ -1476,7 +1577,7 @@ test "nrepl - describe ops generated from dispatch table" {
     comptime {
         var count: usize = 0;
         for (op_table) |_| count += 1;
-        if (count != 16) @compileError("expected 16 ops in dispatch table");
+        if (count != 17) @compileError("expected 17 ops in dispatch table");
     }
 }
 
