@@ -59,35 +59,25 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase A COMPLETE. Regression fixes done. Ready for Phase B.
-Next: Phase B — Library namespaces → Zig builtins (24 files, 7,739 lines → 0).
-See `.dev/all-zig-plan.md` for details.
+88A-sweep: Upstream test stabilization before Phase B.
+Goal: maximize clean-pass files, record baselines for hard failures, exclude medley.
 
 ## Previous Task
 
-88A post-fix: Fix 2 regressions from A.11/A.12 macro migration.
-1. case macro formHash: map/set/vector hashed to 0 → implemented Murmur3 collection
-   hash (formMixCollHash, formOrderedHash) matching runtime computeHash.
-2. macroexpand-1: qualified symbols (my.ns/->>) skipped Zig transforms →
-   removed namespace restriction, matching analyzer behavior.
+88A post-fix: Fix 2 regressions from A.11/A.12 macro migration (formHash, macroexpand-1).
 
 ## Task Queue
 
 ```
-Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
-  A.1: Simple predicates & type utils (27 fn) DONE
-  A.2: Arithmetic & comparison wrappers (24 fn) DONE
-  A.3: Collection constructors & accessors (17 fn) DONE
-  A.4: Sequence functions (16 fn) DONE
-  A.5: Non-closure utility functions (15 fn) DONE
-  A.6: String/print utilities & simple functions (11 fn) DONE
-  A.7: Transducer/reduce compositions (10 fn) DONE
-  A.8: Hierarchy functions (6 fn) DONE
-  A.9: HOF closure utilities (17 fn) DONE
-  A.10: Transducers, lazy-seq, remaining defn (~45 fn) DONE
-  A.11: `ns` macro → Zig transform DONE
-  A.12: `case` macro → Zig transform DONE
-Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0) ← NEXT
+88A-sweep: Upstream test stabilization
+  S.1: Exclude medley from cljw test (System/exit kills runner) ← NEXT
+  S.2: Fix compilation.clj — defmacro :macro metadata (1F)
+  S.3: Fix other_functions.clj — min-key/max-key stability (2F)
+  S.4: Fix transducers.clj — halt-when reduced handling (1E)
+  S.5: Fix main.clj — push-thread-bindings (1E)
+  S.6: Record baseline for hard failures (macros 8F, reducers 11F, spec 31)
+--- After sweep ---
+Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring
 Phase E: Optimization (restore baselines)

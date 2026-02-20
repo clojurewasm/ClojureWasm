@@ -29,6 +29,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 87 | Developer Experience | 3 | DONE |
 | 88 | v0.3.0 Release | 3 | DONE |
 | 88A | Correctness Sweep | 3.5 | DONE |
+| 88B | Upstream Test Stabilization | 3.5 | IN-PROGRESS |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
@@ -446,6 +447,28 @@ No workarounds in Known Issues. checklist.md F94 achievable items resolved.
 - 88A.3: Key question: does `use-fixtures` at load time work? Or is the issue that fixtures are registered but not applied during `run-tests`?
 - 88A.4: Most likely candidates: `error.zig` (11 threadlocals), `value.zig` (5), `io.zig` (7)
 - 88A.5: Reference JVM: `clojure.core/extend-via-metadata` in defprotocol. Check `src/clj/clojure/core/protocols.clj:88,98` where it's already marked as omitted
+
+---
+
+## Phase 88B: Upstream Test Stabilization (Tier 3.5)
+
+Ensure `cljw test` is a reliable regression gate before Phase B (All-Zig library migration).
+
+| Sub | Task | Effort | Details |
+|-----|------|--------|---------|
+| 88B.1 | Exclude medley/compat from `cljw test` | Small | compat tests call `System/exit 1` on failure, killing the runner before upstream tests run. Skip `e2e/`, `compat/`, `diff/`, `wasm/` dirs. |
+| 88B.2 | Fix compilation.clj `:macro` metadata | Small | `(meta #'when)` returns nil for `:macro` — Zig transforms have no Var, so no macro flag. 1F. |
+| 88B.3 | Fix other_functions.clj min-key/max-key | Small | Tie-breaking: should return last element with same key, returns first. 2F. |
+| 88B.4 | Fix transducers.clj halt-when | Small | `halt-when` reduced handling bug. 1E. |
+| 88B.5 | Fix main.clj push-thread-bindings | Small | `push-thread-bindings` gets non-map argument. 1E. |
+| 88B.6 | Record baselines for hard failures | Small | macros.clj 8F (metadata in Form), reducers.clj 11F (CollFold), spec.clj 29F+2E (spec internals). Document in baselines.md. |
+
+**Baseline after 88B**: 59/63 upstream files clean pass (was 55/63).
+Known hard failures (4 files, to be resolved in Phase B):
+- macros.clj 8F: Form struct lacks metadata → Phase B or dedicated fix
+- reducers.clj 11F: CollFold protocol → Phase B (reducers→Zig)
+- spec.clj 29F+2E: spec internal accuracy → Phase B (spec→Zig)
+- (compilation.clj/main.clj/other_functions.clj/transducers.clj fixed above)
 
 ---
 
