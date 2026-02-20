@@ -1744,8 +1744,61 @@ fn formHash(form: Form) i64 {
             h = h *% 31 +% formStringHash(sym.name);
             break :blk h;
         },
+        .vector => |items| @as(i64, formMixCollHash(formOrderedHash(items), @intCast(items.len))),
+        .list => |items| @as(i64, formMixCollHash(formOrderedHash(items), @intCast(items.len))),
+        .map => |items| blk: {
+            // Unordered: sum of (key_hash ^ val_hash) for each pair
+            var h: i32 = 0;
+            var i: usize = 0;
+            while (i + 1 < items.len) : (i += 2) {
+                const kh: i32 = @truncate(formHash(items[i]));
+                const vh: i32 = @truncate(formHash(items[i + 1]));
+                h +%= kh ^ vh;
+            }
+            break :blk @as(i64, formMixCollHash(h, @intCast(items.len / 2)));
+        },
+        .set => |items| blk: {
+            // Unordered: sum of element hashes
+            var h: i32 = 0;
+            for (items) |item| {
+                h +%= @as(i32, @truncate(formHash(item)));
+            }
+            break :blk @as(i64, formMixCollHash(h, @intCast(items.len)));
+        },
         else => 0,
     };
+}
+
+/// Ordered collection hash (matches hashOrderedColl: h = h * 31 + element_hash)
+fn formOrderedHash(items: []const Form) i32 {
+    var h: i32 = 1;
+    for (items) |item| {
+        h = h *% 31 +% @as(i32, @truncate(formHash(item)));
+    }
+    return h;
+}
+
+/// Murmur3 mix-collection-hash (matches runtime mixCollHash)
+fn formMixCollHash(hash_val: i32, count: i32) i32 {
+    const M3_C1: u32 = 0xcc9e2d51;
+    const M3_C2: u32 = 0x1b873593;
+    // mixK1
+    var k1: u32 = @bitCast(hash_val);
+    k1 *%= M3_C1;
+    k1 = std.math.rotl(u32, k1, 15);
+    k1 *%= M3_C2;
+    // mixH1 (seed=0)
+    var h1: u32 = k1;
+    h1 = std.math.rotl(u32, h1, 13);
+    h1 = h1 *% 5 +% 0xe6546b64;
+    // fmix
+    h1 ^= @as(u32, @bitCast(count));
+    h1 ^= h1 >> 16;
+    h1 *%= 0x85ebca6b;
+    h1 ^= h1 >> 13;
+    h1 *%= 0xc2b2ae35;
+    h1 ^= h1 >> 16;
+    return @bitCast(h1);
 }
 
 fn formStringHash(s: []const u8) i64 {

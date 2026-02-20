@@ -59,16 +59,17 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase A COMPLETE. All core.clj migrated to Zig (2,749 → 0 functional lines).
+Phase A COMPLETE. Regression fixes done. Ready for Phase B.
 Next: Phase B — Library namespaces → Zig builtins (24 files, 7,739 lines → 0).
 See `.dev/all-zig-plan.md` for details.
 
 ## Previous Task
 
-A.12: `case` macro → Zig macro transform (macro_transforms.zig).
-Reimplemented all 7 private helpers (shift-mask, maybe-min-hash, case-map, fits-table?,
-prep-ints, merge-hash-collisions, prep-hashes) as Zig functions with compile-time
-hash computation. core.clj reduced from 128 → 0 functional lines (9 lines: comments only).
+88A post-fix: Fix 2 regressions from A.11/A.12 macro migration.
+1. case macro formHash: map/set/vector hashed to 0 → implemented Murmur3 collection
+   hash (formMixCollHash, formOrderedHash) matching runtime computeHash.
+2. macroexpand-1: qualified symbols (my.ns/->>) skipped Zig transforms →
+   removed namespace restriction, matching analyzer behavior.
 
 ## Task Queue
 
