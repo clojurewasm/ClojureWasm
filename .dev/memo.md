@@ -60,10 +60,10 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 84: Testing Expansion
-84.2: Differential testing campaign (CW vs JVM)
-- 84.1 DONE: 59 test files (58/59 pass), +13 CW-specific test files created
-- New files: interop_classes, exceptions, sorted_colls, threading, string_ops,
-  destructuring, regex, atoms, namespaces, transducers, multimethods, lazy_seqs, metadata
+84.3: Property-based reader round-trip tests
+- 84.1 DONE: 59 test files (58/59 pass), +13 CW-specific
+- 84.2 DONE: 146 expressions, 246 with randoms, 0 failures
+- Expanded: transducers, sorted colls, destructuring, exceptions, metadata, string ops
 - Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
 - Known: is macro has bug with instance? special form reporting (workaround: wrap in true?)
 
@@ -74,7 +74,6 @@ Phase 83A-83E COMPLETE (Architecture v2).
 ## Task Queue
 
 ```
-84.2: Differential testing campaign (CW vs JVM)
 84.3: Property-based reader round-trip tests
 84.4: Long-run stability tests
 84.5: Golden REPL output tests

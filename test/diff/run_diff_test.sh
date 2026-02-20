@@ -303,6 +303,79 @@ run_test "(println 42)"
 run_test "(println [1 2 3])"
 run_test "(println {:a 1})"
 
+# Numeric edge cases
+run_test "(int 3.14)"
+run_test "(long 3.14)"
+run_test "(double 42)"
+run_test "(float 3.14)"
+run_test "(quot 10 3)"
+run_test "(bit-and 6 3)"
+run_test "(bit-or 6 3)"
+run_test "(bit-xor 6 3)"
+run_test "(bit-shift-left 1 10)"
+run_test "(bit-shift-right 1024 5)"
+
+# Transducers
+run_test "(into [] (map inc) [1 2 3])"
+run_test "(into [] (comp (filter even?) (map inc)) [1 2 3 4 5])"
+run_test "(transduce (map inc) + [1 2 3])"
+run_test "(into [] (take 3) (range 10))"
+run_test "(into [] (drop 5) (range 10))"
+run_test "(into [] (dedupe) [1 1 2 2 3])"
+run_test "(into [] (distinct) [1 2 1 3 2])"
+run_test "(into [] (partition-all 2) [1 2 3 4 5])"
+
+# Sorted collections
+run_test "(into (sorted-set) [3 1 2])"
+run_test "(vec (keys (sorted-map 3 :c 1 :a 2 :b)))"
+run_test "(subseq (sorted-set 1 2 3 4 5) >= 3)"
+
+# Multimethod basics
+run_test "(do (defmulti mm identity) (defmethod mm :a [_] 1) (mm :a))"
+
+# Lazy sequences
+run_test "(vec (take 5 (iterate inc 0)))"
+run_test "(vec (take 3 (cycle [1 2 3])))"
+run_test "(vec (take-while #(< % 5) (range 10)))"
+run_test "(vec (drop-while #(< % 5) (range 10)))"
+run_test "(count (take 100 (repeat :x)))"
+run_test "(vec (take-last 3 (range 10)))"
+
+# String functions
+run_test "(clojure.string/upper-case \"hello\")"
+run_test "(clojure.string/lower-case \"HELLO\")"
+run_test "(clojure.string/trim \"  hi  \")"
+run_test "(clojure.string/join \",\" [1 2 3])"
+run_test "(clojure.string/reverse \"abc\")"
+
+# Metadata
+run_test "(meta (with-meta [1] {:a 1}))"
+run_test "(meta (vary-meta (with-meta [] {:a 1}) assoc :b 2))"
+
+# Destructuring
+run_test "(let [[a & r] [1 2 3]] [a (vec r)])"
+run_test "(let [{:keys [a b] :or {b 99}} {:a 1}] [a b])"
+
+# Exception handling
+run_test "(try (/ 1 0) (catch Exception e :caught))"
+run_test "(ex-message (ex-info \"boom\" {:code 1}))"
+run_test "(ex-data (ex-info \"boom\" {:code 1}))"
+
+# Misc
+run_test "(name :hello)"
+run_test "(namespace :foo/bar)"
+run_test "(keyword \"hello\")"
+run_test "(symbol \"hello\")"
+run_test "(pr-str [1 2 3])"
+run_test "(pr-str {:a 1})"
+run_test "(str nil)"
+run_test "(str true)"
+run_test "(str false)"
+run_test "(boolean nil)"
+run_test "(boolean false)"
+run_test "(boolean 0)"
+run_test "(boolean \"\")"
+
 # Generate random expressions if requested
 if [ "$GEN_COUNT" -gt 0 ]; then
   echo ""
