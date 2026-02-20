@@ -60,18 +60,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 83E-v2: Complete All-Zig Migration
-Sub-task 83E-v2.1.6: Definition macros (defn, defn-, defonce, declare)
+Sub-task 83E-v2.1.7: Complex control flow macros (cond, condp, case, doseq, dotimes, etc.)
 
 ## Previous Task
 
-Phase 88A COMPLETE. All 6 sub-tasks done.
+83E-v2.1.6: Definition macros (defn, defn-, defonce, declare, definline, vswap!) DONE.
+Also fixed: analyzer transform check now accepts any qualified namespace (not just clojure.core)
+because syntax-quote may qualify transforms with the current namespace when the transform is not a var.
 
 ## Task Queue
 
 ```
-83E-v2.1.6: Definition macros (defn, defn-, defonce, declare)
 83E-v2.1.7: Complex control flow macros (cond, condp, case, doseq, dotimes, etc.)
-83E-v2.1.8: Namespace and misc macros (ns, refer-clojure, vswap!, letfn)
+83E-v2.1.8: Namespace and misc macros (ns, refer-clojure, letfn)
 83E-v2.2: Core functions → Zig (audit + 10 sub-tasks)
 83E-v2.3: Small library namespaces → Zig (8 sub-tasks)
 83E-v2.4: Large libraries → Zig (6 sub-tasks)

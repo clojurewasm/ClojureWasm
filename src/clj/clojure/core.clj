@@ -4,9 +4,7 @@
 ;; Builtins (def, defmacro, fn, if, do, let, +, -, etc.) are already registered
 ;; in the Env by registry.registerBuiltins before this file is loaded.
 
-;; Bootstrap defn — will be redefined below with docstring/metadata support
-(defmacro defn [name & fdecl]
-  `(def ~name (fn ~name ~@fdecl)))
+;; `defn` macro migrated to Zig (macro_transforms.zig)
 
 ;; `when` macro migrated to Zig (macro_transforms.zig)
 
@@ -37,58 +35,8 @@
         (if (seq acc) (reverse acc) nil))
       nil)))
 
-;; Full defn: propagates docstring via with-meta on name
-;; UPSTREAM-DIFF: No :inline metadata support (arglists extracted by analyzer)
-(defmacro defn [name & fdecl]
-  (let [doc (when (string? (first fdecl)) (first fdecl))
-        fdecl (if doc (next fdecl) fdecl)
-        attr-map (when (map? (first fdecl)) (first fdecl))
-        fdecl (if attr-map (next fdecl) fdecl)
-        fdecl (if (vector? (first fdecl))
-                (list fdecl)
-                fdecl)
-        fdecl (if (map? (last fdecl))
-                (butlast fdecl)
-                fdecl)
-        ;; Process :pre/:post conditions in each arity.
-        ;; Uses loop/recur (not map — map is defined after defn).
-        make-asserts
-        (fn [conds]
-          (loop [cs (seq conds) acc (list)]
-            (if cs
-              (recur (next cs) (cons (list 'assert (first cs)) acc))
-              (reverse acc))))
-        process-arity
-        (fn [sig]
-          (let [params (first sig)
-                body (next sig)
-                conds (if (next body)
-                        (if (map? (first body)) (first body) nil)
-                        nil)
-                body (if conds (next body) body)
-                pre (:pre conds)
-                post (:post conds)
-                body (if post
-                       (let [result-expr (if (next body)
-                                           (cons 'do body)
-                                           (first body))]
-                         (list (concat (list 'let ['% result-expr])
-                                       (make-asserts post)
-                                       (list '%))))
-                       body)
-                body (if pre
-                       (concat (make-asserts pre) body)
-                       body)]
-            (cons params body)))
-        fdecl (loop [sigs (seq fdecl) acc (list)]
-                (if sigs
-                  (recur (next sigs) (cons (process-arity (first sigs)) acc))
-                  (reverse acc)))
-        m (merge (meta name) attr-map (when doc {:doc doc}))
-        def-name (if (seq m)
-                   (list 'with-meta name m)
-                   name)]
-    `(def ~def-name (fn ~name ~@fdecl))))
+;; Full `defn` macro migrated to Zig (macro_transforms.zig)
+;; Pre/post conditions handled by analyzer's transformPrePost
 
 (defn map
   ([f]
@@ -123,9 +71,7 @@
   ([f init coll]
    (__zig-reduce f init coll)))
 
-;; vswap! must be defined before transducer forms that use it
-(defmacro vswap! [vol f & args]
-  `(vreset! ~vol (~f (deref ~vol) ~@args)))
+;; `vswap!` macro migrated to Zig (macro_transforms.zig)
 
 (defn take
   ([n]
@@ -212,21 +158,7 @@
   (fn [& args]
     (not (apply f args))))
 
-(defmacro defn-
-  "same as defn, yielding non-public def"
-  [name & fdecl]
-  (let [doc (when (string? (first fdecl)) (first fdecl))
-        fdecl (if doc (next fdecl) fdecl)
-        attr-map (when (map? (first fdecl)) (first fdecl))
-        fdecl (if attr-map (next fdecl) fdecl)
-        fdecl (if (vector? (first fdecl))
-                (list fdecl)
-                fdecl)
-        fdecl (if (map? (last fdecl))
-                (butlast fdecl)
-                fdecl)
-        m (merge {:private true} attr-map (when doc {:doc doc}))]
-    `(def ~(list 'with-meta name m) (fn ~name ~@fdecl))))
+;; `defn-` macro migrated to Zig (macro_transforms.zig)
 
 ;; Namespace declaration
 ;; UPSTREAM-DIFF: no :gen-class (JVM only)
@@ -1120,8 +1052,7 @@
            ~gexpr ~expr]
        ~(emit gpred gexpr clauses))))
 
-(defmacro declare [& names]
-  (cons 'do (map (fn [n] (list 'def n)) names)))
+;; `declare` macro migrated to Zig (macro_transforms.zig)
 
 (defmacro letfn
   "fnspec ==> (fname [params*] exprs) or (fname ([params*] exprs)+)
@@ -1278,10 +1209,7 @@
 (defn ex-message [ex]
   (when (map? ex) (:message ex)))
 
-(defmacro defonce [name expr]
-  (let [sym (if (symbol? name) name (second name))]
-    (list 'when-not (list 'bound? (list 'quote sym))
-          (list 'def name expr))))
+;; `defonce` macro migrated to Zig (macro_transforms.zig)
 
 (defmacro refer-clojure
   [& filters]
@@ -2047,15 +1975,7 @@
   {:added "1.0"}
   [x] false)
 
-;; UPSTREAM-DIFF: simplified — creates function without :inline metadata support
-(defmacro definline
-  "Experimental - like defmacro, except defines a named function whose
-  body is the expansion, calls to which may be expanded inline as if
-  it were a macro. Cannot be used with variadic (&) args."
-  {:added "1.0"}
-  [name & decl]
-  (let [[pre-args [args expr]] (split-with (comp not vector?) decl)]
-    `(defn ~name ~@pre-args ~args ~expr)))
+;; `definline` macro migrated to Zig (macro_transforms.zig)
 
 ;; Char tables (from core_print.clj)
 (def char-escape-string

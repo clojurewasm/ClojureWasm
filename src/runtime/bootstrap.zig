@@ -1978,11 +1978,10 @@ test "loadCore - core.clj defines defn and when" {
     // Load core.clj
     try loadCore(alloc, &env);
 
-    // defn should be available as a macro
-    const core = env.findNamespace("clojure.core").?;
-    const defn_var = core.resolve("defn");
-    try testing.expect(defn_var != null);
-    try testing.expect(defn_var.?.isMacro());
+    // defn is now a Zig macro transform (not a defmacro var)
+    // Verify it works via the Zig transform pipeline
+    const defn_result = try evalString(alloc, &env, "(defn my-inc [x] (+ x 1)) (my-inc 5)");
+    try testing.expectEqual(Value.initInteger(6), defn_result);
 
     // when is now a Zig macro transform (not a defmacro var)
     // Verify it works via the Zig transform pipeline

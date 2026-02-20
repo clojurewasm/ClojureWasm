@@ -55,6 +55,12 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "bound-fn", transformBoundFn },
     .{ "with-local-vars", transformWithLocalVars },
     .{ "with-redefs", transformWithRedefs },
+    .{ "defn", transformDefn },
+    .{ "defn-", transformDefnPrivate },
+    .{ "declare", transformDeclare },
+    .{ "defonce", transformDefonce },
+    .{ "definline", transformDefinline },
+    .{ "vswap!", transformVswap },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -113,6 +119,13 @@ pub fn makeVector(allocator: Allocator, elements: []const Form) !Form {
     const items = try allocator.alloc(Form, elements.len);
     @memcpy(items, elements);
     return .{ .data = .{ .vector = items } };
+}
+
+/// Create a map Form from alternating key-value entries.
+pub fn makeMap(allocator: Allocator, entries: []const Form) !Form {
+    const items = try allocator.alloc(Form, entries.len);
+    @memcpy(items, entries);
+    return .{ .data = .{ .map = items } };
 }
 
 // ============================================================
@@ -581,6 +594,173 @@ fn transformWithRedefs(allocator: Allocator, args: []const Form) anyerror!Form {
     const map_form: Form = .{ .data = .{ .map = map_items } };
     const fn_form = try makeFn(allocator, &.{}, body);
     return makeList(allocator, &.{ makeSymbol("with-redefs-fn"), map_form, fn_form });
+}
+
+/// `(declare a b c)` → `(do (def a) (def b) (def c))`
+fn transformDeclare(allocator: Allocator, args: []const Form) anyerror!Form {
+    var defs = try allocator.alloc(Form, args.len);
+    for (args, 0..) |name, i| {
+        defs[i] = try makeList(allocator, &.{ makeSymbol("def"), name });
+    }
+    return makeDo(allocator, defs);
+}
+
+/// `(defonce name expr)` → `(when-not (bound? (quote sym)) (def name expr))`
+/// where sym = raw symbol extracted from name (which may be (with-meta sym meta))
+fn transformDefonce(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len != 2) return error.InvalidArgs;
+    const name = args[0];
+    const expr = args[1];
+    const sym = extractRawSymbol(name);
+    const quoted_sym = try makeQuoted(allocator, sym);
+    const bound_check = try makeList(allocator, &.{ makeQualifiedSymbol("clojure.core", "bound?"), quoted_sym });
+    const def_form = try makeList(allocator, &.{ makeSymbol("def"), name, expr });
+    return makeList(allocator, &.{ makeSymbol("when-not"), bound_check, def_form });
+}
+
+/// `(vswap! vol f & args)` → `(vreset! vol (f (deref vol) args...))`
+fn transformVswap(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const vol = args[0];
+    const f = args[1];
+    const extra_args = args[2..];
+    // Build (deref vol)
+    const deref_vol = try makeList(allocator, &.{ makeSymbol("deref"), vol });
+    // Build (f (deref vol) extra_args...)
+    var call_items = try allocator.alloc(Form, 2 + extra_args.len);
+    call_items[0] = f;
+    call_items[1] = deref_vol;
+    @memcpy(call_items[2..], extra_args);
+    const call_form: Form = .{ .data = .{ .list = call_items } };
+    // (vreset! vol call_form)
+    return makeList(allocator, &.{ makeSymbol("vreset!"), vol, call_form });
+}
+
+/// `(defn name doc? attr-map? [params] body...)` or `(defn name doc? attr-map? ([params] body...) ...)`
+/// → `(def name-with-meta (fn name arities...))`
+fn transformDefn(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformDefnImpl(allocator, args, false);
+}
+
+/// `(defn- name ...)` → like defn but adds {:private true} to metadata
+fn transformDefnPrivate(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformDefnImpl(allocator, args, true);
+}
+
+fn transformDefnImpl(allocator: Allocator, args: []const Form, is_private: bool) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const name = args[0];
+    var fdecl = args[1..];
+
+    // Extract optional docstring
+    var doc: ?Form = null;
+    if (fdecl.len > 0 and fdecl[0].data == .string) {
+        doc = fdecl[0];
+        fdecl = fdecl[1..];
+    }
+
+    // Extract optional attr-map
+    var attr_map_entries: ?[]const Form = null;
+    if (fdecl.len > 0 and fdecl[0].data == .map) {
+        attr_map_entries = fdecl[0].data.map;
+        fdecl = fdecl[1..];
+    }
+
+    if (fdecl.len == 0) return error.InvalidArgs;
+
+    // Normalize single-arity: if first is vector, wrap to multi-arity form
+    if (fdecl[0].data == .vector) {
+        const arity_list = try makeList(allocator, fdecl);
+        const wrapped = try allocator.alloc(Form, 1);
+        wrapped[0] = arity_list;
+        fdecl = wrapped;
+    }
+
+    // Remove trailing attr-map (legacy pattern)
+    if (fdecl.len > 0 and fdecl[fdecl.len - 1].data == .map) {
+        fdecl = fdecl[0 .. fdecl.len - 1];
+    }
+
+    // Build additional metadata entries
+    var meta_list: std.ArrayList(Form) = .empty;
+    if (is_private) {
+        try meta_list.append(allocator, makeKeyword("private"));
+        try meta_list.append(allocator, makeBool(true));
+    }
+    if (attr_map_entries) |entries| {
+        for (entries) |e| {
+            try meta_list.append(allocator, e);
+        }
+    }
+    if (doc) |d| {
+        try meta_list.append(allocator, makeKeyword("doc"));
+        try meta_list.append(allocator, d);
+    }
+
+    // Build def-name: wrap with metadata if any
+    var def_name = name;
+    if (meta_list.items.len > 0) {
+        const meta_map = try makeMap(allocator, meta_list.items);
+        def_name = try makeList(allocator, &.{ makeSymbol("with-meta"), name, meta_map });
+    }
+
+    // Extract raw symbol for fn name (fn analyzer needs plain symbol or single with-meta)
+    const fn_name = extractRawSymbol(name);
+
+    // Build (fn fn_name arities...)
+    var fn_items = try allocator.alloc(Form, 2 + fdecl.len);
+    fn_items[0] = makeSymbol("fn");
+    fn_items[1] = fn_name;
+    @memcpy(fn_items[2..], fdecl);
+    const fn_form: Form = .{ .data = .{ .list = fn_items } };
+
+    // (def def-name fn-form)
+    return makeList(allocator, &.{ makeSymbol("def"), def_name, fn_form });
+}
+
+/// `(definline name & decl)` → `(defn name pre-args... args expr)`
+/// Splits decl at first vector form: everything before = pre-args, vector = args, rest = expr
+fn transformDefinline(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const name = args[0];
+    const decl = args[1..];
+
+    // Find first vector in decl (split-with (comp not vector?) decl)
+    var split_idx: usize = 0;
+    while (split_idx < decl.len) : (split_idx += 1) {
+        if (decl[split_idx].data == .vector) break;
+    }
+    if (split_idx >= decl.len) return error.InvalidArgs; // no vector found
+
+    const pre_args = decl[0..split_idx];
+    const params = decl[split_idx]; // vector
+    const body = decl[split_idx + 1 ..];
+
+    // Build (defn name pre-args... params body...)
+    var defn_items = try allocator.alloc(Form, 2 + pre_args.len + 1 + body.len);
+    defn_items[0] = makeSymbol("defn");
+    defn_items[1] = name;
+    @memcpy(defn_items[2 .. 2 + pre_args.len], pre_args);
+    defn_items[2 + pre_args.len] = params;
+    @memcpy(defn_items[2 + pre_args.len + 1 ..], body);
+    const defn_form: Form = .{ .data = .{ .list = defn_items } };
+    // Re-analyze will invoke transformDefn
+    return defn_form;
+}
+
+/// Extract the raw symbol from a form that may be wrapped in (with-meta sym meta).
+/// Recursively unwraps nested with-meta forms.
+fn extractRawSymbol(form: Form) Form {
+    if (form.data == .symbol) return form;
+    if (form.data == .list) {
+        const items = form.data.list;
+        if (items.len == 3 and items[0].data == .symbol and
+            std.mem.eql(u8, items[0].data.symbol.name, "with-meta"))
+        {
+            return extractRawSymbol(items[1]);
+        }
+    }
+    return form;
 }
 
 // ============================================================

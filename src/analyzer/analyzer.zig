@@ -369,12 +369,17 @@ pub const Analyzer = struct {
         }
 
         // Check for Zig macro transform (Form→Form, before defmacro lookup)
+        // For unqualified symbols: locals shadow transforms.
+        // For qualified symbols: accept any namespace since syntax-quote may
+        // qualify transforms with the current namespace (e.g. my.ns/defn) when
+        // the transform is not a var. This is safe because Zig transforms are
+        // core macros that can't be meaningfully shadowed by user vars.
         if (items[0].data == .symbol) {
             const sym = items[0].data.symbol;
             const is_transform_candidate = if (sym.ns == null)
                 (self.findLocal(sym.name) == null) // locals shadow transforms
             else
-                self.isClojureCoreNs(sym.ns.?); // qualified: clojure.core/when
+                true; // any qualified ns — syntax-quote may use current ns
             if (is_transform_candidate) {
                 if (macro_transforms.lookup(sym.name)) |transform_fn| {
                     const expanded = transform_fn(self.allocator, items[1..]) catch {
