@@ -86,6 +86,7 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "refer-clojure", transformReferClojure },
     .{ "extend-protocol", transformExtendProtocol },
     .{ "ns", transformNs },
+    .{ "case", transformCase },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -1712,6 +1713,384 @@ fn processImportWasmSpec(allocator: Allocator, do_items: *std.ArrayList(Form), s
             break :blk try makeList(allocator, &.{ load_sym, path, opts_map });
         } else try makeList(allocator, &.{ load_sym, path });
         try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("def"), a, load_form }));
+    }
+}
+
+// ============================================================
+// case macro transform
+// ============================================================
+
+const max_mask_bits: u5 = 13;
+const max_switch_table_size: i64 = 1 << max_mask_bits;
+
+/// Compute hash of a Form constant (matching runtime computeHash for these types).
+fn formHash(form: Form) i64 {
+    return switch (form.data) {
+        .nil => 0,
+        .boolean => |b| if (b) @as(i64, 1231) else @as(i64, 1237),
+        .integer => |v| v,
+        .float => |v| @as(i64, @bitCast(@as(u64, @bitCast(v)))),
+        .char => |v| @as(i64, @intCast(v)),
+        .string => |s| formStringHash(s),
+        .keyword => |kw| blk: {
+            var h: i64 = 0x9e3779b9;
+            if (kw.ns) |ns| h = h *% 31 +% formStringHash(ns);
+            h = h *% 31 +% formStringHash(kw.name);
+            break :blk h;
+        },
+        .symbol => |sym| blk: {
+            var h: i64 = 0x517cc1b7;
+            if (sym.ns) |ns| h = h *% 31 +% formStringHash(ns);
+            h = h *% 31 +% formStringHash(sym.name);
+            break :blk h;
+        },
+        else => 0,
+    };
+}
+
+fn formStringHash(s: []const u8) i64 {
+    var h: i64 = 0;
+    for (s) |c| h = h *% 31 +% @as(i64, c);
+    return h;
+}
+
+fn shiftMask(shift: i64, mask: i64, x: i64) i64 {
+    return (x >> @intCast(@as(u6, @truncate(@as(u64, @bitCast(shift)))))) & mask;
+}
+
+/// Check if int range fits in a compact table.
+fn fitsTable(ints: []const i64) bool {
+    if (ints.len == 0) return true;
+    var min_v: i64 = ints[0];
+    var max_v: i64 = ints[0];
+    for (ints[1..]) |v| {
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
+    }
+    return (max_v - min_v) < max_switch_table_size;
+}
+
+/// Find optimal shift/mask pair for perfect hashing, or null.
+fn maybeMinHash(hashes: []const i64) ?struct { i64, i64 } {
+    var mask_exp: u5 = 1;
+    while (mask_exp <= max_mask_bits) : (mask_exp += 1) {
+        const mask: i64 = (@as(i64, 1) << mask_exp) - 1;
+        var shift: i64 = 0;
+        while (shift < 31) : (shift += 1) {
+            if (allDistinct(hashes, shift, mask)) return .{ shift, mask };
+        }
+    }
+    return null;
+}
+
+fn allDistinct(hashes: []const i64, shift: i64, mask: i64) bool {
+    // Use a simple quadratic check (case clauses are typically small)
+    for (hashes, 0..) |h1, i| {
+        const v1 = shiftMask(shift, mask, h1);
+        for (hashes[i + 1 ..]) |h2| {
+            if (v1 == shiftMask(shift, mask, h2)) return false;
+        }
+    }
+    return true;
+}
+
+/// Test/then pair for case clause processing.
+const CasePair = struct {
+    test_form: Form,
+    then_form: Form,
+};
+
+/// (case e & clauses)
+fn transformCase(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const e = args[0];
+    const clauses = args[1..];
+
+    const ge = try gensymWithPrefix(allocator, "case__");
+
+    // Default expression
+    const default = if (clauses.len % 2 == 1)
+        clauses[clauses.len - 1]
+    else blk: {
+        // (throw (ex-info (str "No matching clause: " ge) {}))
+        const str_form = try makeList(allocator, &.{ makeSymbol("str"), makeString("No matching clause: "), ge });
+        const empty_map = try makeMap(allocator, &.{});
+        const ex_info = try makeList(allocator, &.{ makeSymbol("ex-info"), str_form, empty_map });
+        break :blk try makeList(allocator, &.{ makeSymbol("throw"), ex_info });
+    };
+
+    const num_pairs = clauses.len / 2;
+    if (num_pairs == 0) {
+        // (let [ge e] default)
+        return makeLet(allocator, &.{ ge, e }, &.{default});
+    }
+
+    // Build test→then pairs (expanding list tests)
+    var pairs = std.ArrayList(CasePair).empty;
+    for (0..num_pairs) |pi| {
+        const test_form = clauses[pi * 2];
+        const then_form = clauses[pi * 2 + 1];
+
+        if (test_form.data == .list) {
+            // List of test values: (val1 val2 ...) expr
+            for (test_form.data.list) |t| {
+                try pairs.append(allocator, .{ .test_form = t, .then_form = then_form });
+            }
+        } else {
+            try pairs.append(allocator, .{ .test_form = test_form, .then_form = then_form });
+        }
+    }
+
+    // Detect mode
+    const mode = detectCaseMode(pairs.items);
+
+    return switch (mode) {
+        .ints => try emitCaseInts(allocator, ge, e, default, pairs.items),
+        .identity => try emitCaseHashes(allocator, ge, e, default, pairs.items, .identity),
+        .hashes => try emitCaseHashes(allocator, ge, e, default, pairs.items, .hashes),
+    };
+}
+
+const CaseMode = enum { ints, identity, hashes };
+const HashMode = enum { identity, hashes };
+
+fn detectCaseMode(pairs: []const CasePair) CaseMode {
+    var all_ints = true;
+    var all_keywords = true;
+    for (pairs) |p| {
+        if (p.test_form.data != .integer) all_ints = false;
+        if (p.test_form.data != .keyword) all_keywords = false;
+        // For ints, also check 32-bit range
+        if (p.test_form.data == .integer) {
+            const v = p.test_form.data.integer;
+            if (v < -2147483648 or v > 2147483647) all_ints = false;
+        }
+    }
+    if (all_ints) return .ints;
+    if (all_keywords) return .identity;
+    return .hashes;
+}
+
+/// Emit case* for integer tests.
+fn emitCaseInts(allocator: Allocator, ge: Form, e: Form, default: Form, pairs: []const CasePair) !Form {
+    // Collect int values
+    var ints = try allocator.alloc(i64, pairs.len);
+    for (pairs, 0..) |p, i| ints[i] = p.test_form.data.integer;
+
+    var shift: i64 = 0;
+    var mask: i64 = 0;
+    var switch_type: []const u8 = "compact";
+
+    if (fitsTable(ints)) {
+        // compact: keys are the int values directly
+    } else if (maybeMinHash(ints)) |sm| {
+        shift = sm[0];
+        mask = sm[1];
+        // Map keys become shift-masked values
+    } else {
+        switch_type = "sparse";
+    }
+
+    // Build case-map: {key [test then], ...}
+    var map_entries: std.ArrayList(Form) = .empty;
+    for (pairs) |p| {
+        const int_val = p.test_form.data.integer;
+        const key = if (mask == 0) int_val else shiftMask(shift, mask, int_val);
+        try map_entries.append(allocator, makeInteger(key));
+        try map_entries.append(allocator, try makeVector(allocator, &.{ p.test_form, p.then_form }));
+    }
+
+    const case_map = try makeMap(allocator, map_entries.items);
+
+    // (let [ge e] (case* ge shift mask default case-map switch-type :int))
+    const case_star = try makeList(allocator, &.{
+        makeSymbol("case*"), ge,
+        makeInteger(shift), makeInteger(mask),
+        default,            case_map,
+        makeKeyword(switch_type), makeKeyword("int"),
+    });
+    return makeLet(allocator, &.{ ge, e }, &.{case_star});
+}
+
+/// Emit case* for hash-based tests (keywords or general).
+fn emitCaseHashes(
+    allocator: Allocator,
+    ge: Form,
+    e: Form,
+    default: Form,
+    pairs: []const CasePair,
+    hash_mode: HashMode,
+) !Form {
+    // Compute hashes
+    var hashes = try allocator.alloc(i64, pairs.len);
+    for (pairs, 0..) |p, i| hashes[i] = formHash(p.test_form);
+
+    // Check for hash collisions
+    const has_collisions = hasHashCollisions(hashes);
+
+    if (has_collisions) {
+        return emitCaseHashesWithCollisions(allocator, ge, e, default, pairs, hashes, hash_mode);
+    }
+
+    var shift: i64 = 0;
+    var mask: i64 = 0;
+    var switch_type: []const u8 = "compact";
+
+    if (fitsTable(hashes)) {
+        // compact: keys are hash values
+    } else if (maybeMinHash(hashes)) |sm| {
+        shift = sm[0];
+        mask = sm[1];
+    } else {
+        switch_type = "sparse";
+    }
+
+    // Build case-map: {hash-key [test then], ...}
+    var map_entries: std.ArrayList(Form) = .empty;
+    for (pairs, 0..) |p, i| {
+        const key = if (mask == 0) hashes[i] else shiftMask(shift, mask, hashes[i]);
+        try map_entries.append(allocator, makeInteger(key));
+        try map_entries.append(allocator, try makeVector(allocator, &.{ p.test_form, p.then_form }));
+    }
+
+    const case_map = try makeMap(allocator, map_entries.items);
+    const test_type_kw = if (hash_mode == .identity) "hash-identity" else "hash-equiv";
+
+    const case_star = try makeList(allocator, &.{
+        makeSymbol("case*"), ge,
+        makeInteger(shift), makeInteger(mask),
+        default,            case_map,
+        makeKeyword(switch_type), makeKeyword(test_type_kw),
+    });
+    return makeLet(allocator, &.{ ge, e }, &.{case_star});
+}
+
+fn hasHashCollisions(hashes: []const i64) bool {
+    for (hashes, 0..) |h1, i| {
+        for (hashes[i + 1 ..]) |h2| {
+            if (h1 == h2) return true;
+        }
+    }
+    return false;
+}
+
+/// Handle hash collisions by merging colliding entries into condp subexpressions.
+fn emitCaseHashesWithCollisions(
+    allocator: Allocator,
+    ge: Form,
+    e: Form,
+    default: Form,
+    pairs: []const CasePair,
+    hashes: []const i64,
+    hash_mode: HashMode,
+) !Form {
+    // Group pairs by hash
+    const Bucket = struct { tests: std.ArrayList(Form), thens: std.ArrayList(Form) };
+    var buckets = std.AutoHashMap(i64, Bucket).init(allocator);
+
+    for (pairs, 0..) |p, i| {
+        const h = hashes[i];
+        const entry = try buckets.getOrPut(h);
+        if (!entry.found_existing) {
+            entry.value_ptr.* = .{ .tests = .empty, .thens = .empty };
+        }
+        try entry.value_ptr.tests.append(allocator, p.test_form);
+        try entry.value_ptr.thens.append(allocator, p.then_form);
+    }
+
+    // Build new test/hash arrays and skip-check set
+    var new_hashes: std.ArrayList(i64) = .empty;
+    var map_entries: std.ArrayList(Form) = .empty;
+    var skip_check_hashes: std.ArrayList(i64) = .empty;
+
+    var it = buckets.iterator();
+    while (it.next()) |entry| {
+        const h = entry.key_ptr.*;
+        const bucket = entry.value_ptr;
+        if (bucket.tests.items.len == 1) {
+            try new_hashes.append(allocator, h);
+            try map_entries.append(allocator, makeInteger(h));
+            try map_entries.append(allocator, try makeVector(allocator, &.{ bucket.tests.items[0], bucket.thens.items[0] }));
+        } else {
+            // Collision: build condp expr
+            var condp_items: std.ArrayList(Form) = .empty;
+            try condp_items.append(allocator, makeSymbol("condp"));
+            try condp_items.append(allocator, makeSymbol("="));
+            try condp_items.append(allocator, ge);
+            for (bucket.tests.items, bucket.thens.items) |t, th| {
+                try condp_items.append(allocator, try makeQuoted(allocator, t));
+                try condp_items.append(allocator, th);
+            }
+            try condp_items.append(allocator, default);
+
+            const condp_items_slice = try allocator.alloc(Form, condp_items.items.len);
+            @memcpy(condp_items_slice, condp_items.items);
+            const condp_form: Form = .{ .data = .{ .list = condp_items_slice } };
+
+            // Use the first test as representative
+            try new_hashes.append(allocator, h);
+            try map_entries.append(allocator, makeInteger(h));
+            try map_entries.append(allocator, try makeVector(allocator, &.{ bucket.tests.items[0], condp_form }));
+            try skip_check_hashes.append(allocator, h);
+        }
+    }
+
+    var shift: i64 = 0;
+    var mask: i64 = 0;
+    var switch_type: []const u8 = "compact";
+
+    if (fitsTable(new_hashes.items)) {
+        // compact
+    } else if (maybeMinHash(new_hashes.items)) |sm| {
+        shift = sm[0];
+        mask = sm[1];
+    } else {
+        switch_type = "sparse";
+    }
+
+    // Apply shift/mask to map entries and skip-check
+    if (mask != 0) {
+        var remapped: std.ArrayList(Form) = .empty;
+        var mi: usize = 0;
+        while (mi + 1 < map_entries.items.len) : (mi += 2) {
+            const orig_h = map_entries.items[mi].data.integer;
+            try remapped.append(allocator, makeInteger(shiftMask(shift, mask, orig_h)));
+            try remapped.append(allocator, map_entries.items[mi + 1]);
+        }
+        map_entries = remapped;
+
+        // Remap skip-check hashes
+        var new_skip: std.ArrayList(i64) = .empty;
+        for (skip_check_hashes.items) |h| {
+            try new_skip.append(allocator, shiftMask(shift, mask, h));
+        }
+        skip_check_hashes = new_skip;
+    }
+
+    const case_map = try makeMap(allocator, map_entries.items);
+    const test_type_kw = if (hash_mode == .identity) "hash-identity" else "hash-equiv";
+
+    if (skip_check_hashes.items.len > 0) {
+        // Build skip-check set
+        var set_items = try allocator.alloc(Form, skip_check_hashes.items.len);
+        for (skip_check_hashes.items, 0..) |h, i| set_items[i] = makeInteger(h);
+
+        const case_star = try makeList(allocator, &.{
+            makeSymbol("case*"), ge,
+            makeInteger(shift), makeInteger(mask),
+            default,            case_map,
+            makeKeyword(switch_type), makeKeyword(test_type_kw),
+            .{ .data = .{ .set = set_items } },
+        });
+        return makeLet(allocator, &.{ ge, e }, &.{case_star});
+    } else {
+        const case_star = try makeList(allocator, &.{
+            makeSymbol("case*"), ge,
+            makeInteger(shift), makeInteger(mask),
+            default,            case_map,
+            makeKeyword(switch_type), makeKeyword(test_type_kw),
+        });
+        return makeLet(allocator, &.{ ge, e }, &.{case_star});
     }
 }
 
