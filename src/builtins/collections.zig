@@ -3886,6 +3886,303 @@ fn tapFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initBoolean(s.items.len > 0);
 }
 
+// ============================================================
+// A.8: Hierarchy functions
+// ============================================================
+
+/// Look up a Var by name in clojure.core namespace.
+fn lookupVar(name: []const u8) ?*var_mod.Var {
+    const env = bootstrap.macro_eval_env orelse return null;
+    const core = env.findNamespace("clojure.core") orelse return null;
+    return core.resolve(name);
+}
+
+/// Get the global-hierarchy value. Returns a hierarchy map or nil.
+fn getGlobalHierarchy() Value {
+    const v = lookupVar("global-hierarchy") orelse return Value.nil_val;
+    return v.deref();
+}
+
+/// Helper: get a keyword value from a map.
+fn getKeywordFromMap(allocator: Allocator, m: Value, kw_name: []const u8) anyerror!Value {
+    const kw = Value.initKeyword(allocator, .{ .ns = null, .name = kw_name });
+    return getFn(allocator, &.{ m, kw });
+}
+
+/// (isa? child parent) / (isa? h child parent)
+fn isaFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 2) {
+        // (isa? child parent) — use global hierarchy
+        const h = getGlobalHierarchy();
+        return isaFn(allocator, &.{ h, args[0], args[1] });
+    }
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to isa?", .{args.len});
+    const h = args[0];
+    const child = args[1];
+    const parent = args[2];
+
+    // (= child parent)
+    if (child.eql(parent)) return Value.true_val;
+
+    // (contains? ((:ancestors h) child) parent)
+    const ancestors_map = try getKeywordFromMap(allocator, h, "ancestors");
+    if (ancestors_map != Value.nil_val) {
+        const child_ancestors = try getFn(allocator, &.{ ancestors_map, child });
+        if (child_ancestors != Value.nil_val) {
+            const has = try sequences_mod.containsFn(allocator, &.{ child_ancestors, parent });
+            if (has.isTruthy()) return Value.true_val;
+        }
+    }
+
+    // Vector isa? check: (and (vector? parent) (vector? child) ...)
+    if (parent.tag() == .vector and child.tag() == .vector) {
+        const pv = parent.asVector();
+        const cv = child.asVector();
+        if (pv.items.len == cv.items.len) {
+            for (cv.items, pv.items) |c, p| {
+                const r = try isaFn(allocator, &.{ h, c, p });
+                if (!r.isTruthy()) return Value.false_val;
+            }
+            return Value.true_val;
+        }
+    }
+    return Value.false_val;
+}
+
+/// (parents tag) / (parents h tag)
+fn parentsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        const h = getGlobalHierarchy();
+        return parentsFn(allocator, &.{ h, args[0] });
+    }
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parents", .{args.len});
+    const h = args[0];
+    const tag = args[1];
+    const parents_map = try getKeywordFromMap(allocator, h, "parents");
+    if (parents_map == Value.nil_val) return Value.nil_val;
+    const result = try getFn(allocator, &.{ parents_map, tag });
+    return notEmpty(result);
+}
+
+/// Helper: (not-empty coll) — returns coll if non-empty, nil otherwise.
+fn notEmpty(val: Value) Value {
+    if (val == Value.nil_val) return Value.nil_val;
+    return switch (val.tag()) {
+        .vector => if (val.asVector().items.len == 0) Value.nil_val else val,
+        .map => if (val.asMap().entries.len == 0) Value.nil_val else val,
+        .hash_map => if (val.asHashMap().count == 0) Value.nil_val else val,
+        .set => if (val.asSet().items.len == 0) Value.nil_val else val,
+        .list => if (val.asList().items.len == 0) Value.nil_val else val,
+        else => val,
+    };
+}
+
+/// (ancestors tag) / (ancestors h tag)
+fn ancestorsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        const h = getGlobalHierarchy();
+        return ancestorsFn(allocator, &.{ h, args[0] });
+    }
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ancestors", .{args.len});
+    const h = args[0];
+    const tag = args[1];
+    const ancestors_map = try getKeywordFromMap(allocator, h, "ancestors");
+    if (ancestors_map == Value.nil_val) return Value.nil_val;
+    const result = try getFn(allocator, &.{ ancestors_map, tag });
+    return notEmpty(result);
+}
+
+/// (descendants tag) / (descendants h tag)
+fn descendantsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        const h = getGlobalHierarchy();
+        return descendantsFn(allocator, &.{ h, args[0] });
+    }
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to descendants", .{args.len});
+    const h = args[0];
+    const tag = args[1];
+    const descendants_map = try getKeywordFromMap(allocator, h, "descendants");
+    if (descendants_map == Value.nil_val) return Value.nil_val;
+    const result = try getFn(allocator, &.{ descendants_map, tag });
+    return notEmpty(result);
+}
+
+/// (derive tag parent) / (derive h tag parent)
+/// 2-arity: modifies global-hierarchy via alter-var-root
+/// 3-arity: returns new hierarchy map
+fn deriveFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 2) {
+        // (derive tag parent) → alter-var-root on global-hierarchy
+        const gh_var = lookupVar("global-hierarchy") orelse
+            return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve global-hierarchy var", .{});
+        const old_h = gh_var.deref();
+        const new_h = try deriveFn(allocator, &.{ old_h, args[0], args[1] });
+        gh_var.bindRoot(new_h);
+        return Value.nil_val;
+    }
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to derive", .{args.len});
+    const h = args[0];
+    const tag = args[1];
+    const parent = args[2];
+
+    // assert (not= tag parent)
+    if (tag.eql(parent)) return err.setErrorFmt(.eval, .value_error, .{}, "Cannot derive tag from itself", .{});
+
+    const tp = try getKeywordFromMap(allocator, h, "parents");
+    const td = try getKeywordFromMap(allocator, h, "descendants");
+    const ta = try getKeywordFromMap(allocator, h, "ancestors");
+
+    // Check if parent is already in parents of tag
+    const tag_parents = try getFn(allocator, &.{ tp, tag });
+    if (tag_parents != Value.nil_val) {
+        const already = try sequences_mod.containsFn(allocator, &.{ tag_parents, parent });
+        if (already.isTruthy()) return h; // already derived, return unchanged
+    }
+
+    // Check for circular derivation
+    const tag_ancestors = try getFn(allocator, &.{ ta, tag });
+    if (tag_ancestors != Value.nil_val) {
+        const circ = try sequences_mod.containsFn(allocator, &.{ tag_ancestors, parent });
+        if (circ.isTruthy()) return err.setErrorFmt(.eval, .value_error, .{}, "Cyclic derivation", .{});
+    }
+    const parent_ancestors = try getFn(allocator, &.{ ta, parent });
+    if (parent_ancestors != Value.nil_val) {
+        const circ = try sequences_mod.containsFn(allocator, &.{ parent_ancestors, tag });
+        if (circ.isTruthy()) return err.setErrorFmt(.eval, .value_error, .{}, "Cyclic derivation", .{});
+    }
+
+    // Build new parents: assoc tag (conj (get tp tag #{}) parent)
+    const empty_set = try allocator.create(PersistentHashSet);
+    empty_set.* = .{ .items = &.{} };
+    const empty_set_val = Value.initSet(empty_set);
+    const cur_parents = if (tag_parents == Value.nil_val) empty_set_val else tag_parents;
+    const new_tag_parents = try conjFn(allocator, &.{ cur_parents, parent });
+    const parents_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "parents" });
+    const new_tp = try assocFn(allocator, &.{ tp, tag, new_tag_parents });
+
+    // tf helper: update transitive closure
+    // tf(m, source, sources, target, targets) =
+    //   reduce (fn [ret k] (assoc ret k (reduce conj (get targets k #{}) (cons target (targets target)))))
+    //          m (cons source (sources source))
+    const new_ta = try tfHelper(allocator, ta, tag, td, parent, ta);
+    const new_td = try tfHelper(allocator, td, parent, ta, tag, td);
+
+    // Build result hierarchy
+    const ancestors_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "ancestors" });
+    const descendants_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "descendants" });
+    var result = try assocFn(allocator, &.{ h, parents_kw, new_tp });
+    result = try assocFn(allocator, &.{ result, ancestors_kw, new_ta });
+    result = try assocFn(allocator, &.{ result, descendants_kw, new_td });
+    return result;
+}
+
+/// Helper for derive: transitive closure update.
+/// Implements: (reduce (fn [ret k] (assoc ret k (reduce conj (get targets k #{}) (cons target (targets target))))) m (cons source (sources source)))
+fn tfHelper(allocator: Allocator, m: Value, source: Value, sources: Value, target: Value, targets: Value) anyerror!Value {
+    const empty_set = try allocator.create(PersistentHashSet);
+    empty_set.* = .{ .items = &.{} };
+    const empty_set_val = Value.initSet(empty_set);
+
+    // targets_of_target = (targets target) — the set of things target maps to
+    const targets_of_target = try getFn(allocator, &.{ targets, target });
+
+    // base_additions = (cons target (targets target))
+    // This is the set of values to add: target itself plus everything target already maps to
+    var additions = std.ArrayList(Value).empty;
+    try additions.append(allocator, target);
+    if (targets_of_target != Value.nil_val) {
+        const items = try collectSeqItems(allocator, targets_of_target);
+        for (items) |item| try additions.append(allocator, item);
+    }
+
+    // keys_to_update = (cons source (sources source))
+    // This is the set of keys to update: source itself plus everything source maps to
+    var keys_list = std.ArrayList(Value).empty;
+    try keys_list.append(allocator, source);
+    const sources_of_source = try getFn(allocator, &.{ sources, source });
+    if (sources_of_source != Value.nil_val) {
+        const items = try collectSeqItems(allocator, sources_of_source);
+        for (items) |item| try keys_list.append(allocator, item);
+    }
+
+    // Reduce: for each key k in keys_list, assoc m[k] = (reduce conj (get targets k #{}) additions)
+    var result = m;
+    for (keys_list.items) |k| {
+        var cur_set = try getFn(allocator, &.{ targets, k });
+        if (cur_set == Value.nil_val) cur_set = empty_set_val;
+        var new_set = cur_set;
+        for (additions.items) |add| {
+            new_set = try conjFn(allocator, &.{ new_set, add });
+        }
+        result = try assocFn(allocator, &.{ result, k, new_set });
+    }
+    return result;
+}
+
+/// (underive tag parent) / (underive h tag parent)
+/// 2-arity: modifies global-hierarchy
+/// 3-arity: rebuilds hierarchy from scratch without the removed relationship
+fn underiveFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 2) {
+        // (underive tag parent) → alter-var-root on global-hierarchy
+        const gh_var = lookupVar("global-hierarchy") orelse
+            return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve global-hierarchy var", .{});
+        const old_h = gh_var.deref();
+        const new_h = try underiveFn(allocator, &.{ old_h, args[0], args[1] });
+        gh_var.bindRoot(new_h);
+        return Value.nil_val;
+    }
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to underive", .{args.len});
+    const h = args[0];
+    const tag = args[1];
+    const parent = args[2];
+
+    const parents_map = try getKeywordFromMap(allocator, h, "parents");
+    const tag_parents = try getFn(allocator, &.{ parents_map, tag });
+
+    // Check if the relationship exists
+    if (tag_parents == Value.nil_val) return h;
+    const has = try sequences_mod.containsFn(allocator, &.{ tag_parents, parent });
+    if (!has.isTruthy()) return h;
+
+    // Remove parent from tag's parent set
+    const disjFn_val = try lookupBuiltin(allocator, "disj") orelse
+        return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve disj", .{});
+    const new_tag_parents = try callFn(allocator, disjFn_val, &.{ tag_parents, parent });
+
+    // Build new parents map
+    var new_parents_map: Value = undefined;
+    const non_empty = notEmpty(new_tag_parents);
+    if (non_empty != Value.nil_val) {
+        new_parents_map = try assocFn(allocator, &.{ parents_map, tag, new_tag_parents });
+    } else {
+        new_parents_map = try dissocFn(allocator, &.{ parents_map, tag });
+    }
+
+    // Rebuild hierarchy from the new parents map: derive all pairs from scratch
+    var new_h = try makeHierarchyFn(allocator, &.{});
+    const parents_seq = try seqFn(allocator, &.{new_parents_map});
+    if (parents_seq == Value.nil_val) return new_h;
+
+    // Iterate all parent entries and re-derive
+    var cur = parents_seq;
+    while (cur != Value.nil_val) {
+        const entry_val = try firstFn(allocator, &.{cur});
+        // entry is a map entry [k v] where v is a set of parents
+        const entry_key = try firstFn(allocator, &.{entry_val});
+        const entry_parents = try getFn(allocator, &.{ new_parents_map, entry_key });
+        if (entry_parents != Value.nil_val) {
+            const parent_items = try collectSeqItems(allocator, entry_parents);
+            for (parent_items) |p| {
+                new_h = try deriveFn(allocator, &.{ new_h, entry_key, p });
+            }
+        }
+        cur = try predicates_mod.nextFn(allocator, &.{cur});
+    }
+
+    return new_h;
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
@@ -4699,6 +4996,49 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([val])",
         .added = "1.10",
     },
+    // === A.8: Hierarchy functions ===
+    .{
+        .name = "isa?",
+        .func = &isaFn,
+        .doc = "Returns true if (= child parent), or child is directly or indirectly derived from parent.",
+        .arglists = "([child parent] [h child parent])",
+        .added = "1.0",
+    },
+    .{
+        .name = "parents",
+        .func = &parentsFn,
+        .doc = "Returns the immediate parents of tag, either via a relationship established via derive.",
+        .arglists = "([tag] [h tag])",
+        .added = "1.0",
+    },
+    .{
+        .name = "ancestors",
+        .func = &ancestorsFn,
+        .doc = "Returns the immediate and indirect parents of tag.",
+        .arglists = "([tag] [h tag])",
+        .added = "1.0",
+    },
+    .{
+        .name = "descendants",
+        .func = &descendantsFn,
+        .doc = "Returns the immediate and indirect children of tag.",
+        .arglists = "([tag] [h tag])",
+        .added = "1.0",
+    },
+    .{
+        .name = "derive",
+        .func = &deriveFn,
+        .doc = "Establishes a parent/child relationship between parent and tag.",
+        .arglists = "([tag parent] [h tag parent])",
+        .added = "1.0",
+    },
+    .{
+        .name = "underive",
+        .func = &underiveFn,
+        .doc = "Removes a parent/child relationship between parent and tag.",
+        .arglists = "([tag parent] [h tag parent])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -4978,9 +5318,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 115 entries" {
+test "builtins table has 121 entries" {
     // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5) + 11 (A.6) - 1 (into moved) + 10 (A.7)
-    try testing.expectEqual(115, builtins.len);
+    try testing.expectEqual(121, builtins.len);
 }
 
 test "reverse list" {

@@ -59,16 +59,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.8: Hierarchy & multimethod helpers → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. Survey remaining core.clj defn and identify A.8 batch.
+All-Zig Migration Phase A.9: Concurrency functions & closure-returning utilities → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. Survey remaining core.clj defn. Many return closures
+(constantly, complement, partial, comp, juxt, etc.) — need runtime eval or new closure mechanism.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.7: 10 core.clj defn migrated to Zig builtins (collections.zig).
-Batch: reduce, transduce, into (full 0-3 arity), sequence, eduction, mapv (full),
-filterv, add-tap, remove-tap, tap>.
-(+10 builtins, 530 total). Fixed mapvFullFn multi-arity (callFn not applyFn).
+A.8: 6 hierarchy functions migrated to Zig builtins (collections.zig).
+Batch: isa?, parents, ancestors, descendants, derive, underive.
+(+6 builtins, 536 total). Added lookupVar, notEmpty, getKeywordFromMap, tfHelper helpers.
 
 ## Task Queue
 
@@ -81,8 +81,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.5: Non-closure utility functions (15 fn) DONE
   A.6: String/print utilities & simple functions (11 fn) DONE
   A.7: Transducer/reduce compositions (10 fn) DONE
-  A.8: Hierarchy & multimethod helpers (~15 fn) ← CURRENT
-  A.9: Concurrency (~15 fn)
+  A.8: Hierarchy functions (6 fn) DONE
+  A.9: Concurrency & closure-returning utilities (~15 fn) ← CURRENT
   A.10: Destructure, ex-info, special vars, remaining (~30 fn)
   A.11: `ns` macro → Zig transform
   A.12: `case` macro → Zig transform
