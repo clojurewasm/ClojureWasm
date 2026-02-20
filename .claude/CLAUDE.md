@@ -143,6 +143,8 @@ Run before every commit:
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
    - **Hard block**: Do NOT commit if any threshold exceeded.
      Benchmark regression → stop, profile, fix in place or insert optimization phase first.
+   - **All-Zig migration (Phase A-D)**: Binary/startup thresholds SUSPENDED.
+     Benchmarks must not regress > 2x (safety net). See `.dev/all-zig-plan.md`.
    - Baselines & policy: `.dev/baselines.md`.
 
 ### Phase Completion
@@ -250,8 +252,7 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Deferred items    | `.dev/checklist.md`                  | F## items — blockers to resolve            |
 | Decisions         | `.dev/decisions.md` (D3-D101+)       | Architectural decisions reference          |
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
+| All-Zig plan      | `.dev/all-zig-plan.md`               | Full .clj→Zig migration plan (Phases A-E)  |
 | Optimizations     | `.dev/optimizations.md`              | Completed + future optimization catalog    |
-| Skip recovery     | `.dev/skip-recovery.md`              | When implementing skip vars                |
-| Test porting plan | `.dev/test-porting-plan.md`          | When porting upstream tests                |
 | Baselines         | `.dev/baselines.md`                  | Non-functional regression thresholds       |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

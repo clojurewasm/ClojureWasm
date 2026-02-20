@@ -59,44 +59,48 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83E-v2 COMPLETE (macro migration). Function migration (83E-v2.2+) deferred per audit.
-Next: Phase 86 (Distribution) — first PENDING in roadmap.
+All-Zig Migration Phase A.1: Simple predicates & type utils → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. ~20 functions (boolean, true?, false?, some?, any?, ident?, etc.)
+Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
 83E-v2.1.7+1.8: Complex control flow + namespace/misc macros DONE.
 Migrated 24 macros to Zig transforms. Only `ns` and `case` remain as .clj defmacros.
 Total macro migration: 57 macros across 83E-v2.0-v2.1 (8 sub-tasks, 8 commits).
+Formal benchmarks recorded: `bench/history.yaml` id="83E-v2".
 
 ## Task Queue
 
 ```
+Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
+  A.1: Simple predicates & type utils (~20 fn) ← CURRENT
+  A.2: Arithmetic & comparison wrappers (~15 fn)
+  A.3: Collection constructors & accessors (~20 fn)
+  A.4: Sequence functions (~25 fn)
+  A.5: Higher-order (memoize, trampoline, juxt, etc.) (~15 fn)
+  A.6: String/print utilities (~10 fn)
+  A.7: Transducer/reduce compositions (~15 fn)
+  A.8: Hierarchy & multimethod helpers (~15 fn)
+  A.9: Concurrency (~15 fn)
+  A.10: Destructure, ex-info, special vars, remaining (~30 fn)
+  A.11: `ns` macro → Zig transform
+  A.12: `case` macro → Zig transform
+Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
+Phase C: Bootstrap pipeline elimination
+Phase D: Directory & module refactoring
+Phase E: Optimization (restore baselines)
+--- After All-Zig ---
 Phase 86: Distribution (PENDING)
 Phase 89: Performance Optimization (PENDING)
 Phase 90: JIT Expansion (PENDING)
-Phase 92: Security Hardening (PENDING)
-Phase 93: LSP Foundation (PENDING)
 ```
 
-## 83E Audit Results & Scope Reduction
+## All-Zig Migration Context
 
-**Findings**:
-- 778 Zig builtins already registered
-- 432 defn + 123 defmacro in .clj bootstrap files
-- 94.6% of core.clj defn are trivial (< 5 lines composition)
-- Startup already 4.6-5.5ms with lazy bootstrap (D104)
-- Binary already 4.44MB (4.5MB threshold)
-
-**Decision**: Full All-Zig migration deferred. Reasons:
-1. Startup already excellent (4.6ms) — minimal gain from migrating .clj
-2. Binary size would exceed 4.5MB threshold with 400+ new Zig builtins
-3. .clj functions are trivial compositions — not performance bottlenecks
-4. Bytecode cache already eliminates parsing overhead
-5. Maintenance cost of Zig > .clj for simple composition functions
-
-**What stays**: Current hybrid architecture (Zig primitives + .clj composition)
-is the optimal design. Consider targeted migration only if specific hot-path
-functions are identified as bottlenecks through profiling.
+User decision: Override audit deferral. Migrate ALL .clj to Zig (zero .clj in pipeline).
+Strategy: Remove constraints → migrate everything → refactor directories → optimize.
+Plan: `.dev/all-zig-plan.md` (Phases A-E). Benchmarks baseline: `83E-v2` in history.yaml.
 
 ## Known Issues (Phase 88A targets)
 
@@ -108,14 +112,11 @@ functions are identified as bottlenecks through profiling.
 
 ## Next Phase Queue
 
-Phase 86: Distribution (Tier 4). Read roadmap Phase 86 section for details.
+Phase B (after A complete): Library namespaces → Zig. See `.dev/all-zig-plan.md`.
 
 ## Notes
 
 - CONTRIBUTING.md at `.dev/CONTRIBUTING.md` — restore to repo root when accepting contributions
-- Batch 0 = clojure.jar-bundled → embed in CW, UPSTREAM-DIFF/CLJW markers OK
-- Batch 1+ = external libraries → test as-is, fix CW side, do NOT fork
-- Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
 - clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
-- Design document for Architecture v2: `.dev/interop-v2-design.md`
-- Phase 84: compilation.clj now 8/8 pass (def return type fixed)
+- Architecture v2 design: `.dev/archive/interop-v2-design.md` (archived)
+- Stale docs archived to `.dev/archive/` (9 files)
