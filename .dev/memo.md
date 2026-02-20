@@ -59,18 +59,22 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88 COMPLETE: v0.3.0 Released
-GitHub Release: https://github.com/clojurewasm/ClojureWasm/releases/tag/v0.3.0
-Binaries: macOS ARM64, macOS x86_64, Linux x86_64, Linux ARM64 + checksums
+Phase 88A: Correctness Sweep
+88A.1: Fix `is` macro `instance?` reporting bug
 
 ## Previous Task
 
-88.1-88.6: Version bump, CHANGELOG, benchmarks, binary audit, GitHub Release, CI verified.
+Phase 88 DONE: v0.3.0 released (https://github.com/clojurewasm/ClojureWasm/releases/tag/v0.3.0)
 
 ## Task Queue
 
 ```
-(empty — Phase 88 complete, proceed to next phase per roadmap)
+88A.1: Fix `is` macro instance? reporting bug (Small)
+88A.2: Fix serialize.zig hierarchy var restore (Small)
+88A.3: Fix test_fixtures.clj (Medium)
+88A.4: Fix parallel/vars sequential state pollution (Medium)
+88A.5: Implement extend-via-metadata for protocols (Medium-Large)
+88A.6: Full regression verify 63/63 upstream pass (Small)
 ```
 
 ## 83E Audit Results & Scope Reduction
@@ -93,11 +97,13 @@ Binaries: macOS ARM64, macOS x86_64, Linux x86_64, Linux ARM64 + checksums
 is the optimal design. Consider targeted migration only if specific hot-path
 functions are identified as bottlenecks through profiling.
 
-## Known Issues
+## Known Issues (Phase 88A targets)
 
-- test_fixtures.clj: bootstrap eval error in use-fixtures (only upstream test failure)
-- is macro: bug with instance? special form (reports failure even when true; workaround: true? wrapper)
-- parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution)
+- test_fixtures.clj: bootstrap eval error in use-fixtures (only upstream test failure) → 88A.3
+- is macro: bug with instance? special form (reports failure even when true; workaround: true? wrapper) → 88A.1
+- parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution) → 88A.4
+- serialize.zig: hierarchy var not restored from bytecode cache → 88A.2
+- extend-via-metadata: not supported in defprotocol → 88A.5
 
 ## Next Phase Queue
 

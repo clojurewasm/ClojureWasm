@@ -26,7 +26,8 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 84 | Testing Expansion | 2 | DONE |
 | 85 | Library Compatibility Expansion | 2 | DONE |
 | 87 | Developer Experience | 3 | DONE |
-| 88 | v0.2.0 Release | 3 | IN-PROGRESS |
+| 88 | v0.3.0 Release | 3 | DONE |
+| 88A | Correctness Sweep | 3.5 | IN-PROGRESS |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
@@ -418,7 +419,32 @@ Each library test run uncovers CW implementation gaps — fix in CW, not the lib
 | 88.5 | GitHub Release with pre-built binaries (macOS ARM64 + Linux x86_64) | MUST |
 | 88.6 | Cross-platform smoke test before release | MUST |
 
-**Exit**: Tagged v0.2.0 on GitHub with binaries, release notes, and changelog.
+**Exit**: Tagged v0.3.0 on GitHub with binaries, release notes, and changelog.
+
+---
+
+## Phase 88A: Correctness Sweep (Tier 3.5)
+
+Clean up all known correctness issues before advancing to Tier 4 (advanced features).
+Goal: zero known bugs, zero workarounds, all upstream tests pass.
+
+| Sub | Task | Effort | Details |
+|-----|------|--------|---------|
+| 88A.1 | Fix `is` macro `instance?` reporting bug | Small | `is` macro reports failure even when `instance?` returns true. Root cause in `test.clj` `is` macro special-form detection or `predicates.zig` `instance?` return value. |
+| 88A.2 | Fix serialize.zig hierarchy var restore | Small | `serialize.zig:1222-1234`: reads hierarchy var ns/name but discards them. Need to resolve var from Env. Affects multimethod bytecode cache correctness. |
+| 88A.3 | Fix test_fixtures.clj | Medium | Only upstream test failure (1/63). `use-fixtures` implementation exists (`test.clj:141`) but fixture binding + composition fails during bootstrap eval. |
+| 88A.4 | Fix parallel/vars sequential state pollution | Medium | Tests pass individually but fail in batch. Threadlocal state (39 sites across 12 files) not properly cleaned between test namespaces. |
+| 88A.5 | Implement extend-via-metadata for protocols | Medium-Large | F94 item. `defprotocol` with `:extend-via-metadata true` allows protocol extension via object metadata. Requires analyzer (parse option), runtime (dispatch check metadata before default), protocol.zig changes. |
+| 88A.6 | Full regression + verify 63/63 upstream pass | Small | Run all tests, e2e, deps e2e, upstream. Target: zero failures. |
+
+**Exit**: All known bugs fixed. 63/63 upstream tests pass. `extend-via-metadata` works.
+No workarounds in Known Issues. checklist.md F94 achievable items resolved.
+
+**Notes**:
+- 88A.1: Check if `is` macro has a special case for `instance?` form that bypasses normal evaluation
+- 88A.3: Key question: does `use-fixtures` at load time work? Or is the issue that fixtures are registered but not applied during `run-tests`?
+- 88A.4: Most likely candidates: `error.zig` (11 threadlocals), `value.zig` (5), `io.zig` (7)
+- 88A.5: Reference JVM: `clojure.core/extend-via-metadata` in defprotocol. Check `src/clj/clojure/core/protocols.clj:88,98` where it's already marked as omitted
 
 ---
 
