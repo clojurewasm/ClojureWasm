@@ -59,18 +59,17 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88: v0.2.0 Release
-88.1: Version bump + CHANGELOG
+Phase 88: v0.3.0 Release (v0.2.0 was premature, 143 commits since)
+88.2: Release notes
+- Write proper release notes for GitHub release
 
 ## Previous Task
 
-Phase 87 COMPLETE (Developer Experience).
-87.1: cljw test (already existed). 87.2: nREPL macroexpand op. 87.3: REPL polish. 87.4: cljw new.
+88.1: Version bump to v0.3.0 + CHANGELOG created.
 
 ## Task Queue
 
 ```
-88.1: Version bump + CHANGELOG
 88.2: Release notes
 88.3: Benchmark record (full history entry)
 88.4: Binary audit (no debug symbols, no embedded secrets)

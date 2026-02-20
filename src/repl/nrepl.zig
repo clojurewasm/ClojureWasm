@@ -370,7 +370,7 @@ fn opDescribe(
 
     const version_entries = [_]BencodeValue.DictEntry{
         .{ .key = "major", .value = .{ .integer = 0 } },
-        .{ .key = "minor", .value = .{ .integer = 1 } },
+        .{ .key = "minor", .value = .{ .integer = 3 } },
         .{ .key = "incremental", .value = .{ .integer = 0 } },
     };
 
