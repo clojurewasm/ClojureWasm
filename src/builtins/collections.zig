@@ -3252,9 +3252,9 @@ fn maxKeyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var best_val = try callFn(allocator, k, &[1]Value{best});
     for (args[2..]) |item| {
         const item_val = try callFn(allocator, k, &[1]Value{item});
-        // Compare: if item_val > best_val (or >=), use item
+        // Compare: if item_val >= best_val, use item (last-wins on ties, matches JVM)
         const cmp = try compareFn(allocator, &[2]Value{ item_val, best_val });
-        if (cmp.asInteger() > 0) {
+        if (cmp.asInteger() >= 0) {
             best = item;
             best_val = item_val;
         }
@@ -3270,8 +3270,9 @@ fn minKeyFn(allocator: Allocator, args: []const Value) anyerror!Value {
     var best_val = try callFn(allocator, k, &[1]Value{best});
     for (args[2..]) |item| {
         const item_val = try callFn(allocator, k, &[1]Value{item});
+        // Compare: if item_val <= best_val, use item (last-wins on ties, matches JVM)
         const cmp = try compareFn(allocator, &[2]Value{ item_val, best_val });
-        if (cmp.asInteger() < 0) {
+        if (cmp.asInteger() <= 0) {
             best = item;
             best_val = item_val;
         }
@@ -3780,12 +3781,9 @@ fn eductionFn(allocator: Allocator, args: []const Value) anyerror!Value {
         // (sequence xform coll)
         return try sequenceFn(allocator, &.{ args[0], last_arg });
     }
-    // (apply comp (butlast xforms))
+    // (comp xform1 xform2 ...)
     const comp_val = try lookupBuiltin(allocator, "comp") orelse return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve comp", .{});
-    var comp_args = std.ArrayList(Value).empty;
-    try comp_args.append(allocator, comp_val);
-    for (args[0 .. args.len - 1]) |a| try comp_args.append(allocator, a);
-    const xform = try applyFn(allocator, comp_args.items);
+    const xform = try callFn(allocator, comp_val, args[0 .. args.len - 1]);
     return try sequenceFn(allocator, &.{ xform, last_arg });
 }
 

@@ -179,16 +179,18 @@ fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
     };
 
     // Check Zig macro transforms first (same as analyzer priority).
-    // Check by name regardless of namespace qualification, since
-    // syntax-quote and refer may produce qualified symbols like my.ns/->>.
-    if (macro_transforms.lookup(sym.name)) |transform_fn| {
-        // Convert Value args to Forms, call transform, convert back
-        var arg_forms = allocator.alloc(Form, lst.items.len - 1) catch return error.OutOfMemory;
-        for (lst.items[1..], 0..) |arg_val, i| {
-            arg_forms[i] = macro.valueToForm(allocator, arg_val) catch return error.OutOfMemory;
+    // Only match for unqualified or clojure.core-qualified symbols.
+    // Other namespaces (e.g. clojure.main/with-bindings) have their own macros.
+    if (sym.ns == null or std.mem.eql(u8, sym.ns.?, "clojure.core")) {
+        if (macro_transforms.lookup(sym.name)) |transform_fn| {
+            // Convert Value args to Forms, call transform, convert back
+            var arg_forms = allocator.alloc(Form, lst.items.len - 1) catch return error.OutOfMemory;
+            for (lst.items[1..], 0..) |arg_val, i| {
+                arg_forms[i] = macro.valueToForm(allocator, arg_val) catch return error.OutOfMemory;
+            }
+            const expanded_form = try transform_fn(allocator, arg_forms);
+            return macro.formToValue(allocator, expanded_form) catch return error.OutOfMemory;
         }
-        const expanded_form = try transform_fn(allocator, arg_forms);
-        return macro.formToValue(allocator, expanded_form) catch return error.OutOfMemory;
     }
 
     // Resolve symbol to Var

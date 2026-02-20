@@ -72,11 +72,11 @@ Goal: maximize clean-pass files, record baselines for hard failures, exclude med
 88A-sweep: Upstream test stabilization
   S.1: Exclude medley from cljw test (System/exit kills runner) ← DONE
   S.1b: Fix deferred cache segfault (GC reclaims strings table) ← DONE
-  S.2: Fix compilation.clj — defmacro :macro metadata (1F) ← NEXT
-  S.3: Fix other_functions.clj — min-key/max-key stability (2F)
-  S.4: Fix transducers.clj — halt-when reduced handling (1E)
-  S.5: Fix main.clj — push-thread-bindings (1E)
-  S.6: Record baseline for hard failures (macros 8F, reducers 11F, spec 31)
+  S.2: Fix compilation.clj — register macro vars with :macro true ← DONE
+  S.3: Fix other_functions.clj — min-key/max-key last-wins on ties ← DONE
+  S.4: Fix transducers.clj — eduction multi-xform comp (not apply) ← DONE
+  S.5: Fix main.clj — restrict Zig transforms to core ns only ← DONE
+  S.6: Record baseline for hard failures (macros 8F, reducers 11F, spec 31) ← NEXT
 --- After sweep ---
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination

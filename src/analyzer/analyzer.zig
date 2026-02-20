@@ -379,7 +379,9 @@ pub const Analyzer = struct {
             const is_transform_candidate = if (sym.ns == null)
                 (self.findLocal(sym.name) == null) // locals shadow transforms
             else
-                true; // any qualified ns — syntax-quote may use current ns
+                // Only match core transforms for clojure.core-qualified symbols.
+                // Syntax-quote uses current ns, which resolves to core via refers.
+                std.mem.eql(u8, sym.ns.?, "clojure.core");
             if (is_transform_candidate) {
                 if (macro_transforms.lookup(sym.name)) |transform_fn| {
                     const expanded = transform_fn(self.allocator, items[1..]) catch {

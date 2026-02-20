@@ -166,6 +166,16 @@ pub fn registerBuiltins(env: *Env) !void {
     env.trackOwnedSymbol(uqs_sym);
     try user_ns.refer("unquote-splicing", unquote_splicing_var);
 
+    // Register Zig macro transforms as :macro vars in clojure.core.
+    // These replaced .clj defmacro definitions; without this, (meta #'when)
+    // would not include :macro true.
+    const macro_transforms = @import("../analyzer/macro_transforms.zig");
+    for (macro_transforms.transforms.keys()) |macro_name| {
+        const mv = try core_ns.intern(macro_name);
+        mv.setMacro(true);
+        try user_ns.refer(macro_name, mv);
+    }
+
     // Register clojure.string namespace builtins
     const str_ns = try env.findOrCreateNamespace("clojure.string");
     for (strings_mod.clj_string_builtins) |b| {
