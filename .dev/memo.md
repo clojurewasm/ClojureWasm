@@ -59,22 +59,36 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88A COMPLETE. All 6 sub-tasks done:
-- 88A.1: Fixed `is` macro instance? with runtime class values
-- 88A.2: Fixed serialize.zig hierarchy var restore from bytecode cache
-- 88A.3: Fixed test_fixtures.clj (VM HANDLERS_MAX 16→64)
-- 88A.4: Verified parallel/vars state pollution resolved by HANDLERS_MAX fix
-- 88A.5: Implemented extend-via-metadata for protocols (D106)
-- 88A.6: Verified 63/63 upstream, 6/6 e2e, 14/14 deps e2e
+Phase 83E-v2: Complete All-Zig Migration
+Sub-task 83E-v2.0.1: Create `src/analyzer/macro_transforms.zig` skeleton
+- Define `MacroTransformFn` type: `fn(Allocator, []const Form) anyerror!Form`
+- Create `StaticStringMap` of macro name → transform function
+- Add Form construction helpers: `makeSymbol`, `makeList`, `makeKeyword`, `makeNil`, `makeBool`
+- Wire into analyzer.zig `analyzeList()`: check macro_transforms before env macro lookup
+- Test: register one dummy transform, verify it's called
 
 ## Previous Task
 
-88A.5 DONE: Implemented extend-via-metadata for protocols.
+Phase 88A COMPLETE. All 6 sub-tasks done.
 
 ## Task Queue
 
 ```
-(empty — Phase 88A complete, check roadmap for next phase)
+83E-v2.0.2: Add Form manipulation utilities (gensym, formToList, makeDo, makeLet, etc.)
+83E-v2.0.3: Integration test — convert `when` macro as proof of concept
+83E-v2.1.1: Simple control flow macros (when-not, if-not, comment, assert, while)
+83E-v2.1.2: Boolean short-circuit macros (and, or)
+83E-v2.1.3: Threading macros (->, ->>, as->, some->, some->>)
+83E-v2.1.4: Let-variant macros (if-let, when-let, if-some, when-some, when-first)
+83E-v2.1.5: Binding macros (binding, with-bindings, with-redefs, etc.)
+83E-v2.1.6: Definition macros (defn, defn-, defonce, declare)
+83E-v2.1.7: Complex control flow macros (cond, condp, case, doseq, dotimes, etc.)
+83E-v2.1.8: Namespace and misc macros (ns, refer-clojure, vswap!, letfn)
+83E-v2.2: Core functions → Zig (audit + 10 sub-tasks)
+83E-v2.3: Small library namespaces → Zig (8 sub-tasks)
+83E-v2.4: Large libraries → Zig (6 sub-tasks)
+83E-v2.5: Bootstrap pipeline rewrite (4 sub-tasks)
+83E-v2.6: Cleanup & documentation (3 sub-tasks)
 ```
 
 ## 83E Audit Results & Scope Reduction

@@ -34,6 +34,7 @@ const value_mod = @import("../runtime/value.zig");
 const regex_matcher = @import("../regex/matcher.zig");
 const keyword_intern = @import("../runtime/keyword_intern.zig");
 const interop_rewrites = @import("../interop/rewrites.zig");
+const macro_transforms = @import("macro_transforms.zig");
 
 /// Analyzer — stateful Form -> Node transformer.
 pub const Analyzer = struct {
@@ -364,6 +365,16 @@ pub const Analyzer = struct {
                         return handler(self, items, form);
                     }
                 }
+            }
+        }
+
+        // Check for Zig macro transform (Form→Form, before defmacro lookup)
+        if (items[0].data == .symbol and items[0].data.symbol.ns == null) {
+            if (macro_transforms.lookup(items[0].data.symbol.name)) |transform_fn| {
+                const expanded = transform_fn(self.allocator, items[1..]) catch {
+                    return self.analysisError(.value_error, "macro transform failed", form);
+                };
+                return self.analyze(expanded);
             }
         }
 
