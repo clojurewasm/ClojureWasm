@@ -1456,7 +1456,13 @@ pub const Deserializer = struct {
         v.line = line;
         v.column = column;
         if (root_value) |rv| {
-            v.bindRoot(rv);
+            // Don't overwrite protocol/protocol_fn vars already set up by registerBuiltins.
+            // Serialized protocol impls lose builtin_fn values (→ nil), so the deserialized
+            // protocol would have broken dispatch. The Zig-created protocol has correct impls.
+            const existing_tag = v.root.tag();
+            if (existing_tag != .protocol and existing_tag != .protocol_fn) {
+                v.bindRoot(rv);
+            }
         }
         // Only set meta if snapshot has it (don't clear existing meta from registerBuiltins)
         if (meta_map) |m| {

@@ -23,6 +23,7 @@ const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const collections = @import("collections.zig");
 const builtin_collections = @import("../builtins/collections.zig");
+const metadata = @import("../builtins/metadata.zig");
 const Namespace = @import("namespace.zig").Namespace;
 const bootstrap = @import("bootstrap.zig");
 const Var = @import("var.zig").Var;
@@ -100,7 +101,14 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
         },
         .char => |c| Value.initChar(c),
         .string => |s| Value.initString(allocator, s),
-        .symbol => |sym| Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name }),
+        .symbol => |sym| blk: {
+            const meta_ptr: ?*const Value = if (form.meta_value) |m| ptr: {
+                const p = try allocator.create(Value);
+                p.* = m;
+                break :ptr p;
+            } else null;
+            break :blk Value.initSymbol(allocator, .{ .ns = sym.ns, .name = sym.name, .meta = meta_ptr });
+        },
         .keyword => |sym| blk: {
             if (sym.auto_resolve) {
                 if (ns) |current_ns| {
@@ -137,6 +145,11 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
                 .child_lines = c_lines,
                 .child_columns = c_cols,
             };
+            if (form.meta_value) |m| {
+                const meta_ptr = try allocator.create(Value);
+                meta_ptr.* = m;
+                lst.meta = meta_ptr;
+            }
             return Value.initList(lst);
         },
         .vector => |items| {
@@ -252,10 +265,11 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
         .string => Form{ .data = .{ .string = try allocator.dupe(u8, val.asString()) } },
         .symbol => blk: {
             const sym = val.asSymbol();
+            const m = metadata.getMeta(val);
             break :blk Form{ .data = .{ .symbol = .{
                 .ns = if (sym.ns) |ns| try allocator.dupe(u8, ns) else null,
                 .name = try allocator.dupe(u8, sym.name),
-            } } };
+            } }, .meta_value = if (m.tag() != .nil) m else null };
         },
         .keyword => blk: {
             const k = val.asKeyword();
@@ -279,7 +293,8 @@ pub fn valueToForm(allocator: Allocator, val: Value) Allocator.Error!Form {
                     };
                 }
             }
-            return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column };
+            const m = metadata.getMeta(val);
+            return Form{ .data = .{ .list = forms }, .line = lst.source_line, .column = lst.source_column, .meta_value = if (m.tag() != .nil) m else null };
         },
         .vector => {
             const vec = val.asVector();

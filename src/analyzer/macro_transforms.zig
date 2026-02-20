@@ -224,14 +224,17 @@ fn transformAssert(allocator: Allocator, args: []const Form) anyerror!Form {
             makeString("\n"),
             pr_str_x,
         });
-        break :blk try makeList(allocator, &.{ makeSymbol("throw"), str_form });
+        // (throw (AssertionError. msg)) — matches JVM's AssertionError, caught by (catch Error e ...)
+        const ctor = try makeList(allocator, &.{ makeSymbol("AssertionError."), str_form });
+        break :blk try makeList(allocator, &.{ makeSymbol("throw"), ctor });
     } else blk: {
         const str_form = try makeList(allocator, &.{
             makeSymbol("str"),
             makeString("Assert failed: "),
             pr_str_x,
         });
-        break :blk try makeList(allocator, &.{ makeSymbol("throw"), str_form });
+        const ctor = try makeList(allocator, &.{ makeSymbol("AssertionError."), str_form });
+        break :blk try makeList(allocator, &.{ makeSymbol("throw"), ctor });
     };
 
     // (when-not x throw_form)
@@ -305,14 +308,14 @@ fn threadForm(allocator: Allocator, threaded: Form, form: Form, pos: ThreadPosit
                 new_items[0] = items[0]; // f
                 new_items[1] = threaded;
                 @memcpy(new_items[2..], items[1..]);
-                break :blk Form{ .data = .{ .list = new_items } };
+                break :blk Form{ .data = .{ .list = new_items }, .meta_value = form.meta_value };
             },
             .last => blk: {
                 // (f a b) + threaded → (f a b threaded)
                 var new_items = try allocator.alloc(Form, items.len + 1);
                 @memcpy(new_items[0..items.len], items);
                 new_items[items.len] = threaded;
-                break :blk Form{ .data = .{ .list = new_items } };
+                break :blk Form{ .data = .{ .list = new_items }, .meta_value = form.meta_value };
             },
         };
     }

@@ -76,15 +76,12 @@ only so a panic is too aggressive, but silent failure hides real issues.
 
 ## P2: Correctness Gaps (fix during related phase work)
 
-### I-020: syntax-quote metadata propagation (macros.clj 8F)
+### ~~I-020: syntax-quote metadata propagation (macros.clj 8F)~~ RESOLVED
 
-**Symptom**: `^:foo (bar)` metadata not preserved through syntax-quote expansion.
-Affects macro authors who use metadata hints.
-
-**Fix**: Audit syntax-quote in `src/reader/reader.zig` or macro expansion in
-`src/builtins/macro.zig` — ensure metadata on forms is carried through.
-
-**Phase**: Fix during Phase B (macro migration touches this code)
+**Resolution**: Added `meta_value: ?Value` field to Form struct for carrying metadata
+through valueToForm → transform → formToValue roundtrips. `valueToForm` now preserves
+metadata from symbols and lists. `formToValue` re-attaches metadata. `threadForm` in
+macro_transforms.zig preserves `meta_value` on new list Forms. 8/8 macros tests now pass.
 
 ### I-021: CollFold protocol not implemented (reducers.clj 11F)
 
@@ -189,7 +186,7 @@ know about deferred cache roots).
 | I-011 | During Phase B | B (TreeWalk touches) |
 | I-012 | During Phase B | B (atom/stm builtins) |
 | I-013 | During Phase C | C (bootstrap simplification) |
-| I-020 | During Phase B | B (macro code touches) |
+| I-020 | ~~During Phase B~~ RESOLVED | B.3 hotfix |
 | I-021 | Phase B.13 or 89 | B.13 / 89 |
 | I-022 | Phase B.15 | B.15 |
 | I-023 | During Phase B | B (interop touches) |

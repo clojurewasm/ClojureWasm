@@ -63,14 +63,10 @@ Phase B.4: walk (75 lines), stacktrace (75 lines) → Zig.
 
 ## Previous Task
 
-Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines) → Zig (DONE).
-- core/protocols: Created all 5 protocols (CollReduce, InternalReduce, IKVReduce, Datafiable, Navigable) programmatically from Zig → ns_core_protocols.zig
-- Registered nil/Object extend-type implementations as BuiltinFn values in protocol impls
-- Updated reduceFn to dispatch through CollReduce for reify objects (__reify_type maps)
-- datafy: `datafy`, `nav` + extend-via-metadata protocol dispatch → ns_datafy.zig
-- repl/deps: stub builtins (add-libs, add-lib, sync-deps) → ns_repl_deps.zig
-- Removed loadProtocols/loadDatafy/loadReplDeps from bootstrap.zig, deleted 3 .clj files
-- 6 .clj files eliminated total (template, shell, browse, protocols, datafy, repl/deps)
+Bugfix: Fix 3 test issues (9 failures → 0). No new features.
+- I-020 RESOLVED: Form.meta_value field for valueToForm↔formToValue metadata roundtrip (8F → 0F in macros)
+- assert throws AssertionError (caught by `catch Error`), not plain string (1E → 0E in other-functions)
+- B.3 protocol regression: serialize.zig restoreVar skips overwriting protocol/protocol_fn vars already set by registerBuiltins (2E → 0E in reducers)
 
 ## Task Queue
 

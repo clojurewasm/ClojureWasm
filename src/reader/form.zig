@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const Writer = std.Io.Writer;
+const Value = @import("../runtime/value.zig").Value;
 
 /// Syntactic data variants produced by the Reader.
 pub const FormData = union(enum) {
@@ -78,6 +79,9 @@ pub const Form = struct {
     data: FormData,
     line: u32 = 0,
     column: u16 = 0,
+    /// Opaque metadata carried through valueToForm → transform → formToValue roundtrips.
+    /// Only set by macro.valueToForm; the reader never sets this.
+    meta_value: ?Value = null,
 
     /// Return the type name for debugging.
     pub fn typeName(self: Form) []const u8 {
