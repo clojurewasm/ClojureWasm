@@ -2899,6 +2899,267 @@ fn distinctPredFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.initBoolean(true);
 }
 
+// ============================================================
+// A.4: Sequence operations & utility functions
+// ============================================================
+
+const predicates_mod = @import("predicates.zig");
+const atom_mod = @import("atom.zig");
+
+/// (dorun coll) — walks the entire seq for side effects, returns nil.
+fn dorunFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dorun", .{args.len});
+    var s = try seqFn(allocator, &[1]Value{args[0]});
+    while (s != Value.nil_val) {
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return Value.nil_val;
+}
+
+/// (doall coll) — forces the entire seq, returns the seq.
+fn doallFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to doall", .{args.len});
+    _ = try dorunFn(allocator, args);
+    return args[0];
+}
+
+/// (flatten coll) — takes any nested combination of sequential things and returns a flat sequence.
+fn flattenFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to flatten", .{args.len});
+    var items = std.ArrayList(Value).empty;
+    try flattenImpl(allocator, args[0], &items);
+    if (items.items.len == 0) return Value.initList(blk: {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        break :blk lst;
+    });
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = items.items };
+    return Value.initList(lst);
+}
+
+fn flattenImpl(allocator: Allocator, coll: Value, items: *std.ArrayList(Value)) anyerror!void {
+    var s = try seqFn(allocator, &[1]Value{coll});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        // Check if item is a collection (coll?)
+        const is_coll = try predicates_mod.collPred(allocator, &[1]Value{item});
+        if (is_coll == Value.initBoolean(true)) {
+            try flattenImpl(allocator, item, items);
+        } else {
+            try items.append(allocator, item);
+        }
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+}
+
+/// (drop-last coll) (drop-last n coll) — returns a seq of all but the last n items.
+fn dropLastFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1 or args.len > 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to drop-last", .{args.len});
+    const n: usize = if (args.len == 2) blk: {
+        if (args[0].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "drop-last expects integer n", .{});
+        const v = args[0].asInteger();
+        break :blk if (v < 0) 0 else @intCast(v);
+    } else 1;
+    const coll = if (args.len == 2) args[1] else args[0];
+    // Collect all items, then return all but last n
+    var items = std.ArrayList(Value).empty;
+    var s = try seqFn(allocator, &[1]Value{coll});
+    while (s != Value.nil_val) {
+        try items.append(allocator, try firstFn(allocator, &[1]Value{s}));
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    if (items.items.len <= n) {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        return Value.initList(lst);
+    }
+    const result_items = try allocator.alloc(Value, items.items.len - n);
+    @memcpy(result_items, items.items[0 .. items.items.len - n]);
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = result_items };
+    return Value.initList(lst);
+}
+
+/// (split-at n coll) — returns [(take n coll) (drop n coll)].
+fn splitAtFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split-at", .{args.len});
+    if (args[0].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "split-at expects integer n", .{});
+    const n_val = args[0].asInteger();
+    const n: usize = if (n_val < 0) 0 else @intCast(n_val);
+    var taken = std.ArrayList(Value).empty;
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    var i: usize = 0;
+    while (s != Value.nil_val and i < n) : (i += 1) {
+        try taken.append(allocator, try firstFn(allocator, &[1]Value{s}));
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    // Build [taken-vec rest-seq] vector
+    const taken_vec = try allocator.create(PersistentVector);
+    taken_vec.* = .{ .items = taken.items };
+    // s is now the rest
+    const rest_val = if (s == Value.nil_val) Value.initList(blk: {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        break :blk lst;
+    }) else s;
+    const pair = try allocator.alloc(Value, 2);
+    pair[0] = Value.initVector(taken_vec);
+    pair[1] = rest_val;
+    const result = try allocator.create(PersistentVector);
+    result.* = .{ .items = pair };
+    return Value.initVector(result);
+}
+
+/// (split-with pred coll) — returns [(take-while pred coll) (drop-while pred coll)].
+fn splitWithFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to split-with", .{args.len});
+    const pred = args[0];
+    var taken = std.ArrayList(Value).empty;
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const result = try callFn(allocator, pred, &[1]Value{item});
+        if (result == Value.nil_val or result == Value.initBoolean(false)) break;
+        try taken.append(allocator, item);
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    const taken_vec = try allocator.create(PersistentVector);
+    taken_vec.* = .{ .items = taken.items };
+    const rest_val = if (s == Value.nil_val) Value.initList(blk: {
+        const lst = try allocator.create(PersistentList);
+        lst.* = .{ .items = &.{} };
+        break :blk lst;
+    }) else s;
+    const pair = try allocator.alloc(Value, 2);
+    pair[0] = Value.initVector(taken_vec);
+    pair[1] = rest_val;
+    const result = try allocator.create(PersistentVector);
+    result.* = .{ .items = pair };
+    return Value.initVector(result);
+}
+
+/// (nthnext coll n) — returns the nth next of coll, or nil.
+fn nthnextFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nthnext", .{args.len});
+    if (args[1].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nthnext expects integer n", .{});
+    var n = args[1].asInteger();
+    var s = try seqFn(allocator, &[1]Value{args[0]});
+    while (s != Value.nil_val and n > 0) {
+        n -= 1;
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return s;
+}
+
+/// (nthrest coll n) — returns the nth rest of coll.
+fn nthrestFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nthrest", .{args.len});
+    if (args[1].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "nthrest expects integer n", .{});
+    var n = args[1].asInteger();
+    var xs = args[0];
+    while (n > 0) {
+        n -= 1;
+        xs = try restFn(allocator, &[1]Value{xs});
+    }
+    return xs;
+}
+
+/// (take-last n coll) — returns a seq of the last n items in coll.
+fn takeLastFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to take-last", .{args.len});
+    if (args[0].tag() != .integer) return err.setErrorFmt(.eval, .type_error, .{}, "take-last expects integer n", .{});
+    const n_val = args[0].asInteger();
+    const n: usize = if (n_val < 0) 0 else @intCast(n_val);
+    // Two-pointer approach: advance lead n steps, then advance both
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    var lead = s;
+    var i: usize = 0;
+    while (lead != Value.nil_val and i < n) : (i += 1) {
+        const r = try restFn(allocator, &[1]Value{lead});
+        lead = try seqFn(allocator, &[1]Value{r});
+    }
+    while (lead != Value.nil_val) {
+        const r1 = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r1});
+        const r2 = try restFn(allocator, &[1]Value{lead});
+        lead = try seqFn(allocator, &[1]Value{r2});
+    }
+    return s;
+}
+
+/// (run! proc coll) — runs proc on each item in coll for side effects, returns nil.
+fn runBangFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to run!", .{args.len});
+    const proc = args[0];
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        _ = try callFn(allocator, proc, &[1]Value{item});
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return Value.nil_val;
+}
+
+/// (force x) — if x is a delay, forces and returns the value; otherwise returns x.
+fn forceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to force", .{args.len});
+    if (args[0].tag() == .delay) return atom_mod.derefFn(allocator, args);
+    return args[0];
+}
+
+/// (realized? x) — returns true if a delay/lazy-seq/future/promise has been realized.
+fn realizedPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to realized?", .{args.len});
+    return switch (args[0].tag()) {
+        .delay => predicates_mod.delayRealizedPred(allocator, args),
+        .lazy_seq => predicates_mod.lazySeqRealizedPred(allocator, args),
+        .promise => predicates_mod.promiseRealizedPred(allocator, args),
+        .future => {
+            const thread_pool = @import("../runtime/thread_pool.zig");
+            const future = args[0].asFuture();
+            const result: *thread_pool.FutureResult = @ptrCast(@alignCast(future.result));
+            return Value.initBoolean(result.isDone());
+        },
+        else => Value.initBoolean(false),
+    };
+}
+
+/// (delay? x) — returns true if x is a Delay.
+fn delayPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to delay?", .{args.len});
+    return Value.initBoolean(args[0].tag() == .delay);
+}
+
+/// (parse-boolean s) — parses "true" or "false" to boolean, returns nil otherwise.
+fn parseBooleanFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to parse-boolean", .{args.len});
+    if (args[0].tag() != .string) return err.setErrorFmt(.eval, .type_error, .{}, "parse-boolean expects a string argument, got: {s}", .{@tagName(args[0].tag())});
+    const s = args[0].asString();
+    if (std.mem.eql(u8, s, "true")) return Value.initBoolean(true);
+    if (std.mem.eql(u8, s, "false")) return Value.initBoolean(false);
+    return Value.nil_val;
+}
+
+/// (cast c x) — returns x (no-op in ClojureWasm, no JVM type system).
+fn castFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to cast", .{args.len});
+    return args[1];
+}
+
+/// (class? x) — always returns false (no JVM class system).
+fn classPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to class?", .{args.len});
+    return Value.initBoolean(false);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
@@ -3350,6 +3611,119 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x] [x y] [x y & more])",
         .added = "1.0",
     },
+    // === A.4: Sequence operations & utility functions ===
+    .{
+        .name = "dorun",
+        .func = &dorunFn,
+        .doc = "When lazy sequences are produced via functions that have side effects, any effects other than those needed to produce the first element in the seq do not occur until the seq is consumed. dorun can be used to force any effects. Walks through the successive nexts of the seq, does not retain the head and returns nil.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "doall",
+        .func = &doallFn,
+        .doc = "When lazy sequences are produced via functions that have side effects, any effects other than those needed to produce the first element in the seq do not occur until the seq is consumed. doall can be used to force any effects. Walks through the successive nexts of the seq, retains the head and returns it, thus causing the entire seq to reside in memory at one time.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "flatten",
+        .func = &flattenFn,
+        .doc = "Takes any nested combination of sequential things (lists, vectors, etc.) and returns their contents as a single, flat foldable collection.",
+        .arglists = "([x])",
+        .added = "1.2",
+    },
+    .{
+        .name = "drop-last",
+        .func = &dropLastFn,
+        .doc = "Return a lazy sequence of all but the last n (default 1) items in coll.",
+        .arglists = "([coll] [n coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "split-at",
+        .func = &splitAtFn,
+        .doc = "Returns a vector of [(take n coll) (drop n coll)].",
+        .arglists = "([n coll])",
+        .added = "1.1",
+    },
+    .{
+        .name = "split-with",
+        .func = &splitWithFn,
+        .doc = "Returns a vector of [(take-while pred coll) (drop-while pred coll)].",
+        .arglists = "([pred coll])",
+        .added = "1.1",
+    },
+    .{
+        .name = "nthnext",
+        .func = &nthnextFn,
+        .doc = "Returns the nth next of coll, (seq coll) when n is 0.",
+        .arglists = "([coll n])",
+        .added = "1.0",
+    },
+    .{
+        .name = "nthrest",
+        .func = &nthrestFn,
+        .doc = "Returns the nth rest of coll, coll when n is 0.",
+        .arglists = "([coll n])",
+        .added = "1.3",
+    },
+    .{
+        .name = "take-last",
+        .func = &takeLastFn,
+        .doc = "Returns a seq of the last n items in coll. Depending on the type of coll may be no better than linear time. For vectors, see also subvec.",
+        .arglists = "([n coll])",
+        .added = "1.1",
+    },
+    .{
+        .name = "run!",
+        .func = &runBangFn,
+        .doc = "Runs the supplied procedure (via reduce), for purposes of side effects, on successive items in the collection. Returns nil.",
+        .arglists = "([proc coll])",
+        .added = "1.7",
+    },
+    .{
+        .name = "force",
+        .func = &forceFn,
+        .doc = "If x is a Delay, returns the (possibly cached) value of its expression, else returns x.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "realized?",
+        .func = &realizedPredFn,
+        .doc = "Returns true if a value has been produced for a promise, delay, future or a lazy sequence.",
+        .arglists = "([x])",
+        .added = "1.3",
+    },
+    .{
+        .name = "delay?",
+        .func = &delayPredFn,
+        .doc = "returns true if x is a Delay created with delay.",
+        .arglists = "([x])",
+        .added = "1.1",
+    },
+    .{
+        .name = "parse-boolean",
+        .func = &parseBooleanFn,
+        .doc = "Parses the string argument as a boolean. Returns true, false, or nil.",
+        .arglists = "([s])",
+        .added = "1.11",
+    },
+    .{
+        .name = "cast",
+        .func = &castFn,
+        .doc = "Throws a ClassCastException if x is not a c, else returns x.",
+        .arglists = "([c x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "class?",
+        .func = &classPredFn,
+        .doc = "Returns true if x is an instance of Class.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -3629,9 +4003,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 64 entries" {
-    // 47 + 17 (A.3: 3 promoted __zig-* + 14 new collection builtins)
-    try testing.expectEqual(64, builtins.len);
+test "builtins table has 80 entries" {
+    // 47 + 17 (A.3) + 16 (A.4: dorun, doall, flatten, drop-last, split-at, split-with, etc.)
+    try testing.expectEqual(80, builtins.len);
 }
 
 test "reverse list" {

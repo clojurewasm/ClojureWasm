@@ -59,17 +59,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.4: Sequence functions → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. ~25 functions (map multi-arity, filter, reduce, take, drop, etc.)
+All-Zig Migration Phase A.5: Higher-order functions → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. ~15 functions (memoize, trampoline, juxt, comp, partial, etc.)
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.3: 17 core.clj defn migrated to Zig builtins (collections.zig).
-Batch: last, butlast, get-in, assoc-in, update, update-in, select-keys,
-some, every?, not-every?, not-any?, reduce-kv, update-vals, update-keys,
-group-by, frequencies, distinct?. Fixed get-in 3-arity (not-found sentinel).
-(+17 builtins, 479 total)
+A.4: 16 core.clj defn migrated to Zig builtins (collections.zig).
+Batch: dorun, doall, flatten, drop-last, split-at, split-with, nthnext,
+nthrest, take-last, run!, force, realized?, delay?, parse-boolean, cast, class?.
+(+16 builtins, 495 total)
 
 ## Task Queue
 
@@ -78,8 +77,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.1: Simple predicates & type utils (27 fn) DONE
   A.2: Arithmetic & comparison wrappers (24 fn) DONE
   A.3: Collection constructors & accessors (17 fn) DONE
-  A.4: Sequence functions (~25 fn) ← CURRENT
-  A.5: Higher-order (memoize, trampoline, juxt, etc.) (~15 fn)
+  A.4: Sequence functions (16 fn) DONE
+  A.5: Higher-order (memoize, trampoline, juxt, etc.) (~15 fn) ← CURRENT
   A.6: String/print utilities (~10 fn)
   A.7: Transducer/reduce compositions (~15 fn)
   A.8: Hierarchy & multimethod helpers (~15 fn)

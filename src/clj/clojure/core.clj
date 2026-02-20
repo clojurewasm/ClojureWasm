@@ -337,14 +337,7 @@
 
 ;; `group-by` migrated to Zig (collections.zig)
 
-(defn flatten [coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (let [x (first s)]
-        (if (coll? x)
-          (recur (concat (seq x) (next s)) acc)
-          (recur (next s) (cons x acc))))
-      (reverse acc))))
+;; `flatten` migrated to Zig (collections.zig)
 
 (defn interleave
   ([] (list))
@@ -841,33 +834,18 @@
 
 ;; `doseq` macro migrated to Zig (macro_transforms.zig)
 
-(defn dorun [coll]
-  (loop [s (seq coll)]
-    (when s
-      (recur (next s)))))
+;; `dorun` migrated to Zig (collections.zig)
 
-(defn doall [coll]
-  (dorun coll)
-  coll)
+;; `doall` migrated to Zig (collections.zig)
 
 ;; Delayed evaluation
 ;; `delay` macro migrated to Zig (macro_transforms.zig)
 
-(defn force [x]
-  (if (delay? x)
-    (deref x)
-    x))
+;; `force` migrated to Zig (collections.zig)
 
-(defn realized? [x]
-  (cond
-    (delay? x) (__delay-realized? x)
-    (= (type x) :lazy-seq) (__lazy-seq-realized? x)
-    (future? x) (future-done? x)
-    (= (type x) :promise) (__promise-realized? x)
-    :else false))
+;; `realized?` migrated to Zig (collections.zig)
 
-(defn delay? [x]
-  (__delay? x))
+;; `delay?` migrated to Zig (collections.zig)
 
 ;; `boolean`, `true?`, `false?`, `some?`, `any?` migrated to Zig (predicates.zig)
 
@@ -963,54 +941,30 @@
 
 ;; `ffirst`, `nnext` migrated to Zig (predicates.zig)
 
-(defn drop-last
-  ([coll] (drop-last 1 coll))
-  ([n coll] (map (fn [x _] x) coll (drop n coll))))
+;; `drop-last` migrated to Zig (collections.zig)
 
-(defn split-at [n coll]
-  [(take n coll) (drop n coll)])
+;; `split-at` migrated to Zig (collections.zig)
 
-(defn split-with [pred coll]
-  [(take-while pred coll) (drop-while pred coll)])
+;; `split-with` migrated to Zig (collections.zig)
 
 ;; Spec predicates migrated to Zig (predicates.zig):
 ;; pos-int?, neg-int?, nat-int?, ident?, simple-ident?, qualified-ident?,
 ;; simple-symbol?, qualified-symbol?, simple-keyword?, qualified-keyword?,
 ;; double?, NaN?, infinite?
 
-;; UPSTREAM-DIFF: explicit type check (upstream uses ^String type hint)
-(defn parse-boolean [s]
-  (when-not (string? s)
-    (throw (ex-info (str "parse-boolean expects a string argument, got: " (type s)) {})))
-  (get {"true" true "false" false} s))
+;; `parse-boolean` migrated to Zig (collections.zig)
 
 ;; Seq utilities
 
 ;; `rand-nth` migrated to Zig (arithmetic.zig)
 
-(defn run! [proc coll]
-  (reduce (fn [_ x] (proc x)) nil coll)
-  nil)
+;; `run!` migrated to Zig (collections.zig)
 
-;; UPSTREAM-DIFF: no IDrop interface, uses loop instead
-(defn nthnext [coll n]
-  (loop [n n xs (seq coll)]
-    (if (and xs (pos? n))
-      (recur (dec n) (next xs))
-      xs)))
+;; `nthnext` migrated to Zig (collections.zig)
 
-;; UPSTREAM-DIFF: no IDrop interface, uses loop instead
-(defn nthrest [coll n]
-  (loop [n n xs coll]
-    (if (pos? n)
-      (recur (dec n) (rest xs))
-      xs)))
+;; `nthrest` migrated to Zig (collections.zig)
 
-(defn take-last [n coll]
-  (loop [s (seq coll) lead (seq (drop n coll))]
-    (if lead
-      (recur (next s) (next lead))
-      s)))
+;; `take-last` migrated to Zig (collections.zig)
 
 ;; `distinct?` migrated to Zig (collections.zig)
 
@@ -1457,10 +1411,7 @@
          (when-let [i (:incremental v)] (str "." i))
          (when-let [q (:qualifier v)] (str "-" q)))))
 
-;; Type cast (identity in ClojureWasm - no JVM type system)
-(defn cast
-  "Throws a ClassCastException if val is not an instance of c, else returns val."
-  [c x] x)
+;; `cast` migrated to Zig (collections.zig)
 
 ;; Dynamic binding
 ;; `binding` migrated to Zig (macro_transforms.zig)
@@ -1518,11 +1469,7 @@
 (def ^:dynamic *fn-loader* nil)
 (def ^:dynamic *use-context-classloader* true)
 
-;; UPSTREAM-DIFF: always returns false (no Java class system)
-(defn class?
-  "Returns true if x is an instance of Class"
-  {:added "1.0"}
-  [x] false)
+;; `class?` migrated to Zig (collections.zig)
 
 ;; `definline` macro migrated to Zig (macro_transforms.zig)
 
