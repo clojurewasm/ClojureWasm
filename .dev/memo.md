@@ -60,13 +60,11 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 84: Testing Expansion
-Phase 85 IN-PROGRESS: Library Compatibility Expansion
-- 85.1 DONE: data.csv 100%, data.json/instaparse blocked (deftype)
-- 85.2 DONE: malli/core.match blocked (deftype)
-- 85.3 DONE: docs/compatibility.md updated with library matrix
-- 85.4 TODO: F141 cljw.xxx aliases
-- 10+ libraries tested: medley 82.5%, CSK 98.6%, honeysql load, data.csv 100%,
-  tools.cli 4/6, walk/set/edn/pprint/xml 100%
+Phase 85 COMPLETE: Library Compatibility Expansion
+- 85.1-85.2: data.csv 100%, medley 82.5%, CSK 98.6%, honeysql load OK
+  data.json/instaparse/core.match/malli blocked by deftype
+- 85.3: docs/compatibility.md updated with 10+ library matrix
+- 85.4: F141 resolved — cljw.io, cljw.shell, cljw.browse, cljw.process aliases work
 - Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
 
 ## Previous Task
@@ -76,7 +74,7 @@ Phase 83A-83E COMPLETE (Architecture v2).
 ## Task Queue
 
 ```
-85.4: F141 cljw.xxx aliases for clojure.java.xxx namespaces
+(Phase 85 complete — proceed to Phase 87: Developer Experience)
 ```
 
 ## 83E Audit Results & Scope Reduction

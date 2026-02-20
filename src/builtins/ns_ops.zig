@@ -921,10 +921,12 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
             .vector => {
                 const v = arg.asVector();
                 if (v.items.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to require", .{args.len});
-                const ns_name = switch (v.items[0].tag()) {
+                const ns_name_raw2 = switch (v.items[0].tag()) {
                     .symbol => v.items[0].asSymbol().name,
                     else => return err.setErrorFmt(.eval, .type_error, .{}, "require expects a symbol, got {s}", .{@tagName(v.items[0].tag())}),
                 };
+                // Resolve cljw.xxx aliases (F141)
+                const ns_name = resolveCljwAlias(ns_name_raw2);
 
                 // Check for :as-alias (don't load the namespace)
                 var has_as_alias = false;
@@ -1083,9 +1085,36 @@ pub fn requireFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// Core require logic: ensure namespace is loaded (from file if needed).
-fn requireLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_name: []const u8, reload: bool) !void {
+/// Resolve cljw.xxx namespace aliases to their canonical names.
+/// e.g., cljw.io → clojure.java.io, cljw.shell → clojure.java.shell
+fn resolveCljwAlias(name: []const u8) []const u8 {
+    const aliases = .{
+        .{ "cljw.io", "clojure.java.io" },
+        .{ "cljw.shell", "clojure.java.shell" },
+        .{ "cljw.browse", "clojure.java.browse" },
+        .{ "cljw.process", "clojure.java.process" },
+    };
+    inline for (aliases) |pair| {
+        if (std.mem.eql(u8, name, pair[0])) return pair[1];
+    }
+    return name;
+}
+
+fn requireLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_name_raw: []const u8, reload: bool) !void {
+    // Resolve cljw.xxx aliases (F141)
+    const ns_name = resolveCljwAlias(ns_name_raw);
+    const is_alias = !std.mem.eql(u8, ns_name_raw, ns_name);
+
     // Skip if already loaded and no reload flag
-    if (!reload and env.findNamespace(ns_name) != null and isLibLoaded(ns_name)) return;
+    if (!reload and env.findNamespace(ns_name) != null and isLibLoaded(ns_name)) {
+        // Register alias namespace if needed (so cljw.io resolves to same ns)
+        if (is_alias and env.findNamespace(ns_name_raw) == null) {
+            if (env.findNamespace(ns_name)) |target_ns| {
+                env.registerNamespaceAlias(ns_name_raw, target_ns) catch {};
+            }
+        }
+        return;
+    }
 
     // If namespace exists but not marked loaded (bootstrap namespace), just mark it
     if (!reload and env.findNamespace(ns_name) != null) {
@@ -1142,12 +1171,24 @@ fn requireLib(allocator: Allocator, env: *@import("../runtime/env.zig").Env, ns_
             return err.setErrorFmt(.eval, .io_error, .{}, "Namespace {s} not found after loading file", .{ns_name});
         }
         try markLibLoaded(ns_name);
+        // Register cljw.xxx alias if applicable (F141)
+        if (is_alias) {
+            if (env.findNamespace(ns_name)) |target_ns| {
+                env.registerNamespaceAlias(ns_name_raw, target_ns) catch {};
+            }
+        }
         return;
     }
 
     // File not found — check if namespace already exists (e.g. bootstrap)
     if (env.findNamespace(ns_name) != null) {
         try markLibLoaded(ns_name);
+        // Register cljw.xxx alias if applicable (F141)
+        if (is_alias) {
+            if (env.findNamespace(ns_name)) |target_ns| {
+                env.registerNamespaceAlias(ns_name_raw, target_ns) catch {};
+            }
+        }
         return;
     }
 

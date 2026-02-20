@@ -23,4 +23,3 @@ Target Phase references: see `.dev/roadmap.md` Phase Tracker + Open Checklist It
 | F104 | Profile-guided optimization (extend IC)     | 89     | Extend inline caching beyond monomorphic                                 |
 | F105 | JIT compilation (expand beyond ARM64 PoC)   | 90     | ARM64 hot-loop JIT done (Phase 37.4, D87). Future: x86_64 port, expand beyond integer loops. |
 | F120 | Native SIMD optimization (CW internals)     | 89     | Investigate Zig `@Vector` for CW hot paths. Profile first.               |
-| F141 | cljw.xxx aliases for clojure.java.xxx       | 85.4   | `(require '[cljw.io])` should map to `clojure.java.io`. Targets: cljw.io, cljw.shell, cljw.browse, cljw.process. Needs ns alias mapping in require/resolve path. |

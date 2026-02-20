@@ -125,6 +125,14 @@ pub const Env = struct {
         return self.namespaces.get(name);
     }
 
+    /// Register an alias name that points to an existing namespace.
+    /// Used for cljw.xxx → clojure.java.xxx aliases (F141).
+    pub fn registerNamespaceAlias(self: *Env, alias_name: []const u8, target: *Namespace) !void {
+        if (self.namespaces.get(alias_name) != null) return; // already exists
+        const owned_name = try self.allocator.dupe(u8, alias_name);
+        try self.namespaces.put(self.allocator, owned_name, target);
+    }
+
     /// Remove a namespace by name. Returns the removed namespace, or null.
     pub fn removeNamespace(self: *Env, name: []const u8) ?*Namespace {
         if (self.namespaces.fetchRemove(name)) |kv| {
