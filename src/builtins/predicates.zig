@@ -1279,6 +1279,216 @@ fn parseBooleanFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Phase A.1: Simple predicates, type utils, seq navigators
+// ============================================================
+
+const builtins_collections = @import("collections.zig");
+
+// --- Basic predicates ---
+
+fn booleanCoerce(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to boolean", .{args.len});
+    return if (args[0] == Value.nil_val or args[0] == Value.false_val) Value.false_val else Value.true_val;
+}
+
+fn truePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to true?", .{args.len});
+    return Value.initBoolean(args[0] == Value.true_val);
+}
+
+fn falsePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to false?", .{args.len});
+    return Value.initBoolean(args[0] == Value.false_val);
+}
+
+fn somePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to some?", .{args.len});
+    return Value.initBoolean(args[0] != Value.nil_val);
+}
+
+fn anyPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to any?", .{args.len});
+    return Value.true_val;
+}
+
+// --- Ident predicates ---
+
+fn identPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ident?", .{args.len});
+    return Value.initBoolean(args[0].tag() == .keyword or args[0].tag() == .symbol);
+}
+
+fn simpleIdentPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to simple-ident?", .{args.len});
+    return switch (args[0].tag()) {
+        .keyword => Value.initBoolean(args[0].asKeyword().ns == null),
+        .symbol => Value.initBoolean(args[0].asSymbol().ns == null),
+        else => Value.false_val,
+    };
+}
+
+fn qualifiedIdentPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to qualified-ident?", .{args.len});
+    return switch (args[0].tag()) {
+        .keyword => Value.initBoolean(args[0].asKeyword().ns != null),
+        .symbol => Value.initBoolean(args[0].asSymbol().ns != null),
+        else => Value.false_val,
+    };
+}
+
+fn simpleSymbolPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to simple-symbol?", .{args.len});
+    if (args[0].tag() != .symbol) return Value.false_val;
+    return Value.initBoolean(args[0].asSymbol().ns == null);
+}
+
+fn qualifiedSymbolPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to qualified-symbol?", .{args.len});
+    if (args[0].tag() != .symbol) return Value.false_val;
+    return Value.initBoolean(args[0].asSymbol().ns != null);
+}
+
+fn simpleKeywordPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to simple-keyword?", .{args.len});
+    if (args[0].tag() != .keyword) return Value.false_val;
+    return Value.initBoolean(args[0].asKeyword().ns == null);
+}
+
+fn qualifiedKeywordPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to qualified-keyword?", .{args.len});
+    if (args[0].tag() != .keyword) return Value.false_val;
+    return Value.initBoolean(args[0].asKeyword().ns != null);
+}
+
+// --- Numeric/type predicates ---
+
+fn doublePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to double?", .{args.len});
+    return Value.initBoolean(args[0].tag() == .float);
+}
+
+fn posIntPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to pos-int?", .{args.len});
+    return switch (args[0].tag()) {
+        .integer => Value.initBoolean(args[0].asInteger() > 0),
+        .big_int => Value.initBoolean(!args[0].asBigInt().managed.toConst().eqlZero() and args[0].asBigInt().managed.toConst().positive),
+        else => Value.false_val,
+    };
+}
+
+fn negIntPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to neg-int?", .{args.len});
+    return switch (args[0].tag()) {
+        .integer => Value.initBoolean(args[0].asInteger() < 0),
+        .big_int => Value.initBoolean(!args[0].asBigInt().managed.toConst().eqlZero() and !args[0].asBigInt().managed.toConst().positive),
+        else => Value.false_val,
+    };
+}
+
+fn natIntPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nat-int?", .{args.len});
+    return switch (args[0].tag()) {
+        .integer => Value.initBoolean(args[0].asInteger() >= 0),
+        .big_int => Value.initBoolean(args[0].asBigInt().managed.toConst().eqlZero() or args[0].asBigInt().managed.toConst().positive),
+        else => Value.false_val,
+    };
+}
+
+fn nanPred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to NaN?", .{args.len});
+    return switch (args[0].tag()) {
+        .float => Value.initBoolean(std.math.isNan(args[0].asFloat())),
+        else => Value.false_val,
+    };
+}
+
+fn infinitePred(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to infinite?", .{args.len});
+    return switch (args[0].tag()) {
+        .float => Value.initBoolean(std.math.isInf(args[0].asFloat())),
+        else => Value.false_val,
+    };
+}
+
+// --- Simple utility functions ---
+
+fn identityFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to identity", .{args.len});
+    return args[0];
+}
+
+// --- Arithmetic helpers ---
+
+fn incFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to inc", .{args.len});
+    return switch (args[0].tag()) {
+        .integer => Value.initInteger(args[0].asInteger() +% 1),
+        .float => Value.initFloat(args[0].asFloat() + 1.0),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "inc expects a number, got {s}", .{@tagName(args[0].tag())}),
+    };
+}
+
+fn decFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dec", .{args.len});
+    return switch (args[0].tag()) {
+        .integer => Value.initInteger(args[0].asInteger() -% 1),
+        .float => Value.initFloat(args[0].asFloat() - 1.0),
+        else => err.setErrorFmt(.eval, .type_error, .{}, "dec expects a number, got {s}", .{@tagName(args[0].tag())}),
+    };
+}
+
+// --- Sequence navigators ---
+
+pub fn nextFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to next", .{args.len});
+    // next = (seq (rest coll))
+    const rest_result = try builtins_collections.restFn(allocator, args);
+    return builtins_collections.seqFn(allocator, &.{rest_result});
+}
+
+fn secondFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to second", .{args.len});
+    // second = (first (next coll))
+    const n = try nextFn(allocator, args);
+    return builtins_collections.firstFn(allocator, &.{n});
+}
+
+fn fnextFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to fnext", .{args.len});
+    // fnext = (first (next coll))
+    const n = try nextFn(allocator, args);
+    return builtins_collections.firstFn(allocator, &.{n});
+}
+
+fn nfirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nfirst", .{args.len});
+    // nfirst = (next (first coll))
+    const f = try builtins_collections.firstFn(allocator, args);
+    return nextFn(allocator, &.{f});
+}
+
+fn ffirstFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ffirst", .{args.len});
+    // ffirst = (first (first coll))
+    const f = try builtins_collections.firstFn(allocator, args);
+    return builtins_collections.firstFn(allocator, &.{f});
+}
+
+fn nnextFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to nnext", .{args.len});
+    // nnext = (next (next coll))
+    const n = try nextFn(allocator, args);
+    return nextFn(allocator, &.{n});
+}
+
+fn notEmptyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not-empty", .{args.len});
+    // not-empty = (when (seq coll) coll)
+    const s = try builtins_collections.seqFn(allocator, &.{args[0]});
+    return if (s == Value.nil_val) Value.nil_val else args[0];
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -1357,6 +1567,35 @@ pub const builtins = [_]BuiltinDef{
     .{ .name = "__char-is-upper-case", .func = &charIsUpperCaseFn, .doc = "Determines if the specified character is an uppercase character.", .arglists = "([ch])", .added = "1.0" },
     .{ .name = "__char-is-lower-case", .func = &charIsLowerCaseFn, .doc = "Determines if the specified character is a lowercase character.", .arglists = "([ch])", .added = "1.0" },
     .{ .name = "__parse-boolean", .func = &parseBooleanFn, .doc = "Parses the string argument as a boolean.", .arglists = "([s])", .added = "1.0" },
+    // Phase A.1: Simple predicates, type utils, seq navigators
+    .{ .name = "boolean", .func = &booleanCoerce, .doc = "Coerce to boolean. Everything other than nil and false is true.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "true?", .func = &truePred, .doc = "Returns true if x is the value true, false otherwise.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "false?", .func = &falsePred, .doc = "Returns true if x is the value false, false otherwise.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "some?", .func = &somePred, .doc = "Returns true if x is not nil, false otherwise.", .arglists = "([x])", .added = "1.6" },
+    .{ .name = "any?", .func = &anyPred, .doc = "Returns true given any argument.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "ident?", .func = &identPred, .doc = "Return true if x is a symbol or keyword.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "simple-ident?", .func = &simpleIdentPred, .doc = "Return true if x is a symbol or keyword without a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "qualified-ident?", .func = &qualifiedIdentPred, .doc = "Return true if x is a symbol or keyword with a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "simple-symbol?", .func = &simpleSymbolPred, .doc = "Return true if x is a symbol without a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "qualified-symbol?", .func = &qualifiedSymbolPred, .doc = "Return true if x is a symbol with a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "simple-keyword?", .func = &simpleKeywordPred, .doc = "Return true if x is a keyword without a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "qualified-keyword?", .func = &qualifiedKeywordPred, .doc = "Return true if x is a keyword with a namespace.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "double?", .func = &doublePred, .doc = "Return true if x is a Double.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "pos-int?", .func = &posIntPred, .doc = "Return true if x is a positive fixed precision integer.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "neg-int?", .func = &negIntPred, .doc = "Return true if x is a negative fixed precision integer.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "nat-int?", .func = &natIntPred, .doc = "Return true if x is a non-negative fixed precision integer.", .arglists = "([x])", .added = "1.9" },
+    .{ .name = "NaN?", .func = &nanPred, .doc = "Returns true if num is NaN, else false.", .arglists = "([num])", .added = "1.11" },
+    .{ .name = "infinite?", .func = &infinitePred, .doc = "Returns true if num is positive or negative infinity, else false.", .arglists = "([num])", .added = "1.11" },
+    .{ .name = "identity", .func = &identityFn, .doc = "Returns its argument.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "inc", .func = &incFn, .doc = "Returns a number one greater than num.", .arglists = "([x])", .added = "1.2" },
+    .{ .name = "dec", .func = &decFn, .doc = "Returns a number one less than num.", .arglists = "([x])", .added = "1.2" },
+    .{ .name = "next", .func = &nextFn, .doc = "Returns a seq of the items after the first. Calls seq on its argument. If there are no more items, returns nil.", .arglists = "([coll])", .added = "1.0" },
+    .{ .name = "second", .func = &secondFn, .doc = "Same as (first (next x)).", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "fnext", .func = &fnextFn, .doc = "Same as (first (next x)).", .arglists = "([x])", .added = "1.1" },
+    .{ .name = "nfirst", .func = &nfirstFn, .doc = "Same as (next (first x)).", .arglists = "([x])", .added = "1.1" },
+    .{ .name = "ffirst", .func = &ffirstFn, .doc = "Same as (first (first x)).", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "nnext", .func = &nnextFn, .doc = "Same as (next (next x)).", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "not-empty", .func = &notEmptyFn, .doc = "If coll is empty, returns nil, else coll.", .arglists = "([coll])", .added = "1.0" },
 };
 
 // === Tests ===
@@ -1607,9 +1846,9 @@ test "ensure-reduced passes through reduced" {
     try testing.expect(result.asReduced().value.eql(Value.initInteger(42)));
 }
 
-test "builtins table has 74 entries" {
-    // 65 + 1 (__instance?) + 8 Java interop (isNaN, isInfinite, char predicates, parseBoolean)
-    try testing.expectEqual(74, builtins.len);
+test "builtins table has 102 entries" {
+    // 74 original + 28 Phase A.1 (predicates, type utils, seq navigators)
+    try testing.expectEqual(102, builtins.len);
 }
 
 test "builtins all have func" {

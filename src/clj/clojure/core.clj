@@ -8,15 +8,8 @@
 
 ;; `when` macro migrated to Zig (macro_transforms.zig)
 
-;; Arithmetic helpers
-
-(defn inc [x] (+ x 1))
-(defn dec [x] (- x 1))
-
-;; Higher-order functions (eager, non-lazy)
-
-(defn next [coll]
-  (seq (rest coll)))
+;; `inc`, `dec` migrated to Zig (predicates.zig)
+;; `next` migrated to Zig (predicates.zig)
 
 ;; last/butlast defined early — needed by enhanced defn below
 (defn last [coll]
@@ -133,9 +126,7 @@
 
 ;; `cond` macro migrated to Zig (macro_transforms.zig)
 
-;; Utility functions
-
-(defn identity [x] x)
+;; `identity` migrated to Zig (predicates.zig)
 
 (defn constantly [x]
   (fn [& args] x))
@@ -752,21 +743,7 @@
                 (recur (next s) ret)))
             acc))))))
 
-;; Convenience accessors (last/butlast defined early for defn macro)
-
-(defn second [coll]
-  (first (next coll)))
-
-(defn fnext [coll]
-  (first (next coll)))
-
-(defn nfirst [coll]
-  (next (first coll)))
-
-;; Predicate/function utilities
-
-(defn not-empty [coll]
-  (when (seq coll) coll))
+;; `second`, `fnext`, `nfirst`, `not-empty` migrated to Zig (predicates.zig)
 
 (defn every-pred
   ([p]
@@ -1014,22 +991,7 @@
 (defn delay? [x]
   (__delay? x))
 
-;; Basic predicates
-
-(defn boolean [x]
-  (if x true false))
-
-(defn true? [x]
-  (= x true))
-
-(defn false? [x]
-  (= x false))
-
-(defn some? [x]
-  (not (nil? x)))
-
-(defn any? [x]
-  true)
+;; `boolean`, `true?`, `false?`, `some?`, `any?` migrated to Zig (predicates.zig)
 
 ;; Type introspection
 
@@ -1136,9 +1098,7 @@
                         m))]
     (with-meta ret (meta m))))
 
-(defn ffirst [x] (first (first x)))
-
-(defn nnext [x] (next (next x)))
+;; `ffirst`, `nnext` migrated to Zig (predicates.zig)
 
 (defn drop-last
   ([coll] (drop-last 1 coll))
@@ -1150,36 +1110,10 @@
 (defn split-with [pred coll]
   [(take-while pred coll) (drop-while pred coll)])
 
-;; Spec predicates (1.9)
-
-(defn pos-int? [x] (and (int? x) (pos? x)))
-
-(defn neg-int? [x] (and (int? x) (neg? x)))
-
-(defn nat-int? [x] (and (int? x) (not (neg? x))))
-
-(defn ident? [x] (or (keyword? x) (symbol? x)))
-
-(defn simple-ident? [x] (and (ident? x) (nil? (namespace x))))
-
-(defn qualified-ident? [x] (boolean (and (ident? x) (namespace x) true)))
-
-(defn simple-symbol? [x] (and (symbol? x) (nil? (namespace x))))
-
-(defn qualified-symbol? [x] (boolean (and (symbol? x) (namespace x) true)))
-
-(defn simple-keyword? [x] (and (keyword? x) (nil? (namespace x))))
-
-(defn qualified-keyword? [x] (boolean (and (keyword? x) (namespace x) true)))
-
-;; UPSTREAM-DIFF: equivalent to float? (ClojureWasm uses f64 for all floats)
-(defn double? [x] (float? x))
-
-;; UPSTREAM-DIFF: pure Clojure, upstream uses Double/isNaN
-(defn NaN? [num] (not (= num num)))
-
-;; UPSTREAM-DIFF: pure Clojure, upstream uses Double/isInfinite
-(defn infinite? [num] (or (= num ##Inf) (= num ##-Inf)))
+;; Spec predicates migrated to Zig (predicates.zig):
+;; pos-int?, neg-int?, nat-int?, ident?, simple-ident?, qualified-ident?,
+;; simple-symbol?, qualified-symbol?, simple-keyword?, qualified-keyword?,
+;; double?, NaN?, infinite?
 
 ;; UPSTREAM-DIFF: explicit type check (upstream uses ^String type hint)
 (defn parse-boolean [s]
@@ -1599,10 +1533,7 @@
 ;; `assert` migrated to Zig (macro_transforms.zig)
 
 ;; Hierarchy
-
-(defn not-empty
-  "If coll is empty, returns nil, else coll"
-  [coll] (when (seq coll) coll))
+;; `not-empty` migrated to Zig (predicates.zig)
 
 (defn make-hierarchy
   "Creates a hierarchy object for use with derive, isa? etc."
