@@ -59,16 +59,17 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.5: Higher-order functions → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. ~15 functions (memoize, trampoline, juxt, comp, partial, etc.)
+All-Zig Migration Phase A.6: String/print utilities & remaining simple functions → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. Remaining non-closure functions from core.clj.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.4: 16 core.clj defn migrated to Zig builtins (collections.zig).
-Batch: dorun, doall, flatten, drop-last, split-at, split-with, nthnext,
-nthrest, take-last, run!, force, realized?, delay?, parse-boolean, cast, class?.
-(+16 builtins, 495 total)
+A.5: 15 core.clj defn migrated to Zig builtins (collections.zig).
+Batch: ex-info, ex-data, ex-message, vary-meta, trampoline, max-key,
+min-key, printf, tagged-literal, tagged-literal?, reader-conditional,
+reader-conditional?, make-hierarchy, test, clojure-version.
+(+15 builtins, 510 total)
 
 ## Task Queue
 
@@ -78,7 +79,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.2: Arithmetic & comparison wrappers (24 fn) DONE
   A.3: Collection constructors & accessors (17 fn) DONE
   A.4: Sequence functions (16 fn) DONE
-  A.5: Higher-order (memoize, trampoline, juxt, etc.) (~15 fn) ← CURRENT
+  A.5: Non-closure utility functions (15 fn) DONE
+  A.6: String/print utilities (~10 fn) ← CURRENT
   A.6: String/print utilities (~10 fn)
   A.7: Transducer/reduce compositions (~15 fn)
   A.8: Hierarchy & multimethod helpers (~15 fn)

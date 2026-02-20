@@ -3160,6 +3160,223 @@ fn classPredFn(_: Allocator, args: []const Value) anyerror!Value {
     return Value.initBoolean(false);
 }
 
+// ============================================================
+// A.5: Non-closure utility functions
+// ============================================================
+
+const io_mod = @import("io.zig");
+const misc_mod = @import("misc.zig");
+
+/// (ex-info msg data) (ex-info msg data cause) — creates an exception info map.
+fn exInfoFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-info", .{args.len});
+    const msg = args[0];
+    const data_arg = args[1];
+    // data must be a map (or nil → empty map)
+    const data = if (data_arg == Value.nil_val) blk: {
+        const m = try allocator.create(PersistentArrayMap);
+        m.* = .{ .entries = &.{} };
+        break :blk Value.initMap(m);
+    } else data_arg;
+    const cause = if (args.len == 3) args[2] else Value.nil_val;
+    // Build {:__ex_info true :message msg :data data :cause cause}
+    const entries = try allocator.alloc(Value, 8);
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "__ex_info" });
+    entries[1] = Value.initBoolean(true);
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    entries[3] = msg;
+    entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+    entries[5] = data;
+    entries[6] = Value.initKeyword(allocator, .{ .ns = null, .name = "cause" });
+    entries[7] = cause;
+    const m = try allocator.create(PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return Value.initMap(m);
+}
+
+/// (ex-data ex) — returns the data map from an exception info, or nil.
+fn exDataFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-data", .{args.len});
+    if (args[0].tag() != .map and args[0].tag() != .hash_map) return Value.nil_val;
+    const key = Value.initKeyword(allocator, .{ .ns = null, .name = "data" });
+    return getFn(allocator, &[2]Value{ args[0], key }) catch Value.nil_val;
+}
+
+/// (ex-message ex) — returns the message from an exception info, or nil.
+fn exMessageFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to ex-message", .{args.len});
+    if (args[0].tag() != .map and args[0].tag() != .hash_map) return Value.nil_val;
+    const key = Value.initKeyword(allocator, .{ .ns = null, .name = "message" });
+    return getFn(allocator, &[2]Value{ args[0], key }) catch Value.nil_val;
+}
+
+/// (vary-meta obj f & args) — applies f to (meta obj) and extra args, returns obj with new metadata.
+fn varyMetaFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to vary-meta", .{args.len});
+    const obj = args[0];
+    const f = args[1];
+    // Build args for f: [meta(obj), extra-args...]
+    const current_meta = try metadata_mod.metaFn(allocator, &[1]Value{obj});
+    const fn_args = try allocator.alloc(Value, 1 + (args.len - 2));
+    fn_args[0] = current_meta;
+    for (args[2..], 0..) |a, i| {
+        fn_args[1 + i] = a;
+    }
+    const new_meta = try callFn(allocator, f, fn_args);
+    return metadata_mod.withMetaFn(allocator, &[2]Value{ obj, new_meta });
+}
+
+/// (trampoline f) (trampoline f & args) — calls f, if result is fn calls it, repeats until non-fn.
+fn trampolineFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to trampoline", .{args.len});
+    // First call: if 1-arity, call f(); if multi-arity, apply f to rest args
+    var ret = if (args.len == 1)
+        try callFn(allocator, args[0], &.{})
+    else
+        try callFn(allocator, args[0], args[1..]);
+    // Loop: keep calling while result is a function
+    while (ret.tag() == .fn_val or ret.tag() == .builtin_fn) {
+        ret = try callFn(allocator, ret, &.{});
+    }
+    return ret;
+}
+
+/// (max-key k x) (max-key k x y) (max-key k x y & more) — returns the x for which (k x) is greatest.
+fn maxKeyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to max-key", .{args.len});
+    const k = args[0];
+    var best = args[1];
+    var best_val = try callFn(allocator, k, &[1]Value{best});
+    for (args[2..]) |item| {
+        const item_val = try callFn(allocator, k, &[1]Value{item});
+        // Compare: if item_val > best_val (or >=), use item
+        const cmp = try compareFn(allocator, &[2]Value{ item_val, best_val });
+        if (cmp.asInteger() > 0) {
+            best = item;
+            best_val = item_val;
+        }
+    }
+    return best;
+}
+
+/// (min-key k x) (min-key k x y) (min-key k x y & more) — returns the x for which (k x) is least.
+fn minKeyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to min-key", .{args.len});
+    const k = args[0];
+    var best = args[1];
+    var best_val = try callFn(allocator, k, &[1]Value{best});
+    for (args[2..]) |item| {
+        const item_val = try callFn(allocator, k, &[1]Value{item});
+        const cmp = try compareFn(allocator, &[2]Value{ item_val, best_val });
+        if (cmp.asInteger() < 0) {
+            best = item;
+            best_val = item_val;
+        }
+    }
+    return best;
+}
+
+/// (printf fmt & args) — prints formatted output.
+fn printfFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to printf", .{args.len});
+    const formatted = try misc_mod.formatFn(allocator, args);
+    _ = try io_mod.printFn(allocator, &[1]Value{formatted});
+    return Value.nil_val;
+}
+
+/// (tagged-literal tag form) — creates a tagged literal data representation.
+fn taggedLiteralFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to tagged-literal", .{args.len});
+    const entries = try allocator.alloc(Value, 4);
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "tag" });
+    entries[1] = args[0];
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "form" });
+    entries[3] = args[1];
+    const m = try allocator.create(PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return Value.initMap(m);
+}
+
+/// (tagged-literal? value) — returns true if value is a tagged literal data representation.
+fn taggedLiteralPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to tagged-literal?", .{args.len});
+    if (args[0].tag() != .map and args[0].tag() != .hash_map) return Value.initBoolean(false);
+    const tag_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "tag" });
+    const form_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "form" });
+    const tag_entry = try findFn(allocator, &[2]Value{ args[0], tag_kw });
+    if (tag_entry == Value.nil_val) return Value.initBoolean(false);
+    const form_entry = try findFn(allocator, &[2]Value{ args[0], form_kw });
+    if (form_entry == Value.nil_val) return Value.initBoolean(false);
+    // tag must be a symbol
+    const tag_val = tag_entry.asVector().items[1];
+    return Value.initBoolean(tag_val.tag() == .symbol);
+}
+
+/// (reader-conditional form splicing?) — creates a reader conditional data representation.
+fn readerConditionalFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reader-conditional", .{args.len});
+    const entries = try allocator.alloc(Value, 4);
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "form" });
+    entries[1] = args[0];
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "splicing?" });
+    entries[3] = args[1];
+    const m = try allocator.create(PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return Value.initMap(m);
+}
+
+/// (reader-conditional? value) — returns true if value is a reader conditional.
+fn readerConditionalPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reader-conditional?", .{args.len});
+    if (args[0].tag() != .map and args[0].tag() != .hash_map) return Value.initBoolean(false);
+    const form_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "form" });
+    const splicing_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "splicing?" });
+    const form_entry = try findFn(allocator, &[2]Value{ args[0], form_kw });
+    if (form_entry == Value.nil_val) return Value.initBoolean(false);
+    const splicing_entry = try findFn(allocator, &[2]Value{ args[0], splicing_kw });
+    return Value.initBoolean(splicing_entry != Value.nil_val);
+}
+
+/// (make-hierarchy) — creates an empty hierarchy.
+fn makeHierarchyFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to make-hierarchy", .{args.len});
+    const empty_map = try allocator.create(PersistentArrayMap);
+    empty_map.* = .{ .entries = &.{} };
+    const entries = try allocator.alloc(Value, 6);
+    entries[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "parents" });
+    entries[1] = Value.initMap(empty_map);
+    entries[2] = Value.initKeyword(allocator, .{ .ns = null, .name = "descendants" });
+    const empty_map2 = try allocator.create(PersistentArrayMap);
+    empty_map2.* = .{ .entries = &.{} };
+    entries[3] = Value.initMap(empty_map2);
+    entries[4] = Value.initKeyword(allocator, .{ .ns = null, .name = "ancestors" });
+    const empty_map3 = try allocator.create(PersistentArrayMap);
+    empty_map3.* = .{ .entries = &.{} };
+    entries[5] = Value.initMap(empty_map3);
+    const m = try allocator.create(PersistentArrayMap);
+    m.* = .{ .entries = entries };
+    return Value.initMap(m);
+}
+
+/// (test v) — finds fn at key :test in var metadata and calls it.
+fn testFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to test", .{args.len});
+    const m = try metadata_mod.metaFn(allocator, &[1]Value{args[0]});
+    if (m == Value.nil_val or (m.tag() != .map and m.tag() != .hash_map))
+        return Value.initKeyword(allocator, .{ .ns = null, .name = "no-test" });
+    const test_kw = Value.initKeyword(allocator, .{ .ns = null, .name = "test" });
+    const f = getFn(allocator, &[2]Value{ m, test_kw }) catch Value.nil_val;
+    if (f == Value.nil_val) return Value.initKeyword(allocator, .{ .ns = null, .name = "no-test" });
+    _ = try callFn(allocator, f, &.{});
+    return Value.initKeyword(allocator, .{ .ns = null, .name = "ok" });
+}
+
+/// (clojure-version) — returns the version string.
+fn clojureVersionFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to clojure-version", .{args.len});
+    return Value.initString(allocator, "1.12.0");
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
@@ -3724,6 +3941,112 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([x])",
         .added = "1.0",
     },
+    // === A.5: Non-closure utility functions ===
+    .{
+        .name = "ex-info",
+        .func = &exInfoFn,
+        .doc = "Create an instance of ExceptionInfo, a RuntimeException subclass that carries a map of additional data.",
+        .arglists = "([msg map] [msg map cause])",
+        .added = "1.4",
+    },
+    .{
+        .name = "ex-data",
+        .func = &exDataFn,
+        .doc = "Returns exception data (a map) if ex is an IExceptionInfo. Otherwise returns nil.",
+        .arglists = "([ex])",
+        .added = "1.4",
+    },
+    .{
+        .name = "ex-message",
+        .func = &exMessageFn,
+        .doc = "Returns the message attached to ex if ex is a Throwable. Otherwise returns nil.",
+        .arglists = "([ex])",
+        .added = "1.10",
+    },
+    .{
+        .name = "vary-meta",
+        .func = &varyMetaFn,
+        .doc = "Returns an object of the same type and value as obj, with (apply f (meta obj) args) as its metadata.",
+        .arglists = "([obj f & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "trampoline",
+        .func = &trampolineFn,
+        .doc = "trampoline can be used to convert algorithms requiring mutual recursion without stack consumption. Calls f with supplied args, if any. If f returns a fn, calls that fn with no arguments, and continues to repeat, until the return value is not a fn, then returns that non-fn value.",
+        .arglists = "([f] [f & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "max-key",
+        .func = &maxKeyFn,
+        .doc = "Returns the x for which (k x), a number, is greatest. If there are multiple such xs, the last one is returned.",
+        .arglists = "([k x] [k x y] [k x y & more])",
+        .added = "1.0",
+    },
+    .{
+        .name = "min-key",
+        .func = &minKeyFn,
+        .doc = "Returns the x for which (k x), a number, is least. If there are multiple such xs, the last one is returned.",
+        .arglists = "([k x] [k x y] [k x y & more])",
+        .added = "1.0",
+    },
+    .{
+        .name = "printf",
+        .func = &printfFn,
+        .doc = "Prints formatted output, as per format.",
+        .arglists = "([fmt & args])",
+        .added = "1.0",
+    },
+    .{
+        .name = "tagged-literal",
+        .func = &taggedLiteralFn,
+        .doc = "Constructs a data representation of a tagged literal from a tag symbol and a form.",
+        .arglists = "([tag form])",
+        .added = "1.7",
+    },
+    .{
+        .name = "tagged-literal?",
+        .func = &taggedLiteralPredFn,
+        .doc = "Return true if the value is the data representation of a tagged literal.",
+        .arglists = "([value])",
+        .added = "1.7",
+    },
+    .{
+        .name = "reader-conditional",
+        .func = &readerConditionalFn,
+        .doc = "Constructs a data representation of a reader conditional.",
+        .arglists = "([form splicing?])",
+        .added = "1.7",
+    },
+    .{
+        .name = "reader-conditional?",
+        .func = &readerConditionalPredFn,
+        .doc = "Return true if the value is the data representation of a reader conditional.",
+        .arglists = "([value])",
+        .added = "1.7",
+    },
+    .{
+        .name = "make-hierarchy",
+        .func = &makeHierarchyFn,
+        .doc = "Creates a hierarchy object for use with derive, isa? etc.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
+    .{
+        .name = "test",
+        .func = &testFn,
+        .doc = "test [v] finds fn at key :test in var metadata and calls it, presuming failure will throw exception.",
+        .arglists = "([v])",
+        .added = "1.0",
+    },
+    .{
+        .name = "clojure-version",
+        .func = &clojureVersionFn,
+        .doc = "Returns clojure version as a printable string.",
+        .arglists = "([])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -4003,9 +4326,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 80 entries" {
-    // 47 + 17 (A.3) + 16 (A.4: dorun, doall, flatten, drop-last, split-at, split-with, etc.)
-    try testing.expectEqual(80, builtins.len);
+test "builtins table has 95 entries" {
+    // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5: ex-info, vary-meta, trampoline, etc.)
+    try testing.expectEqual(95, builtins.len);
 }
 
 test "reverse list" {

@@ -869,21 +869,15 @@
 (def Comparable 'Comparable)
 ;; Supports both Java class names and CW keyword types
 
-;; Simple stub; redefined with hierarchy support after global-hierarchy
-(defn isa? [child parent]
-  (= child parent))
+;; `isa?` stub migrated to Zig — full version with hierarchy at line ~1300
 
 ;; Exception helpers
 
-(defn ex-info
-  ([msg data] {:__ex_info true :message msg :data (or data {}) :cause nil})
-  ([msg data cause] {:__ex_info true :message msg :data (or data {}) :cause cause}))
+;; `ex-info` migrated to Zig (collections.zig)
 
-(defn ex-data [ex]
-  (when (map? ex) (:data ex)))
+;; `ex-data` migrated to Zig (collections.zig)
 
-(defn ex-message [ex]
-  (when (map? ex) (:message ex)))
+;; `ex-message` migrated to Zig (collections.zig)
 
 ;; `defonce` macro migrated to Zig (macro_transforms.zig)
 
@@ -891,9 +885,7 @@
 
 ;; Metadata utilities
 
-(defn vary-meta
-  [obj f & args]
-  (with-meta obj (apply f (meta obj) args)))
+;; `vary-meta` migrated to Zig (collections.zig)
 
 ;; `if-some`, `when-some` migrated to Zig (macro_transforms.zig)
 
@@ -910,32 +902,13 @@
           (swap! mem assoc args ret)
           ret)))))
 
-(defn trampoline
-  ([f]
-   (let [ret (f)]
-     (if (fn? ret)
-       (recur ret)
-       ret)))
-  ([f & args]
-   (trampoline (fn [] (apply f args)))))
+;; `trampoline` migrated to Zig (collections.zig)
 
 ;; Key comparison — max-key, min-key
 
-(defn max-key
-  ([k x] x)
-  ([k x y] (if (> (k x) (k y)) x y))
-  ([k x y & more]
-   (reduce (fn [best item]
-             (if (>= (k item) (k best)) item best))
-           (max-key k x y) more)))
+;; `max-key` migrated to Zig (collections.zig)
 
-(defn min-key
-  ([k x] x)
-  ([k x y] (if (< (k x) (k y)) x y))
-  ([k x y & more]
-   (reduce (fn [best item]
-             (if (<= (k item) (k best)) item best))
-           (min-key k x y) more)))
+;; `min-key` migrated to Zig (collections.zig)
 
 ;; `update-vals`, `update-keys` migrated to Zig (collections.zig)
 
@@ -1231,19 +1204,9 @@
    (comp seq :content)
    root))
 
-(defn printf
-  "Prints formatted output, as per format"
-  [fmt & args]
-  (print (apply format fmt args)))
+;; `printf` migrated to Zig (collections.zig)
 
-(defn test
-  "test [v] finds fn at key :test in var metadata and calls it,
-  presuming failure will throw exception"
-  [v]
-  (let [f (:test (meta v))]
-    (if f
-      (do (f) :ok)
-      :no-test)))
+;; `test` migrated to Zig (collections.zig)
 
 ;; Redefine map with multi-collection arities (needs and, every?, identity)
 (defn map
@@ -1307,10 +1270,7 @@
 ;; Hierarchy
 ;; `not-empty` migrated to Zig (predicates.zig)
 
-(defn make-hierarchy
-  "Creates a hierarchy object for use with derive, isa? etc."
-  []
-  {:parents {} :descendants {} :ancestors {}})
+;; `make-hierarchy` migrated to Zig (collections.zig)
 
 (def ^:private global-hierarchy (make-hierarchy))
 
@@ -1403,13 +1363,7 @@
 (def *clojure-version*
   {:major 1 :minor 12 :incremental 0 :qualifier nil})
 
-(defn clojure-version
-  "Returns clojure version as a printable string."
-  []
-  (let [v *clojure-version*]
-    (str (:major v) "." (:minor v)
-         (when-let [i (:incremental v)] (str "." i))
-         (when-let [q (:qualifier v)] (str "-" q)))))
+;; `clojure-version` migrated to Zig (collections.zig)
 
 ;; `cast` migrated to Zig (collections.zig)
 
@@ -1607,32 +1561,13 @@
   {'inst __inst-from-string  ; CLJW: creates java.util.Date instance
    'uuid __uuid-from-string}) ; CLJW: creates java.util.UUID instance
 
-(defn tagged-literal
-  "Constructs a data representation of a tagged literal from a
-  tag symbol and a form."
-  {:added "1.7"}
-  [tag form]
-  {:tag tag :form form})
+;; `tagged-literal` migrated to Zig (collections.zig)
 
-(defn tagged-literal?
-  "Return true if the value is the data representation
-  of a tagged literal"
-  {:added "1.7"}
-  [value]
-  (and (map? value) (contains? value :tag) (contains? value :form)
-       (symbol? (:tag value))))
+;; `tagged-literal?` migrated to Zig (collections.zig)
 
-(defn reader-conditional
-  "Constructs a data representation of a reader conditional."
-  {:added "1.7"}
-  [form splicing?]
-  {:form form :splicing? splicing?})
+;; `reader-conditional` migrated to Zig (collections.zig)
 
-(defn reader-conditional?
-  "Return true if the value is the data representation of a reader conditional"
-  {:added "1.7"}
-  [value]
-  (and (map? value) (contains? value :form) (contains? value :splicing?)))
+;; `reader-conditional?` migrated to Zig (collections.zig)
 
 ;; UPSTREAM-DIFF: reduce1→reduce, Java interop→CW equivalents, type hints removed
 (defn destructure [bindings]
