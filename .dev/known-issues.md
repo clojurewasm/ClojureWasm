@@ -21,26 +21,16 @@ Each file gets: `shutdownGlobalPool()` → `resetLoadedLibs()` → `Env.init()` 
 Also fixed missing `(ns ...)` forms in `clojure_walk.clj`, `sci/core_test.clj`, `sci/hierarchies_test.clj`
 that relied on leaked state.
 
-### I-002: `bit-shift-left/right` panics on shift amounts outside 0-63
+### ~~I-002: `bit-shift-left/right` panics on shift amounts outside 0-63~~ RESOLVED
 
-**Symptom**: `(bit-shift-left 1 64)` causes Zig panic (`@intCast` overflow).
-JVM Clojure masks with `& 0x3f`.
+**Resolution**: Already fixed — code uses `@truncate` (not `@intCast`), which
+naturally applies `& 0x3f` masking. Verified: `(bit-shift-left 1 64)` → 1, no panic.
 
-**Fix**: Add `& 0x3f` mask before `@intCast` to u6.
+### ~~I-003: `char` returns char type, not string~~ RESOLVED
 
-**Files**: `src/builtins/arithmetic.zig:1200,1210,1220,1230`
-
-### I-003: `char` returns char type, not string
-
-**Symptom**: `(= "0" (char 48))` returns false. JVM returns a Character which
-compares equal to its string representation in some contexts. CW test expects
-string.
-
-**Fix**: Verify JVM semantics. If `(char 48)` should return `\0` (character),
-the CW test expectation may be wrong. If it should return `"0"` (string),
-fix the `char` builtin.
-
-**Files**: `src/builtins/strings.zig` (charFn), `test/clojure/numbers.clj`
+**Resolution**: CW behavior was correct (JVM: `(char 65)` → `\A`, not `"A"`).
+Test expectations in `numbers.clj` were wrong — fixed to compare with char literals.
+Also fixed `(char \A)` → identity (was erroring "Cannot cast char to char").
 
 ---
 
@@ -200,8 +190,8 @@ know about deferred cache roots).
 | Issue | When to Fix | Phase |
 |-------|------------|-------|
 | I-001 | ~~**Now**~~ RESOLVED | 88C.1 |
-| I-002 | **Now** (before Phase B) | New: 88C |
-| I-003 | **Now** (before Phase B) | New: 88C |
+| I-002 | ~~**Now**~~ RESOLVED (already fixed) | pre-88C |
+| I-003 | ~~**Now**~~ RESOLVED | 88C.3 |
 | I-010 | **Now** (before Phase B) | New: 88C |
 | I-011 | During Phase B | B (TreeWalk touches) |
 | I-012 | During Phase B | B (atom/stm builtins) |

@@ -1276,10 +1276,11 @@ fn numFn(_: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
-/// (char x) — Coerce int to character string.
+/// (char x) — Coerce to character. JVM: int→Character, char→identity.
 fn charFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to char", .{args.len});
     const code: u21 = switch (args[0].tag()) {
+        .char => return args[0], // identity for char input
         .integer => if (args[0].asInteger() >= 0 and args[0].asInteger() <= 0x10FFFF)
             @intCast(args[0].asInteger())
         else

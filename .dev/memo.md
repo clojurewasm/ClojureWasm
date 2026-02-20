@@ -65,8 +65,8 @@ See `.dev/known-issues.md` for full issue list.
 
 Sub-tasks:
 - 88C.1: Fix `cljw test` state pollution (I-001) — DONE (fresh env per file)
-- 88C.2: Fix bit-shift panics on shift ≥64 (I-002) — add `& 0x3f` mask
-- 88C.3: Fix `char` return type (I-003) — verify JVM semantics
+- 88C.2: Fix bit-shift panics on shift ≥64 (I-002) — ALREADY FIXED (@truncate used)
+- 88C.3: Fix `char` return type (I-003) — DONE (test was wrong, char→char identity added)
 - 88C.4: Create unified test runner (I-010) — `test/run_all.sh`
 
 ## Previous Task

@@ -707,9 +707,9 @@
   (is (= 0 (byte 0))))
 
 (deftest test-char-coercion
-  (is (= "A" (char 65)))
-  (is (= "a" (char 97)))
-  (is (= "0" (char 48))))
+  (is (= \A (char 65)))
+  (is (= \a (char 97)))
+  (is (= \0 (char 48))))
 
 ;; Run all tests when executed directly
 (run-tests)
