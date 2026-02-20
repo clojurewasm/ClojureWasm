@@ -36,7 +36,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 59 upstream test files (58/59 passing, 1 fail: test_fixtures.clj). 6/6 e2e. 14/14 deps e2e.
+- 63 upstream test files (62/63 passing, 1 fail: test_fixtures.clj). 6/6 e2e. 14/14 deps e2e.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
 - Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
 - Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
@@ -60,12 +60,15 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 84: Testing Expansion
-84.3: Property-based reader round-trip tests
-- 84.1 DONE: 59 test files (58/59 pass), +13 CW-specific
-- 84.2 DONE: 146 expressions, 246 with randoms, 0 failures
-- Expanded: transducers, sorted colls, destructuring, exceptions, metadata, string ops
+Phase 84 COMPLETE. All sub-tasks done:
+- 84.1: 63 test files (62/63 pass), +17 CW-specific test files
+- 84.2: 146 differential test expressions (246 with randoms), 0 failures
+- 84.3: Reader round-trip property test (184 assertions, 0 failures)
+- 84.4: Stability test (122 assertions: 1K ops, large colls, recursion)
+- 84.5: Golden REPL output test (46 assertions: pr-str, str, println)
+- 84.6: GC stress test (16 assertions: rapid alloc, temp objects, lazy GC)
 - Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
-- Known: is macro has bug with instance? special form reporting (workaround: wrap in true?)
+- Known: is macro has bug with instance? special form reporting (workaround: true?)
 
 ## Previous Task
 
@@ -74,10 +77,7 @@ Phase 83A-83E COMPLETE (Architecture v2).
 ## Task Queue
 
 ```
-84.3: Property-based reader round-trip tests
-84.4: Long-run stability tests
-84.5: Golden REPL output tests
-84.6: GC stress tests
+(Phase 84 complete — proceed to Phase 85)
 ```
 
 ## 83E Audit Results & Scope Reduction
