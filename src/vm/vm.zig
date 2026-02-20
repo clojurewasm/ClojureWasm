@@ -65,7 +65,7 @@ pub const VMError = error{
 
 const STACK_MAX: usize = 256 * 128;
 const FRAMES_MAX: usize = 1024;
-const HANDLERS_MAX: usize = 16;
+const HANDLERS_MAX: usize = 64;
 
 /// Exception handler — saves state for try/catch unwinding.
 const ExceptionHandler = struct {

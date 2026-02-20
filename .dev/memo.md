@@ -36,7 +36,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 63 upstream test files (62/63 passing, 1 fail: test_fixtures.clj). 6/6 e2e. 14/14 deps e2e.
+- 63 upstream test files (63/63 passing). 6/6 e2e. 14/14 deps e2e.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
 - Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
 - Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
@@ -60,7 +60,7 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 88A: Correctness Sweep
-88A.3: Fix test_fixtures.clj
+88A.4: Fix parallel/vars sequential state pollution
 
 ## Previous Task
 
@@ -99,7 +99,7 @@ functions are identified as bottlenecks through profiling.
 
 ## Known Issues (Phase 88A targets)
 
-- test_fixtures.clj: bootstrap eval error in use-fixtures (only upstream test failure) → 88A.3
+- ~~test_fixtures.clj: bootstrap eval error in use-fixtures~~ FIXED 88A.3 (HANDLERS_MAX 16→64, now 63/63 upstream pass)
 - ~~is macro: bug with instance? special form~~ FIXED 88A.1 (analyzer now checks locals, runtime accepts symbols)
 - parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution) → 88A.4
 - ~~serialize.zig: hierarchy var not restored from bytecode cache~~ FIXED 88A.2 (resolve from env during deserialization)
