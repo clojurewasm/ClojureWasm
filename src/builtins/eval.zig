@@ -180,9 +180,13 @@ fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
     // Resolve symbol to Var
     const env = bootstrap.macro_eval_env orelse return form;
     const ns = env.current_ns orelse return form;
-    const v = if (sym.ns) |ns_name|
-        ns.resolveQualified(ns_name, sym.name)
-    else
+    const v = if (sym.ns) |ns_name| blk: {
+        // Try current ns and aliases first
+        if (ns.resolveQualified(ns_name, sym.name)) |var_ref| break :blk @as(?*value_mod.Var, var_ref);
+        // Fall back to global namespace lookup
+        if (env.findNamespace(ns_name)) |target_ns| break :blk target_ns.mappings.get(sym.name);
+        break :blk @as(?*value_mod.Var, null);
+    } else
         ns.resolve(sym.name);
 
     const var_ref = v orelse return form;

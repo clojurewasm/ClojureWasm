@@ -961,19 +961,30 @@ pub fn applyFn(allocator: Allocator, args: []const Value) anyerror!Value {
                     arg_seq = Value.initCons(cell);
                 }
 
-                // Take exactly fixed_count items from arg_seq
+                // Take up to fixed_count items from arg_seq.
+                // If seq is exhausted before fixed_count, the variadic arity
+                // doesn't apply — fall through to the eager path.
                 const call_args = try allocator.alloc(Value, fixed_count + 1);
+                var took: usize = 0;
                 for (0..fixed_count) |j| {
-                    call_args[j] = try firstFn(allocator, &.{arg_seq});
-                    arg_seq = try restFn(allocator, &.{arg_seq});
+                    const s = try seqFn(allocator, &.{arg_seq});
+                    if (s == Value.nil_val) break; // seq exhausted
+                    call_args[j] = try firstFn(allocator, &.{s});
+                    arg_seq = try restFn(allocator, &.{s});
+                    took += 1;
                 }
 
-                // Remaining seq is the rest param (lazy!) — convert to seq or nil
-                call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
+                if (took == fixed_count) {
+                    // Remaining seq is the rest param (lazy!) — convert to seq or nil
+                    call_args[fixed_count] = try seqFn(allocator, &.{arg_seq});
 
-                // Signal VM/TreeWalk that the rest arg is already a seq (F99)
-                bootstrap.apply_rest_is_seq = true;
-                return bootstrap.callFnVal(allocator, f, call_args);
+                    // Signal VM/TreeWalk that the rest arg is already a seq (F99)
+                    bootstrap.apply_rest_is_seq = true;
+                    return bootstrap.callFnVal(allocator, f, call_args);
+                }
+                // Else: seq had fewer than fixed_count items.
+                // Fall through to the eager collection path below.
+                // The items are already realized, so collect the rest.
             }
         }
     }
