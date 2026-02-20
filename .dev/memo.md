@@ -70,8 +70,9 @@ Goal: maximize clean-pass files, record baselines for hard failures, exclude med
 
 ```
 88A-sweep: Upstream test stabilization
-  S.1: Exclude medley from cljw test (System/exit kills runner) ← NEXT
-  S.2: Fix compilation.clj — defmacro :macro metadata (1F)
+  S.1: Exclude medley from cljw test (System/exit kills runner) ← DONE
+  S.1b: Fix deferred cache segfault (GC reclaims strings table) ← DONE
+  S.2: Fix compilation.clj — defmacro :macro metadata (1F) ← NEXT
   S.3: Fix other_functions.clj — min-key/max-key stability (2F)
   S.4: Fix transducers.clj — halt-when reduced handling (1E)
   S.5: Fix main.clj — push-thread-bindings (1E)

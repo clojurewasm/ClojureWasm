@@ -144,8 +144,8 @@ Run before every commit:
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
    - **Hard block**: Do NOT commit if any threshold exceeded.
      Benchmark regression → stop, profile, fix in place or insert optimization phase first.
-   - **All-Zig migration (Phase A-D)**: Binary/startup thresholds SUSPENDED.
-     Benchmarks must not regress > 2x (safety net). See `.dev/all-zig-plan.md`.
+   - **All-Zig migration (Phase 88A-88E)**: Binary size threshold SUSPENDED.
+     Benchmarks must not regress > 2x (safety net). See `.dev/baselines.md`.
    - Baselines & policy: `.dev/baselines.md`.
 
 ### Phase Completion

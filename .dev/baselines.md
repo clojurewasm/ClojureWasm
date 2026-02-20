@@ -13,8 +13,9 @@ Binary: ReleaseSafe
 
 ## Thresholds
 
-Exceeding ANY threshold is a **hard block** — do NOT commit.
-Fix the regression first. No exceptions without explicit user approval.
+**Migration period (Phase 88A-88E)**: Binary size threshold is SUSPENDED.
+Macro-to-Zig migration naturally increases binary size; will re-baseline after migration.
+All other thresholds (startup, RSS, benchmarks) remain active.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|

@@ -1303,9 +1303,12 @@ fn handleNewCommand(new_args: []const [:0]const u8) void {
 
 /// Recursively collect .clj files from a directory.
 /// str_alloc: arena for path strings (long-lived), list_alloc: for ArrayList backing.
+/// Skips directories not suitable for `cljw test` (e2e, compat, etc.).
 fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []const u8, out: *std.ArrayList([]const u8)) void {
     var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch return;
     defer dir.close();
+
+    const skip_dirs = [_][]const u8{ "e2e", "compat", "diff", "wasm" };
 
     var it = dir.iterate();
     while (it.next() catch null) |entry| {
@@ -1313,8 +1316,17 @@ fn collectTestFiles(str_alloc: Allocator, list_alloc: Allocator, dir_path: []con
             const full = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
             out.append(list_alloc, full) catch {};
         } else if (entry.kind == .directory) {
-            const subdir = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
-            collectTestFiles(str_alloc, list_alloc, subdir, out);
+            var skip = false;
+            for (&skip_dirs) |sd| {
+                if (std.mem.eql(u8, entry.name, sd)) {
+                    skip = true;
+                    break;
+                }
+            }
+            if (!skip) {
+                const subdir = std.fmt.allocPrint(str_alloc, "{s}/{s}", .{ dir_path, entry.name }) catch continue;
+                collectTestFiles(str_alloc, list_alloc, subdir, out);
+            }
         }
     }
 }

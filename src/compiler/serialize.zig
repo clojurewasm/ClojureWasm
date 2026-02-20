@@ -844,9 +844,24 @@ fn recordDeferredNs(allocator: std.mem.Allocator, ns_name: []const u8, start_off
 }
 
 fn initDeferredCacheState(data: []const u8, strings: []const []const u8, fn_protos: []const *const anyopaque) void {
+    // Copy strings and fn_protos to smp_allocator so they survive GC sweeps.
+    // The original slices were allocated with gc_alloc and may be collected
+    // before deferred namespaces are restored (e.g. during long test runs).
+    const safe_alloc = std.heap.smp_allocator;
+    const safe_strings = safe_alloc.alloc([]const u8, strings.len) catch {
+        deferred_cache_data = data;
+        deferred_cache_strings = strings;
+        deferred_cache_fn_protos = fn_protos;
+        deferred_cache_initialized = true;
+        return;
+    };
+    for (strings, 0..) |s, i| {
+        safe_strings[i] = safe_alloc.dupe(u8, s) catch s;
+    }
+    const safe_fn_protos = safe_alloc.dupe(*const anyopaque, fn_protos) catch fn_protos;
     deferred_cache_data = data;
-    deferred_cache_strings = strings;
-    deferred_cache_fn_protos = fn_protos;
+    deferred_cache_strings = safe_strings;
+    deferred_cache_fn_protos = safe_fn_protos;
     deferred_cache_initialized = true;
 }
 
