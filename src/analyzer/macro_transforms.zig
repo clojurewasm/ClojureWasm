@@ -29,6 +29,11 @@ pub const MacroTransformFn = *const fn (Allocator, []const Form) anyerror!Form;
 /// Checked in analyzeList() before env-based macro lookup.
 pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "when", transformWhen },
+    .{ "when-not", transformWhenNot },
+    .{ "if-not", transformIfNot },
+    .{ "comment", transformComment },
+    .{ "while", transformWhile },
+    .{ "assert", transformAssert },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -100,6 +105,79 @@ fn transformWhen(allocator: Allocator, args: []const Form) anyerror!Form {
     const body = args[1..];
     const do_form = try makeDo(allocator, body);
     return makeIf(allocator, test_form, do_form, null);
+}
+
+/// `(when-not test body...)` → `(if test nil (do body...))`
+fn transformWhenNot(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const test_form = args[0];
+    const body = args[1..];
+    const do_form = try makeDo(allocator, body);
+    return makeIf(allocator, test_form, makeNil(), do_form);
+}
+
+/// `(if-not test then)` or `(if-not test then else)` → `(if (not test) then else)`
+fn transformIfNot(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const test_form = args[0];
+    const then_form = args[1];
+    const else_form: ?Form = if (args.len >= 3) args[2] else null;
+    const not_test = try makeList(allocator, &.{ makeSymbol("not"), test_form });
+    return makeIf(allocator, not_test, then_form, else_form);
+}
+
+/// `(comment ...)` → `nil`
+fn transformComment(_: Allocator, _: []const Form) anyerror!Form {
+    return makeNil();
+}
+
+/// `(while test body...)` → `(loop [] (when test body... (recur)))`
+fn transformWhile(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const test_form = args[0];
+    const body = args[1..];
+    // Build: (when test body... (recur))
+    const recur_form = try makeList(allocator, &.{makeSymbol("recur")});
+    const when_body = try appendForm(allocator, body, recur_form);
+    const when_items = try prependForm(allocator, test_form, when_body);
+    const when_all = try prependForm(allocator, makeSymbol("when"), when_items);
+    const when_form: Form = .{ .data = .{ .list = when_all } };
+    // Build: (loop [] when_form)
+    const empty_vec = try makeVector(allocator, &.{});
+    return makeList(allocator, &.{ makeSymbol("loop"), empty_vec, when_form });
+}
+
+/// `(assert x)` or `(assert x message)` →
+/// `(when *assert* (when-not x (throw (str "Assert failed: " (pr-str 'x)))))`
+fn transformAssert(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const x = args[0];
+    const quoted_x = try makeQuoted(allocator, x);
+    const pr_str_x = try makeList(allocator, &.{ makeSymbol("pr-str"), quoted_x });
+
+    const throw_form = if (args.len >= 2) blk: {
+        const message = args[1];
+        const str_form = try makeList(allocator, &.{
+            makeSymbol("str"),
+            makeString("Assert failed: "),
+            message,
+            makeString("\n"),
+            pr_str_x,
+        });
+        break :blk try makeList(allocator, &.{ makeSymbol("throw"), str_form });
+    } else blk: {
+        const str_form = try makeList(allocator, &.{
+            makeSymbol("str"),
+            makeString("Assert failed: "),
+            pr_str_x,
+        });
+        break :blk try makeList(allocator, &.{ makeSymbol("throw"), str_form });
+    };
+
+    // (when-not x throw_form)
+    const when_not_form = try makeList(allocator, &.{ makeSymbol("when-not"), x, throw_form });
+    // (when *assert* when_not_form)
+    return makeList(allocator, &.{ makeSymbol("when"), makeSymbol("*assert*"), when_not_form });
 }
 
 // ============================================================

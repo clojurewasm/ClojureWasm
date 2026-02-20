@@ -183,8 +183,7 @@
    (apply concat (map f c1 c2 c3))))
 
 ;; Core macros
-
-(defmacro comment [& body] nil)
+;; `comment`, `if-not`, `when-not` migrated to Zig (macro_transforms.zig)
 
 (defmacro cond
   "Takes a set of test/expr pairs. It evaluates each test one at a
@@ -201,15 +200,6 @@
           `(if ~test ~then (cond ~@more))
           `(if ~test ~then)))
       (throw (str "cond requires an even number of forms")))))
-
-(defmacro if-not [test then & more]
-  `(if (not ~test) ~then ~(first more)))
-
-(defmacro when-not
-  "Evaluates test. If logical false, evaluates body in an implicit do."
-  {:added "1.0"}
-  [test & body]
-  (list 'if test nil (cons 'do body)))
 
 ;; Utility functions
 
@@ -1319,12 +1309,7 @@
            ~@body))
 
 ;; Imperative iteration
-
-(defmacro while [test & body]
-  `(loop []
-     (when ~test
-       ~@body
-       (recur))))
+;; `while` migrated to Zig (macro_transforms.zig)
 
 (defmacro doseq
   "Repeatedly executes body (presumably for side-effects) with
@@ -2101,18 +2086,7 @@
                   body))))
 
 (def *assert* true)
-
-(defmacro assert
-  "Evaluates expr and throws an AssertionError if it does not evaluate to
-  logical true."
-  ([x]
-   (when *assert*
-     `(when-not ~x
-        (throw (str "Assert failed: " (pr-str '~x))))))
-  ([x message]
-   (when *assert*
-     `(when-not ~x
-        (throw (str "Assert failed: " ~message "\n" (pr-str '~x)))))))
+;; `assert` migrated to Zig (macro_transforms.zig)
 
 ;; Hierarchy
 
