@@ -47,8 +47,7 @@ const core_clj_source = @embedFile("../clj/clojure/core.clj");
 /// Embedded clojure/test.clj source (compiled into binary).
 const test_clj_source = @embedFile("../clj/clojure/test.clj");
 
-/// Embedded clojure/walk.clj source (compiled into binary).
-const walk_clj_source = @embedFile("../clj/clojure/walk.clj");
+// walk.clj removed — now Zig builtins in ns_walk.zig (Phase B.4)
 
 /// Embedded clojure/set.clj source (compiled into binary).
 const set_clj_source = @embedFile("../clj/clojure/set.clj");
@@ -65,8 +64,7 @@ const io_clj_source = @embedFile("../clj/clojure/java/io.clj");
 /// Embedded clojure/pprint.clj source (compiled into binary).
 const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 
-/// Embedded clojure/stacktrace.clj source (compiled into binary).
-const stacktrace_clj_source = @embedFile("../clj/clojure/stacktrace.clj");
+// stacktrace.clj removed — now Zig builtins in ns_stacktrace.zig (Phase B.4)
 
 /// Embedded clojure/zip.clj source (compiled into binary).
 const zip_clj_source = @embedFile("../clj/clojure/zip.clj");
@@ -1069,40 +1067,7 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Load and evaluate clojure/walk.clj in the given Env.
 /// Creates the clojure.walk namespace and defines tree walker functions.
 /// Re-refers walk bindings into user namespace for convenience.
-pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Create clojure.walk namespace
-    const walk_ns = env.findOrCreateNamespace("clojure.walk") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Refer all clojure.core bindings into clojure.walk so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        walk_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Save current namespace and switch to clojure.walk
-    const saved_ns = env.current_ns;
-    env.current_ns = walk_ns;
-
-    // Evaluate clojure/walk.clj (defines functions in clojure.walk)
-    _ = try evalString(allocator, env, walk_clj_source);
-
-    // Restore user namespace and re-refer walk bindings
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-    if (saved_ns) |user_ns| {
-        var iter = walk_ns.mappings.iterator();
-        while (iter.next()) |entry| {
-            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
-}
+// loadWalk removed — clojure.walk is now registered as Zig builtins in registry.zig (Phase B.4)
 
 /// Load and evaluate clojure/test.clj in the given Env.
 /// Creates the clojure.test namespace and defines test macros (deftest, is, etc.).
@@ -1324,29 +1289,7 @@ pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
-pub fn loadStacktrace(allocator: Allocator, env: *Env) BootstrapError!void {
-    const st_ns = env.findOrCreateNamespace("clojure.stacktrace") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        st_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = st_ns;
-
-    _ = try evalString(allocator, env, stacktrace_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
+// loadStacktrace removed — clojure.stacktrace is now registered as Zig builtins in registry.zig (Phase B.4)
 
 pub fn loadZip(allocator: Allocator, env: *Env) BootstrapError!void {
     const zip_ns = env.findOrCreateNamespace("clojure.zip") catch {
@@ -2257,18 +2200,18 @@ pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const 
 
 /// Unified bootstrap: loads all standard library namespaces.
 ///
-/// Equivalent to the sequence: loadCore + loadWalk + loadTest + loadSet + loadData.
 /// Use this instead of calling each individually.
+/// Note: clojure.walk and clojure.stacktrace are now Zig builtins (registered in registerBuiltins).
 pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadCore(allocator, env);
-    try loadWalk(allocator, env);
+    // clojure.walk — registered in registerBuiltins() (Phase B.4)
     try loadTest(allocator, env);
     try loadSet(allocator, env);
     try loadData(allocator, env);
     try loadRepl(allocator, env);
     try loadJavaIo(allocator, env);
     try loadPprint(allocator, env);
-    try loadStacktrace(allocator, env);
+    // clojure.stacktrace — registered in registerBuiltins() (Phase B.4)
     try loadZip(allocator, env);
     // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     try loadReducers(allocator, env);
@@ -2298,12 +2241,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
     _ = try evalStringVMBootstrap(allocator, env, core_seq_defs);
 
-    // Re-compile walk.clj
-    if (env.findNamespace("clojure.walk")) |walk_ns| {
-        env.current_ns = walk_ns;
-        _ = try evalStringVMBootstrap(allocator, env, walk_clj_source);
-    }
-
+    // clojure.walk — Zig builtins (Phase B.4), no recompilation needed
 
     // Re-compile test.clj
     if (env.findNamespace("clojure.test")) |test_ns| {
@@ -2341,11 +2279,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, pprint_clj_source);
     }
 
-    // Re-compile stacktrace.clj
-    if (env.findNamespace("clojure.stacktrace")) |st_ns| {
-        env.current_ns = st_ns;
-        _ = try evalStringVMBootstrap(allocator, env, stacktrace_clj_source);
-    }
+    // clojure.stacktrace — Zig builtins (Phase B.4), no recompilation needed
 
     // Re-compile zip.clj
     if (env.findNamespace("clojure.zip")) |zip_ns| {

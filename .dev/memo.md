@@ -59,19 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.4: walk (75 lines), stacktrace (75 lines) → Zig.
+Phase B.5: core/server (57 lines), data (104 lines) → Zig.
 
 ## Previous Task
 
-Bugfix: Fix 3 test issues (9 failures → 0). No new features.
-- I-020 RESOLVED: Form.meta_value field for valueToForm↔formToValue metadata roundtrip (8F → 0F in macros)
-- assert throws AssertionError (caught by `catch Error`), not plain string (1E → 0E in other-functions)
-- B.3 protocol regression: serialize.zig restoreVar skips overwriting protocol/protocol_fn vars already set by registerBuiltins (2E → 0E in reducers)
+Phase B.4: walk (75 lines), stacktrace (75 lines) → Zig.
+- ns_walk.zig: 10 builtins (walk, postwalk, prewalk, *-demo, *-replace, keywordize-keys, stringify-keys, macroexpand-all)
+- ns_stacktrace.zig: 6 builtins (root-cause, print-trace-element, print-throwable, print-stack-trace, print-cause-trace, e)
+- Deleted walk.clj and stacktrace.clj from src/clj/
+- All 16 walk tests pass (46 assertions), both backends verified
 
 ## Task Queue
 
 ```
-Phase B.4: walk (75 lines), stacktrace (75 lines)
 Phase B.5: core/server (57 lines), data (104 lines)
 Phase B.6: set (126 lines)
 Phase B.7: java/io (217 lines), java/process (85 lines)

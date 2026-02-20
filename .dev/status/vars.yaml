@@ -1129,12 +1129,12 @@ vars:
     vector: {type: function, status: done}
     "vector-distinct": {type: function, status: done}
   clojure_stacktrace:
-    e: {type: function, status: done}
-    "print-cause-trace": {type: function, status: done}
-    "print-stack-trace": {type: function, status: done}
-    "print-throwable": {type: function, status: done}
-    "print-trace-element": {type: function, status: done}
-    "root-cause": {type: function, status: done}
+    e: {type: function, status: done, note: "builtin (Phase B.4)"}
+    "print-cause-trace": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "print-stack-trace": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "print-throwable": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "print-trace-element": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "root-cause": {type: function, status: done, note: "builtin (Phase B.4)"}
   clojure_string:
     "blank?": {type: function, status: done}
     capitalize: {type: function, status: done, note: builtin (upstream is pure clj)}
@@ -1202,16 +1202,16 @@ vars:
     "with-test-out": {type: macro, status: done}
   clojure_uuid:
   clojure_walk:
-    "keywordize-keys": {type: function, status: done}
-    "macroexpand-all": {type: function, status: done}
-    postwalk: {type: function, status: done}
-    "postwalk-demo": {type: function, status: done}
-    "postwalk-replace": {type: function, status: done}
-    prewalk: {type: function, status: done}
-    "prewalk-demo": {type: function, status: done}
-    "prewalk-replace": {type: function, status: done}
-    "stringify-keys": {type: function, status: done}
-    walk: {type: function, status: done}
+    "keywordize-keys": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "macroexpand-all": {type: function, status: done, note: "builtin (Phase B.4)"}
+    postwalk: {type: function, status: done, note: "builtin (Phase B.4)"}
+    "postwalk-demo": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "postwalk-replace": {type: function, status: done, note: "builtin (Phase B.4)"}
+    prewalk: {type: function, status: done, note: "builtin (Phase B.4)"}
+    "prewalk-demo": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "prewalk-replace": {type: function, status: done, note: "builtin (Phase B.4)"}
+    "stringify-keys": {type: function, status: done, note: "builtin (Phase B.4)"}
+    walk: {type: function, status: done, note: "builtin (Phase B.4)"}
   clojure_zip:
     "append-child": {type: function, status: done}
     "branch?": {type: function, status: done}

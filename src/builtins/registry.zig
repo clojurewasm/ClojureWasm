@@ -50,6 +50,8 @@ const ns_browse_mod = @import("ns_browse.zig");
 const ns_repl_deps_mod = @import("ns_repl_deps.zig");
 const ns_core_protocols_mod = @import("ns_core_protocols.zig");
 const ns_datafy_mod = @import("ns_datafy.zig");
+const ns_walk_mod = @import("ns_walk.zig");
+const ns_stacktrace_mod = @import("ns_stacktrace.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -427,6 +429,26 @@ pub fn registerBuiltins(env: *Env) !void {
     const repl_deps_ns = try env.findOrCreateNamespace("clojure.repl.deps");
     for (ns_repl_deps_mod.builtins) |b| {
         const v = try repl_deps_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.walk namespace builtins (Phase B.4)
+    const walk_ns = try env.findOrCreateNamespace("clojure.walk");
+    for (ns_walk_mod.builtins) |b| {
+        const v = try walk_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.stacktrace namespace builtins (Phase B.4)
+    const stacktrace_ns = try env.findOrCreateNamespace("clojure.stacktrace");
+    for (ns_stacktrace_mod.builtins) |b| {
+        const v = try stacktrace_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));
