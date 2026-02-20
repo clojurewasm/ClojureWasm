@@ -152,6 +152,49 @@ pub fn shFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 // ============================================================
+// Macros: with-sh-dir, with-sh-env
+// ============================================================
+
+/// (with-sh-dir dir & forms) → (binding [clojure.java.shell/*sh-dir* dir] forms...)
+pub fn withShDirMacro(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "with-sh-dir requires at least 1 argument", .{});
+
+    return buildBindingMacro(allocator, "*sh-dir*", args);
+}
+
+/// (with-sh-env env & forms) → (binding [clojure.java.shell/*sh-env* env] forms...)
+pub fn withShEnvMacro(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "with-sh-env requires at least 1 argument", .{});
+
+    return buildBindingMacro(allocator, "*sh-env*", args);
+}
+
+/// Helper: build (binding [clojure.java.shell/<var-name> <val>] <body...>)
+fn buildBindingMacro(allocator: Allocator, var_name: []const u8, args: []const Value) anyerror!Value {
+    const PersistentList = collections.PersistentList;
+    const PersistentVector = collections.PersistentVector;
+
+    // Build binding vector: [clojure.java.shell/*sh-dir* dir-arg]
+    const binding_items = try allocator.alloc(Value, 2);
+    binding_items[0] = Value.initSymbol(allocator, .{ .ns = "clojure.java.shell", .name = var_name });
+    binding_items[1] = args[0];
+    const binding_vec = try allocator.create(PersistentVector);
+    binding_vec.* = .{ .items = binding_items };
+
+    // Build (binding [bindings...] body...)
+    // Total: binding sym + vector + body forms
+    const list_items = try allocator.alloc(Value, 2 + args.len - 1);
+    list_items[0] = Value.initSymbol(allocator, .{ .ns = null, .name = "binding" });
+    list_items[1] = Value.initVector(binding_vec);
+    for (args[1..], 0..) |body_form, i| {
+        list_items[2 + i] = body_form;
+    }
+    const result_list = try allocator.create(PersistentList);
+    result_list.* = .{ .items = list_items };
+    return Value.initList(result_list);
+}
+
+// ============================================================
 // Builtin definitions for clojure.java.shell
 // ============================================================
 
@@ -163,6 +206,23 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([& args])",
         .added = "1.2",
     },
+};
+
+/// Macro definitions (registered separately with setMacro)
+pub const with_sh_dir_def = BuiltinDef{
+    .name = "with-sh-dir",
+    .func = withShDirMacro,
+    .doc = "Sets the directory for use with sh, see sh for details.",
+    .arglists = "([dir & forms])",
+    .added = "1.2",
+};
+
+pub const with_sh_env_def = BuiltinDef{
+    .name = "with-sh-env",
+    .func = withShEnvMacro,
+    .doc = "Sets the environment for use with sh, see sh for details.",
+    .arglists = "([env & forms])",
+    .added = "1.2",
 };
 
 // ============================================================

@@ -59,26 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.2: java/shell (20 lines), java/browse (54 lines) → Zig builtins.
-
-- shell: `*sh-dir*`, `*sh-env*` dynamic vars + `with-sh-dir`, `with-sh-env` macros
-- browse: `browse-url` + helpers
-- Most shell functionality already in Zig (`src/builtins/shell.zig`)
-- Macros → macro transforms in `macro_transforms.zig` (or keep as env macros)
+Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines) → Zig.
 
 ## Previous Task
 
-Phase B.1: template.clj (25 lines) → Zig builtins (DONE).
-- `apply-template` → Zig builtin in `ns_template.zig` (Value-level postwalk-replace)
-- `do-template` → Zig builtin macro (setMacro, partition + substitute)
-- Registered in `registry.zig` under `clojure.template` namespace
-- Removed `loadTemplate()` from bootstrap.zig, deleted template.clj
-- 1st .clj file eliminated from pipeline
+Phase B.2: java/shell (20 lines), java/browse (54 lines) → Zig builtins (DONE).
+- shell: `*sh-dir*`, `*sh-env*` dynamic vars + `with-sh-dir`/`with-sh-env` macros → shell.zig
+- browse: `browse-url` → ns_browse.zig (platform-native open command)
+- Removed loadShell()/loadBrowse() from bootstrap.zig, deleted .clj files
+- 3 .clj files eliminated total (template, shell, browse)
 
 ## Task Queue
 
 ```
-Phase B.2: java/shell (20 lines), java/browse (54 lines) — *sh-dir*, *sh-env*, with-sh-dir, with-sh-env, browse-url
 Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines)
 Phase B.4: walk (75 lines), stacktrace (75 lines)
 Phase B.5: core/server (57 lines), data (104 lines)

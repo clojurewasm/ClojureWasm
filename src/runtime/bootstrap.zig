@@ -59,9 +59,6 @@ const data_clj_source = @embedFile("../clj/clojure/data.clj");
 /// Embedded clojure/repl.clj source (compiled into binary).
 const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
 
-/// Embedded clojure/java/shell.clj source (compiled into binary).
-const shell_clj_source = @embedFile("../clj/clojure/java/shell.clj");
-
 /// Embedded clojure/java/io.clj source (compiled into binary).
 const io_clj_source = @embedFile("../clj/clojure/java/io.clj");
 
@@ -82,9 +79,6 @@ const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
 
 /// Embedded clojure/test/tap.clj source (compiled into binary).
 const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
-
-/// Embedded clojure/java/browse.clj source (compiled into binary).
-const browse_clj_source = @embedFile("../clj/clojure/java/browse.clj");
 
 /// Embedded clojure/datafy.clj source (compiled into binary).
 const datafy_clj_source = @embedFile("../clj/clojure/datafy.clj");
@@ -1274,32 +1268,6 @@ pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
     }
 }
 
-/// Load and evaluate clojure/java/shell.clj in the given Env.
-/// Creates dynamic vars *sh-dir*, *sh-env* and macros with-sh-dir, with-sh-env.
-pub fn loadShell(allocator: Allocator, env: *Env) BootstrapError!void {
-    const shell_ns = env.findOrCreateNamespace("clojure.java.shell") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        shell_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = shell_ns;
-
-    _ = try evalString(allocator, env, shell_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
 /// Load and evaluate clojure/java/io.clj in the given Env.
 /// Defines Coercions, IOFactory protocols and reader/writer/input-stream/output-stream.
 /// The namespace already exists (builtins registered in registry.zig); this adds CLJ-level vars.
@@ -1486,31 +1454,6 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = tap_ns;
 
     _ = try evalString(allocator, env, test_tap_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
-/// Load and evaluate clojure/java/browse.clj.
-pub fn loadBrowse(allocator: Allocator, env: *Env) BootstrapError!void {
-    const browse_ns = env.findOrCreateNamespace("clojure.java.browse") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        browse_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = browse_ns;
-
-    _ = try evalString(allocator, env, browse_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -1793,10 +1736,7 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
         try loadTestTap(allocator, env);
         return true;
     }
-    if (std.mem.eql(u8, ns_name, "clojure.java.browse")) {
-        try loadBrowse(allocator, env);
-        return true;
-    }
+    // clojure.java.browse — registered in registerBuiltins() (Phase B.2)
     if (std.mem.eql(u8, ns_name, "clojure.datafy")) {
         try loadDatafy(allocator, env);
         return true;
@@ -1810,10 +1750,7 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.java.process")) {
-        // Ensure clojure.java.shell is loaded first (process depends on it)
-        if (env.findNamespace("clojure.java.shell") == null) {
-            try loadShell(allocator, env);
-        }
+        // clojure.java.shell is registered in registerBuiltins() (Phase B.2)
         try loadProcess(allocator, env);
         return true;
     }
@@ -2418,7 +2355,6 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadSet(allocator, env);
     try loadData(allocator, env);
     try loadRepl(allocator, env);
-    try loadShell(allocator, env);
     try loadJavaIo(allocator, env);
     try loadPprint(allocator, env);
     try loadStacktrace(allocator, env);
@@ -2480,12 +2416,6 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     if (env.findNamespace("clojure.repl")) |repl_ns| {
         env.current_ns = repl_ns;
         _ = try evalStringVMBootstrap(allocator, env, repl_clj_source);
-    }
-
-    // Re-compile shell.clj
-    if (env.findNamespace("clojure.java.shell")) |shell_ns| {
-        env.current_ns = shell_ns;
-        _ = try evalStringVMBootstrap(allocator, env, shell_clj_source);
     }
 
     // Re-compile java/io.clj

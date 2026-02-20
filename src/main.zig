@@ -996,6 +996,7 @@ fn markBootstrapLibs() void {
         "clojure.edn",
         "clojure.repl",
         "clojure.java.shell",
+        "clojure.java.browse",
         "clojure.pprint",
         "clojure.stacktrace",
         "clojure.zip",

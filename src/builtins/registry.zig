@@ -46,6 +46,7 @@ const pprint_mod = @import("pprint.zig");
 const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
 const ns_template_mod = @import("ns_template.zig");
+const ns_browse_mod = @import("ns_browse.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -324,6 +325,36 @@ pub fn registerBuiltins(env: *Env) !void {
     const shell_ns = try env.findOrCreateNamespace("clojure.java.shell");
     for (shell_mod.builtins) |b| {
         const v = try shell_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // shell dynamic vars (Phase B.2)
+    const shell_dvars = [_]struct { name: []const u8, val: Value }{
+        .{ .name = "*sh-dir*", .val = Value.nil_val },
+        .{ .name = "*sh-env*", .val = Value.nil_val },
+    };
+    for (shell_dvars) |dv| {
+        const v = try shell_ns.intern(dv.name);
+        v.dynamic = true;
+        v.bindRoot(dv.val);
+    }
+    // shell macros (Phase B.2)
+    const shell_macro_defs = [_]BuiltinDef{ shell_mod.with_sh_dir_def, shell_mod.with_sh_env_def };
+    for (shell_macro_defs) |md| {
+        const v = try shell_ns.intern(md.name);
+        v.applyBuiltinDef(md);
+        if (md.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+        v.setMacro(true);
+    }
+
+    // Register clojure.java.browse namespace builtins (Phase B.2)
+    const browse_ns = try env.findOrCreateNamespace("clojure.java.browse");
+    for (ns_browse_mod.builtins) |b| {
+        const v = try browse_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));
