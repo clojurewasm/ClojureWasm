@@ -47,6 +47,9 @@ const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
 const ns_template_mod = @import("ns_template.zig");
 const ns_browse_mod = @import("ns_browse.zig");
+const ns_repl_deps_mod = @import("ns_repl_deps.zig");
+const ns_core_protocols_mod = @import("ns_core_protocols.zig");
+const ns_datafy_mod = @import("ns_datafy.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -403,6 +406,32 @@ pub fn registerBuiltins(env: *Env) !void {
         dt_var.bindRoot(Value.initBuiltinFn(f));
     }
     dt_var.setMacro(true);
+
+    // Register clojure.core.protocols (Phase B.3)
+    const allocator = env.allocator;
+    try ns_core_protocols_mod.registerProtocols(allocator, env);
+
+    // Register clojure.datafy namespace builtins (Phase B.3)
+    const datafy_ns = try env.findOrCreateNamespace("clojure.datafy");
+    for (ns_datafy_mod.builtins) |b| {
+        const v = try datafy_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // Extend Datafiable for Exception type
+    try ns_datafy_mod.registerDatafyExtensions(allocator);
+
+    // Register clojure.repl.deps namespace builtins (Phase B.3)
+    const repl_deps_ns = try env.findOrCreateNamespace("clojure.repl.deps");
+    for (ns_repl_deps_mod.builtins) |b| {
+        const v = try repl_deps_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
 
     env.current_ns = user_ns;
 }

@@ -2663,6 +2663,10 @@ fn selectKeysFn(allocator: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (reduce-kv f init coll) — reduces an associative collection.
+pub fn reduceKvBuiltin(allocator: Allocator, args: []const Value) anyerror!Value {
+    return reduceKvFn(allocator, args);
+}
+
 fn reduceKvFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduce-kv", .{args.len});
     const f = args[0];
@@ -3657,25 +3661,72 @@ fn requiringResolveFn(allocator: Allocator, args: []const Value) anyerror!Value 
 // A.7: Transducer/reduce compositions & tap system
 
 /// (reduce f coll) / (reduce f init coll) — full reduce with 2-arity support.
-/// Overrides the .clj wrapper that calls __zig-reduce.
+/// Dispatches through CollReduce protocol for reify objects (maps with :__reify_type).
+/// Regular collections use __zig-reduce fast path.
 fn reduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len == 2) {
-        // (reduce f coll) — use first element as init
         const f = args[0];
         const coll = args[1];
+        // Check for reify objects: dispatch through CollReduce protocol
+        if (isReifyValue(coll)) {
+            return callCollReduce(allocator, coll, f, null);
+        }
+        // Fast path: use first element as init
         const s = try seqFn(allocator, &.{coll});
         if (s.tag() == .nil) {
-            // Empty coll: (f)
             return try callFn(allocator, f, &.{});
         }
         const first_val = try firstFn(allocator, &.{s});
         const rest_val = try predicates_mod.nextFn(allocator, &.{s});
         return try sequences_mod.zigReduceFn(allocator, &.{ f, first_val, rest_val });
     } else if (args.len == 3) {
-        // (reduce f init coll)
+        const f = args[0];
+        const init = args[1];
+        const coll = args[2];
+        // Check for reify objects: dispatch through CollReduce protocol
+        if (isReifyValue(coll)) {
+            return callCollReduce(allocator, coll, f, init);
+        }
+        // Fast path: __zig-reduce
         return try sequences_mod.zigReduceFn(allocator, args);
     }
     return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduce", .{args.len});
+}
+
+/// Check if a value is a reify object (map with :__reify_type key).
+fn isReifyValue(val: Value) bool {
+    if (val.tag() == .map) return isRecordArrayMap(val.asMap());
+    return false;
+}
+
+/// Dispatch reduce through CollReduce protocol for reify objects.
+fn callCollReduce(allocator: Allocator, coll: Value, f: Value, init: ?Value) anyerror!Value {
+    const ns_core_protocols = @import("ns_core_protocols.zig");
+    const protocol = ns_core_protocols.coll_reduce_protocol orelse {
+        // Fallback if protocol not yet registered
+        if (init) |v| return sequences_mod.zigReduceFn(allocator, &.{ f, v, coll });
+        const s = try seqFn(allocator, &.{coll});
+        if (s.tag() == .nil) return callFn(allocator, f, &.{});
+        const first_val = try firstFn(allocator, &.{s});
+        const rest_val = try predicates_mod.nextFn(allocator, &.{s});
+        return sequences_mod.zigReduceFn(allocator, &.{ f, first_val, rest_val });
+    };
+
+    // Look up implementation in CollReduce protocol
+    const type_key = "map"; // reify objects are maps
+    const method_map_val = protocol.impls.getByStringKey(type_key) orelse
+        protocol.impls.getByStringKey("Object") orelse
+        return err.setErrorFmt(.eval, .type_error, .{}, "No implementation of CollReduce found for type: {s}", .{type_key});
+    if (method_map_val.tag() != .map) return error.TypeError;
+    const method_fn = method_map_val.asMap().getByStringKey("coll-reduce") orelse
+        return err.setErrorFmt(.eval, .type_error, .{}, "No coll-reduce method found in CollReduce implementation", .{});
+
+    // Call with appropriate arity
+    if (init) |v| {
+        return bootstrap.callFnVal(allocator, method_fn, &.{ coll, f, v });
+    } else {
+        return bootstrap.callFnVal(allocator, method_fn, &.{ coll, f });
+    }
 }
 
 /// (transduce xform f coll) / (transduce xform f init coll)

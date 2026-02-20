@@ -59,20 +59,22 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines) → Zig.
+Phase B.4: walk (75 lines), stacktrace (75 lines) → Zig.
 
 ## Previous Task
 
-Phase B.2: java/shell (20 lines), java/browse (54 lines) → Zig builtins (DONE).
-- shell: `*sh-dir*`, `*sh-env*` dynamic vars + `with-sh-dir`/`with-sh-env` macros → shell.zig
-- browse: `browse-url` → ns_browse.zig (platform-native open command)
-- Removed loadShell()/loadBrowse() from bootstrap.zig, deleted .clj files
-- 3 .clj files eliminated total (template, shell, browse)
+Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines) → Zig (DONE).
+- core/protocols: Created all 5 protocols (CollReduce, InternalReduce, IKVReduce, Datafiable, Navigable) programmatically from Zig → ns_core_protocols.zig
+- Registered nil/Object extend-type implementations as BuiltinFn values in protocol impls
+- Updated reduceFn to dispatch through CollReduce for reify objects (__reify_type maps)
+- datafy: `datafy`, `nav` + extend-via-metadata protocol dispatch → ns_datafy.zig
+- repl/deps: stub builtins (add-libs, add-lib, sync-deps) → ns_repl_deps.zig
+- Removed loadProtocols/loadDatafy/loadReplDeps from bootstrap.zig, deleted 3 .clj files
+- 6 .clj files eliminated total (template, shell, browse, protocols, datafy, repl/deps)
 
 ## Task Queue
 
 ```
-Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines)
 Phase B.4: walk (75 lines), stacktrace (75 lines)
 Phase B.5: core/server (57 lines), data (104 lines)
 Phase B.6: set (126 lines)

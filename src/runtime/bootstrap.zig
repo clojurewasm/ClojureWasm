@@ -71,17 +71,12 @@ const stacktrace_clj_source = @embedFile("../clj/clojure/stacktrace.clj");
 /// Embedded clojure/zip.clj source (compiled into binary).
 const zip_clj_source = @embedFile("../clj/clojure/zip.clj");
 
-/// Embedded clojure/core/protocols.clj source (compiled into binary).
-const protocols_clj_source = @embedFile("../clj/clojure/core/protocols.clj");
-
 /// Embedded clojure/core/reducers.clj source (compiled into binary).
 const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
 
 /// Embedded clojure/test/tap.clj source (compiled into binary).
 const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
 
-/// Embedded clojure/datafy.clj source (compiled into binary).
-const datafy_clj_source = @embedFile("../clj/clojure/datafy.clj");
 
 /// Embedded clojure/instant.clj source (compiled into binary).
 const instant_clj_source = @embedFile("../clj/clojure/instant.clj");
@@ -95,8 +90,6 @@ const main_clj_source = @embedFile("../clj/clojure/main.clj");
 /// Embedded clojure/core/server.clj source (compiled into binary).
 const server_clj_source = @embedFile("../clj/clojure/core/server.clj");
 
-/// Embedded clojure/repl/deps.clj source (compiled into binary).
-const repl_deps_clj_source = @embedFile("../clj/clojure/repl/deps.clj");
 
 /// Embedded clojure/xml.clj source (compiled into binary).
 const xml_clj_source = @embedFile("../clj/clojure/xml.clj");
@@ -1379,33 +1372,6 @@ pub fn loadZip(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
-/// Load and evaluate clojure/core/protocols.clj in the given Env.
-/// Creates the clojure.core.protocols namespace with CollReduce, InternalReduce,
-/// IKVReduce, Datafiable, and Navigable protocols.
-pub fn loadProtocols(allocator: Allocator, env: *Env) BootstrapError!void {
-    const protocols_ns = env.findOrCreateNamespace("clojure.core.protocols") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        protocols_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = protocols_ns;
-
-    _ = try evalString(allocator, env, protocols_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
 /// Load and evaluate clojure/core/reducers.clj in the given Env.
 /// Creates the clojure.core.reducers namespace with reduce, fold, CollFold,
 /// monoid, and transformation functions (map, filter, etc.).
@@ -1454,31 +1420,6 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = tap_ns;
 
     _ = try evalString(allocator, env, test_tap_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
-/// Load and evaluate clojure/datafy.clj.
-pub fn loadDatafy(allocator: Allocator, env: *Env) BootstrapError!void {
-    const datafy_ns = env.findOrCreateNamespace("clojure.datafy") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        datafy_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = datafy_ns;
-
-    _ = try evalString(allocator, env, datafy_clj_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -1609,31 +1550,6 @@ pub fn loadCoreServer(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
-/// Load and evaluate clojure/repl/deps.clj (stub namespace).
-pub fn loadReplDeps(allocator: Allocator, env: *Env) BootstrapError!void {
-    const repl_deps_ns = env.findOrCreateNamespace("clojure.repl.deps") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        repl_deps_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = repl_deps_ns;
-
-    _ = try evalString(allocator, env, repl_deps_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
 /// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
     const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
@@ -1737,10 +1653,8 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
         return true;
     }
     // clojure.java.browse — registered in registerBuiltins() (Phase B.2)
-    if (std.mem.eql(u8, ns_name, "clojure.datafy")) {
-        try loadDatafy(allocator, env);
-        return true;
-    }
+    // clojure.datafy — registered in registerBuiltins() (Phase B.3)
+    // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     if (std.mem.eql(u8, ns_name, "clojure.instant")) {
         try loadInstant(allocator, env);
         return true;
@@ -1766,10 +1680,7 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
         try loadCoreServer(allocator, env);
         return true;
     }
-    if (std.mem.eql(u8, ns_name, "clojure.repl.deps")) {
-        try loadReplDeps(allocator, env);
-        return true;
-    }
+    // clojure.repl.deps — registered in registerBuiltins() (Phase B.3)
     if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {
         try loadSpecGenAlpha(allocator, env);
         return true;
@@ -2359,7 +2270,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadPprint(allocator, env);
     try loadStacktrace(allocator, env);
     try loadZip(allocator, env);
-    try loadProtocols(allocator, env);
+    // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     try loadReducers(allocator, env);
     // spec.alpha loaded lazily on first require (startup time)
 }
@@ -2442,11 +2353,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, zip_clj_source);
     }
 
-    // Re-compile core/protocols.clj
-    if (env.findNamespace("clojure.core.protocols")) |protocols_ns| {
-        env.current_ns = protocols_ns;
-        _ = try evalStringVMBootstrap(allocator, env, protocols_clj_source);
-    }
+    // clojure.core.protocols — Zig builtins (Phase B.3), no recompilation needed
 
     // Re-compile core/reducers.clj
     if (env.findNamespace("clojure.core.reducers")) |reducers_ns| {

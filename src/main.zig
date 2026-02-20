@@ -959,8 +959,8 @@ fn runExecFn(
 /// Initialize env from pre-compiled bootstrap cache (D81).
 /// Registers builtins (Zig function pointers), then restores Clojure-defined
 /// Vars from the serialized env snapshot embedded at build time.
-/// Protocol/ProtocolFn values are now serialized directly in the cache,
-/// so no re-evaluation of protocols.clj/reducers.clj is needed.
+/// Protocols are created as Zig builtins in registerBuiltins() (Phase B.3).
+/// Reducers still loaded from .clj via bootstrap cache.
 fn bootstrapFromCache(gc_alloc: Allocator, env: *Env, gc: ?*gc_mod.MarkSweepGc) void {
     registry.registerBuiltins(env) catch {
         std.debug.print("Error: failed to register builtins\n", .{});
@@ -1002,6 +1002,8 @@ fn markBootstrapLibs() void {
         "clojure.zip",
         "clojure.core.protocols",
         "clojure.core.reducers",
+        "clojure.datafy",
+        "clojure.repl.deps",
         // spec.alpha loaded lazily on first require
     };
     for (libs) |name| {
