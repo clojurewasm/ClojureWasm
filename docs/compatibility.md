@@ -107,5 +107,41 @@ Vars that are defined but have limited or no-op behavior:
 
 ## Upstream Test Coverage
 
-52 upstream test files ported from JVM Clojure test suite, all passing.
+63 upstream test files (62 passing, 1 failing: test_fixtures.clj).
+146 differential test expressions (CW vs JVM), all passing.
 6 core e2e tests, 14 deps.edn e2e tests.
+
+## Library Compatibility
+
+Tested as-is (no forking). CW gets fixed when tests fail.
+Full results: `test/compat/RESULTS.md`.
+
+| Library           | Version | Type         | Pass Rate | Notes |
+|-------------------|---------|--------------|-----------|-------|
+| medley            | 1.8.0+  | Utility      | 82.5%     | Java interop methods are all failures |
+| camel-snake-kebab | 0.12.0+ | Case convert | 98.6%     | 2 fails = split edge case |
+| honeysql          | 2.6.x   | SQL DSL      | Load OK   | All 3 namespaces load |
+| data.csv          | 1.1.x   | CSV I/O      | 100%      | Full read/write working |
+| tools.cli         | -       | CLI parsing  | 4/6 tests | 2 pass, 3 partial, 1 crash |
+| clojure.walk      | (core)  | Tree walking | 100%      | Core namespace |
+| clojure.set       | (core)  | Set algebra  | 100%      | Core namespace |
+| clojure.edn       | (core)  | EDN reader   | 100%      | Core namespace |
+| clojure.pprint    | (core)  | Pretty print | 100%      | Full cl-format |
+| clojure.xml       | (core)  | XML parser   | 100%      | Pure Clojure |
+
+### Out of Scope (deftype dependency)
+
+| Library     | Blocker |
+|-------------|---------|
+| data.json   | definterface + deftype |
+| instaparse  | deftype (GLL data structures) |
+| core.match  | deftype + clojure.lang internals |
+| malli       | deftype in regex impl |
+| meander     | &form macro binding + case* |
+
+### Key Findings
+
+1. Pure Clojure/cljc libraries work well (82-100%)
+2. Java interop methods are the primary failure cause
+3. `deftype` blocks most advanced libraries
+4. Core namespaces (walk, set, edn, pprint, xml) all pass 100%

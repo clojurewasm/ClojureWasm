@@ -60,15 +60,14 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 84: Testing Expansion
-Phase 84 COMPLETE. All sub-tasks done:
-- 84.1: 63 test files (62/63 pass), +17 CW-specific test files
-- 84.2: 146 differential test expressions (246 with randoms), 0 failures
-- 84.3: Reader round-trip property test (184 assertions, 0 failures)
-- 84.4: Stability test (122 assertions: 1K ops, large colls, recursion)
-- 84.5: Golden REPL output test (46 assertions: pr-str, str, println)
-- 84.6: GC stress test (16 assertions: rapid alloc, temp objects, lazy GC)
+Phase 85 IN-PROGRESS: Library Compatibility Expansion
+- 85.1 DONE: data.csv 100%, data.json/instaparse blocked (deftype)
+- 85.2 DONE: malli/core.match blocked (deftype)
+- 85.3 DONE: docs/compatibility.md updated with library matrix
+- 85.4 TODO: F141 cljw.xxx aliases
+- 10+ libraries tested: medley 82.5%, CSK 98.6%, honeysql load, data.csv 100%,
+  tools.cli 4/6, walk/set/edn/pprint/xml 100%
 - Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
-- Known: is macro has bug with instance? special form reporting (workaround: true?)
 
 ## Previous Task
 
@@ -77,7 +76,7 @@ Phase 83A-83E COMPLETE (Architecture v2).
 ## Task Queue
 
 ```
-(Phase 84 complete — proceed to Phase 85)
+85.4: F141 cljw.xxx aliases for clojure.java.xxx namespaces
 ```
 
 ## 83E Audit Results & Scope Reduction
