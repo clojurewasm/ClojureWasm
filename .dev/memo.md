@@ -59,25 +59,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-88A-sweep: Upstream test stabilization before Phase B.
-Goal: maximize clean-pass files, record baselines for hard failures, exclude medley.
+Phase 88B complete. All easy fixes done, baselines recorded.
+Next: Phase B (Library namespaces → Zig builtins).
 
 ## Previous Task
 
-88A post-fix: Fix 2 regressions from A.11/A.12 macro migration (formHash, macroexpand-1).
+88A-sweep: Upstream test stabilization (S.1-S.6 all DONE).
 
 ## Task Queue
 
 ```
-88A-sweep: Upstream test stabilization
-  S.1: Exclude medley from cljw test (System/exit kills runner) ← DONE
-  S.1b: Fix deferred cache segfault (GC reclaims strings table) ← DONE
-  S.2: Fix compilation.clj — register macro vars with :macro true ← DONE
-  S.3: Fix other_functions.clj — min-key/max-key last-wins on ties ← DONE
-  S.4: Fix transducers.clj — eduction multi-xform comp (not apply) ← DONE
-  S.5: Fix main.clj — restrict Zig transforms to core ns only ← DONE
-  S.6: Record baseline for hard failures (macros 8F, reducers 11F, spec 31) ← NEXT
---- After sweep ---
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring
@@ -94,17 +85,22 @@ User decision: Override audit deferral. Migrate ALL .clj to Zig (zero .clj in pi
 Strategy: Remove constraints → migrate everything → refactor directories → optimize.
 Plan: `.dev/all-zig-plan.md` (Phases A-E). Benchmarks baseline: `83E-v2` in history.yaml.
 
-## Known Issues (Phase 88A targets)
+## Known Issues (post-88B baselines)
 
-- ~~test_fixtures.clj: bootstrap eval error in use-fixtures~~ FIXED 88A.3 (HANDLERS_MAX 16→64, now 63/63 upstream pass)
-- ~~is macro: bug with instance? special form~~ FIXED 88A.1 (analyzer now checks locals, runtime accepts symbols)
-- ~~parallel.clj, vars.clj: state pollution~~ RESOLVED (was caused by HANDLERS_MAX overflow, fixed in 88A.3)
-- ~~serialize.zig: hierarchy var not restored from bytecode cache~~ FIXED 88A.2 (resolve from env during deserialization)
-- extend-via-metadata: not supported in defprotocol → 88A.5
+Hard failures (individual execution):
+- macros.clj: 8F (metadata propagation through syntax-quote)
+- reducers.clj: 11F (CollFold protocol not implemented)
+- spec.clj: 25E (spec.alpha largely unimplemented)
+- test/clojure/numbers.clj: 3F (char type returns char not string)
+
+State pollution in batch execution (pass individually):
+- multimethods.clj: 36E in batch (defmethod leaks across tests)
+- clojure_zip.clj: 17E in batch
+- data.clj: 13E in batch
 
 ## Next Phase Queue
 
-Phase B (after A complete): Library namespaces → Zig. See `.dev/all-zig-plan.md`.
+Phase B: Library namespaces → Zig. See `.dev/all-zig-plan.md`.
 
 ## Notes
 
