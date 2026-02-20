@@ -131,21 +131,7 @@
 ;; Core macros
 ;; `comment`, `if-not`, `when-not` migrated to Zig (macro_transforms.zig)
 
-(defmacro cond
-  "Takes a set of test/expr pairs. It evaluates each test one at a
-  time.  If a test returns logical true, cond evaluates and returns
-  the value of the corresponding expr and doesn't evaluate any of the
-  other tests or exprs. (cond) returns nil."
-  [& clauses]
-  (when (seq clauses)
-    (if (next clauses) ;; CLJW: upstream throws IllegalArgumentException for odd forms
-      (let [test (first clauses)
-            then (first (next clauses)) ;; CLJW: (second) not yet available at bootstrap
-            more (next (next clauses))]
-        (if more
-          `(if ~test ~then (cond ~@more))
-          `(if ~test ~then)))
-      (throw (str "cond requires an even number of forms")))))
+;; `cond` macro migrated to Zig (macro_transforms.zig)
 
 ;; Utility functions
 
@@ -234,24 +220,7 @@
 ;; `->`, `->>` migrated to Zig (macro_transforms.zig)
 
 ;; Iteration
-
-(defmacro dotimes
-  "bindings => name n
-
-  Repeatedly executes body (presumably for side-effects) with name
-  bound to integers from 0 through n-1."
-  [bindings & body]
-  (when-not (vector? bindings)
-    (throw (str "dotimes requires a vector for its binding")))
-  (when-not (= 2 (count bindings))
-    (throw (str "dotimes requires exactly 2 forms in binding vector")))
-  (let [i (first bindings)
-        n (second bindings)]
-    `(let [n# (long ~n)]
-       (loop [~i 0]
-         (when (< ~i n#)
-           ~@body
-           (recur (unchecked-inc ~i)))))))
+;; `dotimes` macro migrated to Zig (macro_transforms.zig)
 
 ;; `and`, `or` migrated to Zig (macro_transforms.zig)
 
@@ -1006,125 +975,16 @@
           (let [[shift mask imap switch-type skip-check] (prep-hashes ge default tests thens)]
             `(let [~ge ~e] (case* ~ge ~shift ~mask ~default ~imap ~switch-type :hash-identity ~skip-check))))))))
 
-(defmacro condp
-  "Takes a binary predicate, an expression, and a set of clauses.
-  Each clause can take the form of either:
-
-  test-expr result-expr
-
-  test-expr :>> result-fn
-
-  Note :>> is an ordinary keyword.
-
-  For each clause, (pred test-expr expr) is evaluated. If it returns
-  logical true, the clause is a match. If a binary clause matches, the
-  result-expr is returned, if a ternary clause matches, its result-fn,
-  which must be a unary function, is called with the result of the
-  predicate as its argument, the result of that call being the return
-  value of condp. A single default expression can follow the clauses,
-  and its value will be returned if no clause matches. If no default
-  expression is provided and no clause matches, an exception is thrown."
-  [pred expr & clauses]
-  (let [gpred (gensym "pred__")
-        gexpr (gensym "expr__")
-        emit (fn emit [pred expr args]
-               (let [cnt (count args)]
-                 (cond
-                   (= 0 cnt)
-                   `(throw (ex-info (str "No matching clause: " ~expr) {}))
-                   (= 1 cnt)
-                   (first args)
-                   (= :>> (second args))
-                   (let [a (first args)
-                         c (first (rest (rest args)))
-                         more (rest (rest (rest args)))]
-                     `(if-let [p# (~pred ~a ~expr)]
-                        (~c p#)
-                        ~(emit pred expr more)))
-                   :else
-                   (let [a (first args)
-                         b (second args)
-                         more (rest (rest args))]
-                     `(if (~pred ~a ~expr)
-                        ~b
-                        ~(emit pred expr more))))))]
-    `(let [~gpred ~pred
-           ~gexpr ~expr]
-       ~(emit gpred gexpr clauses))))
+;; `condp` macro migrated to Zig (macro_transforms.zig)
 
 ;; `declare` macro migrated to Zig (macro_transforms.zig)
 
-(defmacro letfn
-  "fnspec ==> (fname [params*] exprs) or (fname ([params*] exprs)+)
-
-  Takes a vector of function specs and a body, and generates a set of
-  bindings of functions to their names. All of the names are available
-  in all of the definitions of the functions, as well as the body."
-  {:added "1.0"}
-  [fnspecs & body]
-  `(letfn* ~(vec (interleave (map first fnspecs)
-                             (map #(cons 'fn %) fnspecs)))
-           ~@body))
+;; `letfn` macro migrated to Zig (macro_transforms.zig)
 
 ;; Imperative iteration
 ;; `while` migrated to Zig (macro_transforms.zig)
 
-(defmacro doseq
-  "Repeatedly executes body (presumably for side-effects) with
-  bindings and filtering as provided by \"for\".  Does not retain
-  the head of the sequence. Returns nil."
-  [seq-exprs & body]
-  (when-not (vector? seq-exprs)
-    (throw (str "doseq requires a vector for its binding")))
-  (when-not (even? (count seq-exprs))
-    (throw (str "doseq requires an even number of forms in binding vector")))
-  (let [step (fn step [recform exprs]
-               (if-not exprs
-                 [true `(do ~@body)]
-                 (let [k (first exprs)
-                       v (second exprs)]
-                   (if (keyword? k)
-                     (let [steppair (step recform (next (next exprs)))
-                           needrec (steppair 0)
-                           subform (steppair 1)]
-                       (cond
-                         (= k :let) [needrec `(let ~v ~subform)]
-                         (= k :while) [false `(when ~v
-                                                ~subform
-                                                ~@(when needrec [recform]))]
-                         (= k :when) [false `(if ~v
-                                               (do
-                                                 ~subform
-                                                 ~@(when needrec [recform]))
-                                               ~recform)]))
-                     (let [seq- (gensym "seq_")
-                           chunk- (gensym "chunk_")
-                           count- (gensym "count_")
-                           i- (gensym "i_")
-                           recform `(recur (next ~seq-) nil 0 0)
-                           steppair (step recform (next (next exprs)))
-                           needrec (steppair 0)
-                           subform (steppair 1)
-                           recform-chunk
-                           `(recur ~seq- ~chunk- ~count- (unchecked-inc ~i-))
-                           steppair-chunk (step recform-chunk (next (next exprs)))
-                           subform-chunk (steppair-chunk 1)]
-                       [true
-                        `(loop [~seq- (seq ~v), ~chunk- nil,
-                                ~count- 0, ~i- 0]
-                           (if (< ~i- ~count-)
-                             (let [~k (nth ~chunk- ~i-)]
-                               ~subform-chunk
-                               ~@(when needrec [recform-chunk]))
-                             (when-let [~seq- (seq ~seq-)]
-                               (if (chunked-seq? ~seq-)
-                                 (let [c# (chunk-first ~seq-)]
-                                   (recur (chunk-rest ~seq-) c#
-                                          (count c#) 0))
-                                 (let [~k (first ~seq-)]
-                                   ~subform
-                                   ~@(when needrec [recform]))))))])))))]
-    (nth (step nil (seq seq-exprs)) 1)))
+;; `doseq` macro migrated to Zig (macro_transforms.zig)
 
 (defn dorun [coll]
   (loop [s (seq coll)]
@@ -1136,9 +996,7 @@
   coll)
 
 ;; Delayed evaluation
-
-(defmacro delay [& body]
-  (list '__delay-create (cons 'fn (cons [] body))))
+;; `delay` macro migrated to Zig (macro_transforms.zig)
 
 (defn force [x]
   (if (delay? x)
@@ -1211,9 +1069,7 @@
 
 ;; `defonce` macro migrated to Zig (macro_transforms.zig)
 
-(defmacro refer-clojure
-  [& filters]
-  (cons 'clojure.core/refer (cons (list 'quote 'clojure.core) filters)))
+;; `refer-clojure` macro migrated to Zig (macro_transforms.zig)
 
 ;; Metadata utilities
 
@@ -1482,37 +1338,13 @@
 
 ;; === IO macros ===
 
-(defmacro with-out-str
-  "Evaluates exprs in a context in which *out* is bound to a fresh
-  buffer. Returns the string created by any nested printing calls."
-  [& body]
-  `(let [_# (push-output-capture)
-         _# (try (do ~@body) (catch Exception e# (pop-output-capture) (throw e#)))]
-     (pop-output-capture)))
-
-;; CLJW: uses push/pop-input-source builtins (upstream uses Java StringReader)
-(defmacro with-in-str
-  "Evaluates body in a context in which *in* is bound to a fresh
-  StringReader initialized with the string s."
-  {:added "1.0"}
-  [s & body]
-  `(let [_# (push-input-source ~s)
-         result# (try (do ~@body) (catch Exception e# (pop-input-source) (throw e#)))
-         _# (pop-input-source)]
-     result#))
+;; `with-out-str` macro migrated to Zig (macro_transforms.zig)
+;; `with-in-str` macro migrated to Zig (macro_transforms.zig)
 
 ;; CLJW: *math-context* stub — no BigDecimal, but macro signature compatibility
 (def ^:dynamic *math-context* nil)
 
-(defmacro with-precision
-  "Sets the precision and rounding mode to be used for BigDecimal operations.
-  Note: ClojureWasm does not currently support BigDecimal. This macro binds
-  *math-context* for compatibility but has no effect on arithmetic."
-  {:added "1.0"}
-  [precision & exprs]
-  (let [body (if (= (first exprs) :rounding) (nnext exprs) exprs)]
-    `(binding [*math-context* ~precision]
-       ~@body)))
+;; `with-precision` macro migrated to Zig (macro_transforms.zig)
 
 ;; CLJW: .close Java interop replaced with (close x) function call.
 ;; UPSTREAM-DIFF: upstream uses (.close x) directly; CW dispatches via __java-method.
@@ -1525,25 +1357,7 @@
       (.close x)
       (catch Exception e nil))))
 
-(defmacro with-open
-  "bindings => [name init ...]
-
-  Evaluates body in a try expression with names bound to the values
-  of the inits, and a finally clause that calls (close name) on each
-  name in reverse order."
-  {:added "1.0"}
-  [bindings & body]
-  (assert-args
-   (vector? bindings) "a vector for its binding"
-   (even? (count bindings)) "an even number of forms in binding vector")
-  (cond
-    (= (count bindings) 0) `(do ~@body)
-    (symbol? (bindings 0)) `(let ~(subvec bindings 0 2)
-                              (try
-                                (with-open ~(subvec bindings 2) ~@body)
-                                (finally
-                                  (close ~(bindings 0)))))
-    :else (throw (str "with-open only allows Symbols in bindings"))))
+;; `with-open` macro migrated to Zig (macro_transforms.zig)
 
 ;; === Transducer basics ===
 
@@ -1776,22 +1590,8 @@
   ([f c1 c2 c3 & colls]
    (into [] (apply map f c1 c2 c3 colls))))
 
-(defmacro time
-  "Evaluates expr and prints the time it took. Returns the value of expr."
-  [expr]
-  (list 'let ['start__ (list '__nano-time)
-              'ret__ expr]
-        (list 'prn (list 'str "Elapsed time: "
-                         (list '/ (list 'double (list '- (list '__nano-time) 'start__)) 1000000.0)
-                         " msecs"))
-        'ret__))
-
-(defmacro lazy-cat
-  "Expands to code which yields a lazy sequence of the concatenation
-  of the supplied colls. Each coll expr is not evaluated until it is
-  needed."
-  [& colls]
-  (cons 'concat (map (fn [c] (list 'lazy-seq c)) colls)))
+;; `time` macro migrated to Zig (macro_transforms.zig)
+;; `lazy-cat` macro migrated to Zig (macro_transforms.zig)
 
 ;; `when-first` migrated to Zig (macro_transforms.zig)
 
@@ -2020,42 +1820,7 @@
 
 ;; === D15 easy wins ===
 
-;; locking (single-threaded, no-op synchronization)
-(defmacro locking
-  "Executes body in an (effectively) atomic way. In ClojureWasm
-  (single-threaded), this simply evaluates body."
-  [x & body]
-  `(do ~x ~@body))
-
-(defmacro dosync
-  "Runs the exprs (in an implicit do) in a transaction that encompasses
-  exprs and any nested calls. Starts a transaction if none is already
-  running on this thread. Any uncaught exception will abort the
-  transaction and flow out of dosync."
-  {:added "1.0"}
-  [& exprs]
-  `(__run-in-transaction (fn [] ~@exprs)))
-
-(defmacro sync
-  "transaction-flags => TBD, currently ignored.
-  Runs the exprs (in an implicit do) in a transaction that encompasses
-  exprs and any nested calls."
-  {:added "1.0"}
-  [flags-ignored-for-now & body]
-  `(dosync ~@body))
-
-(defmacro io!
-  "If an io! block occurs in a transaction, throws an
-  IllegalStateException, else runs body in an implicit do. If the
-  first expression in body is a literal string, will use that as the
-  exception message."
-  {:added "1.0"}
-  [& body]
-  (let [message (if (string? (first body)) (first body) "I/O in transaction")
-        body (if (string? (first body)) (next body) body)]
-    `(if (__in-transaction?)
-       (throw (ex-info ~message {}))
-       (do ~@body))))
+;; `locking`, `dosync`, `sync`, `io!` migrated to Zig (macro_transforms.zig)
 
 ;; requiring-resolve
 (defn requiring-resolve
@@ -2137,10 +1902,7 @@
              (drop-while seq? (next s)))
       ret)))
 
-(defmacro extend-protocol
-  [p & specs]
-  (let [impls (parse-impls specs)]
-    `(do ~@(map (fn [entry] `(extend-type ~(key entry) ~p ~@(val entry))) impls))))
+;; `extend-protocol` macro migrated to Zig (macro_transforms.zig)
 
 ;; Data reader constants
 (def default-data-readers
@@ -2271,35 +2033,10 @@
       (reduce process-entry [] bents))))
 
 ;; Array macros
-(defmacro amap
-  "Maps an expression across an array a, using an index named idx, and
-  return value named ret, initialized to a clone of a, then setting
-  each element of ret to the evaluation of expr, returning the new
-  array ret."
-  [a idx ret expr]
-  `(let [a# ~a l# (alength a#)
-         ~ret (aclone a#)]
-     (loop [~idx 0]
-       (if (< ~idx l#)
-         (do
-           (aset ~ret ~idx ~expr)
-           (recur (inc ~idx)))
-         ~ret))))
+;; `amap` macro migrated to Zig (macro_transforms.zig)
+;; `areduce` macro migrated to Zig (macro_transforms.zig)
 
-(defmacro areduce
-  "Reduces an expression across an array a, using an index named idx,
-  and return value named ret, initialized to init, setting ret to the
-  evaluation of expr at each step, returning ret."
-  [a idx ret init expr]
-  `(let [a# ~a l# (alength a#)]
-     (loop [~idx 0 ~ret ~init]
-       (if (< ~idx l#)
-         (recur (inc ~idx) ~expr)
-         ~ret))))
-
-;; future macro
-(defmacro future
-  [& body] `(future-call (fn [] ~@body)))
+;; `future` macro migrated to Zig (macro_transforms.zig)
 
 ;; pmap — parallel map using futures
 (defn pmap
@@ -2324,10 +2061,7 @@
 (defn pcalls
   [& fns] (pmap (fn [f] (f)) fns))
 
-;; pvalues — parallel value computation
-(defmacro pvalues
-  [& exprs]
-  `(pcalls ~@(map (fn [e] (list 'fn [] e)) exprs)))
+;; `pvalues` macro migrated to Zig (macro_transforms.zig)
 
 ;; Deprecated struct system (needed by clojure.pprint's pretty-writer)
 ;; UPSTREAM-DIFF: uses plain maps instead of PersistentStructMap
@@ -2338,11 +2072,7 @@
   [& keys]
   (vec keys))
 
-(defmacro defstruct
-  "Same as (def name (create-struct keys...))"
-  {:added "1.0"}
-  [name & keys]
-  `(def ~name (create-struct ~@keys)))
+;; `defstruct` macro migrated to Zig (macro_transforms.zig)
 
 (defn struct-map
   "Returns a new structmap instance with the keys of the

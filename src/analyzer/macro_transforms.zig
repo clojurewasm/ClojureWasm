@@ -61,6 +61,30 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "defonce", transformDefonce },
     .{ "definline", transformDefinline },
     .{ "vswap!", transformVswap },
+    // 83E-v2.1.7: Complex control flow macros
+    .{ "cond", transformCond },
+    .{ "dotimes", transformDotimes },
+    .{ "delay", transformDelay },
+    .{ "lazy-cat", transformLazyCat },
+    .{ "time", transformTime },
+    .{ "locking", transformLocking },
+    .{ "dosync", transformDosync },
+    .{ "sync", transformSync },
+    .{ "io!", transformIo },
+    .{ "with-precision", transformWithPrecision },
+    .{ "with-open", transformWithOpen },
+    .{ "with-out-str", transformWithOutStr },
+    .{ "with-in-str", transformWithInStr },
+    .{ "condp", transformCondp },
+    .{ "doseq", transformDoseq },
+    .{ "amap", transformAmap },
+    .{ "areduce", transformAreduce },
+    .{ "future", transformFuture },
+    .{ "pvalues", transformPvalues },
+    .{ "defstruct", transformDefstruct },
+    .{ "letfn", transformLetfn },
+    .{ "refer-clojure", transformReferClojure },
+    .{ "extend-protocol", transformExtendProtocol },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -746,6 +770,651 @@ fn transformDefinline(allocator: Allocator, args: []const Form) anyerror!Form {
     const defn_form: Form = .{ .data = .{ .list = defn_items } };
     // Re-analyze will invoke transformDefn
     return defn_form;
+}
+
+// ============================================================
+// 83E-v2.1.7: Complex control flow macros
+// ============================================================
+
+/// `(cond)` → `nil`
+/// `(cond test then rest...)` → `(if test then (cond rest...))`
+fn transformCond(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return makeNil();
+    if (args.len == 1) {
+        return makeList(allocator, &.{
+            makeSymbol("throw"),
+            try makeList(allocator, &.{ makeSymbol("str"), makeString("cond requires an even number of forms") }),
+        });
+    }
+    const test_form = args[0];
+    const then_form = args[1];
+    const rest = args[2..];
+    if (rest.len == 0) {
+        return makeIf(allocator, test_form, then_form, null);
+    }
+    // (if test then (cond rest...))
+    const cond_rest_items = try prependForm(allocator, makeSymbol("cond"), rest);
+    const cond_rest: Form = .{ .data = .{ .list = cond_rest_items } };
+    return makeIf(allocator, test_form, then_form, cond_rest);
+}
+
+/// `(dotimes [i n] body...)` → `(let [n# (long n)] (loop [i 0] (when (< i n#) body... (recur (unchecked-inc i)))))`
+fn transformDotimes(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bindings = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (bindings.len != 2) return error.InvalidArgs;
+    const i_sym = bindings[0];
+    const n_expr = bindings[1];
+    const body = args[1..];
+    // n# = gensym
+    const n_sym = try gensymWithPrefix(allocator, "n");
+    // (long n_expr)
+    const long_n = try makeList(allocator, &.{ makeSymbol("long"), n_expr });
+    // (unchecked-inc i)
+    const inc_i = try makeList(allocator, &.{ makeSymbol("unchecked-inc"), i_sym });
+    // (recur (unchecked-inc i))
+    const recur_form = try makeList(allocator, &.{ makeSymbol("recur"), inc_i });
+    // body... + (recur ...)
+    const body_plus_recur = try appendForm(allocator, body, recur_form);
+    // (< i n#)
+    const test_form = try makeList(allocator, &.{ makeSymbol("<"), i_sym, n_sym });
+    // (when (< i n#) body... (recur ...))
+    const when_items = try prependForm(allocator, test_form, body_plus_recur);
+    const when_all = try prependForm(allocator, makeSymbol("when"), when_items);
+    const when_form: Form = .{ .data = .{ .list = when_all } };
+    // (loop [i 0] when_form)
+    const loop_bindings = try makeVector(allocator, &.{ i_sym, makeInteger(0) });
+    const loop_form = try makeList(allocator, &.{ makeSymbol("loop"), loop_bindings, when_form });
+    // (let [n# (long n)] loop_form)
+    return makeLet(allocator, &.{ n_sym, long_n }, &.{loop_form});
+}
+
+/// `(delay body...)` → `(__delay-create (fn [] body...))`
+fn transformDelay(allocator: Allocator, args: []const Form) anyerror!Form {
+    const fn_form = try makeFn(allocator, &.{}, args);
+    return makeList(allocator, &.{ makeSymbol("__delay-create"), fn_form });
+}
+
+/// `(lazy-cat colls...)` → `(concat (lazy-seq c1) (lazy-seq c2) ...)`
+fn transformLazyCat(allocator: Allocator, args: []const Form) anyerror!Form {
+    // Build: (concat (lazy-seq c1) (lazy-seq c2) ...)
+    var items = try allocator.alloc(Form, 1 + args.len);
+    items[0] = makeSymbol("concat");
+    for (args, 0..) |c, i| {
+        items[1 + i] = try makeList(allocator, &.{ makeSymbol("lazy-seq"), c });
+    }
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(time expr)` → `(let [start (__nano-time) ret expr] (prn (str "Elapsed time: " ...)) ret)`
+fn transformTime(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len != 1) return error.InvalidArgs;
+    const expr = args[0];
+    const start = try gensymWithPrefix(allocator, "start");
+    const ret = try gensymWithPrefix(allocator, "ret");
+    // (__nano-time)
+    const nano_time = try makeList(allocator, &.{makeSymbol("__nano-time")});
+    // (- (__nano-time) start)
+    const elapsed_ns = try makeList(allocator, &.{ makeSymbol("-"), try makeList(allocator, &.{makeSymbol("__nano-time")}), start });
+    // (double (- ...))
+    const elapsed_double = try makeList(allocator, &.{ makeSymbol("double"), elapsed_ns });
+    // (/ (double ...) 1000000.0)
+    const elapsed_ms = try makeList(allocator, &.{ makeSymbol("/"), elapsed_double, .{ .data = .{ .float = 1000000.0 } } });
+    // (str "Elapsed time: " elapsed_ms " msecs")
+    const str_form = try makeList(allocator, &.{ makeSymbol("str"), makeString("Elapsed time: "), elapsed_ms, makeString(" msecs") });
+    // (prn str_form)
+    const prn_form = try makeList(allocator, &.{ makeSymbol("prn"), str_form });
+    // (let [start (__nano-time) ret expr] (prn ...) ret)
+    return makeLet(allocator, &.{ start, nano_time, ret, expr }, &.{ prn_form, ret });
+}
+
+/// `(locking x body...)` → `(do x body...)`
+fn transformLocking(allocator: Allocator, args: []const Form) anyerror!Form {
+    return makeDo(allocator, args);
+}
+
+/// `(dosync exprs...)` → `(__run-in-transaction (fn [] exprs...))`
+fn transformDosync(allocator: Allocator, args: []const Form) anyerror!Form {
+    const fn_form = try makeFn(allocator, &.{}, args);
+    return makeList(allocator, &.{ makeSymbol("__run-in-transaction"), fn_form });
+}
+
+/// `(sync flags body...)` → `(dosync body...)`
+fn transformSync(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    // Skip first arg (flags-ignored-for-now)
+    const body = args[1..];
+    const items = try prependForm(allocator, makeSymbol("dosync"), body);
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(io! body...)` → check for string message, then `(if (__in-transaction?) (throw ...) (do body...))`
+fn transformIo(allocator: Allocator, args: []const Form) anyerror!Form {
+    var message: Form = makeString("I/O in transaction");
+    var body = args;
+    if (args.len > 0 and args[0].data == .string) {
+        message = args[0];
+        body = args[1..];
+    }
+    // (ex-info message {})
+    const empty_map = try makeMap(allocator, &.{});
+    const ex_info = try makeList(allocator, &.{ makeSymbol("ex-info"), message, empty_map });
+    // (throw (ex-info message {}))
+    const throw_form = try makeList(allocator, &.{ makeSymbol("throw"), ex_info });
+    // (__in-transaction?)
+    const in_tx = try makeList(allocator, &.{makeSymbol("__in-transaction?")});
+    // (do body...)
+    const do_body = try makeDo(allocator, body);
+    return makeIf(allocator, in_tx, throw_form, do_body);
+}
+
+/// `(with-precision precision [:rounding mode] body...)` → `(binding [*math-context* precision] body...)`
+fn transformWithPrecision(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const precision = args[0];
+    var body = args[1..];
+    // Skip :rounding mode if present
+    if (body.len >= 2 and body[0].data == .keyword) {
+        if (std.mem.eql(u8, body[0].data.keyword.name, "rounding")) {
+            body = body[2..];
+        }
+    }
+    // (binding [*math-context* precision] body...)
+    const binding_vec = try makeVector(allocator, &.{ makeSymbol("*math-context*"), precision });
+    var items = try allocator.alloc(Form, 2 + body.len);
+    items[0] = makeSymbol("binding");
+    items[1] = binding_vec;
+    @memcpy(items[2..], body);
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(with-open [x init ...] body...)` →
+/// recursive: `(let [x init] (try (with-open [rest...] body...) (finally (close x))))`
+fn transformWithOpen(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bindings = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (bindings.len % 2 != 0) return error.InvalidArgs;
+    const body = args[1..];
+
+    if (bindings.len == 0) {
+        return makeDo(allocator, body);
+    }
+
+    const name = bindings[0];
+    const init = bindings[1];
+    const rest_bindings = bindings[2..];
+
+    // (close name)
+    const close_form = try makeList(allocator, &.{ makeSymbol("close"), name });
+    // (finally (close name))
+    const finally_form = try makeList(allocator, &.{ makeSymbol("finally"), close_form });
+
+    // Inner body: if more bindings, recurse via with-open; otherwise use body directly
+    var inner_body: Form = undefined;
+    if (rest_bindings.len > 0) {
+        const rest_vec = try makeVector(allocator, rest_bindings);
+        var wo_items = try allocator.alloc(Form, 2 + body.len);
+        wo_items[0] = makeSymbol("with-open");
+        wo_items[1] = rest_vec;
+        @memcpy(wo_items[2..], body);
+        inner_body = .{ .data = .{ .list = wo_items } };
+    } else {
+        inner_body = try makeDo(allocator, body);
+    }
+
+    // (try inner_body (finally (close name)))
+    const try_form = try makeList(allocator, &.{ makeSymbol("try"), inner_body, finally_form });
+    // (let [name init] try_form)
+    return makeLet(allocator, &.{ name, init }, &.{try_form});
+}
+
+/// `(with-out-str body...)` →
+/// `(let [_ (push-output-capture) _ (try (do body...) (catch Exception e (pop-output-capture) (throw e)))] (pop-output-capture))`
+fn transformWithOutStr(allocator: Allocator, args: []const Form) anyerror!Form {
+    const g1 = try gensymWithPrefix(allocator, "_");
+    const g2 = try gensymWithPrefix(allocator, "_");
+    // (push-output-capture)
+    const push = try makeList(allocator, &.{makeSymbol("push-output-capture")});
+    // (do body...)
+    const do_body = try makeDo(allocator, args);
+    // catch var
+    const e_sym = try gensymWithPrefix(allocator, "e");
+    // (pop-output-capture) for catch
+    const pop_catch = try makeList(allocator, &.{makeSymbol("pop-output-capture")});
+    // (throw e#)
+    const throw_e = try makeList(allocator, &.{ makeSymbol("throw"), e_sym });
+    // (catch Exception e# (pop-output-capture) (throw e#))
+    const catch_form = try makeList(allocator, &.{ makeSymbol("catch"), makeSymbol("Exception"), e_sym, pop_catch, throw_e });
+    // (try (do body...) (catch ...))
+    const try_form = try makeList(allocator, &.{ makeSymbol("try"), do_body, catch_form });
+    // (pop-output-capture) — final result
+    const pop_result = try makeList(allocator, &.{makeSymbol("pop-output-capture")});
+    // (let [_# (push-output-capture) _# (try ...)] (pop-output-capture))
+    return makeLet(allocator, &.{ g1, push, g2, try_form }, &.{pop_result});
+}
+
+/// `(with-in-str s body...)` →
+/// `(let [_ (push-input-source s) result (try (do body...) (catch ...)) _ (pop-input-source)] result)`
+fn transformWithInStr(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const s = args[0];
+    const body = args[1..];
+    const g1 = try gensymWithPrefix(allocator, "_");
+    const result = try gensymWithPrefix(allocator, "result");
+    const g2 = try gensymWithPrefix(allocator, "_");
+    // (push-input-source s)
+    const push = try makeList(allocator, &.{ makeSymbol("push-input-source"), s });
+    // (do body...)
+    const do_body = try makeDo(allocator, body);
+    // catch var
+    const e_sym = try gensymWithPrefix(allocator, "e");
+    // (pop-input-source)
+    const pop_catch = try makeList(allocator, &.{makeSymbol("pop-input-source")});
+    // (throw e#)
+    const throw_e = try makeList(allocator, &.{ makeSymbol("throw"), e_sym });
+    // (catch Exception e# (pop-input-source) (throw e#))
+    const catch_form = try makeList(allocator, &.{ makeSymbol("catch"), makeSymbol("Exception"), e_sym, pop_catch, throw_e });
+    // (try (do body...) (catch ...))
+    const try_form = try makeList(allocator, &.{ makeSymbol("try"), do_body, catch_form });
+    // (pop-input-source) — after
+    const pop = try makeList(allocator, &.{makeSymbol("pop-input-source")});
+    // (let [_ (push ...) result (try ...) _ (pop)] result)
+    return makeLet(allocator, &.{ g1, push, result, try_form, g2, pop }, &.{result});
+}
+
+/// `(condp pred expr clauses...)` →
+/// `(let [gpred pred gexpr expr] (if (gpred a gexpr) b (if ...)))`
+/// Supports `:>>` ternary clauses.
+fn transformCondp(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const pred = args[0];
+    const expr = args[1];
+    const clauses = args[2..];
+
+    const gpred = try gensymWithPrefix(allocator, "pred");
+    const gexpr = try gensymWithPrefix(allocator, "expr");
+
+    const emitted = try emitCondp(allocator, gpred, gexpr, clauses);
+    return makeLet(allocator, &.{ gpred, pred, gexpr, expr }, &.{emitted});
+}
+
+/// Recursive helper for condp emission.
+fn emitCondp(allocator: Allocator, gpred: Form, gexpr: Form, clauses: []const Form) anyerror!Form {
+    if (clauses.len == 0) {
+        // No default → throw
+        const str_form = try makeList(allocator, &.{ makeSymbol("str"), makeString("No matching clause: "), gexpr });
+        const empty_map = try makeMap(allocator, &.{});
+        const ex = try makeList(allocator, &.{ makeSymbol("ex-info"), str_form, empty_map });
+        return makeList(allocator, &.{ makeSymbol("throw"), ex });
+    }
+    if (clauses.len == 1) {
+        // Single default expression
+        return clauses[0];
+    }
+    // Check for :>> ternary form: test :>> result-fn
+    if (clauses.len >= 3 and clauses[1].data == .keyword and
+        std.mem.eql(u8, clauses[1].data.keyword.name, ">>"))
+    {
+        const a = clauses[0];
+        const c = clauses[2];
+        const more = clauses[3..];
+        // (if-let [p# (gpred a gexpr)] (c p#) <more>)
+        const p = try gensymWithPrefix(allocator, "p");
+        const pred_call = try makeList(allocator, &.{ gpred, a, gexpr });
+        const result_call = try makeList(allocator, &.{ c, p });
+        const else_form = try emitCondp(allocator, gpred, gexpr, more);
+        // (if-let [p# pred_call] result_call else_form)
+        const binding_vec = try makeVector(allocator, &.{ p, pred_call });
+        return makeList(allocator, &.{ makeSymbol("if-let"), binding_vec, result_call, else_form });
+    }
+    // Binary form: test result-expr
+    const a = clauses[0];
+    const b = clauses[1];
+    const more = clauses[2..];
+    // (if (gpred a gexpr) b <more>)
+    const pred_call = try makeList(allocator, &.{ gpred, a, gexpr });
+    const else_form = try emitCondp(allocator, gpred, gexpr, more);
+    return makeIf(allocator, pred_call, b, else_form);
+}
+
+/// `(doseq [x coll :let [...] :when test :while test] body...)` →
+/// Complex loop with chunked-seq optimization.
+fn transformDoseq(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const seq_exprs = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (seq_exprs.len % 2 != 0) return error.InvalidArgs;
+    const body = args[1..];
+
+    const result = try doseqStep(allocator, null, seq_exprs, body);
+    return result[1]; // return the form (index 1)
+}
+
+/// Recursive step for doseq expansion.
+/// Returns [needrec_flag, subform].
+/// needrec_flag: true means the caller should append recur form.
+fn doseqStep(
+    allocator: Allocator,
+    recform: ?Form,
+    exprs: []const Form,
+    body: []const Form,
+) anyerror!struct { bool, Form } {
+    if (exprs.len == 0) {
+        // Base case: emit body
+        return .{ true, try makeDo(allocator, body) };
+    }
+
+    const k = exprs[0];
+    const v = exprs[1];
+    const rest = exprs[2..];
+
+    // Check if k is a keyword modifier (:let, :when, :while)
+    if (k.data == .keyword) {
+        const steppair = try doseqStep(allocator, recform, rest, body);
+        const needrec = steppair[0];
+        const subform = steppair[1];
+        const kw_name = k.data.keyword.name;
+
+        if (std.mem.eql(u8, kw_name, "let")) {
+            // [needrec (let v subform)]
+            return .{ needrec, try makeList(allocator, &.{ makeSymbol("let"), v, subform }) };
+        } else if (std.mem.eql(u8, kw_name, "while")) {
+            // [false (when v subform recform?)]
+            if (needrec and recform != null) {
+                var when_items = try allocator.alloc(Form, 4);
+                when_items[0] = makeSymbol("when");
+                when_items[1] = v;
+                when_items[2] = subform;
+                when_items[3] = recform.?;
+                return .{ false, .{ .data = .{ .list = when_items } } };
+            } else {
+                return .{ false, try makeList(allocator, &.{ makeSymbol("when"), v, subform }) };
+            }
+        } else if (std.mem.eql(u8, kw_name, "when")) {
+            // [false (if v (do subform recform?) recform)]
+            if (needrec and recform != null) {
+                const do_form = try makeDo(allocator, &.{ subform, recform.? });
+                return .{ false, try makeIf(allocator, v, do_form, recform) };
+            } else {
+                return .{ false, try makeIf(allocator, v, subform, recform) };
+            }
+        }
+        return error.InvalidArgs;
+    }
+
+    // Binding form: k = binding name, v = collection expr
+    const seq_sym = try gensymWithPrefix(allocator, "seq");
+    const chunk_sym = try gensymWithPrefix(allocator, "chunk");
+    const count_sym = try gensymWithPrefix(allocator, "count");
+    const i_sym = try gensymWithPrefix(allocator, "i");
+
+    // recform for outer loop: (recur (next seq) nil 0 0)
+    const next_seq = try makeList(allocator, &.{ makeSymbol("next"), seq_sym });
+    const outer_recur = try makeList(allocator, &.{ makeSymbol("recur"), next_seq, makeNil(), makeInteger(0), makeInteger(0) });
+
+    // Step with outer recur
+    const steppair = try doseqStep(allocator, outer_recur, rest, body);
+    const needrec = steppair[0];
+    const subform = steppair[1];
+
+    // recform for chunk loop: (recur seq chunk count (unchecked-inc i))
+    const inc_i = try makeList(allocator, &.{ makeSymbol("unchecked-inc"), i_sym });
+    const chunk_recur = try makeList(allocator, &.{ makeSymbol("recur"), seq_sym, chunk_sym, count_sym, inc_i });
+
+    // Step with chunk recur (for chunked branch)
+    const steppair_chunk = try doseqStep(allocator, chunk_recur, rest, body);
+    const subform_chunk = steppair_chunk[1];
+
+    // Build: (let [k (nth chunk i)] subform-chunk recform-chunk?)
+    const nth_form = try makeList(allocator, &.{ makeSymbol("nth"), chunk_sym, i_sym });
+    var chunk_body_items: []Form = undefined;
+    if (steppair_chunk[0]) {
+        // needrec = true → append chunk_recur
+        chunk_body_items = try allocator.alloc(Form, 2);
+        chunk_body_items[0] = subform_chunk;
+        chunk_body_items[1] = chunk_recur;
+    } else {
+        chunk_body_items = try allocator.alloc(Form, 1);
+        chunk_body_items[0] = subform_chunk;
+    }
+    const chunk_let = try makeLet(allocator, &.{ k, nth_form }, chunk_body_items);
+
+    // Build: (let [k (first seq)] subform recform?)
+    const first_form = try makeList(allocator, &.{ makeSymbol("first"), seq_sym });
+    var seq_body_items: []Form = undefined;
+    if (needrec) {
+        seq_body_items = try allocator.alloc(Form, 2);
+        seq_body_items[0] = subform;
+        seq_body_items[1] = outer_recur;
+    } else {
+        seq_body_items = try allocator.alloc(Form, 1);
+        seq_body_items[0] = subform;
+    }
+    const seq_let = try makeLet(allocator, &.{ k, first_form }, seq_body_items);
+
+    // Build chunked-seq? branch:
+    // (if (chunked-seq? seq)
+    //   (let [c# (chunk-first seq)] (recur (chunk-rest seq) c# (count c#) 0))
+    //   (let [k (first seq)] subform recur?))
+    const c_sym = try gensymWithPrefix(allocator, "c");
+    const chunked_seq_test = try makeList(allocator, &.{ makeSymbol("chunked-seq?"), seq_sym });
+    const chunk_first_form = try makeList(allocator, &.{ makeSymbol("chunk-first"), seq_sym });
+    const chunk_rest_form = try makeList(allocator, &.{ makeSymbol("chunk-rest"), seq_sym });
+    const count_c = try makeList(allocator, &.{ makeSymbol("count"), c_sym });
+    const chunk_recur2 = try makeList(allocator, &.{ makeSymbol("recur"), chunk_rest_form, c_sym, count_c, makeInteger(0) });
+    const chunk_let2 = try makeLet(allocator, &.{ c_sym, chunk_first_form }, &.{chunk_recur2});
+    const if_chunked = try makeIf(allocator, chunked_seq_test, chunk_let2, seq_let);
+
+    // (when-let [seq (seq seq)] if_chunked)
+    const seq_seq = try makeList(allocator, &.{ makeSymbol("seq"), seq_sym });
+    const when_let_bindings = try makeVector(allocator, &.{ seq_sym, seq_seq });
+    const when_let_form = try makeList(allocator, &.{ makeSymbol("when-let"), when_let_bindings, if_chunked });
+
+    // (< i count)
+    const i_lt_count = try makeList(allocator, &.{ makeSymbol("<"), i_sym, count_sym });
+    // (if (< i count) chunk_let when_let_form)
+    const if_form = try makeIf(allocator, i_lt_count, chunk_let, when_let_form);
+
+    // (loop [seq (seq v) chunk nil count 0 i 0] if_form)
+    const seq_v = try makeList(allocator, &.{ makeSymbol("seq"), v });
+    const loop_bindings = try makeVector(allocator, &.{
+        seq_sym, seq_v, chunk_sym, makeNil(), count_sym, makeInteger(0), i_sym, makeInteger(0),
+    });
+    return .{ true, try makeList(allocator, &.{ makeSymbol("loop"), loop_bindings, if_form }) };
+}
+
+/// `(amap a idx ret expr)` →
+/// `(let [a# a l# (alength a#) ret (aclone a#)] (loop [idx 0] (if (< idx l#) (do (aset ret idx expr) (recur (inc idx))) ret)))`
+fn transformAmap(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len != 4) return error.InvalidArgs;
+    const a_expr = args[0];
+    const idx = args[1];
+    const ret = args[2];
+    const expr = args[3];
+    const a_sym = try gensymWithPrefix(allocator, "a");
+    const l_sym = try gensymWithPrefix(allocator, "l");
+    // (alength a#)
+    const alength = try makeList(allocator, &.{ makeSymbol("alength"), a_sym });
+    // (aclone a#)
+    const aclone = try makeList(allocator, &.{ makeSymbol("aclone"), a_sym });
+    // (aset ret idx expr)
+    const aset = try makeList(allocator, &.{ makeSymbol("aset"), ret, idx, expr });
+    // (inc idx)
+    const inc_idx = try makeList(allocator, &.{ makeSymbol("inc"), idx });
+    // (recur (inc idx))
+    const recur_form = try makeList(allocator, &.{ makeSymbol("recur"), inc_idx });
+    // (do (aset ...) (recur ...))
+    const do_form = try makeDo(allocator, &.{ aset, recur_form });
+    // (< idx l#)
+    const test_form = try makeList(allocator, &.{ makeSymbol("<"), idx, l_sym });
+    // (if (< idx l#) do-form ret)
+    const if_form = try makeIf(allocator, test_form, do_form, ret);
+    // (loop [idx 0] if-form)
+    const loop_bindings = try makeVector(allocator, &.{ idx, makeInteger(0) });
+    const loop_form = try makeList(allocator, &.{ makeSymbol("loop"), loop_bindings, if_form });
+    // (let [a# a l# (alength a#) ret (aclone a#)] loop-form)
+    return makeLet(allocator, &.{ a_sym, a_expr, l_sym, alength, ret, aclone }, &.{loop_form});
+}
+
+/// `(areduce a idx ret init expr)` →
+/// `(let [a# a l# (alength a#)] (loop [idx 0 ret init] (if (< idx l#) (recur (inc idx) expr) ret)))`
+fn transformAreduce(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len != 5) return error.InvalidArgs;
+    const a_expr = args[0];
+    const idx = args[1];
+    const ret = args[2];
+    const init = args[3];
+    const expr = args[4];
+    const a_sym = try gensymWithPrefix(allocator, "a");
+    const l_sym = try gensymWithPrefix(allocator, "l");
+    // (alength a#)
+    const alength = try makeList(allocator, &.{ makeSymbol("alength"), a_sym });
+    // (inc idx)
+    const inc_idx = try makeList(allocator, &.{ makeSymbol("inc"), idx });
+    // (recur (inc idx) expr)
+    const recur_form = try makeList(allocator, &.{ makeSymbol("recur"), inc_idx, expr });
+    // (< idx l#)
+    const test_form = try makeList(allocator, &.{ makeSymbol("<"), idx, l_sym });
+    // (if (< idx l#) (recur ...) ret)
+    const if_form = try makeIf(allocator, test_form, recur_form, ret);
+    // (loop [idx 0 ret init] if-form)
+    const loop_bindings = try makeVector(allocator, &.{ idx, makeInteger(0), ret, init });
+    const loop_form = try makeList(allocator, &.{ makeSymbol("loop"), loop_bindings, if_form });
+    // (let [a# a l# (alength a#)] loop-form)
+    return makeLet(allocator, &.{ a_sym, a_expr, l_sym, alength }, &.{loop_form});
+}
+
+/// `(future body...)` → `(future-call (fn [] body...))`
+fn transformFuture(allocator: Allocator, args: []const Form) anyerror!Form {
+    const fn_form = try makeFn(allocator, &.{}, args);
+    return makeList(allocator, &.{ makeSymbol("future-call"), fn_form });
+}
+
+/// `(pvalues e1 e2 ...)` → `(pcalls (fn [] e1) (fn [] e2) ...)`
+fn transformPvalues(allocator: Allocator, args: []const Form) anyerror!Form {
+    var items = try allocator.alloc(Form, 1 + args.len);
+    items[0] = makeSymbol("pcalls");
+    for (args, 0..) |e, i| {
+        items[1 + i] = try makeFn(allocator, &.{}, &.{e});
+    }
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(defstruct name keys...)` → `(def name (create-struct keys...))`
+fn transformDefstruct(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const name = args[0];
+    const keys = args[1..];
+    const cs_items = try prependForm(allocator, makeSymbol("create-struct"), keys);
+    const cs_form: Form = .{ .data = .{ .list = cs_items } };
+    return makeList(allocator, &.{ makeSymbol("def"), name, cs_form });
+}
+
+// ============================================================
+// 83E-v2.1.8: Namespace and misc macros (pulled forward — simple)
+// ============================================================
+
+/// `(letfn [(f [x] body)...] body...)` → `(letfn* [f (fn f [x] body) ...] body...)`
+fn transformLetfn(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const fnspecs = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    const body = args[1..];
+    // Build interleaved [name1 (fn name1 ...) name2 (fn name2 ...) ...]
+    var bindings: std.ArrayList(Form) = .empty;
+    for (fnspecs) |spec| {
+        const spec_items = switch (spec.data) {
+            .list => |l| l,
+            else => return error.InvalidArgs,
+        };
+        if (spec_items.len < 1) return error.InvalidArgs;
+        const fname = spec_items[0];
+        // (fn fname rest...)
+        var fn_items = try allocator.alloc(Form, 1 + spec_items.len);
+        fn_items[0] = makeSymbol("fn");
+        @memcpy(fn_items[1..], spec_items);
+        const fn_form: Form = .{ .data = .{ .list = fn_items } };
+        try bindings.append(allocator, fname);
+        try bindings.append(allocator, fn_form);
+    }
+    // (letfn* [bindings...] body...)
+    const bindings_vec = try makeVector(allocator, bindings.items);
+    var items = try allocator.alloc(Form, 2 + body.len);
+    items[0] = makeSymbol("letfn*");
+    items[1] = bindings_vec;
+    @memcpy(items[2..], body);
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(refer-clojure & filters)` → `(clojure.core/refer 'clojure.core filters...)`
+fn transformReferClojure(allocator: Allocator, args: []const Form) anyerror!Form {
+    const quoted_cc = try makeQuoted(allocator, makeSymbol("clojure.core"));
+    var items = try allocator.alloc(Form, 2 + args.len);
+    items[0] = makeQualifiedSymbol("clojure.core", "refer");
+    items[1] = quoted_cc;
+    @memcpy(items[2..], args);
+    return .{ .data = .{ .list = items } };
+}
+
+/// `(extend-protocol p & specs)` →
+/// `(do (extend-type Type1 p methods1...) (extend-type Type2 p methods2...) ...)`
+/// Parses specs by splitting on non-list forms (type names).
+fn transformExtendProtocol(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const p = args[0];
+    const specs = args[1..];
+    // Parse specs into type→methods groups.
+    // Non-list forms are type names; list forms are method impls belonging to preceding type.
+    var do_items: std.ArrayList(Form) = .empty;
+    try do_items.append(allocator, makeSymbol("do"));
+
+    var current_type: ?Form = null;
+    var current_methods: std.ArrayList(Form) = .empty;
+
+    for (specs) |spec| {
+        if (spec.data == .list) {
+            // Method impl — belongs to current_type
+            try current_methods.append(allocator, spec);
+        } else {
+            // New type name — flush previous
+            if (current_type) |ct| {
+                var et_items = try allocator.alloc(Form, 2 + current_methods.items.len);
+                et_items[0] = makeSymbol("extend-type");
+                et_items[1] = ct;
+                // Insert protocol name after type
+                // extend-type format: (extend-type Type Protocol methods...)
+                var et_full = try allocator.alloc(Form, 3 + current_methods.items.len);
+                et_full[0] = makeSymbol("extend-type");
+                et_full[1] = ct;
+                et_full[2] = p;
+                @memcpy(et_full[3..], current_methods.items);
+                try do_items.append(allocator, .{ .data = .{ .list = et_full } });
+            }
+            current_type = spec;
+            current_methods = .empty;
+        }
+    }
+    // Flush last type
+    if (current_type) |ct| {
+        var et_full = try allocator.alloc(Form, 3 + current_methods.items.len);
+        et_full[0] = makeSymbol("extend-type");
+        et_full[1] = ct;
+        et_full[2] = p;
+        @memcpy(et_full[3..], current_methods.items);
+        try do_items.append(allocator, .{ .data = .{ .list = et_full } });
+    }
+
+    return .{ .data = .{ .list = do_items.items } };
 }
 
 /// Extract the raw symbol from a form that may be wrapped in (with-meta sym meta).
