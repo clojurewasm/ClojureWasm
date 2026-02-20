@@ -36,7 +36,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 52 upstream test files, all passing. 6/6 e2e tests pass. 14/14 deps e2e pass.
+- 59 upstream test files (58/59 passing, 1 fail: test_fixtures.clj). 6/6 e2e. 14/14 deps e2e.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
 - Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
 - Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
@@ -60,10 +60,12 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 84: Testing Expansion
-84.1: Port remaining high-value upstream test files (target: 60+)
-- Fixed: def/defn now returns var (was returning symbol) — compilation.clj 8/8 pass
-- Currently 50 upstream test files, 41 passing, 9 pre-existing failures
-- Next: identify and port new high-value test files to reach 60+ target
+84.2: Differential testing campaign (CW vs JVM)
+- 84.1 DONE: 59 test files (58/59 pass), +13 CW-specific test files created
+- New files: interop_classes, exceptions, sorted_colls, threading, string_ops,
+  destructuring, regex, atoms, namespaces, transducers, multimethods, lazy_seqs, metadata
+- Known: test_fixtures.clj has bootstrap eval error in use-fixtures (deferred)
+- Known: is macro has bug with instance? special form reporting (workaround: wrap in true?)
 
 ## Previous Task
 
@@ -72,7 +74,6 @@ Phase 83A-83E COMPLETE (Architecture v2).
 ## Task Queue
 
 ```
-84.1: Port remaining upstream test files (target: 60+)
 84.2: Differential testing campaign (CW vs JVM)
 84.3: Property-based reader round-trip tests
 84.4: Long-run stability tests
@@ -102,11 +103,9 @@ functions are identified as bottlenecks through profiling.
 
 ## Known Issues
 
-- macros.clj: 8 fail, 2 error (macroexpand-1, ->, meta propagation issues)
-- other_functions.clj: 2 errors (pre-existing)
-- parallel.clj, predicates.clj, reducers.clj, test_fixtures.clj, vars.clj: pre-existing failures
-- pprint.clj: 1 fail, 1 error (pre-existing)
-- repl.clj: 1 error (pre-existing)
+- test_fixtures.clj: bootstrap eval error in use-fixtures (only upstream test failure)
+- is macro: bug with instance? special form (reports failure even when true; workaround: true? wrapper)
+- parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution)
 
 ## Next Phase Queue
 

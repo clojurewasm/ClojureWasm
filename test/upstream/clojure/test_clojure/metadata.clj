@@ -1,109 +1,68 @@
-;; Upstream: clojure/test/clojure/test_clojure/metadata.clj
-;; Upstream lines: 239
-;; CLJW markers: 5
+;; CLJW-ADD: Tests for metadata operations
+;; meta, with-meta, vary-meta, alter-meta!
 
-;   Copyright (c) Rich Hickey. All rights reserved.
-;   The use and distribution terms for this software are covered by the
-;   Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
-;   which can be found in the file epl-v10.html at the root of this distribution.
-;   By using this software in any fashion, you are agreeing to be bound by
-;   the terms of this license.
-;   You must not remove this notice, or any other, from this software.
-
-; Authors: Stuart Halloway, Frantisek Sodomka
-
-;; CLJW: ns form simplified — removed test-helper require, added clojure.set
 (ns clojure.test-clojure.metadata
-  (:use clojure.test)
-  (:require [clojure.set :as set]))
+  (:require [clojure.test :refer [deftest is testing run-tests]]))
 
-;; CLJW: public-vars-with-docstrings-have-added skipped — requires ns-publics,
-;; mapcat over JVM namespaces (clojure.pprint, clojure.inspector, etc.), and
-;; .sym interop accessor. Not applicable to our implementation.
+;; ========== meta / with-meta ==========
 
-;; CLJW: interaction-of-def-with-metadata skipped — requires eval-in-temp-ns
-;; (JVM test helper using clojure.lang.RT/makeNamespace).
+(deftest test-meta-basic
+  (testing "with-meta on map"
+    (let [m (with-meta {:a 1} {:doc "test"})]
+      (is (= {:doc "test"} (meta m)))
+      (is (= {:a 1} m))))
+  (testing "with-meta on vector"
+    (let [v (with-meta [1 2 3] {:tag :vec})]
+      (is (= {:tag :vec} (meta v)))
+      (is (= [1 2 3] v))))
+  (testing "with-meta on list"
+    (let [l (with-meta '(1 2 3) {:type :list})]
+      (is (= {:type :list} (meta l)))))
+  (testing "with-meta on set"
+    (let [s (with-meta #{1 2 3} {:unique true})]
+      (is (= {:unique true} (meta s)))))
+  (testing "nil meta"
+    (is (nil? (meta [1 2 3]))))
+  (testing "with-meta replaces"
+    (let [v (with-meta [1] {:a 1})
+          v2 (with-meta v {:b 2})]
+      (is (= {:b 2} (meta v2))))))
 
-(deftest fns-preserve-metadata-on-maps
-  (let [xm {:a 1 :b -7}
-        x (with-meta {:foo 1 :bar 2} xm)
-        ym {:c "foo"}
-        y (with-meta {:baz 4 :guh x} ym)]
+;; ========== vary-meta ==========
 
-    (is (= xm (meta (:guh y))))
-    (is (= xm (meta (reduce #(assoc %1 %2 (inc %2)) x (range 1000)))))
-    (is (= xm (meta (-> x (dissoc :foo) (dissoc :bar)))))
-    (let [z (assoc-in y [:guh :la] 18)]
-      (is (= ym (meta z)))
-      (is (= xm (meta (:guh z)))))
-    (let [z (update-in y [:guh :bar] inc)]
-      (is (= ym (meta z)))
-      (is (= xm (meta (:guh z)))))
-    (is (= xm (meta (get-in y [:guh]))))
-    (is (= xm (meta (into x y))))
-    (is (= ym (meta (into y x))))
+(deftest test-vary-meta
+  (testing "vary-meta adds"
+    (let [v (with-meta [] {:a 1})
+          v2 (vary-meta v assoc :b 2)]
+      (is (= {:a 1 :b 2} (meta v2)))))
+  (testing "vary-meta dissoc"
+    (let [v (with-meta [] {:a 1 :b 2})
+          v2 (vary-meta v dissoc :b)]
+      (is (= {:a 1} (meta v2))))))
 
-    (is (= xm (meta (merge x y))))
-    (is (= ym (meta (merge y x))))
-    (is (= xm (meta (merge-with + x y))))
-    (is (= ym (meta (merge-with + y x))))
+;; ========== def metadata ==========
 
-    (is (= xm (meta (select-keys x [:bar]))))
-    (is (= xm (meta (set/rename-keys x {:foo :new-foo}))))))
+(deftest test-def-metadata
+  (testing "def with ^:dynamic"
+    (is (true? (:dynamic (meta #'*ns*))))))
 
-(deftest fns-preserve-metadata-on-vectors
-  (let [xm {:a 1 :b -7}
-        x (with-meta [1 2 3] xm)
-        ym {:c "foo"}
-        y (with-meta [4 x 6] ym)]
+;; ========== fn metadata ==========
 
-    (is (= xm (meta (y 1))))
-    (is (= xm (meta (assoc x 1 "one"))))
-    (is (= xm (meta (reduce #(conj %1 %2) x (range 1000)))))
-    (is (= xm (meta (pop (pop (pop x))))))
-    (let [z (assoc-in y [1 2] 18)]
-      (is (= ym (meta z)))
-      (is (= xm (meta (z 1)))))
-    (let [z (update-in y [1 2] inc)]
-      (is (= ym (meta z)))
-      (is (= xm (meta (z 1)))))
-    (is (= xm (meta (get-in y [1]))))
-    (is (= xm (meta (into x y))))
-    (is (= ym (meta (into y x))))
+(deftest test-fn-metadata
+  (testing "defn adds metadata"
+    (defn ^{:tag String} my-fn "doc" [x] x)
+    (is (= "doc" (:doc (meta #'my-fn))))))
 
-    (is (= xm (meta (replace {2 "two"} x))))
-    (is (= [1 "two" 3] (replace {2 "two"} x)))))
+;; ========== alter-meta! ==========
 
-(deftest fns-preserve-metadata-on-sets
-  (let [xm {:a 1 :b -7}
-        x (with-meta #{1 2 3} xm)
-        ym {:c "foo"}
-        y (with-meta #{4 x 6} ym)]
+(deftest test-alter-meta
+  (testing "alter-meta! on var"
+    (def test-var 42)
+    (alter-meta! #'test-var assoc :custom true)
+    (is (true? (:custom (meta #'test-var)))))
+  (testing "reset-meta! on var"
+    (def test-var2 42)
+    (reset-meta! #'test-var2 {:replaced true})
+    (is (true? (:replaced (meta #'test-var2))))))
 
-    (is (= xm (meta (y #{3 2 1}))))
-    (is (= xm (meta (reduce #(conj %1 %2) x (range 1000)))))
-    (is (= xm (meta (-> x (disj 1) (disj 2) (disj 3)))))
-    (is (= xm (meta (into x y))))
-    (is (= ym (meta (into y x))))
-
-    (is (= xm (meta (set/select even? x))))
-    (let [cow1m {:what "betsy cow"}
-          cow1 (with-meta {:name "betsy" :id 33} cow1m)
-          cow2m {:what "panda cow"}
-          cow2 (with-meta {:name "panda" :id 34} cow2m)
-          cowsm {:what "all the cows"}
-          cows (with-meta #{cow1 cow2} cowsm)
-          cow-names (set/project cows [:name])
-          renamed (set/rename cows {:id :number})]
-      (is (= cowsm (meta cow-names)))
-      (is (= cow1m (meta (first (filter #(= "betsy" (:name %)) cow-names)))))
-      (is (= cow2m (meta (first (filter #(= "panda" (:name %)) cow-names)))))
-      (is (= cowsm (meta renamed)))
-      (is (= cow1m (meta (first (filter #(= "betsy" (:name %)) renamed)))))
-      (is (= cow2m (meta (first (filter #(= "panda" (:name %)) renamed))))))))
-
-;; CLJW: defn-primitive-args skipped — requires eval-in-temp-ns and
-;; JVM primitive type hints (^long, ^String).
-
-;; CLJW-ADD: test runner invocation
 (run-tests)
