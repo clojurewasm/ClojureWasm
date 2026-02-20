@@ -115,12 +115,12 @@ When in doubt, **continue** — pick the most reasonable option and proceed.
 Run before every commit:
 
 1. **All tests** (MANDATORY — every commit, no exceptions):
-   - `zig build test` — Zig unit tests
-   - `zig build -Doptimize=ReleaseSafe` — release build
-   - `./zig-out/bin/cljw test` — upstream regression suite (63 files, 0 failures required)
-   - `bash test/e2e/run_e2e.sh` — core e2e (6 tests)
-   - `bash test/e2e/deps/run_deps_e2e.sh` — deps.edn e2e (14 tests)
-   - **Hard block**: Do NOT commit if any test fails.
+   - `bash test/run_all.sh` — unified runner (all suites below in one command)
+   - Or individually: `zig build test`, `zig build -Doptimize=ReleaseSafe`,
+     `./zig-out/bin/cljw test`, `bash test/e2e/run_e2e.sh`, `bash test/e2e/deps/run_deps_e2e.sh`
+   - `cljw test`: 83 namespaces. Pre-existing failures in reducers/spec/macros
+     tracked in `.dev/known-issues.md`. No crashes allowed.
+   - **Hard block**: Do NOT commit if any test fails (pre-existing WARN is OK).
 2. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
 3. **checklist.md**: Remove resolved F##, add new F##
 4. **vars.yaml**: Mark implemented vars `done` (when implementing vars)

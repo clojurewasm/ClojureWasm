@@ -36,17 +36,10 @@ Also fixed `(char \A)` → identity (was erroring "Cannot cast char to char").
 
 ## P1: Development Infrastructure
 
-### I-010: No unified "run all tests" command
+### ~~I-010: No unified "run all tests" command~~ RESOLVED
 
-**Symptom**: `zig build test` (Zig unit), `cljw test` (upstream .clj),
-`run_e2e.sh` (wasm e2e), `run_deps_e2e.sh` (deps e2e) must be run separately.
-`cljw test` was not run for many iterations, causing regressions to accumulate.
-
-**Fix**: Create `test/run_all.sh` that runs all four test suites sequentially
-and reports a unified pass/fail summary. Update CLAUDE.md commit gate to
-reference this single command.
-
-**Files**: `test/run_all.sh` (new), `.claude/CLAUDE.md`
+**Resolution**: Created `test/run_all.sh` — runs all 5 suites (zig test, release build,
+cljw test, e2e, deps e2e) with unified summary. CLAUDE.md commit gate updated.
 
 ### I-011: `finally` blocks silently swallow exceptions
 
@@ -192,7 +185,7 @@ know about deferred cache roots).
 | I-001 | ~~**Now**~~ RESOLVED | 88C.1 |
 | I-002 | ~~**Now**~~ RESOLVED (already fixed) | pre-88C |
 | I-003 | ~~**Now**~~ RESOLVED | 88C.3 |
-| I-010 | **Now** (before Phase B) | New: 88C |
+| I-010 | ~~**Now**~~ RESOLVED | 88C.4 |
 | I-011 | During Phase B | B (TreeWalk touches) |
 | I-012 | During Phase B | B (atom/stm builtins) |
 | I-013 | During Phase C | C (bootstrap simplification) |

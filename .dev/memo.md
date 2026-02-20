@@ -59,24 +59,20 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88C: P0 Bug Fixes & Test Infrastructure.
-Fix user-facing bugs and create unified test runner before Phase B.
-See `.dev/known-issues.md` for full issue list.
-
-Sub-tasks:
-- 88C.1: Fix `cljw test` state pollution (I-001) — DONE (fresh env per file)
-- 88C.2: Fix bit-shift panics on shift ≥64 (I-002) — ALREADY FIXED (@truncate used)
-- 88C.3: Fix `char` return type (I-003) — DONE (test was wrong, char→char identity added)
-- 88C.4: Create unified test runner (I-010) — `test/run_all.sh`
+Phase 88C COMPLETE. All 4 sub-tasks done.
+Next: Phase B (Library namespaces → Zig builtins).
 
 ## Previous Task
 
-Phase 88B: Upstream test stabilization (S.1-S.6 all DONE).
+Phase 88C: P0 Bug Fixes & Test Infrastructure (4/4 done).
+- 88C.1: Fresh env per test file (I-001 resolved)
+- 88C.2: bit-shift already used @truncate (I-002 already resolved)
+- 88C.3: char test expectations fixed, char→char identity added (I-003 resolved)
+- 88C.4: test/run_all.sh created (I-010 resolved)
 
 ## Task Queue
 
 ```
-Phase 88C: P0 Bug Fixes & Test Infrastructure (4 sub-tasks)
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring
@@ -97,8 +93,8 @@ Plan: `.dev/all-zig-plan.md` (Phases A-E). Benchmarks baseline: `83E-v2` in hist
 
 Full list: `.dev/known-issues.md` (P0-P3, with resolution timeline).
 
-P0 (fix in 88C): state pollution (I-001), bit-shift panic (I-002), char type (I-003).
-P1 (fix in 88C): unified test runner (I-010).
+P0: I-001, I-002, I-003 all RESOLVED in 88C.
+P1: I-010 RESOLVED in 88C.
 P1 (fix in Phase B): finally catch (I-011), watch/validator catch (I-012).
 P2 (fix in Phase B): syntax-quote metadata (I-020), CollFold (I-021), spec (I-022), pointer cast (I-023-024).
 P3 (Phase B+ organic): UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
