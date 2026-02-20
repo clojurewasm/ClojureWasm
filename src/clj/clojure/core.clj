@@ -341,27 +341,7 @@
            ~@body
            (recur (unchecked-inc ~i)))))))
 
-;; and/or
-
-(defmacro and
-  [& args]
-  (if (nil? (seq args))
-    true
-    (let [a (first args)
-          more (rest args)]
-      (if (seq more)
-        `(let [and__auto# ~a]
-           (if and__auto# (and ~@more) and__auto#))
-        a))))
-
-(defmacro or
-  [& args]
-  (let [a (first args)
-        more (rest args)]
-    (if (seq more)
-      `(let [or__auto# ~a]
-         (if or__auto# or__auto# (or ~@more)))
-      a)))
+;; `and`, `or` migrated to Zig (macro_transforms.zig)
 
 ;; Nested collection operations
 

@@ -34,6 +34,8 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "comment", transformComment },
     .{ "while", transformWhile },
     .{ "assert", transformAssert },
+    .{ "and", transformAnd },
+    .{ "or", transformOr },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -178,6 +180,38 @@ fn transformAssert(allocator: Allocator, args: []const Form) anyerror!Form {
     const when_not_form = try makeList(allocator, &.{ makeSymbol("when-not"), x, throw_form });
     // (when *assert* when_not_form)
     return makeList(allocator, &.{ makeSymbol("when"), makeSymbol("*assert*"), when_not_form });
+}
+
+/// `(and)` → `true`
+/// `(and x)` → `x`
+/// `(and x y ...)` → `(let [g x] (if g (and y ...) g))`
+fn transformAnd(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return makeBool(true);
+    if (args.len == 1) return args[0];
+    const g = try gensymWithPrefix(allocator, "and");
+    // (and rest...)
+    const and_rest_items = try prependForm(allocator, makeSymbol("and"), args[1..]);
+    const and_rest: Form = .{ .data = .{ .list = and_rest_items } };
+    // (if g (and rest...) g)
+    const if_form = try makeIf(allocator, g, and_rest, g);
+    // (let [g x] if_form)
+    return makeLet(allocator, &.{ g, args[0] }, &.{if_form});
+}
+
+/// `(or)` → `nil`
+/// `(or x)` → `x`
+/// `(or x y ...)` → `(let [g x] (if g g (or y ...)))`
+fn transformOr(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return makeNil();
+    if (args.len == 1) return args[0];
+    const g = try gensymWithPrefix(allocator, "or");
+    // (or rest...)
+    const or_rest_items = try prependForm(allocator, makeSymbol("or"), args[1..]);
+    const or_rest: Form = .{ .data = .{ .list = or_rest_items } };
+    // (if g g (or rest...))
+    const if_form = try makeIf(allocator, g, g, or_rest);
+    // (let [g x] if_form)
+    return makeLet(allocator, &.{ g, args[0] }, &.{if_form});
 }
 
 // ============================================================
