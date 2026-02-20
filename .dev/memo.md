@@ -59,17 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.10: Transducer functions + lazy-seq constructors from core.clj → bootstrap.zig.
-Strategy: same as A.9 — move to new `core_xf_defs` const in bootstrap.zig, eval via VM bootstrap.
-Scope: ~30 remaining defn (transducers, lazy-seq, data-returning functions, def constants).
+All-Zig Migration Phase A.11: `ns` macro → Zig macro transform.
+Move ns macro from core.clj to macro_transforms.zig.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.9: 17 HOF closure utilities migrated from core.clj → bootstrap.zig core_hof_defs.
-Batch: constantly, complement, partial, juxt, every-pred, some-fn, fnil, memoize,
-bound-fn*, completing, comparator, accessor, preserving-reduced, cat, halt-when, dedupe, remove.
-Created `core_hof_defs` const string in bootstrap.zig, evaluated via evalStringVMBootstrap.
+A.10: ~45 remaining defn/def migrated from core.clj → bootstrap.zig core_seq_defs.
+Batch: concat, iterate, range, repeat, repeatedly, lazy-cat-helper, cycle, interleave,
+interpose, take, drop, mapcat, partition, partition-by, distinct, map-indexed, keep,
+keep-indexed, partition-all, take-while, drop-while, take-nth, replace, random-sample,
+reductions, tree-seq, xml-seq, iteration, partitionv, partitionv-all, pmap, pcalls,
+parse-impls, destructure, all def constants (type symbols, dynamic vars, char tables, etc.).
+core.clj reduced from 1246 → 161 lines (only ns + case macros remain).
 
 ## Task Queue
 
@@ -84,8 +86,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.7: Transducer/reduce compositions (10 fn) DONE
   A.8: Hierarchy functions (6 fn) DONE
   A.9: HOF closure utilities (17 fn) DONE
-  A.10: Transducers, lazy-seq, remaining defn (~45 fn) ← CURRENT
-  A.11: `ns` macro → Zig transform
+  A.10: Transducers, lazy-seq, remaining defn (~45 fn) DONE
+  A.11: `ns` macro → Zig transform ← CURRENT
   A.12: `case` macro → Zig transform
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination

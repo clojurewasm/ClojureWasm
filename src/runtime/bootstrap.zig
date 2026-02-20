@@ -429,6 +429,608 @@ const core_hof_defs =
     \\   (filter (complement pred) coll)))
 ;
 
+/// Remaining core.clj functions: transducers, lazy-seq constructors, def constants,
+/// destructure, pmap, etc. Evaluated after core_hof_defs.
+const core_seq_defs =
+    \\(defn concat
+    \\  ([] (lazy-seq nil))
+    \\  ([x] (lazy-seq x))
+    \\  ([x y]
+    \\   (lazy-seq
+    \\    (let [s (seq x)]
+    \\      (if s
+    \\        (cons (first s) (concat (rest s) y))
+    \\        y))))
+    \\  ([x y & zs]
+    \\   (let [cat (fn cat [xy zs]
+    \\               (lazy-seq
+    \\                (let [s (seq xy)]
+    \\                  (if s
+    \\                    (cons (first s) (cat (rest s) zs))
+    \\                    (when zs
+    \\                      (cat (first zs) (next zs)))))))]
+    \\     (cat (concat x y) zs))))
+    \\(defn iterate [f x]
+    \\  (__zig-lazy-iterate f x))
+    \\(defn range
+    \\  ([] (iterate inc 0))
+    \\  ([end] (range 0 end 1))
+    \\  ([start end] (range start end 1))
+    \\  ([start end step]
+    \\   (if (and (integer? start) (integer? end) (integer? step))
+    \\     (__zig-lazy-range start end step)
+    \\     (lazy-seq
+    \\      (cond
+    \\        (and (pos? step) (< start end))
+    \\        (cons start (range (+ start step) end step))
+    \\        (and (neg? step) (> start end))
+    \\        (cons start (range (+ start step) end step)))))))
+    \\(defn repeat
+    \\  ([x] (lazy-seq (cons x (repeat x))))
+    \\  ([n x]
+    \\   (take n (repeat x))))
+    \\(defn repeatedly
+    \\  ([f] (lazy-seq (cons (f) (repeatedly f))))
+    \\  ([n f] (take n (repeatedly f))))
+    \\(defn take
+    \\  ([n]
+    \\   (fn [rf]
+    \\     (let [nv (volatile! n)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [cur @nv
+    \\                nxt (vswap! nv dec)
+    \\                res (if (pos? cur)
+    \\                      (rf result input)
+    \\                      result)]
+    \\            (if (not (pos? nxt))
+    \\              (ensure-reduced res)
+    \\              res)))))))
+    \\  ([n coll]
+    \\   (__zig-lazy-take n coll)))
+    \\(defn drop
+    \\  ([n]
+    \\   (fn [rf]
+    \\     (let [nv (volatile! n)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [cur @nv]
+    \\            (vswap! nv dec)
+    \\            (if (pos? cur)
+    \\              result
+    \\              (rf result input))))))))
+    \\  ([n coll]
+    \\   (lazy-seq
+    \\    (loop [i n s (seq coll)]
+    \\      (if (if (> i 0) s nil)
+    \\        (recur (- i 1) (next s))
+    \\        s)))))
+    \\(defn lazy-cat-helper [colls]
+    \\  (when (seq colls)
+    \\    (lazy-seq
+    \\     (let [c (first colls)]
+    \\       (if (seq c)
+    \\         (cons (first c) (lazy-cat-helper (cons (rest c) (rest colls))))
+    \\         (lazy-cat-helper (rest colls)))))))
+    \\(defn cycle [coll]
+    \\  (when (seq coll)
+    \\    (lazy-seq
+    \\     (lazy-cat-helper (repeat coll)))))
+    \\(defn interleave
+    \\  ([] (list))
+    \\  ([c1] (lazy-seq c1))
+    \\  ([c1 c2]
+    \\   (lazy-seq
+    \\    (let [s1 (seq c1) s2 (seq c2)]
+    \\      (when (and s1 s2)
+    \\        (cons (first s1) (cons (first s2)
+    \\                               (interleave (rest s1) (rest s2))))))))
+    \\  ([c1 c2 & colls]
+    \\   (lazy-seq
+    \\    (let [ss (map seq (cons c1 (cons c2 colls)))]
+    \\      (when (every? identity ss)
+    \\        (concat (map first ss) (apply interleave (map rest ss))))))))
+    \\(defn interpose
+    \\  ([sep]
+    \\   (fn [rf]
+    \\     (let [started (volatile! false)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (if @started
+    \\            (let [sepr (rf result sep)]
+    \\              (if (reduced? sepr)
+    \\                sepr
+    \\                (rf sepr input)))
+    \\            (do
+    \\              (vreset! started true)
+    \\              (rf result input))))))))
+    \\  ([sep coll]
+    \\   (drop 1 (interleave (repeat sep) coll))))
+    \\(defn partition
+    \\  ([n coll]
+    \\   (partition n n coll))
+    \\  ([n step coll]
+    \\   (loop [s (seq coll) acc (list)]
+    \\     (let [chunk (take n s)]
+    \\       (if (= (count chunk) n)
+    \\         (recur (drop step s) (cons chunk acc))
+    \\         (reverse acc)))))
+    \\  ([n step pad coll]
+    \\   (loop [s (seq coll) acc (list)]
+    \\     (let [chunk (take n s)]
+    \\       (if (= (count chunk) n)
+    \\         (recur (drop step s) (cons chunk acc))
+    \\         (if (seq chunk)
+    \\           (reverse (cons (take n (concat chunk pad)) acc))
+    \\           (reverse acc)))))))
+    \\(defn partition-by
+    \\  ([f]
+    \\   (fn [rf]
+    \\     (let [a (volatile! [])
+    \\           pv (volatile! ::none)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result]
+    \\          (let [result (if (zero? (count @a))
+    \\                         result
+    \\                         (let [v @a]
+    \\                           (vreset! a [])
+    \\                           (unreduced (rf result v))))]
+    \\            (rf result)))
+    \\         ([result input]
+    \\          (let [pval @pv
+    \\                val (f input)]
+    \\            (vreset! pv val)
+    \\            (if (or (identical? pval ::none)
+    \\                    (= val pval))
+    \\              (do (vswap! a conj input)
+    \\                  result)
+    \\              (let [v @a]
+    \\                (vreset! a [])
+    \\                (let [ret (rf result v)]
+    \\                  (when-not (reduced? ret)
+    \\                    (vswap! a conj input))
+    \\                  ret)))))))))
+    \\  ([f coll]
+    \\   (loop [s (seq coll) acc (list) cur (list) prev nil started false]
+    \\     (if s
+    \\       (let [v (first s)
+    \\             fv (f v)]
+    \\         (if (if started (= fv prev) true)
+    \\           (recur (next s) acc (cons v cur) fv true)
+    \\           (recur (next s) (cons (reverse cur) acc) (list v) fv true)))
+    \\       (if (seq cur)
+    \\         (reverse (cons (reverse cur) acc))
+    \\         (reverse acc))))))
+    \\(defn distinct
+    \\  ([]
+    \\   (fn [rf]
+    \\     (let [seen (volatile! #{})]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (if (contains? @seen input)
+    \\            result
+    \\            (do (vswap! seen conj input)
+    \\                (rf result input))))))))
+    \\  ([coll]
+    \\   (loop [s (seq coll) seen #{} acc (list)]
+    \\     (if s
+    \\       (let [x (first s)]
+    \\         (if (contains? seen x)
+    \\           (recur (next s) seen acc)
+    \\           (recur (next s) (conj seen x) (cons x acc))))
+    \\       (reverse acc)))))
+    \\(defn mapcat
+    \\  ([f] (comp (map f) cat))
+    \\  ([f coll]
+    \\   ((fn step [cur remaining]
+    \\      (lazy-seq
+    \\       (if (seq cur)
+    \\         (cons (first cur) (step (rest cur) remaining))
+    \\         (let [s (seq remaining)]
+    \\           (when s
+    \\             (step (f (first s)) (rest s)))))))
+    \\    nil coll))
+    \\  ([f c1 c2]
+    \\   (apply concat (map f c1 c2)))
+    \\  ([f c1 c2 c3]
+    \\   (apply concat (map f c1 c2 c3))))
+    \\(defn map-indexed
+    \\  ([f]
+    \\   (fn [rf]
+    \\     (let [i (volatile! -1)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (rf result (f (vswap! i inc) input)))))))
+    \\  ([f coll]
+    \\   (loop [s (seq coll) i 0 acc (list)]
+    \\     (if s
+    \\       (recur (next s) (+ i 1) (cons (f i (first s)) acc))
+    \\       (reverse acc)))))
+    \\(defn keep
+    \\  ([f]
+    \\   (fn [rf]
+    \\     (fn
+    \\       ([] (rf))
+    \\       ([result] (rf result))
+    \\       ([result input]
+    \\        (let [v (f input)]
+    \\          (if (nil? v)
+    \\            result
+    \\            (rf result v)))))))
+    \\  ([f coll]
+    \\   (lazy-seq
+    \\    (when-let [s (seq coll)]
+    \\      (if (chunked-seq? s)
+    \\        (let [c (chunk-first s)
+    \\              size (count c)
+    \\              b (chunk-buffer size)]
+    \\          (loop [i 0]
+    \\            (when (< i size)
+    \\              (let [x (f (nth c i))]
+    \\                (when-not (nil? x)
+    \\                  (chunk-append b x)))
+    \\              (recur (inc i))))
+    \\          (chunk-cons (chunk b) (keep f (chunk-rest s))))
+    \\        (let [x (f (first s))]
+    \\          (if (nil? x)
+    \\            (keep f (rest s))
+    \\            (cons x (keep f (rest s))))))))))
+    \\(defn keep-indexed
+    \\  ([f]
+    \\   (fn [rf]
+    \\     (let [iv (volatile! -1)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [i (vswap! iv inc)
+    \\                v (f i input)]
+    \\            (if (nil? v)
+    \\              result
+    \\              (rf result v))))))))
+    \\  ([f coll]
+    \\   (loop [s (seq coll) i 0 acc (list)]
+    \\     (if s
+    \\       (let [v (f i (first s))]
+    \\         (if (nil? v)
+    \\           (recur (next s) (+ i 1) acc)
+    \\           (recur (next s) (+ i 1) (cons v acc))))
+    \\       (reverse acc)))))
+    \\(defn partition-all
+    \\  ([n]
+    \\   (fn [rf]
+    \\     (let [a (volatile! [])]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result]
+    \\          (let [result (if (zero? (count @a))
+    \\                         result
+    \\                         (let [v @a]
+    \\                           (vreset! a [])
+    \\                           (unreduced (rf result v))))]
+    \\            (rf result)))
+    \\         ([result input]
+    \\          (vswap! a conj input)
+    \\          (if (= n (count @a))
+    \\            (let [v @a]
+    \\              (vreset! a [])
+    \\              (rf result v))
+    \\            result))))))
+    \\  ([n coll]
+    \\   (loop [s (seq coll) acc (list)]
+    \\     (let [chunk (take n s)]
+    \\       (if (seq chunk)
+    \\         (recur (drop n s) (cons chunk acc))
+    \\         (reverse acc))))))
+    \\(defn take-while
+    \\  ([pred]
+    \\   (fn [rf]
+    \\     (fn
+    \\       ([] (rf))
+    \\       ([result] (rf result))
+    \\       ([result input]
+    \\        (if (pred input)
+    \\          (rf result input)
+    \\          (reduced result))))))
+    \\  ([pred coll]
+    \\   (lazy-seq
+    \\    (let [s (seq coll)]
+    \\      (when s
+    \\        (when (pred (first s))
+    \\          (cons (first s) (take-while pred (rest s)))))))))
+    \\(defn drop-while
+    \\  ([pred]
+    \\   (fn [rf]
+    \\     (let [dv (volatile! true)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [drop? @dv]
+    \\            (if (and drop? (pred input))
+    \\              result
+    \\              (do
+    \\                (vreset! dv nil)
+    \\                (rf result input)))))))))
+    \\  ([pred coll]
+    \\   (loop [s (seq coll)]
+    \\     (if s
+    \\       (if (pred (first s))
+    \\         (recur (next s))
+    \\         s)
+    \\       (list)))))
+    \\(defn take-nth
+    \\  ([n]
+    \\   (fn [rf]
+    \\     (let [iv (volatile! -1)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [i (vswap! iv inc)]
+    \\            (if (zero? (rem i n))
+    \\              (rf result input)
+    \\              result)))))))
+    \\  ([n coll]
+    \\   (lazy-seq
+    \\    (when-let [s (seq coll)]
+    \\      (cons (first s) (take-nth n (drop n s)))))))
+    \\(defn replace
+    \\  ([smap]
+    \\   (map (fn [x] (if-let [e (find smap x)] (val e) x))))
+    \\  ([smap coll]
+    \\   (if (vector? coll)
+    \\     (reduce (fn [v i]
+    \\               (if-let [e (find smap (nth v i))]
+    \\                 (assoc v i (val e))
+    \\                 v))
+    \\             coll (range (count coll)))
+    \\     (map (fn [x] (if-let [e (find smap x)] (val e) x)) coll))))
+    \\(defn random-sample
+    \\  ([prob]
+    \\   (filter (fn [_] (< (rand) prob))))
+    \\  ([prob coll]
+    \\   (filter (fn [_] (< (rand) prob)) coll)))
+    \\(defn reductions
+    \\  ([f coll]
+    \\   (lazy-seq
+    \\    (if-let [s (seq coll)]
+    \\      (reductions f (first s) (rest s))
+    \\      (list (f)))))
+    \\  ([f init coll]
+    \\   (if (reduced? init)
+    \\     (list @init)
+    \\     (cons init
+    \\           (lazy-seq
+    \\            (when-let [s (seq coll)]
+    \\              (reductions f (f init (first s)) (rest s))))))))
+    \\(defn tree-seq
+    \\  [branch? children root]
+    \\  (let [walk (fn walk [node]
+    \\               (lazy-seq
+    \\                (cons node
+    \\                      (when (branch? node)
+    \\                        (mapcat walk (children node))))))]
+    \\    (walk root)))
+    \\(defn xml-seq
+    \\  [root]
+    \\  (tree-seq
+    \\   (complement string?)
+    \\   (comp seq :content)
+    \\   root))
+    \\(defn iteration
+    \\  [step & {:keys [somef vf kf initk]
+    \\           :or {vf identity
+    \\                kf identity
+    \\                somef some?
+    \\                initk nil}}]
+    \\  ((fn next [ret]
+    \\     (when (somef ret)
+    \\       (cons (vf ret)
+    \\             (when-some [k (kf ret)]
+    \\               (lazy-seq (next (step k)))))))
+    \\   (step initk)))
+    \\(defn partitionv
+    \\  ([n coll] (partitionv n n coll))
+    \\  ([n step coll]
+    \\   (lazy-seq
+    \\    (let [s (seq coll)
+    \\          p (vec (take n s))]
+    \\      (when (= n (count p))
+    \\        (cons p (partitionv n step (nthrest s step)))))))
+    \\  ([n step pad coll]
+    \\   (lazy-seq
+    \\    (let [s (seq coll)
+    \\          p (vec (take n s))]
+    \\      (if (= n (count p))
+    \\        (cons p (partitionv n step pad (nthrest s step)))
+    \\        (when (seq p)
+    \\          (list (vec (take n (concat p pad))))))))))
+    \\(defn partitionv-all
+    \\  ([n coll] (partitionv-all n n coll))
+    \\  ([n step coll]
+    \\   (lazy-seq
+    \\    (let [s (seq coll)]
+    \\      (when s
+    \\        (let [p (vec (take n s))]
+    \\          (cons p (partitionv-all n step (nthrest s step)))))))))
+    \\(defn pmap
+    \\  ([f coll]
+    \\   (let [n (+ 2 (__available-processors))
+    \\         rets (map (fn [x] (future (f x))) coll)
+    \\         step (fn step [[x & xs :as vs] fs]
+    \\                (lazy-seq
+    \\                 (if-let [s (seq fs)]
+    \\                   (cons (deref x) (step xs (rest s)))
+    \\                   (map deref vs))))]
+    \\     (step rets (drop n rets))))
+    \\  ([f coll & colls]
+    \\   (let [step (fn step [cs]
+    \\                (lazy-seq
+    \\                 (let [ss (map seq cs)]
+    \\                   (when (every? identity ss)
+    \\                     (cons (map first ss) (step (map rest ss)))))))]
+    \\     (pmap (fn [args] (apply f args)) (step (cons coll colls))))))
+    \\(defn pcalls
+    \\  [& fns] (pmap (fn [f] (f)) fns))
+    \\(defn- parse-impls [specs]
+    \\  (loop [ret {} s specs]
+    \\    (if (seq s)
+    \\      (recur (assoc ret (first s) (take-while seq? (next s)))
+    \\             (drop-while seq? (next s)))
+    \\      ret)))
+    \\(defn destructure [bindings]
+    \\  (let [bents (partition 2 bindings)
+    \\        pb (fn pb [bvec b v]
+    \\             (let [pvec
+    \\                   (fn [bvec b val]
+    \\                     (let [gvec (gensym "vec__")
+    \\                           gseq (gensym "seq__")
+    \\                           gfirst (gensym "first__")
+    \\                           has-rest (some #{'&} b)]
+    \\                       (loop [ret (let [ret (conj bvec gvec val)]
+    \\                                    (if has-rest
+    \\                                      (conj ret gseq (list `seq gvec))
+    \\                                      ret))
+    \\                              n 0
+    \\                              bs b
+    \\                              seen-rest? false]
+    \\                         (if (seq bs)
+    \\                           (let [firstb (first bs)]
+    \\                             (cond
+    \\                               (= firstb '&) (recur (pb ret (second bs) gseq)
+    \\                                                    n
+    \\                                                    (nnext bs)
+    \\                                                    true)
+    \\                               (= firstb :as) (pb ret (second bs) gvec)
+    \\                               :else (if seen-rest?
+    \\                                       (throw (ex-info "Unsupported binding form, only :as can follow & parameter" {}))
+    \\                                       (recur (pb (if has-rest
+    \\                                                    (conj ret
+    \\                                                          gfirst `(first ~gseq)
+    \\                                                          gseq `(next ~gseq))
+    \\                                                    ret)
+    \\                                                  firstb
+    \\                                                  (if has-rest
+    \\                                                    gfirst
+    \\                                                    (list `nth gvec n nil)))
+    \\                                              (inc n)
+    \\                                              (next bs)
+    \\                                              seen-rest?))))
+    \\                           ret))))
+    \\                   pmap
+    \\                   (fn [bvec b v]
+    \\                     (let [gmap (gensym "map__")
+    \\                           defaults (:or b)]
+    \\                       (loop [ret (-> bvec (conj gmap) (conj v)
+    \\                                      (conj gmap) (conj `(if (seq? ~gmap)
+    \\                                                           (seq-to-map-for-destructuring ~gmap)
+    \\                                                           ~gmap))
+    \\                                      ((fn [ret]
+    \\                                         (if (:as b)
+    \\                                           (conj ret (:as b) gmap)
+    \\                                           ret))))
+    \\                              bes (let [transforms
+    \\                                        (reduce
+    \\                                         (fn [transforms mk]
+    \\                                           (if (keyword? mk)
+    \\                                             (let [mkns (namespace mk)
+    \\                                                   mkn (name mk)]
+    \\                                               (cond (= mkn "keys") (assoc transforms mk #(keyword (or mkns (namespace %)) (name %)))
+    \\                                                     (= mkn "syms") (assoc transforms mk #(list `quote (symbol (or mkns (namespace %)) (name %))))
+    \\                                                     (= mkn "strs") (assoc transforms mk str)
+    \\                                                     :else transforms))
+    \\                                             transforms))
+    \\                                         {}
+    \\                                         (keys b))]
+    \\                                    (reduce
+    \\                                     (fn [bes entry]
+    \\                                       (reduce #(assoc %1 %2 ((val entry) %2))
+    \\                                               (dissoc bes (key entry))
+    \\                                               ((key entry) bes)))
+    \\                                     (dissoc b :as :or)
+    \\                                     transforms))]
+    \\                         (if (seq bes)
+    \\                           (let [bb (key (first bes))
+    \\                                 bk (val (first bes))
+    \\                                 local (if (ident? bb) (with-meta (symbol nil (name bb)) (meta bb)) bb)
+    \\                                 bv (if (contains? defaults local)
+    \\                                      (list `get gmap bk (defaults local))
+    \\                                      (list `get gmap bk))]
+    \\                             (recur (if (ident? bb)
+    \\                                      (-> ret (conj local bv))
+    \\                                      (pb ret bb bv))
+    \\                                    (next bes)))
+    \\                           ret))))]
+    \\               (cond
+    \\                 (symbol? b) (-> bvec (conj b) (conj v))
+    \\                 (vector? b) (pvec bvec b v)
+    \\                 (map? b) (pmap bvec b v)
+    \\                 :else (throw (ex-info (str "Unsupported binding form: " b) {})))))
+    \\        process-entry (fn [bvec b] (pb bvec (first b) (second b)))]
+    \\    (if (every? symbol? (map first bents))
+    \\      bindings
+    \\      (reduce process-entry [] bents))))
+    \\(def String 'String)
+    \\(def Character 'Character)
+    \\(def Number 'Number)
+    \\(def Integer 'Integer)
+    \\(def Long 'Long)
+    \\(def Double 'Double)
+    \\(def Float 'Float)
+    \\(def Boolean 'Boolean)
+    \\(def Object 'Object)
+    \\(def Throwable 'Throwable)
+    \\(def Exception 'Exception)
+    \\(def RuntimeException 'RuntimeException)
+    \\(def Comparable 'Comparable)
+    \\(def ^:dynamic *math-context* nil)
+    \\(def *assert* true)
+    \\(def ^:private global-hierarchy (make-hierarchy))
+    \\(def *clojure-version*
+    \\  {:major 1 :minor 12 :incremental 0 :qualifier nil})
+    \\(def ^:dynamic *warn-on-reflection* false)
+    \\(def ^:dynamic *agent* nil)
+    \\(def ^:dynamic *allow-unresolved-vars* false)
+    \\(def ^:dynamic *reader-resolver* nil)
+    \\(def ^:dynamic *suppress-read* false)
+    \\(def ^:dynamic *compile-path* nil)
+    \\(def ^:dynamic *fn-loader* nil)
+    \\(def ^:dynamic *use-context-classloader* true)
+    \\(def char-escape-string
+    \\  {\newline "\\n"
+    \\   \tab     "\\t"
+    \\   \return  "\\r"
+    \\   \"       "\\\""
+    \\   \\       "\\\\"
+    \\   \formfeed "\\f"
+    \\   \backspace "\\b"})
+    \\(def char-name-string
+    \\  {\newline  "newline"
+    \\   \tab      "tab"
+    \\   \space    "space"
+    \\   \backspace "backspace"
+    \\   \formfeed "formfeed"
+    \\   \return   "return"})
+    \\(def default-data-readers
+    \\  {'inst __inst-from-string
+    \\   'uuid __uuid-from-string})
+    \\(def *1 nil)
+    \\(def *2 nil)
+    \\(def *3 nil)
+;
+
 /// Load and evaluate core.clj in the given Env using two-phase bootstrap (D73).
 ///
 /// Phase 1: Evaluate core.clj via TreeWalk for fast startup (~10ms).
@@ -462,6 +1064,10 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     // Phase 2b: Define HOF closure utilities via VM (constantly, complement,
     // partial, juxt, every-pred, some-fn, fnil, memoize, etc.).
     _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
+
+    // Phase 2c: Define remaining transducers, lazy-seq constructors, def constants
+    // via VM (concat, iterate, range, repeat, partition, destructure, etc.).
+    _ = try evalStringVMBootstrap(allocator, env, core_seq_defs);
 
     // Restore user namespace and re-refer all core bindings
     env.current_ns = saved_ns;
@@ -1893,6 +2499,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     _ = try evalStringVMBootstrap(allocator, env, core_clj_source);
     _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
     _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
+    _ = try evalStringVMBootstrap(allocator, env, core_seq_defs);
 
     // Re-compile walk.clj
     if (env.findNamespace("clojure.walk")) |walk_ns| {
