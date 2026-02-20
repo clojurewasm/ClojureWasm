@@ -66,12 +66,10 @@ yq '.vars.clojure_core | to_entries | map(select(.value.status == "done")) | len
 **3. Execute**
 
 - TDD cycle: Red → Green → Refactor
-- Run tests: `zig build test`
-- Run e2e tests: `bash test/e2e/run_e2e.sh` + `bash test/e2e/deps/run_deps_e2e.sh`
+- Run tests during development: `zig build test`
+- `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 - **Upstream test porting** (Phase 42+): Follow `.dev/test-porting-plan.md`
   - Port relevant upstream tests for each sub-task
-  - Run full upstream regression suite before committing
-- `compiler.zig` modified → `.claude/rules/compiler-check.md` auto-loads
 
 **4. Complete** (per task)
 
@@ -116,12 +114,16 @@ When in doubt, **continue** — pick the most reasonable option and proceed.
 
 Run before every commit:
 
-1. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
-2. **checklist.md**: Remove resolved F##, add new F##
-3. **vars.yaml**: Mark implemented vars `done` (when implementing vars)
-4. **e2e tests** (when changing execution code):
+1. **All tests** (MANDATORY — every commit, no exceptions):
+   - `zig build test` — Zig unit tests
+   - `zig build -Doptimize=ReleaseSafe` — release build
+   - `./zig-out/bin/cljw test` — upstream regression suite (63 files, 0 failures required)
    - `bash test/e2e/run_e2e.sh` — core e2e (6 tests)
    - `bash test/e2e/deps/run_deps_e2e.sh` — deps.edn e2e (14 tests)
+   - **Hard block**: Do NOT commit if any test fails.
+2. **decisions.md**: D## entry only for architectural decisions (new Value variant, new subsystem, etc.)
+3. **checklist.md**: Remove resolved F##, add new F##
+4. **vars.yaml**: Mark implemented vars `done` (when implementing vars)
 5. **memo.md**: Advance to next task
    - Update `## Current Task` with next task details
    - Remove completed task from Task Queue
@@ -132,12 +134,11 @@ Run before every commit:
    - File header statistics updated
    - Both backends verified
 7. **Wasm bridge** (D92): When modifying `src/wasm/types.zig` (zwasm bridge):
-   - `zig build test` — verify CW tests pass (bridge delegates to zwasm)
    - Wasm engine changes go in zwasm repo (`../zwasm/`), not CW
    - `bash bench/wasm_bench.sh --quick` — verify wasm benchmarks still work
 8. **Non-functional regression** (when changing execution code: src/vm/, src/evaluator/,
    src/compiler/, src/runtime/, src/builtins/, src/wasm/, bootstrap):
-   - **Binary size**: `zig build -Doptimize=ReleaseSafe && stat -f%z zig-out/bin/cljw` — ≤ 4.3MB
+   - **Binary size**: `stat -f%z zig-out/bin/cljw` — ≤ 4.3MB
    - **Startup**: `hyperfine -N --warmup 3 --runs 5 './zig-out/bin/cljw -e nil'` — ≤ 5ms
    - **RSS**: `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 | grep 'maximum resident'` — ≤ 12MB
    - **Benchmarks**: `bash bench/run_bench.sh --quick` — no CW benchmark > 1.2x baseline
