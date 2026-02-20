@@ -603,53 +603,7 @@
           {}
           coll))
 
-;; Utility macros
-
-;; CLJW: Simplified assert-args — upstream uses &form and IllegalArgumentException
-;; Note: uses (next (next ...)) and (first (next ...)) because nnext/second
-;; are not yet defined at this point in core.clj bootstrap
-(defmacro ^{:private true} assert-args
-  [& pairs]
-  (let [checks (loop [ps pairs acc []]
-                 (if (seq ps)
-                   (recur (next (next ps))
-                          (conj acc (list 'when-not (first ps)
-                                          (list 'throw (list 'str "Requires " (first (next ps)))))))
-                   acc))]
-    (cons 'do checks)))
-
-(defmacro if-let
-  "bindings => binding-form test
-
-  If test is true, evaluates then with binding-form bound to the value of
-  test, if not, yields else"
-  ([bindings then]
-   `(if-let ~bindings ~then nil))
-  ([bindings then else & oldform]
-   (assert-args
-    (vector? bindings) "a vector for its binding"
-    (nil? oldform) "1 or 2 forms after binding vector"
-    (= 2 (count bindings)) "exactly 2 forms in binding vector")
-   (let [form (first bindings) tst (first (next bindings))]
-     `(let [temp# ~tst]
-        (if temp#
-          (let [~form temp#]
-            ~then)
-          ~else)))))
-
-(defmacro when-let
-  "bindings => binding-form test
-
-  When test is true, evaluates body with binding-form bound to the value of test"
-  [bindings & body]
-  (assert-args
-   (vector? bindings) "a vector for its binding"
-   (= 2 (count bindings)) "exactly 2 forms in binding vector")
-  (let [form (first bindings) tst (first (next bindings))]
-    `(let [temp# ~tst]
-       (when temp#
-         (let [~form temp#]
-           ~@body)))))
+;; `assert-args`, `if-let`, `when-let` migrated to Zig (macro_transforms.zig)
 
 ;; Threading macro variants: `doto`, `as->`, `some->`, `some->>`, `cond->`, `cond->>` migrated to Zig
 
@@ -1339,42 +1293,7 @@
   [obj f & args]
   (with-meta obj (apply f (meta obj) args)))
 
-;; Nil-safe conditionals
-
-(defmacro if-some
-  "bindings => binding-form test
-
-   If test is not nil, evaluates then with binding-form bound to the
-   value of test, if not, yields else"
-  ([bindings then]
-   `(if-some ~bindings ~then nil))
-  ([bindings then else & oldform]
-   (assert-args
-    (vector? bindings) "a vector for its binding"
-    (nil? oldform) "1 or 2 forms after binding vector"
-    (= 2 (count bindings)) "exactly 2 forms in binding vector")
-   (let [form (first bindings) tst (first (next bindings))]
-     `(let [temp# ~tst]
-        (if (nil? temp#)
-          ~else
-          (let [~form temp#]
-            ~then))))))
-
-(defmacro when-some
-  "bindings => binding-form test
-
-   When test is not nil, evaluates body with binding-form bound to the
-   value of test"
-  [bindings & body]
-  (assert-args
-   (vector? bindings) "a vector for its binding"
-   (= 2 (count bindings)) "exactly 2 forms in binding vector")
-  (let [form (first bindings) tst (first (next bindings))]
-    `(let [temp# ~tst]
-       (if (nil? temp#)
-         nil
-         (let [~form temp#]
-           ~@body)))))
+;; `if-some`, `when-some` migrated to Zig (macro_transforms.zig)
 
 ;; vswap! macro moved to before take — see line ~124
 
@@ -1946,17 +1865,7 @@
   [& colls]
   (cons 'concat (map (fn [c] (list 'lazy-seq c)) colls)))
 
-(defmacro when-first
-  "bindings => x xs
-
-  Roughly the same as (when (seq xs) (let [x (first xs)] body))
-  but xs is evaluated only once"
-  [bindings & body]
-  (let [x (first bindings)
-        xs (second bindings)]
-    (list 'when-let ['xs__ (list 'seq xs)]
-          (concat (list 'let [x (list 'first 'xs__)])
-                  body))))
+;; `when-first` migrated to Zig (macro_transforms.zig)
 
 (def *assert* true)
 ;; `assert` migrated to Zig (macro_transforms.zig)

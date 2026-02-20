@@ -44,6 +44,12 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "cond->", transformCondThreadFirst },
     .{ "cond->>", transformCondThreadLast },
     .{ "doto", transformDoto },
+    .{ "if-let", transformIfLet },
+    .{ "when-let", transformWhenLet },
+    .{ "if-some", transformIfSome },
+    .{ "when-some", transformWhenSome },
+    .{ "when-first", transformWhenFirst },
+    .{ "assert-args", transformAssertArgs },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -370,6 +376,95 @@ fn transformDoto(allocator: Allocator, args: []const Form) anyerror!Form {
     }
     body[forms.len] = g; // return g
     return makeLet(allocator, &.{ g, x }, body);
+}
+
+/// Extract binding pair from a vector form [name expr].
+fn extractBindingPair(bindings_form: Form) !struct { name: Form, expr: Form } {
+    const vec = switch (bindings_form.data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (vec.len != 2) return error.InvalidArgs;
+    return .{ .name = vec[0], .expr = vec[1] };
+}
+
+/// `(if-let [x test] then)` or `(if-let [x test] then else)`
+/// → `(let [temp test] (if temp (let [x temp] then) else))`
+fn transformIfLet(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const bp = try extractBindingPair(args[0]);
+    const then_form = args[1];
+    const else_form: ?Form = if (args.len >= 3) args[2] else null;
+    const temp = try gensymWithPrefix(allocator, "let");
+    const inner_let = try makeLet(allocator, &.{ bp.name, temp }, &.{then_form});
+    const if_form = try makeIf(allocator, temp, inner_let, else_form orelse makeNil());
+    return makeLet(allocator, &.{ temp, bp.expr }, &.{if_form});
+}
+
+/// `(when-let [x test] body...)` → `(let [temp test] (when temp (let [x temp] body...)))`
+fn transformWhenLet(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bp = try extractBindingPair(args[0]);
+    const body = args[1..];
+    const temp = try gensymWithPrefix(allocator, "let");
+    const inner_let = try makeLet(allocator, &.{ bp.name, temp }, body);
+    const when_form = try makeList(allocator, &.{ makeSymbol("when"), temp, inner_let });
+    return makeLet(allocator, &.{ temp, bp.expr }, &.{when_form});
+}
+
+/// `(if-some [x test] then)` or `(if-some [x test] then else)`
+/// → `(let [temp test] (if (nil? temp) else (let [x temp] then)))`
+fn transformIfSome(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const bp = try extractBindingPair(args[0]);
+    const then_form = args[1];
+    const else_form: Form = if (args.len >= 3) args[2] else makeNil();
+    const temp = try gensymWithPrefix(allocator, "some");
+    const nil_check = try makeList(allocator, &.{ makeSymbol("nil?"), temp });
+    const inner_let = try makeLet(allocator, &.{ bp.name, temp }, &.{then_form});
+    const if_form = try makeIf(allocator, nil_check, else_form, inner_let);
+    return makeLet(allocator, &.{ temp, bp.expr }, &.{if_form});
+}
+
+/// `(when-some [x test] body...)` → `(let [temp test] (if (nil? temp) nil (let [x temp] body...)))`
+fn transformWhenSome(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bp = try extractBindingPair(args[0]);
+    const body = args[1..];
+    const temp = try gensymWithPrefix(allocator, "some");
+    const nil_check = try makeList(allocator, &.{ makeSymbol("nil?"), temp });
+    const inner_let = try makeLet(allocator, &.{ bp.name, temp }, body);
+    const if_form = try makeIf(allocator, nil_check, makeNil(), inner_let);
+    return makeLet(allocator, &.{ temp, bp.expr }, &.{if_form});
+}
+
+/// `(when-first [x xs] body...)` → `(when-let [xs__ (seq xs)] (let [x (first xs__)] body...))`
+fn transformWhenFirst(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bp = try extractBindingPair(args[0]);
+    const body = args[1..];
+    const xs_sym = try gensymWithPrefix(allocator, "xs");
+    const seq_expr = try makeList(allocator, &.{ makeSymbol("seq"), bp.expr });
+    const first_expr = try makeList(allocator, &.{ makeSymbol("first"), xs_sym });
+    const inner_let = try makeLet(allocator, &.{ bp.name, first_expr }, body);
+    const binding_vec = try makeVector(allocator, &.{ xs_sym, seq_expr });
+    return makeList(allocator, &.{ makeSymbol("when-let"), binding_vec, inner_let });
+}
+
+/// `(assert-args test1 "msg1" test2 "msg2" ...)`
+/// → `(do (when-not test1 (throw (str "Requires " "msg1"))) ...)`
+fn transformAssertArgs(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len % 2 != 0) return error.InvalidArgs;
+    const n_checks = args.len / 2;
+    var checks = try allocator.alloc(Form, n_checks);
+    for (0..n_checks) |i| {
+        const test_form = args[i * 2];
+        const msg_form = args[i * 2 + 1];
+        const str_form = try makeList(allocator, &.{ makeSymbol("str"), makeString("Requires "), msg_form });
+        const throw_form = try makeList(allocator, &.{ makeSymbol("throw"), str_form });
+        checks[i] = try makeList(allocator, &.{ makeSymbol("when-not"), test_form, throw_form });
+    }
+    return makeDo(allocator, checks);
 }
 
 // ============================================================
