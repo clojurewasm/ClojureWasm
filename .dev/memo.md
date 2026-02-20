@@ -60,12 +60,10 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 83E-v2: Complete All-Zig Migration
-Sub-task 83E-v2.0.1: Create `src/analyzer/macro_transforms.zig` skeleton
-- Define `MacroTransformFn` type: `fn(Allocator, []const Form) anyerror!Form`
-- Create `StaticStringMap` of macro name → transform function
-- Add Form construction helpers: `makeSymbol`, `makeList`, `makeKeyword`, `makeNil`, `makeBool`
-- Wire into analyzer.zig `analyzeList()`: check macro_transforms before env macro lookup
-- Test: register one dummy transform, verify it's called
+Sub-task 83E-v2.0.2: Add Form manipulation utilities
+- gensym/gensymWithPrefix for hygienic macro expansion
+- makeQuoted, makeDo, makeLet, makeIf, makeFn
+- prependForm, appendForm, concatForms
 
 ## Previous Task
 
@@ -74,7 +72,6 @@ Phase 88A COMPLETE. All 6 sub-tasks done.
 ## Task Queue
 
 ```
-83E-v2.0.2: Add Form manipulation utilities (gensym, formToList, makeDo, makeLet, etc.)
 83E-v2.0.3: Integration test — convert `when` macro as proof of concept
 83E-v2.1.1: Simple control flow macros (when-not, if-not, comment, assert, while)
 83E-v2.1.2: Boolean short-circuit macros (and, or)
