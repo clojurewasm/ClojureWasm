@@ -41,11 +41,8 @@ pub fn writeOutput(data: []const u8) void {
     if (capture_buf) |buf| {
         buf.appendSlice(capture_alloc.?, data) catch {};
     } else {
-        var wbuf: [4096]u8 = undefined;
-        var file_writer = std.fs.File.stdout().writer(&wbuf);
-        const w = &file_writer.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+        _ = stdout.writeAll(data) catch {};
     }
 }
 
@@ -141,11 +138,8 @@ pub fn newlineFn(_: Allocator, args: []const Value) anyerror!Value {
 /// (flush) => nil (flushes stdout)
 pub fn flushFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to flush", .{args.len});
-    if (capture_buf == null) {
-        var wbuf: [4096]u8 = undefined;
-        var file_writer = std.fs.File.stdout().writer(&wbuf);
-        file_writer.interface.flush() catch {};
-    }
+    // Direct writes (writeOutput) don't buffer, so flush is a no-op for stdout.
+    // Keep for API compatibility with Clojure.
     return Value.nil_val;
 }
 
