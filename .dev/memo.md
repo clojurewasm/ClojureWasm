@@ -60,19 +60,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 87: Developer Experience
-87.3: REPL polish (multiline improvements, tab completion)
-- Improve multiline editing in interactive REPL
-- Add tab completion in REPL (prefix-based, like nREPL completions)
+87.4: Project template (cljw new my-app)
+- Scaffold new project: deps.edn, src/ns.clj, test/ns_test.clj
+- Template should follow CW conventions
 
 ## Previous Task
 
+87.3: REPL ns-qualified tab completion + special commands (:quit, :help).
 87.2: nREPL macroexpand op + cons rendering fix + shutdown panic fix.
 87.1: cljw test already implemented.
 
 ## Task Queue
 
 ```
-87.3: REPL polish (multiline improvements, tab completion)
 87.4: Project template (cljw new my-app)
 ```
 

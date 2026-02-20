@@ -567,6 +567,36 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         const trimmed = std.mem.trim(u8, source, " \t\r\n");
         if (trimmed.len == 0) continue;
 
+        // REPL special commands
+        if (std.mem.eql(u8, trimmed, ":quit") or std.mem.eql(u8, trimmed, ":exit") or
+            std.mem.eql(u8, trimmed, ":q"))
+        {
+            break;
+        }
+        if (std.mem.eql(u8, trimmed, ":help") or std.mem.eql(u8, trimmed, ":h")) {
+            _ = stdout.write(
+                \\REPL commands:
+                \\  :quit, :exit, :q   Exit REPL
+                \\  :help, :h          Show this help
+                \\  (doc fn-name)      Show documentation for a function
+                \\  (source fn-name)   Show source for a function
+                \\Keybindings (Emacs):
+                \\  C-a/C-e            Beginning/end of line
+                \\  C-k/C-u            Kill to end/start of line
+                \\  C-w                Kill word backward
+                \\  C-y                Yank (paste)
+                \\  Alt-f/Alt-b        Forward/backward word
+                \\  C-p/C-n            History previous/next
+                \\  C-l                Clear screen
+                \\  C-c                Cancel input
+                \\  C-d                EOF (exit) on empty line
+                \\  Tab                Complete symbol
+                \\  Alt-Enter          Force newline
+                \\
+            ) catch {};
+            continue;
+        }
+
         err.setSourceText(source);
         const result = bootstrap.evalString(allocator, env, source);
 

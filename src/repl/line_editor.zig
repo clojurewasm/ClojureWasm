@@ -851,9 +851,9 @@ pub const LineEditor = struct {
     fn handleTab(self: *LineEditor) void {
         const env_ptr = self.env orelse return;
 
-        // Extract prefix: word chars before cursor
+        // Extract prefix: word chars before cursor (isSymbolChar already includes /)
         var start = self.pos;
-        while (start > 0 and isSymbolChar(self.buf[start - 1])) start -= 1;
+        while (start > 0 and (isSymbolChar(self.buf[start - 1]) or self.buf[start - 1] == ':')) start -= 1;
         const prefix = self.buf[start..self.pos];
         if (prefix.len == 0) return;
 
@@ -861,41 +861,71 @@ pub const LineEditor = struct {
         var candidates_buf: [64][]const u8 = undefined;
         var candidate_count: usize = 0;
 
-        // Current namespace
-        if (env_ptr.current_ns) |ns| {
-            collectSymbolCompletions(&candidates_buf, &candidate_count, &ns.mappings, prefix);
-            collectSymbolCompletions(&candidates_buf, &candidate_count, &ns.refers, prefix);
+        // Check for namespace-qualified prefix (e.g., "str/tri" or "clojure.string/tri")
+        if (std.mem.indexOf(u8, prefix, "/")) |slash_pos| {
+            const ns_part = prefix[0..slash_pos];
+            const var_prefix = prefix[slash_pos + 1 ..];
+            // Look up namespace via alias or full name
+            const target_ns = if (env_ptr.current_ns) |ns|
+                ns.getAlias(ns_part) orelse env_ptr.findNamespace(ns_part)
+            else
+                env_ptr.findNamespace(ns_part);
+            if (target_ns) |ns| {
+                collectSymbolCompletions(&candidates_buf, &candidate_count, &ns.mappings, var_prefix);
+            }
+            // For qualified completion, show only the var part but insert qualified
+            self.showCompletions(&candidates_buf, candidate_count, var_prefix);
+        } else if (prefix[0] == ':') {
+            // Keyword completion: collect keyword names from all loaded namespaces
+            // Just complete from recent keyword pool — skip for now
+            self.showCompletions(&candidates_buf, candidate_count, prefix);
+        } else {
+            // Unqualified: current ns + refers + clojure.core + namespace names/aliases
+            if (env_ptr.current_ns) |ns| {
+                collectSymbolCompletions(&candidates_buf, &candidate_count, &ns.mappings, prefix);
+                collectSymbolCompletions(&candidates_buf, &candidate_count, &ns.refers, prefix);
+                // Namespace aliases for qualified completion
+                collectNsAliasCompletions(&candidates_buf, &candidate_count, ns, prefix);
+            }
+            if (env_ptr.findNamespace("clojure.core")) |core_ns| {
+                collectSymbolCompletions(&candidates_buf, &candidate_count, &core_ns.mappings, prefix);
+            }
+            // Full namespace names
+            collectNsNameCompletions(&candidates_buf, &candidate_count, env_ptr, prefix);
+            self.showCompletions(&candidates_buf, candidate_count, prefix);
         }
-        // clojure.core
-        if (env_ptr.findNamespace("clojure.core")) |core_ns| {
-            collectSymbolCompletions(&candidates_buf, &candidate_count, &core_ns.mappings, prefix);
-        }
+    }
 
-        if (candidate_count == 0) return;
+    fn showCompletions(
+        self: *LineEditor,
+        candidates: *[64][]const u8,
+        count: usize,
+        prefix: []const u8,
+    ) void {
+        if (count == 0) return;
 
-        if (candidate_count == 1) {
-            // Single match: complete it
-            const completion = candidates_buf[0];
-            const suffix = completion[prefix.len..];
-            for (suffix) |c| self.insertChar(c);
+        if (count == 1) {
+            const completion = candidates[0];
+            if (completion.len > prefix.len) {
+                const suffix = completion[prefix.len..];
+                for (suffix) |c| self.insertChar(c);
+            }
             self.insertChar(' ');
         } else {
             // Multiple matches: find common prefix and show candidates
-            var common_len = candidates_buf[0].len;
-            for (candidates_buf[1..candidate_count]) |cand| {
+            var common_len = candidates[0].len;
+            for (candidates[1..count]) |cand| {
                 var j: usize = 0;
-                while (j < common_len and j < cand.len and cand[j] == candidates_buf[0][j]) j += 1;
+                while (j < common_len and j < cand.len and cand[j] == candidates[0][j]) j += 1;
                 common_len = j;
             }
-            // Insert common prefix beyond what's already typed
             if (common_len > prefix.len) {
-                const suffix = candidates_buf[0][prefix.len..common_len];
+                const suffix = candidates[0][prefix.len..common_len];
                 for (suffix) |c| self.insertChar(c);
             } else {
-                // Show candidates
                 self.disableRawMode();
                 self.writeStr("\r\n");
-                for (candidates_buf[0..candidate_count]) |cand| {
+                for (candidates[0..count]) |cand| {
                     self.writeStr(cand);
                     self.writeStr("  ");
                 }
@@ -927,6 +957,61 @@ pub const LineEditor = struct {
                 }
                 if (!dup) {
                     candidates[count.*] = name;
+                    count.* += 1;
+                }
+            }
+        }
+    }
+
+    /// Collect namespace alias names that match a prefix (for unqualified completion).
+    /// Appends "alias/" to guide qualified completion.
+    fn collectNsAliasCompletions(
+        candidates: *[64][]const u8,
+        count: *usize,
+        ns: *const Namespace,
+        prefix: []const u8,
+    ) void {
+        var iter = ns.aliases.iterator();
+        while (iter.next()) |entry| {
+            if (count.* >= candidates.len) return;
+            const alias_name = entry.key_ptr.*;
+            if (std.mem.startsWith(u8, alias_name, prefix)) {
+                var dup = false;
+                for (candidates[0..count.*]) |existing| {
+                    if (std.mem.eql(u8, existing, alias_name)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    candidates[count.*] = alias_name;
+                    count.* += 1;
+                }
+            }
+        }
+    }
+
+    /// Collect full namespace names that match a prefix.
+    fn collectNsNameCompletions(
+        candidates: *[64][]const u8,
+        count: *usize,
+        env: *const Env,
+        prefix: []const u8,
+    ) void {
+        var iter = env.namespaces.iterator();
+        while (iter.next()) |entry| {
+            if (count.* >= candidates.len) return;
+            const ns_name = entry.key_ptr.*;
+            if (std.mem.startsWith(u8, ns_name, prefix)) {
+                var dup = false;
+                for (candidates[0..count.*]) |existing| {
+                    if (std.mem.eql(u8, existing, ns_name)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    candidates[count.*] = ns_name;
                     count.* += 1;
                 }
             }
