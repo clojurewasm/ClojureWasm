@@ -1847,16 +1847,25 @@ pub fn listStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
                 break :blk Value.initList(lst);
             },
             .nil => Value.nil_val,
+            .cons, .lazy_seq => args[0],
+            .set, .map, .hash_map => blk: {
+                const items = try collectSeqItems(allocator, args[0]);
+                const lst = try allocator.create(PersistentList);
+                lst.* = .{ .items = items };
+                break :blk Value.initList(lst);
+            },
             else => return err.setErrorFmt(.eval, .type_error, .{}, "list* not supported on {s}", .{@tagName(args[0].tag())}),
         };
     }
 
-    // Last arg is the tail collection
-    const tail_items = switch (args[args.len - 1].tag()) {
-        .list => args[args.len - 1].asList().items,
-        .vector => args[args.len - 1].asVector().items,
+    // Last arg is the tail collection (any seq-able type)
+    const last = args[args.len - 1];
+    const tail_items: []const Value = switch (last.tag()) {
+        .list => last.asList().items,
+        .vector => last.asVector().items,
         .nil => @as([]const Value, &.{}),
-        else => return err.setErrorFmt(.eval, .type_error, .{}, "list* expects a collection as last arg, got {s}", .{@tagName(args[args.len - 1].tag())}),
+        .cons, .lazy_seq, .set, .map, .hash_map => try collectSeqItems(allocator, last),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "list* expects a collection as last arg, got {s}", .{@tagName(last.tag())}),
     };
 
     const prefix_count = args.len - 1;

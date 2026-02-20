@@ -14,7 +14,9 @@
   (:use clojure.test
         clojure.repl)
   ;; CLJW: removed test-helper and example ns dependencies
-  (:require [clojure.string :as str]))
+  ;; CLJW: require clojure.set explicitly (not auto-loaded like JVM)
+  (:require [clojure.string :as str]
+            [clojure.set]))
 
 (deftest test-doc
   (testing "with namespaces"

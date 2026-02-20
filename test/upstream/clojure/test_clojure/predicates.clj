@@ -12,9 +12,9 @@
 
 ;; CLJW: Java-dependent tests excluded (byte/short/int/long casts, into-array,
 ;; java.util.Date, bigint, bigdec, Ratio, regex).
-;; Uses clojure.test (auto-referred from bootstrap).
 
-(println "[clojure/test_clojure/predicates] running...")
+(ns clojure.test-clojure.predicates
+  (:require [clojure.test :refer [deftest is are testing run-tests]]))
 
 ;; ========== nil? ==========
 
