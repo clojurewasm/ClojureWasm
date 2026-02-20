@@ -59,21 +59,44 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88C COMPLETE. All 4 sub-tasks done.
-Next: Phase B (Library namespaces → Zig builtins).
+Phase B.2: java/shell (20 lines), java/browse (54 lines) → Zig builtins.
+
+- shell: `*sh-dir*`, `*sh-env*` dynamic vars + `with-sh-dir`, `with-sh-env` macros
+- browse: `browse-url` + helpers
+- Most shell functionality already in Zig (`src/builtins/shell.zig`)
+- Macros → macro transforms in `macro_transforms.zig` (or keep as env macros)
 
 ## Previous Task
 
-Phase 88C: P0 Bug Fixes & Test Infrastructure (4/4 done).
-- 88C.1: Fresh env per test file (I-001 resolved)
-- 88C.2: bit-shift already used @truncate (I-002 already resolved)
-- 88C.3: char test expectations fixed, char→char identity added (I-003 resolved)
-- 88C.4: test/run_all.sh created (I-010 resolved)
+Phase B.1: template.clj (25 lines) → Zig builtins (DONE).
+- `apply-template` → Zig builtin in `ns_template.zig` (Value-level postwalk-replace)
+- `do-template` → Zig builtin macro (setMacro, partition + substitute)
+- Registered in `registry.zig` under `clojure.template` namespace
+- Removed `loadTemplate()` from bootstrap.zig, deleted template.clj
+- 1st .clj file eliminated from pipeline
 
 ## Task Queue
 
 ```
-Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
+Phase B.2: java/shell (20 lines), java/browse (54 lines) — *sh-dir*, *sh-env*, with-sh-dir, with-sh-env, browse-url
+Phase B.3: repl/deps (43 lines), datafy (56 lines), core/protocols (121 lines)
+Phase B.4: walk (75 lines), stacktrace (75 lines)
+Phase B.5: core/server (57 lines), data (104 lines)
+Phase B.6: set (126 lines)
+Phase B.7: java/io (217 lines), java/process (85 lines)
+Phase B.8: instant (189 lines)
+Phase B.9: zip (279 lines)
+Phase B.10: repl (245 lines)
+Phase B.11: xml (251 lines)
+Phase B.12: main (294 lines)
+Phase B.13: core/reducers (316 lines)
+Phase B.14: test (438 lines), test/tap (127 lines)
+Phase B.15: spec/alpha (1789 lines), spec/gen/alpha, core/specs/alpha
+Phase B.16: pprint (2732 lines)
+--- After Phase B ---
+Phase C: Bootstrap pipeline elimination
+Phase D: Directory & module refactoring
+Phase E: Optimization (restore baselines)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring
 Phase E: Optimization (restore baselines)

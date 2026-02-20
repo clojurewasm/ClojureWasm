@@ -50,9 +50,6 @@ const test_clj_source = @embedFile("../clj/clojure/test.clj");
 /// Embedded clojure/walk.clj source (compiled into binary).
 const walk_clj_source = @embedFile("../clj/clojure/walk.clj");
 
-/// Embedded clojure/template.clj source (compiled into binary).
-const template_clj_source = @embedFile("../clj/clojure/template.clj");
-
 /// Embedded clojure/set.clj source (compiled into binary).
 const set_clj_source = @embedFile("../clj/clojure/set.clj");
 
@@ -1114,54 +1111,6 @@ pub fn loadWalk(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
     if (saved_ns) |user_ns| {
         var iter = walk_ns.mappings.iterator();
-        while (iter.next()) |entry| {
-            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
-}
-
-/// Load and evaluate clojure/template.clj in the given Env.
-/// Creates the clojure.template namespace and defines template macros.
-/// Depends on clojure.walk being loaded first.
-pub fn loadTemplate(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Create clojure.template namespace
-    const template_ns = env.findOrCreateNamespace("clojure.template") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Refer all clojure.core bindings into clojure.template
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Refer clojure.walk bindings into clojure.template (for postwalk-replace)
-    const walk_ns = env.findNamespace("clojure.walk") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var walk_iter = walk_ns.mappings.iterator();
-    while (walk_iter.next()) |entry| {
-        template_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Save current namespace and switch to clojure.template
-    const saved_ns = env.current_ns;
-    env.current_ns = template_ns;
-
-    // Evaluate clojure/template.clj
-    _ = try evalString(allocator, env, template_clj_source);
-
-    // Restore user namespace and re-refer template bindings
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-    if (saved_ns) |user_ns| {
-        var iter = template_ns.mappings.iterator();
         while (iter.next()) |entry| {
             user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
         }
@@ -2460,12 +2409,11 @@ pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const 
 
 /// Unified bootstrap: loads all standard library namespaces.
 ///
-/// Equivalent to the sequence: loadCore + loadWalk + loadTemplate + loadTest + loadSet + loadData.
+/// Equivalent to the sequence: loadCore + loadWalk + loadTest + loadSet + loadData.
 /// Use this instead of calling each individually.
 pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadCore(allocator, env);
     try loadWalk(allocator, env);
-    try loadTemplate(allocator, env);
     try loadTest(allocator, env);
     try loadSet(allocator, env);
     try loadData(allocator, env);
@@ -2509,11 +2457,6 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, walk_clj_source);
     }
 
-    // Re-compile template.clj
-    if (env.findNamespace("clojure.template")) |template_ns| {
-        env.current_ns = template_ns;
-        _ = try evalStringVMBootstrap(allocator, env, template_clj_source);
-    }
 
     // Re-compile test.clj
     if (env.findNamespace("clojure.test")) |test_ns| {

@@ -45,6 +45,7 @@ const shell_mod = @import("shell.zig");
 const pprint_mod = @import("pprint.zig");
 const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
+const ns_template_mod = @import("ns_template.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -353,6 +354,24 @@ pub fn registerBuiltins(env: *Env) !void {
         v.dynamic = true;
         v.bindRoot(dv.val);
     }
+
+    // Register clojure.template namespace builtins (Phase B.1)
+    const template_ns = try env.findOrCreateNamespace("clojure.template");
+    for (ns_template_mod.builtins) |b| {
+        const v = try template_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // Register do-template macro
+    const dt_def = ns_template_mod.do_template_def;
+    const dt_var = try template_ns.intern(dt_def.name);
+    dt_var.applyBuiltinDef(dt_def);
+    if (dt_def.func) |f| {
+        dt_var.bindRoot(Value.initBuiltinFn(f));
+    }
+    dt_var.setMacro(true);
 
     env.current_ns = user_ns;
 }
