@@ -177,6 +177,7 @@ pub const TryNode = struct {
 pub const DefProtocolNode = struct {
     name: []const u8,
     method_sigs: []const MethodSigNode,
+    extend_via_metadata: bool = false,
     source: SourceInfo,
 };
 

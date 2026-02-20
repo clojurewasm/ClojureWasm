@@ -85,7 +85,7 @@
              (kv-reduce [amap f init] (clojure.core/reduce-kv f init amap)))
 
 (defprotocol Datafiable
-  ;; CLJW: :extend-via-metadata not supported, omitted
+  :extend-via-metadata true
   (datafy [o]))
 
 (extend-type nil Datafiable
@@ -95,7 +95,7 @@
              (datafy [x] x))
 
 (defprotocol Navigable
-  ;; CLJW: :extend-via-metadata not supported, omitted
+  :extend-via-metadata true
   (nav [coll k v]))
 
 (extend-type Object Navigable

@@ -523,6 +523,11 @@ pub const Protocol = struct {
     /// Incremented when impls are modified (by extend_type_method / extend-type).
     /// Used by ProtocolFn inline cache to detect stale entries.
     generation: u32 = 0,
+    /// When true, protocol methods check (meta obj) for implementations
+    /// before falling back to the impls map. Key is the FQ symbol (ns/method-name).
+    extend_via_metadata: bool = false,
+    /// Namespace where the protocol was defined (for extend-via-metadata key construction).
+    defining_ns: ?[]const u8 = null,
 };
 
 /// Protocol method reference — dispatches on first arg's type key.

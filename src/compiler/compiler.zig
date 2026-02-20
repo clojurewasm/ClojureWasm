@@ -857,12 +857,13 @@ pub const Compiler = struct {
         const name_sym = Value.initSymbol(self.allocator, .{ .ns = null, .name = node.name });
         const idx = self.chunk.addConstant(name_sym) catch return error.TooManyConstants;
 
-        // Constant[idx+1] = sigs vector: [name1, arity1, name2, arity2, ...]
-        const sigs_len = node.method_sigs.len * 2;
+        // Constant[idx+1] = sigs vector: [extend_via_meta?, name1, arity1, name2, arity2, ...]
+        const sigs_len = node.method_sigs.len * 2 + 1;
         const sigs_items = self.allocator.alloc(Value, sigs_len) catch return error.OutOfMemory;
+        sigs_items[0] = Value.initBoolean(node.extend_via_metadata);
         for (node.method_sigs, 0..) |sig, i| {
-            sigs_items[i * 2] = Value.initString(self.allocator, sig.name);
-            sigs_items[i * 2 + 1] = Value.initInteger(@intCast(sig.arity));
+            sigs_items[1 + i * 2] = Value.initString(self.allocator, sig.name);
+            sigs_items[1 + i * 2 + 1] = Value.initInteger(@intCast(sig.arity));
         }
         const sigs_vec = self.allocator.create(value_mod.PersistentVector) catch return error.OutOfMemory;
         sigs_vec.* = .{ .items = sigs_items };

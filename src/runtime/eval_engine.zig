@@ -2520,3 +2520,37 @@ test "E2E with-local-vars: var-get and var-set" {
     const vm = bootstrap.evalStringVM(alloc, &env, src) catch unreachable;
     try std.testing.expectEqual(Value.initInteger(120), vm);
 }
+
+test "E2E extend-via-metadata protocol dispatch" {
+    const registry = @import("../builtins/registry.zig");
+    const bootstrap = @import("bootstrap.zig");
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try bootstrap.loadCore(alloc, &env);
+
+    const setup =
+        \\(do
+        \\  (defprotocol Describable
+        \\    :extend-via-metadata true
+        \\    (describe [this]))
+        \\  (def obj (with-meta {:name "test"}
+        \\             {(symbol "user" "describe") (fn [this] (str "I am " (:name this)))}))
+        \\  (describe obj))
+    ;
+
+    // TreeWalk
+    const tw = bootstrap.evalString(alloc, &env, setup) catch unreachable;
+    try std.testing.expectEqualStrings("I am test", tw.asString());
+
+    // VM (re-create env for clean state)
+    var env2 = Env.init(alloc);
+    defer env2.deinit();
+    try registry.registerBuiltins(&env2);
+    try bootstrap.loadCore(alloc, &env2);
+    const vm = bootstrap.evalStringVM(alloc, &env2, setup) catch unreachable;
+    try std.testing.expectEqualStrings("I am test", vm.asString());
+}

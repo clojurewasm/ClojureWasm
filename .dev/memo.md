@@ -60,20 +60,18 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 88A: Correctness Sweep
-88A.5: Implement extend-via-metadata for protocols
+88A.6: Full regression verify 63/63 upstream pass
 
 ## Previous Task
 
-Phase 88 DONE: v0.3.0 released (https://github.com/clojurewasm/ClojureWasm/releases/tag/v0.3.0)
+88A.5 DONE: Implemented extend-via-metadata for protocols. Analyzer parses
+`:extend-via-metadata true` option. Both VM and TreeWalk check metadata before
+inline cache and impls lookup. Metadata dispatch is per-object (not cached).
+Updated protocols.clj Datafiable/Navigable. Tests in bootstrap.zig + eval_engine.zig.
 
 ## Task Queue
 
 ```
-88A.1: Fix `is` macro instance? reporting bug (Small)
-88A.2: Fix serialize.zig hierarchy var restore (Small)
-88A.3: Fix test_fixtures.clj (Medium)
-88A.4: Fix parallel/vars sequential state pollution (Medium)
-88A.5: Implement extend-via-metadata for protocols (Medium-Large)
 88A.6: Full regression verify 63/63 upstream pass (Small)
 ```
 

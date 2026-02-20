@@ -3128,6 +3128,37 @@ test "defprotocol - basic definition" {
     try expectEvalBool(alloc, &env, "(satisfies? IGreet [1 2])", false);
 }
 
+test "defprotocol - extend-via-metadata" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var env = Env.init(alloc);
+    defer env.deinit();
+    try registry.registerBuiltins(&env);
+    try loadCore(alloc, &env);
+
+    // Define protocol with :extend-via-metadata true, create impl via metadata
+    _ = try evalString(alloc, &env,
+        \\(do
+        \\  (defprotocol Describable
+        \\    :extend-via-metadata true
+        \\    (describe [this]))
+        \\  (def obj (with-meta {:name "test"}
+        \\             {(symbol "user" "describe") (fn [this] (str "I am " (:name this)))})))
+    );
+    try expectEvalStr(alloc, &env, "(describe obj)", "I am test");
+
+    // Object without metadata should fall through to impls
+    _ = try evalString(alloc, &env,
+        \\(extend-type PersistentArrayMap Describable
+        \\  (describe [this] "a map"))
+    );
+    try expectEvalStr(alloc, &env, "(describe {:x 1})", "a map");
+
+    // Metadata-extended object should still use metadata (takes priority)
+    try expectEvalStr(alloc, &env, "(describe obj)", "I am test");
+}
+
 test "defrecord - basic constructor" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();

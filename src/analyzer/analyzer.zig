@@ -1732,10 +1732,22 @@ pub const Analyzer = struct {
         const name = items[1].data.symbol.name;
         const method_forms = items[2..];
 
+        // Parse options: docstrings, :extend-via-metadata true, etc.
+        var extend_via_metadata = false;
         var sigs: std.ArrayList(node_mod.MethodSigNode) = .empty;
-        for (method_forms) |mf| {
-            // Skip docstrings and keyword options (e.g. :extend-via-metadata true)
-            if (mf.data == .string or mf.data == .keyword or mf.data == .boolean) continue;
+        for (method_forms, 0..) |mf, i| {
+            // Skip docstrings
+            if (mf.data == .string) continue;
+            // Parse keyword options: :extend-via-metadata true
+            if (mf.data == .keyword) {
+                if (std.mem.eql(u8, mf.data.keyword.name, "extend-via-metadata")) {
+                    if (i + 1 < method_forms.len and method_forms[i + 1].data == .boolean) {
+                        extend_via_metadata = method_forms[i + 1].data.boolean;
+                    }
+                }
+                continue;
+            }
+            if (mf.data == .boolean) continue;
             if (mf.data != .list) {
                 return self.analysisError(.value_error, "defprotocol method must be a list", mf);
             }
@@ -1770,6 +1782,7 @@ pub const Analyzer = struct {
         dp.* = .{
             .name = name,
             .method_sigs = sigs.toOwnedSlice(self.allocator) catch return error.OutOfMemory,
+            .extend_via_metadata = extend_via_metadata,
             .source = self.sourceFromForm(form),
         };
 

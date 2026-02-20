@@ -807,3 +807,22 @@ Additionally, .clj bootstrap adds startup cost and CLJW marker maintenance.
 
 **Migration invariant**: All tests pass after every sub-task. Incremental,
 defensive migration with benchmarks recorded at milestones.
+
+## D106: extend-via-metadata Protocol Dispatch
+
+**Decision**: Support `:extend-via-metadata true` on `defprotocol`. When set,
+protocol dispatch checks `(meta obj)` for FQ symbol key (e.g. `ns/method-name`)
+BEFORE the inline cache and impls map lookup.
+
+**Motivation**: JVM Clojure feature used by `Datafiable` and `Navigable` in
+`clojure.core.protocols`. Without it, these protocols can't be extended via
+metadata, breaking upstream compatibility.
+
+**Implementation**:
+- `DefProtocolNode` and `Protocol` gain `extend_via_metadata: bool` and `defining_ns: ?[]const u8`
+- Analyzer parses `:extend-via-metadata true` keyword option in `defprotocol`
+- Compiler encodes flag as first element of sigs vector
+- **Dispatch order** (both backends): metadata → inline cache → impls → "Object" fallback
+- Metadata dispatch is per-object (not cached) — two maps with same type can have
+  different metadata, so the type-based inline cache must be bypassed
+- `protocols.clj` Datafiable/Navigable re-enabled with `:extend-via-metadata true`

@@ -846,19 +846,34 @@ pub const TreeWalk = struct {
         if (args.len == 0) return error.ArityError;
         const type_key = valueTypeKey(args[0]);
 
-        // Monomorphic inline cache: check if same type as last dispatch
         const mutable_pf: *value_mod.ProtocolFn = @constCast(pf);
+        const protocol = pf.protocol;
+
+        // extend-via-metadata: check (meta obj) BEFORE cache (metadata is per-object, not per-type)
+        if (protocol.extend_via_metadata) {
+            if (protocol.defining_ns) |def_ns| {
+                const meta_mod = @import("../builtins/metadata.zig");
+                const meta_val = meta_mod.getMeta(args[0]);
+                if (meta_val.tag() == .map or meta_val.tag() == .hash_map) {
+                    const fq_key = Value.initSymbol(self.allocator, .{ .ns = def_ns, .name = pf.method_name });
+                    const lookup = if (meta_val.tag() == .map) meta_val.asMap().get(fq_key) else meta_val.asHashMap().get(fq_key);
+                    if (lookup) |meta_method| {
+                        return self.callValue(meta_method, args);
+                    }
+                }
+            }
+        }
+
+        // Monomorphic inline cache: check if same type as last dispatch
         if (mutable_pf.cached_type_key) |ck| {
-            if (mutable_pf.cached_generation == pf.protocol.generation and
+            if (mutable_pf.cached_generation == protocol.generation and
                 (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)))
             {
                 return self.callValue(mutable_pf.cached_method, args);
             }
         }
-
-        // Cache miss: full lookup (exact type, then "Object" fallback)
+        // 2. Standard impls lookup (exact type, then "Object" fallback)
         // Use getByStringKey to avoid allocating temporary HeapString Values
-        const protocol = pf.protocol;
         const method_map_val = protocol.impls.getByStringKey(type_key) orelse
             protocol.impls.getByStringKey("Object") orelse
             return error.TypeError;
@@ -894,6 +909,8 @@ pub const TreeWalk = struct {
             .name = dp_n.name,
             .method_sigs = method_sigs,
             .impls = empty_map,
+            .extend_via_metadata = dp_n.extend_via_metadata,
+            .defining_ns = ns.name,
         };
 
         // Bind protocol name

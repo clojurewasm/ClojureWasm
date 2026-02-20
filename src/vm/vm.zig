@@ -758,13 +758,16 @@ pub const VM = struct {
                 const env = self.env orelse return error.UndefinedVar;
                 const ns = env.current_ns orelse return error.UndefinedVar;
 
-                // Parse sigs vector: [name1, arity1, name2, arity2, ...]
+                // Parse sigs vector: [extend_via_meta?, name1, arity1, name2, arity2, ...]
                 const sigs_items = sigs_val.asVector().items;
-                const sig_count = sigs_items.len / 2;
+                if (sigs_items.len == 0) return error.InvalidInstruction;
+                const extend_via_meta = sigs_items[0].tag() == .boolean and sigs_items[0].asBoolean();
+                const sig_data = sigs_items[1..];
+                const sig_count = sig_data.len / 2;
                 const method_sigs = self.allocator.alloc(value_mod.MethodSig, sig_count) catch return error.OutOfMemory;
                 for (0..sig_count) |i| {
-                    const m_name = sigs_items[i * 2];
-                    const m_arity = sigs_items[i * 2 + 1];
+                    const m_name = sig_data[i * 2];
+                    const m_arity = sig_data[i * 2 + 1];
                     if (m_name.tag() != .string or m_arity.tag() != .integer) return error.InvalidInstruction;
                     method_sigs[i] = .{
                         .name = m_name.asString(),
@@ -781,6 +784,8 @@ pub const VM = struct {
                     .name = name_sym.asSymbol().name,
                     .method_sigs = method_sigs,
                     .impls = empty_map,
+                    .extend_via_metadata = extend_via_meta,
+                    .defining_ns = ns.name,
                 };
 
                 // Bind protocol to var
@@ -1375,19 +1380,35 @@ pub const VM = struct {
                 const first_arg = self.stack[fn_idx + 1];
                 const type_key = valueTypeKey(first_arg);
                 const mutable_pf: *ProtocolFn = @constCast(pf);
+
+                // extend-via-metadata: check (meta obj) BEFORE cache
+                // (metadata is per-object, not per-type — cache would give wrong result)
+                if (pf.protocol.extend_via_metadata) {
+                    if (pf.protocol.defining_ns) |def_ns| {
+                        const meta_mod = @import("../builtins/metadata.zig");
+                        const meta_val = meta_mod.getMeta(first_arg);
+                        if (meta_val.tag() == .map or meta_val.tag() == .hash_map) {
+                            const fq_key = Value.initSymbol(self.allocator, .{ .ns = def_ns, .name = pf.method_name });
+                            const lookup = if (meta_val.tag() == .map) meta_val.asMap().get(fq_key) else meta_val.asHashMap().get(fq_key);
+                            if (lookup) |meta_method| {
+                                self.stack[fn_idx] = meta_method;
+                                return self.performCall(arg_count);
+                            }
+                        }
+                    }
+                }
+
+                // Monomorphic inline cache: check if same type as last dispatch
                 if (mutable_pf.cached_type_key) |ck| {
                     if (mutable_pf.cached_generation == pf.protocol.generation and
                         (ck.ptr == type_key.ptr or std.mem.eql(u8, ck, type_key)))
                     {
-                        // Cache hit — skip full protocol resolution
                         self.stack[fn_idx] = mutable_pf.cached_method;
                         return self.performCall(arg_count);
                     }
                 }
-                // Cache miss: full protocol lookup (exact type, then "Object" fallback)
+                // 2. Standard impls lookup (exact type, then "Object" fallback)
                 // Use getByStringKey to avoid allocating temporary HeapString Values
-                // (each initString allocates a GC-tracked struct, causing GC pressure
-                // in tight loops with protocol dispatch)
                 const method_map_val = pf.protocol.impls.getByStringKey(type_key) orelse
                     pf.protocol.impls.getByStringKey("Object") orelse
                     return error.TypeError;
