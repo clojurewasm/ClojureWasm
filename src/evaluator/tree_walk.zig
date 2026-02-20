@@ -814,7 +814,7 @@ pub const TreeWalk = struct {
             v.column = def_n.source.column;
         }
 
-        return Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name });
+        return Value.initVarRef(v);
     }
 
     fn runSetBang(self: *TreeWalk, set_n: *const node_mod.SetNode) TreeWalkError!Value {

@@ -671,7 +671,7 @@ pub const VM = struct {
                     if (arglists_val.tag() == .string) v.arglists = arglists_val.asString();
                 }
 
-                try self.push(Value.initSymbol(self.allocator, .{ .ns = ns.name, .name = v.sym.name }));
+                try self.push(Value.initVarRef(v));
             },
 
             .defmulti => {
@@ -2779,10 +2779,11 @@ test "VM def creates and binds a Var" {
     defer vm.deinit();
     const result = try vm.run(&chunk);
 
-    // def returns a symbol with ns/name
-    try std.testing.expect(result.tag() == .symbol);
-    try std.testing.expectEqualStrings("x", result.asSymbol().name);
-    try std.testing.expectEqualStrings("user", result.asSymbol().ns.?);
+    // def returns the var
+    try std.testing.expect(result.tag() == .var_ref);
+    const result_var = result.asVarRef();
+    try std.testing.expectEqualStrings("x", result_var.sym.name);
+    try std.testing.expectEqualStrings("user", result_var.ns_name);
 
     // Var should be bound in namespace
     const v = ns.resolve("x").?;

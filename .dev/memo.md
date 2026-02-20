@@ -15,8 +15,8 @@ Key changes:
 - 83D: Handle Memory Safety (use-after-close detection, GC finalization)
 - 83E: Core All-Zig Migration (all std-lib → Zig builtins, eliminate .clj bootstrap)
 
-Phase 84 (Testing Expansion) paused at 84.1 (compilation.clj 7/8 pass,
-1 fail due to eval/defn returning symbol not var). Resume after 83E.
+Phase 84 (Testing Expansion) now active. def/defn return var fixed.
+compilation.clj 8/8 pass. 50 upstream test files, 41 pass.
 
 ## Note: zwasm v1.1.0 API Change (APPLIED)
 
@@ -59,19 +59,25 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83E: Core All-Zig Migration — Scope Reduced
-Audit complete. Full migration deferred (see below).
+Phase 84: Testing Expansion
+84.1: Port remaining high-value upstream test files (target: 60+)
+- Fixed: def/defn now returns var (was returning symbol) — compilation.clj 8/8 pass
+- Currently 50 upstream test files, 41 passing, 9 pre-existing failures
+- Next: identify and port new high-value test files to reach 60+ target
 
 ## Previous Task
 
-Phase 83D COMPLETE (Handle Memory Safety).
+Phase 83A-83E COMPLETE (Architecture v2).
 
 ## Task Queue
 
 ```
-83E.1: Audit .clj bootstrap (DONE — see audit results below)
-83E.2: Document scope reduction decision
-83E.3: Verify all tests pass for complete 83A-83E
+84.1: Port remaining upstream test files (target: 60+)
+84.2: Differential testing campaign (CW vs JVM)
+84.3: Property-based reader round-trip tests
+84.4: Long-run stability tests
+84.5: Golden REPL output tests
+84.6: GC stress tests
 ```
 
 ## 83E Audit Results & Scope Reduction
@@ -96,13 +102,15 @@ functions are identified as bottlenecks through profiling.
 
 ## Known Issues
 
-- eval/defn returns symbol instead of var (found during 84.1, fix needed)
-- compilation.clj 1/8 test failure (related to above)
+- macros.clj: 8 fail, 2 error (macroexpand-1, ->, meta propagation issues)
+- other_functions.clj: 2 errors (pre-existing)
+- parallel.clj, predicates.clj, reducers.clj, test_fixtures.clj, vars.clj: pre-existing failures
+- pprint.clj: 1 fail, 1 error (pre-existing)
+- repl.clj: 1 error (pre-existing)
 
 ## Next Phase Queue
 
-After 83E, proceed to Phase 84 (Testing Expansion).
-Phase 84 was partially started (compilation.clj 7/8 pass). Resume from there.
+After 84, proceed to Phase 85 (Library Compatibility Expansion).
 
 ## Notes
 
@@ -112,4 +120,4 @@ Phase 84 was partially started (compilation.clj 7/8 pass). Resume from there.
 - Batch 1 (medley, CSK, honeysql) already tested correctly with as-is approach
 - clojure.xml now implemented (pure Clojure XML parser, 13/13 tests pass)
 - Design document for Architecture v2: `.dev/interop-v2-design.md`
-- Phase 84 partial work: `test/upstream/clojure/test_clojure/compilation.clj` (7/8 pass)
+- Phase 84: compilation.clj now 8/8 pass (def return type fixed)
