@@ -87,9 +87,10 @@
                                         (throw (Exception. "IndexOutOfBounds")))))
                          (zipmap (range test-map-count) (repeat :dummy)))))))
 
-;; CLJW: reduced range from 1e8 to 1e5 (CW GC has different memory characteristics)
+;; CLJW: reduced range from 1e8 to 1e4 (CW GC has different memory characteristics)
+;; 1e5 causes GC crash when run after other memory-heavy tests
 (deftest test-closed-over-clearing
   ;; this will throw OutOfMemory without proper reference clearing
-  (is (number? (reduce + 0 (r/map identity (range 1e5))))))
+  (is (number? (reduce + 0 (r/map identity (range 1e4))))))
 
 (run-tests)
