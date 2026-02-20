@@ -444,7 +444,7 @@ pub fn main() !void {
                     defer allocator.free(file_bytes);
                     err.setSourceFile(f);
                     err.setSourceText(file_bytes);
-                    evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+                    evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode, .file);
                 } else {
                     runRepl(alloc, &env, &gc);
                 }
@@ -472,7 +472,7 @@ pub fn main() !void {
                         defer allocator.free(file_bytes);
                         err.setSourceFile(f);
                         err.setSourceText(file_bytes);
-                        evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+                        evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode, .file);
                         return;
                     }
                     _ = stderr_file.write("Error: -M requires -m <namespace> or a file argument\n") catch {};
@@ -517,7 +517,7 @@ pub fn main() !void {
     if (expr) |e| {
         err.setSourceFile(null);
         err.setSourceText(e);
-        evalAndPrint(alloc, allocator, &gc, e, use_vm, dump_bytecode);
+        evalAndPrint(alloc, allocator, &gc, e, use_vm, dump_bytecode, .expr);
     } else if (file) |f| {
         // Add entry file's directory and detect src/ for require resolution
         const dir = std.fs.path.dirname(f) orelse ".";
@@ -534,7 +534,7 @@ pub fn main() !void {
 
         err.setSourceFile(f);
         err.setSourceText(file_bytes);
-        evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode);
+        evalAndPrint(alloc, allocator, &gc, file_bytes, use_vm, dump_bytecode, .file);
     } else if (config.main_ns) |main_ns| {
         // deps.edn :cljw/main — load the main namespace
         runMainNs(alloc, allocator, &gc, main_ns, use_vm);
@@ -606,23 +606,18 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
         }
 
         err.setSourceText(source);
-        const result = bootstrap.evalString(allocator, env, source);
 
-        if (result) |val| {
-            var buf: [65536]u8 = undefined;
-            const output = formatValue(&buf, val, allocator, env);
-            if (is_tty) {
-                // Colored output for result values
-                var color_buf: [65536 + 32]u8 = undefined;
-                const colored = colorizeValue(&color_buf, output, val);
-                _ = stdout.write(colored) catch {};
-            } else {
-                _ = stdout.write(output) catch {};
-            }
-            _ = stdout.write("\n") catch {};
-        } else |eval_err| {
+        // Evaluate per-form, printing each result immediately (interleaved with side-effects)
+        var repl_ctx = ReplPrintCtx{ .allocator = allocator, .env = env, .is_tty = is_tty };
+        const observer = bootstrap.FormObserver{
+            .context = @ptrCast(&repl_ctx),
+            .onResult = ReplPrintCtx.onResult,
+        };
+        _ = bootstrap.evalStringObserved(allocator, env, source, observer) catch |eval_err| {
             reportError(eval_err);
-        }
+            gc.collectIfNeeded(.{ .env = env });
+            continue;
+        };
 
         // GC safe point
         gc.collectIfNeeded(.{ .env = env });
@@ -631,13 +626,19 @@ fn runRepl(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
 
 /// Simple REPL for non-TTY stdin (piped input).
 fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void {
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
     const stdin: std.fs.File = .{ .handle = std.posix.STDIN_FILENO };
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
 
     var line_buf: [65536]u8 = undefined;
     var input_buf: [65536]u8 = undefined;
     var input_len: usize = 0;
     var depth: i32 = 0;
+
+    var repl_ctx = ReplPrintCtx{ .allocator = allocator, .env = env, .is_tty = false };
+    const observer = bootstrap.FormObserver{
+        .context = @ptrCast(&repl_ctx),
+        .onResult = ReplPrintCtx.onResult,
+    };
 
     while (true) {
         const line_end = readLine(stdin, &line_buf) orelse {
@@ -645,15 +646,10 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
             if (input_len > 0) {
                 const source = input_buf[0..input_len];
                 err.setSourceText(source);
-                const result = bootstrap.evalString(allocator, env, source);
-                if (result) |val| {
-                    var buf: [65536]u8 = undefined;
-                    const output = formatValue(&buf, val, allocator, env);
-                    _ = stdout.write(output) catch {};
-                    _ = stdout.write("\n") catch {};
-                } else |eval_err| {
+                _ = bootstrap.evalStringObserved(allocator, env, source, observer) catch |eval_err| {
                     reportError(eval_err);
-                }
+                    break;
+                };
             }
             break;
         };
@@ -679,16 +675,14 @@ fn runReplSimple(allocator: Allocator, env: *Env, gc: *gc_mod.MarkSweepGc) void 
 
         const source = input_buf[0..input_len];
         err.setSourceText(source);
-        const result = bootstrap.evalString(allocator, env, source);
 
-        if (result) |val| {
-            var buf: [65536]u8 = undefined;
-            const output = formatValue(&buf, val, allocator, env);
-            _ = stdout.write(output) catch {};
-            _ = stdout.write("\n") catch {};
-        } else |eval_err| {
+        _ = bootstrap.evalStringObserved(allocator, env, source, observer) catch |eval_err| {
             reportError(eval_err);
-        }
+            gc.collectIfNeeded(.{ .env = env });
+            input_len = 0;
+            depth = 0;
+            continue;
+        };
 
         gc.collectIfNeeded(.{ .env = env });
         input_len = 0;
@@ -749,7 +743,49 @@ fn countDelimiterDepth(source: []const u8) i32 {
     return d;
 }
 
-fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, use_vm: bool, dump_bytecode: bool) void {
+const EvalMode = enum { expr, file };
+
+/// Observer context for printing each form's result immediately after evaluation.
+/// This ensures correct interleaving with side-effects (e.g. println output appears
+/// between result values, matching standard Clojure behavior).
+const ExprPrintCtx = struct {
+    allocator: Allocator,
+    env: *Env,
+
+    fn onResult(ctx_ptr: *anyopaque, val: Value) void {
+        const self: *ExprPrintCtx = @ptrCast(@alignCast(ctx_ptr));
+        if (val.isNil()) return;
+        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+        var buf: [65536]u8 = undefined;
+        const output = formatValue(&buf, val, self.allocator, self.env);
+        _ = stdout.write(output) catch {};
+        _ = stdout.write("\n") catch {};
+    }
+};
+
+/// Observer for REPL: prints all results including nil.
+const ReplPrintCtx = struct {
+    allocator: Allocator,
+    env: *Env,
+    is_tty: bool,
+
+    fn onResult(ctx_ptr: *anyopaque, val: Value) void {
+        const self: *ReplPrintCtx = @ptrCast(@alignCast(ctx_ptr));
+        const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+        var buf: [65536]u8 = undefined;
+        const output = formatValue(&buf, val, self.allocator, self.env);
+        if (self.is_tty) {
+            var color_buf: [65536 + 32]u8 = undefined;
+            const colored = colorizeValue(&color_buf, output, val);
+            _ = stdout.write(colored) catch {};
+        } else {
+            _ = stdout.write(output) catch {};
+        }
+        _ = stdout.write("\n") catch {};
+    }
+};
+
+fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSweepGc, source: []const u8, use_vm: bool, dump_bytecode: bool, mode: EvalMode) void {
     // Env uses infra_alloc (GPA) for Namespace/Var/HashMap internals.
     // bootstrap and evaluation use gc_alloc (MarkSweepGc) for Values.
     var env = Env.init(infra_alloc);
@@ -769,24 +805,38 @@ fn evalAndPrint(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.MarkSwe
         return;
     }
 
-    // Evaluate using selected backend
-    const result = if (use_vm)
-        bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
-            reportError(e);
-            std.process.exit(1);
+    if (mode == .file) {
+        // File mode: evaluate all forms, no result printing (like clj script.clj)
+        if (use_vm) {
+            _ = bootstrap.evalStringVM(gc_alloc, &env, source) catch |e| {
+                reportError(e);
+                std.process.exit(1);
+            };
+        } else {
+            _ = bootstrap.evalString(gc_alloc, &env, source) catch |e| {
+                reportError(e);
+                std.process.exit(1);
+            };
         }
-    else
-        bootstrap.evalString(gc_alloc, &env, source) catch |e| {
-            reportError(e);
-            std.process.exit(1);
+    } else {
+        // Expr mode (-e): evaluate per-form, print each non-nil result (like clj -e)
+        var ctx = ExprPrintCtx{ .allocator = gc_alloc, .env = &env };
+        const observer = bootstrap.FormObserver{
+            .context = @ptrCast(&ctx),
+            .onResult = ExprPrintCtx.onResult,
         };
-
-    // Print result to stdout
-    var buf: [65536]u8 = undefined;
-    const output = formatValue(&buf, result, gc_alloc, &env);
-    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
-    _ = stdout.write(output) catch {};
-    _ = stdout.write("\n") catch {};
+        if (use_vm) {
+            _ = bootstrap.evalStringVMObserved(gc_alloc, &env, source, observer) catch |e| {
+                reportError(e);
+                std.process.exit(1);
+            };
+        } else {
+            _ = bootstrap.evalStringObserved(gc_alloc, &env, source, observer) catch |e| {
+                reportError(e);
+                std.process.exit(1);
+            };
+        }
+    }
 
     // Run shutdown hooks if shutdown was requested (e.g. SIGINT during run-server)
     if (lifecycle.isShutdownRequested()) {

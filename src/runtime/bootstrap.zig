@@ -1985,9 +1985,26 @@ fn analyzeForm(allocator: Allocator, env: *Env, form: Form) BootstrapError!*Node
 }
 
 /// Evaluate a source string in the given Env.
+/// Callback invoked after each top-level form is evaluated.
+/// Used by -e mode and REPL to print results interleaved with side-effects.
+pub const FormObserver = struct {
+    context: *anyopaque,
+    onResult: *const fn (*anyopaque, Value) void,
+};
+
 /// Reads, analyzes, and evaluates each top-level form sequentially.
 /// Returns the value of the last form, or nil if source is empty.
 pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
+    return evalStringInner(allocator, env, source, null);
+}
+
+/// Like evalString but calls observer.onResult after each form is evaluated.
+/// This ensures result printing is interleaved with side-effects (println etc).
+pub fn evalStringObserved(allocator: Allocator, env: *Env, source: []const u8, observer: FormObserver) BootstrapError!Value {
+    return evalStringInner(allocator, env, source, observer);
+}
+
+fn evalStringInner(allocator: Allocator, env: *Env, source: []const u8, observer: ?FormObserver) BootstrapError!Value {
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked) so AST Nodes
     // survive GC sweeps. TreeWalk uses allocator (gc_alloc) for Value creation.
     const node_alloc = env.nodeAllocator();
@@ -2014,6 +2031,7 @@ pub fn evalString(allocator: Allocator, env: *Env, source: []const u8) Bootstrap
             err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
             return error.EvalError;
         };
+        if (observer) |obs| obs.onResult(obs.context, last_value);
         // Update reader namespace after eval so subsequent syntax-quote
         // resolves symbols in the new namespace (e.g. after ns form).
         reader.current_ns = if (env.current_ns) |ns| ns else null;
@@ -2068,6 +2086,15 @@ pub fn dumpBytecodeVM(allocator: Allocator, env: *Env, source: []const u8) Boots
 }
 
 pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) BootstrapError!Value {
+    return evalStringVMInner(allocator, env, source, null);
+}
+
+/// Like evalStringVM but calls observer.onResult after each form is evaluated.
+pub fn evalStringVMObserved(allocator: Allocator, env: *Env, source: []const u8, observer: FormObserver) BootstrapError!Value {
+    return evalStringVMInner(allocator, env, source, observer);
+}
+
+fn evalStringVMInner(allocator: Allocator, env: *Env, source: []const u8, observer: ?FormObserver) BootstrapError!Value {
     // Reader/analyzer use node_arena (GPA-backed, not GC-tracked).
     // Compiler/VM use allocator (gc_alloc) for bytecode and Values.
     const node_alloc = env.nodeAllocator();
@@ -2109,6 +2136,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
                 err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
                 return error.EvalError;
             };
+            if (observer) |obs| obs.onResult(obs.context, last_value);
             reader.current_ns = if (env.current_ns) |ns| ns else null;
         }
         return last_value;
@@ -2168,6 +2196,7 @@ pub fn evalStringVM(allocator: Allocator, env: *Env, source: []const u8) Bootstr
             err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
             return error.EvalError;
         };
+        if (observer) |obs| obs.onResult(obs.context, last_value);
 
         const vm_fns = vm.detachFnAllocations();
         for (vm_fns) |f| {
