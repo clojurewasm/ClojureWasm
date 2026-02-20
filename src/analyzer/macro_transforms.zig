@@ -28,8 +28,7 @@ pub const MacroTransformFn = *const fn (Allocator, []const Form) anyerror!Form;
 /// Lookup table: macro name → transform function.
 /// Checked in analyzeList() before env-based macro lookup.
 pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
-    // 83E-v2.0.3: will add `when` here as proof of concept
-    // 83E-v2.1.x: will add all core macros here
+    .{ "when", transformWhen },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -88,6 +87,19 @@ pub fn makeVector(allocator: Allocator, elements: []const Form) !Form {
     const items = try allocator.alloc(Form, elements.len);
     @memcpy(items, elements);
     return .{ .data = .{ .vector = items } };
+}
+
+// ============================================================
+// Macro transform implementations
+// ============================================================
+
+/// `(when test body...)` → `(if test (do body...))`
+fn transformWhen(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const test_form = args[0];
+    const body = args[1..];
+    const do_form = try makeDo(allocator, body);
+    return makeIf(allocator, test_form, do_form, null);
 }
 
 // ============================================================

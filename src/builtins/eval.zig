@@ -30,6 +30,7 @@ const io = @import("io.zig");
 const value_mod = @import("../runtime/value.zig");
 const PersistentVector = value_mod.PersistentVector;
 const Namespace = @import("../runtime/namespace.zig").Namespace;
+const macro_transforms = @import("../analyzer/macro_transforms.zig");
 
 // ============================================================
 // read-string
@@ -176,6 +177,20 @@ fn macroexpand1(allocator: Allocator, form: Value) anyerror!Value {
         .symbol => head.asSymbol(),
         else => return form,
     };
+
+    // Check Zig macro transforms first (same as analyzer priority)
+    const is_core = sym.ns == null or (sym.ns != null and std.mem.eql(u8, sym.ns.?, "clojure.core"));
+    if (is_core) {
+        if (macro_transforms.lookup(sym.name)) |transform_fn| {
+            // Convert Value args to Forms, call transform, convert back
+            var arg_forms = allocator.alloc(Form, lst.items.len - 1) catch return error.OutOfMemory;
+            for (lst.items[1..], 0..) |arg_val, i| {
+                arg_forms[i] = macro.valueToForm(allocator, arg_val) catch return error.OutOfMemory;
+            }
+            const expanded_form = try transform_fn(allocator, arg_forms);
+            return macro.formToValue(allocator, expanded_form) catch return error.OutOfMemory;
+        }
+    }
 
     // Resolve symbol to Var
     const env = bootstrap.macro_eval_env orelse return form;

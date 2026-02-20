@@ -369,12 +369,19 @@ pub const Analyzer = struct {
         }
 
         // Check for Zig macro transform (Form→Form, before defmacro lookup)
-        if (items[0].data == .symbol and items[0].data.symbol.ns == null) {
-            if (macro_transforms.lookup(items[0].data.symbol.name)) |transform_fn| {
-                const expanded = transform_fn(self.allocator, items[1..]) catch {
-                    return self.analysisError(.value_error, "macro transform failed", form);
-                };
-                return self.analyze(expanded);
+        if (items[0].data == .symbol) {
+            const sym = items[0].data.symbol;
+            const is_transform_candidate = if (sym.ns == null)
+                (self.findLocal(sym.name) == null) // locals shadow transforms
+            else
+                self.isClojureCoreNs(sym.ns.?); // qualified: clojure.core/when
+            if (is_transform_candidate) {
+                if (macro_transforms.lookup(sym.name)) |transform_fn| {
+                    const expanded = transform_fn(self.allocator, items[1..]) catch {
+                        return self.analysisError(.value_error, "macro transform failed", form);
+                    };
+                    return self.analyze(expanded);
+                }
             }
         }
 

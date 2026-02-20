@@ -1984,10 +1984,12 @@ test "loadCore - core.clj defines defn and when" {
     try testing.expect(defn_var != null);
     try testing.expect(defn_var.?.isMacro());
 
-    // when should be available as a macro
-    const when_var = core.resolve("when");
-    try testing.expect(when_var != null);
-    try testing.expect(when_var.?.isMacro());
+    // when is now a Zig macro transform (not a defmacro var)
+    // Verify it works via the Zig transform pipeline
+    const when_result = try evalString(alloc, &env, "(when true 42)");
+    try testing.expectEqual(Value.initInteger(42), when_result);
+    const when_nil = try evalString(alloc, &env, "(when false 42)");
+    try testing.expectEqual(Value.nil_val, when_nil);
 
     // Use defn from core.clj
     const result = try evalString(alloc, &env,
