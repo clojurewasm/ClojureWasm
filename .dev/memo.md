@@ -59,21 +59,23 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 87: Developer Experience
-87.4: Project template (cljw new my-app)
-- Scaffold new project: deps.edn, src/ns.clj, test/ns_test.clj
-- Template should follow CW conventions
+Phase 88: v0.2.0 Release
+88.1: Version bump + CHANGELOG
 
 ## Previous Task
 
-87.3: REPL ns-qualified tab completion + special commands (:quit, :help).
-87.2: nREPL macroexpand op + cons rendering fix + shutdown panic fix.
-87.1: cljw test already implemented.
+Phase 87 COMPLETE (Developer Experience).
+87.1: cljw test (already existed). 87.2: nREPL macroexpand op. 87.3: REPL polish. 87.4: cljw new.
 
 ## Task Queue
 
 ```
-87.4: Project template (cljw new my-app)
+88.1: Version bump + CHANGELOG
+88.2: Release notes
+88.3: Benchmark record (full history entry)
+88.4: Binary audit (no debug symbols, no embedded secrets)
+88.5: GitHub Release with pre-built binaries (macOS ARM64 + Linux x86_64)
+88.6: Cross-platform smoke test before release
 ```
 
 ## 83E Audit Results & Scope Reduction

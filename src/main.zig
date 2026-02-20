@@ -60,6 +60,7 @@ fn printHelp() void {
         \\  cljw -P                    Resolve deps only
         \\  cljw build <file> [-o out] Build standalone binary
         \\  cljw test [files...]       Run tests
+        \\  cljw new <name>            Create new project
         \\
         \\deps.edn flags:
         \\  -A:alias[:alias...]  Apply alias(es) for REPL
@@ -91,6 +92,7 @@ fn printHelp() void {
         \\  cljw -X:build my.ns/task   Exec function with :build alias
         \\  cljw -P                    Fetch git dependencies
         \\  cljw build app.clj -o app  Build standalone binary
+        \\  cljw new my-app            Create new project
         \\
     ) catch {};
 }
@@ -177,6 +179,12 @@ pub fn main() !void {
     // Handle `test` subcommand: cljw test [file.clj ...]
     if (args.len >= 2 and std.mem.eql(u8, args[1], "test")) {
         handleTestCommand(alloc, allocator, &gc, args[2..]);
+        return;
+    }
+
+    // Handle `new` subcommand: cljw new <project-name>
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "new")) {
+        handleNewCommand(args[2..]);
         return;
     }
 
@@ -1132,6 +1140,115 @@ fn checkTestFailures(result: Value) bool {
         }
     }
     return false;
+}
+
+/// Handle `cljw new <project-name>` subcommand.
+/// Creates a new project directory with deps.edn, src/, and test/ scaffolding.
+fn handleNewCommand(new_args: []const [:0]const u8) void {
+    const stderr: std.fs.File = .{ .handle = std.posix.STDERR_FILENO };
+    const stdout: std.fs.File = .{ .handle = std.posix.STDOUT_FILENO };
+
+    if (new_args.len == 0) {
+        _ = stderr.write("Usage: cljw new <project-name>\n") catch {};
+        std.process.exit(1);
+    }
+
+    const project_name = new_args[0];
+
+    // Validate project name (alphanumeric, hyphens, underscores)
+    for (project_name) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != '-' and c != '_' and c != '.') {
+            _ = stderr.write("Error: invalid project name (use alphanumeric, hyphens, underscores)\n") catch {};
+            std.process.exit(1);
+        }
+    }
+
+    // Convert project name to namespace: hyphens -> underscores for dirs/files
+    var ns_name_buf: [256]u8 = undefined;
+    const ns_name = blk: {
+        if (project_name.len > ns_name_buf.len) {
+            _ = stderr.write("Error: project name too long\n") catch {};
+            std.process.exit(1);
+        }
+        @memcpy(ns_name_buf[0..project_name.len], project_name);
+        // Namespace uses hyphens (Clojure convention), file path uses underscores
+        break :blk ns_name_buf[0..project_name.len];
+    };
+
+    var file_name_buf: [256]u8 = undefined;
+    const file_name = blk: {
+        @memcpy(file_name_buf[0..project_name.len], project_name);
+        // Replace hyphens with underscores for file paths
+        for (file_name_buf[0..project_name.len]) |*c| {
+            if (c.* == '-') c.* = '_';
+        }
+        break :blk file_name_buf[0..project_name.len];
+    };
+
+    // Create project directory
+    std.fs.cwd().makeDir(project_name) catch |e| {
+        if (e == error.PathAlreadyExists) {
+            _ = stderr.write("Error: directory already exists\n") catch {};
+        } else {
+            _ = stderr.write("Error creating directory\n") catch {};
+        }
+        std.process.exit(1);
+    };
+
+    var project_dir = std.fs.cwd().openDir(project_name, .{}) catch {
+        _ = stderr.write("Error: cannot open project directory\n") catch {};
+        std.process.exit(1);
+    };
+    defer project_dir.close();
+
+    // Create subdirectories
+    project_dir.makePath("src") catch {};
+    project_dir.makePath("test") catch {};
+
+    // Write deps.edn
+    {
+        var buf: [1024]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buf);
+        const w = stream.writer();
+        w.print("{{:paths [\"src\"]\n :deps {{}}\n :aliases\n {{:test {{:extra-paths [\"test\"]}}}}}}\n", .{}) catch {};
+        project_dir.writeFile(.{ .sub_path = "deps.edn", .data = stream.getWritten() }) catch {};
+    }
+
+    // Write src/<file_name>.clj
+    {
+        var path_buf: [512]u8 = undefined;
+        var path_stream = std.io.fixedBufferStream(&path_buf);
+        path_stream.writer().print("src/{s}.clj", .{file_name}) catch {};
+        const src_path = path_stream.getWritten();
+
+        var buf: [1024]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buf);
+        const w = stream.writer();
+        w.print("(ns {s})\n\n(defn -main [& args]\n  (println \"Hello from {s}!\"))\n", .{ ns_name, ns_name }) catch {};
+        project_dir.writeFile(.{ .sub_path = src_path, .data = stream.getWritten() }) catch {};
+    }
+
+    // Write test/<file_name>_test.clj
+    {
+        var path_buf: [512]u8 = undefined;
+        var path_stream = std.io.fixedBufferStream(&path_buf);
+        path_stream.writer().print("test/{s}_test.clj", .{file_name}) catch {};
+        const test_path = path_stream.getWritten();
+
+        var buf: [1024]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buf);
+        const w = stream.writer();
+        w.print("(ns {s}-test\n  (:require [clojure.test :refer [deftest is testing run-tests]]\n            [{s} :refer :all]))\n\n(deftest greeting-test\n  (testing \"main function\"\n    (is (= 1 1))))\n\n(run-tests)\n", .{ ns_name, ns_name }) catch {};
+        project_dir.writeFile(.{ .sub_path = test_path, .data = stream.getWritten() }) catch {};
+    }
+
+    {
+        var msg_buf: [1024]u8 = undefined;
+        var msg_stream = std.io.fixedBufferStream(&msg_buf);
+        const w = msg_stream.writer();
+        w.print("Project '{s}' created!\n\n  cd {s}\n  cljw -M -m {s}    # Run main\n  cljw test          # Run tests\n  cljw               # Start REPL\n", .{ project_name, project_name, ns_name }) catch {};
+        _ = stdout.write(msg_stream.getWritten()) catch {};
+    }
 }
 
 /// Recursively collect .clj files from a directory.

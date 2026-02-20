@@ -25,8 +25,8 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 83E | Core All-Zig Migration | 2.5 | DONE (scope-reduced) |
 | 84 | Testing Expansion | 2 | DONE |
 | 85 | Library Compatibility Expansion | 2 | DONE |
-| 87 | Developer Experience | 3 | IN-PROGRESS |
-| 88 | v0.2.0 Release | 3 | PENDING |
+| 87 | Developer Experience | 3 | DONE |
+| 88 | v0.2.0 Release | 3 | IN-PROGRESS |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
