@@ -59,23 +59,23 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.2: Arithmetic & comparison wrappers → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. ~15 functions (inc', dec', quot, rem, mod, abs, etc.)
+All-Zig Migration Phase A.3: Collection constructors & accessors → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. ~20 functions (get-in, assoc-in, update-in, select-keys, etc.)
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.1: 27 core.clj defn migrated to Zig builtins (predicates.zig).
-Batch: boolean, true?, false?, some?, any?, ident?/simple-*/qualified-*, double?,
-pos-int?, neg-int?, nat-int?, NaN?, infinite?, identity, inc, dec, next,
-second, fnext, nfirst, ffirst, nnext, not-empty. (+28 builtins, 438 total)
+A.2: 24 core.clj defn migrated to Zig builtins (arithmetic.zig).
+Batch: unchecked-* (14 arithmetic + 7 coercion), inc', dec', rand-nth.
+(+24 builtins, 462 total)
 
 ## Task Queue
 
 ```
 Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.1: Simple predicates & type utils (27 fn) DONE
-  A.2: Arithmetic & comparison wrappers (~15 fn) ← CURRENT
+  A.2: Arithmetic & comparison wrappers (24 fn) DONE
+  A.3: Collection constructors & accessors (~20 fn) ← CURRENT
   A.2: Arithmetic & comparison wrappers (~15 fn)
   A.3: Collection constructors & accessors (~20 fn)
   A.4: Sequence functions (~25 fn)

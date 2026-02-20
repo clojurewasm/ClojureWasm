@@ -1419,7 +1419,7 @@ fn identityFn(_: Allocator, args: []const Value) anyerror!Value {
 
 // --- Arithmetic helpers ---
 
-fn incFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn incFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to inc", .{args.len});
     return switch (args[0].tag()) {
         .integer => Value.initInteger(args[0].asInteger() +% 1),
@@ -1428,7 +1428,7 @@ fn incFn(_: Allocator, args: []const Value) anyerror!Value {
     };
 }
 
-fn decFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn decFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dec", .{args.len});
     return switch (args[0].tag()) {
         .integer => Value.initInteger(args[0].asInteger() -% 1),

@@ -1565,6 +1565,77 @@ fn toBigDec(allocator: Allocator, v: Value) anyerror!Value {
 }
 
 // ============================================================
+// Phase A.2: Unchecked arithmetic, inc'/dec', rand-nth
+// ============================================================
+
+const predicates_mod = @import("predicates.zig");
+const builtins_collections = @import("collections.zig");
+
+fn incPrimeFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to inc'", .{args.len});
+    // inc' = (+' x 1) — auto-promoting
+    return addPFn(undefined, &.{ args[0], Value.initInteger(1) });
+}
+
+fn decPrimeFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to dec'", .{args.len});
+    // dec' = (-' x 1) — auto-promoting
+    return subPFn(undefined, &.{ args[0], Value.initInteger(1) });
+}
+
+fn uncheckedByteFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unchecked-byte", .{args.len});
+    const v = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i64, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "unchecked-byte expects a number", .{}),
+    };
+    const masked = v & 0xFF;
+    return Value.initInteger(if (masked > 127) masked - 256 else masked);
+}
+
+fn uncheckedShortFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unchecked-short", .{args.len});
+    const v = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i64, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "unchecked-short expects a number", .{}),
+    };
+    const masked = v & 0xFFFF;
+    return Value.initInteger(if (masked > 32767) masked - 65536 else masked);
+}
+
+fn uncheckedCharFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unchecked-char", .{args.len});
+    _ = allocator;
+    const v = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i64, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "unchecked-char expects a number", .{}),
+    };
+    return Value.initChar(@intCast(v & 0xFFFF));
+}
+
+fn uncheckedIntFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to unchecked-int", .{args.len});
+    const v = switch (args[0].tag()) {
+        .integer => args[0].asInteger(),
+        .float => @as(i64, @intFromFloat(args[0].asFloat())),
+        else => return err.setErrorFmt(.eval, .type_error, .{}, "unchecked-int expects a number", .{}),
+    };
+    const masked = v & 0xFFFFFFFF;
+    return Value.initInteger(if (masked > 2147483647) masked - 4294967296 else masked);
+}
+
+fn randNthFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to rand-nth", .{args.len});
+    // rand-nth = (nth coll (rand-int (count coll)))
+    const cnt = try builtins_collections.countFn(allocator, args);
+    const idx = try randIntFn(allocator, &.{cnt});
+    return builtins_collections.nthFn(allocator, &.{ args[0], idx });
+}
+
+// ============================================================
 // BuiltinDef table
 // ============================================================
 
@@ -1849,6 +1920,34 @@ pub const numeric_builtins = [_]BuiltinDef{
         .arglists = "([i])",
         .added = "1.0",
     },
+    // Phase A.2: unchecked arithmetic (delegate to checked — CW has no auto-promotion)
+    .{ .name = "unchecked-inc", .func = &predicates_mod.incFn, .doc = "Returns a number one greater than x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-dec", .func = &predicates_mod.decFn, .doc = "Returns a number one less than x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-inc-int", .func = &predicates_mod.incFn, .doc = "Returns a number one greater than x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-dec-int", .func = &predicates_mod.decFn, .doc = "Returns a number one less than x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-negate", .func = &subFn, .doc = "Returns the negation of x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-negate-int", .func = &subFn, .doc = "Returns the negation of x.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "unchecked-add", .func = &addFn, .doc = "Returns the sum of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-add-int", .func = &addFn, .doc = "Returns the sum of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-subtract", .func = &subFn, .doc = "Returns the difference of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-subtract-int", .func = &subFn, .doc = "Returns the difference of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-multiply", .func = &mulFn, .doc = "Returns the product of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-multiply-int", .func = &mulFn, .doc = "Returns the product of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-divide-int", .func = &quotFn, .doc = "Returns the integer division of x and y.", .arglists = "([x y])", .added = "1.0" },
+    .{ .name = "unchecked-remainder-int", .func = &remFn, .doc = "Returns the remainder of dividing x by y.", .arglists = "([x y])", .added = "1.0" },
+    // unchecked type coercions
+    .{ .name = "unchecked-byte", .func = &uncheckedByteFn, .doc = "Coerce to byte.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-short", .func = &uncheckedShortFn, .doc = "Coerce to short.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-char", .func = &uncheckedCharFn, .doc = "Coerce to char.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-int", .func = &uncheckedIntFn, .doc = "Coerce to int.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-long", .func = &intCoerceFn, .doc = "Coerce to long.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-float", .func = &floatCoerceFn, .doc = "Coerce to float.", .arglists = "([x])", .added = "1.3" },
+    .{ .name = "unchecked-double", .func = &floatCoerceFn, .doc = "Coerce to double.", .arglists = "([x])", .added = "1.3" },
+    // auto-promoting inc'/dec'
+    .{ .name = "inc'", .func = &incPrimeFn, .doc = "Returns a number one greater than num. Supports arbitrary precision.", .arglists = "([x])", .added = "1.0" },
+    .{ .name = "dec'", .func = &decPrimeFn, .doc = "Returns a number one less than num. Supports arbitrary precision.", .arglists = "([x])", .added = "1.0" },
+    // rand-nth
+    .{ .name = "rand-nth", .func = &randNthFn, .doc = "Return a random element of the (sequential) collection.", .arglists = "([coll])", .added = "1.2" },
 };
 
 // === Tests ===
