@@ -255,5 +255,6 @@ Check `.claude/references/zig-tips.md` first, then Zig stdlib at
 | Design document   | `.dev/future.md`                     | When planning new phases or major features |
 | All-Zig plan      | `.dev/all-zig-plan.md`               | Full .clj→Zig migration plan (Phases A-E)  |
 | Optimizations     | `.dev/optimizations.md`              | Completed + future optimization catalog    |
+| Known issues      | `.dev/known-issues.md`               | Bug/workaround/debt tracking (P0-P3)       |
 | Baselines         | `.dev/baselines.md`                  | Non-functional regression thresholds       |
 | Bytecode debug    | `./zig-out/bin/cljw --dump-bytecode` | When VM tests fail or bytecode looks wrong |

@@ -83,9 +83,6 @@ const protocols_clj_source = @embedFile("../clj/clojure/core/protocols.clj");
 /// Embedded clojure/core/reducers.clj source (compiled into binary).
 const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
 
-/// Embedded clojure/uuid.clj source (compiled into binary).
-const uuid_clj_source = @embedFile("../clj/clojure/uuid.clj");
-
 /// Embedded clojure/test/tap.clj source (compiled into binary).
 const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
 
@@ -1520,31 +1517,6 @@ pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
-/// Load and evaluate clojure/uuid.clj.
-pub fn loadUuid(allocator: Allocator, env: *Env) BootstrapError!void {
-    const uuid_ns = env.findOrCreateNamespace("clojure.uuid") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        uuid_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = uuid_ns;
-
-    _ = try evalString(allocator, env, uuid_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
 /// Load and evaluate clojure/test/tap.clj.
 pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
     const tap_ns = env.findOrCreateNamespace("clojure.test.tap") catch {
@@ -1864,7 +1836,8 @@ pub fn loadCoreSpecsAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Returns true if the namespace was loaded from embedded source.
 pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
     if (std.mem.eql(u8, ns_name, "clojure.uuid")) {
-        try loadUuid(allocator, env);
+        // clojure.uuid namespace — no vars needed (uuid printing handled in Zig)
+        _ = env.findOrCreateNamespace("clojure.uuid") catch return error.EvalError;
         return true;
     }
     if (std.mem.eql(u8, ns_name, "clojure.test.tap")) {

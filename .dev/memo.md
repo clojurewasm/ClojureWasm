@@ -36,7 +36,7 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon).
 - Bridge: `src/wasm/types.zig` (751 lines, thin wrapper over zwasm)
-- 63 upstream test files (63/63 passing). 6/6 e2e. 14/14 deps e2e.
+- 68 upstream test files (68/68 passing individually). 6/6 e2e. 14/14 deps e2e.
 - Benchmarks: `bench/history.yaml` (v1.1.0 entry = latest baseline)
 - Binary: 4.25MB (wasm=true) / 3.68MB (wasm=false) ReleaseSafe. See `.dev/binary-size-audit.md`.
 - Startup: 4.6ms (wasm=true) / 4.3ms (wasm=false). RSS: 7.4MB.
@@ -59,16 +59,24 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88B complete. All easy fixes done, baselines recorded.
-Next: Phase B (Library namespaces → Zig builtins).
+Phase 88C: P0 Bug Fixes & Test Infrastructure.
+Fix user-facing bugs and create unified test runner before Phase B.
+See `.dev/known-issues.md` for full issue list.
+
+Sub-tasks:
+- 88C.1: Fix `cljw test` state pollution (I-001) — reset global state between test files
+- 88C.2: Fix bit-shift panics on shift ≥64 (I-002) — add `& 0x3f` mask
+- 88C.3: Fix `char` return type (I-003) — verify JVM semantics
+- 88C.4: Create unified test runner (I-010) — `test/run_all.sh`
 
 ## Previous Task
 
-88A-sweep: Upstream test stabilization (S.1-S.6 all DONE).
+Phase 88B: Upstream test stabilization (S.1-S.6 all DONE).
 
 ## Task Queue
 
 ```
+Phase 88C: P0 Bug Fixes & Test Infrastructure (4 sub-tasks)
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring
@@ -85,18 +93,15 @@ User decision: Override audit deferral. Migrate ALL .clj to Zig (zero .clj in pi
 Strategy: Remove constraints → migrate everything → refactor directories → optimize.
 Plan: `.dev/all-zig-plan.md` (Phases A-E). Benchmarks baseline: `83E-v2` in history.yaml.
 
-## Known Issues (post-88B baselines)
+## Known Issues
 
-Hard failures (individual execution):
-- macros.clj: 8F (metadata propagation through syntax-quote)
-- reducers.clj: 11F (CollFold protocol not implemented)
-- spec.clj: 25E (spec.alpha largely unimplemented)
-- test/clojure/numbers.clj: 3F (char type returns char not string)
+Full list: `.dev/known-issues.md` (P0-P3, with resolution timeline).
 
-State pollution in batch execution (pass individually):
-- multimethods.clj: 36E in batch (defmethod leaks across tests)
-- clojure_zip.clj: 17E in batch
-- data.clj: 13E in batch
+P0 (fix in 88C): state pollution (I-001), bit-shift panic (I-002), char type (I-003).
+P1 (fix in 88C): unified test runner (I-010).
+P1 (fix in Phase B): finally catch (I-011), watch/validator catch (I-012).
+P2 (fix in Phase B): syntax-quote metadata (I-020), CollFold (I-021), spec (I-022), pointer cast (I-023-024).
+P3 (Phase B+ organic): UPSTREAM-DIFF markers (I-030), stub vars (I-031), stub namespaces (I-032).
 
 ## Next Phase Queue
 

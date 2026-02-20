@@ -30,6 +30,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 88 | v0.3.0 Release | 3 | DONE |
 | 88A | Correctness Sweep | 3.5 | DONE |
 | 88B | Upstream Test Stabilization | 3.5 | DONE |
+| 88C | P0 Bug Fixes & Test Infrastructure | 3.5 | IN-PROGRESS |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
@@ -469,6 +470,22 @@ Known hard failures (4 files, to be resolved in Phase B):
 - reducers.clj 11F: CollFold protocol → Phase B (reducers→Zig)
 - spec.clj 29F+2E: spec internal accuracy → Phase B (spec→Zig)
 - (compilation.clj/main.clj/other_functions.clj/transducers.clj fixed above)
+
+---
+
+## Phase 88C: P0 Bug Fixes & Test Infrastructure (Tier 3.5)
+
+Fix user-facing bugs and development infrastructure gaps before Phase B.
+See `.dev/known-issues.md` for full issue descriptions and resolution timeline.
+
+| Sub | Task | Issue | Priority | Details |
+|-----|------|-------|----------|---------|
+| 88C.1 | Fix `cljw test` state pollution | I-001 | P0 | defmethod/hierarchy/protocol leaks across test files. Reset global state between files or fork env per file. |
+| 88C.2 | Fix bit-shift panics on shift ≥64 | I-002 | P0 | `(bit-shift-left 1 64)` panics. Add `& 0x3f` mask before `@intCast` to u6. |
+| 88C.3 | Fix `char` return type | I-003 | P0 | Verify JVM semantics. `(char 48)` should return `\0` (Character), fix test expectation or builtin. |
+| 88C.4 | Create unified test runner | I-010 | P1 | `test/run_all.sh`: run Zig unit + cljw test + e2e + deps e2e. Single pass/fail summary. |
+
+**Exit**: All P0 bugs fixed. `bash test/run_all.sh` passes and is referenced in CLAUDE.md commit gate.
 
 ---
 
