@@ -36,6 +36,14 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "assert", transformAssert },
     .{ "and", transformAnd },
     .{ "or", transformOr },
+    .{ "->", transformThreadFirst },
+    .{ "->>", transformThreadLast },
+    .{ "as->", transformAsThread },
+    .{ "some->", transformSomeThreadFirst },
+    .{ "some->>", transformSomeThreadLast },
+    .{ "cond->", transformCondThreadFirst },
+    .{ "cond->>", transformCondThreadLast },
+    .{ "doto", transformDoto },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -212,6 +220,156 @@ fn transformOr(allocator: Allocator, args: []const Form) anyerror!Form {
     const if_form = try makeIf(allocator, g, g, or_rest);
     // (let [g x] if_form)
     return makeLet(allocator, &.{ g, args[0] }, &.{if_form});
+}
+
+/// `(-> x form1 form2 ...)` — thread-first
+/// Each form: if list `(f a)` → `(f x a)`, if symbol `f` → `(f x)`
+fn transformThreadFirst(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return error.InvalidArgs;
+    var result = args[0];
+    for (args[1..]) |form| {
+        result = try threadForm(allocator, result, form, .first);
+    }
+    return result;
+}
+
+/// `(->> x form1 form2 ...)` — thread-last
+fn transformThreadLast(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return error.InvalidArgs;
+    var result = args[0];
+    for (args[1..]) |form| {
+        result = try threadForm(allocator, result, form, .last);
+    }
+    return result;
+}
+
+const ThreadPosition = enum { first, last };
+
+fn threadForm(allocator: Allocator, threaded: Form, form: Form, pos: ThreadPosition) !Form {
+    if (form.data == .list and form.data.list.len > 0) {
+        const items = form.data.list;
+        return switch (pos) {
+            .first => blk: {
+                // (f a b) + threaded → (f threaded a b)
+                var new_items = try allocator.alloc(Form, items.len + 1);
+                new_items[0] = items[0]; // f
+                new_items[1] = threaded;
+                @memcpy(new_items[2..], items[1..]);
+                break :blk Form{ .data = .{ .list = new_items } };
+            },
+            .last => blk: {
+                // (f a b) + threaded → (f a b threaded)
+                var new_items = try allocator.alloc(Form, items.len + 1);
+                @memcpy(new_items[0..items.len], items);
+                new_items[items.len] = threaded;
+                break :blk Form{ .data = .{ .list = new_items } };
+            },
+        };
+    }
+    // symbol `f` → `(f threaded)`
+    return makeList(allocator, &.{ form, threaded });
+}
+
+/// `(as-> expr name form1 form2 ...)` → `(let [name expr name form1 name form2 ...] name)`
+fn transformAsThread(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 2) return error.InvalidArgs;
+    const expr = args[0];
+    const name = args[1];
+    const forms = args[2..];
+    // Build bindings: [name expr name form1 name form2 ...]
+    var bindings = try allocator.alloc(Form, 2 + forms.len * 2);
+    bindings[0] = name;
+    bindings[1] = expr;
+    for (forms, 0..) |form, i| {
+        bindings[2 + i * 2] = name;
+        bindings[2 + i * 2 + 1] = form;
+    }
+    return makeLet(allocator, bindings, &.{name});
+}
+
+/// `(some-> expr form1 form2 ...)` — thread-first with nil short-circuit
+fn transformSomeThreadFirst(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformSomeThread(allocator, args, .first);
+}
+
+/// `(some->> expr form1 form2 ...)` — thread-last with nil short-circuit
+fn transformSomeThreadLast(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformSomeThread(allocator, args, .last);
+}
+
+fn transformSomeThread(allocator: Allocator, args: []const Form, pos: ThreadPosition) !Form {
+    if (args.len == 0) return error.InvalidArgs;
+    if (args.len == 1) return args[0];
+    const expr = args[0];
+    const forms = args[1..];
+    const g = try gensymWithPrefix(allocator, "some");
+    // Build from inside out: last step first
+    var result = try threadForm(allocator, g, forms[forms.len - 1], pos);
+    // Wrap each step in: (let [g prev] (if (nil? g) nil step))
+    var i: usize = forms.len - 1;
+    while (i > 0) {
+        i -= 1;
+        const step = try threadForm(allocator, g, forms[i], pos);
+        const nil_check = try makeList(allocator, &.{ makeSymbol("nil?"), g });
+        const if_form = try makeIf(allocator, nil_check, makeNil(), result);
+        result = try makeLet(allocator, &.{ g, step }, &.{if_form});
+    }
+    // Outermost let binds g to expr
+    const nil_check = try makeList(allocator, &.{ makeSymbol("nil?"), g });
+    const if_form = try makeIf(allocator, nil_check, makeNil(), result);
+    return makeLet(allocator, &.{ g, expr }, &.{if_form});
+}
+
+/// `(cond-> expr test1 form1 test2 form2 ...)` — conditional thread-first
+fn transformCondThreadFirst(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformCondThread(allocator, args, .first);
+}
+
+/// `(cond->> expr test1 form1 test2 form2 ...)` — conditional thread-last
+fn transformCondThreadLast(allocator: Allocator, args: []const Form) anyerror!Form {
+    return transformCondThread(allocator, args, .last);
+}
+
+fn transformCondThread(allocator: Allocator, args: []const Form, pos: ThreadPosition) !Form {
+    if (args.len == 0) return error.InvalidArgs;
+    const expr = args[0];
+    const clauses = args[1..];
+    if (clauses.len % 2 != 0) return error.InvalidArgs;
+    var result = expr;
+    var i: usize = 0;
+    while (i < clauses.len) : (i += 2) {
+        const test_form = clauses[i];
+        const form = clauses[i + 1];
+        const g = try gensymWithPrefix(allocator, "cond");
+        const step = try threadForm(allocator, g, form, pos);
+        const if_form = try makeIf(allocator, test_form, step, g);
+        result = try makeLet(allocator, &.{ g, result }, &.{if_form});
+    }
+    return result;
+}
+
+/// `(doto x form1 form2 ...)` — evaluate forms with x as first arg, return x
+fn transformDoto(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return error.InvalidArgs;
+    const x = args[0];
+    const forms = args[1..];
+    const g = try gensymWithPrefix(allocator, "doto");
+    // Build body: (f g args...) for each form, then g at the end
+    var body = try allocator.alloc(Form, forms.len + 1);
+    for (forms, 0..) |form, i| {
+        if (form.data == .list and form.data.list.len > 0) {
+            const items = form.data.list;
+            var new_items = try allocator.alloc(Form, items.len + 1);
+            new_items[0] = items[0];
+            new_items[1] = g;
+            @memcpy(new_items[2..], items[1..]);
+            body[i] = .{ .data = .{ .list = new_items } };
+        } else {
+            body[i] = try makeList(allocator, &.{ form, g });
+        }
+    }
+    body[forms.len] = g; // return g
+    return makeLet(allocator, &.{ g, x }, body);
 }
 
 // ============================================================

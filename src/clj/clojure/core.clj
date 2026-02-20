@@ -299,27 +299,7 @@
         doc-form (when doc `(set-ns-doc '~name ~doc))]
     `(do (in-ns '~name) ~@(when doc-form (list doc-form)) ~@ref-forms)))
 
-;; Threading macros
-
-(defmacro -> [x & forms]
-  (loop [x x, forms forms]
-    (if forms
-      (let [form (first forms)
-            threaded (if (seq? form)
-                       (with-meta `(~(first form) ~x ~@(next form)) (meta form))
-                       (list form x))]
-        (recur threaded (next forms)))
-      x)))
-
-(defmacro ->> [x & forms]
-  (loop [x x, forms forms]
-    (if forms
-      (let [form (first forms)
-            threaded (if (seq? form)
-                       (with-meta `(~(first form) ~@(next form) ~x) (meta form))
-                       (list form x))]
-        (recur threaded (next forms)))
-      x)))
+;; `->`, `->>` migrated to Zig (macro_transforms.zig)
 
 ;; Iteration
 
@@ -671,94 +651,7 @@
          (let [~form temp#]
            ~@body)))))
 
-;; Threading macro variants
-
-(defmacro doto [x & forms]
-  (let [gx '__doto_val__]
-    (cons 'let
-          (cons [gx x]
-                (concat
-                 (map (fn [f]
-                        (if (seq? f)
-                          (cons (first f) (cons gx (rest f)))
-                          (list f gx)))
-                      forms)
-                 (list gx))))))
-
-(defmacro as-> [expr name & forms]
-  `(let [~name ~expr
-         ~@(mapcat (fn [form] [name form]) forms)]
-     ~name))
-
-(defmacro some-> [expr & forms]
-  (if (seq forms)
-    (let [f (first forms)
-          more (rest forms)
-          step (if (seq? f)
-                 (cons (first f) (cons '__some_val__ (rest f)))
-                 (list f '__some_val__))]
-      (if (seq more)
-        (cons 'let
-              (list ['__some_val__ expr]
-                    (cons 'if
-                          (list '(nil? __some_val__)
-                                nil
-                                (cons 'some-> (cons step more))))))
-        (cons 'let
-              (list ['__some_val__ expr]
-                    (cons 'if
-                          (list '(nil? __some_val__)
-                                nil
-                                step))))))
-    expr))
-
-(defmacro some->> [expr & forms]
-  (if (seq forms)
-    (let [f (first forms)
-          more (rest forms)
-          step (if (seq? f)
-                 (concat (list (first f)) (rest f) (list '__some_val__))
-                 (list f '__some_val__))]
-      (if (seq more)
-        (cons 'let
-              (list ['__some_val__ expr]
-                    (cons 'if
-                          (list '(nil? __some_val__)
-                                nil
-                                (cons 'some->> (cons step more))))))
-        (cons 'let
-              (list ['__some_val__ expr]
-                    (cons 'if
-                          (list '(nil? __some_val__)
-                                nil
-                                step))))))
-    expr))
-
-(defmacro cond-> [expr & clauses]
-  (let [pairs (partition 2 clauses)]
-    (reduce (fn [acc pair]
-              (let [test (first pair)
-                    form (first (rest pair))
-                    step (if (seq? form)
-                           (cons (first form) (cons '__cond_val__ (rest form)))
-                           (list form '__cond_val__))]
-                (list 'let ['__cond_val__ acc]
-                      (list 'if test step '__cond_val__))))
-            expr
-            pairs)))
-
-(defmacro cond->> [expr & clauses]
-  (let [pairs (partition 2 clauses)]
-    (reduce (fn [acc pair]
-              (let [test (first pair)
-                    form (first (rest pair))
-                    step (if (seq? form)
-                           (concat (list (first form)) (rest form) (list '__cond_val__))
-                           (list form '__cond_val__))]
-                (list 'let ['__cond_val__ acc]
-                      (list 'if test step '__cond_val__))))
-            expr
-            pairs)))
+;; Threading macro variants: `doto`, `as->`, `some->`, `some->>`, `cond->`, `cond->>` migrated to Zig
 
 ;; Lazy sequence constructors
 
