@@ -59,27 +59,23 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 83E-v2: Complete All-Zig Migration
-Sub-task 83E-v2.2: Core functions → Zig (audit + 10 sub-tasks)
+Phase 83E-v2 COMPLETE (macro migration). Function migration (83E-v2.2+) deferred per audit.
+Next: Phase 86 (Distribution) — first PENDING in roadmap.
 
 ## Previous Task
 
 83E-v2.1.7+1.8: Complex control flow + namespace/misc macros DONE.
-Migrated 24 macros: cond, condp, dotimes, doseq (with chunked-seq + :let/:when/:while),
-delay, lazy-cat, time, locking, dosync, sync, io!, with-precision, with-open,
-with-out-str, with-in-str, amap, areduce, future, pvalues, defstruct,
-letfn, refer-clojure, extend-protocol.
-Only 2 defmacros remain in core.clj: `ns` (complex CLJW-specific) and `case` (requires
-runtime hash computation at expansion time).
+Migrated 24 macros to Zig transforms. Only `ns` and `case` remain as .clj defmacros.
+Total macro migration: 57 macros across 83E-v2.0-v2.1 (8 sub-tasks, 8 commits).
 
 ## Task Queue
 
 ```
-83E-v2.2: Core functions → Zig (audit + 10 sub-tasks)
-83E-v2.3: Small library namespaces → Zig (8 sub-tasks)
-83E-v2.4: Large libraries → Zig (6 sub-tasks)
-83E-v2.5: Bootstrap pipeline rewrite (4 sub-tasks)
-83E-v2.6: Cleanup & documentation (3 sub-tasks)
+Phase 86: Distribution (PENDING)
+Phase 89: Performance Optimization (PENDING)
+Phase 90: JIT Expansion (PENDING)
+Phase 92: Security Hardening (PENDING)
+Phase 93: LSP Foundation (PENDING)
 ```
 
 ## 83E Audit Results & Scope Reduction
@@ -112,7 +108,7 @@ functions are identified as bottlenecks through profiling.
 
 ## Next Phase Queue
 
-After 84, proceed to Phase 85 (Library Compatibility Expansion).
+Phase 86: Distribution (Tier 4). Read roadmap Phase 86 section for details.
 
 ## Notes
 
