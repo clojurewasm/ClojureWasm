@@ -59,22 +59,18 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88: v0.3.0 Release (v0.2.0 was premature, 143 commits since)
-88.2: Release notes
-- Write proper release notes for GitHub release
+Phase 88: v0.3.0 Release
+88.5: Push commits, create v0.3.0 tag, trigger CI release workflow
 
 ## Previous Task
 
-88.1: Version bump to v0.3.0 + CHANGELOG created.
+88.1-88.4: Version bump, CHANGELOG, benchmarks, binary audit.
 
 ## Task Queue
 
 ```
-88.2: Release notes
-88.3: Benchmark record (full history entry)
-88.4: Binary audit (no debug symbols, no embedded secrets)
-88.5: GitHub Release with pre-built binaries (macOS ARM64 + Linux x86_64)
-88.6: Cross-platform smoke test before release
+88.5: GitHub Release (push + tag → CI builds 4-platform binaries)
+88.6: Verify CI release completed successfully
 ```
 
 ## 83E Audit Results & Scope Reduction

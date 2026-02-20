@@ -985,3 +985,30 @@ entries:
       string_ops: {time_ms: 28, mem_mb: 23.2}
       multimethod_dispatch: {time_ms: 6, mem_mb: 12.0}
       real_workload: {time_ms: 10, mem_mb: 19.1}
+  - id: "0.3.0"
+    date: "2026-02-20"
+    reason: "v0.3.0 release baseline"
+    commit: "04eae14"
+    build: ReleaseSafe
+    backend: vm
+    results:
+      fib_recursive: {time_ms: 19, mem_mb: 11.2}
+      fib_loop: {time_ms: 4, mem_mb: 11.3}
+      tak: {time_ms: 8, mem_mb: 11.2}
+      arith_loop: {time_ms: 5, mem_mb: 11.2}
+      map_filter_reduce: {time_ms: 9, mem_mb: 12.2}
+      vector_ops: {time_ms: 8, mem_mb: 16.4}
+      map_ops: {time_ms: 5, mem_mb: 15.8}
+      list_build: {time_ms: 7, mem_mb: 12.2}
+      sieve: {time_ms: 6, mem_mb: 14.8}
+      nqueens: {time_ms: 17, mem_mb: 22.5}
+      atom_swap: {time_ms: 5, mem_mb: 11.3}
+      gc_stress: {time_ms: 28, mem_mb: 17.4}
+      lazy_chain: {time_ms: 6, mem_mb: 11.3}
+      transduce: {time_ms: 13, mem_mb: 11.3}
+      keyword_lookup: {time_ms: 15, mem_mb: 11.3}
+      protocol_dispatch: {time_ms: 6, mem_mb: 11.3}
+      nested_update: {time_ms: 12, mem_mb: 16.0}
+      string_ops: {time_ms: 27, mem_mb: 20.7}
+      multimethod_dispatch: {time_ms: 7, mem_mb: 11.3}
+      real_workload: {time_ms: 9, mem_mb: 18.7}
