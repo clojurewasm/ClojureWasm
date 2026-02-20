@@ -60,7 +60,7 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 88A: Correctness Sweep
-88A.4: Fix parallel/vars sequential state pollution
+88A.5: Implement extend-via-metadata for protocols
 
 ## Previous Task
 
@@ -101,7 +101,7 @@ functions are identified as bottlenecks through profiling.
 
 - ~~test_fixtures.clj: bootstrap eval error in use-fixtures~~ FIXED 88A.3 (HANDLERS_MAX 16→64, now 63/63 upstream pass)
 - ~~is macro: bug with instance? special form~~ FIXED 88A.1 (analyzer now checks locals, runtime accepts symbols)
-- parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution) → 88A.4
+- ~~parallel.clj, vars.clj: state pollution~~ RESOLVED (was caused by HANDLERS_MAX overflow, fixed in 88A.3)
 - ~~serialize.zig: hierarchy var not restored from bytecode cache~~ FIXED 88A.2 (resolve from env during deserialization)
 - extend-via-metadata: not supported in defprotocol → 88A.5
 
