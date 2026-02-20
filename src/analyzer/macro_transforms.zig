@@ -50,6 +50,11 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "when-some", transformWhenSome },
     .{ "when-first", transformWhenFirst },
     .{ "assert-args", transformAssertArgs },
+    .{ "binding", transformBinding },
+    .{ "with-bindings", transformWithBindings },
+    .{ "bound-fn", transformBoundFn },
+    .{ "with-local-vars", transformWithLocalVars },
+    .{ "with-redefs", transformWithRedefs },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -465,6 +470,117 @@ fn transformAssertArgs(allocator: Allocator, args: []const Form) anyerror!Form {
         checks[i] = try makeList(allocator, &.{ makeSymbol("when-not"), test_form, throw_form });
     }
     return makeDo(allocator, checks);
+}
+
+/// `(binding [*a* 1 *b* 2] body...)` →
+/// `(do (push-thread-bindings (hash-map (var *a*) 1 (var *b*) 2)) (try body... (finally (pop-thread-bindings))))`
+fn transformBinding(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bindings = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (bindings.len % 2 != 0) return error.InvalidArgs;
+    const body = args[1..];
+    // Build (hash-map (var *a*) 1 (var *b*) 2 ...)
+    const n_pairs = bindings.len / 2;
+    var hm_args = try allocator.alloc(Form, 1 + n_pairs * 2);
+    hm_args[0] = makeSymbol("hash-map");
+    for (0..n_pairs) |i| {
+        hm_args[1 + i * 2] = try makeList(allocator, &.{ makeSymbol("var"), bindings[i * 2] });
+        hm_args[1 + i * 2 + 1] = bindings[i * 2 + 1];
+    }
+    const hm_form: Form = .{ .data = .{ .list = hm_args } };
+    const push_form = try makeList(allocator, &.{ makeSymbol("push-thread-bindings"), hm_form });
+    const pop_form = try makeList(allocator, &.{makeSymbol("pop-thread-bindings")});
+    const finally_form = try makeList(allocator, &.{ makeSymbol("finally"), pop_form });
+    // (try body... (finally (pop-thread-bindings)))
+    var try_items = try allocator.alloc(Form, 1 + body.len + 1);
+    try_items[0] = makeSymbol("try");
+    @memcpy(try_items[1 .. 1 + body.len], body);
+    try_items[1 + body.len] = finally_form;
+    const try_form: Form = .{ .data = .{ .list = try_items } };
+    return makeDo(allocator, &.{ push_form, try_form });
+}
+
+/// `(with-bindings map body...)` → `(with-bindings* map (fn [] body...))`
+fn transformWithBindings(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const binding_map = args[0];
+    const body = args[1..];
+    const fn_form = try makeFn(allocator, &.{}, body);
+    return makeList(allocator, &.{ makeSymbol("with-bindings*"), binding_map, fn_form });
+}
+
+/// `(bound-fn [args] body...)` → `(bound-fn* (fn [args] body...))`
+fn transformBoundFn(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len == 0) return error.InvalidArgs;
+    // Pass all args as fntail to fn
+    var fn_items = try allocator.alloc(Form, 1 + args.len);
+    fn_items[0] = makeSymbol("fn");
+    @memcpy(fn_items[1..], args);
+    const fn_form: Form = .{ .data = .{ .list = fn_items } };
+    return makeList(allocator, &.{ makeSymbol("bound-fn*"), fn_form });
+}
+
+/// `(with-local-vars [x 10 y 20] body...)` →
+/// `(let [x (create-local-var) y (create-local-var)]
+///    (push-thread-bindings (hash-map x 10 y 20))
+///    (try body... (finally (pop-thread-bindings))))`
+fn transformWithLocalVars(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bindings = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (bindings.len % 2 != 0) return error.InvalidArgs;
+    const body = args[1..];
+    const n_pairs = bindings.len / 2;
+    // Let bindings: [x (create-local-var) y (create-local-var) ...]
+    var let_bindings = try allocator.alloc(Form, n_pairs * 2);
+    const create_var = try makeList(allocator, &.{makeSymbol("create-local-var")});
+    for (0..n_pairs) |i| {
+        let_bindings[i * 2] = bindings[i * 2]; // name
+        let_bindings[i * 2 + 1] = create_var; // (create-local-var)
+    }
+    // (hash-map x 10 y 20 ...)
+    var hm_args = try allocator.alloc(Form, 1 + bindings.len);
+    hm_args[0] = makeSymbol("hash-map");
+    @memcpy(hm_args[1..], bindings);
+    const hm_form: Form = .{ .data = .{ .list = hm_args } };
+    const push_form = try makeList(allocator, &.{ makeSymbol("push-thread-bindings"), hm_form });
+    const pop_form = try makeList(allocator, &.{makeSymbol("pop-thread-bindings")});
+    const finally_form = try makeList(allocator, &.{ makeSymbol("finally"), pop_form });
+    // (try body... (finally ...))
+    var try_items = try allocator.alloc(Form, 1 + body.len + 1);
+    try_items[0] = makeSymbol("try");
+    @memcpy(try_items[1 .. 1 + body.len], body);
+    try_items[1 + body.len] = finally_form;
+    const try_form: Form = .{ .data = .{ .list = try_items } };
+    // Wrap in let
+    return makeLet(allocator, let_bindings, &.{ push_form, try_form });
+}
+
+/// `(with-redefs [name1 val1 name2 val2] body...)` →
+/// `(with-redefs-fn {(var name1) val1 (var name2) val2} (fn [] body...))`
+fn transformWithRedefs(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const bindings = switch (args[0].data) {
+        .vector => |v| v,
+        else => return error.InvalidArgs,
+    };
+    if (bindings.len % 2 != 0) return error.InvalidArgs;
+    const body = args[1..];
+    const n_pairs = bindings.len / 2;
+    // Build map: {(var name1) val1 (var name2) val2 ...}
+    var map_items = try allocator.alloc(Form, n_pairs * 2);
+    for (0..n_pairs) |i| {
+        map_items[i * 2] = try makeList(allocator, &.{ makeSymbol("var"), bindings[i * 2] });
+        map_items[i * 2 + 1] = bindings[i * 2 + 1];
+    }
+    const map_form: Form = .{ .data = .{ .map = map_items } };
+    const fn_form = try makeFn(allocator, &.{}, body);
+    return makeList(allocator, &.{ makeSymbol("with-redefs-fn"), map_form, fn_form });
 }
 
 // ============================================================

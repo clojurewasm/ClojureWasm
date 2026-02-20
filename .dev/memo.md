@@ -60,7 +60,7 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 83E-v2: Complete All-Zig Migration
-Sub-task 83E-v2.1.5: Binding macros (binding, with-bindings, with-redefs, etc.)
+Sub-task 83E-v2.1.6: Definition macros (defn, defn-, defonce, declare)
 
 ## Previous Task
 
@@ -69,7 +69,6 @@ Phase 88A COMPLETE. All 6 sub-tasks done.
 ## Task Queue
 
 ```
-83E-v2.1.5: Binding macros (binding, with-bindings, with-redefs, etc.)
 83E-v2.1.6: Definition macros (defn, defn-, defonce, declare)
 83E-v2.1.7: Complex control flow macros (cond, condp, case, doseq, dotimes, etc.)
 83E-v2.1.8: Namespace and misc macros (ns, refer-clojure, vswap!, letfn)

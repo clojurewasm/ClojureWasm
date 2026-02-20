@@ -1986,16 +1986,7 @@
   [c x] x)
 
 ;; Dynamic binding
-(defmacro binding [bindings & body]
-  (let [pairs (partition 2 bindings)
-        bind-forms (mapcat (fn [p] (list (list 'var (first p)) (second p)))
-                           pairs)]
-    `(do
-       (push-thread-bindings (hash-map ~@bind-forms))
-       (try
-         ~@body
-         (finally
-           (pop-thread-bindings))))))
+;; `binding` migrated to Zig (macro_transforms.zig)
 
 (defn with-bindings*
   "Takes a map of Var/value pairs. Sets the vars to the corresponding
@@ -2007,11 +1998,7 @@
     (finally
       (pop-thread-bindings))))
 
-(defmacro with-bindings
-  "Takes a map of Var/value pairs. Installs the given bindings for the
-  execution of body."
-  [binding-map & body]
-  `(with-bindings* ~binding-map (fn [] ~@body)))
+;; `with-bindings` migrated to Zig (macro_transforms.zig)
 
 (defn bound-fn*
   "Returns a function, which will install the same bindings in effect as in
@@ -2023,32 +2010,9 @@
     (fn [& args]
       (apply with-bindings* bindings f args))))
 
-(defmacro bound-fn
-  "Returns a function defined by the given fntail, which will install the
-  same bindings in effect as in the thread at the time bound-fn was called."
-  {:added "1.1"}
-  [& fntail]
-  `(bound-fn* (fn ~@fntail)))
+;; `bound-fn` migrated to Zig (macro_transforms.zig)
 
-;; CLJW: Var.create/setDynamic -> create-local-var builtin
-(defmacro with-local-vars
-  "varbinding=> symbol init-expr
-
-  Executes the exprs in a context in which the symbols are bound to
-  vars with per-thread bindings to the init-exprs. The symbols refer
-  to the var objects themselves, and must be accessed with var-get and
-  var-set."
-  {:added "1.0"}
-  [name-vals-vec & body]
-  (assert-args
-   (vector? name-vals-vec) "a vector for its binding"
-   (even? (count name-vals-vec)) "an even number of forms in binding vector")
-  `(let [~@(interleave (take-nth 2 name-vals-vec)
-                       (repeat '(create-local-var)))]
-     (push-thread-bindings (hash-map ~@name-vals-vec))
-     (try
-       ~@body
-       (finally (pop-thread-bindings)))))
+;; `with-local-vars` migrated to Zig (macro_transforms.zig)
 
 ;; CLJW: .bindRoot -> __var-bind-root builtin (no Java interop)
 (defn with-redefs-fn
@@ -2065,13 +2029,7 @@
       (finally
         (root-bind old-vals)))))
 
-(defmacro with-redefs
-  "Temporarily redefines vars while body executes."
-  [bindings & body]
-  (let [names (take-nth 2 bindings)
-        vals  (take-nth 2 (next bindings))
-        tempvar-map (zipmap (map (fn [n] (list 'var n)) names) vals)]
-    `(with-redefs-fn ~tempvar-map (fn [] ~@body))))
+;; `with-redefs` migrated to Zig (macro_transforms.zig)
 
 ;; Dynamic vars (stubs for JVM compat)
 (def ^:dynamic *warn-on-reflection* false)
