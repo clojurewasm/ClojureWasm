@@ -26,6 +26,20 @@ const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const bootstrap = @import("../runtime/bootstrap.zig");
 const err = @import("../runtime/error.zig");
+const vm_mod = @import("../vm/vm.zig");
+const sequences_mod = @import("sequences.zig");
+const transient_mod = @import("transient.zig");
+const metadata_mod = @import("metadata.zig");
+
+/// Call a function value, reusing active VM if available.
+fn callFn(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
+    if (vm_mod.active_vm) |vm| {
+        return vm.callFunction(fn_val, args) catch |e| {
+            return @as(anyerror, @errorCast(e));
+        };
+    }
+    return bootstrap.callFnVal(allocator, fn_val, args);
+}
 
 // ============================================================
 // Record helpers
@@ -2489,14 +2503,18 @@ fn getPathItems(allocator: Allocator, ks: Value) anyerror![]const Value {
 /// (__zig-get-in m ks) or (__zig-get-in m ks not-found)
 fn zigGetInFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len < 2 or args.len > 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to get-in", .{args.len});
-    const not_found: Value = if (args.len == 3) args[2] else Value.nil_val;
+    const has_not_found = args.len == 3;
+    const not_found: Value = if (has_not_found) args[2] else Value.nil_val;
     const path = try getPathItems(allocator, args[1]);
     var current = args[0];
     for (path) |k| {
-        current = getFn(allocator, &[2]Value{ current, k }) catch return not_found;
-        if (current == Value.nil_val and not_found != Value.nil_val) {
-            // Check if key actually maps to nil vs key not found
-            // For simplicity, treat nil as "not found" when not-found is provided
+        if (has_not_found) {
+            // Use find to distinguish "key maps to nil" from "key not found"
+            const entry = try findFn(allocator, &[2]Value{ current, k });
+            if (entry == Value.nil_val) return not_found;
+            current = entry.asVector().items[1];
+        } else {
+            current = getFn(allocator, &[2]Value{ current, k }) catch return Value.nil_val;
         }
     }
     return current;
@@ -2548,6 +2566,337 @@ fn updateInImpl(allocator: Allocator, m: Value, path: []const Value, f: Value, e
     const inner = getFn(allocator, &[2]Value{ m, k }) catch Value.nil_val;
     const new_inner = try updateInImpl(allocator, inner, path[1..], f, extra_args);
     return assocFn(allocator, &[3]Value{ m, k, new_inner });
+}
+
+// ============================================================
+// A.3: Collection constructors & accessors
+// ============================================================
+
+/// (last coll) — returns the last item in coll, in linear time.
+fn lastFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to last", .{args.len});
+    if (args[0] == Value.nil_val) return Value.nil_val;
+    // Fast path for vectors
+    if (args[0].tag() == .vector) {
+        const items = args[0].asVector().items;
+        return if (items.len == 0) Value.nil_val else items[items.len - 1];
+    }
+    var s = try seqFn(allocator, &[1]Value{args[0]});
+    if (s == Value.nil_val) return Value.nil_val;
+    var result: Value = undefined;
+    while (s != Value.nil_val) {
+        result = try firstFn(allocator, &[1]Value{s});
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return result;
+}
+
+/// (butlast coll) — returns a seq of all but the last item, in linear time.
+fn butlastFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to butlast", .{args.len});
+    if (args[0] == Value.nil_val) return Value.nil_val;
+    var s = try seqFn(allocator, &[1]Value{args[0]});
+    if (s == Value.nil_val) return Value.nil_val;
+    var items = std.ArrayList(Value).empty;
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const r = try restFn(allocator, &[1]Value{s});
+        const next_s = try seqFn(allocator, &[1]Value{r});
+        if (next_s == Value.nil_val) break; // this is the last item
+        try items.append(allocator, item);
+        s = next_s;
+    }
+    if (items.items.len == 0) return Value.nil_val;
+    const lst = try allocator.create(PersistentList);
+    lst.* = .{ .items = items.items };
+    return Value.initList(lst);
+}
+
+/// (update m k f) (update m k f x) (update m k f x y) ...
+fn updateFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to update", .{args.len});
+    const m = args[0];
+    const k = args[1];
+    const f = args[2];
+    const old_val = getFn(allocator, &[2]Value{ m, k }) catch Value.nil_val;
+    // Build call args: (f old_val extra_args...)
+    const extra = args[3..];
+    const call_args = try allocator.alloc(Value, 1 + extra.len);
+    call_args[0] = old_val;
+    if (extra.len > 0) @memcpy(call_args[1..], extra);
+    const new_val = try callFn(allocator, f, call_args);
+    return assocFn(allocator, &[3]Value{ m, k, new_val });
+}
+
+/// (select-keys map keyseq) — returns a map containing only those entries whose key is in keyseq.
+fn selectKeysFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to select-keys", .{args.len});
+    const m = args[0];
+    if (m == Value.nil_val) {
+        const empty = try allocator.create(PersistentArrayMap);
+        empty.* = .{ .entries = &.{} };
+        return Value.initMap(empty);
+    }
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    var result = Value.initMap(blk: {
+        const empty = try allocator.create(PersistentArrayMap);
+        empty.* = .{ .entries = &.{} };
+        break :blk empty;
+    });
+    while (s != Value.nil_val) {
+        const k = try firstFn(allocator, &[1]Value{s});
+        const entry = try findFn(allocator, &[2]Value{ m, k });
+        if (entry != Value.nil_val) {
+            // findFn returns [key value] vector
+            const v = entry.asVector().items[1];
+            result = try assocFn(allocator, &[3]Value{ result, k, v });
+        }
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    // Preserve metadata from original map
+    return metadata_mod.withMetaFn(allocator, &[2]Value{ result, try metadata_mod.metaFn(allocator, &[1]Value{m}) });
+}
+
+/// (reduce-kv f init coll) — reduces an associative collection.
+fn reduceKvFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 3) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduce-kv", .{args.len});
+    const f = args[0];
+    var acc = args[1];
+    const m = args[2];
+    if (m == Value.nil_val) return acc;
+
+    if (m.tag() == .vector) {
+        const items = m.asVector().items;
+        for (items, 0..) |item, i| {
+            acc = try callFn(allocator, f, &[3]Value{ acc, Value.initInteger(@intCast(i)), item });
+            if (acc.tag() == .reduced) return acc.asReduced().value;
+        }
+        return acc;
+    }
+
+    if (m.tag() == .map) {
+        const entries = m.asMap().entries;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            acc = try callFn(allocator, f, &[3]Value{ acc, entries[i], entries[i + 1] });
+            if (acc.tag() == .reduced) return acc.asReduced().value;
+        }
+        return acc;
+    }
+
+    if (m.tag() == .hash_map) {
+        const hm = m.asHashMap();
+        const flat = try hm.toEntries(allocator);
+        const n = hm.getCount();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            acc = try callFn(allocator, f, &[3]Value{ acc, flat[i * 2], flat[i * 2 + 1] });
+            if (acc.tag() == .reduced) return acc.asReduced().value;
+        }
+        return acc;
+    }
+
+    // Fallback: seq of map entries
+    var s = try seqFn(allocator, &[1]Value{m});
+    while (s != Value.nil_val) {
+        const entry = try firstFn(allocator, &[1]Value{s});
+        const k = try sequences_mod.keyFn(allocator, &[1]Value{entry});
+        const v = try sequences_mod.valFn(allocator, &[1]Value{entry});
+        acc = try callFn(allocator, f, &[3]Value{ acc, k, v });
+        if (acc.tag() == .reduced) return acc.asReduced().value;
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return acc;
+}
+
+/// (update-vals m f) — returns m with f applied to each val.
+fn updateValsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to update-vals", .{args.len});
+    const m = args[0];
+    const f = args[1];
+    if (m == Value.nil_val) return Value.nil_val;
+
+    // Use transient for efficiency
+    var result = try transient_mod.transientFn(allocator, &[1]Value{
+        Value.initMap(blk: {
+            const empty = try allocator.create(PersistentArrayMap);
+            empty.* = .{ .entries = &.{} };
+            break :blk empty;
+        }),
+    });
+
+    if (m.tag() == .map) {
+        const entries = m.asMap().entries;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            const new_val = try callFn(allocator, f, &[1]Value{entries[i + 1]});
+            result = try transient_mod.assocBangFn(allocator, &[3]Value{ result, entries[i], new_val });
+        }
+    } else if (m.tag() == .hash_map) {
+        const hm = m.asHashMap();
+        const flat = try hm.toEntries(allocator);
+        const n = hm.getCount();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const new_val = try callFn(allocator, f, &[1]Value{flat[i * 2 + 1]});
+            result = try transient_mod.assocBangFn(allocator, &[3]Value{ result, flat[i * 2], new_val });
+        }
+    } else {
+        return err.setErrorFmt(.eval, .type_error, .{}, "update-vals expects a map, got {s}", .{@tagName(m.tag())});
+    }
+
+    const persistent = try transient_mod.persistentBangFn(allocator, &[1]Value{result});
+    // Preserve metadata
+    return metadata_mod.withMetaFn(allocator, &[2]Value{ persistent, try metadata_mod.metaFn(allocator, &[1]Value{m}) });
+}
+
+/// (update-keys m f) — returns m with f applied to each key.
+fn updateKeysFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to update-keys", .{args.len});
+    const m = args[0];
+    const f = args[1];
+    if (m == Value.nil_val) return Value.nil_val;
+
+    var result = try transient_mod.transientFn(allocator, &[1]Value{
+        Value.initMap(blk: {
+            const empty = try allocator.create(PersistentArrayMap);
+            empty.* = .{ .entries = &.{} };
+            break :blk empty;
+        }),
+    });
+
+    if (m.tag() == .map) {
+        const entries = m.asMap().entries;
+        var i: usize = 0;
+        while (i < entries.len) : (i += 2) {
+            const new_key = try callFn(allocator, f, &[1]Value{entries[i]});
+            result = try transient_mod.assocBangFn(allocator, &[3]Value{ result, new_key, entries[i + 1] });
+        }
+    } else if (m.tag() == .hash_map) {
+        const hm = m.asHashMap();
+        const flat = try hm.toEntries(allocator);
+        const n = hm.getCount();
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const new_key = try callFn(allocator, f, &[1]Value{flat[i * 2]});
+            result = try transient_mod.assocBangFn(allocator, &[3]Value{ result, new_key, flat[i * 2 + 1] });
+        }
+    } else {
+        return err.setErrorFmt(.eval, .type_error, .{}, "update-keys expects a map, got {s}", .{@tagName(m.tag())});
+    }
+
+    const persistent = try transient_mod.persistentBangFn(allocator, &[1]Value{result});
+    return metadata_mod.withMetaFn(allocator, &[2]Value{ persistent, try metadata_mod.metaFn(allocator, &[1]Value{m}) });
+}
+
+/// (group-by f coll) — returns a map of (f item) to vectors of items.
+fn groupByFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to group-by", .{args.len});
+    const f = args[0];
+    var result = Value.initMap(blk: {
+        const empty = try allocator.create(PersistentArrayMap);
+        empty.* = .{ .entries = &.{} };
+        break :blk empty;
+    });
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const k = try callFn(allocator, f, &[1]Value{item});
+        const existing = getFn(allocator, &[2]Value{ result, k }) catch Value.nil_val;
+        const new_vec = try conjFn(allocator, &[2]Value{
+            if (existing == Value.nil_val) blk: {
+                const empty_vec = try allocator.create(PersistentVector);
+                empty_vec.* = .{ .items = &.{} };
+                break :blk Value.initVector(empty_vec);
+            } else existing,
+            item,
+        });
+        result = try assocFn(allocator, &[3]Value{ result, k, new_vec });
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return result;
+}
+
+/// (frequencies coll) — returns a map from distinct items to the number of times they appear.
+fn frequenciesFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to frequencies", .{args.len});
+    var result = Value.initMap(blk: {
+        const empty = try allocator.create(PersistentArrayMap);
+        empty.* = .{ .entries = &.{} };
+        break :blk empty;
+    });
+    var s = try seqFn(allocator, &[1]Value{args[0]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const existing = getFn(allocator, &[2]Value{ result, item }) catch Value.nil_val;
+        const count = if (existing == Value.nil_val) Value.initInteger(1) else Value.initInteger(existing.asInteger() + 1);
+        result = try assocFn(allocator, &[3]Value{ result, item, count });
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return result;
+}
+
+/// (some pred coll) — returns the first logical true value of (pred x).
+fn someFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to some", .{args.len});
+    const pred = args[0];
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const result = try callFn(allocator, pred, &[1]Value{item});
+        if (result != Value.nil_val and result != Value.initBoolean(false)) return result;
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return Value.nil_val;
+}
+
+/// (every? pred coll) — returns true if (pred x) is logical true for every x in coll.
+fn everyPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to every?", .{args.len});
+    const pred = args[0];
+    var s = try seqFn(allocator, &[1]Value{args[1]});
+    while (s != Value.nil_val) {
+        const item = try firstFn(allocator, &[1]Value{s});
+        const result = try callFn(allocator, pred, &[1]Value{item});
+        if (result == Value.nil_val or result == Value.initBoolean(false)) return Value.initBoolean(false);
+        const r = try restFn(allocator, &[1]Value{s});
+        s = try seqFn(allocator, &[1]Value{r});
+    }
+    return Value.initBoolean(true);
+}
+
+/// (not-every? pred coll) — returns false if (pred x) is logical true for every x.
+fn notEveryPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not-every?", .{args.len});
+    const result = try everyPredFn(allocator, args);
+    return Value.initBoolean(result == Value.initBoolean(false));
+}
+
+/// (not-any? pred coll) — returns false if (some pred coll) is logical true.
+fn notAnyPredFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to not-any?", .{args.len});
+    const result = try someFn(allocator, args);
+    return Value.initBoolean(result == Value.nil_val);
+}
+
+/// (distinct? x) (distinct? x y) (distinct? x y & more)
+fn distinctPredFn(_: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args (0) passed to distinct?", .{});
+    if (args.len == 1) return Value.initBoolean(true);
+    if (args.len == 2) return Value.initBoolean(!args[0].eql(args[1]));
+    // General case: check all pairs using a set-like approach
+    for (args, 0..) |a, i| {
+        for (args[i + 1 ..]) |b| {
+            if (a.eql(b)) return Value.initBoolean(false);
+        }
+    }
+    return Value.initBoolean(true);
 }
 
 pub const builtins = [_]BuiltinDef{
@@ -2880,6 +3229,127 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([m ks f] [m ks f & args])",
         .added = "1.0",
     },
+    // === A.3: Promoted public names for __zig-* builtins ===
+    .{
+        .name = "get-in",
+        .func = &zigGetInFn,
+        .doc = "Returns the value in a nested associative structure, where ks is a sequence of keys. Returns nil if the key is not present, or the not-found value if supplied.",
+        .arglists = "([m ks] [m ks not-found])",
+        .added = "1.2",
+    },
+    .{
+        .name = "assoc-in",
+        .func = &zigAssocInFn,
+        .doc = "Associates a value in a nested associative structure, where ks is a sequence of keys and v is the new value and returns a new nested structure.",
+        .arglists = "([m [k & ks] v])",
+        .added = "1.0",
+    },
+    .{
+        .name = "update-in",
+        .func = &zigUpdateInFn,
+        .doc = "'Updates' a value in a nested associative structure, where ks is a sequence of keys and f is a function that will take the old value and any supplied args and return the new value.",
+        .arglists = "([m ks f & args])",
+        .added = "1.0",
+    },
+    // === A.3: New collection builtins ===
+    .{
+        .name = "last",
+        .func = &lastFn,
+        .doc = "Return the last item in coll, in linear time.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "butlast",
+        .func = &butlastFn,
+        .doc = "Return a seq of all but the last item in coll, in linear time.",
+        .arglists = "([coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "update",
+        .func = &updateFn,
+        .doc = "'Updates' a value in an associative structure, where k is a key and f is a function that will take the old value and any supplied args and return the new value.",
+        .arglists = "([m k f] [m k f x] [m k f x y] [m k f x y z] [m k f x y z & more])",
+        .added = "1.7",
+    },
+    .{
+        .name = "select-keys",
+        .func = &selectKeysFn,
+        .doc = "Returns a map containing only those entries in map whose key is in keys.",
+        .arglists = "([map keyseq])",
+        .added = "1.0",
+    },
+    .{
+        .name = "reduce-kv",
+        .func = &reduceKvFn,
+        .doc = "Reduces an associative collection. f should be a function of 3 arguments. Returns the result of applying f to init, the first key and the first value in coll, then applying f to that result and the 2nd key and value, etc.",
+        .arglists = "([f init coll])",
+        .added = "1.4",
+    },
+    .{
+        .name = "update-vals",
+        .func = &updateValsFn,
+        .doc = "m f => Returns a new map with the same keys as m, where each value v has been replaced by the result of applying f to v.",
+        .arglists = "([m f])",
+        .added = "1.11",
+    },
+    .{
+        .name = "update-keys",
+        .func = &updateKeysFn,
+        .doc = "m f => Returns a new map with the same values as m, where each key k has been replaced by the result of applying f to k.",
+        .arglists = "([m f])",
+        .added = "1.11",
+    },
+    .{
+        .name = "group-by",
+        .func = &groupByFn,
+        .doc = "Returns a map of the elements of coll keyed by the result of f on each element.",
+        .arglists = "([f coll])",
+        .added = "1.2",
+    },
+    .{
+        .name = "frequencies",
+        .func = &frequenciesFn,
+        .doc = "Returns a map from distinct items in coll to the number of times they appear.",
+        .arglists = "([coll])",
+        .added = "1.1",
+    },
+    .{
+        .name = "some",
+        .func = &someFn,
+        .doc = "Returns the first logical true value of (pred x) for any x in coll, else nil.",
+        .arglists = "([pred coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "every?",
+        .func = &everyPredFn,
+        .doc = "Returns true if (pred x) is logical true for every x in coll, else false.",
+        .arglists = "([pred coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "not-every?",
+        .func = &notEveryPredFn,
+        .doc = "Returns false if (pred x) is logical true for every x in coll, else true.",
+        .arglists = "([pred coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "not-any?",
+        .func = &notAnyPredFn,
+        .doc = "Returns false if (pred x) is logical true for any x in coll, else true.",
+        .arglists = "([pred coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "distinct?",
+        .func = &distinctPredFn,
+        .doc = "Returns true if no two of the arguments are =.",
+        .arglists = "([x] [x y] [x y & more])",
+        .added = "1.0",
+    },
 };
 
 // === Tests ===
@@ -3159,9 +3629,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 47 entries" {
-    // 46 + 1 (seq-to-map-for-destructuring)
-    try testing.expectEqual(47, builtins.len);
+test "builtins table has 64 entries" {
+    // 47 + 17 (A.3: 3 promoted __zig-* + 14 new collection builtins)
+    try testing.expectEqual(64, builtins.len);
 }
 
 test "reverse list" {

@@ -11,22 +11,7 @@
 ;; `inc`, `dec` migrated to Zig (predicates.zig)
 ;; `next` migrated to Zig (predicates.zig)
 
-;; last/butlast defined early — needed by enhanced defn below
-(defn last [coll]
-  (loop [s (seq coll)]
-    (if s
-      (if (next s)
-        (recur (next s))
-        (first s))
-      nil)))
-
-(defn butlast [coll]
-  (loop [s (seq coll) acc (list)]
-    (if s
-      (if (next s)
-        (recur (next s) (cons (first s) acc))
-        (if (seq acc) (reverse acc) nil))
-      nil)))
+;; `last`, `butlast` migrated to Zig (collections.zig)
 
 ;; Full `defn` macro migrated to Zig (macro_transforms.zig)
 ;; Pre/post conditions handled by analyzer's transformPrePost
@@ -215,74 +200,8 @@
 
 ;; `and`, `or` migrated to Zig (macro_transforms.zig)
 
-;; Nested collection operations
-
-(defn get-in [m ks]
-  (reduce get m ks))
-
-(defn assoc-in [m ks v]
-  (let [k (first ks)
-        ks-rest (next ks)]
-    (if ks-rest
-      (assoc m k (assoc-in (get m k) ks-rest v))
-      (assoc m k v))))
-
-(defn update
-  ([m k f]
-   (assoc m k (f (get m k))))
-  ([m k f x]
-   (assoc m k (f (get m k) x)))
-  ([m k f x y]
-   (assoc m k (f (get m k) x y)))
-  ([m k f x y z]
-   (assoc m k (f (get m k) x y z)))
-  ([m k f x y z & more]
-   (assoc m k (apply f (get m k) x y z more))))
-
-(defn update-in
-  ([m ks f]
-   (let [k (first ks)
-         ks-rest (next ks)]
-     (if ks-rest
-       (assoc m k (update-in (get m k) ks-rest f))
-       (assoc m k (f (get m k))))))
-  ([m ks f & args]
-   (let [k (first ks)
-         ks-rest (next ks)]
-     (if ks-rest
-       (assoc m k (apply update-in (get m k) ks-rest f args))
-       (assoc m k (apply f (get m k) args))))))
-
-(defn select-keys [m keyseq]
-  (with-meta
-    (reduce (fn [acc k]
-              (let [v (get m k)]
-                (if (not (nil? v))
-                  (assoc acc k v)
-                  acc)))
-            {}
-            keyseq)
-    (meta m)))
-
-;; Predicates and search
-
-(defn some [pred coll]
-  (when (seq coll)
-    (or (pred (first coll)) (recur pred (next coll)))))
-
-(defn every? [pred coll]
-  (loop [s (seq coll)]
-    (if s
-      (if (pred (first s))
-        (recur (next s))
-        false)
-      true)))
-
-(defn not-every? [pred coll]
-  (not (every? pred coll)))
-
-(defn not-any? [pred coll]
-  (not (some pred coll)))
+;; get-in, assoc-in, update, update-in, select-keys migrated to Zig (collections.zig)
+;; some, every?, not-every?, not-any? migrated to Zig (collections.zig)
 
 ;; Function combinators
 
@@ -416,13 +335,7 @@
          (reverse (cons (reverse cur) acc))
          (reverse acc))))))
 
-(defn group-by [f coll]
-  (reduce (fn [acc x]
-            (let [k (f x)
-                  v (get acc k)]
-              (assoc acc k (if v (conj v x) [x]))))
-          {}
-          coll))
+;; `group-by` migrated to Zig (collections.zig)
 
 (defn flatten [coll]
   (loop [s (seq coll) acc (list)]
@@ -488,12 +401,7 @@
            (recur (next s) (conj seen x) (cons x acc))))
        (reverse acc)))))
 
-(defn frequencies [coll]
-  (reduce (fn [acc x]
-            (let [n (get acc x)]
-              (assoc acc x (if n (inc n) 1))))
-          {}
-          coll))
+;; `frequencies` migrated to Zig (collections.zig)
 
 ;; `assert-args`, `if-let`, `when-let` migrated to Zig (macro_transforms.zig)
 
@@ -711,37 +619,7 @@
          s)
        (list)))))
 
-(defn reduce-kv [f init m]
-  (if (nil? m)
-    init
-    (if (vector? m)
-      (let [cnt (count m)]
-        (loop [i 0 acc init]
-          (if (< i cnt)
-            (let [ret (f acc i (nth m i))]
-              (if (reduced? ret)
-                @ret
-                (recur (inc i) ret)))
-            acc)))
-      (if (map? m)
-        (let [ks (keys m)]
-          (loop [s (seq ks) acc init]
-            (if s
-              (let [k (first s)
-                    ret (f acc k (get m k))]
-                (if (reduced? ret)
-                  @ret
-                  (recur (next s) ret)))
-              acc)))
-        ;; UPSTREAM-DIFF: fallback for seqs of map entries (JVM uses seqkvreduce)
-        (loop [s (seq m) acc init]
-          (if s
-            (let [entry (first s)
-                  ret (f acc (key entry) (val entry))]
-              (if (reduced? ret)
-                @ret
-                (recur (next s) ret)))
-            acc))))))
+;; `reduce-kv` migrated to Zig (collections.zig)
 
 ;; `second`, `fnext`, `nfirst`, `not-empty` migrated to Zig (predicates.zig)
 
@@ -1081,22 +959,7 @@
              (if (<= (k item) (k best)) item best))
            (min-key k x y) more)))
 
-(defn update-vals
-  [m f]
-  (with-meta
-    (persistent!
-     (reduce-kv (fn [acc k v] (assoc! acc k (f v)))
-                (transient {})
-                m))
-    (meta m)))
-
-(defn update-keys
-  [m f]
-  (let [ret (persistent!
-             (reduce-kv (fn [acc k v] (assoc! acc (f k) v))
-                        (transient {})
-                        m))]
-    (with-meta ret (meta m))))
+;; `update-vals`, `update-keys` migrated to Zig (collections.zig)
 
 ;; `ffirst`, `nnext` migrated to Zig (predicates.zig)
 
@@ -1149,18 +1012,7 @@
       (recur (next s) (next lead))
       s)))
 
-(defn distinct?
-  ([x] true)
-  ([x y] (not (= x y)))
-  ([x y & more]
-   (if (not= x y)
-     (loop [s #{x y} [x & etc :as xs] more]
-       (if xs
-         (if (contains? s x)
-           false
-           (recur (conj s x) etc))
-         true))
-     false)))
+;; `distinct?` migrated to Zig (collections.zig)
 
 (defn tree-seq
   "Returns a lazy sequence of the nodes in a tree, via a depth-first walk."
