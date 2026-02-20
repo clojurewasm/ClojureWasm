@@ -1047,8 +1047,13 @@ fn instanceCheckFn(_: Allocator, args: []const Value) anyerror!Value {
         return Value.initBoolean(std.mem.eql(u8, type_kw, type_name));
     }
 
-    if (args[0].tag() != .string) return Value.false_val;
-    const class_name = args[0].asString();
+    // Accept string (from analyzer rewrite) or symbol (from runtime/macro-generated code)
+    const class_name = if (args[0].tag() == .string)
+        args[0].asString()
+    else if (args[0].tag() == .symbol)
+        args[0].asSymbol().name
+    else
+        return Value.false_val;
 
     // Match Java class names to CW type tags
     if (std.mem.eql(u8, class_name, "String") or std.mem.eql(u8, class_name, "java.lang.String"))

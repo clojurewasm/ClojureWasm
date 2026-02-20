@@ -2323,17 +2323,22 @@ pub const Analyzer = struct {
         rewritten[2] = items[2];
 
         if (items[1].data == .symbol) {
-            // Class name symbol → convert to string literal
             const sym = items[1].data.symbol;
-            const class_name = if (sym.ns) |ns|
-                std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ ns, sym.name }) catch return error.OutOfMemory
-            else
-                sym.name;
-            rewritten[1] = Form{
-                .data = .{ .string = class_name },
-                .line = items[1].line,
-                .column = items[1].column,
-            };
+            if (sym.ns == null and self.findLocal(sym.name) != null) {
+                // Local variable — pass through for runtime resolution
+                rewritten[1] = items[1];
+            } else {
+                // Class name symbol → convert to string literal
+                const class_name = if (sym.ns) |ns|
+                    std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ ns, sym.name }) catch return error.OutOfMemory
+                else
+                    sym.name;
+                rewritten[1] = Form{
+                    .data = .{ .string = class_name },
+                    .line = items[1].line,
+                    .column = items[1].column,
+                };
+            }
         } else {
             // Keyword or other expression — pass through as-is
             rewritten[1] = items[1];
