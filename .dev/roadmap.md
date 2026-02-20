@@ -27,7 +27,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 85 | Library Compatibility Expansion | 2 | DONE |
 | 87 | Developer Experience | 3 | DONE |
 | 88 | v0.3.0 Release | 3 | DONE |
-| 88A | Correctness Sweep | 3.5 | IN-PROGRESS |
+| 88A | Correctness Sweep | 3.5 | DONE |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |

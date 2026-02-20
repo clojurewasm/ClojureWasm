@@ -59,20 +59,22 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88A: Correctness Sweep
-88A.6: Full regression verify 63/63 upstream pass
+Phase 88A COMPLETE. All 6 sub-tasks done:
+- 88A.1: Fixed `is` macro instance? with runtime class values
+- 88A.2: Fixed serialize.zig hierarchy var restore from bytecode cache
+- 88A.3: Fixed test_fixtures.clj (VM HANDLERS_MAX 16→64)
+- 88A.4: Verified parallel/vars state pollution resolved by HANDLERS_MAX fix
+- 88A.5: Implemented extend-via-metadata for protocols (D106)
+- 88A.6: Verified 63/63 upstream, 6/6 e2e, 14/14 deps e2e
 
 ## Previous Task
 
-88A.5 DONE: Implemented extend-via-metadata for protocols. Analyzer parses
-`:extend-via-metadata true` option. Both VM and TreeWalk check metadata before
-inline cache and impls lookup. Metadata dispatch is per-object (not cached).
-Updated protocols.clj Datafiable/Navigable. Tests in bootstrap.zig + eval_engine.zig.
+88A.5 DONE: Implemented extend-via-metadata for protocols.
 
 ## Task Queue
 
 ```
-88A.6: Full regression verify 63/63 upstream pass (Small)
+(empty — Phase 88A complete, check roadmap for next phase)
 ```
 
 ## 83E Audit Results & Scope Reduction
