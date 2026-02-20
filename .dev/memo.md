@@ -59,18 +59,18 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase 88: v0.3.0 Release
-88.5: Push commits, create v0.3.0 tag, trigger CI release workflow
+Phase 88 COMPLETE: v0.3.0 Released
+GitHub Release: https://github.com/clojurewasm/ClojureWasm/releases/tag/v0.3.0
+Binaries: macOS ARM64, macOS x86_64, Linux x86_64, Linux ARM64 + checksums
 
 ## Previous Task
 
-88.1-88.4: Version bump, CHANGELOG, benchmarks, binary audit.
+88.1-88.6: Version bump, CHANGELOG, benchmarks, binary audit, GitHub Release, CI verified.
 
 ## Task Queue
 
 ```
-88.5: GitHub Release (push + tag → CI builds 4-platform binaries)
-88.6: Verify CI release completed successfully
+(empty — Phase 88 complete, proceed to next phase per roadmap)
 ```
 
 ## 83E Audit Results & Scope Reduction
