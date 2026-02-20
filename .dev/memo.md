@@ -59,19 +59,17 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.11: `ns` macro → Zig macro transform.
-Move ns macro from core.clj to macro_transforms.zig.
+All-Zig Migration Phase A.12: `case` macro → Zig macro transform.
+Move case macro + private helpers (shift-mask, maybe-min-hash, case-map, fits-table?,
+prep-ints, merge-hash-collisions, prep-hashes) from core.clj to macro_transforms.zig.
+After this, core.clj reaches 0 lines → Phase A complete.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.10: ~45 remaining defn/def migrated from core.clj → bootstrap.zig core_seq_defs.
-Batch: concat, iterate, range, repeat, repeatedly, lazy-cat-helper, cycle, interleave,
-interpose, take, drop, mapcat, partition, partition-by, distinct, map-indexed, keep,
-keep-indexed, partition-all, take-while, drop-while, take-nth, replace, random-sample,
-reductions, tree-seq, xml-seq, iteration, partitionv, partitionv-all, pmap, pcalls,
-parse-impls, destructure, all def constants (type symbols, dynamic vars, char tables, etc.).
-core.clj reduced from 1246 → 161 lines (only ns + case macros remain).
+A.11: `ns` macro → Zig macro transform (macro_transforms.zig).
+Handles :require, :use, :refer-clojure, :import, :import-wasm.
+core.clj reduced from 161 → 128 lines (only case macro + helpers remain).
 
 ## Task Queue
 
@@ -87,8 +85,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.8: Hierarchy functions (6 fn) DONE
   A.9: HOF closure utilities (17 fn) DONE
   A.10: Transducers, lazy-seq, remaining defn (~45 fn) DONE
-  A.11: `ns` macro → Zig transform ← CURRENT
-  A.12: `case` macro → Zig transform
+  A.11: `ns` macro → Zig transform DONE
+  A.12: `case` macro → Zig transform ← CURRENT
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)
 Phase C: Bootstrap pipeline elimination
 Phase D: Directory & module refactoring

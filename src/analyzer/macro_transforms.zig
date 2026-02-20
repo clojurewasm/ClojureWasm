@@ -85,6 +85,7 @@ pub const transforms = std.StaticStringMap(MacroTransformFn).initComptime(.{
     .{ "letfn", transformLetfn },
     .{ "refer-clojure", transformReferClojure },
     .{ "extend-protocol", transformExtendProtocol },
+    .{ "ns", transformNs },
 });
 
 /// Look up a macro transform by name. Returns null if no Zig transform exists.
@@ -1521,6 +1522,197 @@ pub fn concatForms(allocator: Allocator, a: []const Form, b: []const Form) ![]Fo
     @memcpy(result[0..a.len], a);
     @memcpy(result[a.len..], b);
     return result;
+}
+
+// ============================================================
+// ns macro transform
+// ============================================================
+
+/// (ns name & references)
+/// Expands to (do (in-ns 'name) (set-ns-doc 'name doc)? ref-forms...)
+fn transformNs(allocator: Allocator, args: []const Form) anyerror!Form {
+    if (args.len < 1) return error.InvalidArgs;
+    const name = args[0]; // ns name (unevaluated symbol)
+
+    var ref_idx: usize = 1;
+    var doc: ?Form = null;
+
+    // Optional docstring
+    if (ref_idx < args.len and args[ref_idx].data == .string) {
+        doc = args[ref_idx];
+        ref_idx += 1;
+    }
+
+    // Optional attr-map
+    if (ref_idx < args.len and args[ref_idx].data == .map) {
+        const attr_map = args[ref_idx].data.map;
+        // Extract :doc from attr-map if present and no docstring
+        if (doc == null) {
+            var i: usize = 0;
+            while (i + 1 < attr_map.len) : (i += 2) {
+                if (attr_map[i].data == .keyword and
+                    std.mem.eql(u8, attr_map[i].data.keyword.name, "doc"))
+                {
+                    doc = attr_map[i + 1];
+                    break;
+                }
+            }
+        }
+        ref_idx += 1;
+    }
+
+    // Build do-body: (in-ns 'name) + optional doc + ref-forms
+    var do_items: std.ArrayList(Form) = .empty;
+
+    // (in-ns 'name)
+    const quoted_name = try makeQuoted(allocator, name);
+    try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("in-ns"), quoted_name }));
+
+    // (set-ns-doc 'name doc) if doc present
+    if (doc) |d| {
+        const quoted_name2 = try makeQuoted(allocator, name);
+        try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("set-ns-doc"), quoted_name2, d }));
+    }
+
+    // Process reference forms
+    while (ref_idx < args.len) : (ref_idx += 1) {
+        const ref_form = args[ref_idx];
+        const elems = switch (ref_form.data) {
+            .list => |l| l,
+            .vector => |v| v,
+            else => continue,
+        };
+        if (elems.len == 0) continue;
+        const kw = elems[0];
+        if (kw.data != .keyword) continue;
+        const kw_name = kw.data.keyword.name;
+        const ref_args = elems[1..];
+
+        if (std.mem.eql(u8, kw_name, "require")) {
+            for (ref_args) |arg| {
+                const qarg = try makeQuoted(allocator, arg);
+                try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("require"), qarg }));
+            }
+        } else if (std.mem.eql(u8, kw_name, "use")) {
+            for (ref_args) |arg| {
+                const qarg = try makeQuoted(allocator, arg);
+                try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("use"), qarg }));
+            }
+        } else if (std.mem.eql(u8, kw_name, "refer-clojure")) {
+            // Expand to (clojure.core/refer 'clojure.core :key1 'val1 :key2 'val2 ...)
+            var refer_items: std.ArrayList(Form) = .empty;
+            try refer_items.append(allocator, makeQualifiedSymbol("clojure.core", "refer"));
+            try refer_items.append(allocator, try makeQuoted(allocator, makeSymbol("clojure.core")));
+            // Quote every other argument (values)
+            var ri: usize = 0;
+            while (ri < ref_args.len) : (ri += 1) {
+                if (ri % 2 == 0) {
+                    // keyword (:exclude, :only, :rename)
+                    try refer_items.append(allocator, ref_args[ri]);
+                } else {
+                    // value — quote it
+                    try refer_items.append(allocator, try makeQuoted(allocator, ref_args[ri]));
+                }
+            }
+            const items_slice = try allocator.alloc(Form, refer_items.items.len);
+            @memcpy(items_slice, refer_items.items);
+            try do_items.append(allocator, .{ .data = .{ .list = items_slice } });
+        } else if (std.mem.eql(u8, kw_name, "import")) {
+            for (ref_args) |spec| {
+                try processImportSpec(allocator, &do_items, spec);
+            }
+        } else if (std.mem.eql(u8, kw_name, "import-wasm")) {
+            for (ref_args) |spec| {
+                try processImportWasmSpec(allocator, &do_items, spec);
+            }
+        }
+    }
+
+    // Build (do (in-ns 'name) ...)
+    const do_body = try allocator.alloc(Form, do_items.items.len + 1);
+    do_body[0] = makeSymbol("do");
+    @memcpy(do_body[1..], do_items.items);
+    return .{ .data = .{ .list = do_body } };
+}
+
+/// Process a single :import spec.
+/// Handles both `(java.net URI URL)` and `java.net.URI` forms.
+fn processImportSpec(allocator: Allocator, do_items: *std.ArrayList(Form), spec: Form) !void {
+    switch (spec.data) {
+        .list, .vector => |elems| {
+            // (:import (java.net URI URL)) → (def URI 'java.net.URI) (def URL 'java.net.URL)
+            if (elems.len < 2) return;
+            const pkg_sym = elems[0];
+            const pkg_name = switch (pkg_sym.data) {
+                .symbol => |s| s.name,
+                else => return,
+            };
+            for (elems[1..]) |class_form| {
+                const class_name = switch (class_form.data) {
+                    .symbol => |s| s.name,
+                    else => continue,
+                };
+                // FQCN = "pkg.class"
+                const fqcn = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ pkg_name, class_name });
+                const fqcn_sym = makeSymbol(fqcn);
+                const quoted_fqcn = try makeQuoted(allocator, fqcn_sym);
+                try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("def"), class_form, quoted_fqcn }));
+            }
+        },
+        .symbol => |s| {
+            // (:import java.net.URI) → (def URI 'java.net.URI)
+            const full_name = s.name;
+            if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |dot_idx| {
+                const short_name = full_name[dot_idx + 1 ..];
+                const short_sym = makeSymbol(short_name);
+                const quoted_full = try makeQuoted(allocator, spec);
+                try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("def"), short_sym, quoted_full }));
+            } else {
+                // No dot: (def spec 'spec)
+                const quoted_spec = try makeQuoted(allocator, spec);
+                try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("def"), spec, quoted_spec }));
+            }
+        },
+        else => {},
+    }
+}
+
+/// Process a single :import-wasm spec.
+/// (:import-wasm ["path.wasm" :as alias :imports imports-map])
+fn processImportWasmSpec(allocator: Allocator, do_items: *std.ArrayList(Form), spec: Form) !void {
+    const elems = switch (spec.data) {
+        .list => |l| l,
+        .vector => |v| v,
+        else => return,
+    };
+    if (elems.len < 1) return;
+
+    const path = elems[0];
+    var alias: ?Form = null;
+    var imports: ?Form = null;
+
+    // Parse keyword args
+    var i: usize = 1;
+    while (i + 1 < elems.len) : (i += 2) {
+        if (elems[i].data == .keyword) {
+            const kn = elems[i].data.keyword.name;
+            if (std.mem.eql(u8, kn, "as")) {
+                alias = elems[i + 1];
+            } else if (std.mem.eql(u8, kn, "imports")) {
+                imports = elems[i + 1];
+            }
+        }
+    }
+
+    if (alias) |a| {
+        // (def alias (cljw.wasm/load path)) or (def alias (cljw.wasm/load path {:imports imports}))
+        const load_sym = makeQualifiedSymbol("cljw.wasm", "load");
+        const load_form = if (imports) |imp| blk: {
+            const opts_map = try makeMap(allocator, &.{ makeKeyword("imports"), imp });
+            break :blk try makeList(allocator, &.{ load_sym, path, opts_map });
+        } else try makeList(allocator, &.{ load_sym, path });
+        try do_items.append(allocator, try makeList(allocator, &.{ makeSymbol("def"), a, load_form }));
+    }
 }
 
 // ============================================================

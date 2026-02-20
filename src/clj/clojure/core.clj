@@ -7,79 +7,8 @@
 ;; Migration status (All-Zig Phase A):
 ;; - All defn functions → bootstrap.zig (hot_core_defs, core_hof_defs, core_seq_defs)
 ;; - All def constants → bootstrap.zig (core_seq_defs)
-;; - Most macros → macro_transforms.zig
-;; - Remaining here: `ns` macro, `case` macro + private helpers (A.11/A.12 targets)
-
-;; Namespace declaration
-;; UPSTREAM-DIFF: no :gen-class (JVM only)
-
-(defmacro ns
-  "Sets *ns* to the namespace named by name (unevaluated), creating it
-  if needed. references can include :require, :use, :import,
-  :refer-clojure, :import-wasm."
-  [name & references]
-  (let [docstring (when (string? (first references)) (first references))
-        references (if docstring (rest references) references)
-        attr-map (when (map? (first references)) (first references))
-        references (if attr-map (rest references) references)
-        doc (if docstring docstring (when attr-map (get attr-map :doc)))
-        process-ref (fn [ref-form]
-                      (let [kw (first ref-form)
-                            args (rest ref-form)]
-                        (cond
-                          (= kw :require)
-                          (map (fn [arg] `(require '~arg)) args)
-
-                          (= kw :use)
-                          (map (fn [arg] `(use '~arg)) args)
-
-                          (= kw :refer-clojure)
-                          (let [quote-vals (fn quote-vals [xs]
-                                             (if (seq xs)
-                                               (cons (first xs)
-                                                     (cons (list 'quote (second xs))
-                                                           (quote-vals (rest (rest xs)))))
-                                               nil))]
-                            (list (apply list 'clojure.core/refer ''clojure.core
-                                         (quote-vals args))))
-
-                          ;; UPSTREAM-DIFF: import registers class short names as symbol vars
-                          ;; storing the FQCN so analyzer can resolve ClassName. constructors
-                          (= kw :import)
-                          (mapcat (fn [spec]
-                                    (if (sequential? spec)
-                                      ;; (:import (java.net URI)) → (def URI 'java.net.URI)
-                                      (let [pkg (str (first spec))]
-                                        (map (fn [c]
-                                               (let [fqcn (symbol (str pkg "." c))]
-                                                 `(def ~c '~fqcn)))
-                                             (rest spec)))
-                                      ;; (:import java.net.URI) → (def URI 'java.net.URI)
-                                      (let [s (str spec)
-                                            idx (clojure.string/last-index-of s ".")]
-                                        (if idx
-                                          (let [short (symbol (subs s (inc idx)))]
-                                            (list `(def ~short '~spec)))
-                                          (list `(def ~spec '~spec))))))
-                                  args)
-
-                          ;; :import-wasm — sugar for (def alias (cljw.wasm/load path opts))
-                          (= kw :import-wasm)
-                          (map (fn [spec]
-                                 (let [path (first spec)
-                                       opts (apply hash-map (rest spec))
-                                       alias (get opts :as)
-                                       imports (get opts :imports)
-                                       load-form (if imports
-                                                   (list 'cljw.wasm/load path {:imports imports})
-                                                   (list 'cljw.wasm/load path))]
-                                   (list 'def alias load-form)))
-                               args)
-
-                          :else nil)))
-        ref-forms (apply concat (map process-ref references))
-        doc-form (when doc `(set-ns-doc '~name ~doc))]
-    `(do (in-ns '~name) ~@(when doc-form (list doc-form)) ~@ref-forms)))
+;; - All macros → macro_transforms.zig (ns: A.11, other macros: A.1-A.9)
+;; - Remaining here: `case` macro + private helpers (A.12 target)
 
 ;;; case — constant-time dispatch via case* special form
 
