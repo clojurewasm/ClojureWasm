@@ -207,16 +207,237 @@ const hot_core_defs =
     \\  ([m ks f a b c & args] (apply __zig-update-in m ks f a b c args)))
 ;
 
+/// Higher-order functions that return Clojure closures.
+/// These cannot be Zig builtin_fn (bare function pointers with no captured state).
+/// Evaluated via VM bootstrap alongside hot_core_defs, producing bytecoded closures.
+/// Order matters: preserving-reduced before cat, complement before remove.
+const core_hof_defs =
+    \\(defn constantly [x]
+    \\  (fn [& args] x))
+    \\(defn complement [f]
+    \\  (fn [& args]
+    \\    (not (apply f args))))
+    \\(defn partial
+    \\  ([f] f)
+    \\  ([f arg1]
+    \\   (fn
+    \\     ([] (f arg1))
+    \\     ([x] (f arg1 x))
+    \\     ([x y] (f arg1 x y))
+    \\     ([x y z] (f arg1 x y z))
+    \\     ([x y z & args] (apply f arg1 x y z args))))
+    \\  ([f arg1 arg2]
+    \\   (fn
+    \\     ([] (f arg1 arg2))
+    \\     ([x] (f arg1 arg2 x))
+    \\     ([x y] (f arg1 arg2 x y))
+    \\     ([x y z] (f arg1 arg2 x y z))
+    \\     ([x y z & args] (apply f arg1 arg2 x y z args))))
+    \\  ([f arg1 arg2 arg3]
+    \\   (fn
+    \\     ([] (f arg1 arg2 arg3))
+    \\     ([x] (f arg1 arg2 arg3 x))
+    \\     ([x y] (f arg1 arg2 arg3 x y))
+    \\     ([x y z] (f arg1 arg2 arg3 x y z))
+    \\     ([x y z & args] (apply f arg1 arg2 arg3 x y z args))))
+    \\  ([f arg1 arg2 arg3 & more]
+    \\   (fn [& args] (apply f arg1 arg2 arg3 (concat more args)))))
+    \\(defn juxt
+    \\  ([f]
+    \\   (fn
+    \\     ([] [(f)])
+    \\     ([x] [(f x)])
+    \\     ([x y] [(f x y)])
+    \\     ([x y z] [(f x y z)])
+    \\     ([x y z & args] [(apply f x y z args)])))
+    \\  ([f g]
+    \\   (fn
+    \\     ([] [(f) (g)])
+    \\     ([x] [(f x) (g x)])
+    \\     ([x y] [(f x y) (g x y)])
+    \\     ([x y z] [(f x y z) (g x y z)])
+    \\     ([x y z & args] [(apply f x y z args) (apply g x y z args)])))
+    \\  ([f g h]
+    \\   (fn
+    \\     ([] [(f) (g) (h)])
+    \\     ([x] [(f x) (g x) (h x)])
+    \\     ([x y] [(f x y) (g x y) (h x y)])
+    \\     ([x y z] [(f x y z) (g x y z) (h x y z)])
+    \\     ([x y z & args] [(apply f x y z args) (apply g x y z args) (apply h x y z args)])))
+    \\  ([f g h & fs]
+    \\   (let [fs (list* f g h fs)]
+    \\     (fn
+    \\       ([] (reduce #(conj %1 (%2)) [] fs))
+    \\       ([x] (reduce #(conj %1 (%2 x)) [] fs))
+    \\       ([x y] (reduce #(conj %1 (%2 x y)) [] fs))
+    \\       ([x y z] (reduce #(conj %1 (%2 x y z)) [] fs))
+    \\       ([x y z & args] (reduce #(conj %1 (apply %2 x y z args)) [] fs))))))
+    \\(defn every-pred
+    \\  ([p]
+    \\   (fn ep1
+    \\     ([] true)
+    \\     ([x] (boolean (p x)))
+    \\     ([x y] (boolean (and (p x) (p y))))
+    \\     ([x y z] (boolean (and (p x) (p y) (p z))))
+    \\     ([x y z & args] (boolean (and (ep1 x y z)
+    \\                                   (every? p args))))))
+    \\  ([p1 p2]
+    \\   (fn ep2
+    \\     ([] true)
+    \\     ([x] (boolean (and (p1 x) (p2 x))))
+    \\     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y))))
+    \\     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z))))
+    \\     ([x y z & args] (boolean (and (ep2 x y z)
+    \\                                   (every? #(and (p1 %) (p2 %)) args))))))
+    \\  ([p1 p2 p3]
+    \\   (fn ep3
+    \\     ([] true)
+    \\     ([x] (boolean (and (p1 x) (p2 x) (p3 x))))
+    \\     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y))))
+    \\     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z))))
+    \\     ([x y z & args] (boolean (and (ep3 x y z)
+    \\                                   (every? #(and (p1 %) (p2 %) (p3 %)) args))))))
+    \\  ([p1 p2 p3 & ps]
+    \\   (let [ps (list* p1 p2 p3 ps)]
+    \\     (fn epn
+    \\       ([] true)
+    \\       ([x] (every? #(% x) ps))
+    \\       ([x y] (every? #(and (% x) (% y)) ps))
+    \\       ([x y z] (every? #(and (% x) (% y) (% z)) ps))
+    \\       ([x y z & args] (boolean (and (epn x y z)
+    \\                                     (every? #(every? % args) ps))))))))
+    \\(defn some-fn
+    \\  ([p]
+    \\   (fn sp1
+    \\     ([] nil)
+    \\     ([x] (p x))
+    \\     ([x y] (or (p x) (p y)))
+    \\     ([x y z] (or (p x) (p y) (p z)))
+    \\     ([x y z & args] (or (sp1 x y z)
+    \\                         (some p args)))))
+    \\  ([p1 p2]
+    \\   (fn sp2
+    \\     ([] nil)
+    \\     ([x] (or (p1 x) (p2 x)))
+    \\     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y)))
+    \\     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z)))
+    \\     ([x y z & args] (or (sp2 x y z)
+    \\                         (some #(or (p1 %) (p2 %)) args)))))
+    \\  ([p1 p2 p3]
+    \\   (fn sp3
+    \\     ([] nil)
+    \\     ([x] (or (p1 x) (p2 x) (p3 x)))
+    \\     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y)))
+    \\     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z)))
+    \\     ([x y z & args] (or (sp3 x y z)
+    \\                         (some #(or (p1 %) (p2 %) (p3 %)) args)))))
+    \\  ([p1 p2 p3 & ps]
+    \\   (let [ps (list* p1 p2 p3 ps)]
+    \\     (fn spn
+    \\       ([] nil)
+    \\       ([x] (some #(% x) ps))
+    \\       ([x y] (some #(or (% x) (% y)) ps))
+    \\       ([x y z] (some #(or (% x) (% y) (% z)) ps))
+    \\       ([x y z & args] (or (spn x y z)
+    \\                           (some #(some % args) ps)))))))
+    \\(defn fnil
+    \\  ([f x]
+    \\   (fn
+    \\     ([a] (f (if (nil? a) x a)))
+    \\     ([a b] (f (if (nil? a) x a) b))
+    \\     ([a b c] (f (if (nil? a) x a) b c))
+    \\     ([a b c & ds] (apply f (if (nil? a) x a) b c ds))))
+    \\  ([f x y]
+    \\   (fn
+    \\     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
+    \\     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) c))
+    \\     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) c ds))))
+    \\  ([f x y z]
+    \\   (fn
+    \\     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
+    \\     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c)))
+    \\     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) ds)))))
+    \\(defn memoize [f]
+    \\  (let [mem (atom {})]
+    \\    (fn [& args]
+    \\      (if-let [e (find (deref mem) args)]
+    \\        (val e)
+    \\        (let [ret (apply f args)]
+    \\          (swap! mem assoc args ret)
+    \\          ret)))))
+    \\(defn bound-fn*
+    \\  [f]
+    \\  (let [bindings (get-thread-bindings)]
+    \\    (fn [& args]
+    \\      (apply with-bindings* bindings f args))))
+    \\(defn completing
+    \\  ([f] (completing f identity))
+    \\  ([f cf]
+    \\   (fn
+    \\     ([] (f))
+    \\     ([x] (cf x))
+    \\     ([x y] (f x y)))))
+    \\(defn comparator [pred]
+    \\  (fn [x y]
+    \\    (cond (pred x y) -1 (pred y x) 1 :else 0)))
+    \\(defn accessor [s key]
+    \\  (fn [m] (get m key)))
+    \\(defn- preserving-reduced [rf]
+    \\  (fn [a b]
+    \\    (let [ret (rf a b)]
+    \\      (if (reduced? ret)
+    \\        (reduced ret)
+    \\        ret))))
+    \\(defn cat [rf]
+    \\  (let [rrf (preserving-reduced rf)]
+    \\    (fn
+    \\      ([] (rf))
+    \\      ([result] (rf result))
+    \\      ([result input]
+    \\       (reduce rrf result input)))))
+    \\(defn halt-when
+    \\  ([pred] (halt-when pred nil))
+    \\  ([pred retf]
+    \\   (fn [rf]
+    \\     (fn
+    \\       ([] (rf))
+    \\       ([result]
+    \\        (if (and (map? result) (contains? result ::halt))
+    \\          (::halt result)
+    \\          (rf result)))
+    \\       ([result input]
+    \\        (if (pred input)
+    \\          (reduced {::halt (if retf (retf (rf result) input) input)})
+    \\          (rf result input)))))))
+    \\(defn dedupe
+    \\  ([]
+    \\   (fn [rf]
+    \\     (let [pv (volatile! ::none)]
+    \\       (fn
+    \\         ([] (rf))
+    \\         ([result] (rf result))
+    \\         ([result input]
+    \\          (let [prior @pv]
+    \\            (vreset! pv input)
+    \\            (if (= prior input)
+    \\              result
+    \\              (rf result input))))))))
+    \\  ([coll] (sequence (dedupe) coll)))
+    \\(defn remove
+    \\  ([pred] (filter (complement pred)))
+    \\  ([pred coll]
+    \\   (filter (complement pred) coll)))
+;
+
 /// Load and evaluate core.clj in the given Env using two-phase bootstrap (D73).
 ///
 /// Phase 1: Evaluate core.clj via TreeWalk for fast startup (~10ms).
 ///   All macros, vars, and functions are defined as TreeWalk closures.
 ///
 /// Phase 2: Re-compile hot-path transducer functions (map, filter, comp,
-///   get-in, assoc-in, update-in) via VM compiler. This produces bytecode
-///   closures that run ~200x faster in VM reduce loops than TreeWalk closures.
-///   Only the transducer arities are re-compiled; other arities keep their
-///   TreeWalk versions for minimal startup overhead.
+///   get-in, assoc-in, update-in) and HOF closures (constantly, complement,
+///   partial, juxt, etc.) via VM compiler. This produces bytecode closures
+///   that run ~200x faster in VM reduce loops than TreeWalk closures.
 ///
 /// Called after registerBuiltins. Temporarily switches to clojure.core namespace,
 /// then re-refers all bindings into user namespace.
@@ -237,6 +458,10 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     // Only 1-arity (transducer) forms are bytecoded; other arities delegate
     // to original TreeWalk versions to minimize memory/cache footprint.
     _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
+
+    // Phase 2b: Define HOF closure utilities via VM (constantly, complement,
+    // partial, juxt, every-pred, some-fn, fnil, memoize, etc.).
+    _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
 
     // Restore user namespace and re-refer all core bindings
     env.current_ns = saved_ns;
@@ -1667,6 +1892,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     env.current_ns = core_ns;
     _ = try evalStringVMBootstrap(allocator, env, core_clj_source);
     _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
+    _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
 
     // Re-compile walk.clj
     if (env.findNamespace("clojure.walk")) |walk_ns| {

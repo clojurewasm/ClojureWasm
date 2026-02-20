@@ -59,16 +59,17 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.9: Concurrency functions & closure-returning utilities → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. Survey remaining core.clj defn. Many return closures
-(constantly, complement, partial, comp, juxt, etc.) — need runtime eval or new closure mechanism.
+All-Zig Migration Phase A.10: Transducer functions + lazy-seq constructors from core.clj → bootstrap.zig.
+Strategy: same as A.9 — move to new `core_xf_defs` const in bootstrap.zig, eval via VM bootstrap.
+Scope: ~30 remaining defn (transducers, lazy-seq, data-returning functions, def constants).
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.8: 6 hierarchy functions migrated to Zig builtins (collections.zig).
-Batch: isa?, parents, ancestors, descendants, derive, underive.
-(+6 builtins, 536 total). Added lookupVar, notEmpty, getKeywordFromMap, tfHelper helpers.
+A.9: 17 HOF closure utilities migrated from core.clj → bootstrap.zig core_hof_defs.
+Batch: constantly, complement, partial, juxt, every-pred, some-fn, fnil, memoize,
+bound-fn*, completing, comparator, accessor, preserving-reduced, cat, halt-when, dedupe, remove.
+Created `core_hof_defs` const string in bootstrap.zig, evaluated via evalStringVMBootstrap.
 
 ## Task Queue
 
@@ -82,8 +83,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.6: String/print utilities & simple functions (11 fn) DONE
   A.7: Transducer/reduce compositions (10 fn) DONE
   A.8: Hierarchy functions (6 fn) DONE
-  A.9: Concurrency & closure-returning utilities (~15 fn) ← CURRENT
-  A.10: Destructure, ex-info, special vars, remaining (~30 fn)
+  A.9: HOF closure utilities (17 fn) DONE
+  A.10: Transducers, lazy-seq, remaining defn (~45 fn) ← CURRENT
   A.11: `ns` macro → Zig transform
   A.12: `case` macro → Zig transform
 Phase B: Library namespaces → Zig builtins (24 files, 7,739 lines → 0)

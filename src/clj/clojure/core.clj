@@ -106,12 +106,9 @@
 
 ;; `identity` migrated to Zig (predicates.zig)
 
-(defn constantly [x]
-  (fn [& args] x))
+;; `constantly` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn complement [f]
-  (fn [& args]
-    (not (apply f args))))
+;; `complement` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; `defn-` macro migrated to Zig (macro_transforms.zig)
 
@@ -198,75 +195,11 @@
 
 ;; Function combinators
 
-(defn partial
-  ([f] f)
-  ([f arg1]
-   (fn
-     ([] (f arg1))
-     ([x] (f arg1 x))
-     ([x y] (f arg1 x y))
-     ([x y z] (f arg1 x y z))
-     ([x y z & args] (apply f arg1 x y z args))))
-  ([f arg1 arg2]
-   (fn
-     ([] (f arg1 arg2))
-     ([x] (f arg1 arg2 x))
-     ([x y] (f arg1 arg2 x y))
-     ([x y z] (f arg1 arg2 x y z))
-     ([x y z & args] (apply f arg1 arg2 x y z args))))
-  ([f arg1 arg2 arg3]
-   (fn
-     ([] (f arg1 arg2 arg3))
-     ([x] (f arg1 arg2 arg3 x))
-     ([x y] (f arg1 arg2 arg3 x y))
-     ([x y z] (f arg1 arg2 arg3 x y z))
-     ([x y z & args] (apply f arg1 arg2 arg3 x y z args))))
-  ([f arg1 arg2 arg3 & more]
-   (fn [& args] (apply f arg1 arg2 arg3 (concat more args)))))
+;; `partial` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn comp
-  ([] identity)
-  ([f] f)
-  ([f g]
-   (fn
-     ([] (f (g)))
-     ([x] (f (g x)))
-     ([x y] (f (g x y)))
-     ([x y z] (f (g x y z)))
-     ([x y z & args] (f (apply g x y z args)))))
-  ([f g & fs]
-   (reduce comp (list* f g fs))))
+;; `comp` migrated to Zig (bootstrap.zig hot_core_defs + core_hof_defs)
 
-(defn juxt
-  ([f]
-   (fn
-     ([] [(f)])
-     ([x] [(f x)])
-     ([x y] [(f x y)])
-     ([x y z] [(f x y z)])
-     ([x y z & args] [(apply f x y z args)])))
-  ([f g]
-   (fn
-     ([] [(f) (g)])
-     ([x] [(f x) (g x)])
-     ([x y] [(f x y) (g x y)])
-     ([x y z] [(f x y z) (g x y z)])
-     ([x y z & args] [(apply f x y z args) (apply g x y z args)])))
-  ([f g h]
-   (fn
-     ([] [(f) (g) (h)])
-     ([x] [(f x) (g x) (h x)])
-     ([x y] [(f x y) (g x y) (h x y)])
-     ([x y z] [(f x y z) (g x y z) (h x y z)])
-     ([x y z & args] [(apply f x y z args) (apply g x y z args) (apply h x y z args)])))
-  ([f g h & fs]
-   (let [fs (list* f g h fs)]
-     (fn
-       ([] (reduce #(conj %1 (%2)) [] fs))
-       ([x] (reduce #(conj %1 (%2 x)) [] fs))
-       ([x y] (reduce #(conj %1 (%2 x y)) [] fs))
-       ([x y z] (reduce #(conj %1 (%2 x y z)) [] fs))
-       ([x y z & args] (reduce #(conj %1 (apply %2 x y z args)) [] fs))))))
+;; `juxt` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; Sequence transforms
 
@@ -459,10 +392,7 @@
 
 ;; Additional HOFs
 
-(defn remove
-  ([pred] (filter (complement pred)))
-  ([pred coll]
-   (filter (complement pred) coll)))
+;; `remove` migrated to Zig (bootstrap.zig core_hof_defs)
 
 (defn map-indexed
   ([f]
@@ -604,93 +534,11 @@
 
 ;; `second`, `fnext`, `nfirst`, `not-empty` migrated to Zig (predicates.zig)
 
-(defn every-pred
-  ([p]
-   (fn ep1
-     ([] true)
-     ([x] (boolean (p x)))
-     ([x y] (boolean (and (p x) (p y))))
-     ([x y z] (boolean (and (p x) (p y) (p z))))
-     ([x y z & args] (boolean (and (ep1 x y z)
-                                   (every? p args))))))
-  ([p1 p2]
-   (fn ep2
-     ([] true)
-     ([x] (boolean (and (p1 x) (p2 x))))
-     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y))))
-     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z))))
-     ([x y z & args] (boolean (and (ep2 x y z)
-                                   (every? #(and (p1 %) (p2 %)) args))))))
-  ([p1 p2 p3]
-   (fn ep3
-     ([] true)
-     ([x] (boolean (and (p1 x) (p2 x) (p3 x))))
-     ([x y] (boolean (and (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y))))
-     ([x y z] (boolean (and (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z))))
-     ([x y z & args] (boolean (and (ep3 x y z)
-                                   (every? #(and (p1 %) (p2 %) (p3 %)) args))))))
-  ([p1 p2 p3 & ps]
-   (let [ps (list* p1 p2 p3 ps)]
-     (fn epn
-       ([] true)
-       ([x] (every? #(% x) ps))
-       ([x y] (every? #(and (% x) (% y)) ps))
-       ([x y z] (every? #(and (% x) (% y) (% z)) ps))
-       ([x y z & args] (boolean (and (epn x y z)
-                                     (every? #(every? % args) ps))))))))
+;; `every-pred` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn some-fn
-  ([p]
-   (fn sp1
-     ([] nil)
-     ([x] (p x))
-     ([x y] (or (p x) (p y)))
-     ([x y z] (or (p x) (p y) (p z)))
-     ([x y z & args] (or (sp1 x y z)
-                         (some p args)))))
-  ([p1 p2]
-   (fn sp2
-     ([] nil)
-     ([x] (or (p1 x) (p2 x)))
-     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y)))
-     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z)))
-     ([x y z & args] (or (sp2 x y z)
-                         (some #(or (p1 %) (p2 %)) args)))))
-  ([p1 p2 p3]
-   (fn sp3
-     ([] nil)
-     ([x] (or (p1 x) (p2 x) (p3 x)))
-     ([x y] (or (p1 x) (p1 y) (p2 x) (p2 y) (p3 x) (p3 y)))
-     ([x y z] (or (p1 x) (p1 y) (p1 z) (p2 x) (p2 y) (p2 z) (p3 x) (p3 y) (p3 z)))
-     ([x y z & args] (or (sp3 x y z)
-                         (some #(or (p1 %) (p2 %) (p3 %)) args)))))
-  ([p1 p2 p3 & ps]
-   (let [ps (list* p1 p2 p3 ps)]
-     (fn spn
-       ([] nil)
-       ([x] (some #(% x) ps))
-       ([x y] (some #(or (% x) (% y)) ps))
-       ([x y z] (some #(or (% x) (% y) (% z)) ps))
-       ([x y z & args] (or (spn x y z)
-                           (some #(some % args) ps)))))))
+;; `some-fn` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn fnil
-  ([f x]
-   (fn
-     ([a] (f (if (nil? a) x a)))
-     ([a b] (f (if (nil? a) x a) b))
-     ([a b c] (f (if (nil? a) x a) b c))
-     ([a b c & ds] (apply f (if (nil? a) x a) b c ds))))
-  ([f x y]
-   (fn
-     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
-     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) c))
-     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) c ds))))
-  ([f x y z]
-   (fn
-     ([a b] (f (if (nil? a) x a) (if (nil? b) y b)))
-     ([a b c] (f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c)))
-     ([a b c & ds] (apply f (if (nil? a) x a) (if (nil? b) y b) (if (nil? c) z c) ds)))))
+;; `fnil` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; Control flow macros
 
@@ -881,14 +729,7 @@
 
 ;; Function combinators — memoize and trampoline
 
-(defn memoize [f]
-  (let [mem (atom {})]
-    (fn [& args]
-      (if-let [e (find (deref mem) args)]
-        (val e)
-        (let [ret (apply f args)]
-          (swap! mem assoc args ret)
-          ret)))))
+;; `memoize` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; `trampoline` migrated to Zig (collections.zig)
 
@@ -939,16 +780,7 @@
                         (mapcat walk (children node))))))]
     (walk root)))
 
-(defn completing
-  "Takes a reducing function f of 2 args and returns a fn suitable for
-  transduce by adding an arity-1 signature that calls cf (default -
-  identity) on the result argument."
-  ([f] (completing f identity))
-  ([f cf]
-   (fn
-     ([] (f))
-     ([x] (cf x))
-     ([x y] (f x y)))))
+;; `completing` migrated to Zig (bootstrap.zig core_hof_defs)
 
 (defn reductions
   "Returns a lazy seq of the intermediate values of the reduction (as
@@ -1020,64 +852,13 @@
 ;; `transduce` migrated to Zig (collections.zig)
 ;; `into` migrated to Zig (collections.zig) — full 0-3 arity with transducer support
 
-(defn- preserving-reduced
-  [rf]
-  (fn [a b]
-    (let [ret (rf a b)]
-      (if (reduced? ret)
-        (reduced ret)
-        ret))))
+;; `preserving-reduced` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn cat
-  "A transducer which concatenates the contents of each input, which must be a
-  collection, into the reduction."
-  [rf]
-  (let [rrf (preserving-reduced rf)]
-    (fn
-      ([] (rf))
-      ([result] (rf result))
-      ([result input]
-       (reduce rrf result input)))))
+;; `cat` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn halt-when
-  "Returns a transducer that ends transduction when pred returns true
-  for an input. When retf is supplied it must be a fn of 2 arguments -
-  it will be passed the (completed) result so far and the input that
-  triggered the predicate, and its return value (if it does not throw
-  an exception) will be the return value of the transducer. If retf
-  is not supplied, the input that triggered the predicate will be
-  returned. If the predicate never returns true the transduction is
-  unaffected."
-  ([pred] (halt-when pred nil))
-  ([pred retf]
-   (fn [rf]
-     (fn
-       ([] (rf))
-       ([result]
-        (if (and (map? result) (contains? result ::halt))
-          (::halt result)
-          (rf result)))
-       ([result input]
-        (if (pred input)
-          (reduced {::halt (if retf (retf (rf result) input) input)})
-          (rf result input)))))))
+;; `halt-when` migrated to Zig (bootstrap.zig core_hof_defs)
 
-(defn dedupe
-  "Returns a lazy sequence removing consecutive duplicates in coll.
-  Returns a transducer when no collection is provided."
-  ([]
-   (fn [rf]
-     (let [pv (volatile! ::none)]
-       (fn
-         ([] (rf))
-         ([result] (rf result))
-         ([result input]
-          (let [prior @pv]
-            (vreset! pv input)
-            (if (= prior input)
-              result
-              (rf result input))))))))
-  ([coll] (sequence (dedupe) coll)))
+;; `dedupe` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; `sequence` migrated to Zig (collections.zig)
 ;; `eduction` migrated to Zig (collections.zig)
@@ -1114,11 +895,7 @@
 
 ;; `replicate` migrated to Zig (collections.zig)
 
-(defn comparator
-  "Returns an implementation of a comparator based upon pred."
-  [pred]
-  (fn [x y]
-    (cond (pred x y) -1 (pred y x) 1 :else 0)))
+;; `comparator` migrated to Zig (bootstrap.zig core_hof_defs)
 
 (defn xml-seq
   "A tree seq on the xml elements as per xml/parse"
@@ -1208,15 +985,7 @@
 
 ;; `with-bindings` migrated to Zig (macro_transforms.zig)
 
-(defn bound-fn*
-  "Returns a function, which will install the same bindings in effect as in
-  the thread at the time bound-fn* was called and then call f with any given
-  arguments."
-  {:added "1.1"}
-  [f]
-  (let [bindings (get-thread-bindings)]
-    (fn [& args]
-      (apply with-bindings* bindings f args))))
+;; `bound-fn*` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; `bound-fn` migrated to Zig (macro_transforms.zig)
 
@@ -1469,15 +1238,7 @@
 
 ;; `struct` migrated to Zig (collections.zig)
 
-(defn accessor
-  "Returns a fn that, given an instance of a structmap with the basis,
-  returns the value at the key. The key must be in the basis. The
-  returned function should be (slightly) more efficient than using
-  get, but such use of accessors should be limited to known
-  performance-critical areas."
-  {:added "1.0"}
-  [s key]
-  (fn [m] (get m key)))
+;; `accessor` migrated to Zig (bootstrap.zig core_hof_defs)
 
 ;; REPL result vars
 (def *1 nil)
