@@ -5,10 +5,10 @@
 ;;   (eval* binding 'expr)   -> (let [*in* binding] expr)
 ;;   tu/native? branch       -> take true branch
 ;;   eval-string / sci/init / JVM imports / permission tests -> skip
-;;
-;; Uses clojure.test (auto-referred from bootstrap).
 
-(require '[clojure.string :as str])
+(ns sci.core-test
+  (:require [clojure.test :refer [deftest is testing are run-tests]]
+            [clojure.string :as str]))
 
 (println "[sci/core_test] running...")
 

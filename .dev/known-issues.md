@@ -14,21 +14,12 @@
 
 ## P0: User-Facing Bugs
 
-### I-001: `cljw test` state pollution across test files
+### ~~I-001: `cljw test` state pollution across test files~~ RESOLVED
 
-**Symptom**: Tests that pass individually fail in batch execution.
-Affected: multimethods (36E), clojure_zip (17E), data (13E).
-
-**Root cause**: `defmethod` definitions, protocol extensions, and multimethod
-hierarchy changes persist in global state across test files. Each file runs in
-the same process with the same Env, so mutations from one file leak to the next.
-
-**Fix approach**: Reset relevant global state between test files in `handleTestCommand`:
-- Clear multimethod dispatch caches and hierarchy after each file
-- Or: fork a fresh env per test file (heavier but more correct)
-- Or: run each test file in a subprocess (matches `clj -X:test` behavior)
-
-**Files**: `src/main.zig` (handleTestCommand), `src/builtins/multimethods.zig`
+**Resolution**: Fresh `Env` per test file in `handleTestCommand` (88C.1).
+Each file gets: `shutdownGlobalPool()` → `resetLoadedLibs()` → `Env.init()` → `bootstrapFromCache()`.
+Also fixed missing `(ns ...)` forms in `clojure_walk.clj`, `sci/core_test.clj`, `sci/hierarchies_test.clj`
+that relied on leaked state.
 
 ### I-002: `bit-shift-left/right` panics on shift amounts outside 0-63
 
@@ -208,7 +199,7 @@ know about deferred cache roots).
 
 | Issue | When to Fix | Phase |
 |-------|------------|-------|
-| I-001 | **Now** (before Phase B) | New: 88C |
+| I-001 | ~~**Now**~~ RESOLVED | 88C.1 |
 | I-002 | **Now** (before Phase B) | New: 88C |
 | I-003 | **Now** (before Phase B) | New: 88C |
 | I-010 | **Now** (before Phase B) | New: 88C |

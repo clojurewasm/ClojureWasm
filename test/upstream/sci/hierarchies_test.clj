@@ -4,7 +4,7 @@
 
 (ns sci.hierarchies-test
   ;; CLJW: removed sci.test-utils dependency, direct tests
-  (:require [clojure.test :refer [deftest is testing]]))
+  (:require [clojure.test :refer [deftest is testing run-tests]]))
 
 ;; CLJW: use make-hierarchy for test isolation (SCI used separate eval sessions)
 (deftest derive-test

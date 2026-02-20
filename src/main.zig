@@ -37,6 +37,7 @@ const FormData = @import("reader/form.zig").FormData;
 const Form = @import("reader/form.zig").Form;
 const wasm_builtins = @import("wasm/builtins.zig");
 const deps_mod = @import("deps.zig");
+const thread_pool = @import("runtime/thread_pool.zig");
 
 const build_options = @import("build_options");
 const enable_wasm = build_options.enable_wasm;
@@ -1030,11 +1031,6 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
         }
     }
 
-    // Bootstrap
-    var env = Env.init(infra_alloc);
-    defer env.deinit();
-    bootstrapFromCache(gc_alloc, &env, gc);
-
     // Load config: deps.edn
     var config_arena = std.heap.ArenaAllocator.init(infra_alloc);
     defer config_arena.deinit();
@@ -1146,9 +1142,18 @@ fn handleTestCommand(gc_alloc: Allocator, infra_alloc: Allocator, gc: *gc_mod.Ma
             continue;
         };
 
+        // Fresh env per test file to prevent state pollution (I-001).
+        // defmethod, derive, protocol extensions, atom mutations all live in Env.
+        // Without isolation, tests that pass individually fail in batch.
+        thread_pool.shutdownGlobalPool(); // join background threads before env teardown
+        ns_ops.resetLoadedLibs();
+        var file_env = Env.init(infra_alloc);
+        defer file_env.deinit();
+        bootstrapFromCache(gc_alloc, &file_env, gc);
+
         err.setSourceFile(tf);
         err.setSourceText(file_bytes);
-        const result = bootstrap.evalStringVM(gc_alloc, &env, file_bytes) catch |e| {
+        const result = bootstrap.evalStringVM(gc_alloc, &file_env, file_bytes) catch |e| {
             reportError(e);
             continue;
         };

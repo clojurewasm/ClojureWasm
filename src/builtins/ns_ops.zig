@@ -111,6 +111,31 @@ pub fn deinit() void {
     loaded_libs_allocator = null;
 }
 
+/// Reset loaded_libs and loading_libs tracking without affecting load paths.
+/// Used by the test runner to reset library state between test files
+/// (each file gets a fresh Env + bootstrap, so loaded_libs must match).
+pub fn resetLoadedLibs() void {
+    const alloc = loaded_libs_allocator orelse return;
+    ns_mutex.lock();
+    defer ns_mutex.unlock();
+
+    // Free loaded_libs keys
+    var iter = loaded_libs.iterator();
+    while (iter.next()) |entry| {
+        alloc.free(entry.key_ptr.*);
+    }
+    loaded_libs.deinit(alloc);
+    loaded_libs = .empty;
+
+    // Free loading_libs keys
+    var loading_iter = loading_libs.iterator();
+    while (loading_iter.next()) |entry| {
+        alloc.free(entry.key_ptr.*);
+    }
+    loading_libs.deinit(alloc);
+    loading_libs = .empty;
+}
+
 /// Add a path to the load path list.
 pub fn addLoadPath(path: []const u8) !void {
     const alloc = loaded_libs_allocator orelse return;
@@ -1705,6 +1730,27 @@ test "init and deinit - loaded_libs tracking" {
     try testing.expect(!isLibLoaded("test.ns"));
     try markLibLoaded("test.ns");
     try testing.expect(isLibLoaded("test.ns"));
+}
+
+test "resetLoadedLibs - clears libs but keeps load paths" {
+    const alloc = std.heap.page_allocator;
+    init(alloc);
+    defer deinit();
+
+    try markLibLoaded("test.ns");
+    try addLoadPath("/tmp/test-path");
+    try testing.expect(isLibLoaded("test.ns"));
+
+    resetLoadedLibs();
+
+    // loaded_libs cleared
+    try testing.expect(!isLibLoaded("test.ns"));
+    // load paths preserved
+    var found = false;
+    for (load_paths) |p| {
+        if (std.mem.eql(u8, p, "/tmp/test-path")) found = true;
+    }
+    try testing.expect(found);
 }
 
 test "addLoadPath - adds to load paths" {

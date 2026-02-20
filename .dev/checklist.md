@@ -15,7 +15,7 @@ Check at session start for items that become actionable.
 
 | ID   | Item                                        | Issue  | Priority |
 |------|---------------------------------------------|--------|----------|
-| F130 | cljw test state pollution across files      | I-001  | P0       |
+| ~~F130~~ | ~~cljw test state pollution across files~~ | ~~I-001~~ | RESOLVED |
 | F131 | bit-shift-left/right panics on shift ≥64    | I-002  | P0       |
 | F132 | char returns char type, not string           | I-003  | P0       |
 | F133 | Unified "run all tests" command              | I-010  | P1       |
