@@ -356,7 +356,7 @@ pub fn threadBoundPredFn(_: Allocator, args: []const Value) anyerror!Value {
 }
 
 /// (var-raw-root v) — returns the root value of a Var, bypassing thread-local bindings.
-fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to var-raw-root", .{args.len});
     const v = switch (args[0].tag()) {
         .var_ref => args[0].asVarRef(),
@@ -367,7 +367,7 @@ fn varRawRootFn(_: Allocator, args: []const Value) anyerror!Value {
 
 /// (__var-bind-root v val) — sets the root binding of a Var directly.
 /// Used by with-redefs-fn (JVM equivalent of .bindRoot).
-fn varBindRootFn(_: Allocator, args: []const Value) anyerror!Value {
+pub fn varBindRootFn(_: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to __var-bind-root", .{args.len});
     const v = switch (args[0].tag()) {
         .var_ref => args[0].asVarRef(),

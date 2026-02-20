@@ -30,6 +30,9 @@ const vm_mod = @import("../vm/vm.zig");
 const sequences_mod = @import("sequences.zig");
 const transient_mod = @import("transient.zig");
 const metadata_mod = @import("metadata.zig");
+const strings_mod = @import("strings.zig");
+const ns_ops_mod = @import("ns_ops.zig");
+const interop_dispatch = @import("../interop/dispatch.zig");
 
 /// Call a function value, reusing active VM if available.
 fn callFn(allocator: Allocator, fn_val: Value, args: []const Value) anyerror!Value {
@@ -3377,6 +3380,279 @@ fn clojureVersionFn(allocator: Allocator, args: []const Value) anyerror!Value {
     return Value.initString(allocator, "1.12.0");
 }
 
+// A.6: String/print utilities & remaining simple functions
+// munge, namespace-munge, replicate, splitv-at, create-struct, struct-map,
+// struct, close, with-bindings*, with-redefs-fn
+
+/// Munge character map — maps special characters to Java-safe identifier fragments.
+const munge_char_map = [_]struct { char: u8, replacement: []const u8 }{
+    .{ .char = '-', .replacement = "_" },
+    .{ .char = ':', .replacement = "_COLON_" },
+    .{ .char = '+', .replacement = "_PLUS_" },
+    .{ .char = '>', .replacement = "_GT_" },
+    .{ .char = '<', .replacement = "_LT_" },
+    .{ .char = '=', .replacement = "_EQ_" },
+    .{ .char = '~', .replacement = "_TILDE_" },
+    .{ .char = '.', .replacement = "_DOT_" },
+    .{ .char = '!', .replacement = "_BANG_" },
+    .{ .char = '@', .replacement = "_CIRCA_" },
+    .{ .char = '#', .replacement = "_SHARP_" },
+    .{ .char = '\'', .replacement = "_SINGLEQUOTE_" },
+    .{ .char = '"', .replacement = "_DOUBLEQUOTE_" },
+    .{ .char = '%', .replacement = "_PERCENT_" },
+    .{ .char = '^', .replacement = "_CARET_" },
+    .{ .char = '&', .replacement = "_AMPERSAND_" },
+    .{ .char = '*', .replacement = "_STAR_" },
+    .{ .char = '|', .replacement = "_BAR_" },
+    .{ .char = '{', .replacement = "_LBRACE_" },
+    .{ .char = '}', .replacement = "_RBRACE_" },
+    .{ .char = '[', .replacement = "_LBRACK_" },
+    .{ .char = ']', .replacement = "_RBRACK_" },
+    .{ .char = '/', .replacement = "_SLASH_" },
+    .{ .char = '\\', .replacement = "_BSLASH_" },
+    .{ .char = '?', .replacement = "_QMARK_" },
+};
+
+fn lookupMungeChar(c: u8) ?[]const u8 {
+    for (munge_char_map) |entry| {
+        if (entry.char == c) return entry.replacement;
+    }
+    return null;
+}
+
+/// (munge s) — munge a name string into an identifier-safe string.
+/// If s is a symbol, returns a symbol; otherwise returns a string.
+fn mungeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to munge", .{args.len});
+    const is_symbol = args[0].tag() == .symbol;
+    const input = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        .string => args[0].asString(),
+        else => {
+            // (str s) first
+            const str_val = try strings_mod.strFn(allocator, &.{args[0]});
+            return mungeFn(allocator, &.{str_val});
+        },
+    };
+
+    // Build munged string
+    var result = std.ArrayList(u8).empty;
+    for (input) |c| {
+        if (lookupMungeChar(c)) |replacement| {
+            result.appendSlice(allocator, replacement) catch return error.OutOfMemory;
+        } else {
+            result.append(allocator, c) catch return error.OutOfMemory;
+        }
+    }
+    const munged = result.items;
+    if (is_symbol) {
+        return Value.initSymbol(allocator, .{ .ns = null, .name = munged });
+    }
+    return Value.initString(allocator, munged);
+}
+
+/// (namespace-munge ns) — convert a Clojure namespace name to a legal identifier.
+/// Replaces '-' with '_'.
+fn namespaceMungeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to namespace-munge", .{args.len});
+    const input = switch (args[0].tag()) {
+        .symbol => args[0].asSymbol().name,
+        .string => args[0].asString(),
+        else => {
+            const str_val = try strings_mod.strFn(allocator, &.{args[0]});
+            return namespaceMungeFn(allocator, &.{str_val});
+        },
+    };
+
+    var result = try allocator.alloc(u8, input.len);
+    for (input, 0..) |c, i| {
+        result[i] = if (c == '-') '_' else c;
+    }
+    return Value.initString(allocator, result);
+}
+
+/// (replicate n x) — DEPRECATED: Use 'repeat' instead. Returns a lazy seq of n xs.
+/// Equivalent to (repeat n x) — bounded repeat.
+fn replicateFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to replicate", .{args.len});
+    // replicate is just 2-arity repeat: (repeat n x)
+    return try sequences_mod.repeatFn(allocator, &.{ args[0], args[1] });
+}
+
+/// (splitv-at n coll) — returns [(vec (take n coll)) (drop n coll)].
+fn splitvAtFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to splitv-at", .{args.len});
+    // (vec (take n coll))
+    const taken = try sequences_mod.zigLazyTakeFn(allocator, &.{ args[0], args[1] });
+    const taken_items = try collectSeqItems(allocator, taken);
+    const taken_val = try makeVector(allocator, taken_items);
+    // (drop n coll) — use nthrest which is equivalent for eager collections
+    const dropped = try nthrestFn(allocator, &.{ args[1], args[0] });
+    // Build [taken-vec dropped] vector
+    const result_items = try allocator.alloc(Value, 2);
+    result_items[0] = taken_val;
+    result_items[1] = dropped;
+    return try makeVector(allocator, result_items);
+}
+
+/// (create-struct & keys) — returns a structure basis object (vector of keys).
+fn createStructFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    // (vec keys)
+    return try makeVector(allocator, args);
+}
+
+/// (struct-map s & inits) — returns a new structmap instance (plain map).
+fn structMapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to struct-map", .{args.len});
+    // s is the structure basis (vector of keys)
+    // inits are key-value pairs
+    // (merge (zipmap s (repeat nil)) (apply hash-map inits))
+    const basis = args[0];
+    const basis_items = try collectSeqItems(allocator, basis);
+
+    // Build basis map: {key1 nil, key2 nil, ...}
+    const basis_entries = try allocator.alloc(Value, basis_items.len * 2);
+    for (basis_items, 0..) |key, i| {
+        basis_entries[i * 2] = key;
+        basis_entries[i * 2 + 1] = Value.nil_val;
+    }
+
+    // Build init map from remaining args (key-value pairs)
+    const inits = args[1..];
+    if (inits.len % 2 != 0) return err.setErrorFmt(.eval, .value_error, .{}, "No value supplied for key", .{});
+
+    // Merge: start with basis, override with inits
+    const total_entries = try allocator.alloc(Value, basis_entries.len + inits.len);
+    @memcpy(total_entries[0..basis_entries.len], basis_entries);
+    @memcpy(total_entries[basis_entries.len..], inits);
+
+    // Use merge to combine (later keys override earlier)
+    const basis_map = try buildMap(allocator, basis_entries);
+    const init_map = try buildMap(allocator, inits);
+    return try mergeFn(allocator, &.{ basis_map, init_map });
+}
+
+/// (struct s & vals) — returns a new structmap instance with vals in order.
+fn structFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to struct", .{args.len});
+    // (zipmap s (concat vals (repeat nil)))
+    const basis = args[0];
+    const basis_items = try collectSeqItems(allocator, basis);
+    const vals = args[1..];
+
+    const entries = try allocator.alloc(Value, basis_items.len * 2);
+    for (basis_items, 0..) |key, i| {
+        entries[i * 2] = key;
+        entries[i * 2 + 1] = if (i < vals.len) vals[i] else Value.nil_val;
+    }
+    return try buildMap(allocator, entries);
+}
+
+/// Create a PersistentVector Value from items slice.
+fn makeVector(allocator: Allocator, items: []const Value) anyerror!Value {
+    const duped = try allocator.alloc(Value, items.len);
+    @memcpy(duped, items);
+    const vec = try allocator.create(PersistentVector);
+    vec.* = .{ .items = duped };
+    return Value.initVector(vec);
+}
+
+/// Build a PersistentArrayMap from flat key-value entries.
+fn buildMap(allocator: Allocator, entries: []const Value) anyerror!Value {
+    const duped = try allocator.alloc(Value, entries.len);
+    @memcpy(duped, entries);
+    const map = try allocator.create(PersistentArrayMap);
+    map.* = .{ .entries = duped };
+    return Value.initMap(map);
+}
+
+/// (close x) — closes a resource. Calls .close on objects that support it.
+fn closeFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to close", .{args.len});
+    if (args[0].tag() == .nil) return Value.nil_val;
+    // Try calling .close method via interop dispatch, catch exceptions
+    _ = interop_dispatch.dispatch(allocator, "close", args[0], &.{}) catch {
+        return Value.nil_val;
+    };
+    return Value.nil_val;
+}
+
+/// (with-bindings* binding-map f & args) — sets vars to values during f execution.
+fn withBindingsStarFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to with-bindings*", .{args.len});
+    // (push-thread-bindings binding-map)
+    _ = try misc_mod.pushThreadBindingsFn(allocator, &.{args[0]});
+    // (try (apply f args) (finally (pop-thread-bindings)))
+    const f = args[1];
+    const extra_args = args[2..];
+    const result = callFn(allocator, f, extra_args) catch |e| {
+        _ = misc_mod.popThreadBindingsFn(allocator, &.{}) catch {};
+        return e;
+    };
+    _ = try misc_mod.popThreadBindingsFn(allocator, &.{});
+    return result;
+}
+
+/// (with-redefs-fn binding-map func) — temporarily redefines vars during func execution.
+fn withRedefsFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to with-redefs-fn", .{args.len});
+    const binding_map = args[0];
+    const func = args[1];
+
+    // Get keys (vars) from binding-map
+    const map_keys = try sequences_mod.keysFn(allocator, &.{binding_map});
+    const key_items = try collectSeqItems(allocator, map_keys);
+
+    // Save old root values
+    const old_vals = try allocator.alloc(Value, key_items.len);
+    for (key_items, 0..) |var_ref, i| {
+        old_vals[i] = misc_mod.varRawRootFn(allocator, &.{var_ref}) catch Value.nil_val;
+    }
+
+    // Bind new values
+    for (key_items) |var_ref| {
+        const new_val = try getFn(allocator, &.{ binding_map, var_ref });
+        _ = try misc_mod.varBindRootFn(allocator, &.{ var_ref, new_val });
+    }
+
+    // Try to call func, finally restore old values
+    const result = callFn(allocator, func, &.{}) catch |e| {
+        // Restore old values on error
+        for (key_items, 0..) |var_ref, i| {
+            _ = misc_mod.varBindRootFn(allocator, &.{ var_ref, old_vals[i] }) catch {};
+        }
+        return e;
+    };
+
+    // Restore old values
+    for (key_items, 0..) |var_ref, i| {
+        _ = try misc_mod.varBindRootFn(allocator, &.{ var_ref, old_vals[i] });
+    }
+
+    return result;
+}
+
+/// (requiring-resolve sym) — resolves namespace-qualified sym, requiring ns if needed.
+fn requiringResolveFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to requiring-resolve", .{args.len});
+    if (args[0].tag() != .symbol) return err.setErrorFmt(.eval, .type_error, .{}, "requiring-resolve expects a symbol, got {s}", .{@tagName(args[0].tag())});
+
+    // (or (resolve sym) (do (require (symbol (namespace sym))) (resolve sym)))
+    const first_resolve = try misc_mod.resolveFn(allocator, &.{args[0]});
+    if (first_resolve.tag() != .nil) return first_resolve;
+
+    // Get namespace from symbol
+    const sym = args[0].asSymbol();
+    const ns_name = sym.ns orelse return err.setErrorFmt(.eval, .value_error, .{}, "Not a namespace-qualified symbol: {s}", .{sym.name});
+
+    // (require (symbol ns-name))
+    const ns_sym = Value.initSymbol(allocator, .{ .ns = null, .name = ns_name });
+    _ = try ns_ops_mod.requireFn(allocator, &.{ns_sym});
+
+    // (resolve sym)
+    return try misc_mod.resolveFn(allocator, &.{args[0]});
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
@@ -4047,6 +4323,84 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([])",
         .added = "1.0",
     },
+    // === A.6: String/print utilities & remaining simple functions ===
+    .{
+        .name = "munge",
+        .func = &mungeFn,
+        .doc = "Munge a name string into an identifier-safe string. Replaces special characters with Java-safe equivalents.",
+        .arglists = "([s])",
+        .added = "1.0",
+    },
+    .{
+        .name = "namespace-munge",
+        .func = &namespaceMungeFn,
+        .doc = "Convert a Clojure namespace name to a legal identifier by replacing hyphens with underscores.",
+        .arglists = "([ns])",
+        .added = "1.2",
+    },
+    .{
+        .name = "replicate",
+        .func = &replicateFn,
+        .doc = "DEPRECATED: Use 'repeat' instead. Returns a lazy seq of n xs.",
+        .arglists = "([n x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "splitv-at",
+        .func = &splitvAtFn,
+        .doc = "Returns a vector of [taken-vec rest-seq].",
+        .arglists = "([n coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "create-struct",
+        .func = &createStructFn,
+        .doc = "Returns a structure basis object.",
+        .arglists = "([& keys])",
+        .added = "1.0",
+    },
+    .{
+        .name = "struct-map",
+        .func = &structMapFn,
+        .doc = "Returns a new structmap instance with the keys of the structure-basis. keyvals may contain all, some or none of the basis keys.",
+        .arglists = "([s & inits])",
+        .added = "1.0",
+    },
+    .{
+        .name = "struct",
+        .func = &structFn,
+        .doc = "Returns a new structmap instance with the keys of the structure-basis. vals must be supplied for basis keys in order.",
+        .arglists = "([s & vals])",
+        .added = "1.0",
+    },
+    .{
+        .name = "close",
+        .func = &closeFn,
+        .doc = "Closes a resource. Calls .close on objects that support it, no-op otherwise.",
+        .arglists = "([x])",
+        .added = "1.0",
+    },
+    .{
+        .name = "with-bindings*",
+        .func = &withBindingsStarFn,
+        .doc = "Takes a map of Var/value pairs. Sets the vars to the corresponding values during the execution of f.",
+        .arglists = "([binding-map f & args])",
+        .added = "1.1",
+    },
+    .{
+        .name = "with-redefs-fn",
+        .func = &withRedefsFn,
+        .doc = "Temporarily redefines vars during the execution of func.",
+        .arglists = "([binding-map func])",
+        .added = "1.3",
+    },
+    .{
+        .name = "requiring-resolve",
+        .func = &requiringResolveFn,
+        .doc = "Resolves namespace-qualified sym. Requires ns if not yet loaded.",
+        .arglists = "([sym])",
+        .added = "1.10",
+    },
 };
 
 // === Tests ===
@@ -4326,9 +4680,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 95 entries" {
-    // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5: ex-info, vary-meta, trampoline, etc.)
-    try testing.expectEqual(95, builtins.len);
+test "builtins table has 106 entries" {
+    // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5) + 11 (A.6: munge, namespace-munge, etc.)
+    try testing.expectEqual(106, builtins.len);
 }
 
 test "reverse list" {

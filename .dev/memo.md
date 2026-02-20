@@ -59,17 +59,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.6: String/print utilities & remaining simple functions → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. Remaining non-closure functions from core.clj.
+All-Zig Migration Phase A.7: Transducer/reduce compositions → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. Transducer functions: transduce, into, sequence, eduction, etc.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.5: 15 core.clj defn migrated to Zig builtins (collections.zig).
-Batch: ex-info, ex-data, ex-message, vary-meta, trampoline, max-key,
-min-key, printf, tagged-literal, tagged-literal?, reader-conditional,
-reader-conditional?, make-hierarchy, test, clojure-version.
-(+15 builtins, 510 total)
+A.6: 11 core.clj defn migrated to Zig builtins (collections.zig).
+Batch: munge, namespace-munge, replicate, splitv-at, create-struct, struct-map,
+struct, close, with-bindings*, with-redefs-fn, requiring-resolve.
+(+11 builtins, 521 total). Also made misc_mod.varRawRootFn/varBindRootFn pub.
 
 ## Task Queue
 
@@ -80,9 +79,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.3: Collection constructors & accessors (17 fn) DONE
   A.4: Sequence functions (16 fn) DONE
   A.5: Non-closure utility functions (15 fn) DONE
-  A.6: String/print utilities (~10 fn) ← CURRENT
-  A.6: String/print utilities (~10 fn)
-  A.7: Transducer/reduce compositions (~15 fn)
+  A.6: String/print utilities & simple functions (11 fn) DONE
+  A.7: Transducer/reduce compositions (~15 fn) ← CURRENT
   A.8: Hierarchy & multimethod helpers (~15 fn)
   A.9: Concurrency (~15 fn)
   A.10: Destructure, ex-info, special vars, remaining (~30 fn)

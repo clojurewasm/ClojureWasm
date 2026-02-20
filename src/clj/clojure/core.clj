@@ -1025,16 +1025,7 @@
 
 ;; `with-precision` macro migrated to Zig (macro_transforms.zig)
 
-;; CLJW: .close Java interop replaced with (close x) function call.
-;; UPSTREAM-DIFF: upstream uses (.close x) directly; CW dispatches via __java-method.
-(defn close
-  "Closes a resource. Calls .close on objects that support it, no-op otherwise."
-  {:added "1.0"}
-  [x]
-  (when x
-    (try
-      (.close x)
-      (catch Exception e nil))))
+;; `close` migrated to Zig (collections.zig)
 
 ;; `with-open` macro migrated to Zig (macro_transforms.zig)
 
@@ -1185,10 +1176,7 @@
   ([prob coll]
    (filter (fn [_] (< (rand) prob)) coll)))
 
-(defn replicate
-  "DEPRECATED: Use 'repeat' instead.
-   Returns a lazy seq of n xs."
-  [n x] (take n (repeat x)))
+;; `replicate` migrated to Zig (collections.zig)
 
 (defn comparator
   "Returns an implementation of a comparator based upon pred."
@@ -1370,15 +1358,7 @@
 ;; Dynamic binding
 ;; `binding` migrated to Zig (macro_transforms.zig)
 
-(defn with-bindings*
-  "Takes a map of Var/value pairs. Sets the vars to the corresponding
-  values during the execution of f."
-  [binding-map f & args]
-  (push-thread-bindings binding-map)
-  (try
-    (apply f args)
-    (finally
-      (pop-thread-bindings))))
+;; `with-bindings*` migrated to Zig (collections.zig)
 
 ;; `with-bindings` migrated to Zig (macro_transforms.zig)
 
@@ -1396,20 +1376,7 @@
 
 ;; `with-local-vars` migrated to Zig (macro_transforms.zig)
 
-;; CLJW: .bindRoot -> __var-bind-root builtin (no Java interop)
-(defn with-redefs-fn
-  "Temporarily redefines vars during the execution of func."
-  [binding-map func]
-  (let [root-bind (fn [m]
-                    (doseq [[a-var a-val] m]
-                      (__var-bind-root a-var a-val)))
-        old-vals (zipmap (keys binding-map)
-                         (map var-raw-root (keys binding-map)))]
-    (try
-      (root-bind binding-map)
-      (func)
-      (finally
-        (root-bind old-vals)))))
+;; `with-redefs-fn` migrated to Zig (collections.zig)
 
 ;; `with-redefs` migrated to Zig (macro_transforms.zig)
 
@@ -1445,46 +1412,17 @@
    \formfeed "formfeed"
    \return   "return"})
 
-;; Munge (Compiler.CHAR_MAP equivalent)
-(def ^:private munge-char-map
-  {\- "_", \: "_COLON_", \+ "_PLUS_", \> "_GT_", \< "_LT_",
-   \= "_EQ_", \~ "_TILDE_", \. "_DOT_",
-   \! "_BANG_", \@ "_CIRCA_", \# "_SHARP_",
-   \' "_SINGLEQUOTE_", \" "_DOUBLEQUOTE_",
-   \% "_PERCENT_", \^ "_CARET_", \& "_AMPERSAND_",
-   \* "_STAR_", \| "_BAR_", \{ "_LBRACE_", \} "_RBRACE_",
-   \[ "_LBRACK_", \] "_RBRACK_", \/ "_SLASH_",
-   \\ "_BSLASH_", \? "_QMARK_"})
+;; `munge` migrated to Zig (collections.zig) — munge-char-map hardcoded in Zig
 
-(defn munge
-  "Munge a name string into an idenitifier-safe string."
-  [s]
-  ((if (symbol? s) symbol str)
-   (apply str (map (fn [c] (or (get munge-char-map c) (str c)))
-                   (seq (str s))))))
-
-(defn namespace-munge
-  "Convert a Clojure namespace name to a legal identifier."
-  [ns]
-  (apply str (map (fn [c] (if (= c \-) \_ c)) (seq (str ns)))))
+;; `namespace-munge` migrated to Zig (collections.zig)
 
 ;; === D15 easy wins ===
 
 ;; `locking`, `dosync`, `sync`, `io!` migrated to Zig (macro_transforms.zig)
 
-;; requiring-resolve
-(defn requiring-resolve
-  "Resolves namespace-qualified sym. Requires ns if not yet loaded."
-  [sym]
-  (or (resolve sym)
-      (do (require (symbol (namespace sym)))
-          (resolve sym))))
+;; `requiring-resolve` migrated to Zig (collections.zig)
 
-;; splitv-at — vector version of split-at
-(defn splitv-at
-  "Returns a vector of [taken-vec rest-seq]."
-  [n coll]
-  [(vec (take n coll)) (drop n coll)])
+;; `splitv-at` migrated to Zig (collections.zig)
 
 ;; partitionv — like partition but returns vectors
 (defn partitionv
@@ -1697,32 +1635,13 @@
 ;; Deprecated struct system (needed by clojure.pprint's pretty-writer)
 ;; UPSTREAM-DIFF: uses plain maps instead of PersistentStructMap
 
-(defn create-struct
-  "Returns a structure basis object."
-  {:added "1.0"}
-  [& keys]
-  (vec keys))
+;; `create-struct` migrated to Zig (collections.zig)
 
 ;; `defstruct` macro migrated to Zig (macro_transforms.zig)
 
-(defn struct-map
-  "Returns a new structmap instance with the keys of the
-  structure-basis. keyvals may contain all, some or none of the basis
-  keys - where values are not supplied they will default to nil.
-  keyvals can also contain keys not in the basis."
-  {:added "1.0"}
-  [s & inits]
-  (let [basis-map (zipmap s (repeat nil))
-        init-map (apply hash-map inits)]
-    (merge basis-map init-map)))
+;; `struct-map` migrated to Zig (collections.zig)
 
-(defn struct
-  "Returns a new structmap instance with the keys of the
-  structure-basis. vals must be supplied for basis keys in order -
-  where values are not supplied they will default to nil."
-  {:added "1.0"}
-  [s & vals]
-  (zipmap s (concat vals (repeat nil))))
+;; `struct` migrated to Zig (collections.zig)
 
 (defn accessor
   "Returns a fn that, given an instance of a structmap with the basis,
