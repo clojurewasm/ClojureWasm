@@ -3653,6 +3653,239 @@ fn requiringResolveFn(allocator: Allocator, args: []const Value) anyerror!Value 
     return try misc_mod.resolveFn(allocator, &.{args[0]});
 }
 
+// A.7: Transducer/reduce compositions & tap system
+
+/// (reduce f coll) / (reduce f init coll) — full reduce with 2-arity support.
+/// Overrides the .clj wrapper that calls __zig-reduce.
+fn reduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 2) {
+        // (reduce f coll) — use first element as init
+        const f = args[0];
+        const coll = args[1];
+        const s = try seqFn(allocator, &.{coll});
+        if (s.tag() == .nil) {
+            // Empty coll: (f)
+            return try callFn(allocator, f, &.{});
+        }
+        const first_val = try firstFn(allocator, &.{s});
+        const rest_val = try predicates_mod.nextFn(allocator, &.{s});
+        return try sequences_mod.zigReduceFn(allocator, &.{ f, first_val, rest_val });
+    } else if (args.len == 3) {
+        // (reduce f init coll)
+        return try sequences_mod.zigReduceFn(allocator, args);
+    }
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to reduce", .{args.len});
+}
+
+/// (transduce xform f coll) / (transduce xform f init coll)
+fn transduceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 3) {
+        // (transduce xform f coll) → (transduce xform f (f) coll)
+        const init = try callFn(allocator, args[1], &.{});
+        return transduceFn(allocator, &.{ args[0], args[1], init, args[2] });
+    }
+    if (args.len != 4) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to transduce", .{args.len});
+    // (let [xf (xform f) ret (reduce xf init coll)] (xf ret))
+    const xf = try callFn(allocator, args[0], &.{args[1]});
+    const ret = try sequences_mod.zigReduceFn(allocator, &.{ xf, args[2], args[3] });
+    // Call completion arity (xf ret)
+    return try callFn(allocator, xf, &.{ret});
+}
+
+/// (into) / (into to) / (into to from) / (into to xform from)
+/// Full into with transient optimization and transducer support.
+fn intoFullFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 0) {
+        // (into) → []
+        return try makeVector(allocator, &.{});
+    }
+    if (args.len == 1) {
+        // (into to) → to
+        return args[0];
+    }
+    if (args.len == 2) {
+        // (into to from) — use existing optimized 2-arity intoFn
+        return try intoFn(allocator, args);
+    }
+    if (args.len == 3) {
+        // (into to xform from) — transducer path
+        // (transduce xform conj to from)
+        const conj_val = try lookupBuiltin(allocator, "conj") orelse
+            return try transduceFn(allocator, &.{ args[1], Value.nil_val, args[0], args[2] });
+        return try transduceFn(allocator, &.{ args[1], conj_val, args[0], args[2] });
+    }
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to into", .{args.len});
+}
+
+/// Look up a builtin function by name from the environment.
+fn lookupBuiltin(allocator: Allocator, name: []const u8) anyerror!?Value {
+    _ = allocator;
+    const env = bootstrap.macro_eval_env orelse return null;
+    const core = env.findNamespace("clojure.core") orelse return null;
+    const v = core.resolve(name) orelse return null;
+    return v.deref();
+}
+
+/// (sequence coll) / (sequence xform coll) / (sequence xform coll & colls)
+fn sequenceFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len == 1) {
+        // (if (seq? coll) coll (or (seq coll) ()))
+        const coll = args[0];
+        if (coll.tag() == .list or coll.tag() == .cons or coll.tag() == .lazy_seq) {
+            // Already seq-like, return as-is
+            const s = try seqFn(allocator, &.{coll});
+            if (s.tag() != .nil) return s;
+        } else {
+            const s = try seqFn(allocator, &.{coll});
+            if (s.tag() != .nil) return s;
+        }
+        // Return empty list ()
+        const empty = try allocator.create(PersistentList);
+        empty.* = .{ .items = &.{} };
+        return Value.initList(empty);
+    }
+    if (args.len >= 2) {
+        // (or (seq (into [] xform coll)) ())
+        const empty_vec = try makeVector(allocator, &.{});
+        const result = if (args.len == 2)
+            try intoFullFn(allocator, &.{ empty_vec, args[0], args[1] })
+        else blk: {
+            // Multi-coll: (into [] xform (apply map vector (cons coll colls)))
+            // Simplified: eagerly collect and apply
+            const map_val = try lookupBuiltin(allocator, "map") orelse return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve map", .{});
+            const vector_val = try lookupBuiltin(allocator, "vector") orelse return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve vector", .{});
+            // (apply map vector coll colls...)
+            var map_args = std.ArrayList(Value).empty;
+            try map_args.append(allocator, map_val);
+            try map_args.append(allocator, vector_val);
+            for (args[1..]) |a| try map_args.append(allocator, a);
+            const combined = try applyFn(allocator, map_args.items);
+            break :blk try intoFullFn(allocator, &.{ empty_vec, args[0], combined });
+        };
+        const s = try seqFn(allocator, &.{result});
+        if (s.tag() != .nil) return s;
+        const empty = try allocator.create(PersistentList);
+        empty.* = .{ .items = &.{} };
+        return Value.initList(empty);
+    }
+    return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to sequence", .{args.len});
+}
+
+/// (eduction & xforms) — eager sequence via transducers.
+fn eductionFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to eduction", .{args.len});
+    // (sequence (apply comp (butlast xforms)) (last xforms))
+    const last_arg = args[args.len - 1];
+    if (args.len == 2) {
+        // (sequence xform coll)
+        return try sequenceFn(allocator, &.{ args[0], last_arg });
+    }
+    // (apply comp (butlast xforms))
+    const comp_val = try lookupBuiltin(allocator, "comp") orelse return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve comp", .{});
+    var comp_args = std.ArrayList(Value).empty;
+    try comp_args.append(allocator, comp_val);
+    for (args[0 .. args.len - 1]) |a| try comp_args.append(allocator, a);
+    const xform = try applyFn(allocator, comp_args.items);
+    return try sequenceFn(allocator, &.{ xform, last_arg });
+}
+
+/// (mapv f coll) / (mapv f c1 c2) / (mapv f c1 c2 c3) / (mapv f c1 c2 c3 & colls)
+/// Full mapv — eagerly maps and returns a vector.
+fn mapvFullFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len < 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to mapv", .{args.len});
+    if (args.len == 2) {
+        // (mapv f coll) — direct eager map
+        const f = args[0];
+        const coll = args[1];
+        const items = try collectSeqItems(allocator, coll);
+        var result = std.ArrayList(Value).empty;
+        for (items) |item| {
+            const mapped = try callFn(allocator, f, &.{item});
+            try result.append(allocator, mapped);
+        }
+        return try makeVector(allocator, result.items);
+    }
+    // Multi-arity: (vec (map f c1 c2 ...))
+    const map_val = try lookupBuiltin(allocator, "map") orelse return err.setErrorFmt(.eval, .internal_error, .{}, "cannot resolve map", .{});
+    const mapped = try callFn(allocator, map_val, args);
+    const mapped_items = try collectSeqItems(allocator, mapped);
+    return try makeVector(allocator, mapped_items);
+}
+
+/// (filterv pred coll) — eagerly filters and returns a vector.
+fn filtervFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to filterv", .{args.len});
+    const pred = args[0];
+    const coll = args[1];
+    const items = try collectSeqItems(allocator, coll);
+    var result = std.ArrayList(Value).empty;
+    for (items) |item| {
+        const test_result = try callFn(allocator, pred, &.{item});
+        if (test_result.isTruthy()) {
+            try result.append(allocator, item);
+        }
+    }
+    return try makeVector(allocator, result.items);
+}
+
+/// Global tap set (equivalent to .clj's (def ^:private tap-fns (atom #{})))
+var tap_set: ?*PersistentHashSet = null;
+
+fn getTapSet() *PersistentHashSet {
+    if (tap_set) |s| return s;
+    // Lazily initialize empty set
+    const empty = std.heap.page_allocator.create(PersistentHashSet) catch @panic("OOM");
+    empty.* = .{ .items = &.{} };
+    tap_set = empty;
+    return empty;
+}
+
+/// (add-tap f) — adds f to the tap set, returns nil.
+fn addTapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to add-tap", .{args.len});
+    const s = getTapSet();
+    // Add item to set
+    var new_items = std.ArrayList(Value).empty;
+    for (s.items) |item| {
+        try new_items.append(allocator, item);
+    }
+    // Check if already present
+    for (s.items) |item| {
+        if (item.eql(args[0])) return Value.nil_val;
+    }
+    try new_items.append(allocator, args[0]);
+    const new_set = try allocator.create(PersistentHashSet);
+    new_set.* = .{ .items = try new_items.toOwnedSlice(allocator) };
+    tap_set = new_set;
+    return Value.nil_val;
+}
+
+/// (remove-tap f) — removes f from the tap set, returns nil.
+fn removeTapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to remove-tap", .{args.len});
+    const s = getTapSet();
+    var new_items = std.ArrayList(Value).empty;
+    for (s.items) |item| {
+        if (!item.eql(args[0])) {
+            try new_items.append(allocator, item);
+        }
+    }
+    const new_set = try allocator.create(PersistentHashSet);
+    new_set.* = .{ .items = try new_items.toOwnedSlice(allocator) };
+    tap_set = new_set;
+    return Value.nil_val;
+}
+
+/// (tap> val) — sends val to each tap fn, returns true if there are taps.
+fn tapFn(allocator: Allocator, args: []const Value) anyerror!Value {
+    if (args.len != 1) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to tap>", .{args.len});
+    const s = getTapSet();
+    for (s.items) |f| {
+        _ = callFn(allocator, f, &.{args[0]}) catch {};
+    }
+    return Value.initBoolean(s.items.len > 0);
+}
+
 pub const builtins = [_]BuiltinDef{
     .{
         .name = "first",
@@ -3738,13 +3971,7 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([coll])",
         .added = "1.0",
     },
-    .{
-        .name = "into",
-        .func = &intoFn,
-        .doc = "Returns a new coll consisting of to-coll with all of the items of from-coll conjoined.",
-        .arglists = "([to from])",
-        .added = "1.0",
-    },
+    // into: moved to A.7 section (full 0-4 arity with transducer support)
     .{
         .name = "apply",
         .func = &applyFn,
@@ -4401,6 +4628,77 @@ pub const builtins = [_]BuiltinDef{
         .arglists = "([sym])",
         .added = "1.10",
     },
+    // === A.7: Transducer/reduce compositions & tap system ===
+    .{
+        .name = "reduce",
+        .func = &reduceFn,
+        .doc = "f should be a function of 2 arguments. If val is not supplied, returns the result of applying f to the first 2 items in coll, then applying f to that result and the 3rd item, etc.",
+        .arglists = "([f coll] [f val coll])",
+        .added = "1.0",
+    },
+    .{
+        .name = "transduce",
+        .func = &transduceFn,
+        .doc = "reduce with a transformation of f (xf). If init is not supplied, (f) will be called to produce it.",
+        .arglists = "([xform f coll] [xform f init coll])",
+        .added = "1.7",
+    },
+    .{
+        .name = "into",
+        .func = &intoFullFn,
+        .doc = "Returns a new coll consisting of to with all of the items of from conjoined. A transducer may be supplied.",
+        .arglists = "([] [to] [to from] [to xform from])",
+        .added = "1.0",
+    },
+    .{
+        .name = "sequence",
+        .func = &sequenceFn,
+        .doc = "Coerces coll to a (possibly empty) sequence, if it is not already one. When a transducer is supplied, returns a lazy sequence of applications of the transform.",
+        .arglists = "([coll] [xform coll] [xform coll & colls])",
+        .added = "1.0",
+    },
+    .{
+        .name = "eduction",
+        .func = &eductionFn,
+        .doc = "Returns a reducible/iterable application of the transducers to the items in coll.",
+        .arglists = "([xform* coll])",
+        .added = "1.7",
+    },
+    .{
+        .name = "mapv",
+        .func = &mapvFullFn,
+        .doc = "Returns a vector consisting of the result of applying f to the set of first items of each coll, followed by applying f to the set of second items in each coll, until any one of the colls is exhausted.",
+        .arglists = "([f coll] [f c1 c2] [f c1 c2 c3] [f c1 c2 c3 & colls])",
+        .added = "1.4",
+    },
+    .{
+        .name = "filterv",
+        .func = &filtervFn,
+        .doc = "Returns a vector of the items in coll for which (pred item) returns logical true.",
+        .arglists = "([pred coll])",
+        .added = "1.4",
+    },
+    .{
+        .name = "add-tap",
+        .func = &addTapFn,
+        .doc = "Adds f to the tap set.",
+        .arglists = "([f])",
+        .added = "1.10",
+    },
+    .{
+        .name = "remove-tap",
+        .func = &removeTapFn,
+        .doc = "Removes f from the tap set.",
+        .arglists = "([f])",
+        .added = "1.10",
+    },
+    .{
+        .name = "tap>",
+        .func = &tapFn,
+        .doc = "Sends val to each tap fn. Returns true if there are taps.",
+        .arglists = "([val])",
+        .added = "1.10",
+    },
 };
 
 // === Tests ===
@@ -4680,9 +4978,9 @@ test "count on various types" {
     try testing.expectEqual(Value.initInteger(5), try countFn(alloc, &.{Value.initString(alloc, "hello")}));
 }
 
-test "builtins table has 106 entries" {
-    // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5) + 11 (A.6: munge, namespace-munge, etc.)
-    try testing.expectEqual(106, builtins.len);
+test "builtins table has 115 entries" {
+    // 47 + 17 (A.3) + 16 (A.4) + 15 (A.5) + 11 (A.6) - 1 (into moved) + 10 (A.7)
+    try testing.expectEqual(115, builtins.len);
 }
 
 test "reverse list" {

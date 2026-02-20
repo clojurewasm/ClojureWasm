@@ -350,8 +350,8 @@ pub fn registerBuiltins(env: *Env) !void {
 // === Tests ===
 
 test "all_builtins count" {
-    // 379 + 2 (error-handler, error-mode) + 12 Java interop methods + 2 (read, read+string) + 5 (__interop-new, __uri-create, __uuid-random-uuid, __uuid-from-string, __inst-from-string) + 16 (A.4) + 15 (A.5) + 11 (A.6)
-    try std.testing.expectEqual(521, builtin_count);
+    // 379 + 2 (error-handler, error-mode) + 12 Java interop methods + 2 (read, read+string) + 5 (__interop-new, __uri-create, __uuid-random-uuid, __uuid-from-string, __inst-from-string) + 16 (A.4) + 15 (A.5) + 11 (A.6) - 1 (into moved) + 10 (A.7)
+    try std.testing.expectEqual(530, builtin_count);
 }
 
 test "comptime lookup finds +" {

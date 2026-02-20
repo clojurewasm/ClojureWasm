@@ -40,14 +40,7 @@
   ([pred coll]
    (__zig-lazy-filter pred coll)))
 
-(defn reduce
-  ([f coll]
-   (let [s (seq coll)]
-     (if s
-       (__zig-reduce f (first s) (next s))
-       (f))))
-  ([f init coll]
-   (__zig-reduce f init coll)))
+;; `reduce` migrated to Zig (collections.zig)
 
 ;; `vswap!` macro migrated to Zig (macro_transforms.zig)
 
@@ -538,13 +531,8 @@
            (recur (next s) (+ i 1) (cons v acc))))
        (reverse acc)))))
 
-;; Vector-returning variants
-
-(defn mapv [f coll]
-  (vec (map f coll)))
-
-(defn filterv [pred coll]
-  (vec (filter pred coll)))
+;; `mapv` migrated to Zig (collections.zig) — simple 2-arity
+;; `filterv` migrated to Zig (collections.zig)
 
 (defn partition-all
   ([n]
@@ -1029,41 +1017,8 @@
 
 ;; `with-open` macro migrated to Zig (macro_transforms.zig)
 
-;; === Transducer basics ===
-
-(defn transduce
-  "reduce with a transformation of f (xf). If init is not
-  supplied, (f) will be called to produce it."
-  ([xform f coll] (transduce xform f (f) coll))
-  ([xform f init coll]
-   (let [xf (xform f)
-         ret (reduce xf init coll)]
-     (xf ret))))
-
-;; UPSTREAM-DIFF: simplified from clojure.core.protocols/coll-reduce to plain reduce
-
-;; Override builtin into to support 3-arity (transducer) and transient optimization (F101)
-(defn into
-  "Returns a new coll consisting of to with all of the items of
-  from conjoined. A transducer may be supplied."
-  ([] [])
-  ([to] to)
-  ([to from]
-   (if (and (or (vector? to) (map? to) (set? to)) (not (sorted? to)))
-     (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
-     (if (or (map? to) (set? to))
-       (with-meta (reduce conj to from) (meta to))
-       (reduce conj to from))))
-  ([to xform from]
-   (if (and (or (vector? to) (map? to) (set? to)) (not (sorted? to)))
-     (let [tm (meta to)
-           rf (fn
-                ([coll] (-> (persistent! coll) (with-meta tm)))
-                ([coll v] (conj! coll v)))]
-       (transduce xform rf (transient to) from))
-     (if (or (map? to) (set? to))
-       (with-meta (transduce xform conj to from) (meta to))
-       (transduce xform conj to from)))))
+;; `transduce` migrated to Zig (collections.zig)
+;; `into` migrated to Zig (collections.zig) — full 0-3 arity with transducer support
 
 (defn- preserving-reduced
   [rf]
@@ -1124,27 +1079,8 @@
               (rf result input))))))))
   ([coll] (sequence (dedupe) coll)))
 
-(defn sequence
-  "Coerces coll to a (possibly empty) sequence, if it is not already
-  one. Will not force a lazy seq. (sequence nil) yields (). When a
-  transducer is supplied, returns a lazy sequence of applications of
-  the transform to the items in coll(s)."
-  ([coll]
-   (if (seq? coll) coll
-       (or (seq coll) ())))
-  ;; CLJW: upstream uses TransformerIterator; we eagerly transduce via into then seq
-  ([xform coll]
-   (or (seq (into [] xform coll)) ()))
-  ([xform coll & colls]
-   (or (seq (into [] xform (apply map vector (cons coll colls)))) ())))
-
-;; UPSTREAM-DIFF: eduction returns eager sequence (upstream uses deftype Eduction + IReduceInit)
-(defn eduction
-  "Returns a reducible/iterable application of the transducers
-  to the items in coll. Transducers are applied in order as if
-  combined with comp."
-  [& xforms]
-  (sequence (apply comp (butlast xforms)) (last xforms)))
+;; `sequence` migrated to Zig (collections.zig)
+;; `eduction` migrated to Zig (collections.zig)
 
 ;; UPSTREAM-DIFF: iteration returns lazy-seq (upstream uses reify Seqable + IReduceInit)
 (defn iteration
@@ -1232,20 +1168,7 @@
                      (cons (map first ss) (step (map rest ss)))))))]
      (map #(apply f %) (step (conj colls c3 c2 c1))))))
 
-(defn mapv
-  "Returns a vector consisting of the result of applying f to the
-  set of first items of each coll, followed by applying f to the set
-  of second items in each coll, until any one of the colls is
-  exhausted."
-  ([f coll]
-   (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)
-       persistent!))
-  ([f c1 c2]
-   (into [] (map f c1 c2)))
-  ([f c1 c2 c3]
-   (into [] (map f c1 c2 c3)))
-  ([f c1 c2 c3 & colls]
-   (into [] (apply map f c1 c2 c3 colls))))
+;; `mapv` migrated to Zig (collections.zig) — full multi-arity
 
 ;; `time` macro migrated to Zig (macro_transforms.zig)
 ;; `lazy-cat` macro migrated to Zig (macro_transforms.zig)
@@ -1454,27 +1377,7 @@
         (let [p (vec (take n s))]
           (cons p (partitionv-all n step (nthrest s step)))))))))
 
-;; Tap system (stub — no async queue, synchronous dispatch)
-(def ^:private tap-fns (atom #{}))
-
-(defn add-tap
-  "Adds f to the tap set."
-  [f]
-  (swap! tap-fns conj f)
-  nil)
-
-(defn remove-tap
-  "Removes f from the tap set."
-  [f]
-  (swap! tap-fns disj f)
-  nil)
-
-(defn tap>
-  "Sends val to each tap fn. Returns true if there are taps."
-  [val]
-  (let [fns @tap-fns]
-    (doseq [f fns] (try (f val) (catch Exception _ nil)))
-    (boolean (seq fns))))
+;; `add-tap`, `remove-tap`, `tap>` migrated to Zig (collections.zig)
 
 ;; promise / deliver (simplified, no blocking deref)
 ;; Uses :__promise tag so deref returns :val instead of the whole map.

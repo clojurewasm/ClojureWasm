@@ -59,16 +59,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-All-Zig Migration Phase A.7: Transducer/reduce compositions → Zig builtins.
-Plan: `.dev/all-zig-plan.md`. Transducer functions: transduce, into, sequence, eduction, etc.
+All-Zig Migration Phase A.8: Hierarchy & multimethod helpers → Zig builtins.
+Plan: `.dev/all-zig-plan.md`. Survey remaining core.clj defn and identify A.8 batch.
 Non-functional thresholds SUSPENDED during Phase A-D (benchmarks ≤ 2x safety net only).
 
 ## Previous Task
 
-A.6: 11 core.clj defn migrated to Zig builtins (collections.zig).
-Batch: munge, namespace-munge, replicate, splitv-at, create-struct, struct-map,
-struct, close, with-bindings*, with-redefs-fn, requiring-resolve.
-(+11 builtins, 521 total). Also made misc_mod.varRawRootFn/varBindRootFn pub.
+A.7: 10 core.clj defn migrated to Zig builtins (collections.zig).
+Batch: reduce, transduce, into (full 0-3 arity), sequence, eduction, mapv (full),
+filterv, add-tap, remove-tap, tap>.
+(+10 builtins, 530 total). Fixed mapvFullFn multi-arity (callFn not applyFn).
 
 ## Task Queue
 
@@ -80,8 +80,8 @@ Phase A: Core functions → Zig builtins (core.clj 2,749 lines → 0)
   A.4: Sequence functions (16 fn) DONE
   A.5: Non-closure utility functions (15 fn) DONE
   A.6: String/print utilities & simple functions (11 fn) DONE
-  A.7: Transducer/reduce compositions (~15 fn) ← CURRENT
-  A.8: Hierarchy & multimethod helpers (~15 fn)
+  A.7: Transducer/reduce compositions (10 fn) DONE
+  A.8: Hierarchy & multimethod helpers (~15 fn) ← CURRENT
   A.9: Concurrency (~15 fn)
   A.10: Destructure, ex-info, special vars, remaining (~30 fn)
   A.11: `ns` macro → Zig transform
