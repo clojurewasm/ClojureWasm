@@ -1219,7 +1219,7 @@ pub const Deserializer = struct {
                 }
                 // Hierarchy var (optional)
                 const has_hierarchy = try self.readU8();
-                const hierarchy_var: ?*value_mod.Var = null;
+                var hierarchy_var: ?*value_mod.Var = null;
                 if (has_hierarchy == 1) {
                     const hv_ns_idx = try self.readU32();
                     if (hv_ns_idx >= self.strings.len) return error.InvalidStringIndex;
@@ -1227,11 +1227,12 @@ pub const Deserializer = struct {
                     const hv_name_idx = try self.readU32();
                     if (hv_name_idx >= self.strings.len) return error.InvalidStringIndex;
                     const hv_var_name = self.strings[hv_name_idx];
-                    // Look up the var in the env — we need the Env reference
-                    // For now, store ns/name and resolve lazily (hierarchy vars are rare)
-                    _ = hv_ns_name;
-                    _ = hv_var_name;
-                    // TODO: resolve hierarchy var from env after restore
+                    // Resolve hierarchy var from env
+                    if (self.env) |env| {
+                        if (env.findNamespace(hv_ns_name)) |ns| {
+                            hierarchy_var = ns.resolve(hv_var_name);
+                        }
+                    }
                 }
                 const mf = try allocator.create(value_mod.MultiFn);
                 mf.* = .{

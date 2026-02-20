@@ -60,7 +60,7 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase 88A: Correctness Sweep
-88A.2: Fix serialize.zig hierarchy var restore
+88A.3: Fix test_fixtures.clj
 
 ## Previous Task
 
@@ -102,7 +102,7 @@ functions are identified as bottlenecks through profiling.
 - test_fixtures.clj: bootstrap eval error in use-fixtures (only upstream test failure) → 88A.3
 - ~~is macro: bug with instance? special form~~ FIXED 88A.1 (analyzer now checks locals, runtime accepts symbols)
 - parallel.clj, vars.clj: pass individually but fail when run sequentially (state pollution) → 88A.4
-- serialize.zig: hierarchy var not restored from bytecode cache → 88A.2
+- ~~serialize.zig: hierarchy var not restored from bytecode cache~~ FIXED 88A.2 (resolve from env during deserialization)
 - extend-via-metadata: not supported in defprotocol → 88A.5
 
 ## Next Phase Queue
