@@ -49,8 +49,7 @@ const test_clj_source = @embedFile("../clj/clojure/test.clj");
 
 // walk.clj removed — now Zig builtins in ns_walk.zig (Phase B.4)
 
-/// Embedded clojure/set.clj source (compiled into binary).
-const set_clj_source = @embedFile("../clj/clojure/set.clj");
+// set.clj removed — now Zig builtins in ns_set.zig (Phase B.6)
 
 /// Embedded clojure/data.clj source (compiled into binary).
 // data.clj removed — now Zig builtins in ns_data.zig (Phase B.5)
@@ -1115,43 +1114,7 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
     }
 }
 
-/// Load and evaluate clojure/set.clj in the given Env.
-/// Creates the clojure.set namespace and defines set operation functions.
-/// Re-refers set bindings into user namespace for convenience.
-pub fn loadSet(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Create clojure.set namespace
-    const set_ns = env.findOrCreateNamespace("clojure.set") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Refer all clojure.core bindings into clojure.set so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        set_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Save current namespace and switch to clojure.set
-    const saved_ns = env.current_ns;
-    env.current_ns = set_ns;
-
-    // Evaluate clojure/set.clj (defines functions in clojure.set)
-    _ = try evalString(allocator, env, set_clj_source);
-
-    // Restore user namespace and re-refer set bindings
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-    if (saved_ns) |user_ns| {
-        var iter = set_ns.mappings.iterator();
-        while (iter.next()) |entry| {
-            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
-}
+// loadSet removed — clojure.set is now registered as Zig builtins in registry.zig (Phase B.6)
 
 // loadData removed — clojure.data is now registered as Zig builtins in registry.zig (Phase B.5)
 
@@ -2149,7 +2112,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadCore(allocator, env);
     // clojure.walk — registered in registerBuiltins() (Phase B.4)
     try loadTest(allocator, env);
-    try loadSet(allocator, env);
+    // clojure.set — registered in registerBuiltins() (Phase B.6)
     // clojure.data — registered in registerBuiltins() (Phase B.5)
     try loadRepl(allocator, env);
     try loadJavaIo(allocator, env);
@@ -2192,12 +2155,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, test_clj_source);
     }
 
-    // Re-compile set.clj
-    if (env.findNamespace("clojure.set")) |set_ns| {
-        env.current_ns = set_ns;
-        _ = try evalStringVMBootstrap(allocator, env, set_clj_source);
-    }
-
+    // clojure.set — Zig builtins (Phase B.6), no recompilation needed
     // clojure.data — Zig builtins (Phase B.5), no recompilation needed
 
     // Re-compile repl.clj

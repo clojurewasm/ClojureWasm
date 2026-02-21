@@ -54,6 +54,7 @@ const ns_walk_mod = @import("ns_walk.zig");
 const ns_stacktrace_mod = @import("ns_stacktrace.zig");
 const ns_server_mod = @import("ns_server.zig");
 const ns_data_mod = @import("ns_data.zig");
+const ns_set_mod = @import("ns_set.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -476,6 +477,16 @@ pub fn registerBuiltins(env: *Env) !void {
     const data_ns = try env.findOrCreateNamespace("clojure.data");
     for (ns_data_mod.builtins) |b| {
         const v = try data_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.set namespace builtins (Phase B.6)
+    const set_ns = try env.findOrCreateNamespace("clojure.set");
+    for (ns_set_mod.builtins) |b| {
+        const v = try set_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

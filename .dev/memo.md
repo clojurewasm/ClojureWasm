@@ -59,20 +59,20 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.6: set (126 lines) → Zig.
+Phase B.7: java/io (217 lines), java/process (85 lines) → Zig.
 
 ## Previous Task
 
-Phase B.5: core/server (57 lines), data (104 lines) → Zig.
-- ns_server.zig: 6 stub builtins (start-server, stop-server, stop-servers, prepl, io-prepl, remote-prepl) + *session* dvar
-- ns_data.zig: EqualityPartition + Diff protocols, diff function with set/map/seq/atom dispatch
-- callSet helper lazily loads clojure.set namespace via require
-- Deleted server.clj and data.clj from src/clj/
+Phase B.6: set (126 lines) → Zig.
+- ns_set.zig: 12 builtins (union, intersection, difference, select, project, rename-keys, rename, index, map-invert, join, subset?, superset?)
+- bubbleMaxKey helper for variadic union/intersection
+- callCore pattern for all core function calls, resolveCoreFn for fn resolution
+- Also fixed nrepl.zig reference to removed loadSet
+- Deleted set.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.6: set (126 lines)
 Phase B.7: java/io (217 lines), java/process (85 lines)
 Phase B.8: instant (189 lines)
 Phase B.9: zip (279 lines)

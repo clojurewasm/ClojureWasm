@@ -89,10 +89,7 @@ pub fn startServer(gpa_allocator: Allocator, port: u16) !void {
         std.debug.print("Error: failed to load clojure.test\n", .{});
         return;
     };
-    bootstrap.loadSet(gc_alloc, &env) catch {
-        std.debug.print("Error: failed to load clojure.set\n", .{});
-        return;
-    };
+    // clojure.set is now registered as Zig builtins in registry.zig (Phase B.6)
 
     // Grow threshold after bootstrap (many live Values in Vars)
     gc.threshold = @max(gc.bytes_allocated * 2, gc.threshold);
