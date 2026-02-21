@@ -44,7 +44,6 @@ pub const BootstrapError = error{
 
 /// Embedded Clojure source strings (extracted to embedded_sources.zig, Phase R1.2).
 const es = @import("embedded_sources.zig");
-const core_clj_source = es.core_clj_source;
 const test_clj_source = es.test_clj_source;
 const repl_macros_source = es.repl_macros_source;
 const pprint_clj_source = es.pprint_clj_source;
@@ -54,12 +53,11 @@ const core_hof_defs = es.core_hof_defs;
 const core_seq_defs = es.core_seq_defs;
 
 
-/// Load and evaluate core.clj in the given Env using two-phase bootstrap (D73).
+/// Load core function definitions via VM compiler (Phase 2 of bootstrap, D73).
 ///
-/// Phase 1: Evaluate core.clj via TreeWalk for fast startup (~10ms).
-///   All macros, vars, and functions are defined as TreeWalk closures.
+/// Phase 1 (core.clj) eliminated — all builtins now registered by registerBuiltins().
 ///
-/// Phase 2: Re-compile hot-path transducer functions (map, filter, comp,
+/// Phase 2: Compile hot-path transducer functions (map, filter, comp,
 ///   get-in, assoc-in, update-in) and HOF closures (constantly, complement,
 ///   partial, juxt, etc.) via VM compiler. This produces bytecode closures
 ///   that run ~200x faster in VM reduce loops than TreeWalk closures.
@@ -76,8 +74,7 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
     env.current_ns = core_ns;
 
-    // Phase 1: Evaluate core.clj via TreeWalk (fast bootstrap, ~10ms).
-    _ = try evalString(allocator, env, core_clj_source);
+    // Phase 1: core.clj eliminated — all macros/functions now Zig builtins (Phase C.1).
 
     // Phase 2: Re-compile transducer factory functions to bytecodes via VM.
     // Only 1-arity (transducer) forms are bytecoded; other arities delegate
@@ -712,13 +709,12 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
 pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
 
-    // Re-compile core.clj (all defn/defmacro forms → bytecode)
+    // Re-compile core functions to bytecode (core.clj eliminated, Phase C.1)
     const core_ns = env.findNamespace("clojure.core") orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
         return error.EvalError;
     };
     env.current_ns = core_ns;
-    _ = try evalStringVMBootstrap(allocator, env, core_clj_source);
     _ = try evalStringVMBootstrap(allocator, env, hot_core_defs);
     _ = try evalStringVMBootstrap(allocator, env, core_hof_defs);
     _ = try evalStringVMBootstrap(allocator, env, core_seq_defs);

@@ -12,9 +12,7 @@
 //! multiline string. Used by bootstrap.zig loadXxx() functions, ns_loader.zig,
 //! and vmRecompileAll(). Zero @embedFile for .clj files (Phase C.1).
 
-// core.clj removed — all macros/functions migrated to Zig (Phase C.1).
-// core.clj was already empty (comments only); @embedFile eliminated.
-pub const core_clj_source = "";
+// core.clj removed — all macros/functions now Zig builtins (Phase C.1).
 
 // test.clj replaced with Zig multiline string (Phase B.14)
 // No Zig builtins — entire test framework stays as evalString due to heavy macro/multimethod usage.
