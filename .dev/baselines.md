@@ -1,6 +1,6 @@
 # Non-Functional Baselines
 
-Measured on: 2026-02-19 (post-Phase 79A lazy bootstrap)
+Measured on: 2026-02-21 (post All-Zig Migration, Phase B.16 + C.1)
 Platform: macOS ARM64 (Apple M4 Pro), Zig 0.15.2
 Binary: ReleaseSafe
 
@@ -8,20 +8,20 @@ Binary: ReleaseSafe
 
 | Profile | Binary | Startup | RSS | Notes |
 |---------|--------|---------|-----|-------|
-| wasm=true (default) | 4.25MB | 4.6ms | 7.4MB | Full feature set |
-| wasm=false | 3.68MB | 4.3ms | 7.4MB | No zwasm dependency |
+| wasm=true (default) | 4.52MB | 4.2ms | 7.6MB | Full feature set |
+| wasm=false | (not measured) | — | — | No zwasm dependency |
 
 ## Thresholds
 
-**Migration period (Phase 88A-88E)**: Binary size threshold is SUSPENDED.
-Macro-to-Zig migration naturally increases binary size; will re-baseline after migration.
-All other thresholds (startup, RSS, benchmarks) remain active.
+All-Zig migration complete (Phases A-F, C.1). Binary size threshold RESTORED.
+Binary grew ~0.5MB due to embedded Clojure multiline strings (pprint, spec.alpha).
+Phase E optimization target: reduce back toward 4.3MB.
 
 | Metric              | Baseline   | Threshold  | Margin | How to measure                              |
 |---------------------|------------|------------|--------|---------------------------------------------|
-| Binary size         | 4.25 MB    | 4.5 MB     | +5%    | `stat -f%z zig-out/bin/cljw` (after ReleaseSafe build) |
-| Startup time        | 4.6 ms     | 6.0 ms     | 1.3x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
-| RSS (light)         | 7.4 MB     | 10 MB      | +35%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
+| Binary size         | 4.52 MB    | 4.8 MB     | +6%    | `ls -la zig-out/bin/cljw` (after ReleaseSafe build) |
+| Startup time        | 4.2 ms     | 6.0 ms     | 1.4x   | `hyperfine -N --warmup 5 --runs 10 './zig-out/bin/cljw -e nil'` |
+| RSS (light)         | 7.6 MB     | 10 MB      | +32%   | `/usr/bin/time -l ./zig-out/bin/cljw -e nil 2>&1 \| grep 'maximum resident'` |
 | Benchmark (any)     | see below  | 1.2x       | +20%   | `bash bench/run_bench.sh --quick` |
 
 ## `cljw build` Artifact Baselines (2026-02-20)
@@ -50,32 +50,32 @@ If any benchmark exceeds 1.2x baseline:
 
 Never accept "this feature needs to be slower" — find a way to keep it fast.
 
-## Benchmark Baselines (2026-02-18, zwasm v1.1.0, hyperfine 5 runs)
+## Benchmark Baselines (2026-02-21, post All-Zig, hyperfine 5 runs)
 
-Source: `bench/history.yaml` entry `zwasm-v1.1.0` (commit 518fef2).
+Source: `bench/history.yaml` entry `B.16`.
 
 | Benchmark              | Time (ms) | Ceiling (ms) |
 |------------------------|-----------|--------------|
 | fib_recursive          | 17        | 20           |
 | fib_loop               | 4         | 5            |
 | tak                    | 7         | 8            |
-| arith_loop             | 5         | 6            |
+| arith_loop             | 4         | 5            |
 | map_filter_reduce      | 6         | 7            |
-| vector_ops             | 5         | 6            |
-| map_ops                | 4         | 5            |
-| list_build             | 6         | 7            |
+| vector_ops             | 6         | 7            |
+| map_ops                | 5         | 6            |
+| list_build             | 7         | 8            |
 | sieve                  | 6         | 7            |
-| nqueens                | 17        | 20           |
-| atom_swap              | 6         | 7            |
-| gc_stress              | 29        | 35           |
+| nqueens                | 15        | 18           |
+| atom_swap              | 4         | 5            |
+| gc_stress              | 30        | 36           |
 | lazy_chain             | 7         | 8            |
 | transduce              | 6         | 7            |
-| keyword_lookup         | 13        | 16           |
-| protocol_dispatch      | 6         | 7            |
-| nested_update          | 12        | 14           |
-| string_ops             | 28        | 34           |
-| multimethod_dispatch   | 6         | 7            |
-| real_workload          | 10        | 12           |
+| keyword_lookup         | 12        | 14           |
+| protocol_dispatch      | 4         | 5            |
+| nested_update          | 10        | 12           |
+| string_ops             | 26        | 31           |
+| multimethod_dispatch   | 7         | 8            |
+| real_workload          | 12        | 14           |
 
 Wasm benchmarks excluded from regression gate (higher variance, dominated by zwasm).
 
