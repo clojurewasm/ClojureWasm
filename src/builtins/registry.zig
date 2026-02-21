@@ -58,6 +58,7 @@ const ns_set_mod = @import("ns_set.zig");
 const ns_java_io_mod = @import("ns_java_io.zig");
 const ns_java_process_mod = @import("ns_java_process.zig");
 const ns_instant_mod = @import("ns_instant.zig");
+const ns_zip_mod = @import("ns_zip.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -527,6 +528,16 @@ pub fn registerBuiltins(env: *Env) !void {
     const instant_ns = try env.findOrCreateNamespace("clojure.instant");
     for (ns_instant_mod.builtins) |b| {
         const v = try instant_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.zip namespace builtins (Phase B.9)
+    const zip_ns = try env.findOrCreateNamespace("clojure.zip");
+    for (ns_zip_mod.builtins) |b| {
+        const v = try zip_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

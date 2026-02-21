@@ -64,8 +64,7 @@ const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 
 // stacktrace.clj removed — now Zig builtins in ns_stacktrace.zig (Phase B.4)
 
-/// Embedded clojure/zip.clj source (compiled into binary).
-const zip_clj_source = @embedFile("../clj/clojure/zip.clj");
+// zip.clj removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
 /// Embedded clojure/core/reducers.clj source (compiled into binary).
 const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
@@ -1188,29 +1187,7 @@ pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
 
 // loadStacktrace removed — clojure.stacktrace is now registered as Zig builtins in registry.zig (Phase B.4)
 
-pub fn loadZip(allocator: Allocator, env: *Env) BootstrapError!void {
-    const zip_ns = env.findOrCreateNamespace("clojure.zip") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        zip_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = zip_ns;
-
-    _ = try evalString(allocator, env, zip_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
+// loadZip removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
 /// Load and evaluate clojure/core/reducers.clj in the given Env.
 /// Creates the clojure.core.reducers namespace with reduce, fold, CollFold,
@@ -2026,7 +2003,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     // clojure.java.io — registered in registerBuiltins() (Phase B.7)
     try loadPprint(allocator, env);
     // clojure.stacktrace — registered in registerBuiltins() (Phase B.4)
-    try loadZip(allocator, env);
+    // clojure.zip — registered in registerBuiltins() (Phase B.9)
     // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     try loadReducers(allocator, env);
     // spec.alpha loaded lazily on first require (startup time)
@@ -2082,11 +2059,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // clojure.stacktrace — Zig builtins (Phase B.4), no recompilation needed
 
-    // Re-compile zip.clj
-    if (env.findNamespace("clojure.zip")) |zip_ns| {
-        env.current_ns = zip_ns;
-        _ = try evalStringVMBootstrap(allocator, env, zip_clj_source);
-    }
+    // clojure.zip — Zig builtins (Phase B.9), no recompilation needed
 
     // clojure.core.protocols — Zig builtins (Phase B.3), no recompilation needed
 

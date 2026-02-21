@@ -59,20 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.9: zip (279 lines) → Zig.
+Phase B.10: repl (245 lines) → Zig.
 
 ## Previous Task
 
-Phase B.8: instant (189 lines) → Zig.
-- ns_instant.zig: 3 public builtins (parse-timestamp, validated, read-instant-date) + __validated-call
-- Parse via regex (re-pattern/re-matches), validation inline, construct via __inst-from-string
-- validated uses partial(__validated-call, constructor) for closure
-- Deleted instant.clj from src/clj/
+Phase B.9: zip (279 lines) → Zig.
+- ns_zip.zig: 28 builtins (zipper, seq-zip, vector-zip, xml-zip, node, branch?, children, etc.)
+- Helper builtins for closures: seqZipMakeNodeFn, vectorZipMakeNodeFn, xmlZipMakeNodeFn
+- All navigation (down, up, left, right, next, prev) and editing (replace, edit, insert-*, append-*, remove)
+- Deleted zip.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.9: zip (279 lines)
 Phase B.10: repl (245 lines)
 Phase B.11: xml (251 lines)
 Phase B.12: main (294 lines)

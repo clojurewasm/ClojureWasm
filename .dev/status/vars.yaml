@@ -1213,34 +1213,34 @@ vars:
     "stringify-keys": {type: function, status: done, note: "builtin (Phase B.4)"}
     walk: {type: function, status: done, note: "builtin (Phase B.4)"}
   clojure_zip:
-    "append-child": {type: function, status: done}
-    "branch?": {type: function, status: done}
-    children: {type: function, status: done}
-    down: {type: function, status: done}
-    edit: {type: function, status: done}
-    "end?": {type: function, status: done}
-    "insert-child": {type: function, status: done}
-    "insert-left": {type: function, status: done}
-    "insert-right": {type: function, status: done}
-    left: {type: function, status: done}
-    leftmost: {type: function, status: done}
-    lefts: {type: function, status: done}
-    "make-node": {type: function, status: done}
-    next: {type: function, status: done}
-    node: {type: function, status: done}
-    path: {type: function, status: done}
-    prev: {type: function, status: done}
-    remove: {type: function, status: done}
-    replace: {type: function, status: done}
-    right: {type: function, status: done}
-    rightmost: {type: function, status: done}
-    rights: {type: function, status: done}
-    root: {type: function, status: done}
-    "seq-zip": {type: function, status: done}
-    up: {type: function, status: done}
-    "vector-zip": {type: function, status: done}
-    "xml-zip": {type: function, status: done}
-    zipper: {type: function, status: done}
+    "append-child": {type: function, status: done, note: "builtin (Phase B.9)"}
+    "branch?": {type: function, status: done, note: "builtin (Phase B.9)"}
+    children: {type: function, status: done, note: "builtin (Phase B.9)"}
+    down: {type: function, status: done, note: "builtin (Phase B.9)"}
+    edit: {type: function, status: done, note: "builtin (Phase B.9)"}
+    "end?": {type: function, status: done, note: "builtin (Phase B.9)"}
+    "insert-child": {type: function, status: done, note: "builtin (Phase B.9)"}
+    "insert-left": {type: function, status: done, note: "builtin (Phase B.9)"}
+    "insert-right": {type: function, status: done, note: "builtin (Phase B.9)"}
+    left: {type: function, status: done, note: "builtin (Phase B.9)"}
+    leftmost: {type: function, status: done, note: "builtin (Phase B.9)"}
+    lefts: {type: function, status: done, note: "builtin (Phase B.9)"}
+    "make-node": {type: function, status: done, note: "builtin (Phase B.9)"}
+    next: {type: function, status: done, note: "builtin (Phase B.9)"}
+    node: {type: function, status: done, note: "builtin (Phase B.9)"}
+    path: {type: function, status: done, note: "builtin (Phase B.9)"}
+    prev: {type: function, status: done, note: "builtin (Phase B.9)"}
+    remove: {type: function, status: done, note: "builtin (Phase B.9)"}
+    replace: {type: function, status: done, note: "builtin (Phase B.9)"}
+    right: {type: function, status: done, note: "builtin (Phase B.9)"}
+    rightmost: {type: function, status: done, note: "builtin (Phase B.9)"}
+    rights: {type: function, status: done, note: "builtin (Phase B.9)"}
+    root: {type: function, status: done, note: "builtin (Phase B.9)"}
+    "seq-zip": {type: function, status: done, note: "builtin (Phase B.9)"}
+    up: {type: function, status: done, note: "builtin (Phase B.9)"}
+    "vector-zip": {type: function, status: done, note: "builtin (Phase B.9)"}
+    "xml-zip": {type: function, status: done, note: "builtin (Phase B.9)"}
+    zipper: {type: function, status: done, note: "builtin (Phase B.9)"}
   clojure_xml:
     tag: {type: var, status: done}
     attrs: {type: var, status: done}
