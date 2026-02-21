@@ -66,8 +66,8 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 ## Current Task
 
 Phase C: Bootstrap pipeline elimination.
-All library .clj→Zig migration complete. Only core.clj remains as @embedFile.
-Phase B complete: all 25 library .clj files eliminated from build pipeline.
+C.1 complete: Zero @embedFile for .clj files (core.clj was already empty).
+Remaining: C.2-C.5 depend on eliminating evalString; deferred (multiline strings still used).
 
 ## Previous Task
 

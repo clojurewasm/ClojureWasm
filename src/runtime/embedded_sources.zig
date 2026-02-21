@@ -8,12 +8,13 @@
 
 //! Embedded Clojure source strings for library namespaces.
 //!
-//! Extracted from bootstrap.zig (Phase R1.2). Each constant is either a Zig
-//! multiline string or an @embedFile reference. Used by bootstrap.zig loadXxx()
-//! functions and vmRecompileAll().
+//! Extracted from bootstrap.zig (Phase R1.2). Each constant is a Zig
+//! multiline string. Used by bootstrap.zig loadXxx() functions, ns_loader.zig,
+//! and vmRecompileAll(). Zero @embedFile for .clj files (Phase C.1).
 
-/// Embedded core.clj source (compiled into binary).
-pub const core_clj_source = @embedFile("../clj/clojure/core.clj");
+// core.clj removed — all macros/functions migrated to Zig (Phase C.1).
+// core.clj was already empty (comments only); @embedFile eliminated.
+pub const core_clj_source = "";
 
 // test.clj replaced with Zig multiline string (Phase B.14)
 // No Zig builtins — entire test framework stays as evalString due to heavy macro/multimethod usage.
