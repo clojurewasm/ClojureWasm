@@ -77,6 +77,10 @@ pub const NamespaceDef = struct {
     enabled: bool = true,
 };
 
+// Aggregated definitions (Phase R)
+const core_defs = @import("core/defs.zig");
+const lib_defs = @import("lib/defs.zig");
+
 // Domain modules
 const arithmetic = @import("arithmetic.zig");
 const special_forms = @import("special_forms.zig");
@@ -131,6 +135,13 @@ pub const all_builtins = arithmetic.builtins ++ special_forms.builtins ++ collec
 
 /// Number of registered builtins.
 pub const builtin_count = all_builtins.len;
+
+// Comptime validation: core/defs.zig matches all_builtins
+comptime {
+    if (core_defs.all_builtins.len != all_builtins.len) {
+        @compileError("core/defs.zig all_builtins count mismatch");
+    }
+}
 
 // Comptime validation: no duplicate names
 comptime {
