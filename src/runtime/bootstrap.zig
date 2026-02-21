@@ -44,8 +44,294 @@ pub const BootstrapError = error{
 /// Embedded core.clj source (compiled into binary).
 const core_clj_source = @embedFile("../clj/clojure/core.clj");
 
-/// Embedded clojure/test.clj source (compiled into binary).
-const test_clj_source = @embedFile("../clj/clojure/test.clj");
+// test.clj replaced with Zig multiline string (Phase B.14)
+// No Zig builtins — entire test framework stays as evalString due to heavy macro/multimethod usage.
+const test_clj_source =
+    \\(def test-registry (atom []))
+    \\(def ^:dynamic *initial-report-counters* {:test 0, :pass 0, :fail 0, :error 0})
+    \\(def ^:dynamic *report-counters* nil)
+    \\(def ^:dynamic *testing-contexts* (list))
+    \\(def ^:dynamic *testing-vars* (list))
+    \\(def ^:dynamic *test-out* *out*)
+    \\(def ^:dynamic *stack-trace-depth* nil)
+    \\(def ^:dynamic *load-tests* true)
+    \\(defmacro with-test-out [& body]
+    \\  `(binding [*out* *test-out*]
+    \\     ~@body))
+    \\(defn- join-str [sep coll]
+    \\  (loop [s (seq coll) acc "" started false]
+    \\    (if s
+    \\      (if started
+    \\        (recur (next s) (str acc sep (first s)) true)
+    \\        (recur (next s) (str acc (first s)) true))
+    \\      acc)))
+    \\(defn testing-contexts-str []
+    \\  (join-str " > " (reverse *testing-contexts*)))
+    \\(defn testing-vars-str
+    \\  {:added "1.1"}
+    \\  [m]
+    \\  (let [v (:var m)]
+    \\    (if v
+    \\      (let [md (meta v)]
+    \\        (str (:name md) " (" (:ns md) ")"))
+    \\      "")))
+    \\(defn inc-report-counter
+    \\  {:added "1.1"}
+    \\  [name]
+    \\  (when *report-counters*
+    \\    (swap! *report-counters* update name (fnil inc 0))))
+    \\(defmulti report :type)
+    \\(defmethod report :default [m]
+    \\  (with-test-out (prn m)))
+    \\(defmethod report :pass [m]
+    \\  (with-test-out (inc-report-counter :pass)))
+    \\(defmethod report :fail [m]
+    \\  (with-test-out
+    \\    (inc-report-counter :fail)
+    \\    (println "\nFAIL in" (testing-vars-str m))
+    \\    (when (seq *testing-contexts*) (println (testing-contexts-str)))
+    \\    (when-let [message (:message m)] (println message))
+    \\    (println "expected:" (pr-str (:expected m)))
+    \\    (println "  actual:" (pr-str (:actual m)))))
+    \\(defmethod report :error [m]
+    \\  (with-test-out
+    \\    (inc-report-counter :error)
+    \\    (println "\nERROR in" (testing-vars-str m))
+    \\    (when (seq *testing-contexts*) (println (testing-contexts-str)))
+    \\    (when-let [message (:message m)] (println message))
+    \\    (println "expected:" (pr-str (:expected m)))
+    \\    (println "  actual:" (pr-str (:actual m)))))
+    \\(defmethod report :summary [m]
+    \\  (with-test-out
+    \\    (println "\nRan" (:test m) "tests containing"
+    \\             (+ (:pass m) (:fail m) (:error m)) "assertions.")
+    \\    (println (:fail m) "failures," (:error m) "errors.")))
+    \\(defmethod report :begin-test-ns [m]
+    \\  (with-test-out
+    \\    (println "\nTesting" (ns-name (:ns m)))))
+    \\(defmethod report :end-test-ns [m])
+    \\(defmethod report :begin-test-var [m])
+    \\(defmethod report :end-test-var [m])
+    \\(defn do-report
+    \\  {:added "1.2"}
+    \\  [m]
+    \\  (clojure.test/report m))
+    \\(defn- do-testing [desc body-fn]
+    \\  (binding [*testing-contexts* (conj *testing-contexts* desc)]
+    \\    (body-fn)))
+    \\(def ^:private fixtures-registry (atom {}))
+    \\(defn compose-fixtures [f1 f2]
+    \\  (fn [g] (f1 (fn [] (f2 g)))))
+    \\(defn join-fixtures [fixtures]
+    \\  (if (seq fixtures)
+    \\    (reduce compose-fixtures fixtures)
+    \\    (fn [f] (f))))
+    \\(defn use-fixtures [fixture-type & fns]
+    \\  (let [ns-name (str (ns-name *ns*))
+    \\        key (if (= fixture-type :once) :once :each)]
+    \\    (swap! fixtures-registry assoc-in [ns-name key] (vec fns))))
+    \\(defn- register-test [name test-fn test-var]
+    \\  (swap! test-registry conj {:name name :fn test-fn :var test-var :ns (ns-name *ns*)}))
+    \\(defmacro deftest [tname & body]
+    \\  (when *load-tests*
+    \\    `(do
+    \\       (defn ~tname [] ~@body)
+    \\       (alter-meta! (var ~tname) assoc :test ~tname :name ~(str tname))
+    \\       (register-test ~(str tname) ~tname (var ~tname)))))
+    \\(defmacro deftest- [tname & body]
+    \\  (when *load-tests*
+    \\    `(do
+    \\       (defn ~tname [] ~@body)
+    \\       (alter-meta! (var ~tname) assoc :test ~tname :name ~(str tname) :private true)
+    \\       (register-test ~(str tname) ~tname (var ~tname)))))
+    \\(defmacro set-test [tname & body]
+    \\  (when *load-tests*
+    \\    `(alter-meta! (var ~tname) assoc :test (fn [] ~@body))))
+    \\(defmacro with-test [definition & body]
+    \\  (when *load-tests*
+    \\    `(do ~definition
+    \\         (alter-meta! (var ~(second definition)) assoc :test (fn [] ~@body)))))
+    \\(defn test-var [v]
+    \\  (when-let [t (:test (meta v))]
+    \\    (inc-report-counter :test)
+    \\    (binding [*testing-vars* (conj *testing-vars* v)]
+    \\      (clojure.test/report {:type :begin-test-var :var v})
+    \\      (try
+    \\        (t)
+    \\        (catch Exception e
+    \\          (clojure.test/report {:type :error
+    \\                                :message "Uncaught exception, not in assertion."
+    \\                                :expected nil
+    \\                                :actual e})))
+    \\      (clojure.test/report {:type :end-test-var :var v}))))
+    \\(defn test-vars [vars]
+    \\  (let [groups (group-by (fn [v] (or (:ns (meta v)) *ns*)) vars)]
+    \\    (doseq [[ns vs] groups]
+    \\      (let [ns-name (str (if (symbol? ns) ns (ns-name ns)))
+    \\            fixtures (get @fixtures-registry ns-name)
+    \\            once-fixture-fn (join-fixtures (:once fixtures))
+    \\            each-fixture-fn (join-fixtures (:each fixtures))]
+    \\        (once-fixture-fn
+    \\         (fn []
+    \\           (doseq [v vs]
+    \\             (when (:test (meta v))
+    \\               (each-fixture-fn (fn [] (test-var v)))))))))))
+    \\(defn test-all-vars [ns]
+    \\  (test-vars (vals (ns-interns ns))))
+    \\(defn test-ns
+    \\  {:added "1.1"}
+    \\  [ns]
+    \\  (let [ns-obj (the-ns ns)
+    \\        counters (atom *initial-report-counters*)]
+    \\    (binding [*report-counters* counters]
+    \\      (do-report {:type :begin-test-ns :ns ns-obj})
+    \\      (if-let [v (find-var (symbol (str (ns-name ns-obj)) "test-ns-hook"))]
+    \\        ((var-get v))
+    \\        (test-all-vars ns-obj))
+    \\      (do-report {:type :end-test-ns :ns ns-obj}))
+    \\    @counters))
+    \\(defn get-possibly-unbound-var
+    \\  {:added "1.1"}
+    \\  [v]
+    \\  (try (var-get v)
+    \\       (catch Exception e nil)))
+    \\(defn function?
+    \\  {:added "1.1"}
+    \\  [x]
+    \\  (if (symbol? x)
+    \\    (when-let [v (resolve x)]
+    \\      (when-let [value (deref v)]
+    \\        (and (fn? value)
+    \\             (not (:macro (meta v))))))
+    \\    (fn? x)))
+    \\(defn assert-predicate
+    \\  {:added "1.1"}
+    \\  [msg form]
+    \\  (let [args (rest form)
+    \\        pred (first form)]
+    \\    `(let [values# (list ~@args)
+    \\           result# (apply ~pred values#)]
+    \\       (if result#
+    \\         (do-report {:type :pass, :message ~msg,
+    \\                     :expected '~form, :actual (cons '~pred values#)})
+    \\         (do-report {:type :fail, :message ~msg,
+    \\                     :expected '~form, :actual (list '~'not (cons '~pred values#))}))
+    \\       result#)))
+    \\(defn assert-any
+    \\  {:added "1.1"}
+    \\  [msg form]
+    \\  `(let [value# ~form]
+    \\     (if value#
+    \\       (do-report {:type :pass, :message ~msg,
+    \\                   :expected '~form, :actual value#})
+    \\       (do-report {:type :fail, :message ~msg,
+    \\                   :expected '~form, :actual value#}))
+    \\     value#))
+    \\(defmulti assert-expr
+    \\  (fn [msg form]
+    \\    (cond
+    \\      (nil? form) :always-fail
+    \\      (seq? form) (first form)
+    \\      :else :default)))
+    \\(defmethod assert-expr :always-fail [msg form]
+    \\  `(do-report {:type :fail, :message ~msg}))
+    \\(defmethod assert-expr :default [msg form]
+    \\  (if (and (sequential? form) (function? (first form)))
+    \\    (assert-predicate msg form)
+    \\    (assert-any msg form)))
+    \\(defmethod assert-expr 'instance? [msg form]
+    \\  `(let [klass# ~(nth form 1)
+    \\         object# ~(nth form 2)]
+    \\     (let [result# (instance? klass# object#)]
+    \\       (if result#
+    \\         (do-report {:type :pass, :message ~msg,
+    \\                     :expected '~form, :actual (type object#)})
+    \\         (do-report {:type :fail, :message ~msg,
+    \\                     :expected '~form, :actual (type object#)}))
+    \\       result#)))
+    \\(defmethod assert-expr 'thrown? [msg form]
+    \\  (let [klass (second form)
+    \\        body (nthnext form 2)]
+    \\    `(try ~@body
+    \\          (do-report {:type :fail, :message ~msg,
+    \\                      :expected '~form, :actual nil})
+    \\          (catch ~klass e#
+    \\            (do-report {:type :pass, :message ~msg,
+    \\                        :expected '~form, :actual e#})
+    \\            e#))))
+    \\(defmethod assert-expr 'thrown-with-msg? [msg form]
+    \\  (let [klass (nth form 1)
+    \\        re (nth form 2)
+    \\        body (nthnext form 3)]
+    \\    `(try ~@body
+    \\          (do-report {:type :fail, :message ~msg, :expected '~form, :actual nil})
+    \\          (catch ~klass e#
+    \\            (let [m# (str e#)]
+    \\              (if (re-find ~re m#)
+    \\                (do-report {:type :pass, :message ~msg,
+    \\                            :expected '~form, :actual e#})
+    \\                (do-report {:type :fail, :message ~msg,
+    \\                            :expected '~form, :actual e#})))
+    \\            e#))))
+    \\(defmacro try-expr
+    \\  {:added "1.1"}
+    \\  [msg form]
+    \\  `(try ~(assert-expr msg form)
+    \\        (catch Exception t#
+    \\          (do-report {:type :error, :message ~msg,
+    \\                      :expected '~form, :actual t#}))))
+    \\(defmacro is
+    \\  {:added "1.1"}
+    \\  ([form] `(is ~form nil))
+    \\  ([form msg] `(try-expr ~msg ~form)))
+    \\(defmacro testing [desc & body]
+    \\  `(do-testing ~desc (fn [] ~@body)))
+    \\(defmacro are [argv expr & args]
+    \\  (let [c (count argv)
+    \\        groups (partition c args)]
+    \\    `(do ~@(map (fn [g] `(is ~(postwalk-replace (zipmap argv g) expr))) groups))))
+    \\(defmacro thrown? [klass & body]
+    \\  `(try
+    \\     (do ~@body)
+    \\     false
+    \\     (catch ~klass ~'e true)))
+    \\(defn run-tests
+    \\  {:added "1.1"}
+    \\  ([] (run-tests *ns*))
+    \\  ([& namespaces]
+    \\   (let [summary (assoc (apply merge-with + (map test-ns namespaces))
+    \\                        :type :summary)]
+    \\     (do-report summary)
+    \\     summary)))
+    \\(defn successful?
+    \\  {:added "1.1"}
+    \\  [summary]
+    \\  (and (zero? (:fail summary 0))
+    \\       (zero? (:error summary 0))))
+    \\(defn run-all-tests
+    \\  {:added "1.1"}
+    \\  ([] (apply run-tests (distinct (map :ns @test-registry))))
+    \\  ([re]
+    \\   (apply run-tests (filter #(re-matches re (str %))
+    \\                            (distinct (map :ns @test-registry))))))
+    \\(defn run-test-var
+    \\  {:added "1.11"}
+    \\  [v]
+    \\  (let [counters (atom *initial-report-counters*)]
+    \\    (binding [*report-counters* counters]
+    \\      (test-vars [v])
+    \\      (let [summary (assoc @counters :type :summary)]
+    \\        (do-report summary)
+    \\        (dissoc summary :type)))))
+    \\(defn run-test
+    \\  {:added "1.11"}
+    \\  [test-symbol]
+    \\  (if-let [v (resolve test-symbol)]
+    \\    (if (:test (meta v))
+    \\      (run-test-var v)
+    \\      (println (str test-symbol " is not a test.")))
+    \\    (println (str "Unable to resolve " test-symbol " to a test function."))))
+;
 
 // walk.clj removed — now Zig builtins in ns_walk.zig (Phase B.4)
 
@@ -315,8 +601,72 @@ const reducers_macros_source =
     \\               (foldvec v n combinef reducef)))
 ;
 
-/// Embedded clojure/test/tap.clj source (compiled into binary).
-const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
+// test/tap.clj replaced with Zig multiline string (Phase B.14)
+const test_tap_clj_source =
+    \\(ns clojure.test.tap
+    \\  (:require [clojure.test :as t]
+    \\            [clojure.stacktrace :as stack]
+    \\            [clojure.string :as str]))
+    \\(defn print-tap-plan
+    \\  {:added "1.1"}
+    \\  [n]
+    \\  (println (clojure.core/str "1.." n)))
+    \\(defn print-tap-diagnostic
+    \\  {:added "1.1"}
+    \\  [data]
+    \\  (doseq [line (str/split data #"\n")]
+    \\    (println "#" line)))
+    \\(defn print-tap-pass
+    \\  {:added "1.1"}
+    \\  [msg]
+    \\  (println "ok" msg))
+    \\(defn print-tap-fail
+    \\  {:added "1.1"}
+    \\  [msg]
+    \\  (println "not ok" msg))
+    \\(defmulti ^:dynamic tap-report :type)
+    \\(defmethod tap-report :default [data]
+    \\  (t/with-test-out
+    \\    (print-tap-diagnostic (pr-str data))))
+    \\(defn print-diagnostics [data]
+    \\  (when (seq t/*testing-contexts*)
+    \\    (print-tap-diagnostic (t/testing-contexts-str)))
+    \\  (when (:message data)
+    \\    (print-tap-diagnostic (:message data)))
+    \\  (print-tap-diagnostic (clojure.core/str "expected:" (pr-str (:expected data))))
+    \\  (if (= :pass (:type data))
+    \\    (print-tap-diagnostic (clojure.core/str "  actual:" (pr-str (:actual data))))
+    \\    (do
+    \\      (print-tap-diagnostic
+    \\       (clojure.core/str "  actual:"
+    \\                         (with-out-str
+    \\                           (if (instance? Exception (:actual data))
+    \\                             (stack/print-cause-trace (:actual data) t/*stack-trace-depth*)
+    \\                             (prn (:actual data)))))))))
+    \\(defmethod tap-report :pass [data]
+    \\  (t/with-test-out
+    \\    (t/inc-report-counter :pass)
+    \\    (print-tap-pass (t/testing-vars-str data))
+    \\    (print-diagnostics data)))
+    \\(defmethod tap-report :error [data]
+    \\  (t/with-test-out
+    \\    (t/inc-report-counter :error)
+    \\    (print-tap-fail (t/testing-vars-str data))
+    \\    (print-diagnostics data)))
+    \\(defmethod tap-report :fail [data]
+    \\  (t/with-test-out
+    \\    (t/inc-report-counter :fail)
+    \\    (print-tap-fail (t/testing-vars-str data))
+    \\    (print-diagnostics data)))
+    \\(defmethod tap-report :summary [data]
+    \\  (t/with-test-out
+    \\    (print-tap-plan (+ (:pass data) (:fail data) (:error data)))))
+    \\(defmacro with-tap-output
+    \\  {:added "1.1"}
+    \\  [& body]
+    \\  `(binding [t/report tap-report]
+    \\     ~@body))
+;
 
 
 // instant.clj removed — now Zig builtins in ns_instant.zig (Phase B.8)

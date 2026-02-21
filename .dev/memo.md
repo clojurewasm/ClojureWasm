@@ -59,18 +59,15 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.14: test (438 lines), test/tap (127 lines) → Zig.
+Phase B.15: spec/alpha (1789 lines), spec/gen/alpha (566 lines), core/specs/alpha (10 lines) → Zig.
 
 ## Previous Task
 
-Phase B.13: core/reducers (316 lines) → Zig.
-- ns_reducers.zig: 5 Zig builtins (fjtask, fjinvoke, fjfork, fjjoin, append!)
-- Complex code (protocols, macros, reify, extend-type, defrecord) remains as
-  evalString in bootstrap.zig (reducers_macros_source)
-- Builtins registered in BOTH registry.zig and loadReducers:
-  - registry.zig for runtime availability (eagerly loaded ns, cache doesn't serialize builtin_fn)
-  - loadReducers for cache generation time
-- Deleted reducers.clj from src/clj/
+Phase B.14: test (438 lines), test/tap (127 lines) → Zig.
+- Replaced @embedFile with Zig multiline strings (test_clj_source, test_tap_clj_source)
+- No Zig builtins — entire test framework stays as evalString due to heavy
+  macro/multimethod/atom usage
+- Deleted test.clj and test/tap.clj from src/clj/
 
 ## Task Queue
 
