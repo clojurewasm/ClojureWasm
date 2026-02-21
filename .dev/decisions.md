@@ -826,3 +826,26 @@ metadata, breaking upstream compatibility.
 - Metadata dispatch is per-object (not cached) — two maps with same type can have
   different metadata, so the type-based inline cache must be bypassed
 - `protocols.clj` Datafiable/Navigable re-enabled with `:extend-via-metadata true`
+
+## D107: Unified Namespace Registration Architecture (Phase R)
+
+**Decision**: Self-describing `NamespaceDef` struct + generic registration/loading.
+
+**Motivation**: 10 concrete problems — 480 lines of copy-pasted registration
+boilerplate, 10 hand-written loadXxx() functions, loadEmbeddedLib() string-comparison
+if-chain, mixed naming conventions, split namespace responsibility.
+
+**Implementation**:
+- `NamespaceDef` struct in `registry.zig`: name, builtins, macro_builtins,
+  dynamic_vars, constant_vars, loading (pure_zig/eager_eval/lazy),
+  embedded_source, extra_refers, extra_aliases, post_register, enabled
+- `registerNamespace()`: generic function replacing 20+ copy-pasted blocks
+- `lib/defs.zig`: aggregates all library NamespaceDef entries
+- `inline for (all_namespace_defs)` loop in registerBuiltins()
+- `ns_loader.zig`: generic `loadNamespaceClj()` + `loadLazyNamespace()`
+  replaces hand-written loadXxx and loadEmbeddedLib if-chain
+- 30 lib/*.zig files (one per non-core namespace)
+- ~470 lines of boilerplate removed from registry.zig + bootstrap.zig
+
+**Status**: Phases R1-R3 + R6 complete. R4 (core/ file moves) and R5
+(requireLib extraction) deferred — purely organizational, no functional impact.

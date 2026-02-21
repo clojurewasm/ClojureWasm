@@ -63,24 +63,22 @@ Phase B.15: spec/alpha (1789 lines), spec/gen/alpha (566 lines), core/specs/alph
 
 ## Previous Task
 
-Phase B.14: test (438 lines), test/tap (127 lines) → Zig.
-- Replaced @embedFile with Zig multiline strings (test_clj_source, test_tap_clj_source)
-- No Zig builtins — entire test framework stays as evalString due to heavy
-  macro/multimethod/atom usage
-- Deleted test.clj and test/tap.clj from src/clj/
+Phase R: Unified Namespace Registration (D107).
+- NamespaceDef struct in registry.zig, registerNamespace() generic function
+- 30 lib/*.zig files (one per non-core namespace)
+- ns_loader.zig: loadNamespaceClj() + loadLazyNamespace()
+- Replaced 20+ copy-pasted blocks, 10 loadXxx functions, loadEmbeddedLib if-chain
+- ~470 lines of boilerplate removed
+- R4 (core/ file moves) and R5 (requireLib extraction) deferred
 
 ## Task Queue
 
 ```
-Phase B.14: test (438 lines), test/tap (127 lines)
 Phase B.15: spec/alpha (1789 lines), spec/gen/alpha, core/specs/alpha
 Phase B.16: pprint (2732 lines)
 --- After Phase B ---
 Phase C: Bootstrap pipeline elimination
-Phase D: Directory & module refactoring
-Phase E: Optimization (restore baselines)
-Phase C: Bootstrap pipeline elimination
-Phase D: Directory & module refactoring
+Phase D: Directory & module refactoring (includes deferred R4/R5)
 Phase E: Optimization (restore baselines)
 --- After All-Zig ---
 Phase 86: Distribution (PENDING)
