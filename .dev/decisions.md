@@ -849,3 +849,35 @@ if-chain, mixed naming conventions, split namespace responsibility.
 
 **Status**: Phases R1-R3 + R6 complete. R4 (core/ file moves) and R5
 (requireLib extraction) deferred — purely organizational, no functional impact.
+
+## D108: Pure Zig Runtime — Zero Embedded Clojure, 1NS=1File
+
+**Decision**: CW is a pure Zig Clojure runtime. No self-hosting philosophy.
+All namespace implementations converge to self-contained Zig modules.
+
+**Principles**:
+1. **Zero embedded Clojure**: Eliminate all evalString bootstrap. No .clj in
+   the processing pipeline. LoadStrategy `eager_eval` → extinct. All vars
+   are Zig builtins or Zig-registered macros.
+2. **1 NS = 1 File**: Each lib/*.zig contains both NamespaceDef AND full
+   implementation. No separate ns_*.zig files. Single touch-point per NS.
+3. **Upstream mapping**: Clear Clojure NS/var → Zig file:function mapping.
+   Enables fast upstream change tracking.
+4. **Behavioral compat, not structural compat**: Upstream .clj implementations
+   are reference for behavior, not structure. Zig implementations may differ
+   internally for performance, binary size, or startup optimization.
+5. **No self-hosting**: Unlike JVM Clojure, CW does not define Clojure in
+   Clojure. .clj files are for user code only.
+
+**Motivation**: Embedded Clojure strings are fragile (no type checking, no
+tooling, startup cost from evalString). The ns_*.zig + lib/*.zig split creates
+redundant touch-points. Pure Zig enables comptime optimization, dead code
+elimination, and minimal binary size.
+
+**Migration path** (incremental, regression-safe):
+1. Merge ns_*.zig → lib/*.zig (1NS=1File consolidation)
+2. Phase B.15-B.16: Convert remaining embedded Clojure to Zig
+3. Phase C: Eliminate bootstrap pipeline
+4. Phase E: Optimize (binary size, startup, benchmarks)
+
+**Status**: In progress. 18 ns_*.zig files to merge into lib/*.zig.

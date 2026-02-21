@@ -66,61 +66,29 @@ Strategy: batch by dependency order (bottom-up from core.clj).
 | C.4 | Simplify serialize.zig (keep bytecode serialization for user code) |
 | C.5 | Simplify main.zig startup: registerBuiltins → ready |
 
-### Phase D: Directory & module refactoring
+### Phase D: 1NS=1File Consolidation (renamed from "Directory & module refactoring")
 
-Reorganize `src/builtins/` from category-based to namespace-mapped.
+**Goal**: Each lib/*.zig is fully self-contained — NamespaceDef + all implementation.
+No separate ns_*.zig files. Single touch-point per namespace.
+
+**Approach** (D108): Merge ns_*.zig content into corresponding lib/*.zig,
+adjust import paths, delete old files. Pure refactoring, zero functional change.
 
 ```
 src/builtins/
-  core/                    # clojure.core (split by category, same as now)
-    arithmetic.zig
-    collections.zig
-    predicates.zig
-    sequences.zig
-    strings.zig
-    io.zig
-    atom.zig
-    metadata.zig
-    misc.zig
-    multimethods.zig
-    array.zig
-    transient.zig
-    eval.zig
-    chunk.zig
-    system.zig
-    concurrency.zig       # new: future, agent, promise
-    hierarchy.zig         # new: isa?, derive, etc.
-    destructure.zig       # new: destructure fn
-    special_vars.zig      # new: *print-length* etc.
-  string.zig              # clojure.string (exists: clj_string_builtins)
-  set.zig                 # clojure.set (new)
-  walk.zig                # clojure.walk (new)
-  data.zig                # clojure.data (new)
-  zip.zig                 # clojure.zip (new)
-  xml.zig                 # clojure.xml (new)
-  test.zig                # clojure.test (new)
-  pprint.zig              # clojure.pprint (extends existing)
-  repl.zig                # clojure.repl (new)
-  spec/                   # clojure.spec.alpha (new)
-    alpha.zig
-    gen.zig
-  java/                   # clojure.java.* (extends existing)
-    io.zig
-    shell.zig
-    browse.zig
-    process.zig
-  main.zig                # clojure.main (new)
-  instant.zig             # clojure.instant (new)
-  stacktrace.zig          # clojure.stacktrace (new)
-  template.zig            # clojure.template (new)
-  uuid.zig                # clojure.uuid (new)
-  datafy.zig              # clojure.datafy (new)
-  reducers.zig            # clojure.core.reducers (new)
-  math.zig                # clojure.math (exists)
-  registry.zig            # master registry (exists)
+  registry.zig            # NamespaceDef struct, registerNamespace(), registerBuiltins()
+  lib/                    # 1 file per non-core namespace (self-contained)
+    defs.zig              # aggregates all namespace_defs
+    clojure_walk.zig      # clojure.walk (NamespaceDef + walk/postwalk/prewalk impl)
+    clojure_string.zig    # clojure.string (NamespaceDef + string fn impl)
+    clojure_set.zig       # clojure.set (NamespaceDef + set fn impl)
+    ...                   # 30+ files total
+  # Core builtins (clojure.core, category-based — unchanged)
+  arithmetic.zig, collections.zig, predicates.zig, sequences.zig, ...
 ```
 
-Each file exports `pub const builtins: []const BuiltinEntry` registered via registry.
+Each lib/*.zig exports `pub const namespace_def: NamespaceDef` with inline builtins.
+Core builtins stay as category files (all feed into clojure.core).
 
 ### Phase E: Optimization
 

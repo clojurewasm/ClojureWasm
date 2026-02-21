@@ -45,9 +45,15 @@ CW updated to use `loadWasiWithOptions(..., .{ .caps = .all })` in `src/wasm/typ
 
 ## Strategic Direction
 
-Native production-grade Clojure runtime. **NOT a JVM reimplementation.**
-CW embodies "you don't really want Java interop" — minimal shims for high-frequency
-patterns only. Libraries requiring heavy Java interop are out of scope.
+**Pure Zig Clojure runtime** (D108). NOT a JVM reimplementation, NOT self-hosting.
+CW is a complete, optimized Zig implementation with behavioral Clojure compatibility.
+
+Core philosophy:
+- **Zero embedded Clojure**: No .clj in processing pipeline. All vars are Zig builtins.
+- **1 NS = 1 File**: Each lib/*.zig is self-contained (definition + implementation).
+- **Behavioral compat**: Upstream .clj is reference for behavior, not structure.
+  Zig implementations may optimize freely.
+- **Upstream traceability**: Clojure NS/var → Zig file:function mapping is always clear.
 
 Differentiation vs Babashka:
 - Ultra-fast execution (19/20 benchmark wins)
@@ -59,7 +65,9 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.15: spec/alpha (1789 lines), spec/gen/alpha (566 lines), core/specs/alpha (10 lines) → Zig.
+Phase F: 1NS=1File Consolidation (D108).
+Merge ns_*.zig into lib/*.zig — each namespace becomes a single self-contained file.
+18 files to merge, batched by complexity. No functional change.
 
 ## Previous Task
 
@@ -67,18 +75,20 @@ Phase R: Unified Namespace Registration (D107).
 - NamespaceDef struct in registry.zig, registerNamespace() generic function
 - 30 lib/*.zig files (one per non-core namespace)
 - ns_loader.zig: loadNamespaceClj() + loadLazyNamespace()
-- Replaced 20+ copy-pasted blocks, 10 loadXxx functions, loadEmbeddedLib if-chain
 - ~470 lines of boilerplate removed
-- R4 (core/ file moves) and R5 (requireLib extraction) deferred
 
 ## Task Queue
 
 ```
-Phase B.15: spec/alpha (1789 lines), spec/gen/alpha, core/specs/alpha
-Phase B.16: pprint (2732 lines)
+Phase F: 1NS=1File Consolidation (in progress)
+  F.1: Simple standalone ns_*.zig (browse, repl_deps, reducers, server, java_process)
+  F.2: Medium standalone (main, stacktrace, instant, walk, template)
+  F.3: Larger standalone (set, xml, repl, zip)
+  F.4: Cross-dependent (core_protocols → data, datafy, java_io)
+Phase B.15: spec/alpha → Zig (1789 lines)
+Phase B.16: pprint → Zig (2732 lines)
 --- After Phase B ---
-Phase C: Bootstrap pipeline elimination
-Phase D: Directory & module refactoring (includes deferred R4/R5)
+Phase C: Bootstrap pipeline elimination (zero evalString)
 Phase E: Optimization (restore baselines)
 --- After All-Zig ---
 Phase 86: Distribution (PENDING)
