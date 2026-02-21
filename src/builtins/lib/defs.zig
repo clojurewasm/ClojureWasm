@@ -47,4 +47,12 @@ pub const all_namespace_defs = [_]NamespaceDef{
     // R2.7: Hybrid eager namespaces
     @import("clojure_repl.zig").namespace_def,
     @import("clojure_core_reducers.zig").namespace_def,
+    // R2.8: Lazy namespaces
+    @import("clojure_main.zig").namespace_def,
+    @import("clojure_test.zig").namespace_def,
+    @import("clojure_test_tap.zig").namespace_def,
+    @import("clojure_spec_alpha.zig").namespace_def,
+    @import("clojure_spec_gen_alpha.zig").namespace_def,
+    @import("clojure_core_specs_alpha.zig").namespace_def,
+    @import("clojure_uuid.zig").namespace_def,
 };
