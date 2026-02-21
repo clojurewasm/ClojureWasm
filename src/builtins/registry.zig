@@ -61,6 +61,7 @@ const ns_instant_mod = @import("ns_instant.zig");
 const ns_zip_mod = @import("ns_zip.zig");
 const ns_repl_mod = @import("ns_repl.zig");
 const ns_xml_mod = @import("ns_xml.zig");
+const ns_main_mod = @import("ns_main.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -567,6 +568,10 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
     ns_xml_mod.postRegister(env.allocator, xml_ns);
+
+    // clojure.main — Zig builtins registered in loadMain() (Phase B.12)
+    // Not registered here because clojure.main is lazy-loaded and requireLib
+    // short-circuits when namespace already exists.
 
     env.current_ns = user_ns;
 }

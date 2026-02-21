@@ -146,8 +146,143 @@ const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
 // instant.clj removed — now Zig builtins in ns_instant.zig (Phase B.8)
 // process.clj removed — now Zig builtins in ns_java_process.zig (Phase B.7)
 
-/// Embedded clojure/main.clj source (compiled into binary).
-const main_clj_source = @embedFile("../clj/clojure/main.clj");
+// main.clj functions removed — simple functions now Zig builtins in ns_main.zig (Phase B.12)
+// Only macros (with-bindings, with-read-known) and complex fns (repl, ex-triage, ex-str) remain.
+const main_macros_source =
+    \\(ns clojure.main
+    \\  (:refer-clojure :exclude [with-bindings])
+    \\  (:require [clojure.string]))
+    \\(declare main)
+    \\(defmacro with-bindings
+    \\  [& body]
+    \\  `(binding [*ns* *ns*
+    \\             *print-meta* *print-meta*
+    \\             *print-length* *print-length*
+    \\             *print-level* *print-level*
+    \\             *data-readers* *data-readers*
+    \\             *default-data-reader-fn* *default-data-reader-fn*
+    \\             *command-line-args* *command-line-args*]
+    \\     ~@body))
+    \\(defn- file-name [full-path]
+    \\  (when full-path
+    \\    (let [idx (max (.lastIndexOf ^String full-path "/")
+    \\                   (.lastIndexOf ^String full-path "\\"))]
+    \\      (if (neg? idx) full-path (subs full-path (inc idx))))))
+    \\(defn- file-path [full-path] full-path)
+    \\(defn ex-triage
+    \\  {:added "1.10"}
+    \\  [datafied-throwable]
+    \\  (let [{:keys [via phase] :or {phase :execution}} datafied-throwable
+    \\        {:keys [type message data]} (last via)
+    \\        {:clojure.error/keys [source] :as top-data} (:data (first via))]
+    \\    (assoc
+    \\     (cond
+    \\       (= phase :read-source)
+    \\       (cond-> (merge (-> via second :data) top-data)
+    \\         source (assoc :clojure.error/source (file-name source)
+    \\                       :clojure.error/path (file-path source))
+    \\         message (assoc :clojure.error/cause message))
+    \\       (#{:compile-syntax-check :compilation :macro-syntax-check :macroexpansion} phase)
+    \\       (cond-> top-data
+    \\         source (assoc :clojure.error/source (file-name source)
+    \\                       :clojure.error/path (file-path source))
+    \\         type (assoc :clojure.error/class type)
+    \\         message (assoc :clojure.error/cause message))
+    \\       (#{:read-eval-result :print-eval-result} phase)
+    \\       (cond-> top-data
+    \\         type (assoc :clojure.error/class type)
+    \\         message (assoc :clojure.error/cause message))
+    \\       :else
+    \\       (cond-> {:clojure.error/class type}
+    \\         message (assoc :clojure.error/cause message)))
+    \\     :clojure.error/phase phase)))
+    \\(defn ex-str
+    \\  {:added "1.10"}
+    \\  [{:clojure.error/keys [phase source path line column symbol class cause spec]
+    \\    :as triage-data}]
+    \\  (let [loc (str (or path source "REPL") ":" (or line 1) (if column (str ":" column) ""))
+    \\        class-name (if class (name class) "")
+    \\        simple-class (if class (or (last (clojure.string/split class-name #"\.")) class-name))
+    \\        cause-type (if (#{"Exception" "RuntimeException"} simple-class)
+    \\                     ""
+    \\                     (str " (" simple-class ")"))]
+    \\    (cond
+    \\      (= phase :read-source)
+    \\      (format "Syntax error reading source at (%s).\n%s\n" loc cause)
+    \\      (= phase :macro-syntax-check)
+    \\      (format "Syntax error macroexpanding %sat (%s).\n%s\n"
+    \\              (if symbol (str symbol " ") "") loc (or cause ""))
+    \\      (= phase :macroexpansion)
+    \\      (format "Unexpected error%s macroexpanding %sat (%s).\n%s\n"
+    \\              cause-type (if symbol (str symbol " ") "") loc cause)
+    \\      (= phase :compile-syntax-check)
+    \\      (format "Syntax error%s compiling %sat (%s).\n%s\n"
+    \\              cause-type (if symbol (str symbol " ") "") loc cause)
+    \\      (= phase :compilation)
+    \\      (format "Unexpected error%s compiling %sat (%s).\n%s\n"
+    \\              cause-type (if symbol (str symbol " ") "") loc cause)
+    \\      (= phase :read-eval-result)
+    \\      (format "Error reading eval result%s at %s (%s).\n%s\n" cause-type symbol loc cause)
+    \\      (= phase :print-eval-result)
+    \\      (format "Error printing return value%s at %s (%s).\n%s\n" cause-type symbol loc cause)
+    \\      (= phase :execution)
+    \\      (format "Execution error%s at %s(%s).\n%s\n"
+    \\              cause-type (if symbol (str symbol " ") "") loc cause)
+    \\      :else
+    \\      (format "Error%s (%s).\n%s\n" cause-type loc cause))))
+    \\(def ^{:doc "A sequence of lib specs that are applied to `require`
+    \\by default when a new command-line REPL is started."} repl-requires
+    \\  '[[clojure.repl :refer (doc find-doc)]
+    \\    [clojure.pprint :refer (pp pprint)]])
+    \\(defmacro with-read-known
+    \\  [& body]
+    \\  `(binding [*read-eval* (if (= :unknown *read-eval*) true *read-eval*)]
+    \\     ~@body))
+    \\(defn repl
+    \\  [& options]
+    \\  (let [{:keys [init need-prompt prompt flush read eval print caught]
+    \\         :or {init        #()
+    \\              need-prompt #(identity true)
+    \\              prompt      repl-prompt
+    \\              flush       flush
+    \\              read        repl-read
+    \\              eval        eval
+    \\              print       prn
+    \\              caught      repl-caught}}
+    \\        (apply hash-map options)
+    \\        request-prompt (Object.)
+    \\        request-exit (Object.)
+    \\        read-eval-print
+    \\        (fn []
+    \\          (try
+    \\            (let [input (with-read-known (read request-prompt request-exit))]
+    \\              (or (#{request-prompt request-exit} input)
+    \\                  (let [value (eval input)]
+    \\                    (try
+    \\                      (print value)
+    \\                      (catch Exception e
+    \\                        (throw (ex-info nil {:clojure.error/phase :print-eval-result} e)))))))
+    \\            (catch Exception e
+    \\              (caught e))))]
+    \\    (with-bindings
+    \\      (binding [*repl* true]
+    \\        (try
+    \\          (init)
+    \\          (catch Exception e
+    \\            (caught e)))
+    \\        (prompt)
+    \\        (flush)
+    \\        (loop []
+    \\          (when-not
+    \\           (try (identical? (read-eval-print) request-exit)
+    \\                (catch Exception e
+    \\                  (caught e)
+    \\                  nil))
+    \\            (when (need-prompt)
+    \\              (prompt)
+    \\              (flush))
+    \\            (recur)))))))
+;
 
 /// Embedded clojure/core/server.clj source (compiled into binary).
 // server.clj removed — now Zig builtins in ns_server.zig (Phase B.5)
@@ -1316,12 +1451,27 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
 // loadXml removed — clojure.xml is now registered as Zig builtins in registry.zig (Phase B.11)
 // loadProcess removed — clojure.java.process is now registered as Zig builtins in registry.zig (Phase B.7)
 
-/// Load and evaluate clojure/main.clj.
+/// Load clojure.main: register Zig builtins + evaluate macros/complex functions.
+/// Simple functions (demunge, root-cause, etc.) are Zig builtins in ns_main.zig (Phase B.12).
+/// Complex functions (repl, ex-triage, ex-str) and macros (with-bindings, with-read-known)
+/// remain as evalString.
 pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
+    const ns_main_mod = @import("../builtins/ns_main.zig");
     const main_ns = env.findOrCreateNamespace("clojure.main") catch {
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
     };
+
+    // Register Zig builtins first
+    for (ns_main_mod.builtins) |b| {
+        const v = main_ns.intern(b.name) catch {
+            return error.EvalError;
+        };
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
 
     const core_ns = env.findNamespace("clojure.core") orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
@@ -1335,7 +1485,7 @@ pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
     env.current_ns = main_ns;
 
-    _ = try evalString(allocator, env, main_clj_source);
+    _ = try evalString(allocator, env, main_macros_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);

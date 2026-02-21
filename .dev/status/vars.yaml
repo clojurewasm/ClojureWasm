@@ -847,26 +847,26 @@ vars:
     "with-sh-dir": {type: macro, status: done}
     "with-sh-env": {type: macro, status: done}
   clojure_main:
-    demunge: {type: function, status: done}
-    "err->msg": {type: function, status: done}
-    "ex-str": {type: function, status: done}
-    "ex-triage": {type: function, status: done}
-    "load-script": {type: function, status: done}
+    demunge: {type: function, status: done, note: "builtin (Phase B.12)"}
+    "err->msg": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "ex-str": {type: function, status: done, note: "evalString (Phase B.12)"}
+    "ex-triage": {type: function, status: done, note: "evalString (Phase B.12)"}
+    "load-script": {type: function, status: done, note: "builtin (Phase B.12)"}
     main: {type: function, status: done, note: "declared only (nil value)"}
     "renumbering-read": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
-    repl: {type: function, status: done}
-    "repl-caught": {type: function, status: done}
-    "repl-exception": {type: function, status: done}
-    "repl-prompt": {type: function, status: done}
-    "repl-read": {type: function, status: done}
-    "repl-requires": {type: var, status: done}
+    repl: {type: function, status: done, note: "evalString (Phase B.12)"}
+    "repl-caught": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "repl-exception": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "repl-prompt": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "repl-read": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "repl-requires": {type: var, status: done, note: "evalString (Phase B.12)"}
     "report-error": {type: function, status: skip, note: "JVM error reporting"}
-    "root-cause": {type: function, status: done}
+    "root-cause": {type: function, status: done, note: "builtin (Phase B.12)"}
     "skip-if-eol": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
     "skip-whitespace": {type: function, status: skip, note: "JVM LineNumberingPushbackReader"}
-    "stack-element-str": {type: function, status: done}
-    "with-bindings": {type: macro, status: done}
-    "with-read-known": {type: macro, status: done}
+    "stack-element-str": {type: function, status: done, note: "builtin (Phase B.12)"}
+    "with-bindings": {type: macro, status: done, note: "macro via evalString (Phase B.12)"}
+    "with-read-known": {type: macro, status: done, note: "macro via evalString (Phase B.12)"}
   clojure_math:
     E: {type: var, status: done, note: builtin (Zig)}
     "IEEE-remainder": {type: function, status: done, note: builtin (Zig)}

@@ -59,20 +59,22 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.12: main (294 lines) → Zig.
+Phase B.13: core/reducers (316 lines) → Zig.
 
 ## Previous Task
 
-Phase B.11: xml (251 lines) → Zig.
-- ns_xml.zig: Native Zig XML parser (replaces pure-Clojure parser)
-- 7 builtins: tag, attrs, content (keywords), parse, parse-str, emit-element, emit
-- Added clojure.xml to markBootstrapLibs (was previously lazy-loaded)
-- Deleted xml.clj from src/clj/
+Phase B.12: main (294 lines) → Zig.
+- ns_main.zig: 9 Zig builtins (demunge, root-cause, stack-element-str, repl-prompt,
+  repl-read, repl-exception, err->msg, repl-caught, load-script)
+- Complex fns (repl, ex-triage, ex-str) + macros (with-bindings, with-read-known)
+  remain as evalString in bootstrap.zig (main_macros_source)
+- Builtins registered in loadMain (not registry.zig) because clojure.main is lazy-loaded
+  and requireLib short-circuits when namespace already exists
+- Deleted main.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.12: main (294 lines)
 Phase B.13: core/reducers (316 lines)
 Phase B.14: test (438 lines), test/tap (127 lines)
 Phase B.15: spec/alpha (1789 lines), spec/gen/alpha, core/specs/alpha
