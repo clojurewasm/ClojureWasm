@@ -100,9 +100,9 @@ const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
 // math_mod: now via lib/clojure_math.zig (R2.5)
-const http_server_mod = @import("http_server.zig");
+// const http_server_mod = @import("http_server.zig"); // now via lib/cljw_http.zig (R2.9)
 const lifecycle_mod = @import("../runtime/lifecycle.zig");
-const wasm_builtins_mod = @import("../wasm/builtins.zig");
+// const wasm_builtins_mod = @import("../wasm/builtins.zig"); // now via lib/cljw_wasm.zig (R2.9)
 // shell_mod: now via lib/clojure_java_shell.zig (R2.3)
 // pprint_mod: now via lib/clojure_pprint.zig (R2.3)
 const array_mod = @import("array.zig");
@@ -392,32 +392,14 @@ pub fn registerBuiltins(env: *Env) !void {
         try user_ns.refer(fc.name, v);
     }
 
-    // Register wasm namespace builtins (Phase 25, D82: renamed wasm -> cljw.wasm)
-    if (@import("../wasm/types.zig").enable_wasm) {
-        const wasm_ns = try env.findOrCreateNamespace("cljw.wasm");
-        for (wasm_builtins_mod.builtins) |b| {
-            const v = try wasm_ns.intern(b.name);
-            v.applyBuiltinDef(b);
-            if (b.func) |f| {
-                v.bindRoot(Value.initBuiltinFn(f));
-            }
-        }
-    }
+    // Register cljw.wasm (Phase R2.9)
+    try registerNamespace(env, @import("lib/cljw_wasm.zig").namespace_def);
 
     // Register clojure.java.io (Phase R2.6)
     try registerNamespace(env, @import("lib/clojure_java_io.zig").namespace_def);
 
-    // Register cljw.http namespace builtins (Phase 34.2)
-    const http_ns = try env.findOrCreateNamespace("cljw.http");
-    for (http_server_mod.builtins) |b| {
-        const v = try http_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // Hidden var for GC rooting of handler function
-    _ = try http_ns.intern("__handler");
+    // Register cljw.http (Phase R2.9)
+    try registerNamespace(env, @import("lib/cljw_http.zig").namespace_def);
 
     // Register clojure.java.shell (Phase R2.3)
     try registerNamespace(env, @import("lib/clojure_java_shell.zig").namespace_def);

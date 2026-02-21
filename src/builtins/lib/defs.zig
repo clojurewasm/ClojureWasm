@@ -55,4 +55,7 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_spec_gen_alpha.zig").namespace_def,
     @import("clojure_core_specs_alpha.zig").namespace_def,
     @import("clojure_uuid.zig").namespace_def,
+    // R2.9: Conditional namespaces
+    @import("cljw_wasm.zig").namespace_def,
+    @import("cljw_http.zig").namespace_def,
 };
