@@ -108,12 +108,12 @@ const pprint_mod = @import("pprint.zig");
 const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
 const ns_template_mod = @import("ns_template.zig");
-const ns_browse_mod = @import("ns_browse.zig");
-const ns_repl_deps_mod = @import("ns_repl_deps.zig");
+// ns_browse_mod: now via lib/clojure_java_browse.zig (R2.1)
+// ns_repl_deps_mod: now via lib/clojure_repl_deps.zig (R2.1)
 const ns_core_protocols_mod = @import("ns_core_protocols.zig");
 const ns_datafy_mod = @import("ns_datafy.zig");
-const ns_walk_mod = @import("ns_walk.zig");
-const ns_stacktrace_mod = @import("ns_stacktrace.zig");
+// ns_walk_mod: now via lib/clojure_walk.zig (R2.1)
+// ns_stacktrace_mod: now via lib/clojure_stacktrace.zig (R2.1)
 const ns_server_mod = @import("ns_server.zig");
 const ns_data_mod = @import("ns_data.zig");
 const ns_set_mod = @import("ns_set.zig");
@@ -502,15 +502,8 @@ pub fn registerBuiltins(env: *Env) !void {
         v.setMacro(true);
     }
 
-    // Register clojure.java.browse namespace builtins (Phase B.2)
-    const browse_ns = try env.findOrCreateNamespace("clojure.java.browse");
-    for (ns_browse_mod.builtins) |b| {
-        const v = try browse_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.java.browse (Phase R2.1)
+    try registerNamespace(env, @import("lib/clojure_java_browse.zig").namespace_def);
 
     // Register clojure.pprint namespace builtins (Phase 39.2)
     const pprint_ns = try env.findOrCreateNamespace("clojure.pprint");
@@ -571,35 +564,14 @@ pub fn registerBuiltins(env: *Env) !void {
     // Extend Datafiable for Exception type
     try ns_datafy_mod.registerDatafyExtensions(allocator);
 
-    // Register clojure.repl.deps namespace builtins (Phase B.3)
-    const repl_deps_ns = try env.findOrCreateNamespace("clojure.repl.deps");
-    for (ns_repl_deps_mod.builtins) |b| {
-        const v = try repl_deps_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.repl.deps (Phase R2.1)
+    try registerNamespace(env, @import("lib/clojure_repl_deps.zig").namespace_def);
 
-    // Register clojure.walk namespace builtins (Phase B.4)
-    const walk_ns = try env.findOrCreateNamespace("clojure.walk");
-    for (ns_walk_mod.builtins) |b| {
-        const v = try walk_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.walk (Phase R2.1)
+    try registerNamespace(env, @import("lib/clojure_walk.zig").namespace_def);
 
-    // Register clojure.stacktrace namespace builtins (Phase B.4)
-    const stacktrace_ns = try env.findOrCreateNamespace("clojure.stacktrace");
-    for (ns_stacktrace_mod.builtins) |b| {
-        const v = try stacktrace_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.stacktrace (Phase R2.1)
+    try registerNamespace(env, @import("lib/clojure_stacktrace.zig").namespace_def);
 
     // Register clojure.core.server namespace builtins (Phase B.5)
     const server_ns = try env.findOrCreateNamespace("clojure.core.server");

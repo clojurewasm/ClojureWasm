@@ -17,4 +17,10 @@ const NamespaceDef = registry.NamespaceDef;
 
 /// All library namespace definitions.
 /// Populated incrementally as namespaces are migrated (Phase R2).
-pub const all_namespace_defs = [_]NamespaceDef{};
+pub const all_namespace_defs = [_]NamespaceDef{
+    // R2.1: Simple builtins-only namespaces (batch 1)
+    @import("clojure_java_browse.zig").namespace_def,
+    @import("clojure_repl_deps.zig").namespace_def,
+    @import("clojure_stacktrace.zig").namespace_def,
+    @import("clojure_walk.zig").namespace_def,
+};
