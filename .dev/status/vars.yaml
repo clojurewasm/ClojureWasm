@@ -959,18 +959,18 @@ vars:
     "type-reflect": {type: function, status: skip, note: 100% Java reflection API}
     typename: {type: function, status: skip, note: 100% Java reflection API}
   clojure_repl:
-    apropos: {type: function, status: done, note: "UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
-    demunge: {type: function, status: done, note: "UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
-    dir: {type: macro, status: done}
-    "dir-fn": {type: function, status: done}
-    doc: {type: macro, status: done}
-    "find-doc": {type: function, status: done}
-    pst: {type: function, status: done, note: "UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
-    "root-cause": {type: function, status: done, note: "UPSTREAM-DIFF: walks ex-cause chain"}
+    apropos: {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: uses (= :regex (type x)) instead of instance?"}
+    demunge: {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: identity fn (CW doesn't munge names)"}
+    dir: {type: macro, status: done, note: "macro via evalString (Phase B.10)"}
+    "dir-fn": {type: function, status: done, note: "builtin (Phase B.10)"}
+    doc: {type: macro, status: done, note: "macro via evalString (Phase B.10)"}
+    "find-doc": {type: function, status: done, note: "builtin (Phase B.10)"}
+    pst: {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: uses number? instead of instance? Throwable"}
+    "root-cause": {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: walks ex-cause chain"}
     "set-break-handler!": {type: function, status: skip, note: "JVM interop (sun.misc.Signal)"}
-    source: {type: macro, status: done}
-    "source-fn": {type: function, status: done, note: "UPSTREAM-DIFF: paren-counting instead of reader-based"}
-    "stack-element-str": {type: function, status: done, note: "UPSTREAM-DIFF: uses map format instead of StackTraceElement"}
+    source: {type: macro, status: done, note: "macro via evalString (Phase B.10)"}
+    "source-fn": {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: paren-counting instead of reader-based"}
+    "stack-element-str": {type: function, status: done, note: "builtin (Phase B.10), UPSTREAM-DIFF: uses map format instead of StackTraceElement"}
     "thread-stopper": {type: function, status: skip, note: "JVM interop (Thread/currentThread)"}
   clojure_set:
     difference: {type: function, status: done}

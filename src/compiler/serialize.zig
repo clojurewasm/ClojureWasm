@@ -881,6 +881,31 @@ pub fn hasDeferredNs(ns_name: []const u8) bool {
     return deferred_ns_entries.contains(ns_name);
 }
 
+/// Eagerly restore deferred namespaces that already exist from registerBuiltins.
+/// This merges cache-defined vars (macros, defs from evalString) into namespaces
+/// that were pre-created by registerBuiltins(). Without this, markBootstrapLibs()
+/// would mark them as loaded and requireLib() would skip the deferred cache restore.
+pub fn restorePreRegisteredDeferredNs(allocator: std.mem.Allocator, env: *Env) void {
+    if (!deferred_cache_initialized) return;
+
+    // Collect names to restore (can't modify map while iterating)
+    var to_restore: [32][]const u8 = undefined;
+    var count: usize = 0;
+    var iter = deferred_ns_entries.iterator();
+    while (iter.next()) |entry| {
+        if (env.findNamespace(entry.key_ptr.*) != null) {
+            if (count < to_restore.len) {
+                to_restore[count] = entry.key_ptr.*;
+                count += 1;
+            }
+        }
+    }
+
+    for (to_restore[0..count]) |ns_name| {
+        restoreFromDeferredCache(allocator, env, ns_name) catch {};
+    }
+}
+
 /// Restore a deferred namespace from the bootstrap cache.
 /// Called from requireLib when a cached NS is first required.
 pub fn restoreFromDeferredCache(allocator: std.mem.Allocator, env: *Env, ns_name: []const u8) anyerror!void {

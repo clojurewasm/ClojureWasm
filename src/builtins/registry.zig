@@ -59,6 +59,7 @@ const ns_java_io_mod = @import("ns_java_io.zig");
 const ns_java_process_mod = @import("ns_java_process.zig");
 const ns_instant_mod = @import("ns_instant.zig");
 const ns_zip_mod = @import("ns_zip.zig");
+const ns_repl_mod = @import("ns_repl.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -538,6 +539,17 @@ pub fn registerBuiltins(env: *Env) !void {
     const zip_ns = try env.findOrCreateNamespace("clojure.zip");
     for (ns_zip_mod.builtins) |b| {
         const v = try zip_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.repl function builtins (Phase B.10)
+    // Note: macros (doc, dir, source) and special-doc-map handled in loadRepl via evalString
+    const repl_ns = try env.findOrCreateNamespace("clojure.repl");
+    for (ns_repl_mod.builtins) |b| {
+        const v = try repl_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

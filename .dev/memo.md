@@ -59,20 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.10: repl (245 lines) → Zig.
+Phase B.11: xml (251 lines) → Zig.
 
 ## Previous Task
 
-Phase B.9: zip (279 lines) → Zig.
-- ns_zip.zig: 28 builtins (zipper, seq-zip, vector-zip, xml-zip, node, branch?, children, etc.)
-- Helper builtins for closures: seqZipMakeNodeFn, vectorZipMakeNodeFn, xmlZipMakeNodeFn
-- All navigation (down, up, left, right, next, prev) and editing (replace, edit, insert-*, append-*, remove)
-- Deleted zip.clj from src/clj/
+Phase B.10: repl (245 lines) → Zig.
+- ns_repl.zig: 11 function builtins (special-doc, namespace-doc, print-doc, dir-fn, apropos, find-doc, source-fn, demunge, root-cause, stack-element-str, pst)
+- 3 macros (doc, dir, source) + special-doc-map remain as evalString in bootstrap.zig
+- Fixed deferred cache restore bug: registerBuiltins creates ns before cache restore, so macros were lost. Added restorePreRegisteredDeferredNs() to serialize.zig
+- Deleted repl.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.10: repl (245 lines)
 Phase B.11: xml (251 lines)
 Phase B.12: main (294 lines)
 Phase B.13: core/reducers (316 lines)

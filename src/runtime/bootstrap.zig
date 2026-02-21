@@ -54,8 +54,78 @@ const test_clj_source = @embedFile("../clj/clojure/test.clj");
 /// Embedded clojure/data.clj source (compiled into binary).
 // data.clj removed — now Zig builtins in ns_data.zig (Phase B.5)
 
-/// Embedded clojure/repl.clj source (compiled into binary).
-const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
+// repl.clj functions removed — now Zig builtins in ns_repl.zig (Phase B.10)
+// Only macros (doc, dir, source) and special-doc-map remain as evalString.
+const repl_macros_source =
+    \\(def ^:private special-doc-map
+    \\  '{def {:forms [(def symbol doc-string? init?)]
+    \\         :doc "Creates and interns a global var with the name
+    \\  of symbol in the current namespace (*ns*) or locates such a var if
+    \\  it already exists.  If init is supplied, it is evaluated, and the
+    \\  root binding of the var is set to the resulting value.  If init is
+    \\  not supplied, the root binding of the var is unaffected."}
+    \\    do {:forms [(do exprs*)]
+    \\        :doc "Evaluates the expressions in order and returns the value of
+    \\  the last. If no expressions are supplied, returns nil."}
+    \\    if {:forms [(if test then else?)]
+    \\        :doc "Evaluates test. If not the singular values nil or false,
+    \\  evaluates and yields then, otherwise, evaluates and yields else. If
+    \\  else is not supplied it defaults to nil."}
+    \\    quote {:forms [(quote form)]
+    \\           :doc "Yields the unevaluated form."}
+    \\    recur {:forms [(recur exprs*)]
+    \\           :doc "Evaluates the exprs in order, then, in parallel, rebinds
+    \\  the bindings of the recursion point to the values of the exprs.
+    \\  Execution then jumps back to the recursion point, a loop or fn method."}
+    \\    set! {:forms [(set! var-symbol expr)]
+    \\          :doc "Sets the thread-local binding of a dynamic var."}
+    \\    throw {:forms [(throw expr)]
+    \\           :doc "The expr is evaluated and thrown."}
+    \\    try {:forms [(try expr* catch-clause* finally-clause?)]
+    \\         :doc "catch-clause => (catch classname name expr*)
+    \\  finally-clause => (finally expr*)
+    \\  Catches and handles exceptions."}
+    \\    var {:forms [(var symbol)]
+    \\         :doc "The symbol must resolve to a var, and the Var object
+    \\  itself (not its value) is returned. The reader macro #'x expands to (var x)."}
+    \\    fn {:forms [(fn name? [params*] exprs*) (fn name? ([params*] exprs*) +)]
+    \\        :doc "params => positional-params*, or positional-params* & rest-param
+    \\  Defines a function (fn)."}
+    \\    let {:forms [(let [bindings*] exprs*)]
+    \\         :doc "binding => binding-form init-expr
+    \\  Evaluates the exprs in a lexical context in which the symbols in
+    \\  the binding-forms are bound to their respective init-exprs or parts
+    \\  therein."}
+    \\    loop {:forms [(loop [bindings*] exprs*)]
+    \\          :doc "Evaluates the exprs in a lexical context in which the symbols in
+    \\  the binding-forms are bound to their respective init-exprs or parts
+    \\  therein. Acts as a recur target."}
+    \\    letfn {:forms [(letfn [fnspecs*] exprs*)]
+    \\           :doc "fnspec ==> (fname [params*] exprs) or (fname ([params*] exprs)+)
+    \\  Takes a vector of function specs and a body, and generates a set of
+    \\  bindings of each name to its fn. All of the fns are available in all
+    \\  of the definitions of the fns, as well as the body."}})
+    \\(defmacro doc
+    \\  [name]
+    \\  (if-let [special-name ('{& fn catch try finally try} name)]
+    \\    `(print-doc (special-doc '~special-name))
+    \\    (cond
+    \\      (special-doc-map name) `(print-doc (special-doc '~name))
+    \\      (keyword? name) `(print-doc {:spec '~name :doc '~(clojure.spec.alpha/describe name)})
+    \\      :else `(cond
+    \\               (find-ns '~name)
+    \\               (print-doc (namespace-doc (find-ns '~name)))
+    \\               :else
+    \\               (when-let [v# (ns-resolve *ns* '~name)]
+    \\                 (print-doc (meta v#)))))))
+    \\(defmacro dir
+    \\  [nsname]
+    \\  `(doseq [v# (dir-fn '~nsname)]
+    \\     (println v#)))
+    \\(defmacro source
+    \\  [n]
+    \\  `(println (or (source-fn '~n) (str "Source not found"))))
+;
 
 // io.clj removed — now Zig builtins in ns_java_io.zig (Phase B.7)
 
@@ -1143,8 +1213,8 @@ pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
     env.current_ns = repl_ns;
 
-    // Evaluate clojure/repl.clj (defines functions in clojure.repl)
-    _ = try evalString(allocator, env, repl_clj_source);
+    // Evaluate clojure/repl macros (special-doc-map, doc, dir, source)
+    _ = try evalString(allocator, env, repl_macros_source);
 
     // Restore user namespace and re-refer repl bindings
     env.current_ns = saved_ns;
@@ -2046,7 +2116,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     // Re-compile repl.clj
     if (env.findNamespace("clojure.repl")) |repl_ns| {
         env.current_ns = repl_ns;
-        _ = try evalStringVMBootstrap(allocator, env, repl_clj_source);
+        _ = try evalStringVMBootstrap(allocator, env, repl_macros_source);
     }
 
     // clojure.java.io — Zig builtins (Phase B.7), no recompilation needed
@@ -2104,6 +2174,12 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
     };
+
+    // Eagerly restore deferred namespaces that already exist from registerBuiltins.
+    // Without this, namespaces created by registerBuiltins() would be marked as loaded
+    // by markBootstrapLibs(), causing requireLib() to skip the deferred cache restore.
+    // This merges cache-defined vars (e.g. macros from evalString) into Zig-builtin namespaces.
+    serialize_mod.restorePreRegisteredDeferredNs(allocator, env);
 
     // Reconnect printVar caches (value.initPrintVars)
     const core_ns = env.findNamespace("clojure.core") orelse {
