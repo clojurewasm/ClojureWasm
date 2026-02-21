@@ -65,27 +65,20 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.16: pprint → Zig (2732 lines).
-Migrate clojure.pprint from @embedFile .clj to Zig multiline string or builtins.
+Phase C: Bootstrap pipeline elimination.
+All library .clj→Zig migration complete. Only core.clj remains as @embedFile.
+Phase B complete: all 25 library .clj files eliminated from build pipeline.
 
 ## Previous Task
 
+Phase B.16: pprint → Zig multiline string — COMPLETE.
 Phase B.15: spec/alpha → Zig — COMPLETE.
-- B.15a: spec.gen.alpha (52 builtins + 5 macros), core.specs.alpha (1 builtin) → pure Zig
-- B.15b: spec.alpha (1768 lines) → Zig multiline string (heavy protocol/reify)
-- ns_loader.zig fixed to use registerNamespace() for full registration
-- Removed 3 @embedFile references for spec .clj files
-- Merged 18 ns_*.zig into lib/*.zig (4 batches: F.1-F.4)
-- Only ns_ops.zig remains (core namespace operations, not a library NS)
-- Each lib/*.zig is now self-contained: NamespaceDef + full implementation
-- Cross-dependencies resolved (core_protocols exports used by data, datafy, java_io, collections)
+Phase F: 1NS=1File Consolidation — COMPLETE.
 
 ## Task Queue
 
 ```
-Phase B.16: pprint → Zig (next, 2732 lines)
---- After Phase B ---
-Phase C: Bootstrap pipeline elimination (zero evalString)
+Phase C: Bootstrap pipeline elimination (next, zero evalString)
 Phase E: Optimization (restore baselines)
 --- After All-Zig ---
 Phase 86: Distribution (PENDING)

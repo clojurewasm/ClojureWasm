@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: EPL-1.0
 
 //! clojure.spec.alpha — NamespaceDef for registry.
-//! Lazy: loaded on first require. Source via @embedFile.
+//! Lazy: loaded on first require. Source via multiline string in embedded_sources.zig.
 //! Pre-requires: clojure.spec.gen.alpha (loaded automatically).
 //! Extra aliases needed at read time (CW reads all forms before evaluating).
 
