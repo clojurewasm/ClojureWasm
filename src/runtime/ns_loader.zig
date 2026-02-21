@@ -20,28 +20,21 @@ const BootstrapError = bootstrap.BootstrapError;
 
 /// Load a namespace from its NamespaceDef.
 ///
-/// 1. Find or create the namespace
-/// 2. Register builtins (for lazy namespaces not yet registered at startup)
-/// 3. Refer clojure.core + extra_refers
-/// 4. Set up extra_aliases
-/// 5. Evaluate embedded_source (if any)
-/// 6. Restore saved namespace
+/// 1. Register builtins, macros, vars, and call post_register (via registerNamespace)
+/// 2. If embedded_source: refer clojure.core + extras, set up aliases, eval source
 pub fn loadNamespaceClj(allocator: Allocator, env: *Env, comptime def: NamespaceDef) BootstrapError!void {
-    const ns = env.findOrCreateNamespace(def.name) catch {
+    // Full registration: builtins, macro_builtins, dynamic_vars, constant_vars, post_register
+    registry.registerNamespace(env, def) catch {
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
     };
 
-    // Register builtins (idempotent — intern returns existing var)
-    for (def.builtins) |b| {
-        const v = ns.intern(b.name) catch return error.EvalError;
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
     const source = def.embedded_source orelse return; // Nothing to eval
+
+    const ns = env.findNamespace(def.name) orelse {
+        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: namespace not found after registration", .{});
+        return error.EvalError;
+    };
 
     // Refer clojure.core
     const core_ns = env.findNamespace("clojure.core") orelse {

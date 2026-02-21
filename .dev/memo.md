@@ -65,9 +65,10 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.15: spec/alpha → Zig (1789 lines).
-Migrate clojure.spec.alpha, clojure.spec.gen.alpha, clojure.core.specs.alpha
-from @embedFile .clj to Zig builtins in lib/*.zig.
+Phase B.15b: spec.alpha → Zig (1789 lines).
+Migrate clojure.spec.alpha from @embedFile .clj to Zig builtins.
+B.15a complete: spec.gen.alpha (52 builtins + 5 macros) and core.specs.alpha (1 builtin).
+ns_loader.zig fixed to use registerNamespace() for full registration (post_register, macros, vars).
 
 ## Previous Task
 
