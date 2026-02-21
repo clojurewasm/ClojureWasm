@@ -23,7 +23,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 83C | UTF-8 Codepoint Correctness | 2.5 | DONE |
 | 83D | Handle Memory Safety | 2.5 | DONE |
 | 83E | Core All-Zig Migration | 2.5 | DONE (scope-reduced) |
-| 83E-v2 | Complete All-Zig Migration | 2.5 | IN-PROGRESS (macros done, functions Phase A) |
+| 83E-v2 | Complete All-Zig Migration | 2.5 | DONE (Phases A-F, C.1 complete; C.2-C.5 deferred) |
 | 84 | Testing Expansion | 2 | DONE |
 | 85 | Library Compatibility Expansion | 2 | DONE |
 | 87 | Developer Experience | 3 | DONE |

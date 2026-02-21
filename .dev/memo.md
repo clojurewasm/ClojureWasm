@@ -65,22 +65,21 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase C: Bootstrap pipeline elimination.
-C.1 complete: Zero @embedFile for .clj files (core.clj was already empty).
-Remaining: C.2-C.5 depend on eliminating evalString; deferred (multiline strings still used).
+Phase E: Optimization.
+Phase C.1 complete (zero @embedFile). C.2-C.5 DEFERRED: ~6200 lines of Clojure
+remain as Zig multiline strings (closures, protocols, reify, multimethods).
+evalString mechanism must stay for these. Not worth eliminating partially.
 
 ## Previous Task
 
-Phase B.16: pprint → Zig multiline string — COMPLETE.
-Phase B.15: spec/alpha → Zig — COMPLETE.
+Phase C.1: Zero @embedFile — COMPLETE.
+Phase B: All library .clj → Zig — COMPLETE (B.1-B.16).
 Phase F: 1NS=1File Consolidation — COMPLETE.
 
 ## Task Queue
 
 ```
-Phase C: Bootstrap pipeline elimination (next, zero evalString)
-Phase E: Optimization (restore baselines)
---- After All-Zig ---
+Phase E: Optimization (next, restore baselines)
 Phase 86: Distribution (PENDING)
 Phase 89: Performance Optimization (PENDING)
 Phase 90: JIT Expansion (PENDING)
