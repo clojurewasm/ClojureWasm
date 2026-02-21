@@ -13,11 +13,69 @@
 //! into the clojure.core namespace.
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const var_mod = @import("../runtime/var.zig");
 const BuiltinDef = var_mod.BuiltinDef;
 const env_mod = @import("../runtime/env.zig");
 const Env = env_mod.Env;
+const Namespace = @import("../runtime/namespace.zig").Namespace;
 const Value = @import("../runtime/value.zig").Value;
+
+// ============================================================
+// NamespaceDef — self-describing namespace registration
+// ============================================================
+
+/// How a namespace is loaded at runtime.
+pub const LoadStrategy = enum {
+    /// Builtins only, no evalString needed.
+    pure_zig,
+    /// Builtins registered at startup, evalString called in loadBootstrapAll.
+    eager_eval,
+    /// Entire NS created on first require (via loadEmbeddedLib).
+    lazy,
+};
+
+/// Dynamic var definition (name + default value).
+pub const DynVarDef = struct {
+    name: []const u8,
+    default: Value,
+};
+
+/// Constant var definition (name + value).
+pub const ConstVarDef = struct {
+    name: []const u8,
+    value: Value,
+};
+
+/// Post-registration hook signature.
+pub const PostRegisterFn = fn (Allocator, *Env) anyerror!void;
+
+/// Self-describing namespace module definition.
+/// Each library namespace module exports `pub const namespace_def: NamespaceDef`.
+pub const NamespaceDef = struct {
+    /// Fully-qualified namespace name (e.g. "clojure.string").
+    name: []const u8,
+    /// Regular builtin function definitions.
+    builtins: []const BuiltinDef = &.{},
+    /// Macro builtin definitions (registered with :macro true).
+    macro_builtins: []const BuiltinDef = &.{},
+    /// Dynamic vars with default values.
+    dynamic_vars: []const DynVarDef = &.{},
+    /// Constant vars.
+    constant_vars: []const ConstVarDef = &.{},
+    /// How this namespace is loaded.
+    loading: LoadStrategy = .pure_zig,
+    /// Clojure source for evalString (multiline string or @embedFile).
+    embedded_source: ?[]const u8 = null,
+    /// Extra NS names to refer (besides clojure.core).
+    extra_refers: []const []const u8 = &.{},
+    /// Extra NS aliases to set before evalString (name → ns_name pairs).
+    extra_aliases: []const [2][]const u8 = &.{},
+    /// Hook called after builtins/vars are registered.
+    post_register: ?*const PostRegisterFn = null,
+    /// Whether this namespace is enabled (for conditional namespaces like cljw.wasm).
+    enabled: bool = true,
+};
 
 // Domain modules
 const arithmetic = @import("arithmetic.zig");
@@ -104,6 +162,55 @@ pub fn lookup(name: []const u8) ?BuiltinDef {
         if (std.mem.eql(u8, b.name, name)) return b;
     }
     return null;
+}
+
+// ============================================================
+// Generic namespace registration
+// ============================================================
+
+/// Register a single namespace from its NamespaceDef.
+/// Creates the namespace, interns builtins/macros/vars, and calls post_register hook.
+pub fn registerNamespace(env: *Env, comptime def: NamespaceDef) !void {
+    if (!def.enabled) return;
+
+    const ns = try env.findOrCreateNamespace(def.name);
+
+    // Register regular builtins
+    for (def.builtins) |b| {
+        const v = try ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register macro builtins
+    for (def.macro_builtins) |b| {
+        const v = try ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+        v.setMacro(true);
+    }
+
+    // Register dynamic vars
+    for (def.dynamic_vars) |dv| {
+        const v = try ns.intern(dv.name);
+        v.dynamic = true;
+        v.bindRoot(dv.default);
+    }
+
+    // Register constant vars
+    for (def.constant_vars) |cv| {
+        const v = try ns.intern(cv.name);
+        v.bindRoot(cv.value);
+    }
+
+    // Call post-registration hook
+    if (def.post_register) |hook| {
+        try hook(env.allocator, env);
+    }
 }
 
 // ============================================================
@@ -677,4 +784,98 @@ test "registerBuiltins all builtins resolvable in core" {
         const v = core.resolve(b.name);
         try std.testing.expect(v != null);
     }
+}
+
+test "registerNamespace registers builtins and vars" {
+    const test_builtin_fn = struct {
+        fn func(_: Allocator, _: []const Value) anyerror!Value {
+            return Value.initInteger(42);
+        }
+    }.func;
+
+    const test_def = comptime NamespaceDef{
+        .name = "test.ns",
+        .builtins = &.{
+            .{ .name = "my-fn", .func = test_builtin_fn, .doc = "test fn" },
+        },
+        .dynamic_vars = &.{
+            .{ .name = "*my-var*", .default = Value.nil_val },
+        },
+        .constant_vars = &.{
+            .{ .name = "MY-CONST", .value = Value.true_val },
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+
+    try registerNamespace(&env, test_def);
+
+    const ns = env.findNamespace("test.ns");
+    try std.testing.expect(ns != null);
+
+    // Builtin registered
+    const fn_var = ns.?.resolve("my-fn");
+    try std.testing.expect(fn_var != null);
+    try std.testing.expectEqualStrings("test fn", fn_var.?.doc.?);
+
+    // Dynamic var registered
+    const dyn_var = ns.?.resolve("*my-var*");
+    try std.testing.expect(dyn_var != null);
+    try std.testing.expect(dyn_var.?.dynamic);
+
+    // Constant var registered
+    const const_var = ns.?.resolve("MY-CONST");
+    try std.testing.expect(const_var != null);
+}
+
+test "registerNamespace with macros" {
+    const test_macro_fn = struct {
+        fn func(_: Allocator, _: []const Value) anyerror!Value {
+            return Value.nil_val;
+        }
+    }.func;
+
+    const test_def = comptime NamespaceDef{
+        .name = "test.macros",
+        .macro_builtins = &.{
+            .{ .name = "my-macro", .func = test_macro_fn, .doc = "test macro" },
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+
+    try registerNamespace(&env, test_def);
+
+    const ns = env.findNamespace("test.macros");
+    try std.testing.expect(ns != null);
+
+    const macro_var = ns.?.resolve("my-macro");
+    try std.testing.expect(macro_var != null);
+    try std.testing.expect(macro_var.?.macro);
+}
+
+test "registerNamespace disabled skips registration" {
+    const test_def = comptime NamespaceDef{
+        .name = "test.disabled",
+        .enabled = false,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var env = Env.init(arena.allocator());
+    defer env.deinit();
+
+    try registerNamespace(&env, test_def);
+
+    // Namespace should NOT exist
+    try std.testing.expect(env.findNamespace("test.disabled") == null);
 }
