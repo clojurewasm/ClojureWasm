@@ -33,4 +33,9 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_template.zig").namespace_def,
     @import("clojure_java_shell.zig").namespace_def,
     @import("clojure_pprint.zig").namespace_def,
+    // R2.4: Builtins + post-register hooks
+    @import("clojure_datafy.zig").namespace_def,
+    @import("clojure_data.zig").namespace_def,
+    @import("clojure_core_protocols.zig").namespace_def,
+    @import("clojure_xml.zig").namespace_def,
 };

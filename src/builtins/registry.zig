@@ -110,19 +110,19 @@ const constructors_mod = @import("../interop/constructors.zig");
 // ns_template_mod: now via lib/clojure_template.zig (R2.3)
 // ns_browse_mod: now via lib/clojure_java_browse.zig (R2.1)
 // ns_repl_deps_mod: now via lib/clojure_repl_deps.zig (R2.1)
-const ns_core_protocols_mod = @import("ns_core_protocols.zig");
-const ns_datafy_mod = @import("ns_datafy.zig");
+// ns_core_protocols_mod: now via lib/clojure_core_protocols.zig (R2.4)
+// ns_datafy_mod: now via lib/clojure_datafy.zig (R2.4)
 // ns_walk_mod: now via lib/clojure_walk.zig (R2.1)
 // ns_stacktrace_mod: now via lib/clojure_stacktrace.zig (R2.1)
 // ns_server_mod: now via lib/clojure_core_server.zig (R2.3)
-const ns_data_mod = @import("ns_data.zig");
+// ns_data_mod: now via lib/clojure_data.zig (R2.4)
 // ns_set_mod: now via lib/clojure_set.zig (R2.2)
 const ns_java_io_mod = @import("ns_java_io.zig");
 // ns_java_process_mod: now via lib/clojure_java_process.zig (R2.2)
 // ns_instant_mod: now via lib/clojure_instant.zig (R2.2)
 // ns_zip_mod: now via lib/clojure_zip.zig (R2.2)
 const ns_repl_mod = @import("ns_repl.zig");
-const ns_xml_mod = @import("ns_xml.zig");
+// ns_xml_mod: now via lib/clojure_xml.zig (R2.4)
 const ns_main_mod = @import("ns_main.zig");
 const ns_reducers_mod = @import("ns_reducers.zig");
 
@@ -484,21 +484,11 @@ pub fn registerBuiltins(env: *Env) !void {
     // Register clojure.template (Phase R2.3)
     try registerNamespace(env, @import("lib/clojure_template.zig").namespace_def);
 
-    // Register clojure.core.protocols (Phase B.3)
-    const allocator = env.allocator;
-    try ns_core_protocols_mod.registerProtocols(allocator, env);
+    // Register clojure.core.protocols (Phase R2.4)
+    try registerNamespace(env, @import("lib/clojure_core_protocols.zig").namespace_def);
 
-    // Register clojure.datafy namespace builtins (Phase B.3)
-    const datafy_ns = try env.findOrCreateNamespace("clojure.datafy");
-    for (ns_datafy_mod.builtins) |b| {
-        const v = try datafy_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // Extend Datafiable for Exception type
-    try ns_datafy_mod.registerDatafyExtensions(allocator);
+    // Register clojure.datafy (Phase R2.4)
+    try registerNamespace(env, @import("lib/clojure_datafy.zig").namespace_def);
 
     // Register clojure.repl.deps (Phase R2.1)
     try registerNamespace(env, @import("lib/clojure_repl_deps.zig").namespace_def);
@@ -512,16 +502,8 @@ pub fn registerBuiltins(env: *Env) !void {
     // Register clojure.core.server (Phase R2.3)
     try registerNamespace(env, @import("lib/clojure_core_server.zig").namespace_def);
 
-    // Register clojure.data namespace builtins + protocols (Phase B.5)
-    try ns_data_mod.registerProtocols(allocator, env);
-    const data_ns = try env.findOrCreateNamespace("clojure.data");
-    for (ns_data_mod.builtins) |b| {
-        const v = try data_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.data (Phase R2.4)
+    try registerNamespace(env, @import("lib/clojure_data.zig").namespace_def);
 
     // Register clojure.set, clojure.java.process, clojure.instant, clojure.zip (Phase R2.2)
     try registerNamespace(env, @import("lib/clojure_set.zig").namespace_def);
@@ -540,16 +522,8 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
-    // Register clojure.xml builtins (Phase B.11)
-    const xml_ns = try env.findOrCreateNamespace("clojure.xml");
-    for (ns_xml_mod.builtins) |b| {
-        const v = try xml_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    ns_xml_mod.postRegister(env.allocator, xml_ns);
+    // Register clojure.xml (Phase R2.4)
+    try registerNamespace(env, @import("lib/clojure_xml.zig").namespace_def);
 
     // Register clojure.core.reducers Zig builtins (Phase B.13)
     // Eagerly loaded (in loadBootstrapAll), so must be registered here for runtime availability.
