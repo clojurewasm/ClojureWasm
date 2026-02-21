@@ -57,8 +57,7 @@ const test_clj_source = @embedFile("../clj/clojure/test.clj");
 /// Embedded clojure/repl.clj source (compiled into binary).
 const repl_clj_source = @embedFile("../clj/clojure/repl.clj");
 
-/// Embedded clojure/java/io.clj source (compiled into binary).
-const io_clj_source = @embedFile("../clj/clojure/java/io.clj");
+// io.clj removed — now Zig builtins in ns_java_io.zig (Phase B.7)
 
 /// Embedded clojure/pprint.clj source (compiled into binary).
 const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
@@ -78,8 +77,7 @@ const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
 /// Embedded clojure/instant.clj source (compiled into binary).
 const instant_clj_source = @embedFile("../clj/clojure/instant.clj");
 
-/// Embedded clojure/java/process.clj source (compiled into binary).
-const process_clj_source = @embedFile("../clj/clojure/java/process.clj");
+// process.clj removed — now Zig builtins in ns_java_process.zig (Phase B.7)
 
 /// Embedded clojure/main.clj source (compiled into binary).
 const main_clj_source = @embedFile("../clj/clojure/main.clj");
@@ -1162,42 +1160,7 @@ pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
     }
 }
 
-/// Load and evaluate clojure/java/io.clj in the given Env.
-/// Defines Coercions, IOFactory protocols and reader/writer/input-stream/output-stream.
-/// The namespace already exists (builtins registered in registry.zig); this adds CLJ-level vars.
-pub fn loadJavaIo(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Namespace already created by registry.zig with builtins
-    const io_ns = env.findNamespace("clojure.java.io") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: clojure.java.io namespace not found", .{});
-        return error.EvalError;
-    };
-
-    // Refer clojure.core bindings
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        io_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Refer clojure.string bindings (used in io.clj)
-    if (env.findNamespace("clojure.string")) |str_ns| {
-        var str_iter = str_ns.mappings.iterator();
-        while (str_iter.next()) |entry| {
-            io_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = io_ns;
-
-    _ = try evalString(allocator, env, io_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
+// loadJavaIo removed — clojure.java.io is now registered as Zig builtins in registry.zig (Phase B.7)
 
 /// Load and evaluate clojure/pprint.clj in the given Env.
 /// Defines print-table (pprint is a Zig builtin registered in registry.zig).
@@ -1354,30 +1317,7 @@ pub fn loadXml(allocator: Allocator, env: *Env) BootstrapError!void {
     syncNsVar(env);
 }
 
-/// Load and evaluate clojure/java/process.clj.
-pub fn loadProcess(allocator: Allocator, env: *Env) BootstrapError!void {
-    const process_ns = env.findOrCreateNamespace("clojure.java.process") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        process_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = process_ns;
-
-    _ = try evalString(allocator, env, process_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
+// loadProcess removed — clojure.java.process is now registered as Zig builtins in registry.zig (Phase B.7)
 
 /// Load and evaluate clojure/main.clj.
 pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
@@ -1519,11 +1459,7 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
         try loadXml(allocator, env);
         return true;
     }
-    if (std.mem.eql(u8, ns_name, "clojure.java.process")) {
-        // clojure.java.shell is registered in registerBuiltins() (Phase B.2)
-        try loadProcess(allocator, env);
-        return true;
-    }
+    // clojure.java.process — registered in registerBuiltins() (Phase B.7)
     if (std.mem.eql(u8, ns_name, "clojure.main")) {
         try loadMain(allocator, env);
         return true;
@@ -2115,7 +2051,7 @@ pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     // clojure.set — registered in registerBuiltins() (Phase B.6)
     // clojure.data — registered in registerBuiltins() (Phase B.5)
     try loadRepl(allocator, env);
-    try loadJavaIo(allocator, env);
+    // clojure.java.io — registered in registerBuiltins() (Phase B.7)
     try loadPprint(allocator, env);
     // clojure.stacktrace — registered in registerBuiltins() (Phase B.4)
     try loadZip(allocator, env);
@@ -2164,11 +2100,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
         _ = try evalStringVMBootstrap(allocator, env, repl_clj_source);
     }
 
-    // Re-compile java/io.clj
-    if (env.findNamespace("clojure.java.io")) |io_ns| {
-        env.current_ns = io_ns;
-        _ = try evalStringVMBootstrap(allocator, env, io_clj_source);
-    }
+    // clojure.java.io — Zig builtins (Phase B.7), no recompilation needed
 
     // Re-compile pprint.clj
     if (env.findNamespace("clojure.pprint")) |pprint_ns| {

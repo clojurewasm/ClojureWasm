@@ -55,6 +55,8 @@ const ns_stacktrace_mod = @import("ns_stacktrace.zig");
 const ns_server_mod = @import("ns_server.zig");
 const ns_data_mod = @import("ns_data.zig");
 const ns_set_mod = @import("ns_set.zig");
+const ns_java_io_mod = @import("ns_java_io.zig");
+const ns_java_process_mod = @import("ns_java_process.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -317,6 +319,23 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
+    // Register clojure.java.io protocol-based builtins (Phase B.7)
+    // These supplement + override io.zig builtins (e.g. as-file gets protocol dispatch)
+    try ns_java_io_mod.registerProtocols(env.allocator, env);
+    for (ns_java_io_mod.builtins) |b| {
+        const v = try java_io_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // default-streams-impl var
+    {
+        const v = try java_io_ns.intern("default-streams-impl");
+        const impl_map = try ns_java_io_mod.makeDefaultStreamsImpl(env.allocator);
+        v.bindRoot(impl_map);
+    }
+
     // Register cljw.http namespace builtins (Phase 34.2)
     const http_ns = try env.findOrCreateNamespace("cljw.http");
     for (http_server_mod.builtins) |b| {
@@ -487,6 +506,16 @@ pub fn registerBuiltins(env: *Env) !void {
     const set_ns = try env.findOrCreateNamespace("clojure.set");
     for (ns_set_mod.builtins) |b| {
         const v = try set_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.java.process namespace builtins (Phase B.7)
+    const process_ns = try env.findOrCreateNamespace("clojure.java.process");
+    for (ns_java_process_mod.builtins) |b| {
+        const v = try process_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

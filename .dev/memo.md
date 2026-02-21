@@ -59,21 +59,20 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.7: java/io (217 lines), java/process (85 lines) → Zig.
+Phase B.8: instant (189 lines) → Zig.
 
 ## Previous Task
 
-Phase B.6: set (126 lines) → Zig.
-- ns_set.zig: 12 builtins (union, intersection, difference, select, project, rename-keys, rename, index, map-invert, join, subset?, superset?)
-- bubbleMaxKey helper for variadic union/intersection
-- callCore pattern for all core function calls, resolveCoreFn for fn resolution
-- Also fixed nrepl.zig reference to removed loadSet
-- Deleted set.clj from src/clj/
+Phase B.7: java/io (217 lines), java/process (85 lines) → Zig.
+- ns_java_io.zig: 10 builtins + Coercions/IOFactory protocols + default-streams-impl var
+- ns_java_process.zig: 5 builtins (start, stdout, stderr, exit-ref, exec)
+- Protocols registered via registerProtocols, default-streams-impl built as PersistentArrayMap
+- exit-ref creates already-realized Delay struct directly
+- Deleted io.clj and process.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.7: java/io (217 lines), java/process (85 lines)
 Phase B.8: instant (189 lines)
 Phase B.9: zip (279 lines)
 Phase B.10: repl (245 lines)

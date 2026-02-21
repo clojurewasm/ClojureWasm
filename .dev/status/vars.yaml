@@ -805,25 +805,25 @@ vars:
     "*open-url-script*": {type: dynamic-var, status: done}
     "browse-url": {type: function, status: done}
   clojure_java_io:
-    Coercions: {type: protocol, status: done, note: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
-    IOFactory: {type: protocol, status: done, note: 'UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
-    "as-file": {type: function, status: done, note: builtin (Zig)}
-    "as-relative-path": {type: function, status: done, note: builtin (Zig)}
-    "as-url": {type: function, status: done, note: 'UPSTREAM-DIFF: returns URI, not URL'}
-    copy: {type: function, status: done, note: builtin (Zig)}
-    "default-streams-impl": {type: var, status: done, note: 'UPSTREAM-DIFF: map of fns with CW reader/writer dispatch'}
-    "delete-file": {type: function, status: done, note: builtin (Zig)}
-    file: {type: function, status: done, note: builtin (Zig)}
-    "input-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-reader'}
-    "make-input-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-reader'}
-    "make-output-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-writer'}
-    "make-parents": {type: function, status: done, note: builtin (Zig)}
-    "make-reader": {type: function, status: done, note: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
-    "make-writer": {type: function, status: done, note: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
-    "output-stream": {type: function, status: done, note: 'UPSTREAM-DIFF: delegates to make-writer'}
-    reader: {type: function, status: done, note: 'UPSTREAM-DIFF: slurps file into PushbackReader'}
-    resource: {type: function, status: done, note: builtin (Zig)}
-    writer: {type: function, status: done, note: 'UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
+    Coercions: {type: protocol, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
+    IOFactory: {type: protocol, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: extend-protocol Object with cond dispatch'}
+    "as-file": {type: function, status: done, note: 'builtin (Phase B.7)'}
+    "as-relative-path": {type: function, status: done, note: 'builtin (Phase B.7)'}
+    "as-url": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: returns URI, not URL'}
+    copy: {type: function, status: done, note: 'builtin (Phase B.7)'}
+    "default-streams-impl": {type: var, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: map of fns with CW reader/writer dispatch'}
+    "delete-file": {type: function, status: done, note: 'builtin (Phase B.7)'}
+    file: {type: function, status: done, note: 'builtin (Phase B.7)'}
+    "input-stream": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: delegates to make-reader'}
+    "make-input-stream": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: delegates to make-reader'}
+    "make-output-stream": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: delegates to make-writer'}
+    "make-parents": {type: function, status: done, note: 'builtin (Phase B.7)'}
+    "make-reader": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: slurps file into PushbackReader'}
+    "make-writer": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
+    "output-stream": {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: delegates to make-writer'}
+    reader: {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: slurps file into PushbackReader'}
+    resource: {type: function, status: done, note: 'builtin (Phase B.7)'}
+    writer: {type: function, status: done, note: 'builtin (Phase B.7), UPSTREAM-DIFF: BufferedWriter with buffer-and-flush'}
   clojure_java_javadoc:
     "*core-java-api*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
     "*feeling-lucky*": {type: dynamic-var, status: skip, note: 'Javadoc URL browser, irrelevant to CW'}
@@ -1260,12 +1260,12 @@ vars:
     "print-diagnostics": {type: function, status: done}
     "with-tap-output": {type: macro, status: done}
   clojure_java_process:
-    start: {type: function, status: done, note: "synchronous via clojure.java.shell/sh"}
-    stdout: {type: function, status: done}
-    stderr: {type: function, status: done}
+    start: {type: function, status: done, note: "builtin (Phase B.7), synchronous via clojure.java.shell/sh"}
+    stdout: {type: function, status: done, note: "builtin (Phase B.7)"}
+    stderr: {type: function, status: done, note: "builtin (Phase B.7)"}
     stdin: {type: function, status: skip, note: "requires async process (CW uses synchronous sh)"}
-    "exit-ref": {type: function, status: done}
-    exec: {type: function, status: done}
+    "exit-ref": {type: function, status: done, note: "builtin (Phase B.7)"}
+    exec: {type: function, status: done, note: "builtin (Phase B.7)"}
     "from-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
     "to-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
     "null-file": {type: function, status: skip, note: "ProcessBuilder.Redirect"}
