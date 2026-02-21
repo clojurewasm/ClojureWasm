@@ -52,6 +52,8 @@ const ns_core_protocols_mod = @import("ns_core_protocols.zig");
 const ns_datafy_mod = @import("ns_datafy.zig");
 const ns_walk_mod = @import("ns_walk.zig");
 const ns_stacktrace_mod = @import("ns_stacktrace.zig");
+const ns_server_mod = @import("ns_server.zig");
+const ns_data_mod = @import("ns_data.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -449,6 +451,31 @@ pub fn registerBuiltins(env: *Env) !void {
     const stacktrace_ns = try env.findOrCreateNamespace("clojure.stacktrace");
     for (ns_stacktrace_mod.builtins) |b| {
         const v = try stacktrace_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+
+    // Register clojure.core.server namespace builtins (Phase B.5)
+    const server_ns = try env.findOrCreateNamespace("clojure.core.server");
+    for (ns_server_mod.builtins) |b| {
+        const v = try server_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    // server dynamic var: *session*
+    const session_var = try server_ns.intern("*session*");
+    session_var.dynamic = true;
+    session_var.bindRoot(Value.nil_val);
+
+    // Register clojure.data namespace builtins + protocols (Phase B.5)
+    try ns_data_mod.registerProtocols(allocator, env);
+    const data_ns = try env.findOrCreateNamespace("clojure.data");
+    for (ns_data_mod.builtins) |b| {
+        const v = try data_ns.intern(b.name);
         v.applyBuiltinDef(b);
         if (b.func) |f| {
             v.bindRoot(Value.initBuiltinFn(f));

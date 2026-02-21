@@ -142,7 +142,7 @@ fn seqReduce2(allocator: Allocator, coll: Value, f: Value) anyerror!Value {
 
 /// Create a protocol and register it in the given namespace.
 /// Returns the Protocol pointer for use in ProtocolFn creation.
-fn createProtocol(
+pub fn createProtocol(
     allocator: Allocator,
     ns: *Namespace,
     name: []const u8,

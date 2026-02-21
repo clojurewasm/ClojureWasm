@@ -59,20 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.5: core/server (57 lines), data (104 lines) → Zig.
+Phase B.6: set (126 lines) → Zig.
 
 ## Previous Task
 
-Phase B.4: walk (75 lines), stacktrace (75 lines) → Zig.
-- ns_walk.zig: 10 builtins (walk, postwalk, prewalk, *-demo, *-replace, keywordize-keys, stringify-keys, macroexpand-all)
-- ns_stacktrace.zig: 6 builtins (root-cause, print-trace-element, print-throwable, print-stack-trace, print-cause-trace, e)
-- Deleted walk.clj and stacktrace.clj from src/clj/
-- All 16 walk tests pass (46 assertions), both backends verified
+Phase B.5: core/server (57 lines), data (104 lines) → Zig.
+- ns_server.zig: 6 stub builtins (start-server, stop-server, stop-servers, prepl, io-prepl, remote-prepl) + *session* dvar
+- ns_data.zig: EqualityPartition + Diff protocols, diff function with set/map/seq/atom dispatch
+- callSet helper lazily loads clojure.set namespace via require
+- Deleted server.clj and data.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.5: core/server (57 lines), data (104 lines)
 Phase B.6: set (126 lines)
 Phase B.7: java/io (217 lines), java/process (85 lines)
 Phase B.8: instant (189 lines)

@@ -756,25 +756,25 @@ vars:
     take: {type: function, status: done}
     "take-while": {type: function, status: done}
   clojure_core_server:
-    "*session*": {type: dynamic-var, status: done}
-    "io-prepl": {type: function, status: done, note: "stub — throws not-yet-implemented"}
-    prepl: {type: function, status: done, note: "stub — throws not-yet-implemented"}
-    "remote-prepl": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "*session*": {type: dynamic-var, status: done, note: "builtin (Phase B.5)"}
+    "io-prepl": {type: function, status: done, note: "builtin (Phase B.5) — stub, throws not-yet-implemented"}
+    prepl: {type: function, status: done, note: "builtin (Phase B.5) — stub, throws not-yet-implemented"}
+    "remote-prepl": {type: function, status: done, note: "builtin (Phase B.5) — stub, throws not-yet-implemented"}
     repl: {type: function, status: skip, note: "JVM socket REPL loop, CW has native Zig REPL"}
     "repl-init": {type: function, status: skip, note: "JVM REPL init helper"}
     "repl-read": {type: function, status: skip, note: "JVM LineNumberingPushbackReader-based read"}
-    "start-server": {type: function, status: done, note: "stub — throws not-yet-implemented"}
+    "start-server": {type: function, status: done, note: "builtin (Phase B.5) — stub, throws not-yet-implemented"}
     "start-servers": {type: function, status: skip, note: "JVM property-based server startup"}
-    "stop-server": {type: function, status: done}
-    "stop-servers": {type: function, status: done}
+    "stop-server": {type: function, status: done, note: "builtin (Phase B.5)"}
+    "stop-servers": {type: function, status: done, note: "builtin (Phase B.5)"}
   clojure_core_specs_alpha:
     "even-number-of-forms?": {type: function, status: done}
   clojure_data:
-    Diff: {type: var, status: done, note: "protocol with Object default (cond dispatch)"}
-    EqualityPartition: {type: var, status: done, note: "protocol with Object default (cond dispatch)"}
-    diff: {type: function, status: done}
-    "diff-similar": {type: function, status: done, note: "protocol method"}
-    "equality-partition": {type: function, status: done, note: "protocol method"}
+    Diff: {type: var, status: done, note: "builtin (Phase B.5) — protocol with Object default (cond dispatch)"}
+    EqualityPartition: {type: var, status: done, note: "builtin (Phase B.5) — protocol with Object default (cond dispatch)"}
+    diff: {type: function, status: done, note: "builtin (Phase B.5)"}
+    "diff-similar": {type: function, status: done, note: "builtin (Phase B.5) — protocol method"}
+    "equality-partition": {type: function, status: done, note: "builtin (Phase B.5) — protocol method"}
   clojure_datafy:
     datafy: {type: function, status: done}
     nav: {type: function, status: done}
