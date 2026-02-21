@@ -27,8 +27,6 @@ const BootstrapError = bootstrap.BootstrapError;
 /// 5. Evaluate embedded_source (if any)
 /// 6. Restore saved namespace
 pub fn loadNamespaceClj(allocator: Allocator, env: *Env, comptime def: NamespaceDef) BootstrapError!void {
-    const source = def.embedded_source orelse return; // Nothing to eval
-
     const ns = env.findOrCreateNamespace(def.name) catch {
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
@@ -42,6 +40,8 @@ pub fn loadNamespaceClj(allocator: Allocator, env: *Env, comptime def: Namespace
             v.bindRoot(Value.initBuiltinFn(f));
         }
     }
+
+    const source = def.embedded_source orelse return; // Nothing to eval
 
     // Refer clojure.core
     const core_ns = env.findNamespace("clojure.core") orelse {
@@ -78,6 +78,30 @@ pub fn loadNamespaceClj(allocator: Allocator, env: *Env, comptime def: Namespace
 
     env.current_ns = saved_ns;
     bootstrap.syncNsVar(env);
+}
+
+/// Load a lazy namespace by name (called from ns_ops.requireLib on first require).
+/// Replaces bootstrap.loadEmbeddedLib() if-chain with comptime table lookup.
+/// Returns true if the namespace was found and loaded.
+pub fn loadLazyNamespace(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
+    const lib_defs = @import("../builtins/lib/defs.zig");
+
+    // Handle dependency: spec.alpha requires spec.gen.alpha
+    if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) {
+        if (env.findNamespace("clojure.spec.gen.alpha") == null) {
+            try loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_gen_alpha.zig").namespace_def);
+        }
+    }
+
+    inline for (lib_defs.all_namespace_defs) |def| {
+        if (def.loading == .lazy) {
+            if (std.mem.eql(u8, def.name, ns_name)) {
+                try loadNamespaceClj(allocator, env, def);
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /// Re-refer all bindings from a namespace into the user (current) namespace.

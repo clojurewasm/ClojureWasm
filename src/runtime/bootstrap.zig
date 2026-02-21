@@ -49,11 +49,6 @@ const test_clj_source = es.test_clj_source;
 const repl_macros_source = es.repl_macros_source;
 const pprint_clj_source = es.pprint_clj_source;
 const reducers_macros_source = es.reducers_macros_source;
-const test_tap_clj_source = es.test_tap_clj_source;
-const main_macros_source = es.main_macros_source;
-const spec_gen_alpha_clj_source = es.spec_gen_alpha_clj_source;
-const spec_alpha_clj_source = es.spec_alpha_clj_source;
-const core_specs_alpha_clj_source = es.core_specs_alpha_clj_source;
 const hot_core_defs = es.hot_core_defs;
 const core_hof_defs = es.core_hof_defs;
 const core_seq_defs = es.core_seq_defs;
@@ -126,101 +121,23 @@ pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
     ns_loader.referToUserNs(env, "clojure.test");
 }
 
-// loadSet removed — clojure.set is now registered as Zig builtins in registry.zig (Phase B.6)
-
-// loadData removed — clojure.data is now registered as Zig builtins in registry.zig (Phase B.5)
-
 pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
     try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_repl.zig").namespace_def);
     ns_loader.referToUserNs(env, "clojure.repl");
 }
 
-// loadJavaIo removed — clojure.java.io is now registered as Zig builtins in registry.zig (Phase B.7)
-
 pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
     try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_pprint.zig").namespace_def);
 }
-
-// loadStacktrace removed — clojure.stacktrace is now registered as Zig builtins in registry.zig (Phase B.4)
-
-// loadZip removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
 pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
     try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_core_reducers.zig").namespace_def);
 }
 
-pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
-    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_test_tap.zig").namespace_def);
-}
-
-// loadInstant removed — now Zig builtins in ns_instant.zig (Phase B.8)
-
-// loadXml removed — clojure.xml is now registered as Zig builtins in registry.zig (Phase B.11)
-// loadProcess removed — clojure.java.process is now registered as Zig builtins in registry.zig (Phase B.7)
-
-pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
-    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_main.zig").namespace_def);
-}
-
-// loadCoreServer removed — clojure.core.server is now registered as Zig builtins in registry.zig (Phase B.5)
-
-pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_gen_alpha.zig").namespace_def);
-}
-
-pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Ensure spec.gen.alpha is loaded first (spec.alpha depends on it)
-    if (env.findNamespace("clojure.spec.gen.alpha") == null) {
-        try loadSpecGenAlpha(env.allocator, env);
-    }
-    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_alpha.zig").namespace_def);
-}
-
-pub fn loadCoreSpecsAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_core_specs_alpha.zig").namespace_def);
-}
-
 /// Load an embedded library lazily (called from ns_ops.requireLib on first require).
 /// Returns true if the namespace was loaded from embedded source.
 pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
-    if (std.mem.eql(u8, ns_name, "clojure.uuid")) {
-        // clojure.uuid namespace — no vars needed (uuid printing handled in Zig)
-        _ = env.findOrCreateNamespace("clojure.uuid") catch return error.EvalError;
-        return true;
-    }
-    if (std.mem.eql(u8, ns_name, "clojure.test.tap")) {
-        try loadTestTap(allocator, env);
-        return true;
-    }
-    // clojure.java.browse — registered in registerBuiltins() (Phase B.2)
-    // clojure.datafy — registered in registerBuiltins() (Phase B.3)
-    // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
-    // clojure.instant — registered in registerBuiltins() (Phase B.8)
-    // clojure.xml — registered in registerBuiltins() (Phase B.11)
-    // clojure.java.process — registered in registerBuiltins() (Phase B.7)
-    if (std.mem.eql(u8, ns_name, "clojure.main")) {
-        try loadMain(allocator, env);
-        return true;
-    }
-    // clojure.core.server — registered in registerBuiltins() (Phase B.5)
-    // clojure.repl.deps — registered in registerBuiltins() (Phase B.3)
-    if (std.mem.eql(u8, ns_name, "clojure.spec.gen.alpha")) {
-        try loadSpecGenAlpha(allocator, env);
-        return true;
-    }
-    if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) {
-        // Ensure spec.gen.alpha is loaded first (spec.alpha depends on it)
-        if (env.findNamespace("clojure.spec.gen.alpha") == null) {
-            try loadSpecGenAlpha(allocator, env);
-        }
-        try loadSpecAlpha(allocator, env);
-        return true;
-    }
-    if (std.mem.eql(u8, ns_name, "clojure.core.specs.alpha")) {
-        try loadCoreSpecsAlpha(allocator, env);
-        return true;
-    }
-    return false;
+    return ns_loader.loadLazyNamespace(allocator, env, ns_name);
 }
 
 /// Sync *ns* var with env.current_ns. Called after manual namespace switches.
