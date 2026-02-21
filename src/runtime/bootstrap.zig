@@ -108,14 +108,6 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
     // here would create dangling pointers after the arena is freed.
 }
 
-/// Load and evaluate clojure/walk.clj in the given Env.
-/// Creates the clojure.walk namespace and defines tree walker functions.
-/// Re-refers walk bindings into user namespace for convenience.
-// loadWalk removed — clojure.walk is now registered as Zig builtins in registry.zig (Phase B.4)
-
-/// Load and evaluate clojure/test.clj in the given Env.
-/// Creates the clojure.test namespace and defines test macros (deftest, is, etc.).
-/// Re-refers test bindings into user namespace for convenience.
 pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
     try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_test.zig").namespace_def);
     ns_loader.referToUserNs(env, "clojure.test");
@@ -698,21 +690,14 @@ pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const 
 /// Unified bootstrap: loads all standard library namespaces.
 ///
 /// Use this instead of calling each individually.
-/// Note: clojure.walk and clojure.stacktrace are now Zig builtins (registered in registerBuiltins).
+/// Pure-zig namespaces are registered in registerBuiltins().
+/// Lazy namespaces (spec, main, etc.) are loaded on first require.
 pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
     try loadCore(allocator, env);
-    // clojure.walk — registered in registerBuiltins() (Phase B.4)
     try loadTest(allocator, env);
-    // clojure.set — registered in registerBuiltins() (Phase B.6)
-    // clojure.data — registered in registerBuiltins() (Phase B.5)
     try loadRepl(allocator, env);
-    // clojure.java.io — registered in registerBuiltins() (Phase B.7)
     try loadPprint(allocator, env);
-    // clojure.stacktrace — registered in registerBuiltins() (Phase B.4)
-    // clojure.zip — registered in registerBuiltins() (Phase B.9)
-    // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     try loadReducers(allocator, env);
-    // spec.alpha loaded lazily on first require (startup time)
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
