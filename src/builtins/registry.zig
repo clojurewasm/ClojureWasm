@@ -99,32 +99,9 @@ const multimethods_mod = @import("multimethods.zig");
 const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
-// math_mod: now via lib/clojure_math.zig (R2.5)
-// const http_server_mod = @import("http_server.zig"); // now via lib/cljw_http.zig (R2.9)
 const lifecycle_mod = @import("../runtime/lifecycle.zig");
-// const wasm_builtins_mod = @import("../wasm/builtins.zig"); // now via lib/cljw_wasm.zig (R2.9)
-// shell_mod: now via lib/clojure_java_shell.zig (R2.3)
-// pprint_mod: now via lib/clojure_pprint.zig (R2.3)
 const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
-// ns_template_mod: now via lib/clojure_template.zig (R2.3)
-// ns_browse_mod: now via lib/clojure_java_browse.zig (R2.1)
-// ns_repl_deps_mod: now via lib/clojure_repl_deps.zig (R2.1)
-// ns_core_protocols_mod: now via lib/clojure_core_protocols.zig (R2.4)
-// ns_datafy_mod: now via lib/clojure_datafy.zig (R2.4)
-// ns_walk_mod: now via lib/clojure_walk.zig (R2.1)
-// ns_stacktrace_mod: now via lib/clojure_stacktrace.zig (R2.1)
-// ns_server_mod: now via lib/clojure_core_server.zig (R2.3)
-// ns_data_mod: now via lib/clojure_data.zig (R2.4)
-// ns_set_mod: now via lib/clojure_set.zig (R2.2)
-// const ns_java_io_mod = @import("ns_java_io.zig"); // now via lib/clojure_java_io.zig (R2.6)
-// ns_java_process_mod: now via lib/clojure_java_process.zig (R2.2)
-// ns_instant_mod: now via lib/clojure_instant.zig (R2.2)
-// ns_zip_mod: now via lib/clojure_zip.zig (R2.2)
-// const ns_repl_mod = @import("ns_repl.zig"); // now via lib/clojure_repl.zig (R2.7)
-// ns_xml_mod: now via lib/clojure_xml.zig (R2.4)
-const ns_main_mod = @import("ns_main.zig");
-// const ns_reducers_mod = @import("ns_reducers.zig"); // now via lib/clojure_core_reducers.zig (R2.7)
 
 // ============================================================
 // Comptime table aggregation
@@ -312,11 +289,6 @@ pub fn registerBuiltins(env: *Env) !void {
         try user_ns.refer(macro_name, mv);
     }
 
-    // Register clojure.string, clojure.edn, clojure.math (Phase R2.5)
-    try registerNamespace(env, @import("lib/clojure_string.zig").namespace_def);
-    try registerNamespace(env, @import("lib/clojure_edn.zig").namespace_def);
-    try registerNamespace(env, @import("lib/clojure_math.zig").namespace_def);
-
     // Register Java interop static field constants in clojure.core.
     // These are referenced via rewriteStaticField in the analyzer
     // (e.g. Integer/MAX_VALUE → __integer-max-value).
@@ -392,66 +364,13 @@ pub fn registerBuiltins(env: *Env) !void {
         try user_ns.refer(fc.name, v);
     }
 
-    // Register cljw.wasm (Phase R2.9)
-    try registerNamespace(env, @import("lib/cljw_wasm.zig").namespace_def);
-
-    // Register clojure.java.io (Phase R2.6)
-    try registerNamespace(env, @import("lib/clojure_java_io.zig").namespace_def);
-
-    // Register cljw.http (Phase R2.9)
-    try registerNamespace(env, @import("lib/cljw_http.zig").namespace_def);
-
-    // Register clojure.java.shell (Phase R2.3)
-    try registerNamespace(env, @import("lib/clojure_java_shell.zig").namespace_def);
-
-    // Register clojure.java.browse (Phase R2.1)
-    try registerNamespace(env, @import("lib/clojure_java_browse.zig").namespace_def);
-
-    // Register clojure.pprint (Phase R2.3)
-    try registerNamespace(env, @import("lib/clojure_pprint.zig").namespace_def);
-
-    // Register clojure.template (Phase R2.3)
-    try registerNamespace(env, @import("lib/clojure_template.zig").namespace_def);
-
-    // Register clojure.core.protocols (Phase R2.4)
-    try registerNamespace(env, @import("lib/clojure_core_protocols.zig").namespace_def);
-
-    // Register clojure.datafy (Phase R2.4)
-    try registerNamespace(env, @import("lib/clojure_datafy.zig").namespace_def);
-
-    // Register clojure.repl.deps (Phase R2.1)
-    try registerNamespace(env, @import("lib/clojure_repl_deps.zig").namespace_def);
-
-    // Register clojure.walk (Phase R2.1)
-    try registerNamespace(env, @import("lib/clojure_walk.zig").namespace_def);
-
-    // Register clojure.stacktrace (Phase R2.1)
-    try registerNamespace(env, @import("lib/clojure_stacktrace.zig").namespace_def);
-
-    // Register clojure.core.server (Phase R2.3)
-    try registerNamespace(env, @import("lib/clojure_core_server.zig").namespace_def);
-
-    // Register clojure.data (Phase R2.4)
-    try registerNamespace(env, @import("lib/clojure_data.zig").namespace_def);
-
-    // Register clojure.set, clojure.java.process, clojure.instant, clojure.zip (Phase R2.2)
-    try registerNamespace(env, @import("lib/clojure_set.zig").namespace_def);
-    try registerNamespace(env, @import("lib/clojure_java_process.zig").namespace_def);
-    try registerNamespace(env, @import("lib/clojure_instant.zig").namespace_def);
-    try registerNamespace(env, @import("lib/clojure_zip.zig").namespace_def);
-
-    // Register clojure.repl (Phase R2.7)
-    try registerNamespace(env, @import("lib/clojure_repl.zig").namespace_def);
-
-    // Register clojure.xml (Phase R2.4)
-    try registerNamespace(env, @import("lib/clojure_xml.zig").namespace_def);
-
-    // Register clojure.core.reducers (Phase R2.7)
-    try registerNamespace(env, @import("lib/clojure_core_reducers.zig").namespace_def);
-
-    // clojure.main — Zig builtins registered in loadMain() (Phase B.12)
-    // Not registered here because clojure.main is lazy-loaded and requireLib
-    // short-circuits when namespace already exists.
+    // Register all non-lazy library namespaces from lib/defs.zig (Phase R2.10)
+    // Lazy namespaces are loaded on-demand by loadEmbeddedLib/requireLib.
+    inline for (lib_defs.all_namespace_defs) |def| {
+        if (def.loading != .lazy) {
+            try registerNamespace(env, def);
+        }
+    }
 
     env.current_ns = user_ns;
 }
