@@ -8,10 +8,12 @@ const NamespaceDef = registry.NamespaceDef;
 const DynVarDef = registry.DynVarDef;
 const Value = @import("../../runtime/value.zig").Value;
 const impl = @import("../pprint.zig");
+const es = @import("../../runtime/embedded_sources.zig");
 
 pub const namespace_def = NamespaceDef{
     .name = "clojure.pprint",
     .builtins = &impl.builtins,
+    .embedded_source = es.pprint_clj_source,
     .dynamic_vars = &.{
         DynVarDef{ .name = "*print-right-margin*", .default = Value.initInteger(72) },
         DynVarDef{ .name = "*print-miser-width*", .default = Value.initInteger(40) },

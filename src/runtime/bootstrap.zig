@@ -31,6 +31,7 @@ const vm_mod = @import("../vm/vm.zig");
 const VM = vm_mod.VM;
 const gc_mod = @import("gc.zig");
 const builtin_collections = @import("../builtins/collections.zig");
+const ns_loader = @import("ns_loader.zig");
 
 /// Bootstrap error type.
 pub const BootstrapError = error{
@@ -121,191 +122,35 @@ pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
 /// Creates the clojure.test namespace and defines test macros (deftest, is, etc.).
 /// Re-refers test bindings into user namespace for convenience.
 pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Create clojure.test namespace
-    const test_ns = env.findOrCreateNamespace("clojure.test") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Refer all clojure.core bindings into clojure.test so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Refer clojure.walk bindings (are macro uses postwalk-replace)
-    if (env.findNamespace("clojure.walk")) |walk_ns| {
-        var walk_iter = walk_ns.mappings.iterator();
-        while (walk_iter.next()) |entry| {
-            test_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
-
-    // Save current namespace and switch to clojure.test
-    const saved_ns = env.current_ns;
-    env.current_ns = test_ns;
-
-    // Evaluate clojure/test.clj (defines macros/functions in clojure.test)
-    _ = try evalString(allocator, env, test_clj_source);
-
-    // Restore user namespace and re-refer test bindings
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-    if (saved_ns) |user_ns| {
-        var iter = test_ns.mappings.iterator();
-        while (iter.next()) |entry| {
-            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_test.zig").namespace_def);
+    ns_loader.referToUserNs(env, "clojure.test");
 }
 
 // loadSet removed — clojure.set is now registered as Zig builtins in registry.zig (Phase B.6)
 
 // loadData removed — clojure.data is now registered as Zig builtins in registry.zig (Phase B.5)
 
-/// Load and evaluate clojure/repl.clj in the given Env.
-/// Creates the clojure.repl namespace and defines REPL utility functions
-/// (doc, dir, source, apropos, find-doc, pst).
-/// Re-refers repl bindings into user namespace for convenience.
 pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
-    // Create clojure.repl namespace
-    const repl_ns = env.findOrCreateNamespace("clojure.repl") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Refer all clojure.core bindings into clojure.repl so core functions are available
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        repl_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    // Also refer clojure.string into clojure.repl (repl.clj requires it)
-    if (env.findNamespace("clojure.string")) |string_ns| {
-        repl_ns.setAlias("clojure.string", string_ns) catch {};
-    }
-
-    // Save current namespace and switch to clojure.repl
-    const saved_ns = env.current_ns;
-    env.current_ns = repl_ns;
-
-    // Evaluate clojure/repl macros (special-doc-map, doc, dir, source)
-    _ = try evalString(allocator, env, repl_macros_source);
-
-    // Restore user namespace and re-refer repl bindings
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-    if (saved_ns) |user_ns| {
-        var iter = repl_ns.mappings.iterator();
-        while (iter.next()) |entry| {
-            user_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-        }
-    }
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_repl.zig").namespace_def);
+    ns_loader.referToUserNs(env, "clojure.repl");
 }
 
 // loadJavaIo removed — clojure.java.io is now registered as Zig builtins in registry.zig (Phase B.7)
 
-/// Load and evaluate clojure/pprint.clj in the given Env.
-/// Defines print-table (pprint is a Zig builtin registered in registry.zig).
 pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
-    const pprint_ns = env.findOrCreateNamespace("clojure.pprint") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        pprint_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = pprint_ns;
-
-    _ = try evalString(allocator, env, pprint_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_pprint.zig").namespace_def);
 }
 
 // loadStacktrace removed — clojure.stacktrace is now registered as Zig builtins in registry.zig (Phase B.4)
 
 // loadZip removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
-/// Load clojure.core.reducers: register Zig builtins + evaluate complex functions.
-/// Simple stubs (fjtask, fjinvoke, etc.) are Zig builtins in ns_reducers.zig (Phase B.13).
-/// Complex code (protocols, macros, reify, extend-type) remains as evalString.
-/// Requires clojure.walk and clojure.core.protocols to be loaded first.
 pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
-    const ns_reducers_mod = @import("../builtins/ns_reducers.zig");
-    const reducers_ns = env.findOrCreateNamespace("clojure.core.reducers") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Register Zig builtins first
-    for (ns_reducers_mod.builtins) |b| {
-        const v = reducers_ns.intern(b.name) catch {
-            return error.EvalError;
-        };
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        reducers_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = reducers_ns;
-
-    _ = try evalString(allocator, env, reducers_macros_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_core_reducers.zig").namespace_def);
 }
 
-/// Load and evaluate clojure/test/tap.clj.
 pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
-    const tap_ns = env.findOrCreateNamespace("clojure.test.tap") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        tap_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = tap_ns;
-
-    _ = try evalString(allocator, env, test_tap_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_test_tap.zig").namespace_def);
 }
 
 // loadInstant removed — now Zig builtins in ns_instant.zig (Phase B.8)
@@ -313,136 +158,26 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
 // loadXml removed — clojure.xml is now registered as Zig builtins in registry.zig (Phase B.11)
 // loadProcess removed — clojure.java.process is now registered as Zig builtins in registry.zig (Phase B.7)
 
-/// Load clojure.main: register Zig builtins + evaluate macros/complex functions.
-/// Simple functions (demunge, root-cause, etc.) are Zig builtins in ns_main.zig (Phase B.12).
-/// Complex functions (repl, ex-triage, ex-str) and macros (with-bindings, with-read-known)
-/// remain as evalString.
 pub fn loadMain(allocator: Allocator, env: *Env) BootstrapError!void {
-    const ns_main_mod = @import("../builtins/ns_main.zig");
-    const main_ns = env.findOrCreateNamespace("clojure.main") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    // Register Zig builtins first
-    for (ns_main_mod.builtins) |b| {
-        const v = main_ns.intern(b.name) catch {
-            return error.EvalError;
-        };
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        main_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = main_ns;
-
-    _ = try evalString(allocator, env, main_macros_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_main.zig").namespace_def);
 }
 
 // loadCoreServer removed — clojure.core.server is now registered as Zig builtins in registry.zig (Phase B.5)
 
-/// Load and evaluate clojure/spec/gen/alpha.clj (stub namespace).
 pub fn loadSpecGenAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    const spec_gen_ns = env.findOrCreateNamespace("clojure.spec.gen.alpha") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        spec_gen_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = spec_gen_ns;
-
-    _ = try evalString(allocator, env, spec_gen_alpha_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_gen_alpha.zig").namespace_def);
 }
 
-/// Load and evaluate clojure/spec/alpha.clj (spec.alpha core).
-/// Must be called after loadSpecGenAlpha (spec.alpha requires spec.gen.alpha).
 pub fn loadSpecAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    const spec_ns = env.findOrCreateNamespace("clojure.spec.alpha") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        spec_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
+    // Ensure spec.gen.alpha is loaded first (spec.alpha depends on it)
+    if (env.findNamespace("clojure.spec.gen.alpha") == null) {
+        try loadSpecGenAlpha(env.allocator, env);
     }
-
-    // Pre-create aliases needed at read time: CW reads all forms before evaluating,
-    // so (alias 'c 'clojure.core) in the source hasn't executed when syntax-quotes
-    // are processed by the reader. JVM Clojure reads one form at a time.
-    spec_ns.setAlias("c", core_ns) catch {};
-    if (env.findNamespace("clojure.walk")) |walk_ns| {
-        spec_ns.setAlias("walk", walk_ns) catch {};
-    }
-    if (env.findNamespace("clojure.spec.gen.alpha")) |gen_ns| {
-        spec_ns.setAlias("gen", gen_ns) catch {};
-    }
-    if (env.findNamespace("clojure.string")) |str_ns| {
-        spec_ns.setAlias("str", str_ns) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = spec_ns;
-
-    _ = try evalString(allocator, env, spec_alpha_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_alpha.zig").namespace_def);
 }
 
-/// Load and evaluate clojure/core/specs/alpha.clj (core.specs.alpha).
 pub fn loadCoreSpecsAlpha(allocator: Allocator, env: *Env) BootstrapError!void {
-    const ns = env.findOrCreateNamespace("clojure.core.specs.alpha") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = ns;
-
-    _ = try evalString(allocator, env, core_specs_alpha_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
+    try ns_loader.loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_core_specs_alpha.zig").namespace_def);
 }
 
 /// Load an embedded library lazily (called from ns_ops.requireLib on first require).
