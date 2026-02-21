@@ -38,4 +38,8 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_data.zig").namespace_def,
     @import("clojure_core_protocols.zig").namespace_def,
     @import("clojure_xml.zig").namespace_def,
+    // R2.5: Split-file namespaces
+    @import("clojure_string.zig").namespace_def,
+    @import("clojure_edn.zig").namespace_def,
+    @import("clojure_math.zig").namespace_def,
 };

@@ -99,7 +99,7 @@ const multimethods_mod = @import("multimethods.zig");
 const system_mod = @import("system.zig");
 const transient_mod = @import("transient.zig");
 const chunk_mod = @import("chunk.zig");
-const math_mod = @import("math.zig");
+// math_mod: now via lib/clojure_math.zig (R2.5)
 const http_server_mod = @import("http_server.zig");
 const lifecycle_mod = @import("../runtime/lifecycle.zig");
 const wasm_builtins_mod = @import("../wasm/builtins.zig");
@@ -312,39 +312,10 @@ pub fn registerBuiltins(env: *Env) !void {
         try user_ns.refer(macro_name, mv);
     }
 
-    // Register clojure.string namespace builtins
-    const str_ns = try env.findOrCreateNamespace("clojure.string");
-    for (strings_mod.clj_string_builtins) |b| {
-        const v = try str_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.edn namespace builtins
-    const edn_ns = try env.findOrCreateNamespace("clojure.edn");
-    for (eval_mod.edn_builtins) |b| {
-        const v = try edn_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.math namespace builtins + constants
-    const math_ns = try env.findOrCreateNamespace("clojure.math");
-    for (math_mod.builtins) |b| {
-        const v = try math_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    const pi_var = try math_ns.intern("PI");
-    pi_var.bindRoot(Value.initFloat(math_mod.PI));
-    const e_var = try math_ns.intern("E");
-    e_var.bindRoot(Value.initFloat(math_mod.E));
+    // Register clojure.string, clojure.edn, clojure.math (Phase R2.5)
+    try registerNamespace(env, @import("lib/clojure_string.zig").namespace_def);
+    try registerNamespace(env, @import("lib/clojure_edn.zig").namespace_def);
+    try registerNamespace(env, @import("lib/clojure_math.zig").namespace_def);
 
     // Register Java interop static field constants in clojure.core.
     // These are referenced via rewriteStaticField in the analyzer
