@@ -153,8 +153,7 @@ const main_clj_source = @embedFile("../clj/clojure/main.clj");
 // server.clj removed — now Zig builtins in ns_server.zig (Phase B.5)
 
 
-/// Embedded clojure/xml.clj source (compiled into binary).
-const xml_clj_source = @embedFile("../clj/clojure/xml.clj");
+// xml.clj removed — now Zig builtins in ns_xml.zig (Phase B.11)
 
 /// Embedded clojure/spec/gen/alpha.clj source (compiled into binary).
 const spec_gen_alpha_clj_source = @embedFile("../clj/clojure/spec/gen/alpha.clj");
@@ -1314,31 +1313,7 @@ pub fn loadTestTap(allocator: Allocator, env: *Env) BootstrapError!void {
 
 // loadInstant removed — now Zig builtins in ns_instant.zig (Phase B.8)
 
-/// Load and evaluate clojure/xml.clj.
-pub fn loadXml(allocator: Allocator, env: *Env) BootstrapError!void {
-    const xml_ns = env.findOrCreateNamespace("clojure.xml") catch {
-        err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
-        return error.EvalError;
-    };
-
-    const core_ns = env.findNamespace("clojure.core") orelse {
-        err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
-        return error.EvalError;
-    };
-    var core_iter = core_ns.mappings.iterator();
-    while (core_iter.next()) |entry| {
-        xml_ns.refer(entry.key_ptr.*, entry.value_ptr.*) catch {};
-    }
-
-    const saved_ns = env.current_ns;
-    env.current_ns = xml_ns;
-
-    _ = try evalString(allocator, env, xml_clj_source);
-
-    env.current_ns = saved_ns;
-    syncNsVar(env);
-}
-
+// loadXml removed — clojure.xml is now registered as Zig builtins in registry.zig (Phase B.11)
 // loadProcess removed — clojure.java.process is now registered as Zig builtins in registry.zig (Phase B.7)
 
 /// Load and evaluate clojure/main.clj.
@@ -1474,10 +1449,7 @@ pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) Boo
     // clojure.datafy — registered in registerBuiltins() (Phase B.3)
     // clojure.core.protocols — registered in registerBuiltins() (Phase B.3)
     // clojure.instant — registered in registerBuiltins() (Phase B.8)
-    if (std.mem.eql(u8, ns_name, "clojure.xml")) {
-        try loadXml(allocator, env);
-        return true;
-    }
+    // clojure.xml — registered in registerBuiltins() (Phase B.11)
     // clojure.java.process — registered in registerBuiltins() (Phase B.7)
     if (std.mem.eql(u8, ns_name, "clojure.main")) {
         try loadMain(allocator, env);

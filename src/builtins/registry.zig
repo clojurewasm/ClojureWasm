@@ -60,6 +60,7 @@ const ns_java_process_mod = @import("ns_java_process.zig");
 const ns_instant_mod = @import("ns_instant.zig");
 const ns_zip_mod = @import("ns_zip.zig");
 const ns_repl_mod = @import("ns_repl.zig");
+const ns_xml_mod = @import("ns_xml.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -555,6 +556,17 @@ pub fn registerBuiltins(env: *Env) !void {
             v.bindRoot(Value.initBuiltinFn(f));
         }
     }
+
+    // Register clojure.xml builtins (Phase B.11)
+    const xml_ns = try env.findOrCreateNamespace("clojure.xml");
+    for (ns_xml_mod.builtins) |b| {
+        const v = try xml_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
+    ns_xml_mod.postRegister(env.allocator, xml_ns);
 
     env.current_ns = user_ns;
 }

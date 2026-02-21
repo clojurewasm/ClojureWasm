@@ -1242,13 +1242,13 @@ vars:
     "xml-zip": {type: function, status: done, note: "builtin (Phase B.9)"}
     zipper: {type: function, status: done, note: "builtin (Phase B.9)"}
   clojure_xml:
-    tag: {type: var, status: done}
-    attrs: {type: var, status: done}
-    content: {type: var, status: done}
-    parse: {type: function, status: done}
-    "parse-str": {type: function, status: done, note: "CLJW-ADD: convenience fn, not in upstream"}
-    "emit-element": {type: function, status: done}
-    emit: {type: function, status: done}
+    tag: {type: var, status: done, note: "builtin (Phase B.11), keyword :tag"}
+    attrs: {type: var, status: done, note: "builtin (Phase B.11), keyword :attrs"}
+    content: {type: var, status: done, note: "builtin (Phase B.11), keyword :content"}
+    parse: {type: function, status: done, note: "builtin (Phase B.11), native Zig XML parser"}
+    "parse-str": {type: function, status: done, note: "builtin (Phase B.11), CLJW-ADD: convenience fn"}
+    "emit-element": {type: function, status: done, note: "builtin (Phase B.11)"}
+    emit: {type: function, status: done, note: "builtin (Phase B.11)"}
     "startparse-sax": {type: function, status: skip, note: "Java SAX parser"}
     "content-handler": {type: function, status: skip, note: "Java SAX ContentHandler"}
   clojure_test_tap:

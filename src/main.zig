@@ -1004,6 +1004,7 @@ fn markBootstrapLibs() void {
         "clojure.core.reducers",
         "clojure.datafy",
         "clojure.repl.deps",
+        "clojure.xml",
         // spec.alpha loaded lazily on first require
     };
     for (libs) |name| {
