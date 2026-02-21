@@ -65,14 +65,16 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.15b: spec.alpha → Zig (1789 lines).
-Migrate clojure.spec.alpha from @embedFile .clj to Zig builtins.
-B.15a complete: spec.gen.alpha (52 builtins + 5 macros) and core.specs.alpha (1 builtin).
-ns_loader.zig fixed to use registerNamespace() for full registration (post_register, macros, vars).
+Phase B.16: pprint → Zig (2732 lines).
+Migrate clojure.pprint from @embedFile .clj to Zig multiline string or builtins.
 
 ## Previous Task
 
-Phase F: 1NS=1File Consolidation (D108) — COMPLETE.
+Phase B.15: spec/alpha → Zig — COMPLETE.
+- B.15a: spec.gen.alpha (52 builtins + 5 macros), core.specs.alpha (1 builtin) → pure Zig
+- B.15b: spec.alpha (1768 lines) → Zig multiline string (heavy protocol/reify)
+- ns_loader.zig fixed to use registerNamespace() for full registration
+- Removed 3 @embedFile references for spec .clj files
 - Merged 18 ns_*.zig into lib/*.zig (4 batches: F.1-F.4)
 - Only ns_ops.zig remains (core namespace operations, not a library NS)
 - Each lib/*.zig is now self-contained: NamespaceDef + full implementation
@@ -81,8 +83,7 @@ Phase F: 1NS=1File Consolidation (D108) — COMPLETE.
 ## Task Queue
 
 ```
-Phase B.15: spec/alpha → Zig (next)
-Phase B.16: pprint → Zig (2732 lines)
+Phase B.16: pprint → Zig (next, 2732 lines)
 --- After Phase B ---
 Phase C: Bootstrap pipeline elimination (zero evalString)
 Phase E: Optimization (restore baselines)
