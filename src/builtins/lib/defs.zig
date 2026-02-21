@@ -42,4 +42,6 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_string.zig").namespace_def,
     @import("clojure_edn.zig").namespace_def,
     @import("clojure_math.zig").namespace_def,
+    // R2.6: Complex namespace
+    @import("clojure_java_io.zig").namespace_def,
 };

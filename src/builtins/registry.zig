@@ -117,14 +117,14 @@ const constructors_mod = @import("../interop/constructors.zig");
 // ns_server_mod: now via lib/clojure_core_server.zig (R2.3)
 // ns_data_mod: now via lib/clojure_data.zig (R2.4)
 // ns_set_mod: now via lib/clojure_set.zig (R2.2)
-const ns_java_io_mod = @import("ns_java_io.zig");
+// const ns_java_io_mod = @import("ns_java_io.zig"); // now via lib/clojure_java_io.zig (R2.6)
 // ns_java_process_mod: now via lib/clojure_java_process.zig (R2.2)
 // ns_instant_mod: now via lib/clojure_instant.zig (R2.2)
 // ns_zip_mod: now via lib/clojure_zip.zig (R2.2)
-const ns_repl_mod = @import("ns_repl.zig");
+// const ns_repl_mod = @import("ns_repl.zig"); // now via lib/clojure_repl.zig (R2.7)
 // ns_xml_mod: now via lib/clojure_xml.zig (R2.4)
 const ns_main_mod = @import("ns_main.zig");
-const ns_reducers_mod = @import("ns_reducers.zig");
+// const ns_reducers_mod = @import("ns_reducers.zig"); // now via lib/clojure_core_reducers.zig (R2.7)
 
 // ============================================================
 // Comptime table aggregation
@@ -404,32 +404,8 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
-    // Register clojure.java.io namespace builtins (Phase 33.3, D82)
-    const java_io_ns = try env.findOrCreateNamespace("clojure.java.io");
-    for (io_mod.java_io_builtins) |b| {
-        const v = try java_io_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.java.io protocol-based builtins (Phase B.7)
-    // These supplement + override io.zig builtins (e.g. as-file gets protocol dispatch)
-    try ns_java_io_mod.registerProtocols(env.allocator, env);
-    for (ns_java_io_mod.builtins) |b| {
-        const v = try java_io_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // default-streams-impl var
-    {
-        const v = try java_io_ns.intern("default-streams-impl");
-        const impl_map = try ns_java_io_mod.makeDefaultStreamsImpl(env.allocator);
-        v.bindRoot(impl_map);
-    }
+    // Register clojure.java.io (Phase R2.6)
+    try registerNamespace(env, @import("lib/clojure_java_io.zig").namespace_def);
 
     // Register cljw.http namespace builtins (Phase 34.2)
     const http_ns = try env.findOrCreateNamespace("cljw.http");
@@ -482,31 +458,14 @@ pub fn registerBuiltins(env: *Env) !void {
     try registerNamespace(env, @import("lib/clojure_instant.zig").namespace_def);
     try registerNamespace(env, @import("lib/clojure_zip.zig").namespace_def);
 
-    // Register clojure.repl function builtins (Phase B.10)
-    // Note: macros (doc, dir, source) and special-doc-map handled in loadRepl via evalString
-    const repl_ns = try env.findOrCreateNamespace("clojure.repl");
-    for (ns_repl_mod.builtins) |b| {
-        const v = try repl_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.repl (Phase R2.7)
+    try registerNamespace(env, @import("lib/clojure_repl.zig").namespace_def);
 
     // Register clojure.xml (Phase R2.4)
     try registerNamespace(env, @import("lib/clojure_xml.zig").namespace_def);
 
-    // Register clojure.core.reducers Zig builtins (Phase B.13)
-    // Eagerly loaded (in loadBootstrapAll), so must be registered here for runtime availability.
-    // Complex code (protocols, macros, reify) handled in loadReducers via evalString.
-    const reducers_ns = try env.findOrCreateNamespace("clojure.core.reducers");
-    for (ns_reducers_mod.builtins) |b| {
-        const v = try reducers_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.core.reducers (Phase R2.7)
+    try registerNamespace(env, @import("lib/clojure_core_reducers.zig").namespace_def);
 
     // clojure.main — Zig builtins registered in loadMain() (Phase B.12)
     // Not registered here because clojure.main is lazy-loaded and requireLib
