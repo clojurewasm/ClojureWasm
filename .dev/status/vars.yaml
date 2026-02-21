@@ -733,28 +733,28 @@ vars:
     "kv-reduce": {type: function, status: done}
     nav: {type: function, status: done}
   clojure_core_reducers:
-    "->Cat": {type: function, status: done}
-    CollFold: {type: var, status: done}
-    "append!": {type: function, status: done}
-    cat: {type: function, status: done}
-    "coll-fold": {type: function, status: done}
-    drop: {type: function, status: done}
-    filter: {type: function, status: done}
-    fjtask: {type: function, status: done, note: "UPSTREAM-DIFF: identity (no ForkJoin)"}
-    flatten: {type: function, status: done}
-    fold: {type: function, status: done, note: "UPSTREAM-DIFF: sequential fold (no ForkJoin)"}
-    foldcat: {type: function, status: done}
-    folder: {type: function, status: done}
-    map: {type: function, status: done}
-    "map->Cat": {type: function, status: done}
-    mapcat: {type: function, status: done}
-    monoid: {type: function, status: done}
-    pool: {type: var, status: done, note: "UPSTREAM-DIFF: nil (no ForkJoinPool)"}
-    reduce: {type: function, status: done}
-    reducer: {type: function, status: done}
-    remove: {type: function, status: done}
-    take: {type: function, status: done}
-    "take-while": {type: function, status: done}
+    "->Cat": {type: function, status: done, note: "evalString (Phase B.13)"}
+    CollFold: {type: var, status: done, note: "evalString (Phase B.13)"}
+    "append!": {type: function, status: done, note: "builtin (Phase B.13)"}
+    cat: {type: function, status: done, note: "evalString (Phase B.13)"}
+    "coll-fold": {type: function, status: done, note: "evalString (Phase B.13)"}
+    drop: {type: function, status: done, note: "evalString (Phase B.13)"}
+    filter: {type: function, status: done, note: "evalString (Phase B.13)"}
+    fjtask: {type: function, status: done, note: "builtin (Phase B.13), UPSTREAM-DIFF: identity (no ForkJoin)"}
+    flatten: {type: function, status: done, note: "evalString (Phase B.13)"}
+    fold: {type: function, status: done, note: "evalString (Phase B.13), UPSTREAM-DIFF: sequential fold (no ForkJoin)"}
+    foldcat: {type: function, status: done, note: "evalString (Phase B.13)"}
+    folder: {type: function, status: done, note: "evalString (Phase B.13)"}
+    map: {type: function, status: done, note: "evalString (Phase B.13)"}
+    "map->Cat": {type: function, status: done, note: "evalString (Phase B.13)"}
+    mapcat: {type: function, status: done, note: "evalString (Phase B.13)"}
+    monoid: {type: function, status: done, note: "evalString (Phase B.13)"}
+    pool: {type: var, status: done, note: "evalString (Phase B.13), UPSTREAM-DIFF: nil (no ForkJoinPool)"}
+    reduce: {type: function, status: done, note: "evalString (Phase B.13)"}
+    reducer: {type: function, status: done, note: "evalString (Phase B.13)"}
+    remove: {type: function, status: done, note: "evalString (Phase B.13)"}
+    take: {type: function, status: done, note: "evalString (Phase B.13)"}
+    "take-while": {type: function, status: done, note: "evalString (Phase B.13)"}
   clojure_core_server:
     "*session*": {type: dynamic-var, status: done, note: "builtin (Phase B.5)"}
     "io-prepl": {type: function, status: done, note: "builtin (Phase B.5) — stub, throws not-yet-implemented"}

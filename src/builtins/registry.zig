@@ -62,6 +62,7 @@ const ns_zip_mod = @import("ns_zip.zig");
 const ns_repl_mod = @import("ns_repl.zig");
 const ns_xml_mod = @import("ns_xml.zig");
 const ns_main_mod = @import("ns_main.zig");
+const ns_reducers_mod = @import("ns_reducers.zig");
 
 // ============================================================
 // Comptime table aggregation
@@ -568,6 +569,18 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
     ns_xml_mod.postRegister(env.allocator, xml_ns);
+
+    // Register clojure.core.reducers Zig builtins (Phase B.13)
+    // Eagerly loaded (in loadBootstrapAll), so must be registered here for runtime availability.
+    // Complex code (protocols, macros, reify) handled in loadReducers via evalString.
+    const reducers_ns = try env.findOrCreateNamespace("clojure.core.reducers");
+    for (ns_reducers_mod.builtins) |b| {
+        const v = try reducers_ns.intern(b.name);
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
 
     // clojure.main — Zig builtins registered in loadMain() (Phase B.12)
     // Not registered here because clojure.main is lazy-loaded and requireLib

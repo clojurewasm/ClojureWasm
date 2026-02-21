@@ -136,8 +136,184 @@ const pprint_clj_source = @embedFile("../clj/clojure/pprint.clj");
 
 // zip.clj removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
-/// Embedded clojure/core/reducers.clj source (compiled into binary).
-const reducers_clj_source = @embedFile("../clj/clojure/core/reducers.clj");
+// reducers.clj stubs removed — pool/fjtask/fjinvoke/fjfork/fjjoin/append! now Zig builtins
+// in ns_reducers.zig (Phase B.13). Complex code (protocols, macros, reify) remains as evalString.
+const reducers_macros_source =
+    \\(def pool nil)
+    \\(defn reduce
+    \\  ([f coll] (reduce f (f) coll))
+    \\  ([f init coll]
+    \\   (if (map? coll)
+    \\     (clojure.core.protocols/kv-reduce coll f init)
+    \\     (clojure.core.protocols/coll-reduce coll f init))))
+    \\(defprotocol CollFold
+    \\  (coll-fold [coll n combinef reducef]))
+    \\(defn fold
+    \\  ([reducef coll] (fold reducef reducef coll))
+    \\  ([combinef reducef coll] (fold 512 combinef reducef coll))
+    \\  ([n combinef reducef coll]
+    \\   (coll-fold coll n combinef reducef)))
+    \\(defn monoid [op ctor]
+    \\  (fn m
+    \\    ([] (ctor))
+    \\    ([a b] (op a b))))
+    \\(defn reducer [coll xf]
+    \\  (reify
+    \\    clojure.core.protocols/CollReduce
+    \\    (coll-reduce
+    \\      ([this f1] (clojure.core.protocols/coll-reduce this f1 (f1)))
+    \\      ([_ f1 init] (clojure.core.protocols/coll-reduce coll (xf f1) init)))))
+    \\(defn folder [coll xf]
+    \\  (reify
+    \\    clojure.core.protocols/CollReduce
+    \\    (coll-reduce
+    \\      ([_ f1] (clojure.core.protocols/coll-reduce coll (xf f1) (f1)))
+    \\      ([_ f1 init] (clojure.core.protocols/coll-reduce coll (xf f1) init)))
+    \\    CollFold
+    \\    (coll-fold [_ n combinef reducef]
+    \\      (coll-fold coll n combinef (xf reducef)))))
+    \\(defn- do-curried [name doc meta args body]
+    \\  (let [cargs (vec (butlast args))]
+    \\    `(defn ~name ~doc ~meta
+    \\       (~cargs (fn [x#] (~name ~@cargs x#)))
+    \\       (~args ~@body))))
+    \\(defmacro ^:private defcurried
+    \\  [name doc meta args & body]
+    \\  (do-curried name doc meta args body))
+    \\(defn- do-rfn [f1 k fkv]
+    \\  `(fn
+    \\     ([] (~f1))
+    \\     ~(clojure.walk/postwalk
+    \\       #(if (sequential? %)
+    \\          ((if (vector? %) vec identity)
+    \\           (clojure.core/remove #{k} %))
+    \\          %)
+    \\       fkv)
+    \\     ~fkv))
+    \\(defmacro ^:private rfn [[f1 k] fkv]
+    \\  (do-rfn f1 k fkv))
+    \\(defcurried map "" {} [f coll]
+    \\  (folder coll
+    \\          (fn [f1]
+    \\            (rfn [f1 k]
+    \\              ([ret k v]
+    \\               (f1 ret (f k v)))))))
+    \\(defcurried mapcat "" {} [f coll]
+    \\  (folder coll
+    \\          (fn [f1]
+    \\            (let [f1 (fn
+    \\                       ([ret v]
+    \\                        (let [x (f1 ret v)] (if (reduced? x) (reduced x) x)))
+    \\                       ([ret k v]
+    \\                        (let [x (f1 ret k v)] (if (reduced? x) (reduced x) x))))]
+    \\              (rfn [f1 k]
+    \\                ([ret k v]
+    \\                 (reduce f1 ret (f k v))))))))
+    \\(defcurried filter "" {} [pred coll]
+    \\  (folder coll
+    \\          (fn [f1]
+    \\            (rfn [f1 k]
+    \\              ([ret k v]
+    \\               (if (pred k v)
+    \\                 (f1 ret k v)
+    \\                 ret))))))
+    \\(defcurried remove "" {} [pred coll]
+    \\  (filter (complement pred) coll))
+    \\(defcurried flatten "" {} [coll]
+    \\  (folder coll
+    \\          (fn [f1]
+    \\            (fn
+    \\              ([] (f1))
+    \\              ([ret v]
+    \\               (if (sequential? v)
+    \\                 (clojure.core.protocols/coll-reduce (flatten v) f1 ret)
+    \\                 (f1 ret v)))))))
+    \\(defcurried take-while "" {} [pred coll]
+    \\  (reducer coll
+    \\           (fn [f1]
+    \\             (rfn [f1 k]
+    \\               ([ret k v]
+    \\                (if (pred k v)
+    \\                  (f1 ret k v)
+    \\                  (reduced ret)))))))
+    \\(defcurried take "" {} [n coll]
+    \\  (reducer coll
+    \\           (fn [f1]
+    \\             (let [cnt (atom n)]
+    \\               (rfn [f1 k]
+    \\                 ([ret k v]
+    \\                  (swap! cnt dec)
+    \\                  (if (neg? @cnt)
+    \\                    (reduced ret)
+    \\                    (f1 ret k v))))))))
+    \\(defcurried drop "" {} [n coll]
+    \\  (reducer coll
+    \\           (fn [f1]
+    \\             (let [cnt (atom n)]
+    \\               (rfn [f1 k]
+    \\                 ([ret k v]
+    \\                  (swap! cnt dec)
+    \\                  (if (neg? @cnt)
+    \\                    (f1 ret k v)
+    \\                    ret)))))))
+    \\(defrecord Cat [cnt left right])
+    \\(extend-type Cat clojure.core.protocols/CollReduce
+    \\             (coll-reduce
+    \\               ([this f1] (clojure.core.protocols/coll-reduce this f1 (f1)))
+    \\               ([this f1 init]
+    \\                (clojure.core.protocols/coll-reduce
+    \\                 (:right this) f1
+    \\                 (clojure.core.protocols/coll-reduce (:left this) f1 init)))))
+    \\(extend-type Cat CollFold
+    \\             (coll-fold
+    \\               [this n combinef reducef]
+    \\               (fjinvoke
+    \\                (fn []
+    \\                  (let [rt (fjfork (fjtask #(coll-fold (:right this) n combinef reducef)))]
+    \\                    (combinef
+    \\                     (coll-fold (:left this) n combinef reducef)
+    \\                     (fjjoin rt)))))))
+    \\(defn cat
+    \\  ([] [])
+    \\  ([ctor]
+    \\   (fn
+    \\     ([] (ctor))
+    \\     ([left right] (cat left right))))
+    \\  ([left right]
+    \\   (cond
+    \\     (zero? (count left)) right
+    \\     (zero? (count right)) left
+    \\     :else
+    \\     (->Cat (+ (count left) (count right)) left right))))
+    \\(defn foldcat [coll]
+    \\  (fold cat append! coll))
+    \\(defn- foldvec [v n combinef reducef]
+    \\  (cond
+    \\    (empty? v) (combinef)
+    \\    (<= (count v) n) (reduce reducef (combinef) v)
+    \\    :else
+    \\    (let [split (quot (count v) 2)
+    \\          v1 (subvec v 0 split)
+    \\          v2 (subvec v split (count v))
+    \\          fc (fn [child] #(foldvec child n combinef reducef))]
+    \\      (fjinvoke
+    \\       #(let [f1 (fc v1)
+    \\              t2 (fjtask (fc v2))]
+    \\          (fjfork t2)
+    \\          (combinef (f1) (fjjoin t2)))))))
+    \\(extend-type nil CollFold
+    \\             (coll-fold
+    \\               [coll n combinef reducef]
+    \\               (combinef)))
+    \\(extend-type Object CollFold
+    \\             (coll-fold
+    \\               [coll n combinef reducef]
+    \\               (reduce reducef (combinef) coll)))
+    \\(extend-type Vector CollFold
+    \\             (coll-fold
+    \\               [v n combinef reducef]
+    \\               (foldvec v n combinef reducef)))
+;
 
 /// Embedded clojure/test/tap.clj source (compiled into binary).
 const test_tap_clj_source = @embedFile("../clj/clojure/test/tap.clj");
@@ -1393,15 +1569,27 @@ pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
 
 // loadZip removed — now Zig builtins in ns_zip.zig (Phase B.9)
 
-/// Load and evaluate clojure/core/reducers.clj in the given Env.
-/// Creates the clojure.core.reducers namespace with reduce, fold, CollFold,
-/// monoid, and transformation functions (map, filter, etc.).
+/// Load clojure.core.reducers: register Zig builtins + evaluate complex functions.
+/// Simple stubs (fjtask, fjinvoke, etc.) are Zig builtins in ns_reducers.zig (Phase B.13).
+/// Complex code (protocols, macros, reify, extend-type) remains as evalString.
 /// Requires clojure.walk and clojure.core.protocols to be loaded first.
 pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
+    const ns_reducers_mod = @import("../builtins/ns_reducers.zig");
     const reducers_ns = env.findOrCreateNamespace("clojure.core.reducers") catch {
         err.ensureInfoSet(.eval, .internal_error, .{}, "bootstrap evaluation error", .{});
         return error.EvalError;
     };
+
+    // Register Zig builtins first
+    for (ns_reducers_mod.builtins) |b| {
+        const v = reducers_ns.intern(b.name) catch {
+            return error.EvalError;
+        };
+        v.applyBuiltinDef(b);
+        if (b.func) |f| {
+            v.bindRoot(Value.initBuiltinFn(f));
+        }
+    }
 
     const core_ns = env.findNamespace("clojure.core") orelse {
         err.setInfoFmt(.eval, .internal_error, .{}, "bootstrap: required namespace not found", .{});
@@ -1415,7 +1603,7 @@ pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
     const saved_ns = env.current_ns;
     env.current_ns = reducers_ns;
 
-    _ = try evalString(allocator, env, reducers_clj_source);
+    _ = try evalString(allocator, env, reducers_macros_source);
 
     env.current_ns = saved_ns;
     syncNsVar(env);
@@ -2258,7 +2446,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
     // Re-compile core/reducers.clj
     if (env.findNamespace("clojure.core.reducers")) |reducers_ns| {
         env.current_ns = reducers_ns;
-        _ = try evalStringVMBootstrap(allocator, env, reducers_clj_source);
+        _ = try evalStringVMBootstrap(allocator, env, reducers_macros_source);
     }
 
     // spec.alpha re-compiled lazily on first require (startup time)
