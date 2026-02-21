@@ -65,27 +65,22 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase F: 1NS=1File Consolidation (D108).
-Merge ns_*.zig into lib/*.zig — each namespace becomes a single self-contained file.
-18 files to merge, batched by complexity. No functional change.
+Phase B.15: spec/alpha → Zig (1789 lines).
+Migrate clojure.spec.alpha, clojure.spec.gen.alpha, clojure.core.specs.alpha
+from @embedFile .clj to Zig builtins in lib/*.zig.
 
 ## Previous Task
 
-Phase R: Unified Namespace Registration (D107).
-- NamespaceDef struct in registry.zig, registerNamespace() generic function
-- 30 lib/*.zig files (one per non-core namespace)
-- ns_loader.zig: loadNamespaceClj() + loadLazyNamespace()
-- ~470 lines of boilerplate removed
+Phase F: 1NS=1File Consolidation (D108) — COMPLETE.
+- Merged 18 ns_*.zig into lib/*.zig (4 batches: F.1-F.4)
+- Only ns_ops.zig remains (core namespace operations, not a library NS)
+- Each lib/*.zig is now self-contained: NamespaceDef + full implementation
+- Cross-dependencies resolved (core_protocols exports used by data, datafy, java_io, collections)
 
 ## Task Queue
 
 ```
-Phase F: 1NS=1File Consolidation (in progress)
-  F.1: Simple standalone ns_*.zig (browse, repl_deps, reducers, server, java_process)
-  F.2: Medium standalone (main, stacktrace, instant, walk, template)
-  F.3: Larger standalone (set, xml, repl, zip)
-  F.4: Cross-dependent (core_protocols → data, datafy, java_io)
-Phase B.15: spec/alpha → Zig (1789 lines)
+Phase B.15: spec/alpha → Zig (next)
 Phase B.16: pprint → Zig (2732 lines)
 --- After Phase B ---
 Phase C: Bootstrap pipeline elimination (zero evalString)

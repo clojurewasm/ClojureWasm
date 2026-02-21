@@ -3701,8 +3701,8 @@ fn isReifyValue(val: Value) bool {
 
 /// Dispatch reduce through CollReduce protocol for reify objects.
 fn callCollReduce(allocator: Allocator, coll: Value, f: Value, init: ?Value) anyerror!Value {
-    const ns_core_protocols = @import("ns_core_protocols.zig");
-    const protocol = ns_core_protocols.coll_reduce_protocol orelse {
+    const clojure_core_protocols = @import("lib/clojure_core_protocols.zig");
+    const protocol = clojure_core_protocols.coll_reduce_protocol orelse {
         // Fallback if protocol not yet registered
         if (init) |v| return sequences_mod.zigReduceFn(allocator, &.{ f, v, coll });
         const s = try seqFn(allocator, &.{coll});
