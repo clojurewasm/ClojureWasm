@@ -23,4 +23,9 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_repl_deps.zig").namespace_def,
     @import("clojure_stacktrace.zig").namespace_def,
     @import("clojure_walk.zig").namespace_def,
+    // R2.2: Simple builtins-only namespaces (batch 2)
+    @import("clojure_set.zig").namespace_def,
+    @import("clojure_java_process.zig").namespace_def,
+    @import("clojure_instant.zig").namespace_def,
+    @import("clojure_zip.zig").namespace_def,
 };

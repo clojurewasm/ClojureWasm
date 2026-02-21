@@ -116,11 +116,11 @@ const ns_datafy_mod = @import("ns_datafy.zig");
 // ns_stacktrace_mod: now via lib/clojure_stacktrace.zig (R2.1)
 const ns_server_mod = @import("ns_server.zig");
 const ns_data_mod = @import("ns_data.zig");
-const ns_set_mod = @import("ns_set.zig");
+// ns_set_mod: now via lib/clojure_set.zig (R2.2)
 const ns_java_io_mod = @import("ns_java_io.zig");
-const ns_java_process_mod = @import("ns_java_process.zig");
-const ns_instant_mod = @import("ns_instant.zig");
-const ns_zip_mod = @import("ns_zip.zig");
+// ns_java_process_mod: now via lib/clojure_java_process.zig (R2.2)
+// ns_instant_mod: now via lib/clojure_instant.zig (R2.2)
+// ns_zip_mod: now via lib/clojure_zip.zig (R2.2)
 const ns_repl_mod = @import("ns_repl.zig");
 const ns_xml_mod = @import("ns_xml.zig");
 const ns_main_mod = @import("ns_main.zig");
@@ -598,45 +598,11 @@ pub fn registerBuiltins(env: *Env) !void {
         }
     }
 
-    // Register clojure.set namespace builtins (Phase B.6)
-    const set_ns = try env.findOrCreateNamespace("clojure.set");
-    for (ns_set_mod.builtins) |b| {
-        const v = try set_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.java.process namespace builtins (Phase B.7)
-    const process_ns = try env.findOrCreateNamespace("clojure.java.process");
-    for (ns_java_process_mod.builtins) |b| {
-        const v = try process_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.instant namespace builtins (Phase B.8)
-    const instant_ns = try env.findOrCreateNamespace("clojure.instant");
-    for (ns_instant_mod.builtins) |b| {
-        const v = try instant_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-
-    // Register clojure.zip namespace builtins (Phase B.9)
-    const zip_ns = try env.findOrCreateNamespace("clojure.zip");
-    for (ns_zip_mod.builtins) |b| {
-        const v = try zip_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
+    // Register clojure.set, clojure.java.process, clojure.instant, clojure.zip (Phase R2.2)
+    try registerNamespace(env, @import("lib/clojure_set.zig").namespace_def);
+    try registerNamespace(env, @import("lib/clojure_java_process.zig").namespace_def);
+    try registerNamespace(env, @import("lib/clojure_instant.zig").namespace_def);
+    try registerNamespace(env, @import("lib/clojure_zip.zig").namespace_def);
 
     // Register clojure.repl function builtins (Phase B.10)
     // Note: macros (doc, dir, source) and special-doc-map handled in loadRepl via evalString
