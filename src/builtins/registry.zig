@@ -103,18 +103,18 @@ const math_mod = @import("math.zig");
 const http_server_mod = @import("http_server.zig");
 const lifecycle_mod = @import("../runtime/lifecycle.zig");
 const wasm_builtins_mod = @import("../wasm/builtins.zig");
-const shell_mod = @import("shell.zig");
-const pprint_mod = @import("pprint.zig");
+// shell_mod: now via lib/clojure_java_shell.zig (R2.3)
+// pprint_mod: now via lib/clojure_pprint.zig (R2.3)
 const array_mod = @import("array.zig");
 const constructors_mod = @import("../interop/constructors.zig");
-const ns_template_mod = @import("ns_template.zig");
+// ns_template_mod: now via lib/clojure_template.zig (R2.3)
 // ns_browse_mod: now via lib/clojure_java_browse.zig (R2.1)
 // ns_repl_deps_mod: now via lib/clojure_repl_deps.zig (R2.1)
 const ns_core_protocols_mod = @import("ns_core_protocols.zig");
 const ns_datafy_mod = @import("ns_datafy.zig");
 // ns_walk_mod: now via lib/clojure_walk.zig (R2.1)
 // ns_stacktrace_mod: now via lib/clojure_stacktrace.zig (R2.1)
-const ns_server_mod = @import("ns_server.zig");
+// ns_server_mod: now via lib/clojure_core_server.zig (R2.3)
 const ns_data_mod = @import("ns_data.zig");
 // ns_set_mod: now via lib/clojure_set.zig (R2.2)
 const ns_java_io_mod = @import("ns_java_io.zig");
@@ -472,81 +472,17 @@ pub fn registerBuiltins(env: *Env) !void {
     // Hidden var for GC rooting of handler function
     _ = try http_ns.intern("__handler");
 
-    // Register clojure.java.shell namespace builtins (Phase 39.1)
-    const shell_ns = try env.findOrCreateNamespace("clojure.java.shell");
-    for (shell_mod.builtins) |b| {
-        const v = try shell_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // shell dynamic vars (Phase B.2)
-    const shell_dvars = [_]struct { name: []const u8, val: Value }{
-        .{ .name = "*sh-dir*", .val = Value.nil_val },
-        .{ .name = "*sh-env*", .val = Value.nil_val },
-    };
-    for (shell_dvars) |dv| {
-        const v = try shell_ns.intern(dv.name);
-        v.dynamic = true;
-        v.bindRoot(dv.val);
-    }
-    // shell macros (Phase B.2)
-    const shell_macro_defs = [_]BuiltinDef{ shell_mod.with_sh_dir_def, shell_mod.with_sh_env_def };
-    for (shell_macro_defs) |md| {
-        const v = try shell_ns.intern(md.name);
-        v.applyBuiltinDef(md);
-        if (md.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-        v.setMacro(true);
-    }
+    // Register clojure.java.shell (Phase R2.3)
+    try registerNamespace(env, @import("lib/clojure_java_shell.zig").namespace_def);
 
     // Register clojure.java.browse (Phase R2.1)
     try registerNamespace(env, @import("lib/clojure_java_browse.zig").namespace_def);
 
-    // Register clojure.pprint namespace builtins (Phase 39.2)
-    const pprint_ns = try env.findOrCreateNamespace("clojure.pprint");
-    for (pprint_mod.builtins) |b| {
-        const v = try pprint_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // pprint dynamic vars
-    const pprint_dvars = [_]struct { name: []const u8, val: Value }{
-        .{ .name = "*print-right-margin*", .val = Value.initInteger(72) },
-        .{ .name = "*print-miser-width*", .val = Value.initInteger(40) },
-        .{ .name = "*print-pretty*", .val = Value.true_val },
-        .{ .name = "*print-suppress-namespaces*", .val = Value.false_val },
-        .{ .name = "*print-radix*", .val = Value.false_val },
-        .{ .name = "*print-base*", .val = Value.initInteger(10) },
-        .{ .name = "*print-pprint-dispatch*", .val = Value.nil_val },
-    };
-    for (pprint_dvars) |dv| {
-        const v = try pprint_ns.intern(dv.name);
-        v.dynamic = true;
-        v.bindRoot(dv.val);
-    }
+    // Register clojure.pprint (Phase R2.3)
+    try registerNamespace(env, @import("lib/clojure_pprint.zig").namespace_def);
 
-    // Register clojure.template namespace builtins (Phase B.1)
-    const template_ns = try env.findOrCreateNamespace("clojure.template");
-    for (ns_template_mod.builtins) |b| {
-        const v = try template_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // Register do-template macro
-    const dt_def = ns_template_mod.do_template_def;
-    const dt_var = try template_ns.intern(dt_def.name);
-    dt_var.applyBuiltinDef(dt_def);
-    if (dt_def.func) |f| {
-        dt_var.bindRoot(Value.initBuiltinFn(f));
-    }
-    dt_var.setMacro(true);
+    // Register clojure.template (Phase R2.3)
+    try registerNamespace(env, @import("lib/clojure_template.zig").namespace_def);
 
     // Register clojure.core.protocols (Phase B.3)
     const allocator = env.allocator;
@@ -573,19 +509,8 @@ pub fn registerBuiltins(env: *Env) !void {
     // Register clojure.stacktrace (Phase R2.1)
     try registerNamespace(env, @import("lib/clojure_stacktrace.zig").namespace_def);
 
-    // Register clojure.core.server namespace builtins (Phase B.5)
-    const server_ns = try env.findOrCreateNamespace("clojure.core.server");
-    for (ns_server_mod.builtins) |b| {
-        const v = try server_ns.intern(b.name);
-        v.applyBuiltinDef(b);
-        if (b.func) |f| {
-            v.bindRoot(Value.initBuiltinFn(f));
-        }
-    }
-    // server dynamic var: *session*
-    const session_var = try server_ns.intern("*session*");
-    session_var.dynamic = true;
-    session_var.bindRoot(Value.nil_val);
+    // Register clojure.core.server (Phase R2.3)
+    try registerNamespace(env, @import("lib/clojure_core_server.zig").namespace_def);
 
     // Register clojure.data namespace builtins + protocols (Phase B.5)
     try ns_data_mod.registerProtocols(allocator, env);

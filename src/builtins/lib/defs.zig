@@ -28,4 +28,9 @@ pub const all_namespace_defs = [_]NamespaceDef{
     @import("clojure_java_process.zig").namespace_def,
     @import("clojure_instant.zig").namespace_def,
     @import("clojure_zip.zig").namespace_def,
+    // R2.3: Builtins + dynamic vars / macros
+    @import("clojure_core_server.zig").namespace_def,
+    @import("clojure_template.zig").namespace_def,
+    @import("clojure_java_shell.zig").namespace_def,
+    @import("clojure_pprint.zig").namespace_def,
 };
