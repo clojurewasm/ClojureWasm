@@ -796,11 +796,11 @@ vars:
     "table-model": {type: var, status: skip, note: 100% Swing GUI}
     "tree-model": {type: function, status: skip, note: 100% Swing GUI}
   clojure_instant:
-    "parse-timestamp": {type: function, status: done}
+    "parse-timestamp": {type: function, status: done, note: "builtin (Phase B.8)"}
     "read-instant-calendar": {type: function, status: skip, note: "Java Calendar type"}
-    "read-instant-date": {type: function, status: done}
+    "read-instant-date": {type: function, status: done, note: "builtin (Phase B.8)"}
     "read-instant-timestamp": {type: function, status: skip, note: "Java Timestamp type"}
-    validated: {type: function, status: done}
+    validated: {type: function, status: done, note: "builtin (Phase B.8)"}
   clojure_java_browse:
     "*open-url-script*": {type: dynamic-var, status: done}
     "browse-url": {type: function, status: done}

@@ -59,21 +59,19 @@ Java interop policy: Library-driven. Test real libraries as-is (no forking/embed
 
 ## Current Task
 
-Phase B.8: instant (189 lines) → Zig.
+Phase B.9: zip (279 lines) → Zig.
 
 ## Previous Task
 
-Phase B.7: java/io (217 lines), java/process (85 lines) → Zig.
-- ns_java_io.zig: 10 builtins + Coercions/IOFactory protocols + default-streams-impl var
-- ns_java_process.zig: 5 builtins (start, stdout, stderr, exit-ref, exec)
-- Protocols registered via registerProtocols, default-streams-impl built as PersistentArrayMap
-- exit-ref creates already-realized Delay struct directly
-- Deleted io.clj and process.clj from src/clj/
+Phase B.8: instant (189 lines) → Zig.
+- ns_instant.zig: 3 public builtins (parse-timestamp, validated, read-instant-date) + __validated-call
+- Parse via regex (re-pattern/re-matches), validation inline, construct via __inst-from-string
+- validated uses partial(__validated-call, constructor) for closure
+- Deleted instant.clj from src/clj/
 
 ## Task Queue
 
 ```
-Phase B.8: instant (189 lines)
 Phase B.9: zip (279 lines)
 Phase B.10: repl (245 lines)
 Phase B.11: xml (251 lines)
