@@ -21,6 +21,7 @@ pub const env = @import("runtime/env.zig");
 pub const var_mod = @import("runtime/var.zig");
 pub const namespace = @import("runtime/namespace.zig");
 pub const gc = @import("runtime/gc.zig");
+pub const runtime_arithmetic = @import("runtime/arithmetic.zig");
 pub const opcodes = @import("engine/compiler/opcodes.zig");
 pub const chunk = @import("engine/compiler/chunk.zig");
 pub const compiler = @import("engine/compiler/compiler.zig");

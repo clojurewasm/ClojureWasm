@@ -32,7 +32,7 @@ const PersistentList = collections.PersistentList;
 const PersistentVector = collections.PersistentVector;
 const PersistentArrayMap = collections.PersistentArrayMap;
 const PersistentHashSet = collections.PersistentHashSet;
-const arith = @import("../../lang/builtins/arithmetic.zig");
+const arith = @import("../../runtime/arithmetic.zig");
 const bootstrap = @import("../bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
 // multimethods_mod removed — findBestMethod now via dispatch vtable (D109 Z3)
