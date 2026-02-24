@@ -25,21 +25,25 @@ CW is a complete, optimized Zig implementation with behavioral Clojure compatibi
 
 ## Current Task
 
-T1: Fix pprint `*print-level*` support (1 pprint FAIL → 0)
-- `pprintImpl()` never checks `*print-level*`
-- Add depth tracking using existing `print_depth` threadlocal
-- File: `src/lang/builtins/pprint.zig`
+T3: Fix deps E2E stderr messages (3 FAIL → 0)
+- cli.zig error messages don't match expected test output format
+- T3a: `Error: git tag '` → `ERROR: Git tag "`
+- T3b: backticks → single quotes, "fetch" → "download...first"
+- T3c: add "(Leiningen)" to message text
+- File: `src/app/cli.zig`
 
 ## Previous Task
 
-Phase 97 (Architecture Refactoring) — COMPLETE.
+T2: Fix `into` + reducers reify dispatch (11 FAIL → 0) — DONE.
+Root cause: `callCollReduce` used `"map"` as type key instead of the reify type string.
+Fix: Use `interop_dispatch.getReifyType(coll)` to get actual reify type for protocol lookup.
 
 ## Task Queue
 
 ```
 Part A: Test/Leak Fixes
-T1: Fix pprint *print-level* (1 FAIL)         ← CURRENT
-T2: Fix into + reducers reify dispatch (11 FAIL)
+T1: Fix pprint *print-level* (1 FAIL)         ✓ DONE
+T2: Fix into + reducers reify dispatch (11 FAIL)  ✓ DONE
 T3: Fix deps E2E stderr messages (3 FAIL)
 T4: Fix deps E2E :deps/root support (1 FAIL)
 T5: Fix deps E2E transitive local dep (1 FAIL)

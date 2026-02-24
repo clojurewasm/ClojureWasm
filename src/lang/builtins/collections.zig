@@ -938,6 +938,14 @@ pub fn shuffleFn(allocator: Allocator, args: []const Value) anyerror!Value {
 pub fn intoFn(allocator: Allocator, args: []const Value) anyerror!Value {
     if (args.len != 2) return err.setErrorFmt(.eval, .arity_error, .{}, "Wrong number of args ({d}) passed to into", .{args.len});
     if (args[1] == Value.nil_val) return args[0];
+
+    // Reify objects (reducers) dispatch through CollReduce protocol
+    if (isReifyValue(args[1])) {
+        const conj_fn = try lookupBuiltin(allocator, "conj") orelse
+            return err.setErrorFmt(.eval, .type_error, .{}, "Cannot find conj for into", .{});
+        return try reduceFn(allocator, &.{ conj_fn, args[0], args[1] });
+    }
+
     const from_items = try collectSeqItems(allocator, args[1]);
     if (from_items.len == 0) return args[0];
 
@@ -3713,11 +3721,11 @@ fn callCollReduce(allocator: Allocator, coll: Value, f: Value, init: ?Value) any
         return sequences_mod.zigReduceFn(allocator, &.{ f, first_val, rest_val });
     };
 
-    // Look up implementation in CollReduce protocol
-    const type_key = "map"; // reify objects are maps
-    const method_map_val = protocol.impls.getByStringKey(type_key) orelse
+    // Look up implementation in CollReduce protocol using actual reify type
+    const reify_type = interop_dispatch.getReifyType(coll) orelse "map";
+    const method_map_val = protocol.impls.getByStringKey(reify_type) orelse
         protocol.impls.getByStringKey("Object") orelse
-        return err.setErrorFmt(.eval, .type_error, .{}, "No implementation of CollReduce found for type: {s}", .{type_key});
+        return err.setErrorFmt(.eval, .type_error, .{}, "No implementation of CollReduce found for type: {s}", .{reify_type});
     if (method_map_val.tag() != .map) return error.TypeError;
     const method_fn = method_map_val.asMap().getByStringKey("coll-reduce") orelse
         return err.setErrorFmt(.eval, .type_error, .{}, "No coll-reduce method found in CollReduce implementation", .{});
