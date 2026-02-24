@@ -58,15 +58,11 @@ as matching JVM behavior (Atom.java/ARef.java catch silently).
 
 **Files**: `src/lang/builtins/atom.zig`, `src/runtime/stm.zig`, `src/runtime/thread_pool.zig`
 
-### I-013: Bootstrap namespace refer errors silently swallowed
+### ~~I-013: Bootstrap namespace refer errors silently swallowed~~ RESOLVED
 
-**Symptom**: ~80 instances of `ns.refer(...) catch {}` in bootstrap.zig.
-If a refer fails (e.g., name collision), it's silently ignored.
-
-**Fix**: Log a warning on refer failure (at minimum). These are bootstrap-time
-only so a panic is too aggressive, but silent failure hides real issues.
-
-**Files**: `src/runtime/bootstrap.zig` (throughout load* functions)
+**Resolution**: The `catch {}` instances in bootstrap.zig were eliminated during
+earlier refactoring (R5/R6 bootstrap decomposition). The bootstrap module no longer
+contains silent `catch {}` for refer operations.
 
 ---
 
@@ -98,15 +94,13 @@ but `fdef`, `instrument`, generators, and most complex specs fail.
 
 **Phase**: Phase B.15
 
-### I-023: pointer→i64 @intCast in interop classes
+### ~~I-023: pointer→i64 @intCast in interop classes~~ RESOLVED
 
-**Symptom**: State pointers stored as `Value.initInteger(@intCast(@intFromPtr(state)))`.
-On 64-bit systems, high-bit pointers would panic.
+**Resolution**: Replaced `@intCast` with `@bitCast` for both store
+(`@intFromPtr` → `i64`) and load (`asInteger` → `usize`) in all 4 interop
+class files. Prevents panic on high-bit pointers.
 
-**Fix**: Use `@bitCast` instead of `@intCast` for pointer-to-integer conversion.
-
-**Files**: `src/interop/classes/string_writer.zig:63`,
-`pushback_reader.zig:129`, `buffered_writer.zig:93`, `string_builder.zig:80`
+**Files**: `src/lang/interop/classes/{string_writer,pushback_reader,string_builder,buffered_writer}.zig`
 
 ### I-024: wasm bridge double @intCast truncation
 
@@ -181,11 +175,11 @@ know about deferred cache roots).
 | I-010 | ~~**Now**~~ RESOLVED | 88C.4 |
 | I-011 | ~~During Phase B~~ RESOLVED | R12 |
 | I-012 | ~~During Phase B~~ RESOLVED | R12 |
-| I-013 | During Phase C | C (bootstrap simplification) |
+| I-013 | ~~During Phase C~~ RESOLVED | R5/R6 |
 | I-020 | ~~During Phase B~~ RESOLVED | B.3 hotfix |
 | I-021 | Phase B.13 or 89 | B.13 / 89 |
 | I-022 | Phase B.15 | B.15 |
-| I-023 | During Phase B | B (interop touches) |
+| I-023 | ~~During Phase B~~ RESOLVED | R12 |
 | I-024 | During Phase B | B (wasm bridge review) |
 | I-030 | Phase B (organically) | B |
 | I-031 | Phase B + Phase 89 | B / 89 |

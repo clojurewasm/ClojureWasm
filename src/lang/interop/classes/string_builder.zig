@@ -77,7 +77,7 @@ pub fn construct(allocator: Allocator, args: []const Value) anyerror!Value {
 
     const extra = try allocator.alloc(Value, 2);
     extra[0] = Value.initKeyword(allocator, .{ .ns = null, .name = "__handle" });
-    extra[1] = Value.initInteger(@intCast(@intFromPtr(state)));
+    extra[1] = Value.initInteger(@as(i64, @bitCast(@intFromPtr(state))));
 
     return constructors.makeClassInstance(allocator, class_name, extra);
 }
@@ -92,7 +92,7 @@ fn getState(obj: Value) ?*State {
             const kw = entries[i].asKeyword();
             if (kw.ns == null and std.mem.eql(u8, kw.name, "__handle")) {
                 if (entries[i + 1].tag() == .integer) {
-                    const ptr_int: usize = @intCast(entries[i + 1].asInteger());
+                    const ptr_int: usize = @bitCast(entries[i + 1].asInteger());
                     return @ptrFromInt(ptr_int);
                 }
             }
