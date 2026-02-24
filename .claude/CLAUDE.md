@@ -24,9 +24,6 @@ Layer 3: src/app/       — application (main, CLI, REPL, deps, Wasm)
 
 Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md` (auto-loads on src/ edits).
 
-**NOTE**: During Phase 97 (before R8 directory rename), use pre-R8 zone mapping
-defined in `.claude/rules/zone-deps.md`.
-
 ## TDD (t-wada style)
 
 1. **Red**: Write exactly one failing test first
@@ -235,14 +232,11 @@ Wasm history: `bench/wasm_history.yaml` — CW vs wasmtime wasm benchmark progre
 
 ## Dual Backend (D6)
 
-| Backend    | Path                            | Role                   |
-| ---------- | ------------------------------- | ---------------------- |
-| VM         | `src/vm/vm.zig`                 | Bytecode compiler + VM |
-| TreeWalk   | `src/evaluator/tree_walk.zig`   | Direct AST evaluator   |
-| EvalEngine | `src/runtime/eval_engine.zig`   | Runs both, compares    |
-
-**NOTE**: After Phase 97 R8, paths will be `src/engine/vm/vm.zig`,
-`src/engine/evaluator/tree_walk.zig`, `src/engine/eval_engine.zig`.
+| Backend    | Path                                | Role                   |
+| ---------- | ----------------------------------- | ---------------------- |
+| VM         | `src/engine/vm/vm.zig`              | Bytecode compiler + VM |
+| TreeWalk   | `src/engine/evaluator/tree_walk.zig`| Direct AST evaluator   |
+| EvalEngine | `src/engine/eval_engine.zig`        | Runs both, compares    |
 
 **Rules**: Implement in both backends. Add `EvalEngine.compare()` test.
 If Compiler emits a direct opcode, TreeWalk must handle via builtin dispatch.

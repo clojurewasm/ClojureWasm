@@ -4,7 +4,7 @@
 (require '[cljw.wasm :as wasm])
 
 ;; Part 1: Loading and calling Wasm functions
-(def math (wasm/load "src/wasm/testdata/01_add.wasm"))
+(def math (wasm/load "src/app/wasm/testdata/01_add.wasm"))
 (def add (wasm/fn math "add" {:params [:i32 :i32] :results [:i32]}))
 
 (assert (= 7 (add 3 4)) "add(3, 4) should be 7")
@@ -13,7 +13,7 @@
 (assert (= -1 (add 0 -1)) "add(0, -1) should be -1")
 
 ;; Part 2: Fibonacci
-(def fib-mod (wasm/load "src/wasm/testdata/02_fibonacci.wasm"))
+(def fib-mod (wasm/load "src/app/wasm/testdata/02_fibonacci.wasm"))
 (def fib (wasm/fn fib-mod "fib" {:params [:i32] :results [:i32]}))
 
 (assert (= 55 (fib 10)) "fib(10) should be 55")
@@ -22,7 +22,7 @@
         "fib(1..10) should match")
 
 ;; Part 3: Memory operations
-(def mem-mod (wasm/load "src/wasm/testdata/03_memory.wasm"))
+(def mem-mod (wasm/load "src/app/wasm/testdata/03_memory.wasm"))
 (def wasm-store (wasm/fn mem-mod "store" {:params [:i32 :i32] :results []}))
 (def wasm-load (wasm/fn mem-mod "load" {:params [:i32] :results [:i32]}))
 
@@ -48,7 +48,7 @@
 
 ;; Part 4: Recursive function calls with memory (nqueens)
 ;; Regression test for label stack leak on function return (F138).
-(def nq-mod (wasm/load "src/wasm/testdata/25_nqueens.wasm"))
+(def nq-mod (wasm/load "src/app/wasm/testdata/25_nqueens.wasm"))
 (def nqueens (wasm/fn nq-mod "nqueens" {:params [:i32] :results [:i32]}))
 
 (assert (= 92 (nqueens 8)) "nqueens(8) should be 92")

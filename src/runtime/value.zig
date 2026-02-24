@@ -1170,11 +1170,11 @@ pub const Value = enum(u64) {
         return encodeHeapPtr(.array_chunk, ac);
     }
 
-    pub fn initWasmModule(m: *@import("../wasm/types.zig").WasmModule) Value {
+    pub fn initWasmModule(m: *@import("../app/wasm/types.zig").WasmModule) Value {
         return encodeHeapPtr(.wasm_module, m);
     }
 
-    pub fn initWasmFn(f: *const @import("../wasm/types.zig").WasmFn) Value {
+    pub fn initWasmFn(f: *const @import("../app/wasm/types.zig").WasmFn) Value {
         return encodeHeapPtr(.wasm_fn, f);
     }
 
@@ -1350,12 +1350,12 @@ pub const Value = enum(u64) {
         return decodePtr(self, *const ArrayChunk);
     }
 
-    pub fn asWasmModule(self: Value) *@import("../wasm/types.zig").WasmModule {
-        return decodePtr(self, *@import("../wasm/types.zig").WasmModule);
+    pub fn asWasmModule(self: Value) *@import("../app/wasm/types.zig").WasmModule {
+        return decodePtr(self, *@import("../app/wasm/types.zig").WasmModule);
     }
 
-    pub fn asWasmFn(self: Value) *const @import("../wasm/types.zig").WasmFn {
-        return decodePtr(self, *const @import("../wasm/types.zig").WasmFn);
+    pub fn asWasmFn(self: Value) *const @import("../app/wasm/types.zig").WasmFn {
+        return decodePtr(self, *const @import("../app/wasm/types.zig").WasmFn);
     }
 
     pub fn initMatcher(m: *MatcherState) Value {

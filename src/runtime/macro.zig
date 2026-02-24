@@ -15,15 +15,15 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const form_mod = @import("../reader/form.zig");
+const form_mod = @import("../engine/reader/form.zig");
 const Form = form_mod.Form;
 const FormData = form_mod.FormData;
 const SymbolRef = form_mod.SymbolRef;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
 const collections = @import("collections.zig");
-const builtin_collections = @import("../builtins/collections.zig");
-const metadata = @import("../builtins/metadata.zig");
+const builtin_collections = @import("../lang/builtins/collections.zig");
+const metadata = @import("../lang/builtins/metadata.zig");
 const Namespace = @import("namespace.zig").Namespace;
 const dispatch = @import("dispatch.zig");
 const Var = @import("var.zig").Var;
@@ -217,7 +217,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             // Built-in #uuid → UUID class instance
             if (std.mem.eql(u8, t.tag, "uuid")) {
                 if (form_val.tag() == .string) {
-                    const uuid_class = @import("../interop/classes/uuid.zig");
+                    const uuid_class = @import("../lang/interop/classes/uuid.zig");
                     return uuid_class.constructFromString(allocator, form_val.asString()) catch Value.nil_val;
                 }
                 return Value.nil_val;
@@ -225,7 +225,7 @@ pub fn formToValueWithNs(allocator: Allocator, form: Form, ns: ?*const Namespace
             // Built-in #inst → create Date class instance
             if (std.mem.eql(u8, t.tag, "inst")) {
                 if (form_val.tag() == .string) {
-                    const constructors = @import("../interop/constructors.zig");
+                    const constructors = @import("../lang/interop/constructors.zig");
                     return constructors.makeClassInstance(allocator, "java.util.Date", &.{
                         Value.initKeyword(allocator, .{ .ns = null, .name = "inst" }),
                         form_val,

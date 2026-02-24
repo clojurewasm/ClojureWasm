@@ -13,8 +13,8 @@ const env_mod = @import("env.zig");
 const Env = env_mod.Env;
 const Value = @import("value.zig").Value;
 const err = @import("error.zig");
-const bootstrap = @import("bootstrap.zig");
-const registry = @import("../builtins/registry.zig");
+const bootstrap = @import("../engine/bootstrap.zig");
+const registry = @import("../lang/registry.zig");
 const NamespaceDef = registry.NamespaceDef;
 const BootstrapError = bootstrap.BootstrapError;
 
@@ -77,12 +77,12 @@ pub fn loadNamespaceClj(allocator: Allocator, env: *Env, comptime def: Namespace
 /// Replaces bootstrap.loadEmbeddedLib() if-chain with comptime table lookup.
 /// Returns true if the namespace was found and loaded.
 pub fn loadLazyNamespace(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
-    const lib_defs = @import("../builtins/lib/defs.zig");
+    const lib_defs = @import("../lang/lib/defs.zig");
 
     // Handle dependency: spec.alpha requires spec.gen.alpha
     if (std.mem.eql(u8, ns_name, "clojure.spec.alpha")) {
         if (env.findNamespace("clojure.spec.gen.alpha") == null) {
-            try loadNamespaceClj(allocator, env, @import("../builtins/lib/clojure_spec_gen_alpha.zig").namespace_def);
+            try loadNamespaceClj(allocator, env, @import("../lang/lib/clojure_spec_gen_alpha.zig").namespace_def);
         }
     }
 

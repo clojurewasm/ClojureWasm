@@ -19,7 +19,7 @@
         (wasm/memory-read m offset len)))))
 
 ;; Load module with host imports
-(def mod (wasm/load "src/wasm/testdata/04_imports.wasm"
+(def mod (wasm/load "src/app/wasm/testdata/04_imports.wasm"
                     {:imports {"env" {"print_i32" my-print-i32
                                       "print_str" my-print-str}}}))
 (reset! mod-ref mod)

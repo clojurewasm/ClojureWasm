@@ -3,7 +3,7 @@
 
 (require '[cljw.wasm :as wasm])
 
-(def go-math (wasm/load-wasi "src/wasm/testdata/09_go_math.wasm"))
+(def go-math (wasm/load-wasi "src/app/wasm/testdata/09_go_math.wasm"))
 
 (def add      (wasm/fn go-math "add"       {:params [:i32 :i32] :results [:i32]}))
 (def multiply (wasm/fn go-math "multiply"  {:params [:i32 :i32] :results [:i32]}))

@@ -4,8 +4,8 @@
 (require '[cljw.wasm :as wasm])
 
 ;; Part 1: Load with WIT
-(def greet-mod (wasm/load "src/wasm/testdata/10_greet.wasm"
-                          {:wit "src/wasm/testdata/10_greet.wit"}))
+(def greet-mod (wasm/load "src/app/wasm/testdata/10_greet.wasm"
+                          {:wit "src/app/wasm/testdata/10_greet.wit"}))
 
 ;; Part 2: WIT describe
 (let [desc (wasm/describe greet-mod)]

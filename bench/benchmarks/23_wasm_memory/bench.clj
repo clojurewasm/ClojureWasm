@@ -1,6 +1,6 @@
 (require '[cljw.wasm :as wasm])
 
-(def wmod (wasm/load "src/wasm/testdata/03_memory.wasm"))
+(def wmod (wasm/load "src/app/wasm/testdata/03_memory.wasm"))
 (def store-val (wasm/fn wmod "store"))
 (def load-val (wasm/fn wmod "load"))
 

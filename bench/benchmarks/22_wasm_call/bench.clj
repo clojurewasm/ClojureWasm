@@ -1,6 +1,6 @@
 (require '[cljw.wasm :as wasm])
 
-(def wmod (wasm/load "src/wasm/testdata/01_add.wasm"))
+(def wmod (wasm/load "src/app/wasm/testdata/01_add.wasm"))
 (def add (wasm/fn wmod "add"))
 
 ;; Call wasm add function 1M times

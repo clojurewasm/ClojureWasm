@@ -2,13 +2,11 @@
 # Zone Check Script for ClojureWasm (Phase 97, D109)
 # Counts cross-zone @import violations in the 4-zone architecture.
 #
-# Pre-R8 zone mapping:
+# Post-R8 zone mapping:
 #   Layer 0: src/runtime/, src/regex/
-#            (excluding runtime/{bootstrap,eval_engine,pipeline,cache,embedded_sources}.zig)
-#   Layer 1: src/reader/, src/analyzer/, src/compiler/, src/evaluator/, src/vm/
-#            + src/runtime/{bootstrap,eval_engine,pipeline,cache,embedded_sources}.zig
-#   Layer 2: src/builtins/, src/interop/
-#   Layer 3: src/main.zig, src/deps.zig, src/repl/, src/wasm/
+#   Layer 1: src/engine/
+#   Layer 2: src/lang/
+#   Layer 3: src/app/
 #
 # Usage:
 #   bash scripts/zone_check.sh          # Show violations
@@ -25,28 +23,16 @@ fi
 
 ZONE_NAMES=("runtime" "engine" "lang" "app")
 
-# Layer 1 files that live in src/runtime/ (pre-R8 exception)
-LAYER1_RUNTIME="bootstrap.zig eval_engine.zig pipeline.zig cache.zig embedded_sources.zig"
-
 # Classify file path (relative to repo root) into zone 0-3
 get_zone() {
     local file="$1"
 
-    # Layer 1 exceptions in runtime/
-    for special in $LAYER1_RUNTIME; do
-        if [[ "$file" == "src/runtime/$special" ]]; then
-            echo 1
-            return
-        fi
-    done
-
     case "$file" in
-        src/runtime/*|src/regex/*)                              echo 0 ;;
-        src/reader/*|src/analyzer/*|src/compiler/*|             \
-        src/evaluator/*|src/vm/*)                               echo 1 ;;
-        src/builtins/*|src/interop/*)                           echo 2 ;;
-        src/main.zig|src/deps.zig|src/repl/*|src/wasm/*)       echo 3 ;;
-        *)                                                      echo 3 ;;
+        src/runtime/*|src/regex/*)   echo 0 ;;
+        src/engine/*)                echo 1 ;;
+        src/lang/*)                  echo 2 ;;
+        src/app/*)                   echo 3 ;;
+        *)                           echo 3 ;;
     esac
 }
 

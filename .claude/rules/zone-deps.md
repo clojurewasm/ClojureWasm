@@ -7,25 +7,14 @@ Auto-load paths: `src/**/*.zig`
 CW uses a strict 4-zone layered architecture:
 
 ```
-Layer 0: src/runtime/   — foundational types, NO upward imports
+Layer 0: src/runtime/, src/regex/ — foundational types, NO upward imports
 Layer 1: src/engine/    — processing pipeline, imports runtime/ only
 Layer 2: src/lang/      — Clojure builtins/interop, imports runtime/ + engine/
-Layer 3: src/app/       — CLI/REPL/Wasm, imports anything
+Layer 3: src/app/, src/main.zig, src/cache_gen.zig — application, imports anything
 ```
 
-**NOTE**: During Phase 97 (Architecture Refactoring), the directory structure
-is transitioning. Before R8 (directory rename), the zones are mapped as:
-
-```
-Layer 0: src/runtime/, src/regex/
-         (excluding runtime/{bootstrap,eval_engine,pipeline,cache,embedded_sources}.zig)
-Layer 1: src/reader/, src/analyzer/, src/compiler/, src/evaluator/, src/vm/
-         + src/runtime/{bootstrap,eval_engine,pipeline,cache,embedded_sources}.zig
-Layer 2: src/builtins/, src/interop/
-Layer 3: src/main.zig, src/deps.zig, src/repl/, src/wasm/
-```
-
-After R8, the directory names match the zone names directly.
+**NOTE**: `src/main.zig` and `src/cache_gen.zig` are Layer 3 entry points at `src/` root
+(Zig module path constraints require entry points to reach all zones via relative imports).
 
 ## Rules
 

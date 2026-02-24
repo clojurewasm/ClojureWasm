@@ -4,7 +4,7 @@
 (require '[cljw.wasm :as wasm])
 
 ;; Part 1: Auto-resolve (no signature needed)
-(def math (wasm/load "src/wasm/testdata/01_add.wasm"))
+(def math (wasm/load "src/app/wasm/testdata/01_add.wasm"))
 (def add (wasm/fn math "add"))
 (assert (= 7 (add 3 4)) "Auto-resolved add(3,4) should be 7")
 
@@ -23,14 +23,14 @@
 (assert (= 3 ((math "add") 1 2)) "(math \"add\")(1,2) should be 3")
 
 ;; Part 4: Fibonacci with keyword lookup
-(def fib-mod (wasm/load "src/wasm/testdata/02_fibonacci.wasm"))
+(def fib-mod (wasm/load "src/app/wasm/testdata/02_fibonacci.wasm"))
 (assert (= 55 ((:fib fib-mod) 10)) "Keyword fib(10) should be 55")
 (assert (= '(1 1 2 3 5 8 13 21 34 55)
            (map (:fib fib-mod) (range 1 11)))
         "Keyword fib(1..10) should match")
 
 ;; Part 5: Memory module with multiple exports
-(def mem-mod (wasm/load "src/wasm/testdata/03_memory.wasm"))
+(def mem-mod (wasm/load "src/app/wasm/testdata/03_memory.wasm"))
 (let [exports (wasm/exports mem-mod)]
   (assert (map? exports) "Memory exports should be a map")
   (assert (contains? exports "store") "Should contain 'store'")

@@ -17,8 +17,8 @@
 
 const std = @import("std");
 const Env = @import("runtime/env.zig").Env;
-const registry = @import("builtins/registry.zig");
-const bootstrap = @import("runtime/bootstrap.zig");
+const registry = @import("lang/registry.zig");
+const bootstrap = @import("engine/bootstrap.zig");
 const gc_mod = @import("runtime/gc.zig");
 const keyword_intern = @import("runtime/keyword_intern.zig");
 

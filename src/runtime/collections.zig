@@ -724,7 +724,7 @@ pub const HASH_MAP_THRESHOLD = 8;
 /// Uses Murmur3 finalizer mix on the raw hash to improve bit distribution,
 /// ensuring keys spread evenly across the 32-way branches.
 fn hashValue(v: Value) u32 {
-    const h = @import("../builtins/predicates.zig").computeHash(v);
+    const h = @import("../lang/builtins/predicates.zig").computeHash(v);
     // Murmur3 finalizer mix
     var x: u32 = @truncate(@as(u64, @bitCast(h)));
     x ^= x >> 16;

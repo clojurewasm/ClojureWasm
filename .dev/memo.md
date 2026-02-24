@@ -27,27 +27,23 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R8: Directory rename.
+Phase 97 (Architecture Refactoring), sub-task R9: Split main.zig (< 200 LOC).
 
-See `.dev/refactoring-plan.md` R8 section for details.
-This is the big structural move — zero logic changes, only @import path updates.
+See `.dev/refactoring-plan.md` R9 section for details.
 
 ## Previous Task
 
-R7: Fix value.zig upward dependency — COMPLETE.
-- Added seq ops vtable to dispatch.zig (seq_fn, first_fn, rest_fn)
-- value.zig no longer imports builtins/collections.zig (L0→L2 violation removed)
-- registry.zig initializes seq ops vtable via dispatch.initSeqOps
-- Violations: 127 → 126
+R8: Directory rename — COMPLETE.
+- Moved dirs to 4-zone layout: runtime/, engine/, lang/, app/
+- main.zig and cache_gen.zig remain at src/ root (Zig module path constraint)
+- Updated all @import paths across entire codebase
+- Updated zone_check.sh, CLAUDE.md, zone-deps.md for post-R8 paths
+- Updated e2e wasm test paths and bench paths
+- Violations: 126 (unchanged)
 
 ## Task Queue
 
 ```
-R4:  Extract namespace loading
-R5:  Extract cache system
-R6:  Slim down bootstrap.zig (< 200 LOC)
-R7:  Fix value.zig upward dependency
-R8:  Directory rename (runtime/engine/lang/app)
 R9:  Split main.zig (< 200 LOC)
 R10: Zone enforcement in commit gate
 R11: Structural integrity audit
