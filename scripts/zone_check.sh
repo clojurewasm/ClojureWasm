@@ -1,6 +1,7 @@
 #!/bin/bash
 # Zone Check Script for ClojureWasm (Phase 97, D109)
 # Counts cross-zone @import violations in the 4-zone architecture.
+# Skips test-only imports (after the first `test "..."` block in each file).
 #
 # Post-R8 zone mapping:
 #   Layer 0: src/runtime/, src/regex/
@@ -18,8 +19,8 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # Baseline: known violation count. Update when violations are fixed.
-# History: 134 (R0) -> 126 (R9) -> 118 (Z1) -> 30 (Z2) -> 16 (Z3)
-BASELINE=12
+# History: 134 (R0) -> 126 (R9) -> 118 (Z1) -> 30 (Z2) -> 16 (Z3) -> 12 (vtable)
+BASELINE=0
 
 MODE="info"
 if [[ "${1:-}" == "--strict" ]]; then
@@ -43,6 +44,25 @@ get_zone() {
     esac
 }
 
+# Extract non-test @import paths from a Zig file.
+# Stops collecting imports once the first `test "..."` block is encountered,
+# since everything after it is test infrastructure.
+extract_non_test_imports() {
+    awk '
+    BEGIN { in_test_section = 0 }
+    /^[[:space:]]*test[[:space:]]+"/ {
+        in_test_section = 1
+    }
+    !in_test_section && /@import\("/ {
+        line = $0
+        while (match(line, /@import\("([^"]+\.zig)"/, arr)) {
+            print arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        }
+    }
+    ' "$1"
+}
+
 total_violations=0
 declare -A bucket  # bucket["0->2"]=count
 
@@ -51,7 +71,7 @@ while IFS= read -r src_file; do
     src_zone=$(get_zone "$src_file")
     src_dir=$(dirname "$src_file")
 
-    # Extract @import("...") paths (only .zig files, skip std/builtin)
+    # Extract @import("...") paths from non-test code
     while IFS= read -r import_path; do
         [[ -z "$import_path" ]] && continue
 
@@ -69,7 +89,7 @@ while IFS= read -r src_file; do
             total_violations=$((total_violations + 1))
             echo "  VIOLATION: ${ZONE_NAMES[$src_zone]}($src_zone) -> ${ZONE_NAMES[$tgt_zone]}($tgt_zone): $src_file -> $import_path"
         fi
-    done < <(grep -oP '@import\("\K[^"]+\.zig' "$src_file" 2>/dev/null || true)
+    done < <(extract_non_test_imports "$src_file")
 
 done < <(find src/ -name '*.zig' -type f | sort)
 

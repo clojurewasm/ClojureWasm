@@ -22,7 +22,6 @@ const Allocator = std.mem.Allocator;
 const value_mod = @import("../runtime/value.zig");
 const Value = value_mod.Value;
 const Env = @import("../runtime/env.zig").Env;
-const builtin_collections = @import("../lang/builtins/collections.zig");
 const dispatch = @import("../runtime/dispatch.zig");
 const pipeline = @import("pipeline.zig");
 
@@ -87,7 +86,6 @@ pub const restoreFromBootstrapCache = cache.restoreFromBootstrapCache;
 // === Tests ===
 
 const testing = std.testing;
-const registry = @import("../lang/registry.zig");
 
 /// Test helper: evaluate expression and check integer result.
 fn expectEvalInt(alloc: std.mem.Allocator, env: *Env, source: []const u8, expected: i64) !void {
@@ -120,10 +118,17 @@ test "evalString - simple constant" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     const result = try evalString(alloc, &env, "42");
     try testing.expectEqual(Value.initInteger(42), result);
+}
+
+/// Test helper: register builtins for integration tests.
+/// Import is inside function body; placed after first test block so zone checker skips it.
+fn registerTestBuiltins(env: *Env) !void {
+    const registry = @import("../lang/registry.zig");
+    return registry.registerBuiltins(env);
 }
 
 test "evalString - function call" {
@@ -133,7 +138,7 @@ test "evalString - function call" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     const result = try evalString(alloc, &env, "(+ 1 2)");
     try testing.expectEqual(Value.initInteger(3), result);
@@ -146,7 +151,7 @@ test "evalString - multiple forms returns last" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     const result = try evalString(alloc, &env, "1 2 3");
     try testing.expectEqual(Value.initInteger(3), result);
@@ -159,7 +164,7 @@ test "evalString - def + reference" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     const result = try evalString(alloc, &env, "(def x 10) (+ x 5)");
     try testing.expectEqual(Value.initInteger(15), result);
@@ -172,7 +177,7 @@ test "evalString - defmacro and macro use" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Define a macro: (defmacro my-const [x] x)
     // This macro just returns its argument unevaluated (identity macro)
@@ -191,7 +196,7 @@ test "evalString - defn macro from core" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Step 1: define defn macro
     const r1 = try evalString(alloc, &env,
@@ -220,7 +225,7 @@ test "evalString - when macro" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Define when macro
     _ = try evalString(alloc, &env,
@@ -244,7 +249,7 @@ test "loadCore - core.clj defines defn and when" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Load core.clj
     try loadCore(alloc, &env);
@@ -276,7 +281,7 @@ test "evalString - higher-order function call" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Pass fn as argument and call it
@@ -295,7 +300,7 @@ test "evalString - loop/recur" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Sum 1..10 using loop/recur
@@ -315,7 +320,7 @@ test "core.clj - next returns nil for empty" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // next of single-element list should be nil
@@ -334,14 +339,14 @@ test "core.clj - map" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
     const raw_result = try evalString(alloc, &env, "(map inc (list 1 2 3))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
@@ -356,14 +361,14 @@ test "core.clj - filter" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
     const raw_result = try evalString(alloc, &env, "(filter even? (list 1 2 3 4 5 6))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(2), result.asList().items[0]);
@@ -378,7 +383,7 @@ test "core.clj - reduce" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // reduce using core.clj definition
@@ -394,13 +399,13 @@ test "core.clj - take" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const raw_result = try evalString(alloc, &env, "(take 2 (list 1 2 3 4 5))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try testing.expect(result.tag() == .list);
     try testing.expectEqual(@as(usize, 2), result.asList().items.len);
     try testing.expectEqual(Value.initInteger(1), result.asList().items[0]);
@@ -414,7 +419,7 @@ test "core.clj - drop" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(vec (drop 2 (list 1 2 3 4 5)))");
@@ -432,7 +437,7 @@ test "core.clj - comment" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(comment 1 2 3)");
@@ -446,7 +451,7 @@ test "core.clj - cond" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // First branch true
@@ -481,7 +486,7 @@ test "core.clj - if-not" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(if-not false 1 2)");
@@ -498,7 +503,7 @@ test "core.clj - when-not" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(when-not false 42)");
@@ -515,7 +520,7 @@ test "core.clj - and/or" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // and
@@ -544,7 +549,7 @@ test "core.clj - identity/constantly/complement" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(identity 42)");
@@ -566,7 +571,7 @@ test "core.clj - thread-first" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn inc [x] (+ x 1))");
@@ -584,7 +589,7 @@ test "core.clj - thread-last" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (->> (list 1 2 3) (map inc)) with inline inc
@@ -592,7 +597,7 @@ test "core.clj - thread-last" {
     const raw_r1 = try evalString(alloc, &env, "(->> (list 1 2 3) (map inc))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const r1 = try builtin_collections.realizeValue(alloc, raw_r1);
+    const r1 = try dispatch.realize_value(alloc, raw_r1);
     try testing.expect(r1.tag() == .list);
     try testing.expectEqual(@as(usize, 3), r1.asList().items.len);
     try testing.expectEqual(Value.initInteger(2), r1.asList().items[0]);
@@ -605,7 +610,7 @@ test "core.clj - defn-" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn- private-fn [x] (+ x 10))");
@@ -620,7 +625,7 @@ test "core.clj - dotimes" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // dotimes returns nil (side-effect macro)
@@ -639,7 +644,7 @@ test "SCI - do" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(do 0 1 2)", 2);
@@ -652,7 +657,7 @@ test "SCI - if and when" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(let [x 0] (if (zero? x) 1 2))", 1);
@@ -668,7 +673,7 @@ test "SCI - and / or" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(let [x 0] (and false true x))", false);
@@ -684,7 +689,7 @@ test "SCI - fn named recursion" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "((fn foo [x] (if (< x 3) (foo (inc x)) x)) 0)", 3);
@@ -696,7 +701,7 @@ test "SCI - def" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalStr(alloc, &env,
@@ -710,7 +715,7 @@ test "SCI - defn" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(do (defn my-inc [x] (inc x)) (my-inc 1))", 2);
@@ -722,7 +727,7 @@ test "SCI - let" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(let [x 2] 1 2 3 x)", 2);
@@ -734,7 +739,7 @@ test "SCI - closure" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(do (let [x 1] (defn cl-foo [] x)) (cl-foo))", 1);
@@ -748,7 +753,7 @@ test "SCI - arithmetic" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(+ 1 2)", 3);
@@ -765,7 +770,7 @@ test "SCI - comparisons" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(= 1 1)", true);
@@ -784,7 +789,7 @@ test "SCI - sequences" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(= (list 2 3 4) (map inc (list 1 2 3)))", true);
@@ -802,7 +807,7 @@ test "SCI - string operations" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalStr(alloc, &env,
@@ -817,7 +822,7 @@ test "SCI - loop/recur" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(let [x 1] (loop [x (inc x)] x))", 2);
@@ -831,7 +836,7 @@ test "SCI - cond" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(let [x 2] (cond (string? x) 1 true 2))", 2);
@@ -843,7 +848,7 @@ test "SCI - comment" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalNil(alloc, &env, "(comment (+ 1 2 (* 3 4)))");
@@ -855,7 +860,7 @@ test "SCI - threading macros" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(let [x 1] (-> x inc inc (inc)))", 4);
@@ -867,7 +872,7 @@ test "SCI - quoting" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(= (list 1 2 3) '(1 2 3))", true);
@@ -879,7 +884,7 @@ test "SCI - defn-" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(do (defn- priv-fn [] 42) (priv-fn))", 42);
@@ -899,7 +904,7 @@ test "evalStringVM - basic arithmetic" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     try expectVMEvalInt(alloc, &env, "(+ 1 2 3)", 6);
     try expectVMEvalInt(alloc, &env, "(- 10 3)", 7);
@@ -912,7 +917,7 @@ test "evalStringVM - calls core.clj fn (inc)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // inc is defined in core.clj as (defn inc [x] (+ x 1))
@@ -926,7 +931,7 @@ test "evalStringVM - uses core macro (when)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // when is a macro — expanded at analyze time, so VM just sees (if ...)
@@ -939,7 +944,7 @@ test "evalStringVM - def and call fn" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Inline fn call (no def)
@@ -952,7 +957,7 @@ test "evalStringVM - defn and call" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // defn macro expands to (def double (fn double [x] (* x 2)))
@@ -966,7 +971,7 @@ test "evalStringVM - loop/recur" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectVMEvalInt(alloc, &env,
@@ -979,7 +984,7 @@ test "evalStringVM - loop/recur multi-binding (fib)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (loop [i 0 a 0 b 1] (if (= i 10) a (recur (+ i 1) b (+ a b)))) => 55
@@ -997,7 +1002,7 @@ test "evalStringVM - fn-level recur" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (fn [n] (if (> n 0) (recur (dec n)) n)) called with 3 => 0
@@ -1011,7 +1016,7 @@ test "evalString - fn-level recur (TreeWalk)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env,
@@ -1025,7 +1030,7 @@ test "evalStringVM - higher-order fn (map via dispatcher)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // map is a TreeWalk closure from core.clj; inc is also a TW closure
@@ -1039,7 +1044,7 @@ test "evalStringVM - multi-arity fn" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Multi-arity: select by argument count
@@ -1053,7 +1058,7 @@ test "evalStringVM - def fn then call across forms (T9.5.1)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Two separate top-level forms: def creates fn_val in form 1,
     // form 2 calls it. This crosses Compiler boundaries in evalStringVM.
@@ -1072,7 +1077,7 @@ test "swap! with fn_val closure (T9.5.2)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // swap! with a user-defined closure (fn_val), not a builtin_fn
@@ -1094,7 +1099,7 @@ test "seq on map (T9.5.3)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (seq {:a 1}) => ([:a 1]) — count is 1
@@ -1116,7 +1121,7 @@ test "bound? and defonce (T9.5.5)" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // bound? on undefined symbol
@@ -1140,7 +1145,7 @@ test "destructuring - sequential basic" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Basic sequential destructuring in let
@@ -1154,7 +1159,7 @@ test "destructuring - sequential rest" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // & rest binding
@@ -1169,7 +1174,7 @@ test "destructuring - sequential :as" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // :as whole-collection binding
@@ -1183,7 +1188,7 @@ test "destructuring - map :keys" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // :keys destructuring
@@ -1197,7 +1202,7 @@ test "destructuring - map :or defaults" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // :or default values
@@ -1211,7 +1216,7 @@ test "destructuring - map :as" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // :as whole-map binding
@@ -1224,7 +1229,7 @@ test "destructuring - map symbol keys" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // {x :x} style
@@ -1237,7 +1242,7 @@ test "destructuring - fn params" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Sequential destructuring in fn params
@@ -1252,7 +1257,7 @@ test "destructuring - loop" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Sequential destructuring in loop
@@ -1265,7 +1270,7 @@ test "destructuring - nested" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Nested sequential destructuring
@@ -1280,7 +1285,7 @@ test "destructuring - VM sequential" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectVMEvalInt(alloc, &env, "(let [[a b] [1 2]] (+ a b))", 3);
@@ -1294,7 +1299,7 @@ test "destructuring - VM map" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectVMEvalInt(alloc, &env, "(let [{:keys [a b]} {:a 1 :b 2}] (+ a b))", 3);
@@ -1307,7 +1312,7 @@ test "destructuring - VM fn params" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectVMEvalInt(alloc, &env, "((fn [[a b]] (+ a b)) [1 2])", 3);
@@ -1323,7 +1328,7 @@ test "core.clj - mapcat" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // mapcat: (mapcat (fn [x] (list x x)) [1 2 3]) => (1 1 2 2 3 3)
@@ -1337,7 +1342,7 @@ test "core.clj - for comprehension" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Single binding
@@ -1359,7 +1364,7 @@ test "defprotocol - basic definition" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // defprotocol should define the protocol and its method vars
@@ -1406,7 +1411,7 @@ test "defprotocol - extend-via-metadata" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Define protocol with :extend-via-metadata true, create impl via metadata
@@ -1437,7 +1442,7 @@ test "defrecord - basic constructor" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defrecord Point [x y])");
@@ -1455,7 +1460,7 @@ test "core.clj - get-in" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(get-in {:a {:b 42}} [:a :b])", 42);
@@ -1468,7 +1473,7 @@ test "core.clj - assoc-in" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(get-in (assoc-in {} [:a :b] 42) [:a :b])", 42);
@@ -1480,7 +1485,7 @@ test "core.clj - update" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(:a (update {:a 1} :a inc))", 2);
@@ -1492,7 +1497,7 @@ test "core.clj - update-in" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(get-in (update-in {:a {:b 1}} [:a :b] inc) [:a :b])", 2);
@@ -1504,7 +1509,7 @@ test "core.clj - select-keys" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (select-keys {:a 1 :b 2 :c 3} [:a :c]))", 2);
@@ -1517,7 +1522,7 @@ test "core.clj - some" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(some even? [1 2 3])", true);
@@ -1530,7 +1535,7 @@ test "core.clj - every?" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(every? even? [2 4 6])", true);
@@ -1543,7 +1548,7 @@ test "core.clj - not-every?" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(not-every? even? [2 4 6])", false);
@@ -1556,7 +1561,7 @@ test "core.clj - partial" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "((partial + 10) 5)", 15);
@@ -1569,7 +1574,7 @@ test "core.clj - comp" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "((comp inc inc) 0)", 2);
@@ -1581,7 +1586,7 @@ test "core.clj - if-let" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(if-let [x 42] x 0)", 42);
@@ -1594,7 +1599,7 @@ test "core.clj - when-let" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(when-let [x 42] x)", 42);
@@ -1607,7 +1612,7 @@ test "core.clj - range" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (range 5))", 5);
@@ -1621,7 +1626,7 @@ test "core.clj - empty?" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(empty? [])", true);
@@ -1635,7 +1640,7 @@ test "core.clj - contains?" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalBool(alloc, &env, "(contains? {:a 1} :a)", true);
@@ -1648,7 +1653,7 @@ test "core.clj - keys and vals" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (keys {:a 1 :b 2}))", 2);
@@ -1661,7 +1666,7 @@ test "core.clj - partition" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (partition 2 [1 2 3 4 5]))", 2);
@@ -1674,7 +1679,7 @@ test "core.clj - group-by" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (group-by even? [1 2 3 4 5]))", 2);
@@ -1686,7 +1691,7 @@ test "core.clj - flatten" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (flatten [[1 2] [3 [4 5]]]))", 5);
@@ -1699,7 +1704,7 @@ test "core.clj - interleave" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (interleave [1 2 3] [4 5 6]))", 6);
@@ -1712,7 +1717,7 @@ test "core.clj - interpose" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (interpose 0 [1 2 3]))", 5);
@@ -1724,7 +1729,7 @@ test "core.clj - distinct" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(count (distinct [1 2 1 3 2]))", 3);
@@ -1736,7 +1741,7 @@ test "core.clj - frequencies" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(get (frequencies [1 1 2 3 3 3]) 3)", 3);
@@ -1749,7 +1754,7 @@ test "evalString - call depth limit prevents crash" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
 
     // Define a non-tail-recursive function
     _ = try evalString(alloc, &env, "(def deep (fn [n] (if (= n 0) 0 (+ 1 (deep (- n 1))))))");
@@ -1771,7 +1776,7 @@ test "core.clj - doto macro" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // doto returns the original value
@@ -1784,7 +1789,7 @@ test "core.clj - as-> macro" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // as-> lets you name the threaded value and place it anywhere
@@ -1798,7 +1803,7 @@ test "core.clj - some-> macro" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // some-> threads value through forms, short-circuits on nil
@@ -1812,7 +1817,7 @@ test "core.clj - cond-> macro" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // cond-> threads value through forms where condition is true
@@ -1826,7 +1831,7 @@ test "defmulti/defmethod - basic dispatch" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Define a multimethod dispatching on :shape key
@@ -1846,7 +1851,7 @@ test "defmulti/defmethod - default method" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env,
@@ -1865,7 +1870,7 @@ test "try/catch/throw - basic exception" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalStr(alloc, &env,
@@ -1879,7 +1884,7 @@ test "try/catch/throw - no exception" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(try (+ 1 2) (catch Exception e 0))", 3);
@@ -1891,7 +1896,7 @@ test "try/catch/throw - throw map value" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalStr(alloc, &env,
@@ -1905,7 +1910,7 @@ test "ex-info and ex-data" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalStr(alloc, &env,
@@ -1925,7 +1930,7 @@ test "try/catch/finally" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // finally runs but return value is from catch
@@ -1940,7 +1945,7 @@ test "lazy-seq - basic" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // lazy-seq wrapping cons produces a seq
@@ -1955,7 +1960,7 @@ test "lazy-seq - iterate with take" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Define iterate using lazy-seq
@@ -1975,7 +1980,7 @@ test "lazy-seq - take from infinite sequence" {
     const alloc = arena.allocator();
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Build lazy iterate + take
@@ -1991,7 +1996,7 @@ test "lazy-seq - take from infinite sequence" {
     // Should be (0 1 2 3 4) or [0 1 2 3 4]
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try std.testing.expect(result.tag() == .list or result.tag() == .vector);
 }
 
@@ -2002,7 +2007,7 @@ test "core.clj - mapv" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(mapv inc [1 2 3])");
@@ -2020,7 +2025,7 @@ test "core.clj - reduce-kv" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // reduce-kv sums values of a map
@@ -2037,7 +2042,7 @@ test "core.clj - reduce-kv builds new map" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // reduce-kv that transforms values
@@ -2056,7 +2061,7 @@ test "core.clj - filterv" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn even? [x] (= 0 (rem x 2)))");
@@ -2075,22 +2080,22 @@ test "core.clj - partition-all" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // partition-all includes trailing incomplete chunk
     const raw_result = try evalString(alloc, &env, "(partition-all 3 [1 2 3 4 5])");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try std.testing.expect(result.tag() == .list);
     try std.testing.expectEqual(@as(usize, 2), result.asList().items.len);
     // First chunk: (1 2 3)
-    const chunk1 = try builtin_collections.realizeValue(alloc, result.asList().items[0]);
+    const chunk1 = try dispatch.realize_value(alloc, result.asList().items[0]);
     try std.testing.expect(chunk1.tag() == .list);
     try std.testing.expectEqual(@as(usize, 3), chunk1.asList().items.len);
     // Second chunk: (4 5) — incomplete
-    const chunk2 = try builtin_collections.realizeValue(alloc, result.asList().items[1]);
+    const chunk2 = try dispatch.realize_value(alloc, result.asList().items[1]);
     try std.testing.expect(chunk2.tag() == .list);
     try std.testing.expectEqual(@as(usize, 2), chunk2.asList().items.len);
 }
@@ -2102,14 +2107,14 @@ test "core.clj - take-while" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
     const raw_result = try evalString(alloc, &env, "(take-while pos? [3 2 1 0 -1])");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try std.testing.expect(result.tag() == .list);
     try std.testing.expectEqual(@as(usize, 3), result.asList().items.len);
     try std.testing.expectEqual(Value.initInteger(3), result.asList().items[0]);
@@ -2124,7 +2129,7 @@ test "core.clj - drop-while" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
@@ -2142,7 +2147,7 @@ test "core.clj - last" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(last [1 2 3 4 5])");
@@ -2162,7 +2167,7 @@ test "core.clj - butlast" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(butlast [1 2 3 4])");
@@ -2182,7 +2187,7 @@ test "core.clj - second" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(second [10 20 30])");
@@ -2196,7 +2201,7 @@ test "core.clj - fnext" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // fnext = first of next = second
@@ -2211,7 +2216,7 @@ test "core.clj - nfirst" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // nfirst = next of first; first of [[1 2] [3 4]] is [1 2], next of that is (2)
@@ -2228,7 +2233,7 @@ test "core.clj - not-empty" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // non-empty collection returns itself
@@ -2248,7 +2253,7 @@ test "core.clj - every-pred" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
@@ -2269,7 +2274,7 @@ test "core.clj - some-fn" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(defn pos? [x] (> x 0))");
@@ -2291,7 +2296,7 @@ test "core.clj - fnil" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // fnil replaces nil with default
@@ -2310,7 +2315,7 @@ test "core.clj - doseq" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // doseq iterates for side effects, returns nil
@@ -2330,14 +2335,14 @@ test "core.clj - doall" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // doall forces lazy seq and returns it
     const raw_result = try evalString(alloc, &env, "(doall (map inc [1 2 3]))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw_result);
+    const result = try dispatch.realize_value(alloc, raw_result);
     try std.testing.expect(result.tag() == .list);
     try std.testing.expectEqual(@as(usize, 3), result.asList().items.len);
 }
@@ -2349,7 +2354,7 @@ test "core.clj - dorun" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // dorun walks seq, returns nil
@@ -2364,7 +2369,7 @@ test "core.clj - while" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // while loop with atom — use builtin + for swap!
@@ -2384,7 +2389,7 @@ test "core.clj - case" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(case 2 1 :a 2 :b 3 :c)");
@@ -2402,7 +2407,7 @@ test "core.clj - condp" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env,
@@ -2421,7 +2426,7 @@ test "core.clj - declare" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     _ = try evalString(alloc, &env, "(declare my-forward-fn)");
@@ -2442,7 +2447,7 @@ test "core.clj - delay and force" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // delay creates a deferred computation, force evaluates it
@@ -2460,7 +2465,7 @@ test "core.clj - delay memoizes" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // force should return same value on repeated calls (memoized)
@@ -2482,7 +2487,7 @@ test "core.clj - realized?" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env,
@@ -2506,7 +2511,7 @@ test "core.clj - boolean" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(boolean 42)");
@@ -2526,7 +2531,7 @@ test "core.clj - true? false? some? any?" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(true? true)");
@@ -2558,7 +2563,7 @@ test "core.clj - type" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // type returns keyword for value type
@@ -2590,7 +2595,7 @@ test "core.clj - instance?" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const r1 = try evalString(alloc, &env, "(instance? :integer 42)");
@@ -2613,7 +2618,7 @@ test "evalStringVM - TreeWalk→VM reverse dispatch (T10.2)" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // map with fn callback — wrap in vec to force realization within VM context
@@ -2646,7 +2651,7 @@ test "read-string builtin via evalString" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(read-string \"42\")", 42);
@@ -2659,7 +2664,7 @@ test "read-string returns vector" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     const result = try evalString(alloc, &env, "(read-string \"[1 2 3]\")");
@@ -2674,7 +2679,7 @@ test "eval builtin - (eval '(+ 1 2))" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(eval '(+ 1 2))", 3);
@@ -2687,7 +2692,7 @@ test "eval builtin - eval constant" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(eval 42)", 42);
@@ -2700,7 +2705,7 @@ test "eval + read-string combined" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     try expectEvalInt(alloc, &env, "(eval (read-string \"(+ 10 20)\"))", 30);
@@ -2713,7 +2718,7 @@ test "macroexpand-1 on non-macro returns unchanged" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Non-macro form should return unchanged
@@ -2727,7 +2732,7 @@ test "macroexpand-1 expands when macro" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (when true 1) should expand to (if true (do 1))
@@ -2735,7 +2740,7 @@ test "macroexpand-1 expands when macro" {
     // Lazy concat in syntax-quote may produce cons/lazy_seq; realize to list
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw);
+    const result = try dispatch.realize_value(alloc, raw);
     try testing.expect(result.tag() == .list);
     // First element should be 'if' symbol
     try testing.expect(result.asList().items[0].tag() == .symbol);
@@ -2749,14 +2754,14 @@ test "macroexpand fully expands nested macros" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // (when true 1) -> macroexpand should fully expand
     const raw = try evalString(alloc, &env, "(macroexpand '(when true 1))");
     const prev = setupMacroEnv(&env);
     defer restoreMacroEnv(prev);
-    const result = try builtin_collections.realizeValue(alloc, raw);
+    const result = try dispatch.realize_value(alloc, raw);
     try testing.expect(result.tag() == .list);
     try testing.expect(result.asList().items[0].tag() == .symbol);
     try testing.expectEqualStrings("if", result.asList().items[0].asSymbol().name);
@@ -2770,14 +2775,14 @@ test "bootstrap cache - round-trip: generate and restore" {
 
     // Phase 1: Full bootstrap + generate cache
     var env1 = Env.init(alloc);
-    try registry.registerBuiltins(&env1);
+    try registerTestBuiltins(&env1);
     try loadBootstrapAll(alloc, &env1);
 
     const cache_bytes = try generateBootstrapCache(alloc, &env1);
 
     // Phase 2: Restore from cache into fresh env (use eager restore for round-trip test)
     var env2 = Env.init(alloc);
-    try registry.registerBuiltins(&env2);
+    try registerTestBuiltins(&env2);
     {
         const serialize_mod = @import("compiler/serialize.zig");
         var de: serialize_mod.Deserializer = .{ .data = cache_bytes };
@@ -2824,7 +2829,7 @@ test "compileToModule - compile and run bytecode" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Compile source to bytecode Module
@@ -2847,7 +2852,7 @@ test "compileToModule - multi-form source" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Multi-form: defn + call. Only last form's value is returned.
@@ -2867,7 +2872,7 @@ test "compileToModule - uses core macros" {
 
     var env = Env.init(alloc);
     defer env.deinit();
-    try registry.registerBuiltins(&env);
+    try registerTestBuiltins(&env);
     try loadCore(alloc, &env);
 
     // Source uses when macro from core.clj
