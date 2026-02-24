@@ -294,7 +294,7 @@ const Value = @import("../../runtime/value.zig").Value;
 fn valueToWasm(val: Value, wasm_type: WasmValType) !u64 {
     return switch (wasm_type) {
         .i32 => switch (val.tag()) {
-            .integer => @bitCast(@as(i64, @intCast(@as(i32, @intCast(val.asInteger()))))),
+            .integer => @bitCast(@as(i64, @as(i32, @truncate(val.asInteger())))),
             .boolean => if (val.asBoolean()) @as(u64, 1) else 0,
             .nil => 0,
             else => return error.TypeError,
@@ -392,7 +392,7 @@ fn hostTrampoline(ctx_ptr: *anyopaque, context_id: usize) anyerror!void {
 
     if (ctx.result_count > 0) {
         const raw: u64 = switch (result.tag()) {
-            .integer => @bitCast(@as(i64, @intCast(@as(i32, @intCast(result.asInteger()))))),
+            .integer => @bitCast(@as(i64, @as(i32, @truncate(result.asInteger())))),
             .float => @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(result.asFloat()))))),
             .nil => 0,
             .boolean => if (result.asBoolean()) @as(u64, 1) else 0,

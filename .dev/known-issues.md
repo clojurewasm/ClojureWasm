@@ -102,14 +102,13 @@ class files. Prevents panic on high-bit pointers.
 
 **Files**: `src/lang/interop/classes/{string_writer,pushback_reader,string_builder,buffered_writer}.zig`
 
-### I-024: wasm bridge double @intCast truncation
+### ~~I-024: wasm bridge double @intCast truncation~~ RESOLVED
 
-**Symptom**: `@intCast(@as(i32, @intCast(val.asInteger())))` panics if value
-exceeds i32 range.
+**Resolution**: Replaced double `@intCast` with `@truncate` for i32 narrowing
+in wasm bridge (valueToWasm and callback return). `@truncate` wraps instead of
+panicking, matching wasm's wrapping semantics for i32.
 
-**Fix**: Add range check or use saturating cast.
-
-**Files**: `src/wasm/types.zig:297,395`
+**Files**: `src/app/wasm/types.zig`
 
 ---
 
@@ -180,7 +179,7 @@ know about deferred cache roots).
 | I-021 | Phase B.13 or 89 | B.13 / 89 |
 | I-022 | Phase B.15 | B.15 |
 | I-023 | ~~During Phase B~~ RESOLVED | R12 |
-| I-024 | During Phase B | B (wasm bridge review) |
+| I-024 | ~~During Phase B~~ RESOLVED | R12 |
 | I-030 | Phase B (organically) | B |
 | I-031 | Phase B + Phase 89 | B / 89 |
 | I-032 | Phase 93 / never | 93 |
