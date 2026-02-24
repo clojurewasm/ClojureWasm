@@ -31,7 +31,7 @@ Status: DONE / IN-PROGRESS / PENDING / DEFERRED
 | 88A | Correctness Sweep | 3.5 | DONE |
 | 88B | Upstream Test Stabilization | 3.5 | DONE |
 | 88C | P0 Bug Fixes & Test Infrastructure | 3.5 | DONE |
-| 97 | Architecture Refactoring (Zone Layering) | 3.5 | IN-PROGRESS |
+| 97 | Architecture Refactoring (Zone Layering) | 3.5 | DONE |
 | 86 | Distribution | 4 | PENDING |
 | 89 | Performance Optimization | 4 | PENDING |
 | 90 | JIT Expansion | 4 | PENDING |
