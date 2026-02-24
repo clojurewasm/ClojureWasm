@@ -9,16 +9,23 @@
 #   Layer 3: src/app/
 #
 # Usage:
-#   bash scripts/zone_check.sh          # Show violations
+#   bash scripts/zone_check.sh           # Show violations (informational)
 #   bash scripts/zone_check.sh --strict  # Exit 1 if any violations
+#   bash scripts/zone_check.sh --gate    # Exit 1 if violations > baseline (commit gate)
 
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-STRICT=false
+# Baseline: known violation count. Update when violations are fixed.
+# History: 134 (R0) -> 126 (R9)
+BASELINE=126
+
+MODE="info"
 if [[ "${1:-}" == "--strict" ]]; then
-    STRICT=true
+    MODE="strict"
+elif [[ "${1:-}" == "--gate" ]]; then
+    MODE="gate"
 fi
 
 ZONE_NAMES=("runtime" "engine" "lang" "app")
@@ -80,13 +87,32 @@ else
         echo "  ${ZONE_NAMES[$src_z]}(L$src_z) -> ${ZONE_NAMES[$tgt_z]}(L$tgt_z): ${bucket[$key]} imports"
     done
     echo ""
-    echo "Total violations: $total_violations"
+    echo "Total violations: $total_violations (baseline: $BASELINE)"
 fi
 
-if $STRICT && (( total_violations > 0 )); then
-    echo ""
-    echo "FAIL: Zone violations detected (--strict mode)"
-    exit 1
-fi
+case "$MODE" in
+    strict)
+        if (( total_violations > 0 )); then
+            echo ""
+            echo "FAIL: Zone violations detected (--strict mode)"
+            exit 1
+        fi
+        ;;
+    gate)
+        if (( total_violations > BASELINE )); then
+            echo ""
+            echo "FAIL: Zone violations increased ($total_violations > baseline $BASELINE)"
+            echo "New upward imports are not allowed. Fix or use vtable pattern."
+            exit 1
+        elif (( total_violations < BASELINE )); then
+            echo ""
+            echo "Zone violations decreased ($total_violations < baseline $BASELINE)."
+            echo "Update BASELINE in scripts/zone_check.sh to $total_violations."
+        else
+            echo ""
+            echo "OK: Zone violations at baseline ($total_violations == $BASELINE)"
+        fi
+        ;;
+esac
 
 exit 0

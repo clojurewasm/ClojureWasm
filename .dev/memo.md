@@ -8,7 +8,7 @@ Session handover document. Read at session start.
 - **Phase 97 (Architecture Refactoring) IN-PROGRESS**
 - Coverage: 1,130/1,243 vars done (90.9%), 113 skip, 0 TODO, 27 stubs
 - Wasm engine: zwasm v1.1.0 (GitHub URL dependency, build.zig.zon)
-- 68 upstream test files (68/68 passing). 6/6 e2e. 14/14 deps e2e
+- 68 upstream test files (68/68 passing). 6/6 e2e. 8/14 deps e2e (6 pre-existing)
 - Binary: 4.52MB (wasm=true). Startup: 4.2ms. RSS: 7.6MB
 - Baselines: `.dev/baselines.md` (threshold 4.8MB binary, 6.0ms startup)
 
@@ -27,25 +27,21 @@ Plan: `.dev/refactoring-plan.md`. Rules: `.claude/rules/zone-deps.md`.
 
 ## Current Task
 
-Phase 97 (Architecture Refactoring), sub-task R10: Zone enforcement in commit gate.
+Phase 97 (Architecture Refactoring), sub-task R11: Structural integrity audit.
 
-See `.dev/refactoring-plan.md` R10 section for details.
+See `.dev/refactoring-plan.md` R11 section for details.
 
 ## Previous Task
 
-R9: Split main.zig — COMPLETE.
-- Split 2,343 LOC main.zig into 4 modules:
-  - `src/main.zig` (81 LOC) — entry point, init, subcommand dispatch
-  - `src/app/cli.zig` — arg parsing, help, deps resolution, new command
-  - `src/app/runner.zig` — REPL, eval, error reporting, build, embedded
-  - `src/app/test_runner.zig` — test command handling
-- Pure structural move, no logic changes
-- Violations: 126 (unchanged)
+R10: Zone enforcement in commit gate — COMPLETE.
+- Added `--gate` mode to `scripts/zone_check.sh` with baseline=126
+- Updated CLAUDE.md commit gate #9: `--gate` is now a hard block
+- Updated `.claude/rules/zone-deps.md` verification section
+- New upward imports are forbidden; baseline ratchets down as violations are fixed
 
 ## Task Queue
 
 ```
-R10: Zone enforcement in commit gate
 R11: Structural integrity audit
 R12: Known issues resolution (I-011〜I-024)
 ```

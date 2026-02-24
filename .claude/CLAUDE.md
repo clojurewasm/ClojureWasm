@@ -180,8 +180,9 @@ Run before every commit:
      Benchmark regression → stop, profile, fix in place or insert optimization phase first.
    - Baselines & policy: `.dev/baselines.md`.
 9. **Zone check** (when modifying src/**/*.zig):
-   - `bash scripts/zone_check.sh` — violations must not increase from baseline
-   - After R10: violations must be 0 (hard block)
+   - `bash scripts/zone_check.sh --gate` — **hard block** if violations increase
+   - Baseline: 126 (stored in `scripts/zone_check.sh`). Update baseline when violations decrease.
+   - New upward imports are forbidden. Use vtable pattern (`runtime/dispatch.zig`) instead.
 
 ### Phase Completion
 

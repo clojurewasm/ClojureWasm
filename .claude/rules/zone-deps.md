@@ -41,14 +41,16 @@ dispatch.someFn = &actualImplementation;
 This preserves the dependency direction: engine/ imports runtime/ to set
 the pointer. runtime/ never imports engine/.
 
-### Verification
+### Verification (hard block)
 
 Run zone check before committing changes to src/:
 ```bash
-bash scripts/zone_check.sh
+bash scripts/zone_check.sh --gate
 ```
 
-After R10, this is a hard block in the commit gate.
+**Hard block**: Violations must not increase from baseline (126).
+If violations decrease, update `BASELINE` in `scripts/zone_check.sh`.
+New upward imports are forbidden — use vtable pattern instead.
 
 ## Common Patterns
 
