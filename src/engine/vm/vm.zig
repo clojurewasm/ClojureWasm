@@ -32,11 +32,10 @@ const PersistentList = collections.PersistentList;
 const PersistentVector = collections.PersistentVector;
 const PersistentArrayMap = collections.PersistentArrayMap;
 const PersistentHashSet = collections.PersistentHashSet;
-const builtin_collections = @import("../../lang/builtins/collections.zig");
 const arith = @import("../../lang/builtins/arithmetic.zig");
 const bootstrap = @import("../bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
-const multimethods_mod = @import("../../lang/builtins/multimethods.zig");
+// multimethods_mod removed — findBestMethod now via dispatch vtable (D109 Z3)
 const gc_mod = @import("../../runtime/gc.zig");
 const build_options = @import("build_options");
 const profile_opcodes = build_options.profile_opcodes;
@@ -955,11 +954,10 @@ pub const VM = struct {
             .exception_type_check => {
                 // Peek at exception on top of stack, check type against constant class name.
                 // If no match, re-throw the exception.
-                const predicates = @import("../../lang/builtins/predicates.zig");
                 const class_name_val = frame.constants[instr.operand];
                 const class_name = class_name_val.asString();
                 const ex_val = self.stack[self.sp - 1];
-                if (!predicates.exceptionMatchesClass(ex_val, class_name)) {
+                if (!dispatch.exception_matches_class(ex_val, class_name)) {
                     // Re-throw: pop exception and propagate
                     const thrown = self.pop();
                     dispatch.last_thrown_exception = thrown;
@@ -1400,8 +1398,7 @@ pub const VM = struct {
                 // (metadata is per-object, not per-type — cache would give wrong result)
                 if (pf.protocol.extend_via_metadata) {
                     if (pf.protocol.defining_ns) |def_ns| {
-                        const meta_mod = @import("../../lang/builtins/metadata.zig");
-                        const meta_val = meta_mod.getMeta(first_arg);
+                        const meta_val = dispatch.get_meta(first_arg);
                         if (meta_val.tag() == .map or meta_val.tag() == .hash_map) {
                             const fq_key = Value.initSymbol(self.allocator, .{ .ns = def_ns, .name = pf.method_name });
                             const lookup = if (meta_val.tag() == .map) meta_val.asMap().get(fq_key) else meta_val.asHashMap().get(fq_key);
@@ -1493,7 +1490,7 @@ pub const VM = struct {
                         if (cdv.eql(dispatch_val)) break :blk mf_mut.cached_method;
                     }
                     // Cache miss: full lookup
-                    const m = multimethods_mod.findBestMethod(self.allocator, mf, dispatch_val, self.env) orelse
+                    const m = dispatch.find_best_method(self.allocator, mf, dispatch_val, self.env) orelse
                         return error.TypeError;
                     mf_mut.cached_dispatch_val = dispatch_val;
                     mf_mut.cached_method = m;

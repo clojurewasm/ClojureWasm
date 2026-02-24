@@ -17,7 +17,7 @@ const build_options = @import("build_options");
 const profile_alloc = build_options.profile_alloc;
 const value_mod = @import("value.zig");
 const Value = value_mod.Value;
-const chunk_mod = @import("../engine/compiler/chunk.zig");
+const dispatch = @import("dispatch.zig");
 const env_mod = @import("env.zig");
 const ns_mod = @import("namespace.zig");
 const var_mod = @import("var.zig");
@@ -621,16 +621,9 @@ fn traceHAMTNode(gc: *MarkSweepGc, node: *const HAMTNode) void {
 fn traceFnProto(gc: *MarkSweepGc, proto: *const anyopaque, kind: value_mod.FnKind) void {
     switch (kind) {
         .bytecode => {
-            const fp: *const chunk_mod.FnProto = @ptrCast(@alignCast(proto));
-            if (gc.markAndCheck(fp)) {
-                gc.markSlice(fp.code);
-                gc.markSlice(fp.constants);
-                // Trace Values in the constant pool
-                for (fp.constants) |c| traceValue(gc, c);
-                if (fp.lines.len > 0) gc.markSlice(fp.lines);
-                if (fp.columns.len > 0) gc.markSlice(fp.columns);
-                if (fp.capture_slots.len > 0) gc.markSlice(fp.capture_slots);
-                if (fp.name) |n| gc.markSlice(n);
+            // Delegate to engine-level tracing via vtable (D109 Z3).
+            if (dispatch.trace_fn_proto) |trace_fn| {
+                trace_fn(@ptrCast(gc), proto);
             }
         },
         .treewalk => {

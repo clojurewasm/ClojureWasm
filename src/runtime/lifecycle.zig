@@ -171,8 +171,7 @@ pub fn runShutdownHooks(allocator: Allocator, env_ptr: *Env) void {
 
     // Set eval context for callFnVal (bytecodeCallBridge needs it)
     dispatch.macro_eval_env = env_ptr;
-    const predicates = @import("../lang/builtins/predicates.zig");
-    predicates.current_env = env_ptr;
+    dispatch.current_env = env_ptr;
 
     for (&local_hooks) |*slot| {
         if (slot.*) |h| {

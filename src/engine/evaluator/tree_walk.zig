@@ -26,7 +26,7 @@ const env_mod = @import("../../runtime/env.zig");
 const Env = env_mod.Env;
 const bootstrap = @import("../bootstrap.zig");
 const dispatch = @import("../../runtime/dispatch.zig");
-const multimethods_mod = @import("../../lang/builtins/multimethods.zig");
+// multimethods_mod removed — findBestMethod now via dispatch vtable (D109 Z3)
 
 const var_mod = @import("../../runtime/var.zig");
 const err_mod = @import("../../runtime/error.zig");
@@ -853,8 +853,7 @@ pub const TreeWalk = struct {
         // extend-via-metadata: check (meta obj) BEFORE cache (metadata is per-object, not per-type)
         if (protocol.extend_via_metadata) {
             if (protocol.defining_ns) |def_ns| {
-                const meta_mod = @import("../../lang/builtins/metadata.zig");
-                const meta_val = meta_mod.getMeta(args[0]);
+                const meta_val = dispatch.get_meta(args[0]);
                 if (meta_val.tag() == .map or meta_val.tag() == .hash_map) {
                     const fq_key = Value.initSymbol(self.allocator, .{ .ns = def_ns, .name = pf.method_name });
                     const lookup = if (meta_val.tag() == .map) meta_val.asMap().get(fq_key) else meta_val.asHashMap().get(fq_key);
@@ -1248,7 +1247,7 @@ pub const TreeWalk = struct {
                 if (cdv.eql(dispatch_val)) break :blk mf.cached_method;
             }
             // Cache miss: full lookup
-            const m = multimethods_mod.findBestMethod(self.allocator, mf, dispatch_val, self.env) orelse
+            const m = dispatch.find_best_method(self.allocator, mf, dispatch_val, self.env) orelse
                 return error.TypeError;
             const mf_mut: *value_mod.MultiFn = @constCast(mf);
             mf_mut.cached_dispatch_val = dispatch_val;
@@ -1293,7 +1292,7 @@ pub const TreeWalk = struct {
         // Compute the lookup key based on test-type
         const raw_hash: i64 = switch (case_n.test_type) {
             .int_test => if (expr_val.tag() == .integer) expr_val.asInteger() else return self.run(case_n.default),
-            .hash_equiv, .hash_identity => @import("../../lang/builtins/predicates.zig").computeHash(expr_val),
+            .hash_equiv, .hash_identity => @import("../../runtime/hash.zig").computeHash(expr_val),
         };
 
         // Apply shift/mask
@@ -1382,7 +1381,6 @@ pub const TreeWalk = struct {
     }
 
     fn runTry(self: *TreeWalk, try_n: *const node_mod.TryNode) TreeWalkError!Value {
-        const predicates = @import("../../lang/builtins/predicates.zig");
         const result = self.run(try_n.body) catch |e| {
             if (isUserError(e)) {
                 if (try_n.catch_clause) |catch_c| {
@@ -1392,7 +1390,7 @@ pub const TreeWalk = struct {
                         self.createRuntimeException(e);
 
                     // Check if exception matches the catch clause's class
-                    if (!predicates.exceptionMatchesClass(ex_val, catch_c.class_name)) {
+                    if (!dispatch.exception_matches_class(ex_val, catch_c.class_name)) {
                         // No match — propagate exception
                         self.exception = ex_val;
                         if (try_n.finally_body) |finally| {

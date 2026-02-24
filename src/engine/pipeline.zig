@@ -26,7 +26,7 @@ const Env = @import("../runtime/env.zig").Env;
 const Namespace = @import("../runtime/namespace.zig").Namespace;
 const err = @import("../runtime/error.zig");
 const TreeWalk = @import("evaluator/tree_walk.zig").TreeWalk;
-const predicates_mod = @import("../lang/builtins/predicates.zig");
+// predicates_mod removed — current_env now in dispatch.zig (D109 Z3)
 const chunk_mod = @import("compiler/chunk.zig");
 const Compiler = @import("compiler/compiler.zig").Compiler;
 const vm_mod = @import("vm/vm.zig");
@@ -53,16 +53,16 @@ pub const MacroEnvState = struct {
 pub fn setupMacroEnv(env: *Env) MacroEnvState {
     const prev = MacroEnvState{
         .env = dispatch.macro_eval_env,
-        .pred_env = predicates_mod.current_env,
+        .pred_env = dispatch.current_env,
     };
     dispatch.macro_eval_env = env;
-    predicates_mod.current_env = env;
+    dispatch.current_env = env;
     return prev;
 }
 
 pub fn restoreMacroEnv(prev: MacroEnvState) void {
     dispatch.macro_eval_env = prev.env;
-    predicates_mod.current_env = prev.pred_env;
+    dispatch.current_env = prev.pred_env;
 }
 
 /// Parse source into top-level forms.

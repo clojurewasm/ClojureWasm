@@ -26,7 +26,8 @@ const vm_mod = @import("vm/vm.zig");
 const VM = vm_mod.VM;
 const serialize_mod = @import("compiler/serialize.zig");
 const pipeline = @import("pipeline.zig");
-const loader = @import("../lang/loader.zig");
+// loader removed — load functions now via dispatch vtable (D109 Z3)
+const dispatch = @import("../runtime/dispatch.zig");
 
 const BootstrapError = pipeline.BootstrapError;
 
@@ -108,11 +109,11 @@ pub fn runBytecodeModule(allocator: Allocator, env: *Env, module_bytes: []const 
 /// Pure-zig namespaces are registered in registerBuiltins().
 /// Lazy namespaces (spec, main, etc.) are loaded on first require.
 pub fn loadBootstrapAll(allocator: Allocator, env: *Env) BootstrapError!void {
-    try loader.loadCore(allocator, env);
-    try loader.loadTest(allocator, env);
-    try loader.loadRepl(allocator, env);
-    try loader.loadPprint(allocator, env);
-    try loader.loadReducers(allocator, env);
+    dispatch.load_core(allocator, env) catch return error.EvalError;
+    dispatch.load_test(allocator, env) catch return error.EvalError;
+    dispatch.load_repl(allocator, env) catch return error.EvalError;
+    dispatch.load_pprint(allocator, env) catch return error.EvalError;
+    dispatch.load_reducers(allocator, env) catch return error.EvalError;
 }
 
 /// Re-compile all bootstrap functions to bytecode via VM compiler.
@@ -178,7 +179,7 @@ pub fn vmRecompileAll(allocator: Allocator, env: *Env) BootstrapError!void {
 
     // Restore namespace
     env.current_ns = saved_ns;
-    loader.syncNsVar(env);
+    dispatch.sync_ns_var(env);
 }
 
 /// Generate a bootstrap cache: serialized env state with all fns as bytecode.
@@ -244,5 +245,5 @@ pub fn restoreFromBootstrapCache(allocator: Allocator, env: *Env, cache_bytes: [
     }
 
     // Ensure *ns* is synced
-    loader.syncNsVar(env);
+    dispatch.sync_ns_var(env);
 }

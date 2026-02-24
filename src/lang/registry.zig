@@ -25,6 +25,8 @@ const err = @import("../runtime/error.zig");
 const TreeWalk = @import("../engine/evaluator/tree_walk.zig").TreeWalk;
 const vm_mod = @import("../engine/vm/vm.zig");
 const VM = vm_mod.VM;
+const compiler_chunk = @import("../engine/compiler/chunk.zig");
+const gc_mod = @import("../runtime/gc.zig");
 
 // ============================================================
 // NamespaceDef — self-describing namespace registration
@@ -224,6 +226,27 @@ pub fn registerBuiltins(env: *Env) !void {
     // Initialize seq ops vtable (D109 R7) — breaks value.zig → collections.zig dep.
     const collections = @import("builtins/collections.zig");
     dispatch.initSeqOps(&collections.seqFn, &collections.firstFn, &collections.restFn);
+
+    // Initialize GC FnProto tracing vtable (D109 Z3) — breaks gc.zig → chunk.zig dep.
+    dispatch.trace_fn_proto = &traceFnProtoImpl;
+
+    // Initialize VM helper vtable (D109 Z3) — breaks vm.zig → predicates/metadata dep.
+    const predicates = @import("builtins/predicates.zig");
+    const metadata = @import("builtins/metadata.zig");
+    dispatch.exception_matches_class = &predicates.exceptionMatchesClass;
+    dispatch.get_meta = &metadata.getMeta;
+    const multimethods = @import("builtins/multimethods.zig");
+    dispatch.find_best_method = &multimethods.findBestMethod;
+
+    // Initialize loader vtable (D109 Z3) — breaks cache/bootstrap → loader dep.
+    const loader = @import("loader.zig");
+    dispatch.load_core = &loader.loadCore;
+    dispatch.load_test = &loader.loadTest;
+    dispatch.load_repl = &loader.loadRepl;
+    dispatch.load_pprint = &loader.loadPprint;
+    dispatch.load_reducers = &loader.loadReducers;
+    dispatch.load_embedded_lib = &loader.loadEmbeddedLib;
+    dispatch.sync_ns_var = &loader.syncNsVar;
 
     const core_ns = try env.findOrCreateNamespace("clojure.core");
 
@@ -627,4 +650,20 @@ fn bytecodeCallBridge(allocator: Allocator, fn_val: Value, args: []const Value) 
     try vm.performCall(@intCast(args.len));
     // Execute until return
     return vm.execute();
+}
+
+/// GC FnProto tracing bridge (D109 Z3).
+/// Called by gc.zig via dispatch vtable to trace bytecode FnProto allocations.
+fn traceFnProtoImpl(gc_ptr: *anyopaque, proto: *const anyopaque) void {
+    const gc: *gc_mod.MarkSweepGc = @ptrCast(@alignCast(gc_ptr));
+    const fp: *const compiler_chunk.FnProto = @ptrCast(@alignCast(proto));
+    if (gc.markAndCheck(fp)) {
+        gc.markSlice(fp.code);
+        gc.markSlice(fp.constants);
+        for (fp.constants) |c| gc_mod.traceValue(gc, c);
+        if (fp.lines.len > 0) gc.markSlice(fp.lines);
+        if (fp.columns.len > 0) gc.markSlice(fp.columns);
+        if (fp.capture_slots.len > 0) gc.markSlice(fp.capture_slots);
+        if (fp.name) |n| gc.markSlice(n);
+    }
 }

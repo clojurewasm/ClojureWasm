@@ -200,8 +200,7 @@ fn handleConnection(state: *ServerState, conn: std.net.Server.Connection) void {
 
     // Set up eval context for this thread
     dispatch.macro_eval_env = state.env;
-    const predicates = @import("predicates.zig");
-    predicates.current_env = state.env;
+    dispatch.current_env = state.env;
 
     const ring_req = buildRingRequest(state.alloc, parsed, state.port, conn.address) catch {
         sendErrorResponse(conn.stream, 500, "Internal Server Error");

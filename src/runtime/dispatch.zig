@@ -66,6 +66,10 @@ pub threadlocal var last_thrown_exception: ?Value = null;
 /// Consumed (reset to false) by VM/TreeWalk rest packing code.
 pub threadlocal var apply_rest_is_seq: bool = false;
 
+/// Predicate evaluation environment. Set by lifecycle/pipeline, read by predicates.
+/// Breaks runtime/ → lang/builtins/predicates.zig dependency (D109 Z3).
+pub threadlocal var current_env: ?*@import("env.zig").Env = null;
+
 // === Seq operations vtable (D109 R7) ===
 // Breaks value.zig → builtins/collections.zig dependency.
 
@@ -83,6 +87,57 @@ pub fn initSeqOps(seq: BuiltinFn, first: BuiltinFn, rest: BuiltinFn) void {
     first_fn = first;
     rest_fn = rest;
 }
+
+// === GC FnProto tracing vtable (D109 Z3) ===
+// Breaks gc.zig → engine/compiler/chunk.zig dependency.
+
+/// Opaque tracing callback: gc calls this to trace a bytecode FnProto.
+/// Signature: fn(gc: *anyopaque, proto: *const anyopaque) void
+/// The gc parameter is the MarkSweepGc instance (passed as anyopaque to avoid cycle).
+pub var trace_fn_proto: ?*const fn (*anyopaque, *const anyopaque) void = null;
+
+// === VM helper vtable (D109 Z3) ===
+// Breaks vm.zig → lang/builtins/predicates.zig and metadata.zig dependencies.
+
+/// Check if an exception value matches a class name (for catch dispatch).
+pub var exception_matches_class: *const fn (Value, []const u8) bool = &defaultExceptionMatchesClass;
+
+fn defaultExceptionMatchesClass(_: Value, class_name: []const u8) bool {
+    // Default: Throwable/Exception match everything (sufficient for unit tests).
+    // Full implementation set by registry at bootstrap.
+    return std.mem.eql(u8, class_name, "Throwable") or
+        std.mem.eql(u8, class_name, "Exception") or
+        std.mem.eql(u8, class_name, "RuntimeException");
+}
+
+/// Get metadata from a value (returns nil if none).
+pub var get_meta: *const fn (Value) Value = &defaultGetMeta;
+
+fn defaultGetMeta(_: Value) Value {
+    return Value.nil_val;
+}
+
+/// Find best multimethod dispatch match (for VM protocol_call opcode).
+pub var find_best_method: *const fn (Allocator, *const value_mod.MultiFn, Value, ?*Env) ?Value = &defaultFindBestMethod;
+
+fn defaultFindBestMethod(_: Allocator, mf: *const value_mod.MultiFn, dispatch_val: Value, _: ?*Env) ?Value {
+    return mf.methods.get(dispatch_val);
+}
+
+// === Loader vtable (D109 Z3) ===
+// Breaks cache.zig/bootstrap.zig → lang/loader.zig dependency.
+
+const Env = @import("env.zig").Env;
+const LoaderFn = *const fn (Allocator, *Env) anyerror!void;
+const SyncFn = *const fn (*Env) void;
+
+pub var load_core: LoaderFn = undefined;
+pub var load_test: LoaderFn = undefined;
+pub var load_repl: LoaderFn = undefined;
+pub var load_pprint: LoaderFn = undefined;
+pub var load_reducers: LoaderFn = undefined;
+pub var load_embedded_lib: *const fn (Allocator, *Env, []const u8) anyerror!bool = undefined;
+pub var sync_ns_var: SyncFn = undefined;
 
 /// Central function dispatch for all callable CW value types.
 ///

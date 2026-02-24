@@ -29,16 +29,28 @@ const pipeline = @import("pipeline.zig");
 /// Bootstrap error type (canonical definition in pipeline.zig).
 pub const BootstrapError = pipeline.BootstrapError;
 
-// Namespace loading functions moved to builtins/loader.zig (D109 R4).
-// Re-exports for backward compatibility:
-const loader = @import("../lang/loader.zig");
-pub const loadCore = loader.loadCore;
-pub const loadTest = loader.loadTest;
-pub const loadRepl = loader.loadRepl;
-pub const loadPprint = loader.loadPprint;
-pub const loadReducers = loader.loadReducers;
-pub const loadEmbeddedLib = loader.loadEmbeddedLib;
-pub const syncNsVar = loader.syncNsVar;
+// Namespace loading via dispatch vtable (D109 Z3).
+pub fn loadCore(allocator: Allocator, env: *Env) BootstrapError!void {
+    dispatch.load_core(allocator, env) catch return error.EvalError;
+}
+pub fn loadTest(allocator: Allocator, env: *Env) BootstrapError!void {
+    dispatch.load_test(allocator, env) catch return error.EvalError;
+}
+pub fn loadRepl(allocator: Allocator, env: *Env) BootstrapError!void {
+    dispatch.load_repl(allocator, env) catch return error.EvalError;
+}
+pub fn loadPprint(allocator: Allocator, env: *Env) BootstrapError!void {
+    dispatch.load_pprint(allocator, env) catch return error.EvalError;
+}
+pub fn loadReducers(allocator: Allocator, env: *Env) BootstrapError!void {
+    dispatch.load_reducers(allocator, env) catch return error.EvalError;
+}
+pub fn loadEmbeddedLib(allocator: Allocator, env: *Env, ns_name: []const u8) BootstrapError!bool {
+    return dispatch.load_embedded_lib(allocator, env, ns_name) catch return error.EvalError;
+}
+pub fn syncNsVar(env: *Env) void {
+    dispatch.sync_ns_var(env);
+}
 
 // Pipeline functions moved to pipeline.zig (D109 R2). Public re-exports:
 pub const MacroEnvState = pipeline.MacroEnvState;

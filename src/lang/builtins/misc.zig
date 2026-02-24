@@ -716,43 +716,7 @@ pub fn mapEntryFn(_: Allocator, args: []const Value) anyerror!Value {
 const predicates_mod = @import("predicates.zig");
 const collections_mod = @import("collections.zig");
 
-/// Murmur3 constants (matches JVM Clojure)
-const M3_C1: i32 = @bitCast(@as(u32, 0xcc9e2d51));
-const M3_C2: i32 = @bitCast(@as(u32, 0x1b873593));
-
-fn mixK1(k: i32) i32 {
-    var k1: u32 = @bitCast(k);
-    k1 *%= @bitCast(M3_C1);
-    k1 = std.math.rotl(u32, k1, 15);
-    k1 *%= @bitCast(M3_C2);
-    return @bitCast(k1);
-}
-
-fn mixH1(h: i32, k1: i32) i32 {
-    var h1: u32 = @bitCast(h);
-    h1 ^= @as(u32, @bitCast(k1));
-    h1 = std.math.rotl(u32, h1, 13);
-    h1 = h1 *% 5 +% @as(u32, 0xe6546b64);
-    return @bitCast(h1);
-}
-
-fn fmix(h: i32, length: i32) i32 {
-    var h1 = h;
-    h1 ^= length;
-    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 16));
-    h1 = h1 *% @as(i32, @bitCast(@as(u32, 0x85ebca6b)));
-    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 13));
-    h1 = h1 *% @as(i32, @bitCast(@as(u32, 0xc2b2ae35)));
-    h1 ^= @as(i32, @intCast(@as(u32, @bitCast(h1)) >> 16));
-    return h1;
-}
-
-pub fn mixCollHash(hash_val: i32, count: i32) i32 {
-    var h1: i32 = 0; // seed
-    const k1 = mixK1(hash_val);
-    h1 = mixH1(h1, k1);
-    return fmix(h1, count);
-}
+pub const mixCollHash = @import("../../runtime/hash.zig").mixCollHash;
 
 /// (mix-collection-hash hash-basis count)
 pub fn mixCollectionHashFn(_: Allocator, args: []const Value) anyerror!Value {

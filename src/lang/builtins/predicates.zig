@@ -22,8 +22,10 @@ const err = @import("../../runtime/error.zig");
 const collections = @import("../../runtime/collections.zig");
 const BigInt = collections.BigInt;
 const misc_mod = @import("misc.zig");
+const hash_mod = @import("../../runtime/hash.zig");
 const Ratio = collections.Ratio;
 const interop_dispatch = @import("../interop/dispatch.zig");
+const dispatch = @import("../../runtime/dispatch.zig");
 
 /// Check if a value is a class instance with a given :__reify_type.
 fn isClassInstance(v: Value, class_name: []const u8) bool {
@@ -32,9 +34,7 @@ fn isClassInstance(v: Value, class_name: []const u8) bool {
     return std.mem.eql(u8, reify_type, class_name);
 }
 
-/// Runtime env for bound? resolution. Set by bootstrap.setupMacroEnv.
-/// Per-thread for concurrency (Phase 48).
-pub threadlocal var current_env: ?*Env = null;
+// current_env moved to runtime/dispatch.zig (D109 Z3).
 
 // ============================================================
 // Implementations
@@ -310,7 +310,7 @@ pub fn boundPred(_: Allocator, args: []const Value) anyerror!Value {
         } else if (arg.tag() == .symbol) {
             // Backward compat: resolve symbol in current namespace.
             const sym_name = arg.asSymbol().name;
-            const env = current_env orelse return Value.false_val;
+            const env = dispatch.current_env orelse return Value.false_val;
             const ns = env.current_ns orelse return Value.false_val;
             _ = ns.resolve(sym_name) orelse return Value.false_val;
         } else {
@@ -586,134 +586,12 @@ pub fn hashFn(allocator: Allocator, args: []const Value) anyerror!Value {
             s = try collections_mod.restFn(allocator, &.{s});
             s = try collections_mod.seqFn(allocator, &.{s});
         }
-        return Value.initInteger(@as(i64, misc_mod.mixCollHash(h, n)));
+        return Value.initInteger(@as(i64, hash_mod.mixCollHash(h, n)));
     }
     return Value.initInteger(computeHash(v));
 }
 
-pub fn computeHash(v: Value) i64 {
-    return switch (v.tag()) {
-        .nil => 0,
-        .boolean => if (v.asBoolean()) @as(i64, 1231) else @as(i64, 1237),
-        .integer => v.asInteger(),
-        .float => @as(i64, @bitCast(@as(u64, @bitCast(v.asFloat())))),
-        .big_int => blk: {
-            const bi = v.asBigInt();
-            // If fits in i64, use same hash as integer for consistency
-            if (bi.toI64()) |i| break :blk i;
-            // Otherwise hash the limbs
-            var h: i64 = 0x9e3779b9;
-            const c = bi.managed.toConst();
-            for (c.limbs[0..c.limbs.len]) |limb| {
-                h = h *% 31 +% @as(i64, @bitCast(limb));
-            }
-            if (!c.positive) h = ~h;
-            break :blk h;
-        },
-        .big_decimal => @as(i64, @intFromFloat(v.asBigDecimal().toF64() * 1000003)),
-        .char => @as(i64, @intCast(v.asChar())),
-        .string => stringHash(v.asString()),
-        .keyword => blk: {
-            const kw = v.asKeyword();
-            var h: i64 = 0x9e3779b9;
-            if (kw.ns) |ns| {
-                h = h *% 31 +% stringHash(ns);
-            }
-            h = h *% 31 +% stringHash(kw.name);
-            break :blk h;
-        },
-        .symbol => blk: {
-            const sym = v.asSymbol();
-            var h: i64 = 0x517cc1b7;
-            if (sym.ns) |ns| {
-                h = h *% 31 +% stringHash(ns);
-            }
-            h = h *% 31 +% stringHash(sym.name);
-            break :blk h;
-        },
-        .vector => blk: {
-            const items = v.asVector().items;
-            var h: i32 = 1;
-            for (items) |item| {
-                h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
-            }
-            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
-        },
-        .list => blk: {
-            const items = v.asList().items;
-            var h: i32 = 1;
-            for (items) |item| {
-                h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
-            }
-            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
-        },
-        .map => blk: {
-            const entries = v.asMap().entries;
-            var h: i32 = 0;
-            var i: usize = 0;
-            while (i + 1 < entries.len) : (i += 2) {
-                // Each map entry hashes as (hash-combine (hash k) (hash v))
-                const kh: i32 = @truncate(computeHash(entries[i]));
-                const vh: i32 = @truncate(computeHash(entries[i + 1]));
-                // Map entry hash: key ^ val (consistent with Clojure's MapEntry hash)
-                h +%= kh ^ vh;
-            }
-            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(entries.len / 2)));
-        },
-        .set => blk: {
-            const items = v.asSet().items;
-            var h: i32 = 0;
-            for (items) |item| {
-                h +%= @as(i32, @truncate(computeHash(item)));
-            }
-            break :blk @as(i64, misc_mod.mixCollHash(h, @intCast(items.len)));
-        },
-        .cons => blk: {
-            // Ordered hash: walk cons chain
-            var h: i32 = 1;
-            var n: i32 = 0;
-            var cur = v;
-            while (true) {
-                const tag = cur.tag();
-                if (tag == .cons) {
-                    const cell = cur.asCons();
-                    h = h *% 31 +% @as(i32, @truncate(computeHash(cell.first)));
-                    n += 1;
-                    cur = cell.rest;
-                } else if (tag == .list) {
-                    for (cur.asList().items) |item| {
-                        h = h *% 31 +% @as(i32, @truncate(computeHash(item)));
-                        n += 1;
-                    }
-                    break;
-                } else if (tag == .nil) {
-                    break;
-                } else {
-                    // Unknown rest — fallback
-                    break;
-                }
-            }
-            break :blk @as(i64, misc_mod.mixCollHash(h, n));
-        },
-        .lazy_seq => blk: {
-            // If realized, hash the realized value; otherwise fallback
-            const ls = v.asLazySeq();
-            if (ls.realized) |realized| {
-                break :blk computeHash(realized);
-            }
-            break :blk 42;
-        },
-        else => 42,
-    };
-}
-
-fn stringHash(s: []const u8) i64 {
-    var h: i64 = 0;
-    for (s) |c| {
-        h = h *% 31 +% @as(i64, c);
-    }
-    return h;
-}
+pub const computeHash = hash_mod.computeHash;
 
 /// (identical? x y) — tests if x and y are the same object.
 pub fn identicalPred(_: Allocator, args: []const Value) anyerror!Value {
