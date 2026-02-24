@@ -27,9 +27,9 @@ jobs:
           SIZE=$(stat -f%z zig-out/bin/cljw)
           SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
           echo "Binary size: ${SIZE_MB}MB ($SIZE bytes)"
-          # Threshold: 4.5MB (baseline 4.25MB + 5% margin)
-          if [ "$SIZE" -gt 4718592 ]; then
-            echo "FAIL: Binary size ${SIZE_MB}MB exceeds 4.5MB threshold"
+          # Threshold: 4.8MB (baseline ~4.5MB, see .dev/baselines.md)
+          if [ "$SIZE" -gt 5033164 ]; then
+            echo "FAIL: Binary size ${SIZE_MB}MB exceeds 4.8MB threshold"
             exit 1
           fi
       - name: E2E tests
@@ -78,12 +78,18 @@ jobs:
           ./zig-out/bin/cljw -e '(println "CI pass")'
       - name: Binary size check
         run: |
-          SIZE=$(stat -c%s zig-out/bin/cljw)
+          RAW_SIZE=$(stat -c%s zig-out/bin/cljw)
+          RAW_MB=$(echo "scale=2; $RAW_SIZE / 1048576" | bc)
+          echo "Binary size (raw): ${RAW_MB}MB ($RAW_SIZE bytes)"
+          # Linux ELF includes debug info in ReleaseSafe; check stripped size
+          cp zig-out/bin/cljw /tmp/cljw_stripped
+          strip /tmp/cljw_stripped
+          SIZE=$(stat -c%s /tmp/cljw_stripped)
           SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
-          echo "Binary size: ${SIZE_MB}MB ($SIZE bytes)"
-          # Linux binary may differ from macOS; use generous 5MB threshold
-          if [ "$SIZE" -gt 5242880 ]; then
-            echo "FAIL: Binary size ${SIZE_MB}MB exceeds 5MB threshold"
+          echo "Binary size (stripped): ${SIZE_MB}MB ($SIZE bytes)"
+          # Threshold: 4.8MB stripped (baseline ~4.5MB, see .dev/baselines.md)
+          if [ "$SIZE" -gt 5033164 ]; then
+            echo "FAIL: Stripped binary ${SIZE_MB}MB exceeds 4.8MB threshold"
             exit 1
           fi
       - name: E2E tests
